@@ -57,10 +57,20 @@
             </div>
         </div>
         <div id="add-article-form" style="display:none;">
-            <div class="form-group">
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <div onclick="setSearchMode('sector')" id="search-mode-sector" class="form-toggle active" style="flex:1;text-align:center;padding:6px 0;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border-mid);color:var(--text-bright);background:rgba(255,255,255,0.04);">Search by Sector</div>
+                <div onclick="setSearchMode('stat')" id="search-mode-stat" class="form-toggle" style="flex:1;text-align:center;padding:6px 0;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border-mid);color:var(--text-dim);background:transparent;">Search by Stat</div>
+            </div>
+            <div class="form-group" id="sector-search-group">
                 <label class="form-label">Select Sector</label>
                 <select class="form-select" id="sector-select" onchange="onSectorChange()">
                     <option value="">-- Choose a sector --</option>
+                </select>
+            </div>
+            <div class="form-group" id="global-stat-search-group" style="display:none;">
+                <label class="form-label">Select Stat</label>
+                <select class="form-select" id="global-stat-select" onchange="onGlobalStatSearch()">
+                    <option value="">-- Choose a stat --</option>
                 </select>
             </div>
             <div class="form-group" id="stat-filter-group" style="display:none;">
@@ -2101,6 +2111,85 @@ function onSectorChange() {
     document.getElementById('policy-group').style.display = 'block';
 }
 
+let _searchMode = 'sector';
+
+function setSearchMode(mode) {
+    _searchMode = mode;
+    const sectorBtn = document.getElementById('search-mode-sector');
+    const statBtn = document.getElementById('search-mode-stat');
+    const sectorGroup = document.getElementById('sector-search-group');
+    const globalStatGroup = document.getElementById('global-stat-search-group');
+
+    if (mode === 'stat') {
+        sectorBtn.style.color = 'var(--text-dim)'; sectorBtn.style.background = 'transparent';
+        statBtn.style.color = 'var(--text-bright)'; statBtn.style.background = 'rgba(255,255,255,0.04)';
+        sectorGroup.style.display = 'none';
+        globalStatGroup.style.display = 'block';
+        document.getElementById('stat-filter-group').style.display = 'none';
+        // Populate global stat dropdown from ALL policies
+        _populateGlobalStatDropdown();
+        // Reset policy view
+        document.getElementById('policy-group').style.display = 'none';
+        document.getElementById('ideology-hint').style.display = 'none';
+    } else {
+        statBtn.style.color = 'var(--text-dim)'; statBtn.style.background = 'transparent';
+        sectorBtn.style.color = 'var(--text-bright)'; sectorBtn.style.background = 'rgba(255,255,255,0.04)';
+        sectorGroup.style.display = 'block';
+        globalStatGroup.style.display = 'none';
+        // Reset
+        document.getElementById('sector-select').value = '';
+        onSectorChange();
+    }
+}
+
+function _populateGlobalStatDropdown() {
+    const select = document.getElementById('global-stat-select');
+    const statSet = new Set();
+    for (const p of allPolicies) {
+        for (const e of _getStatEffectsFromPolicy(p)) {
+            if (e.stat_key) statSet.add(e.stat_key);
+        }
+    }
+    const sorted = [...statSet].sort((a, b) => formatStatName(a).localeCompare(formatStatName(b)));
+    select.innerHTML = '<option value="">-- Choose a stat --</option>' + sorted.map(s =>
+        `<option value="${s}">${formatStatName(s)}</option>`
+    ).join('');
+}
+
+function onGlobalStatSearch() {
+    const statKey = document.getElementById('global-stat-select').value;
+    selectedFoundationalType = null;
+    if (!statKey) {
+        document.getElementById('policy-group').style.display = 'none';
+        document.getElementById('ideology-hint').style.display = 'none';
+        return;
+    }
+
+    // Get ALL compatible policies across ALL sectors that affect this stat
+    // Collect unique sectors from allPolicies, run getCompatiblePolicies for each, merge
+    const sectors = [...new Set(allPolicies.map(p => p.major_sector).filter(Boolean))];
+    const excludeIds = draftArticles.map(a => a.policy?.id).filter(Boolean);
+    const _activePolicyIds = new Set(activeLaws.filter(al => !al.is_reversal).map(al => al.policy_id));
+    const merged = [];
+    const seen = new Set();
+    for (const sector of sectors) {
+        const compatible = getCompatiblePolicies(sector, allPolicies, currentFaction, excludeIds, _activePolicyIds);
+        for (const p of compatible) {
+            if (seen.has(p.id)) continue;
+            if (_getStatEffectsFromPolicy(p).some(e => e.stat_key === statKey)) {
+                seen.add(p.id);
+                merged.push(p);
+            }
+        }
+    }
+
+    _currentSectorPolicies = merged;
+    document.getElementById('ideology-hint').style.display = 'block';
+    document.getElementById('stat-filter-group').style.display = 'none';
+    renderPolicyOptions(merged, 'policy-options', 'add-article-btn');
+    document.getElementById('policy-group').style.display = 'block';
+}
+
 function onStatFilterChange() {
     const statKey = document.getElementById('stat-filter-select').value;
     const filtered = _filterPoliciesByStat(_currentSectorPolicies, statKey);
@@ -2113,6 +2202,8 @@ window.onStatFilterChange = onStatFilterChange;
 
 // Keep handlers explicitly on window for inline onchange attributes.
 window.onSectorChange = onSectorChange;
+window.setSearchMode = setSearchMode;
+window.onGlobalStatSearch = onGlobalStatSearch;
 
 let selectedFoundationalType = null;
 
