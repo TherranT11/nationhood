@@ -86,8 +86,12 @@ export function generateAgitatorPool(nationId, nationName) {
     var count = randInt(5, 7);
 
     var names = getNationNames(nationName);
-    var firstNames = names.firstNames;
-    var lastNames = names.lastNames;
+    var firstNames = names.firstNames || [];
+    var lastNames = names.lastNames || [];
+    if (firstNames.length === 0 || lastNames.length === 0) return [];
+
+    // Shuffle backgrounds for no-replacement sampling
+    var shuffledBgs = BACKGROUNDS.slice().sort(function() { return Math.random() - 0.5; });
 
     for (var i = 0; i < count; i++) {
         var firstName, lastName, fullName;
@@ -104,7 +108,7 @@ export function generateAgitatorPool(nationId, nationName) {
 
         var skill = randInt(20, 85);
         var age = randInt(25, 60);
-        var background = pickRandom(BACKGROUNDS);
+        var background = shuffledBgs[i % shuffledBgs.length];
         var hireCost = calculateAgitatorCost(skill);
 
         pool.push({
@@ -271,10 +275,12 @@ export async function hireAgitator(supabase, factionId, candidate, currentTick) 
     }
 
     // Mark pool candidate as hired
-    await supabase
+    var { error: poolErr } = await supabase
         .from('agitator_pool')
         .update({ status: 'hired', hired_by_faction_id: factionId })
         .eq('id', candidate.id);
+
+    if (poolErr) console.error('[Agitator] Failed to mark pool candidate as hired:', poolErr.message);
 
     return { success: true, agitator: agitator, error: null };
 }

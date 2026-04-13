@@ -276,38 +276,44 @@ export async function resolveLawsuits(supabase, nationId, currentTick, govPmPart
         var effects = TIER_EFFECTS[ls.tier] || TIER_EFFECTS[1];
         var resLabel = ls.tier === 1 ? 'frivolous' : ls.tier === 2 ? 'partial_win' : ls.tier === 3 ? 'major_win' : 'devastating_win';
 
+        // Mark resolved FIRST (prevents double-fire if subsequent operations fail)
+        var { error: resolveErr } = await supabase.from('lawsuits').update({
+            status: 'resolved',
+            resolution: resLabel,
+        }).eq('id', ls.id);
+
+        if (resolveErr) {
+            console.error('[Lawsuits] Failed to mark resolved:', resolveErr.message);
+            continue; // Skip momentum if we can't mark resolved — prevents double-fire
+        }
+
         // Apply filer momentum
         if (ls.faction_id && effects.filer.momentum !== 0) {
-            await supabase.rpc('adjust_momentum', {
+            var { error: filerErr } = await supabase.rpc('adjust_momentum', {
                 p_faction_id: ls.faction_id,
                 p_delta: effects.filer.momentum,
                 p_label: 'Lawsuit ' + resLabel + ': ' + ls.target_ministry,
                 p_tick: currentTick,
             });
+            if (filerErr) console.error('[Lawsuits] Filer momentum failed:', filerErr.message);
         }
 
         // Apply government momentum (to PM's party)
         if (govPmPartyId && effects.gov.momentum !== 0) {
-            await supabase.rpc('adjust_momentum', {
+            var { error: govErr } = await supabase.rpc('adjust_momentum', {
                 p_faction_id: govPmPartyId,
                 p_delta: effects.gov.momentum,
                 p_label: 'Lawsuit ' + resLabel + ' (defendant): ' + ls.target_ministry,
                 p_tick: currentTick,
             });
+            if (govErr) console.error('[Lawsuits] Gov momentum failed:', govErr.message);
         }
-
-        // Mark resolved
-        await supabase.from('lawsuits').update({
-            status: 'resolved',
-            resolution: resLabel,
-        }).eq('id', ls.id);
 
         // Mark resolution event as fired
         await supabase.from('lawsuit_events').update({ is_fired: true })
             .eq('lawsuit_id', ls.id).eq('event_type', 'resolution');
 
         results.push({ id: ls.id, tier: ls.tier, resolution: resLabel, factionId: ls.faction_id });
-        console.log('[Lawsuits] Resolved: ' + ls.target_ministry + ' tier ' + ls.tier + ' → ' + resLabel);
     }
 
     return results;
