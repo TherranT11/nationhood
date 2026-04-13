@@ -3,12 +3,16 @@
 
 import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo } from './game/platforms.js';
 import { getPromiseProgress } from './game/platform-promises.js';
+import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, checkOppositionStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 
 let _supabase = null;
 let _state = null;
 let _selectedRole = 'leader';
 let _myPlatforms = [];
-let _nationPlatforms = []; // all platforms in this nation (for momentum calc)
+let _nationPlatforms = [];
+let _agitator = null;        // hired agitator or null
+let _isOpposition = false;   // is this faction in opposition?
+let _administration = null;  // active administration data // all platforms in this nation (for momentum calc)
 
 function esc(str) {
     if (!str) return '';
@@ -102,16 +106,21 @@ export async function initPartyActions(supabase, state) {
         return;
     }
 
-    // Fetch platforms
-    const [myPlat, nationPlat] = await Promise.all([
+    // Fetch platforms + agitator + opposition status in parallel
+    const [myPlat, nationPlat, agitatorResult, oppositionResult] = await Promise.all([
         _supabase.from('faction_platforms').select('*').eq('faction_id', faction.id).order('slot'),
         _supabase.from('faction_platforms').select('*').eq('nation_id', state.nation?.id),
+        fetchActiveAgitator(_supabase, faction.id),
+        checkOppositionStatus(_supabase, state.nation?.id, faction.id),
     ]);
 
     if (myPlat.error) console.error('[PartyActions] Failed to load faction platforms:', myPlat.error.message);
     if (nationPlat.error) console.error('[PartyActions] Failed to load nation platforms:', nationPlat.error.message);
     _myPlatforms = myPlat.data || [];
     _nationPlatforms = nationPlat.data || [];
+    _agitator = agitatorResult;
+    _isOpposition = oppositionResult.isOpposition;
+    _administration = oppositionResult.administration;
 
     renderPage(root);
 }
@@ -216,6 +225,8 @@ function renderPage(root) {
         <div class="pa-modal-overlay" id="pa-statement-modal"></div>
         <!-- Platform Modal -->
         <div class="pa-modal-overlay" id="pa-platform-modal"></div>
+        <!-- Hire Agitator Modal -->
+        <div class="pa-modal-overlay" id="pa-hire-modal"></div>
     `;
 
     // Bind leader card clicks
@@ -240,16 +251,44 @@ function renderPage(root) {
             openPlatformModal(root);
         }
     });
+
+    // Bind hire agitator button
+    document.getElementById('pa-hire-agitator-btn')?.addEventListener('click', () => openHireAgitatorModal(root));
+    document.getElementById('pa-hire-agitator-panel')?.addEventListener('click', (e) => {
+        if (e.target.closest('#pa-hire-agitator-btn')) return; // let button handle it
+        openHireAgitatorModal(root);
+    });
 }
 
 function renderLeaderCards(leaderName, partyColor, faction) {
     return ROLES.map(role => {
         const isLeader = role.id === 'leader';
+        const isAgitator = role.id === 'agitator';
         const isActive = _selectedRole === role.id;
-        const isVacant = !isLeader;
-        const name = isLeader ? leaderName : 'Vacant';
-        const portrait = isLeader ? initials(faction.leader_first_name, faction.leader_last_name) : '—';
-        const actionCount = isLeader ? LEADER_ACTIONS.length : 0;
+
+        // Agitator: populated if hired, otherwise hireable
+        let isVacant, name, portrait, actionCount;
+        if (isLeader) {
+            isVacant = false;
+            name = leaderName;
+            portrait = initials(faction.leader_first_name, faction.leader_last_name);
+            actionCount = LEADER_ACTIONS.length;
+        } else if (isAgitator && _agitator) {
+            isVacant = false;
+            name = `${_agitator.first_name} ${_agitator.last_name}`;
+            portrait = initials(_agitator.first_name, _agitator.last_name);
+            actionCount = 1; // File Lawsuit (others coming later)
+        } else if (isAgitator && !_agitator) {
+            isVacant = false; // not vacant — hireable
+            name = 'Not Hired';
+            portrait = '+';
+            actionCount = 0;
+        } else {
+            isVacant = true;
+            name = 'Vacant';
+            portrait = '\u2014';
+            actionCount = 0;
+        }
 
         let html = `
             <div class="pa-leader-card ${isActive ? 'active' : ''} ${isVacant ? 'vacant' : ''}"
@@ -261,9 +300,11 @@ function renderLeaderCards(leaderName, partyColor, faction) {
                     <div class="pa-leader-info">
                         <div class="pa-leader-role">
                             <span class="pa-leader-role-label" style="color:${role.color};">${role.title}</span>
-                            ${!isVacant ? `<span class="pa-leader-role-count">${actionCount} actions</span>` : ''}
+                            ${actionCount > 0 ? `<span class="pa-leader-role-count">${actionCount} actions</span>` : ''}
                         </div>
                         <div class="pa-leader-name">${esc(name)}</div>
+                        ${isAgitator && _agitator ? `<div style="display:flex;align-items:center;gap:3px;margin-top:2px;"><div style="flex:1;height:2px;background:var(--border-mid);"><div style="height:100%;width:${_agitator.skill}%;background:${getSkillLabel(_agitator.skill).color};"></div></div><span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);width:16px;text-align:right;">${_agitator.skill}</span></div>` : ''}
+                        ${isAgitator && !_agitator ? '<div style="font-family:var(--font-mono);font-size:7px;color:#d44a4a;margin-top:2px;">Click to recruit</div>' : ''}
                     </div>
                 </div>
             </div>
@@ -293,7 +334,8 @@ function renderActionsPanel(leaderName, partyColor, faction) {
     if (!role) return '';
 
     const isLeader = _selectedRole === 'leader';
-    const isVacant = !isLeader;
+    const isAgitator = _selectedRole === 'agitator';
+    const isVacant = !isLeader && !isAgitator;
 
     if (isVacant) {
         return `
@@ -304,6 +346,27 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 </div>
             </div>
         `;
+    }
+
+    // Agitator: not hired → show hire prompt
+    if (isAgitator && !_agitator) {
+        return `
+            <div class="pa-vacant-msg" style="cursor:pointer;" id="pa-hire-agitator-panel">
+                <div style="text-align:center;">
+                    <div style="font-size:2rem;margin-bottom:12px;opacity:0.4;">&#9760;</div>
+                    <div class="pa-vacant-title">Hire an Opposition Coordinator</div>
+                    <div class="pa-vacant-sub" style="max-width:400px;margin:8px auto 16px;">
+                        The Agitator leads your opposition strategy — filing lawsuits, organizing protests, and applying legal and political pressure against the government.
+                    </div>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-hire-agitator-btn" style="background:#d44a4a;">Search Candidates</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Agitator: hired → show their actions
+    if (isAgitator && _agitator) {
+        return renderAgitatorActionsPanel(role);
     }
 
     const portrait = initials(faction.leader_first_name, faction.leader_last_name);
@@ -352,6 +415,235 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             <span style="color:${role.color};font-weight:700;">${role.title}</span> actions are executed by the party leader. Effectiveness depends on party approval and momentum.
         </div>
     `;
+}
+
+// ════════════════════════ AGITATOR ACTIONS PANEL ════════════════════════
+
+const AGITATOR_ACTIONS = [
+    {
+        id: 'file_lawsuit',
+        name: 'File Lawsuit',
+        desc: 'Sue a government ministry alleging corruption or negligence. 8-tick timeline with milestone events. Outcome depends on actual corruption growth since government took office.',
+        cost: 'FREE',
+        costColor: '#5cc55c',
+        ap: 0,
+        tags: ['LEGAL', 'OFFENSIVE'],
+        locked: true, // Phase 3 unlocks this
+        lockReason: 'Coming in the next update.',
+    },
+];
+
+function renderAgitatorActionsPanel(role) {
+    const ag = _agitator;
+    const portrait = initials(ag.first_name, ag.last_name);
+    const skillInfo = getSkillLabel(ag.skill);
+    const oppLabel = _isOpposition
+        ? '<span style="color:#5cc55c;margin-left:6px;">\u2713 IN OPPOSITION</span>'
+        : '<span style="color:#c84;margin-left:6px;">\u26A0 IN GOVERNMENT (actions limited)</span>';
+
+    const actionsHtml = AGITATOR_ACTIONS.map(action => {
+        const tagsHtml = action.tags.map(t =>
+            `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${t}</span>`
+        ).join('');
+        return `
+            <div class="pa-action-item ${action.locked ? 'locked' : ''}" data-action-id="${action.id}">
+                <div class="pa-action-top">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="pa-action-name">${esc(action.name)}</span>
+                        <div class="pa-action-tags">${tagsHtml}</div>
+                    </div>
+                    <div class="pa-action-right">
+                        <span class="pa-action-cost" style="color:${action.costColor};">${action.cost}</span>
+                    </div>
+                </div>
+                <div class="pa-action-desc">${esc(action.desc)}</div>
+                ${action.locked && action.lockReason ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;"><span>\u2298</span><span>${esc(action.lockReason)}</span></div>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="pa-detail-header">
+            <div class="pa-detail-left">
+                <div class="pa-detail-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${portrait}</div>
+                <div>
+                    <div style="display:flex;align-items:baseline;gap:6px;">
+                        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${role.color};">${role.title}</span>
+                        <span class="pa-detail-name">${esc(ag.first_name)} ${esc(ag.last_name)}</span>
+                    </div>
+                    <div class="pa-detail-meta">${esc(role.fullTitle)}, Age ${ag.age}${oppLabel}</div>
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;">SKILL</div>
+                <div style="display:flex;align-items:center;gap:4px;margin-top:1px;">
+                    <div style="width:40px;height:3px;background:var(--border-mid);"><div style="height:100%;width:${ag.skill}%;background:${skillInfo.color};"></div></div>
+                    <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${skillInfo.color};">${ag.skill}</span>
+                </div>
+            </div>
+        </div>
+        ${ag.background ? `<div style="padding:6px 16px;border:1px solid var(--border-main);border-top:none;border-bottom:none;background:var(--bg-panel);font-size:9px;color:var(--text-dim);font-style:italic;">${esc(ag.background)}</div>` : ''}
+        <div class="pa-actions-list">
+            ${actionsHtml}
+        </div>
+        <div class="pa-skill-footer">
+            <span style="color:${role.color};font-weight:700;">${role.title}</span> skill (${ag.skill}/100) affects lawsuit discovery and legal action outcomes. <span style="color:${skillInfo.color};font-weight:700;">${skillInfo.label}</span>: ${skillInfo.desc}
+        </div>
+    `;
+}
+
+// ════════════════════════ HIRE AGITATOR MODAL ════════════════════════
+
+let _hireSubmitting = false;
+
+async function openHireAgitatorModal(root) {
+    const overlay = document.getElementById('pa-hire-modal');
+    if (!overlay) return;
+
+    const nationId = _state.nation?.id;
+    const nationName = _state.nation?.name;
+    if (!nationId || !nationName) return;
+
+    overlay.innerHTML = '<div class="pa-modal"><div style="padding:40px;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Searching for candidates...</div></div>';
+    overlay.classList.add('active');
+
+    const candidates = await fetchOrGeneratePool(_supabase, nationId, nationName);
+    let selectedIdx = null;
+
+    function render() {
+        const selected = selectedIdx != null ? candidates[selectedIdx] : null;
+        const selSkill = selected ? getSkillLabel(selected.skill) : null;
+
+        const listHtml = candidates.map((c, i) => {
+            const isSel = selectedIdx === i;
+            const sk = getSkillLabel(c.skill);
+            return `<div class="pa-hire-row ${isSel ? 'selected' : ''}" data-idx="${i}">
+                <div style="width:32px;height:32px;border-radius:50%;background:#d44a4a15;border:1px solid #d44a4a33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#d44a4a;flex-shrink:0;">${initials(c.first_name, c.last_name)}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:11px;font-weight:600;color:${isSel ? 'var(--text-bright)' : 'var(--text-secondary)'};">${esc(c.first_name)} ${esc(c.last_name)}</div>
+                    <div style="display:flex;align-items:center;gap:3px;margin-top:2px;">
+                        <div style="flex:1;height:2px;background:var(--border-mid);max-width:60px;"><div style="height:100%;width:${c.skill}%;background:${sk.color};"></div></div>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:${sk.color};">${c.skill}</span>
+                    </div>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);text-align:right;">Age ${c.age}</div>
+            </div>`;
+        }).join('');
+
+        let detailHtml;
+        if (!selected) {
+            detailHtml = `<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px;"><div style="text-align:center;">
+                <div style="font-family:var(--font-mono);font-size:24px;color:var(--border-mid);margin-bottom:8px;">\u2190</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Select a candidate to review</div>
+            </div></div>`;
+        } else {
+            detailHtml = `
+                <div style="padding:16px 20px;">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                        <div style="width:48px;height:48px;border-radius:50%;background:#d44a4a15;border:1px solid #d44a4a33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:16px;font-weight:700;color:#d44a4a;">${initials(selected.first_name, selected.last_name)}</div>
+                        <div>
+                            <div style="font-size:16px;font-weight:700;color:var(--text-bright);">${esc(selected.first_name)} ${esc(selected.last_name)}</div>
+                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:1px;">Age ${selected.age} &middot; Opposition Coordinator Candidate</div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;gap:12px;margin-bottom:14px;">
+                        <div style="flex:1;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);">
+                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">SKILL</div>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <div style="flex:1;height:3px;background:var(--border-mid);"><div style="height:100%;width:${selected.skill}%;background:${selSkill.color};"></div></div>
+                                <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${selSkill.color};">${selected.skill}</span>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:8px;color:${selSkill.color};margin-top:3px;font-weight:700;">${selSkill.label}</div>
+                        </div>
+                        <div style="flex:1;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);">
+                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">HIRE COST</div>
+                            <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--text-bright);">FREE</div>
+                            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:3px;">No AP or money cost</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:14px;">
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:4px;">BACKGROUND</div>
+                        <div style="font-size:10px;color:var(--text-secondary);line-height:1.6;font-style:italic;">${esc(selected.background)}</div>
+                    </div>
+
+                    <div style="margin-bottom:14px;">
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:4px;">SKILL ASSESSMENT</div>
+                        <div style="font-size:10px;color:var(--text-secondary);line-height:1.5;">${selSkill.desc}</div>
+                    </div>
+
+                    <div style="padding:8px 10px;background:rgba(212,74,74,0.04);border:1px solid rgba(212,74,74,0.12);">
+                        <div style="font-family:var(--font-mono);font-size:7px;color:#d44a4a;letter-spacing:0.06em;margin-bottom:3px;">ROLE: OPPOSITION COORDINATOR</div>
+                        <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">Files lawsuits against the government, organizes protests, and leads legal challenges. Skill affects success rates of legal and direct actions. Available only when your party is in opposition.</div>
+                    </div>
+                </div>
+                <div style="padding:10px 20px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;">
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-hire-confirm" style="background:#d44a4a;">Hire ${esc(selected.first_name)}</button>
+                </div>
+            `;
+        }
+
+        overlay.innerHTML = `
+            <div style="width:100%;max-width:700px;background:var(--bg-panel);border:1px solid var(--border-mid);box-shadow:0 20px 60px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-height:80vh;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#d44a4a;"></div>
+                        <span class="pa-modal-title">Hire Agitator</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:8px;">${candidates.length} candidates</span>
+                    </div>
+                    <button class="pa-modal-close" id="pa-hire-close">&times;</button>
+                </div>
+                <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
+                    <div style="width:240px;border-right:1px solid var(--border-main);overflow-y:auto;" id="pa-hire-list">
+                        ${listHtml}
+                    </div>
+                    <div style="flex:1;overflow-y:auto;" id="pa-hire-detail">
+                        ${detailHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Bind events
+        const close = () => overlay.classList.remove('active');
+        document.getElementById('pa-hire-close')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        document.getElementById('pa-hire-list')?.addEventListener('click', (e) => {
+            const row = e.target.closest('.pa-hire-row');
+            if (!row) return;
+            selectedIdx = parseInt(row.dataset.idx, 10);
+            render();
+        });
+
+        document.getElementById('pa-hire-confirm')?.addEventListener('click', async () => {
+            if (_hireSubmitting || selectedIdx == null) return;
+            _hireSubmitting = true;
+            const btn = document.getElementById('pa-hire-confirm');
+            if (btn) { btn.disabled = true; btn.textContent = 'Hiring...'; }
+
+            try {
+                const tick = _state.shard?.current_tick || 0;
+                const result = await hireAgitator(_supabase, _state.faction?.id, candidates[selectedIdx], tick);
+                if (!result.success) {
+                    alert(result.error || 'Failed to hire agitator.');
+                    return;
+                }
+                _agitator = result.agitator;
+                _selectedRole = 'agitator';
+                close();
+                renderPage(root);
+            } catch (err) {
+                console.error('[PartyActions] Hire agitator error:', err);
+            } finally {
+                _hireSubmitting = false;
+                if (btn) { btn.disabled = false; }
+            }
+        });
+    }
+
+    render();
 }
 
 // ════════════════════════ ISSUE STATEMENT MODAL ════════════════════════
