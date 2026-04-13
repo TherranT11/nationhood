@@ -789,9 +789,12 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
     var stabilityMod = Math.min(1.0, stability / 40);
     capacity *= stabilityMod;
 
-    // Currency strength modifier
+    // Currency strength modifier on EXPORTS:
+    // Strong currency = exports are expensive in foreign markets = less competitive.
+    // Weak currency = exports are cheap = more competitive.
+    // currency_strength 50 = 1.0, 75 = 0.67x (expensive), 25 = 2.0x (cheap)
     var currencyStrength = Number(nation.currency_strength ?? 50);
-    var currencyModifier = currencyStrength / 50;
+    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
     capacity *= currencyModifier;
 
     // Floor: minimal organic trade
@@ -969,12 +972,12 @@ export function calculateExportCapacity(nation, sector, opts) {
     var stabilityMod = Math.min(1.0, stability / 40);
     capacity *= stabilityMod;
 
-    // ── Currency strength modifier ──
-    // Affects export VALUE (what appears on trade page).
-    // Weak currency = exports are cheaper = lower value per unit.
-    // currency_strength 50 = 1.0 (neutral), 25 = 0.5 (cheap), 75 = 1.5 (premium)
+    // ── Currency strength modifier on EXPORTS ──
+    // Strong currency = exports are expensive in foreign markets = less competitive.
+    // Weak currency = exports are cheap = more competitive.
+    // currency_strength 50 = 1.0 (neutral), 75 = 0.67x (expensive), 25 = 2.0x (cheap)
     var currencyStrength = Number(nation.currency_strength ?? 50);
-    var currencyModifier = currencyStrength / 50;
+    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
     capacity *= currencyModifier;
 
     // Floor: even distressed nations maintain some organic trade (5% of GDP-scaled baseline)
