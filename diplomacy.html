@@ -218,6 +218,8 @@ const TRADE_SECTOR_LABELS = {
 let _tradeFlows = {};       // sector → { export_capacity, import_demand, export_volume, import_volume, net_flow }
 let _tradeSummary = null;   // latest trade_summary row
 let _tradeCommodityFilter = null;  // selected commodity key for partner highlighting
+let _expandedCommodity = null;     // sector key of expanded commodity row
+let _tradePartnersBilateral = [];  // trade_partners rows for this nation (import + export)
 
 async function initTradeTab() {
     const left = document.getElementById('trade-left');
@@ -327,6 +329,13 @@ async function loadTradeFlowData() {
             _tradeFlows[row.sector] = row;
         }
     }
+
+    // Load bilateral trade partners (imports to us + exports from us)
+    const { data: partnerRows } = await _supabase.from('trade_partners')
+        .select('exporter_nation_id, importer_nation_id, sector, trade_volume')
+        .eq('tick', _tradeSummary.tick)
+        .or(`exporter_nation_id.eq.${nationId},importer_nation_id.eq.${nationId}`);
+    _tradePartnersBilateral = partnerRows || [];
 }
 
 function renderTradeEconomy() {
@@ -367,14 +376,17 @@ function renderTradeEconomy() {
             <span style="width:75px;text-align:right;">BAL</span>
         </div>`;
 
+    const nationId = _worldState?.nation?.id;
     for (const c of commodities) {
         const bal = c.production - c.demand;
+        const isExp = _expandedCommodity === c.key;
         const isSelected = _tradeCommodityFilter === c.key;
-        const bgStyle = isSelected ? (bal > 0 ? 'background:rgba(92,204,92,0.04);' : 'background:rgba(204,85,85,0.04);') : '';
+        const bgStyle = isExp ? 'background:var(--bg-card);' : isSelected ? (bal > 0 ? 'background:rgba(92,204,92,0.04);' : 'background:rgba(204,85,85,0.04);') : '';
         html += `<div class="tr-commodity-row" data-sector="${c.key}" style="${bgStyle}">
             <div style="flex:1;display:flex;align-items:center;gap:8px;">
                 <span style="font-size:16px;">${c.icon}</span>
-                <span style="font-size:14px;color:${isSelected ? 'var(--text-bright)' : 'var(--text-secondary)'};font-weight:${isSelected ? '700' : '400'};">${escapeHtml(c.name)}</span>
+                <span style="font-size:14px;color:${isExp || isSelected ? 'var(--text-bright)' : 'var(--text-secondary)'};font-weight:${isExp || isSelected ? '700' : '400'};">${escapeHtml(c.name)}</span>
+                ${!isExp ? '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);opacity:0.5;margin-left:2px;">click to expand</span>' : ''}
             </div>
             <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.production)}</span>
             <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.demand)}</span>
@@ -382,6 +394,91 @@ function renderTradeEconomy() {
                 ${bal === 0 ? '\u2014' : (bal > 0 ? '+' : '') + fmtBudgetCurrency(bal)}
             </span>
         </div>`;
+
+        // Expanded detail panel
+        if (isExp) {
+            const flow = _tradeFlows[c.key] || {};
+            const expCap = Number(flow.export_capacity) || 0;
+            const impDem = Number(flow.import_demand) || 0;
+            const expVol = Number(flow.export_volume) || 0;
+            const impVol = Number(flow.import_volume) || 0;
+            const unmetDemand = Math.max(0, impDem - impVol);
+
+            // Unit formatting
+            const unitProd = formatSectorVolume(expCap, c.key);
+            const unitDem = formatSectorVolume(impDem, c.key);
+            const unitImp = formatSectorVolume(impVol, c.key);
+            const unitExp = formatSectorVolume(expVol, c.key);
+            const unitUnmet = formatSectorVolume(unmetDemand, c.key);
+
+            // Bilateral partners
+            const importPartners = _tradePartnersBilateral
+                .filter(p => p.importer_nation_id === nationId && p.sector === c.key && p.trade_volume > 0)
+                .sort((a, b) => b.trade_volume - a.trade_volume);
+            const exportPartners = _tradePartnersBilateral
+                .filter(p => p.exporter_nation_id === nationId && p.sector === c.key && p.trade_volume > 0)
+                .sort((a, b) => b.trade_volume - a.trade_volume);
+
+            html += `<div style="padding:10px 18px 14px;background:var(--bg-card);border-bottom:2px solid var(--border-main);">`;
+
+            // Domestic Production
+            html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
+                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">DOMESTIC PRODUCTION</span>
+                <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(expCap)}${unitProd ? ' <span style="font-weight:400;color:var(--text-dim);font-size:10px;">(' + unitProd + ')</span>' : ''}</span>
+            </div>`;
+
+            // Domestic Demand
+            html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
+                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">DOMESTIC DEMAND</span>
+                <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--amber);">${fmtBudgetCurrency(impDem)}${unitDem ? ' <span style="font-weight:400;color:var(--text-dim);font-size:10px;">(' + unitDem + ')</span>' : ''}</span>
+            </div>`;
+
+            // Importing
+            html += `<div style="margin-top:8px;">
+                <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--red);letter-spacing:0.5px;margin-bottom:4px;">IMPORTING: ${fmtBudgetCurrency(impVol)}${unitImp ? ' (' + unitImp + ')' : ''}</div>`;
+            if (importPartners.length > 0) {
+                for (const p of importPartners) {
+                    const partnerNation = (_worldAllNations || []).find(n => n.id === p.exporter_nation_id);
+                    const pName = partnerNation?.name || 'Unknown';
+                    const pUnit = formatSectorVolume(p.trade_volume, c.key);
+                    html += `<div style="display:flex;justify-content:space-between;padding:2px 0 2px 12px;">
+                        <span style="font-size:12px;color:var(--text-secondary);">\u2022 ${escapeHtml(pName)}</span>
+                        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${fmtBudgetCurrency(p.trade_volume)}${pUnit ? ' <span style="font-size:9px;">(' + pUnit + ')</span>' : ''}</span>
+                    </div>`;
+                }
+            } else {
+                html += `<div style="font-size:11px;color:var(--text-dim);font-style:italic;padding-left:12px;">No imports</div>`;
+            }
+            html += `</div>`;
+
+            // Unmet Demand
+            if (unmetDemand > 0) {
+                html += `<div style="display:flex;justify-content:space-between;padding:4px 0;margin-top:4px;border-top:1px solid rgba(42,42,36,0.2);">
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--red);letter-spacing:0.5px;">UNMET DEMAND</span>
+                    <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--red);">${fmtBudgetCurrency(unmetDemand)}${unitUnmet ? ' <span style="font-weight:400;font-size:9px;">(' + unitUnmet + ')</span>' : ''}</span>
+                </div>`;
+            }
+
+            // Exporting
+            html += `<div style="margin-top:8px;">
+                <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--green);letter-spacing:0.5px;margin-bottom:4px;">EXPORTING: ${fmtBudgetCurrency(expVol)}${unitExp ? ' (' + unitExp + ')' : ''}</div>`;
+            if (exportPartners.length > 0) {
+                for (const p of exportPartners) {
+                    const partnerNation = (_worldAllNations || []).find(n => n.id === p.importer_nation_id);
+                    const pName = partnerNation?.name || 'Unknown';
+                    const pUnit = formatSectorVolume(p.trade_volume, c.key);
+                    html += `<div style="display:flex;justify-content:space-between;padding:2px 0 2px 12px;">
+                        <span style="font-size:12px;color:var(--text-secondary);">\u2022 ${escapeHtml(pName)}</span>
+                        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${fmtBudgetCurrency(p.trade_volume)}${pUnit ? ' <span style="font-size:9px;">(' + pUnit + ')</span>' : ''}</span>
+                    </div>`;
+                }
+            } else {
+                html += `<div style="font-size:11px;color:var(--text-dim);font-style:italic;padding-left:12px;">No exports</div>`;
+            }
+            html += `</div>`;
+
+            html += `</div>`;
+        }
     }
     html += `</div>`;
 
@@ -416,12 +513,15 @@ function renderTradeEconomy() {
 
     left.innerHTML = html;
 
-    // Commodity filter click handler
+    // Commodity click handler: expand/collapse detail + filter partners
     left.onclick = (e) => {
         const row = e.target.closest('.tr-commodity-row');
         if (!row) return;
         const sector = row.dataset.sector;
-        _tradeCommodityFilter = _tradeCommodityFilter === sector ? null : sector;
+        // Toggle expansion
+        _expandedCommodity = _expandedCommodity === sector ? null : sector;
+        // Also set the filter for partner highlighting
+        _tradeCommodityFilter = _expandedCommodity;
         renderTradeEconomy();
         renderTradePartners();
     };
@@ -1023,40 +1123,40 @@ function renderTradePartners() {
 
             html += `<div style="border-top:1px solid var(--border-main);">
                 <div style="display:flex;">
-                    <div style="flex:1;padding:10px 14px;border-right:1px solid var(--border-main);">
-                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--teal);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;background:var(--teal);"></span>THEY CAN OFFER</div>`;
+                    <div style="flex:1;padding:14px 18px;border-right:1px solid var(--border-main);">
+                        <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--teal);margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;background:var(--teal);"></span>THEY CAN OFFER</div>`;
             for (const s of surpluses.slice(0, 6)) {
                 const isWeNeed = myDeficits.includes(s.sector);
-                html += `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
-                    <div style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-size:9px;">${s.icon}</span>
-                        <span style="font-size:9px;color:var(--text-bright);font-weight:${isWeNeed ? '700' : '400'};">${escapeHtml(s.name)}</span>
-                        ${isWeNeed ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">MATCH</span>' : ''}
+                html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:13px;">${s.icon}</span>
+                        <span style="font-size:13px;color:var(--text-bright);font-weight:${isWeNeed ? '700' : '400'};">${escapeHtml(s.name)}</span>
+                        ${isWeNeed ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}</span>
                 </div>`;
             }
-            if (surpluses.length === 0) html += `<div style="font-size:8px;color:var(--text-dim);font-style:italic;">No surpluses</div>`;
+            if (surpluses.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No surpluses</div>`;
 
-            html += `</div><div style="flex:1;padding:10px 14px;">
-                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--green);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;background:var(--green);"></span>THEY NEED</div>`;
+            html += `</div><div style="flex:1;padding:14px 18px;">
+                        <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;background:var(--green);"></span>THEY NEED</div>`;
             for (const d of deficits.slice(0, 6)) {
                 const weHave = mySurpluses.includes(d.sector);
-                html += `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
-                    <div style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-size:9px;">${d.icon}</span>
-                        <span style="font-size:9px;color:var(--text-bright);font-weight:${weHave ? '700' : '400'};">${escapeHtml(d.name)}</span>
-                        ${weHave ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">MATCH</span>' : ''}
+                html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:13px;">${d.icon}</span>
+                        <span style="font-size:13px;color:var(--text-bright);font-weight:${weHave ? '700' : '400'};">${escapeHtml(d.name)}</span>
+                        ${weHave ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}</span>
                 </div>`;
             }
-            if (deficits.length === 0) html += `<div style="font-size:8px;color:var(--text-dim);font-style:italic;">No deficits</div>`;
+            if (deficits.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No deficits</div>`;
 
             html += `</div></div>`;
 
             // Action buttons
-            html += `<div style="padding:8px 14px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;gap:4px;">
+            html += `<div style="padding:10px 18px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;gap:6px;">
                 <div class="tr-action-btn" onclick="event.stopPropagation();selectWorldNation('${n.id}');_diploActiveSubtab='world';renderDiploSubtabs();showDiploSubtab();">NATION INFO</div>
                 <div class="tr-action-btn tr-action-btn--primary">DRAFT TRADE AGREEMENT</div>
             </div>`;
