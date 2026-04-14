@@ -57,6 +57,15 @@ function esc(str) {
     return d.innerHTML;
 }
 
+function escParagraphs(str) {
+    if (!str) return '';
+    // Split on double-newlines for paragraphs, single newlines become <br>
+    return str.split(/\n\n+/).map(para => {
+        const escaped = esc(para.trim());
+        return escaped ? `<p style="margin:0 0 12px 0;">${escaped.replace(/\n/g, '<br>')}</p>` : '';
+    }).filter(Boolean).join('');
+}
+
 function initials(name) {
     return (name || '??').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
 }
@@ -209,6 +218,13 @@ function attachRadioListeners(root) {
         if (glBtn) {
             e.stopPropagation();
             toggleGoodListen(glBtn.dataset.glBtn);
+            return;
+        }
+        // Feed: Edit broadcast button
+        const editBtn = e.target.closest('[data-bc-edit]');
+        if (editBtn) {
+            e.stopPropagation();
+            openEditBroadcastModal(editBtn.dataset.bcEdit);
             return;
         }
         // Feed: Expand/collapse broadcast toggle
@@ -580,7 +596,7 @@ function renderFeed(station) {
                         <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">&middot;</span>
                         <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Tick ${bc.published_tick || '?'}</span>
                     </div>
-                    <div style="${bodyStyle}">${esc(bc.body)}</div>
+                    <div style="${bodyStyle}">${isExpanded ? escParagraphs(bc.body) : esc(bc.body)}</div>
                     ${tagsHtml ? `<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">${tagsHtml}</div>` : ''}
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-main);">
                         <div style="display:flex;gap:12px;">
@@ -589,7 +605,10 @@ function renderFeed(station) {
                                 <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);" id="gl-count-${bc.id}">${bc.good_listen_count || 0}</span>
                             </div>
                         </div>
-                        <div style="${glBtnStyle}" data-gl-btn="${bc.id}" id="gl-btn-${bc.id}">${isGoodListened ? '\u2713 LISTEN' : 'LISTEN'}</div>
+                        <div style="display:flex;gap:6px;align-items:center;">
+                            ${bc.faction_id === _state.faction?.id ? `<div data-bc-edit="${bc.id}" style="padding:5px 12px;cursor:pointer;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.04em;color:var(--text-dim);background:transparent;border:1px solid var(--border-mid);">EDIT</div>` : ''}
+                            <div style="${glBtnStyle}" data-gl-btn="${bc.id}" id="gl-btn-${bc.id}">${isGoodListened ? '\u2713 LISTEN' : 'LISTEN'}</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -708,9 +727,10 @@ function openBroadcastModal(station) {
                 </div>
                 <div>
                     <div class="radio-modal-step-label">3 &mdash; Broadcast Content</div>
-                    <textarea class="radio-modal-input" id="radio-bc-body" rows="7" placeholder="Write your broadcast script..." style="resize:none;font-family:var(--font-serif);font-size:11px;line-height:1.65;"></textarea>
+                    <textarea class="radio-modal-input" id="radio-bc-body" rows="10" placeholder="Write your broadcast script...&#10;&#10;Use blank lines for paragraph breaks." style="resize:vertical;font-family:var(--font-serif);font-size:11px;line-height:1.65;"></textarea>
                     <div style="display:flex;justify-content:space-between;margin-top:3px;">
                         <span id="radio-bc-charcount" style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">0 characters</span>
+                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Use blank lines for paragraph breaks</span>
                     </div>
                 </div>
                 <div>
@@ -804,6 +824,166 @@ function openBroadcastModal(station) {
         } finally {
             submitting = false;
             if (btn) { btn.disabled = false; btn.textContent = 'Go Live'; }
+        }
+    });
+}
+
+// ════════════════════════ EDIT BROADCAST MODAL ════════════════════════
+
+function openEditBroadcastModal(broadcastId) {
+    const bc = _broadcasts.find(b => b.id === broadcastId);
+    if (!bc) return;
+
+    // Only the owning faction can edit
+    if (bc.faction_id !== _state.faction?.id) return;
+
+    const station = _allGlobalStations.find(s => s.id === bc.station_id) || _stations.find(s => s.id === bc.station_id);
+    if (!station) return;
+
+    const overlay = document.getElementById('radio-broadcast-modal');
+    if (!overlay) return;
+
+    const color = TYPE_COLORS[station.station_type] || 'var(--text-dim)';
+    const myPers = _personalities.filter(p => p.faction_id === _state.faction?.id);
+
+    const persOptions = myPers.map(p =>
+        `<option value="${p.id}" ${p.id === bc.personality_id ? 'selected' : ''}>${esc(p.name)}${p.title ? ' — ' + esc(p.title) : ''}</option>`
+    ).join('');
+
+    const existingTags = new Set(bc.tags || []);
+    const tagsHtml = BROADCAST_TAGS.map(t => {
+        const isOn = existingTags.has(t);
+        return `<span class="radio-bc-tag" data-tag="${t}" style="padding:4px 10px;cursor:pointer;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.04em;border:1px solid ${isOn ? 'var(--amber-border)' : 'var(--border-mid)'};color:${isOn ? 'var(--accent)' : 'var(--text-dim)'};background:${isOn ? 'var(--amber-faint)' : 'transparent'};">${t}</span>`;
+    }).join('');
+
+    overlay.innerHTML = `
+        <div class="radio-modal" style="width:500px;">
+            <div class="radio-modal-header">
+                <div class="radio-modal-header-left">
+                    <div class="radio-modal-dot" style="background:${color};"></div>
+                    <span class="radio-modal-title">Edit Broadcast</span>
+                </div>
+                <button class="radio-modal-close" id="radio-bc-close">&times;</button>
+            </div>
+            <div style="padding:8px 16px;border-bottom:1px solid var(--border-main);background:${color}08;display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="width:5px;height:5px;border-radius:50%;background:${color};display:inline-block;"></span>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);">Editing on:</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${color};">${esc(station.callsign)}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${esc(station.frequency)}</span>
+                </div>
+            </div>
+            <div class="radio-modal-body" style="gap:14px;">
+                <div>
+                    <div class="radio-modal-step-label">1 — Personality</div>
+                    <select class="radio-modal-input" id="radio-bc-personality" style="font-family:var(--font-ui);font-size:11px;">
+                        ${persOptions}
+                    </select>
+                </div>
+                <div>
+                    <div class="radio-modal-step-label">2 — Subject</div>
+                    <input class="radio-modal-input" id="radio-bc-subject" value="${esc(bc.subject)}" style="font-family:var(--font-serif);font-size:13px;">
+                </div>
+                <div>
+                    <div class="radio-modal-step-label">3 — Broadcast Content</div>
+                    <textarea class="radio-modal-input" id="radio-bc-body" rows="10" style="resize:vertical;font-family:var(--font-serif);font-size:11px;line-height:1.65;">${esc(bc.body)}</textarea>
+                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
+                        <span id="radio-bc-charcount" style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${(bc.body || '').length} characters</span>
+                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Use blank lines for paragraph breaks</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="radio-modal-step-label">4 — Tags</div>
+                    <div style="display:flex;gap:3px;flex-wrap:wrap;" id="radio-bc-tags">${tagsHtml}</div>
+                </div>
+            </div>
+            <div class="radio-modal-footer">
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-right:auto;">EDITING</span>
+                <button class="radio-modal-btn radio-modal-btn--cancel" id="radio-bc-cancel">Cancel</button>
+                <button class="radio-modal-btn radio-modal-btn--submit" id="radio-bc-submit" style="background:var(--accent);">Update</button>
+            </div>
+        </div>
+    `;
+
+    overlay.classList.add('active');
+
+    const selectedTags = new Set(bc.tags || []);
+
+    // Close handlers
+    const close = () => overlay.classList.remove('active');
+    document.getElementById('radio-bc-close')?.addEventListener('click', close);
+    document.getElementById('radio-bc-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    // Tag toggle
+    document.getElementById('radio-bc-tags')?.addEventListener('click', (e) => {
+        const el = e.target.closest('.radio-bc-tag');
+        if (!el) return;
+        const tag = el.dataset.tag;
+        if (selectedTags.has(tag)) {
+            selectedTags.delete(tag);
+            el.style.color = 'var(--text-dim)';
+            el.style.background = 'transparent';
+            el.style.borderColor = 'var(--border-mid)';
+        } else {
+            selectedTags.add(tag);
+            el.style.color = 'var(--accent)';
+            el.style.background = 'var(--amber-faint)';
+            el.style.borderColor = 'var(--amber-border)';
+        }
+    });
+
+    // Character count + submit enable
+    const updateSubmit = () => {
+        const subject = document.getElementById('radio-bc-subject')?.value?.trim();
+        const body = document.getElementById('radio-bc-body')?.value?.trim();
+        const btn = document.getElementById('radio-bc-submit');
+        if (btn) btn.disabled = !(subject && body);
+        const cc = document.getElementById('radio-bc-charcount');
+        if (cc) cc.textContent = `${(body || '').length} characters`;
+    };
+    document.getElementById('radio-bc-subject')?.addEventListener('input', updateSubmit);
+    document.getElementById('radio-bc-body')?.addEventListener('input', updateSubmit);
+
+    // Submit (UPDATE instead of INSERT)
+    let submitting = false;
+    document.getElementById('radio-bc-submit')?.addEventListener('click', async () => {
+        if (submitting) return;
+        const subject = document.getElementById('radio-bc-subject')?.value?.trim();
+        const body = document.getElementById('radio-bc-body')?.value?.trim();
+        const personalityId = document.getElementById('radio-bc-personality')?.value;
+        if (!subject || !body || !personalityId) return;
+
+        submitting = true;
+        const btn = document.getElementById('radio-bc-submit');
+        if (btn) { btn.disabled = true; btn.textContent = 'Updating...'; }
+
+        try {
+            const { data, error } = await _supabase.from('radio_broadcasts').update({
+                personality_id: personalityId,
+                subject: subject,
+                body: body,
+                tags: [...selectedTags],
+            }).eq('id', broadcastId).eq('faction_id', _state.faction?.id).select('*').single();
+
+            if (error) {
+                console.error('[Radio] Edit failed:', error.message);
+                alert('Failed to update: ' + error.message);
+                return;
+            }
+
+            // Update in local cache
+            const idx = _broadcasts.findIndex(b => b.id === broadcastId);
+            if (idx >= 0) _broadcasts[idx] = { ..._broadcasts[idx], ...data };
+
+            close();
+            const feedStation = _stations.find(s => s.id === _selectedStationId);
+            renderFeed(feedStation);
+        } catch (err) {
+            console.error('[Radio] Edit error:', err);
+        } finally {
+            submitting = false;
+            if (btn) { btn.disabled = false; btn.textContent = 'Update'; }
         }
     });
 }
@@ -1181,7 +1361,7 @@ function renderTuneInView() {
                     <span>&middot;</span>
                     <span>${bc.good_listen_count || 0} &#128266;</span>
                 </div>
-                <div class="radio-tunein-bc-body">${esc(bc.body)}</div>
+                <div class="radio-tunein-bc-body">${escParagraphs(bc.body)}</div>
                 ${tagsHtml ? `<div class="radio-tunein-bc-tags">${tagsHtml}</div>` : ''}
             </div>`;
         }).join('');
