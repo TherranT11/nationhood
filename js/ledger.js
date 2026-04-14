@@ -42,7 +42,9 @@ function isHigherBetter(statId) {
 
 const STAT_CATEGORIES = [
     { id: 'economy', name: 'Economy', stats: [
+        { id: 'gdp', name: 'GDP' },
         { id: 'gdp_growth', name: 'GDP Growth' },
+        { id: 'debt', name: 'Debt' },
         { id: 'inflation', name: 'Inflation' },
         { id: 'interest_rates', name: 'Interest Rates' },
         { id: 'unemployment', name: 'Unemployment' },
@@ -447,7 +449,8 @@ function renderRankingsMode() {
         return hb !== false ? vb - va : va - vb;
     });
 
-    const maxVal = sorted.length > 0 ? Math.abs(Number(sorted[0][_rankingStat] ?? 0)) : 1;
+    // Use the largest absolute value across all nations for bar scaling
+    const maxVal = sorted.length > 0 ? Math.max(...sorted.map(n => Math.abs(Number(n[_rankingStat] ?? 0))), 1) : 1;
 
     // Category tabs
     const catHtml = STAT_CATEGORIES.map(c =>
@@ -489,9 +492,9 @@ function renderRankingsMode() {
                 </div>
             </div>
             <span style="width:100px;font-family:var(--font-mono);font-size:16px;font-weight:700;color:${i === 0 ? 'var(--accent)' : 'var(--text-bright)'};text-align:right;">${fmtVal(val)}</span>
-            <div style="width:160px;display:flex;align-items:center;gap:6px;justify-content:flex-end;">
-                <div style="width:130px;height:6px;background:var(--border-main);">
-                    <div style="width:${pct}%;height:100%;background:${barColor};"></div>
+            <div style="width:160px;display:flex;align-items:center;gap:6px;justify-content:flex-end;flex-shrink:0;">
+                <div style="width:130px;height:6px;background:var(--border-main);overflow:hidden;">
+                    <div style="width:${Math.min(pct, 100)}%;height:100%;background:${barColor};"></div>
                 </div>
             </div>
         </div>`;

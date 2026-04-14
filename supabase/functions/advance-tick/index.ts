@@ -32481,12 +32481,33 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 await Promise.all(decayFactions.map(f => {
                     const oldMom = Number(f.momentum) || 0;
                     const decay = Math.max(0.5, Math.round(oldMom * 0.08 * 100) / 100);
-                    const newMom = Math.max(0, Math.round((oldMom - decay) * 100) / 100);
+                    const newMom = Math.max(1, Math.round((oldMom - decay) * 100) / 100); // floor at 1
                     return supabase.from('factions').update({ momentum: newMom }).eq('id', f.id);
                 }));
             }
         } catch (momDecayErr) {
             console.error(`[advanceTick] Momentum decay failed for ${nation.name} (non-fatal):`, momDecayErr);
+        }
+
+        // Passive income: $1k per seat per tick for all parties
+        try {
+            const { data: incomeFactions } = await supabase
+                .from('factions')
+                .select('id, seats, party_funds')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party')
+                .gt('seats', 0);
+
+            if (incomeFactions && incomeFactions.length > 0) {
+                await Promise.all(incomeFactions.map(f => {
+                    const seats = Number(f.seats) || 0;
+                    const income = seats * 1000;
+                    const newFunds = (Number(f.party_funds) || 0) + income;
+                    return supabase.from('factions').update({ party_funds: newFunds }).eq('id', f.id);
+                }));
+            }
+        } catch (incomeErr) {
+            console.error(`[advanceTick] Passive income failed for ${nation.name} (non-fatal):`, incomeErr);
         }
 
         // Timed momentum effects (e.g. State Media Control +2 momentum/tick for governing parties)
