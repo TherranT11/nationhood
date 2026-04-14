@@ -1881,8 +1881,12 @@ function generateMotto(name) {
         img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
     }
 
-    // Wheel zoom
+    // Wheel zoom — only preventDefault when the map will actually zoom;
+    // at min scale scrolling out (deltaY > 0) should fall through to page scroll.
     container.addEventListener('wheel', (e) => {
+        const wouldZoomIn  = e.deltaY < 0 && scale < MAX_SCALE;
+        const wouldZoomOut = e.deltaY > 0 && scale > MIN_SCALE;
+        if (!wouldZoomIn && !wouldZoomOut) return;   // let the page scroll
         e.preventDefault();
         const rect = container.getBoundingClientRect();
         const mx = e.clientX - rect.left, my = e.clientY - rect.top;

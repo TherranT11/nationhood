@@ -1197,7 +1197,7 @@ body.light-mode .coalition-party-card.locked { background: var(--orange-faint); 
         border-left: 2px solid #f0efe6;
     }
 
-    #content-area { overflow-y: visible; }
+    #content-area { overflow-y: auto; }
 
     .gov-two-col,
     .cabinet-grid,
