@@ -739,13 +739,12 @@
     display: flex; gap: 12px; margin-top: 8px;
 }
 .radio-col-left { flex: 1; min-width: 0; }
-.radio-col-right { width: 340px; flex-shrink: 0; }
+.radio-col-right { width: 420px; flex-shrink: 0; }
 
 /* ── Events panel ── */
 .radio-events-panel {
     background: var(--bg-panel); border: 1px solid var(--border-main);
-    display: flex; flex-direction: column; max-height: calc(100vh - 200px);
-    position: sticky; top: 12px;
+    display: flex; flex-direction: column; max-height: calc(100vh - 160px);
 }
 .radio-events-header {
     padding: 10px 14px; border-bottom: 1px solid var(--border-main);

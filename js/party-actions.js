@@ -531,7 +531,11 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 <span>$${(fi.perSeat / 1000).toFixed(0)}k/seat × ${seats}</span>
                 ${_fundraiseUseCount > 0 ? `<span style="color:var(--orange);">Use #${_fundraiseUseCount + 1}</span>` : ''}
             </div>`;
-            // Fundraise is always available — momentum floor of 1 prevents death spiral
+            // Check if player can afford the momentum cost (must stay above floor of 1)
+            if (momentum - fi.momCost < 1) {
+                isDisabled = true;
+                extraInfo += `<div style="margin-top:3px;font-family:var(--font-mono);font-size:9px;color:var(--red);">Not enough momentum (need ${fi.momCost}, have ${Math.round(momentum)})</div>`;
+            }
         }
 
         return `
@@ -1942,7 +1946,7 @@ async function executeFundraise(root) {
     if (_fundraiseSubmitting) return;
     const faction = _state.faction;
     const seats = faction.seats || 0;
-    const momentum = Math.max(1, faction.momentum ?? 0); // enforce floor client-side
+    const momentum = Math.max(1, faction.momentum ?? 0);
 
     if (seats <= 0) {
         alert('Your party has no seats — nothing to fundraise from.');
@@ -1950,6 +1954,12 @@ async function executeFundraise(root) {
     }
 
     const fi = getFundraiseInfo(seats, _fundraiseUseCount);
+
+    // Check if player has enough momentum to pay the cost (must stay above floor of 1)
+    if (momentum - fi.momCost < 1) {
+        alert(`Not enough momentum. You need ${fi.momCost} momentum (current: ${Math.round(momentum)}, floor: 1). Try again next tick when momentum recovers.`);
+        return;
+    }
 
     _fundraiseSubmitting = true;
 
