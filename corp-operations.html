@@ -6680,7 +6680,26 @@ function renderActiveVoyages() {
                 + '<div class="av-detail-row"><span class="av-detail-label">DEMAND</span><span class="av-detail-value" style="color:' + demandColor + '">' + (route.demand_level || '?') + '</span></div>'
                 + (route.trade_agreement_name ? '<div class="av-detail-row"><span class="av-detail-label">AGREEMENT</span><span class="av-detail-value" style="color:var(--teal)">' + escapeHtml(route.trade_agreement_name) + '</span></div>' : '')
                 + '<div class="av-detail-row"><span class="av-detail-label">CLAIMED</span><span class="av-detail-value">Tick ' + (claim.claimed_at_tick || '?') + '</span></div>'
-                + '<button class="av-action-btn release" onclick="event.stopPropagation();avRelease(\'' + claim.id + '\')">RELEASE ROUTE</button>'
+                // Check if a vessel is assigned to this claim
+                var assignedVessel = (_fleetVessels || []).find(function(v) { return v.active_claim_id === claim.id; });
+                if (!assignedVessel && status === 'loading') {
+                    html += '<div style="padding:6px 8px;margin-top:4px;background:rgba(200,168,50,0.06);border:1px solid rgba(200,168,50,0.15);text-align:center;">'
+                        + '<div style="font-family:var(--font-mono);font-size:9px;color:var(--orange);font-weight:700;margin-bottom:4px;">NO VESSEL ASSIGNED</div>'
+                        + '<button class="av-action-btn" style="background:var(--teal);color:#fff;border-color:var(--teal);width:100%;" onclick="event.stopPropagation();openAssignVesselModal(\'' + claim.id + '\',\'' + (route.vessel_class || '') + '\')">ASSIGN VESSEL</button>'
+                        + '</div>';
+                } else if (assignedVessel) {
+                    html += '<div style="display:flex;justify-content:space-between;padding:4px 8px;margin-top:4px;background:var(--bg-card);border:1px solid var(--border-main);">'
+                        + '<div>'
+                        + '<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">ASSIGNED VESSEL</div>'
+                        + '<div style="font-size:11px;font-weight:700;color:var(--text-bright);">' + escapeHtml(assignedVessel.vessel_name || 'Unknown') + '</div>'
+                        + '</div>'
+                        + '<div style="display:flex;gap:10px;align-items:center;">'
+                        + '<div style="text-align:center"><div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">FUEL</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:' + (assignedVessel.fuel > 50 ? '#5c5' : assignedVessel.fuel > 20 ? '#ca5' : '#c55') + '">' + (assignedVessel.fuel || 0) + '%</div></div>'
+                        + '<div style="text-align:center"><div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">COND</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:' + (assignedVessel.condition > 50 ? '#5c5' : assignedVessel.condition > 30 ? '#ca5' : '#c55') + '">' + (assignedVessel.condition || 0) + '%</div></div>'
+                        + '</div></div>';
+                }
+
+                html += '<button class="av-action-btn release" onclick="event.stopPropagation();avRelease(\'' + claim.id + '\')">RELEASE ROUTE</button>'
                 + '</div>';
         }
 
@@ -6689,6 +6708,79 @@ function renderActiveVoyages() {
 
     listEl.innerHTML = html;
 }
+
+// ── Manual Vessel Assignment Modal ──
+
+function openAssignVesselModal(claimId, requiredClass) {
+    // Find available vessels: in_port, no active claim, fuel >= 15%
+    const available = (_fleetVessels || []).filter(function(v) {
+        return v.status === 'in_port' && !v.active_claim_id && v.fuel >= 15 && v.condition >= 20;
+    });
+
+    // Build modal content
+    let listHtml;
+    if (available.length === 0) {
+        listHtml = '<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">'
+            + 'No available vessels.<br>Ships must be in port with 15%+ fuel and 20%+ condition.'
+            + '</div>';
+    } else {
+        listHtml = available.map(function(v, i) {
+            var fuelColor = v.fuel > 50 ? '#5c5' : v.fuel > 20 ? '#ca5' : '#c55';
+            var condColor = v.condition > 50 ? '#5c5' : v.condition > 30 ? '#ca5' : '#c55';
+            return '<div style="padding:10px 14px;border-bottom:1px solid var(--border-0);cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="assignVesselToRoute(\'' + claimId + '\',\'' + v.id + '\')">'
+                + '<div>'
+                + '<div style="font-size:14px;font-weight:700;color:var(--text-bright);">' + escapeHtml(v.vessel_name || 'Unnamed') + '</div>'
+                + '<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">' + escapeHtml(v.vessel_class || '?') + ' · ' + (v.capacity_dwt || 0).toLocaleString() + ' DWT</div>'
+                + '</div>'
+                + '<div style="display:flex;gap:14px;align-items:center;">'
+                + '<div style="text-align:center"><div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">FUEL</div><div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:' + fuelColor + '">' + v.fuel + '%</div></div>'
+                + '<div style="text-align:center"><div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">COND</div><div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:' + condColor + '">' + v.condition + '%</div></div>'
+                + '<div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--teal);padding:4px 12px;border:1px solid var(--teal);cursor:pointer;">ASSIGN</div>'
+                + '</div></div>';
+        }).join('');
+    }
+
+    // Use a simple alert-style modal via overlay
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+    overlay.innerHTML = '<div style="width:560px;max-width:95vw;max-height:80vh;background:var(--bg-panel);border:1px solid var(--border-main);display:flex;flex-direction:column;">'
+        + '<div style="padding:12px 16px;border-bottom:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:space-between;align-items:center;">'
+        + '<span style="font-family:var(--font-mono);font-size:13px;font-weight:700;letter-spacing:1px;color:var(--teal);">ASSIGN VESSEL</span>'
+        + '<span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">' + available.length + ' available</span>'
+        + '</div>'
+        + '<div style="flex:1;overflow-y:auto;">' + listHtml + '</div>'
+        + '<div style="padding:10px 16px;border-top:1px solid var(--border-main);background:var(--bg-card);text-align:right;">'
+        + '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="padding:6px 16px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:pointer;">CANCEL</button>'
+        + '</div></div>';
+
+    document.body.appendChild(overlay);
+}
+
+async function assignVesselToRoute(claimId, vesselId) {
+    try {
+        // Assign the vessel to the claim
+        var { error } = await _supabase.from('corp_vessels').update({
+            status: 'in_port',
+            active_claim_id: claimId,
+        }).eq('id', vesselId).eq('faction_id', faction.id);
+
+        if (error) { alert('Assignment failed: ' + error.message); return; }
+
+        // Close the modal
+        var overlay = document.querySelector('div[style*="position:fixed"][style*="z-index:9999"]');
+        if (overlay) overlay.remove();
+
+        // Reload data
+        await Promise.all([loadActiveVoyages(), loadFleet()]);
+    } catch (err) {
+        alert('Assignment failed: ' + (err.message || 'Network error'));
+    }
+}
+
+window.openAssignVesselModal = openAssignVesselModal;
+window.assignVesselToRoute = assignVesselToRoute;
 
 async function loadDeliveries() {
     if (!faction) { dlDeliveries = []; renderDeliveries(); return; }
