@@ -774,34 +774,21 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
     }
     driverBonus = Math.max(0.5, Math.min(1.5, driverBonus));
 
-    // Base capacity: land × economy-scale × driver bonus
-    var capacity = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * econScale * driverBonus;
+    // Total production: land × economy-scale × driver bonus
+    var totalProduction = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * econScale * driverBonus;
 
-    // Sub-sector export multiplier (domestic consumption priority)
-    capacity *= subsector.export_multiplier;
-
-    // Spoilage for perishables: reduces effective supply
+    // Spoilage for perishables: reduces effective production
     if (subsector.key === 'fruits_vegetables') {
-        capacity *= calculateSpoilageMultiplier(nation);
+        totalProduction *= calculateSpoilageMultiplier(nation);
     }
 
-    // Stability modifier (same as regular sectors)
-    var stability = Number(nation.stability ?? 50);
-    var stabilityMod = Math.min(1.0, stability / 40);
-    capacity *= stabilityMod;
-
-    // Currency strength modifier on EXPORTS:
-    // Strong currency = exports are expensive in foreign markets = less competitive.
-    // Weak currency = exports are cheap = more competitive.
-    // currency_strength 50 = 1.0, 75 = 0.67x (expensive), 25 = 2.0x (cheap)
-    var currencyStrength = Number(nation.currency_strength ?? 50);
-    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
-    capacity *= currencyModifier;
-
     // ── Domestic demand cap: nations must feed their own people first ──
-    // Calculate what the nation needs domestically (mirrors import demand logic)
-    // and only export the surplus. Without this, nations in food shortage
-    // export all production and then import to cover the gap — backwards.
+    // Subtract domestic need from TOTAL production, then take the export
+    // fraction of the surplus. This ensures the domestic-demand check
+    // operates at the correct scale — previously it was applied after
+    // the export_multiplier, which made the $1B domestic need dwarf
+    // the already-reduced $500M export slice and zeroed out exports
+    // for any nation with significant population.
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var domesticNeed = 0;
 
@@ -818,11 +805,28 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
         domesticNeed = popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.04; // minimal domestic use
     }
 
-    // Only export what's left after domestic needs. If production < need, no exports.
+    // Only export the surplus after domestic needs are met.
+    // If total production < domestic need, no exports.
+    var surplus = totalProduction;
     if (domesticNeed > 0) {
-        var surplus = Math.max(0, capacity - domesticNeed);
-        capacity = surplus;
+        surplus = Math.max(0, totalProduction - domesticNeed);
     }
+
+    // Export fraction of the surplus (most food stays domestic)
+    var capacity = surplus * subsector.export_multiplier;
+
+    // Stability modifier (same as regular sectors)
+    var stability = Number(nation.stability ?? 50);
+    var stabilityMod = Math.min(1.0, stability / 40);
+    capacity *= stabilityMod;
+
+    // Currency strength modifier on EXPORTS:
+    // Strong currency = exports are expensive in foreign markets = less competitive.
+    // Weak currency = exports are cheap = more competitive.
+    // currency_strength 50 = 1.0, 75 = 0.67x (expensive), 25 = 2.0x (cheap)
+    var currencyStrength = Number(nation.currency_strength ?? 50);
+    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
+    capacity *= currencyModifier;
 
     // Floor: minimal organic trade (even deficit nations have some border trade)
     var minCapacity = Math.round(0.002 * cfg.BASE_TRADE_MULTIPLIER * econScale);
