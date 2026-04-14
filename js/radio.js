@@ -181,14 +181,14 @@ function attachRadioListeners(root) {
             if (typeCard.dataset.type !== 'political') _modalState.ideology = null;
             // Re-render modal inline
             const overlay = document.getElementById('radio-create-modal');
-            if (overlay) { overlay.innerHTML = renderCreateStationModal(); bindCreateModalInputs(); }
+            if (overlay) { overlay.innerHTML = renderCreateStationModal(); }
             return;
         }
         const ideoCard = e.target.closest('.radio-ideology-card');
         if (ideoCard) {
             _modalState.ideology = ideoCard.dataset.ideology;
             const overlay = document.getElementById('radio-create-modal');
-            if (overlay) { overlay.innerHTML = renderCreateStationModal(); bindCreateModalInputs(); }
+            if (overlay) { overlay.innerHTML = renderCreateStationModal(); }
             return;
         }
         if (e.target.closest('#radio-modal-close') || e.target.closest('#radio-modal-cancel')) { closeCreateModal(); return; }
@@ -200,6 +200,23 @@ function attachRadioListeners(root) {
         if (e.target.closest('#radio-create-pers-btn')) {
             const station = _stations.find(s => s.id === _selectedStationId);
             if (station) openPersonalityModal(station);
+            return;
+        }
+
+        // Feed: Good Listen button
+        const glBtn = e.target.closest('[data-gl-btn]');
+        if (glBtn) {
+            e.stopPropagation();
+            toggleGoodListen(glBtn.dataset.glBtn);
+            return;
+        }
+        // Feed: Expand/collapse broadcast toggle
+        const bcToggle = e.target.closest('[data-bc-toggle]');
+        if (bcToggle) {
+            const bcId = bcToggle.dataset.bcToggle;
+            _expandedBroadcastId = _expandedBroadcastId === bcId ? null : bcId;
+            const station = _stations.find(s => s.id === _selectedStationId);
+            renderFeed(station);
             return;
         }
     });
@@ -229,10 +246,6 @@ function attachRadioListeners(root) {
 }
 
 // Bind only the non-delegatable modal inputs (called after modal innerHTML updates)
-function bindCreateModalInputs() {
-    // Frequency slider and text inputs are handled by the delegated input listener above
-}
-
 // ════════════════════════ RENDER PAGE ════════════════════════
 
 function renderRadioPage(root) {
@@ -549,23 +562,7 @@ function renderFeed(station) {
         `;
     }).join('');
 
-    // Bind expand/collapse
-    scrollEl.addEventListener('click', (e) => {
-        // Good Listen button
-        const glBtn = e.target.closest('[data-gl-btn]');
-        if (glBtn) {
-            e.stopPropagation();
-            toggleGoodListen(glBtn.dataset.glBtn);
-            return;
-        }
-        // Expand/collapse toggle
-        const toggle = e.target.closest('[data-bc-toggle]');
-        if (toggle) {
-            const bcId = toggle.dataset.bcToggle;
-            _expandedBroadcastId = _expandedBroadcastId === bcId ? null : bcId;
-            renderFeed(station);
-        }
-    });
+    // Feed click handling is delegated from attachRadioListeners — no listeners added here
 }
 
 // ════════════════════════ LISTEN ════════════════════════
@@ -986,8 +983,6 @@ function closeCreateModal() {
     document.getElementById('radio-create-modal')?.classList.remove('active');
 }
 
-// Old bindCreateModal removed — all click/input handling is now delegated
-// from attachRadioListeners() to prevent listener accumulation.
 
 let _submitting = false;
 

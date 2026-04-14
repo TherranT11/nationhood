@@ -556,6 +556,9 @@ function openRebrandModal(root) {
 
     const selectedColor = { current: faction.party_color || '#4a8aba' };
     const selectedLogoIdx = { current: 0 };
+    const customLogoUrl = { current: faction.custom_logo_url || null };
+    const customLogoFile = { current: null }; // File object pending upload
+    const useCustomLogo = { current: !!faction.custom_logo_url };
     const confirming = { current: false };
 
     function getActiveColor() { return selectedColor.current; }
@@ -564,6 +567,8 @@ function openRebrandModal(root) {
         const ac = getActiveColor();
         const colorName = PARTY_COLORS_LIST.find(c => c.hex === ac)?.name || 'Custom';
         const activeLogo = PARTY_LOGOS_LIST[selectedLogoIdx.current]?.emoji || '🏛️';
+        const hasCustomLogo = useCustomLogo.current && (customLogoUrl.current || customLogoFile.current);
+        const customPreviewSrc = customLogoUrl.current || (customLogoFile.current ? URL.createObjectURL(customLogoFile.current) : null);
 
         const nameVal = document.getElementById('rb-name')?.value ?? faction.faction_name ?? '';
         const abbrVal = document.getElementById('rb-abbr')?.value ?? faction.abbreviation ?? '';
@@ -625,9 +630,34 @@ function openRebrandModal(root) {
                             <div class="pa-modal-step-label">Party Color — <span style="color:${ac};">${esc(colorName)}</span></div>
                             <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;" id="rb-colors">${colorsHtml}</div>
                         </div>
-                        <div>
-                            <div class="pa-modal-step-label">Party Logo</div>
-                            <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;" id="rb-logos">${logosHtml}</div>
+                        <div style="margin-bottom:14px;">
+                            <div class="pa-modal-step-label">Party Logo — ${hasCustomLogo ? '<span style="color:var(--teal);">Custom</span>' : 'Preset'}</div>
+                            <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin-bottom:8px;${hasCustomLogo ? 'opacity:0.3;' : ''}" id="rb-logos">${logosHtml}</div>
+                            <!-- Custom upload section -->
+                            <div style="border:1px ${hasCustomLogo ? 'solid var(--teal)' : 'dashed var(--border-mid)'};padding:10px 14px;background:${hasCustomLogo ? 'rgba(90,170,138,0.04)' : 'var(--bg-card)'};">
+                                ${hasCustomLogo && customPreviewSrc ? `
+                                    <div style="display:flex;align-items:center;gap:12px;">
+                                        <img src="${customPreviewSrc}" style="width:48px;height:48px;object-fit:contain;border:1px solid var(--border-main);background:var(--bg-card);" alt="Custom logo">
+                                        <div style="flex:1;">
+                                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--teal);font-weight:700;">CUSTOM LOGO ACTIVE</div>
+                                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">${customLogoFile.current ? customLogoFile.current.name : 'Saved logo'}</div>
+                                        </div>
+                                        <div id="rb-remove-logo" style="font-family:var(--font-mono);font-size:8px;color:#c55;cursor:pointer;padding:4px 8px;border:1px solid rgba(204,85,85,0.2);">REMOVE</div>
+                                    </div>
+                                ` : `
+                                    <div style="display:flex;align-items:center;gap:10px;">
+                                        <div style="font-size:18px;opacity:0.3;">🎨</div>
+                                        <div style="flex:1;">
+                                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);font-weight:600;">Or upload a custom logo</div>
+                                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:1px;">PNG, JPG, SVG, or WebP · Max 2MB · Transparent background recommended</div>
+                                        </div>
+                                        <label id="rb-upload-label" style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--teal);padding:4px 12px;border:1px solid rgba(90,170,138,0.3);cursor:pointer;">
+                                            UPLOAD
+                                            <input type="file" id="rb-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none;">
+                                        </label>
+                                    </div>
+                                `}
+                            </div>
                         </div>
                     </div>
 
@@ -636,7 +666,11 @@ function openRebrandModal(root) {
                         <div class="pa-modal-step-label">Live Preview</div>
                         <div style="background:var(--bg-card);border:1px solid var(--border-main);border-left:3px solid ${ac};padding:10px;">
                             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                                <div style="width:40px;height:40px;background:${ac}15;border:1.5px solid ${ac};display:flex;align-items:center;justify-content:center;font-size:22px;">${activeLogo}</div>
+                                <div style="width:40px;height:40px;background:${ac}15;border:1.5px solid ${ac};display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;">
+                                    ${hasCustomLogo && customPreviewSrc
+                                        ? `<img src="${customPreviewSrc}" style="width:100%;height:100%;object-fit:contain;" alt="">`
+                                        : activeLogo}
+                                </div>
                                 <div>
                                     <div style="font-size:12px;font-weight:700;color:var(--text-bright);line-height:1.2;">${esc(nameVal || 'Party Name')}</div>
                                     <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${ac};letter-spacing:1px;">${esc(abbrVal || '???')}</div>
@@ -691,8 +725,38 @@ function openRebrandModal(root) {
         `;
     }
 
+    // Store custom logo state on overlay so executeRebrand can access it
+    overlay._rbCustomLogoFile = null;
+    overlay._rbCustomLogoUrl = customLogoUrl.current;
+    overlay._rbUseCustomLogo = useCustomLogo.current;
+
     render();
     overlay.classList.add('active');
+
+    // File input change handler (delegated)
+    overlay.addEventListener('change', function fileHandler(e) {
+        if (e.target.id === 'rb-logo-file') {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            if (file.size > 2 * 1024 * 1024) {
+                alert('Logo must be under 2MB. Selected file: ' + (file.size / (1024 * 1024)).toFixed(1) + 'MB');
+                e.target.value = '';
+                return;
+            }
+            if (!['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'].includes(file.type)) {
+                alert('Unsupported file type. Use PNG, JPG, SVG, or WebP.');
+                e.target.value = '';
+                return;
+            }
+            customLogoFile.current = file;
+            customLogoUrl.current = null;
+            useCustomLogo.current = true;
+            overlay._rbCustomLogoFile = file;
+            overlay._rbCustomLogoUrl = null;
+            overlay._rbUseCustomLogo = true;
+            render();
+        }
+    });
 
     // Event delegation on overlay
     overlay.addEventListener('click', function handler(e) {
@@ -710,10 +774,24 @@ function openRebrandModal(root) {
             return;
         }
 
-        // Logo item
+        // Logo item (preset) — deactivates custom logo
         const logo = e.target.closest('.rb-logo-item');
         if (logo) {
             selectedLogoIdx.current = parseInt(logo.dataset.idx) || 0;
+            useCustomLogo.current = false;
+            overlay._rbUseCustomLogo = false;
+            render();
+            return;
+        }
+
+        // Remove custom logo
+        if (e.target.closest('#rb-remove-logo')) {
+            customLogoUrl.current = null;
+            customLogoFile.current = null;
+            useCustomLogo.current = false;
+            overlay._rbCustomLogoFile = null;
+            overlay._rbCustomLogoUrl = null;
+            overlay._rbUseCustomLogo = false;
             render();
             return;
         }
@@ -752,13 +830,45 @@ async function executeRebrand(overlay, root, handler) {
     const logoIdx = document.querySelector('.rb-logo-item.selected')?.dataset?.idx;
     const logoEmoji = logoIdx != null ? PARTY_LOGOS_LIST[parseInt(logoIdx)]?.emoji : null;
 
+    // Get custom logo state from the closure (set by openRebrandModal)
+    const customFile = overlay._rbCustomLogoFile;
+    const useCustom = overlay._rbUseCustomLogo;
+    const existingCustomUrl = overlay._rbCustomLogoUrl;
+
     const btn = document.getElementById('rb-confirm');
     if (btn) { btn.disabled = true; btn.textContent = 'Rebranding...'; }
 
     try {
         const tick = _state.shard?.current_tick || 0;
 
-        // 1. Deduct AP
+        // 1. Upload custom logo if a new file was selected
+        let customLogoUrlFinal = existingCustomUrl;
+        if (useCustom && customFile) {
+            const ext = customFile.name.split('.').pop()?.toLowerCase() || 'png';
+            const storagePath = `${faction.id}/logo_${Date.now()}.${ext}`;
+
+            const { data: uploadData, error: uploadErr } = await _supabase.storage
+                .from('party-logos')
+                .upload(storagePath, customFile, {
+                    cacheControl: '3600',
+                    upsert: true,
+                    contentType: customFile.type,
+                });
+
+            if (uploadErr) {
+                console.error('[Rebrand] Logo upload failed:', uploadErr.message);
+                alert('Logo upload failed: ' + uploadErr.message);
+                return;
+            }
+
+            // Get public URL
+            const { data: urlData } = _supabase.storage.from('party-logos').getPublicUrl(storagePath);
+            customLogoUrlFinal = urlData?.publicUrl || null;
+        } else if (!useCustom) {
+            customLogoUrlFinal = null; // User chose preset, clear custom logo
+        }
+
+        // 2. Deduct AP
         const { data: apResult, error: apErr } = await _supabase.rpc('deduct_ap', {
             p_faction_id: faction.id,
             p_cost: 3,
@@ -768,14 +878,15 @@ async function executeRebrand(overlay, root, handler) {
             return;
         }
 
-        // 2. Deduct momentum
+        // 3. Deduct momentum and update faction identity
         const newMomentum = Math.max(0, (faction.momentum || 0) - 10);
         await _supabase.from('factions').update({
             momentum: newMomentum,
             faction_name: name,
             abbreviation: abbr.toUpperCase(),
             party_color: color,
-            party_logo: logoEmoji,
+            party_logo: useCustom ? null : logoEmoji,
+            custom_logo_url: customLogoUrlFinal,
             rebrand_cooldown_until_tick: tick + 120,
         }).eq('id', faction.id);
 
@@ -796,7 +907,8 @@ async function executeRebrand(overlay, root, handler) {
         faction.faction_name = name;
         faction.abbreviation = abbr.toUpperCase();
         faction.party_color = color;
-        if (logoEmoji) faction.party_logo = logoEmoji;
+        faction.party_logo = useCustom ? null : logoEmoji;
+        faction.custom_logo_url = customLogoUrlFinal;
 
         // 5. Close and re-render
         overlay.classList.remove('active');
