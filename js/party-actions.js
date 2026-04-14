@@ -14,7 +14,8 @@ let _nationPlatforms = [];
 let _agitator = null;        // hired agitator or null
 let _isOpposition = false;   // is this faction in opposition?
 let _administration = null;  // active administration data
-let _lawsuits = [];          // faction's lawsuits (active + resolved) // all platforms in this nation (for momentum calc)
+let _lawsuits = [];          // faction's lawsuits (active + resolved)
+let _standing = null;        // faction_electoral_standing row (pillar scores)
 
 function esc(str) {
     if (!str) return '';
@@ -108,12 +109,17 @@ export async function initPartyActions(supabase, state) {
         return;
     }
 
-    // Fetch platforms + agitator + opposition status in parallel
-    const [myPlat, nationPlat, agitatorResult, oppositionResult] = await Promise.all([
+    // Fetch platforms + agitator + opposition status + electoral standing in parallel
+    const [myPlat, nationPlat, agitatorResult, oppositionResult, standingResult] = await Promise.all([
         _supabase.from('faction_platforms').select('*').eq('faction_id', faction.id).order('slot'),
         _supabase.from('faction_platforms').select('*').eq('nation_id', state.nation?.id),
         fetchActiveAgitator(_supabase, faction.id),
         checkOppositionStatus(_supabase, state.nation?.id, faction.id),
+        _supabase.from('faction_electoral_standing')
+            .select('ideological_alignment, visibility, raw_appeal')
+            .eq('faction_id', faction.id)
+            .eq('nation_id', state.nation?.id)
+            .maybeSingle(),
     ]);
 
     if (myPlat.error) console.error('[PartyActions] Failed to load faction platforms:', myPlat.error.message);
@@ -123,6 +129,7 @@ export async function initPartyActions(supabase, state) {
     _agitator = agitatorResult;
     _isOpposition = oppositionResult.isOpposition;
     _administration = oppositionResult.administration;
+    _standing = standingResult.data || null;
 
     // Fetch lawsuits if agitator is hired
     if (_agitator) {
@@ -176,16 +183,20 @@ function renderPage(root) {
                 </div>
                 <div class="pa-header-stats">
                     <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">Actions</div>
-                        <div class="pa-header-stat-value" style="color:var(--accent);">${ap} AP</div>
+                        <div class="pa-header-stat-label">Governance</div>
+                        <div class="pa-header-stat-value" style="color:var(--green);">${Math.round(approval)}</div>
                     </div>
                     <div class="pa-header-stat">
                         <div class="pa-header-stat-label">Momentum</div>
-                        <div class="pa-header-stat-value" style="color:var(--text-bright);">${momentum}</div>
+                        <div class="pa-header-stat-value" style="color:var(--text-bright);">${Math.round(momentum)}</div>
                     </div>
                     <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">Approval</div>
-                        <div class="pa-header-stat-value" style="color:#ca5;">${approval}%</div>
+                        <div class="pa-header-stat-label">Ideology</div>
+                        <div class="pa-header-stat-value" style="color:var(--purple, #8b7ec8);">${_standing ? Math.round(Number(_standing.ideological_alignment ?? 50)) : '\u2014'}</div>
+                    </div>
+                    <div class="pa-header-stat">
+                        <div class="pa-header-stat-label">Total</div>
+                        <div class="pa-header-stat-value" style="color:var(--accent);">${_standing ? Math.round(Number(_standing.raw_appeal ?? 0)) : '\u2014'}</div>
                     </div>
                 </div>
             </div>
