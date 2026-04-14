@@ -406,7 +406,7 @@ async function loadDealFlow() {
     // Load all open requests across the shard (loans + bonds + insurance)
     const { data: requests, error: reqErr } = await _supabase
         .from('finance_loan_requests')
-        .select('*, requesting_faction:factions!requesting_faction_id(id, faction_name, abbreviation, corp_ticker, corp_subsector, nation_id, corp_cash_reserves, corp_reputation), issuer_nation:nations!issuer_nation_id(id, name, stability, credit, debt, gdp, gdp_growth, corruption)')
+        .select('*, requesting_faction:factions!requesting_faction_id(id, faction_name, abbreviation, corp_ticker, corp_subsector, nation_id, corp_cash_reserves, corp_debt, corp_reputation), issuer_nation:nations!issuer_nation_id(id, name, stability, credit, debt, gdp, gdp_growth, corruption)')
         .eq('status', 'open')
         .order('created_tick', { ascending: false });
     if (reqErr) console.error('[DealFlow] Request query error:', reqErr.message);
@@ -510,7 +510,8 @@ async function loadDealFlow() {
             purpose: req.purpose || '',
             reputation: Number(req.requesting_faction?.corp_reputation ?? 50),
             revenue: Number(req.requesting_faction?.corp_cash_reserves ?? 0),
-            debt: 0, // TODO: track corp debt separately if needed
+            corp_cash_reserves: Number(req.requesting_faction?.corp_cash_reserves ?? 0),
+            corp_debt: Number(req.requesting_faction?.corp_debt ?? 0),
             creditRating: Number(borrowerNations[req.requesting_faction?.nation_id]?.credit ?? 50),
             stability: Number(borrowerNations[req.requesting_faction?.nation_id]?.stability ?? 50),
             risk: (() => {
@@ -1683,7 +1684,11 @@ function renderReviewDeal() {
     const rateDefaultMod = Math.max(0, (rdLoanRate - 6) * 1.5);
     const amountDefaultMod = rdLoanAmount > 15000000 ? 3 : 0;
     const collateralMod = rdLoanCollateral === 'none' ? 3 : rdLoanCollateral === 'full' ? -2 : 0;
-    const defaultProb = Math.min(60, Math.max(2, Math.round(baseDefault + rateDefaultMod + amountDefaultMod + collateralMod)));
+    // Debt-to-cash ratio: heavily indebted corps are riskier
+    const borrowerDebt = Number(d.corp_debt || 0);
+    const borrowerCash = Number(d.corp_cash_reserves || 1);
+    const debtRatioMod = borrowerDebt > 0 ? Math.min(15, Math.round((borrowerDebt / Math.max(borrowerCash, 1)) * 5)) : 0;
+    const defaultProb = Math.min(60, Math.max(2, Math.round(baseDefault + rateDefaultMod + amountDefaultMod + collateralMod + debtRatioMod)));
     const defaultColor = defaultProb <= 15 ? '#5c5' : defaultProb <= 30 ? '#ca5' : defaultProb <= 45 ? '#c84' : '#c55';
     const defaultLabel = defaultProb <= 15 ? 'LOW' : defaultProb <= 30 ? 'MODERATE' : defaultProb <= 45 ? 'ELEVATED' : 'HIGH';
 

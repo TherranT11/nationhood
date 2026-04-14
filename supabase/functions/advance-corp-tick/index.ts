@@ -814,6 +814,8 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             required_workforce: requiredWf,
             modifiers: contractModifiers,
             status: 'open',
+            insurance_required: modifiedBudget >= 100000000,   // $100M+ requires insurance
+            bond_required: modifiedBudget >= 200000000,        // $200M+ requires performance bond
             generated_at_tick: currentTick,
             bidding_ends_tick: currentTick + 3,
             issuer_type: 'PRIVATE',
@@ -1613,6 +1615,30 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 return { name: key.replace(/_/g, ' '), grade, impact: impactMap[grade] || 'neutral' };
             });
 
+            // Bond forfeiture on FAIL — bond amount goes to the lender (bond issuer), not refunded
+            if (deliveryResult === 'FAIL' && contract.bond_id) {
+                try {
+                    const { data: bond } = await supabase.from('finance_active_loans')
+                        .select('id, principal, lender_faction_id')
+                        .eq('id', contract.bond_id).eq('status', 'current').maybeSingle();
+                    if (bond) {
+                        const { data: bondLender } = await supabase.from('factions')
+                            .select('corp_cash_reserves').eq('id', bond.lender_faction_id).single();
+                        if (bondLender) {
+                            await supabase.from('factions').update({
+                                corp_cash_reserves: Number(bondLender.corp_cash_reserves || 0) + Number(bond.principal),
+                            }).eq('id', bond.lender_faction_id);
+                        }
+                        await supabase.from('finance_active_loans').update({
+                            status: 'defaulted', completed_tick: currentTick,
+                        }).eq('id', bond.id);
+                        console.log(`[Projects] Performance bond $${Math.round(bond.principal / 1000)}k FORFEITED — project FAILED: ${contract.name}`);
+                    }
+                } catch (bondErr) {
+                    console.warn(`[Projects] Bond forfeiture failed for ${contract.name}:`, bondErr.message);
+                }
+            }
+
             // Insert delivery record FIRST — if this fails, project stays in_progress and retries next tick
             const { error: delErr } = await supabase.from('construction_deliveries').insert({
                 contract_id: contract.id,
@@ -1650,8 +1676,9 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 continue;
             }
 
-            // Close any active insurance policy for this completed project
+            // Close any active insurance policies for this completed project
             try {
+                // Deal Flow policies (finance_active_loans)
                 const { data: insReq } = await supabase
                     .from('finance_loan_requests')
                     .select('id')
@@ -1664,10 +1691,36 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                         status: 'repaid',
                         completed_tick: currentTick,
                     }).eq('request_id', insReq.id).eq('status', 'current');
-                    console.log(`[Projects] Insurance policy closed for completed project: ${contract.name}`);
+                    console.log(`[Projects] Deal flow insurance closed for completed project: ${contract.name}`);
+                }
+
+                // Auto-rate policies (subsidiary_auto_policies)
+                await supabase.from('subsidiary_auto_policies').update({
+                    status: 'lapsed',
+                }).eq('insured_contract_id', contract.id).eq('status', 'active');
+
+                // Refund performance bond if one exists
+                if (contract.bond_id) {
+                    const { data: bond } = await supabase.from('finance_active_loans')
+                        .select('id, principal, lender_faction_id, borrower_faction_id')
+                        .eq('id', contract.bond_id).eq('status', 'current').maybeSingle();
+                    if (bond) {
+                        // Refund bond amount to the construction corp
+                        const { data: bondBorrower } = await supabase.from('factions')
+                            .select('corp_cash_reserves').eq('id', bond.borrower_faction_id).single();
+                        if (bondBorrower) {
+                            await supabase.from('factions').update({
+                                corp_cash_reserves: Number(bondBorrower.corp_cash_reserves || 0) + Number(bond.principal),
+                            }).eq('id', bond.borrower_faction_id);
+                        }
+                        await supabase.from('finance_active_loans').update({
+                            status: 'repaid', completed_tick: currentTick,
+                        }).eq('id', bond.id);
+                        console.log(`[Projects] Performance bond $${Math.round(bond.principal / 1000)}k refunded for completed project: ${contract.name}`);
+                    }
                 }
             } catch (insCleanupErr) {
-                console.warn(`[Projects] Insurance cleanup failed for ${contract.name}:`, insCleanupErr.message);
+                console.warn(`[Projects] Insurance/bond cleanup failed for ${contract.name}:`, insCleanupErr.message);
             }
 
             if (actualPayment > 0) {
@@ -3316,6 +3369,42 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                     await supabase.from('shipping_claims').update({
                                         vessel_status: 'idle', status: 'suspended',
                                     }).eq('id', v.active_claim_id);
+                                }
+
+                                // Auto-file insurance claim if vessel has active coverage
+                                try {
+                                    // Check subsidiary_auto_policies first
+                                    const { data: autoPolicy } = await supabase.from('subsidiary_auto_policies')
+                                        .select('id, principal, deductible_pct, lender_faction_id, policy_terms')
+                                        .eq('insured_vessel_id', v.id).eq('status', 'active')
+                                        .limit(1).maybeSingle();
+                                    // Then check finance_active_loans (deal flow policies)
+                                    const { data: dealPolicy } = !autoPolicy ? await supabase.from('finance_active_loans')
+                                        .select('id, principal, deductible_pct, lender_faction_id')
+                                        .eq('insured_vessel_id', v.id).eq('status', 'current')
+                                        .limit(1).maybeSingle() : { data: null };
+
+                                    const policy = autoPolicy || dealPolicy;
+                                    const policySource = autoPolicy ? 'auto' : 'deal';
+                                    if (policy) {
+                                        const claimAmount = Number(policy.principal) || 0;
+                                        await supabase.from('insurance_claims').insert({
+                                            policy_id: policy.id,
+                                            policy_source: policySource,
+                                            claimant_faction_id: corp.id,
+                                            insurer_faction_id: policy.lender_faction_id,
+                                            insured_vessel_id: v.id,
+                                            claim_amount: claimAmount,
+                                            claim_reason: `Vessel ${v.vessel_name} stranded at sea — fuel depleted mid-transit.`,
+                                            policy_terms: policy.policy_terms || null,
+                                            deductible_pct: Number(policy.deductible_pct) || 10,
+                                            status: 'filed',
+                                            filed_at_tick: currentTick,
+                                        });
+                                        console.log(`[advance-corp-tick] Insurance claim auto-filed for ${v.vessel_name} (${policySource} policy ${policy.id})`);
+                                    }
+                                } catch (claimErr) {
+                                    console.warn(`[advance-corp-tick] Failed to auto-file insurance claim for ${v.vessel_name}:`, claimErr.message);
                                 }
                             }
                         }

@@ -1678,10 +1678,11 @@ async function acceptOffer(offerId, requestId) {
             }).eq('id', offer.offering_faction_id);
         }
 
-        const { data: borrower } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', request.requesting_faction_id).single();
+        const { data: borrower } = await _supabase.from('factions').select('corp_cash_reserves, corp_debt').eq('id', request.requesting_faction_id).single();
         if (borrower) {
             await _supabase.from('factions').update({
-                corp_cash_reserves: (Number(borrower.corp_cash_reserves) || 0) + request.amount
+                corp_cash_reserves: (Number(borrower.corp_cash_reserves) || 0) + request.amount,
+                corp_debt: (Number(borrower.corp_debt) || 0) + request.amount,
             }).eq('id', request.requesting_faction_id);
         }
     } finally {

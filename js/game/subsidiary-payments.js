@@ -103,11 +103,23 @@ export async function processAutoRatePolicies(supabase, nationId, currentTick) {
                 last_payment_tick: currentTick,
             };
 
-            // For loans: reduce remaining principal
+            // For loans: reduce remaining principal and track corp_debt
             if (p.service_type === 'loan') {
                 var interestPortion = Math.round(Number(p.remaining_principal ?? 0) * (Number(p.rate_at_issue ?? 0) / 100 / 12));
                 var principalPortion = Math.max(0, payment - interestPortion);
-                policyUpdate.remaining_principal = Math.max(0, Number(p.remaining_principal ?? 0) - principalPortion);
+                var oldPrincipal = Number(p.remaining_principal ?? 0);
+                policyUpdate.remaining_principal = Math.max(0, oldPrincipal - principalPortion);
+
+                // Reduce borrower's corp_debt by principal paid down
+                if (principalPortion > 0) {
+                    var { data: debtRow } = await supabase.from('factions')
+                        .select('corp_debt').eq('id', p.borrower_faction_id).single();
+                    if (debtRow) {
+                        await supabase.from('factions').update({
+                            corp_debt: Math.max(0, Number(debtRow.corp_debt ?? 0) - principalPortion),
+                        }).eq('id', p.borrower_faction_id);
+                    }
+                }
 
                 // Check if fully repaid
                 if (policyUpdate.remaining_principal <= 0) {
