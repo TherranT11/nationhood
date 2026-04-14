@@ -66,6 +66,7 @@ let _state = null;
 let _actionsInitialized = false;
 let _partiesInitialized = false;
 let _electionInitialized = false;
+let _coalitionReady = false; // true once initCoalitionFormation has completed
 
 function switchPanel(key) {
     document.querySelectorAll('.pa-subtab').forEach(t => t.classList.toggle('active', t.dataset.panel === key));
@@ -82,7 +83,15 @@ function switchPanel(key) {
     }
     if (key === 'election' && !_electionInitialized && _state) {
         _electionInitialized = true;
-        renderFormationTab(document.getElementById('pa-election-root'));
+        if (_coalitionReady) {
+            renderFormationTab(document.getElementById('pa-election-root'));
+        } else {
+            // Coalition init hasn't completed yet — wait for it
+            initCoalitionFormation(_supabase, _state).then(() => {
+                _coalitionReady = true;
+                renderFormationTab(document.getElementById('pa-election-root'));
+            });
+        }
     }
 }
 
@@ -95,8 +104,9 @@ document.getElementById('pa-subtabs').addEventListener('click', (e) => {
 initPage('politics', async (state) => {
     _state = state;
 
-    // Check for coalition formation need (runs in parallel, non-blocking)
+    // Init coalition formation data (needed before Election tab can render)
     initCoalitionFormation(_supabase, state).then(({ needed }) => {
+        _coalitionReady = true;
         if (needed) {
             // Add amber notification badge to Election tab AND Actions tab
             const electionTab = document.querySelector('.pa-subtab[data-panel="election"]');
@@ -107,6 +117,10 @@ initPage('politics', async (state) => {
             if (actionsTab && !actionsTab.querySelector('.pa-subtab-badge')) {
                 actionsTab.innerHTML += '<span class="pa-subtab-badge"></span>';
             }
+        }
+        // If user already clicked Election tab while we were loading, render now
+        if (_electionInitialized) {
+            renderFormationTab(document.getElementById('pa-election-root'));
         }
     });
 

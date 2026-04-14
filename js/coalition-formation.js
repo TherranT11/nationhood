@@ -38,9 +38,10 @@ export async function initCoalitionFormation(supabase, state) {
     // Fetch latest election, current tick, active coalition, and all parties in parallel
     const [electionResult, shardResult, coalitionResult, partiesResult] = await Promise.all([
         supabase.from('elections')
-            .select('id, type, tick')
+            .select('id, election_type, election_tick, status')
             .eq('nation_id', nation.id)
-            .order('tick', { ascending: false })
+            .eq('status', 'completed')
+            .order('election_tick', { ascending: false })
             .limit(1)
             .maybeSingle(),
         supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
@@ -71,13 +72,21 @@ export async function initCoalitionFormation(supabase, state) {
     const { data: activeCoalition } = await supabase.from('government_formations')
         .select('id').eq('nation_id', nation.id).eq('status', 'active').limit(1).maybeSingle();
 
-    // Formation is needed if: election exists, no government formed for this election
+    // Formation is needed if: a completed election exists and no government has been formed
+    console.log('[Coalition] Election:', election?.id, 'hasFormedGov:', hasFormedGov, 'parties:', _allParties.length, 'totalSeats:', _totalSeats);
+
     if (election && !hasFormedGov) {
         _formationNeeded = true;
         _electionId = election.id;
-        _lastElectionTick = election.tick;
+        _lastElectionTick = election.election_tick;
+        console.log('[Coalition] Formation needed — election:', _electionId, 'tick:', _lastElectionTick);
     } else {
-        _formationNeeded = false;
+        // Even without detection, still allow rendering the Election tab
+        _formationNeeded = !hasFormedGov;
+        if (election) {
+            _electionId = election.id;
+            _lastElectionTick = election.election_tick;
+        }
     }
 
     return { needed: _formationNeeded };
