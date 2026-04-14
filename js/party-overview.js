@@ -98,7 +98,7 @@ function processIdeologyAxes(myFactionId, allIdeology, allParties) {
         const parties = allParties.map(p => {
             const ideo = allIdeology[p.id];
             const score = ideo ? Number(ideo[axis.key] ?? 0) : 0;
-            return { id: p.id, pos: (score + 100) / 200, color: p.color || '#666' };
+            return { id: p.id, pos: (score + 100) / 200, color: p.party_color || '#666' };
         });
 
         return {
