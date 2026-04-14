@@ -53,6 +53,7 @@ DECLARE
         'ideology_shift_actions',
 
         -- ══ Bills & legislation ══
+        'bill_articles',
         'bill_comments',
         'bill_amendment_requests',
         'bill_support',
@@ -68,11 +69,17 @@ DECLARE
         'ministries',
         'ministry_action_log',
         'administrations',
+        'government_formation_chat',
+        'government_formation_support',
         'government_formations',
+        'nation_governments',
+        'nation_policies',
 
         -- ══ Coalitions ══
+        'coalition_votes',
         'coalition_messages',
         'coalition_proposals',
+        'active_coalitions',
         'faction_coalitions',
         'loyalty_demands',
 
@@ -181,7 +188,23 @@ DECLARE
 
         -- ══ Construction contracts ══
         'contract_bids',
-        'construction_contracts'
+        'construction_contracts',
+
+        -- ══ Electorate (extended) ══
+        'voter_bloc_demands',
+        'pander_history',
+
+        -- ══ AP tracking ══
+        'ap_ledger',
+
+        -- ══ Food system ══
+        'food_stockpiles',
+
+        -- ══ Shipping ══
+        'shipping_routes',
+
+        -- ══ Misc (extended) ══
+        'pending_actions'
     ];
 BEGIN
     -- First: null out FKs on nations so factions can be deleted
