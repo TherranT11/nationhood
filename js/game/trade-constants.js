@@ -943,9 +943,12 @@ export function calculateFoodImportDemand(nation, subsector, allocation) {
 export function calculateExportCapacity(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
 
-    // GDP modifier: bigger economies trade more in absolute terms
+    // GDP modifier: bigger economies trade more in absolute terms.
+    // Square-root scaling prevents GDP from dwarfing the sector stat —
+    // a wealthy nation with mediocre resources shouldn't out-produce a
+    // resource-rich nation with a smaller economy.
     var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    var gdpModifier = Math.sqrt(gdp / cfg.BASELINE_GDP);
     if (gdpModifier <= 0) return 0;
 
     // Calculate primary export score from sector stat(s) (0-100 scale)
@@ -1088,7 +1091,7 @@ export function calculateImportDemand(nation, sector, opts) {
 
     var cfg = TRADE_CONFIG;
     var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    var gdpModifier = Math.sqrt(gdp / cfg.BASELINE_GDP);
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;   // stat normalizer: divide 0-100 stats by 5
 
