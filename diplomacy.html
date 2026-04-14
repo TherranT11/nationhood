@@ -268,11 +268,11 @@ async function initTradeTab() {
         } catch (_) {}
     }
 
-    // Load trade agreements
+    // Load trade agreements + shipping data
     try {
-        await loadTradeAgreements();
+        await Promise.all([loadTradeAgreements(), loadShippingData()]);
     } catch (err) {
-        console.error('[Trade] Failed to load agreements:', err);
+        console.error('[Trade] Failed to load agreements/shipping:', err);
     }
 
     renderTradeEconomy();
@@ -407,6 +407,88 @@ function renderTradeEconomy() {
 }
 
 // ═══════════════════════════════════════════════════
+// SHIPPING DATA
+// ═══════════════════════════════════════════════════
+
+let _shippingRoutesByAgreement = {}; // agreementId → [routes]
+let _shippingClaimsByRoute = {};     // routeId → [claims with faction data]
+
+async function loadShippingData() {
+    const nationId = _worldState?.nation?.id;
+    if (!nationId) return;
+
+    // Routes involving our nation
+    const { data: routes } = await _supabase.from('shipping_routes')
+        .select('id, origin_nation_id, destination_nation_id, trade_sector, cargo_category, goods_name, trade_volume, estimated_revenue, transit_ticks, demand_level, trade_agreement_id, trade_agreement_name, status, competition_count')
+        .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`)
+        .eq('status', 'active');
+
+    _shippingRoutesByAgreement = {};
+    const routeIds = [];
+    if (routes) {
+        for (const r of routes) {
+            if (r.trade_agreement_id) {
+                if (!_shippingRoutesByAgreement[r.trade_agreement_id]) _shippingRoutesByAgreement[r.trade_agreement_id] = [];
+                _shippingRoutesByAgreement[r.trade_agreement_id].push(r);
+            }
+            routeIds.push(r.id);
+        }
+    }
+
+    // Claims on those routes (which corporations are servicing them)
+    _shippingClaimsByRoute = {};
+    if (routeIds.length > 0) {
+        const { data: claims } = await _supabase.from('shipping_claims')
+            .select('id, route_id, faction_id, market_share_pct, revenue_per_transit, total_revenue, transits_completed, status, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector)')
+            .in('route_id', routeIds)
+            .eq('status', 'active');
+        if (claims) {
+            for (const c of claims) {
+                if (!_shippingClaimsByRoute[c.route_id]) _shippingClaimsByRoute[c.route_id] = [];
+                _shippingClaimsByRoute[c.route_id].push(c);
+            }
+        }
+    }
+}
+
+function getAgreementShippingInfo(agreementId) {
+    const routes = _shippingRoutesByAgreement[agreementId] || [];
+    if (routes.length === 0) return null;
+
+    // Collect all unique corps servicing this agreement's routes
+    const corps = [];
+    const seen = new Set();
+    let totalRevenue = 0;
+    let totalTransits = 0;
+    for (const r of routes) {
+        const claims = _shippingClaimsByRoute[r.id] || [];
+        for (const c of claims) {
+            totalRevenue += Number(c.total_revenue) || 0;
+            totalTransits += c.transits_completed || 0;
+            if (c.factions && !seen.has(c.faction_id)) {
+                seen.add(c.faction_id);
+                corps.push({
+                    name: c.factions.faction_name || 'Unknown',
+                    abbr: c.factions.abbreviation || '',
+                    color: c.factions.party_color || '#888',
+                    sector: c.factions.corp_subsector || c.factions.corp_sector || 'Shipping',
+                    share: c.market_share_pct || 0,
+                    revenue: Number(c.revenue_per_transit) || 0,
+                });
+            }
+        }
+    }
+
+    return {
+        routeCount: routes.length,
+        corps,
+        totalRevenue,
+        totalTransits,
+        hasLogistics: corps.length > 0,
+    };
+}
+
+// ═══════════════════════════════════════════════════
 // TRADE AGREEMENTS PANEL
 // ═══════════════════════════════════════════════════
 
@@ -462,13 +544,24 @@ function renderTradeAgreements() {
         const remaining = ag.expires_at_tick ? Math.max(0, ag.expires_at_tick - currentTk) : null;
         const durationLabel = ag.duration_type === 'indefinite' ? 'Ongoing' : (ag.duration_ticks ? ag.duration_ticks + ' ticks' : 'Unknown');
 
+        const agShipInfo = getAgreementShippingInfo(ag.id);
+        const agIsTradeType = ag.agreement_type !== 'retaliatory_tariff' && ag.agreement_type !== 'impose_embargo';
+        const logisticsBadge = agIsTradeType
+            ? (agShipInfo?.hasLogistics
+                ? `<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">\uD83D\uDEA2 ${escapeHtml(agShipInfo.corps[0]?.name || 'Corp')}</span>`
+                : `<span class="tr-badge" style="color:var(--orange);background:rgba(200,136,68,0.06);border-color:rgba(200,136,68,0.15);font-size:5px;">\u26A0 NO LOGISTICS</span>`)
+            : '';
+
         html += `<div class="tr-agreement-row" data-ag-id="${ag.id}" style="border-left:2px solid ${statusColor};">
             <div class="tr-agreement-header" style="background:${isExp ? 'var(--bg-card)' : 'transparent'};">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
                     <div style="display:flex;align-items:center;gap:4px;">
                         <span style="font-size:9px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</span>
                     </div>
-                    <span class="tr-badge" style="color:${statusColor};background:${statusColor}0a;border-color:${statusColor}25;">${statusLabel}</span>
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        ${logisticsBadge}
+                        <span class="tr-badge" style="color:${statusColor};background:${statusColor}0a;border-color:${statusColor}25;">${statusLabel}</span>
+                    </div>
                 </div>
                 <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
                     ${escapeHtml(partnerName)} \u00B7 ${escapeHtml(typeLabel)} \u00B7 ${durationLabel}${remaining !== null ? ' \u00B7 ' + remaining + ' ticks left' : ''}
@@ -521,6 +614,40 @@ function renderTradeAgreements() {
                     <div style="font-family:var(--font-mono);font-size:7px;color:var(--green);">AUTO-RENEW</div>
                 </div>` : ''}
             </div>`;
+
+            // Logistics / shipping corporations
+            const shipInfo = getAgreementShippingInfo(ag.id);
+            const isTradeType = ag.agreement_type !== 'retaliatory_tariff' && ag.agreement_type !== 'impose_embargo';
+
+            if (isTradeType) {
+                if (shipInfo && shipInfo.hasLogistics) {
+                    html += `<div style="margin-top:6px;background:var(--bg-card);border:1px solid var(--border-main);padding:8px 10px;">
+                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>`;
+                    for (const corp of shipInfo.corps) {
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <div style="width:24px;height:24px;background:${corp.color}15;border:1px solid ${corp.color}33;display:flex;align-items:center;justify-content:center;font-size:12px;">\uD83D\uDEA2</div>
+                                <div>
+                                    <div style="font-size:9px;font-weight:700;color:var(--text-bright);">${escapeHtml(corp.name)}</div>
+                                    <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(corp.sector)} \u00B7 ${corp.share}% market share</div>
+                                </div>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${fmtBudgetCurrency(corp.revenue)}/transit</div>
+                        </div>`;
+                    }
+                    html += `<div style="display:flex;gap:8px;margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+                        <span>${shipInfo.routeCount} route${shipInfo.routeCount !== 1 ? 's' : ''}</span>
+                        <span>\u00B7 ${shipInfo.totalTransits} transits</span>
+                        <span>\u00B7 ${fmtBudgetCurrency(shipInfo.totalRevenue)} total revenue</span>
+                    </div></div>`;
+                } else {
+                    html += `<div style="margin-top:6px;background:rgba(200,136,68,0.03);border:1px solid rgba(200,136,68,0.15);padding:8px 10px;">
+                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>
+                        <div style="font-size:9px;font-weight:700;color:var(--orange);">No shipping corporation assigned</div>
+                        <div style="font-size:8px;color:var(--text-dim);margin-top:1px;">Route operates at base efficiency. Shipping corporations can apply to service this route.</div>
+                    </div>`;
+                }
+            }
 
             html += `</div>`;
         }
