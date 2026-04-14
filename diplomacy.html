@@ -70,9 +70,9 @@
 <div id="subtab-trade" class="diplo-subtab-content" style="display:none;">
     <div id="trade-page" style="padding:0 12px 12px;">
         <div id="trade-header-stats"></div>
-        <div style="display:flex;gap:8px;margin-top:8px;">
-            <div id="trade-left" style="width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;"></div>
-            <div id="trade-right" style="flex:1;display:flex;flex-direction:column;gap:6px;"></div>
+        <div style="display:flex;gap:10px;margin-top:8px;">
+            <div id="trade-left" style="width:480px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;"></div>
+            <div id="trade-right" style="flex:1;display:flex;flex-direction:column;gap:8px;"></div>
         </div>
     </div>
 </div>
@@ -358,13 +358,13 @@ function renderTradeEconomy() {
     html += `<div class="tr-panel">
         <div class="tr-panel-header">
             <span class="tr-panel-title">YOUR ECONOMY</span>
-            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${commodities.length} commodities</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${commodities.length} commodities</span>
         </div>
         <div class="tr-commodity-header">
             <span style="flex:1;">COMMODITY</span>
-            <span style="width:65px;text-align:right;">PROD</span>
-            <span style="width:65px;text-align:right;">DEMAND</span>
-            <span style="width:65px;text-align:right;">BAL</span>
+            <span style="width:75px;text-align:right;">PROD</span>
+            <span style="width:75px;text-align:right;">DEMAND</span>
+            <span style="width:75px;text-align:right;">BAL</span>
         </div>`;
 
     for (const c of commodities) {
@@ -372,13 +372,13 @@ function renderTradeEconomy() {
         const isSelected = _tradeCommodityFilter === c.key;
         const bgStyle = isSelected ? (bal > 0 ? 'background:rgba(92,204,92,0.04);' : 'background:rgba(204,85,85,0.04);') : '';
         html += `<div class="tr-commodity-row" data-sector="${c.key}" style="${bgStyle}">
-            <div style="flex:1;display:flex;align-items:center;gap:6px;">
-                <span style="font-size:13px;">${c.icon}</span>
-                <span style="font-size:11px;color:${isSelected ? 'var(--text-bright)' : 'var(--text-dim)'};font-weight:${isSelected ? '700' : '400'};">${escapeHtml(c.name)}</span>
+            <div style="flex:1;display:flex;align-items:center;gap:8px;">
+                <span style="font-size:16px;">${c.icon}</span>
+                <span style="font-size:14px;color:${isSelected ? 'var(--text-bright)' : 'var(--text-secondary)'};font-weight:${isSelected ? '700' : '400'};">${escapeHtml(c.name)}</span>
             </div>
-            <span style="width:65px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.production)}</span>
-            <span style="width:65px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.demand)}</span>
-            <span style="width:65px;font-family:var(--font-mono);font-size:11px;font-weight:700;text-align:right;color:${bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text-dim)'};">
+            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.production)}</span>
+            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.demand)}</span>
+            <span style="width:75px;font-family:var(--font-mono);font-size:14px;font-weight:700;text-align:right;color:${bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text-dim)'};">
                 ${bal === 0 ? '\u2014' : (bal > 0 ? '+' : '') + fmtBudgetCurrency(bal)}
             </span>
         </div>`;
@@ -389,27 +389,27 @@ function renderTradeEconomy() {
     html += `<div style="display:flex;gap:6px;">`;
 
     // Surpluses
-    html += `<div class="tr-panel" style="flex:1;padding:10px 12px;">
-        <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--green);margin-bottom:6px;">SURPLUSES</div>`;
+    html += `<div class="tr-panel" style="flex:1;padding:12px 14px;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--green);margin-bottom:8px;">SURPLUSES</div>`;
     for (const c of surpluses.slice(0, 5)) {
-        html += `<div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-            <span style="font-size:10px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
-            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--green);">+${fmtBudgetCurrency(c.production - c.demand)}</span>
+        html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="font-size:13px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">+${fmtBudgetCurrency(c.production - c.demand)}</span>
         </div>`;
     }
-    if (surpluses.length === 0) html += `<div style="font-size:10px;color:var(--text-dim);font-style:italic;">None</div>`;
+    if (surpluses.length === 0) html += `<div style="font-size:13px;color:var(--text-dim);font-style:italic;">None</div>`;
     html += `</div>`;
 
     // Deficits
-    html += `<div class="tr-panel" style="flex:1;padding:10px 12px;">
-        <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--red);margin-bottom:6px;">DEFICITS</div>`;
+    html += `<div class="tr-panel" style="flex:1;padding:12px 14px;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--red);margin-bottom:8px;">DEFICITS</div>`;
     for (const c of deficits.slice(0, 5)) {
-        html += `<div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-            <span style="font-size:10px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
-            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--red);">${fmtBudgetCurrency(c.production - c.demand)}</span>
+        html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="font-size:13px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--red);">${fmtBudgetCurrency(c.production - c.demand)}</span>
         </div>`;
     }
-    if (deficits.length === 0) html += `<div style="font-size:10px;color:var(--text-dim);font-style:italic;">None</div>`;
+    if (deficits.length === 0) html += `<div style="font-size:13px;color:var(--text-dim);font-style:italic;">None</div>`;
     html += `</div>`;
 
     html += `</div>`; // close surpluses/deficits row
@@ -622,11 +622,11 @@ function renderTradeAgreements() {
     let html = `<div class="tr-panel">
         <div class="tr-panel-header">
             <span class="tr-panel-title">AGREEMENTS</span>
-            <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${active.length} active${expired.length > 0 ? ' \u00B7 ' + expired.length + ' expired' : ''}</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${active.length} active${expired.length > 0 ? ' \u00B7 ' + expired.length + ' expired' : ''}</span>
         </div>`;
 
     if (agreements.length === 0) {
-        html += `<div style="padding:16px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No trade agreements.</div>`;
+        html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);font-style:italic;">No trade agreements.</div>`;
     }
 
     for (let i = 0; i < agreements.length; i++) {
@@ -655,18 +655,18 @@ function renderTradeAgreements() {
                 : `<span class="tr-badge" style="color:var(--orange);background:rgba(200,136,68,0.06);border-color:rgba(200,136,68,0.15);font-size:5px;">\u26A0 NO LOGISTICS</span>`)
             : '';
 
-        html += `<div class="tr-agreement-row" data-ag-id="${ag.id}" style="border-left:2px solid ${statusColor};">
-            <div class="tr-agreement-header" style="background:${isExp ? 'var(--bg-card)' : 'transparent'};">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-                    <div style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-size:9px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</span>
+        html += `<div class="tr-agreement-row" data-ag-id="${ag.id}" style="border-left:3px solid ${statusColor};">
+            <div class="tr-agreement-header" style="background:${isExp ? 'var(--bg-card)' : 'transparent'};padding:14px 18px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:14px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</span>
                     </div>
-                    <div style="display:flex;align-items:center;gap:4px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
                         ${logisticsBadge}
-                        <span class="tr-badge" style="color:${statusColor};background:${statusColor}0a;border-color:${statusColor}25;">${statusLabel}</span>
+                        <span class="tr-badge" style="font-size:11px;padding:3px 10px;color:${statusColor};background:${statusColor}0a;border-color:${statusColor}25;">${statusLabel}</span>
                     </div>
                 </div>
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+                <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">
                     ${escapeHtml(partnerName)} \u00B7 ${escapeHtml(typeLabel)} \u00B7 ${durationLabel}${remaining !== null ? ' \u00B7 ' + remaining + ' ticks left' : ''}
                 </div>
             </div>`;
@@ -674,11 +674,11 @@ function renderTradeAgreements() {
         // Expanded: articles + effects
         if (isExp) {
             const articles = ag.articles || [];
-            html += `<div style="padding:0 12px 10px;">`;
+            html += `<div style="padding:0 18px 14px;">`;
 
             // Render articles
             if (articles.length > 0) {
-                html += `<div style="font-family:var(--font-mono);font-size:6px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;margin:6px 0 4px;">ARTICLES</div>`;
+                html += `<div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;margin:8px 0 6px;">ARTICLES</div>`;
                 for (let ai = 0; ai < articles.length; ai++) {
                     const art = articles[ai];
                     if (art._struck) continue;
