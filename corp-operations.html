@@ -2726,7 +2726,7 @@ body.light-mode .av-empty__text { color: #1a1a17; }
 
       <div class="ar-card__footer">
         <div class="ar-footer__counts" id="ar-footer-counts"></div>
-        <div class="ar-claim-btn" id="ar-claim-btn" onclick="arClaimRoute()">CLAIM ROUTE</div>
+        <div class="ar-claim-btn" id="ar-claim-btn" onclick="arApplyToService()">APPLY TO SERVICE — $50k</div>
       </div>
     </div>
 
@@ -6078,6 +6078,7 @@ const DEMAND_COLORS = {
 
 // ── Available Routes (Shipping corps) ──
 let arRoutes = [];
+let _myShippingApps = []; // current corp's pending/approved applications
 let arFilter = 'ALL';
 let arSelected = -1;
 
@@ -6113,18 +6114,16 @@ async function loadAvailableRoutes() {
     };
     const dbSubsector = subsectorMap[faction.corp_subsector] || '';
 
-    const { data, error } = await _supabase
-        .from('shipping_routes')
-        .select('*')
-        .eq('status', 'active')
-        .eq('shipping_subsector', dbSubsector)
-        .order('estimated_revenue', { ascending: false });
+    const [routeResult, appResult] = await Promise.all([
+        _supabase.from('shipping_routes').select('*')
+            .eq('status', 'active').eq('shipping_subsector', dbSubsector)
+            .order('estimated_revenue', { ascending: false }),
+        _supabase.from('shipping_applications').select('*')
+            .eq('faction_id', faction.id).in('status', ['pending', 'approved']),
+    ]);
 
-    if (error) {
-        arRoutes = [];
-    } else {
-        arRoutes = data || [];
-    }
+    arRoutes = routeResult.data || [];
+    _myShippingApps = appResult.data || [];
 
     arSelected = -1;
     renderAvailableRoutes();
@@ -6235,6 +6234,14 @@ function renderAvailableRoutes() {
         if (comp === 0 && !isGov) {
             html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
                 + 'color:#5c5;background:rgba(92,204,92,0.06);border:1px solid rgba(92,204,92,0.15)">NO COMPETITION</span>';
+        }
+        // Show application status for this route
+        var myApp = _myShippingApps.find(function(a) { return a.route_id === route.id; });
+        if (myApp) {
+            var appColor = myApp.status === 'approved' ? '#5c5' : '#c8a832';
+            var appLabel = myApp.status === 'approved' ? 'APPROVED' : 'APPLIED';
+            html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
+                + 'color:' + appColor + ';background:' + appColor + '12;border:1px solid ' + appColor + '25">' + appLabel + '</span>';
         }
         // Right-aligned transit info
         html += '<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-left:auto">'
@@ -6372,6 +6379,78 @@ function arSelectRoute(idx) {
     renderAvailableRoutes();
 }
 
+async function arApplyToService() {
+    if (_arClaimPending || arSelected < 0 || !faction || !shard) return;
+    var filtered = arGetFiltered();
+    var route = filtered[arSelected];
+    if (!route) return;
+
+    // Check if already applied
+    var existingApp = _myShippingApps.find(function(a) { return a.route_id === route.id; });
+    if (existingApp) {
+        alert('You have already applied for this route. Status: ' + existingApp.status);
+        return;
+    }
+
+    // Check funds — $50k application fee
+    var appFee = 50000;
+    var { data: freshFac } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
+    var currentCash = Number(freshFac?.corp_cash_reserves ?? 0);
+    if (currentCash < appFee) {
+        alert('Not enough funds. Application fee: $50k. You have $' + Math.round(currentCash / 1000) + 'k.');
+        return;
+    }
+
+    _arClaimPending = true;
+    var btn = document.getElementById('ar-claim-btn');
+    btn.textContent = 'APPLYING...';
+
+    try {
+        // Deduct application fee
+        var newCash = currentCash - appFee;
+        var { error: feeErr } = await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        if (feeErr) { alert('Failed to deduct fee.'); return; }
+
+        // Create application
+        var { data: app, error: appErr } = await _supabase.from('shipping_applications').insert({
+            route_id: route.id,
+            faction_id: faction.id,
+            proposed_rate: Number(route.estimated_revenue || 0),
+            application_fee: appFee,
+            status: 'pending',
+            applied_at_tick: shard.current_tick,
+        }).select('*').single();
+
+        if (appErr) {
+            alert('Application failed: ' + appErr.message);
+            // Refund fee on failure
+            await _supabase.from('factions').update({ corp_cash_reserves: currentCash }).eq('id', faction.id);
+            return;
+        }
+
+        // Log event
+        await _supabase.from('event_log').insert({
+            nation_id: route.origin_nation_id,
+            event_name: faction.faction_name + ' applied to service ' + (route.origin_port || '?') + ' → ' + (route.destination_port || '?') + ' route',
+            category: 'corporate',
+            description_chosen: faction.faction_name + ' has submitted a shipping application for the ' + (route.goods_name || 'trade') + ' route between ' + (route.origin_port || '?') + ' and ' + (route.destination_port || '?') + '. Awaiting government approval.',
+            fired_at_tick: shard.current_tick,
+        }).catch(function() {});
+
+        await refreshFactionAndCash();
+        arSelected = -1;
+        await loadAvailableRoutes();
+        alert('Application submitted! The government will review your application.');
+    } catch (e) {
+        alert('Application failed: ' + (e.message || 'Network error'));
+    } finally {
+        _arClaimPending = false;
+        btn.textContent = 'APPLY TO SERVICE — $50k';
+        btn.className = 'ar-claim-btn' + (arSelected >= 0 ? ' active' : '');
+    }
+}
+
+// Legacy claim function (kept for government-approved auto-claims)
 async function arClaimRoute() {
     if (_arClaimPending || arSelected < 0 || !faction || !shard) return;
     var filtered = arGetFiltered();
@@ -7020,6 +7099,7 @@ window.setFilter = setFilter;
 window.arSetFilter = arSetFilter;
 window.arSelectRoute = arSelectRoute;
 window.arClaimRoute = arClaimRoute;
+window.arApplyToService = arApplyToService;
 window.avToggle = avToggle;
 window.avRelease = avRelease;
 window.openContractDetail = openContractDetail;
