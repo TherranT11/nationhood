@@ -433,6 +433,7 @@ function renderTradeEconomy() {
 
 let _shippingRoutesByAgreement = {}; // agreementId → [routes]
 let _shippingClaimsByRoute = {};     // routeId → [claims with faction data]
+let _shippingAppsByRoute = {};       // routeId → [pending applications]
 
 async function loadShippingData() {
     const nationId = _worldState?.nation?.id;
@@ -458,15 +459,28 @@ async function loadShippingData() {
 
     // Claims on those routes (which corporations are servicing them)
     _shippingClaimsByRoute = {};
+    _shippingAppsByRoute = {};
     if (routeIds.length > 0) {
-        const { data: claims } = await _supabase.from('shipping_claims')
-            .select('id, route_id, faction_id, market_share_pct, revenue_per_transit, total_revenue, transits_completed, status, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector)')
-            .in('route_id', routeIds)
-            .eq('status', 'active');
-        if (claims) {
-            for (const c of claims) {
+        const [claimsResult, appsResult] = await Promise.all([
+            _supabase.from('shipping_claims')
+                .select('id, route_id, faction_id, market_share_pct, revenue_per_transit, total_revenue, transits_completed, status, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector)')
+                .in('route_id', routeIds)
+                .eq('status', 'active'),
+            _supabase.from('shipping_applications')
+                .select('id, route_id, faction_id, proposed_rate, status, applied_at_tick, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, shipping_fleet_capacity, shipping_fleet_deployed)')
+                .in('route_id', routeIds)
+                .eq('status', 'pending'),
+        ]);
+        if (claimsResult.data) {
+            for (const c of claimsResult.data) {
                 if (!_shippingClaimsByRoute[c.route_id]) _shippingClaimsByRoute[c.route_id] = [];
                 _shippingClaimsByRoute[c.route_id].push(c);
+            }
+        }
+        if (appsResult.data) {
+            for (const a of appsResult.data) {
+                if (!_shippingAppsByRoute[a.route_id]) _shippingAppsByRoute[a.route_id] = [];
+                _shippingAppsByRoute[a.route_id].push(a);
             }
         }
     }
@@ -508,6 +522,64 @@ function getAgreementShippingInfo(agreementId) {
         hasLogistics: corps.length > 0,
     };
 }
+
+// ── Shipping Application Approve / Reject ──
+
+window.approveShippingApp = async function(appId, routeId, corpFactionId) {
+    if (!confirm('Approve this shipping corporation to service this route?')) return;
+
+    try {
+        const tick = _worldState?.shard?.current_tick || 0;
+
+        // Update application status
+        const { error: appErr } = await _supabase.from('shipping_applications')
+            .update({ status: 'approved', reviewed_at_tick: tick, reviewed_by_faction_id: _worldState?.faction?.id })
+            .eq('id', appId);
+        if (appErr) { alert('Failed to approve: ' + appErr.message); return; }
+
+        // Auto-create a shipping claim via RPC
+        const { error: claimErr } = await _supabase.rpc('claim_shipping_route', {
+            p_faction_id: corpFactionId,
+            p_route_id: routeId,
+            p_current_tick: tick,
+        });
+        if (claimErr) console.warn('[ShippingApproval] Auto-claim failed (corp may need to assign vessel):', claimErr.message);
+
+        // Log event
+        await _supabase.from('event_log').insert({
+            nation_id: _worldState?.nation?.id,
+            event_name: 'Shipping application approved',
+            category: 'trade',
+            description_chosen: 'A shipping corporation has been approved to service a trade route. Route efficiency will increase.',
+            fired_at_tick: tick,
+        }).catch(() => {});
+
+        // Reload shipping data and re-render
+        await loadShippingData();
+        renderTradeAgreements();
+    } catch (err) {
+        console.error('[ShippingApproval] Error:', err);
+        alert('Failed to approve application.');
+    }
+};
+
+window.rejectShippingApp = async function(appId) {
+    const reason = prompt('Rejection reason (optional):') || '';
+
+    try {
+        const tick = _worldState?.shard?.current_tick || 0;
+        const { error } = await _supabase.from('shipping_applications')
+            .update({ status: 'rejected', reviewed_at_tick: tick, reviewed_by_faction_id: _worldState?.faction?.id, rejection_reason: reason || null })
+            .eq('id', appId);
+        if (error) { alert('Failed to reject: ' + error.message); return; }
+
+        await loadShippingData();
+        renderTradeAgreements();
+    } catch (err) {
+        console.error('[ShippingReject] Error:', err);
+        alert('Failed to reject application.');
+    }
+};
 
 // ═══════════════════════════════════════════════════
 // TRADE AGREEMENTS PANEL
@@ -662,11 +734,52 @@ function renderTradeAgreements() {
                         <span>\u00B7 ${fmtBudgetCurrency(shipInfo.totalRevenue)} total revenue</span>
                     </div></div>`;
                 } else {
+                    // Check for pending applications on routes for this agreement
+                    const agRoutes = _shippingRoutesByAgreement[ag.id] || [];
+                    let pendingApps = [];
+                    for (const r of agRoutes) {
+                        const apps = _shippingAppsByRoute[r.id] || [];
+                        for (const a of apps) pendingApps.push({ ...a, route: r });
+                    }
+
                     html += `<div style="margin-top:6px;background:rgba(200,136,68,0.03);border:1px solid rgba(200,136,68,0.15);padding:8px 10px;">
-                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>
-                        <div style="font-size:9px;font-weight:700;color:var(--orange);">No shipping corporation assigned</div>
-                        <div style="font-size:8px;color:var(--text-dim);margin-top:1px;">Route operates at base efficiency. Shipping corporations can apply to service this route.</div>
-                    </div>`;
+                        <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>`;
+
+                    if (pendingApps.length > 0) {
+                        html += `<div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c8a832;margin-bottom:6px;">
+                            \uD83D\uDCE8 ${pendingApps.length} SHIPPING APPLICATION${pendingApps.length !== 1 ? 'S' : ''} PENDING
+                        </div>`;
+                        for (const app of pendingApps) {
+                            const corp = app.factions || {};
+                            const corpColor = corp.party_color || '#5a8aaa';
+                            const fleetCap = corp.shipping_fleet_capacity || 0;
+                            const fleetDep = corp.shipping_fleet_deployed || 0;
+                            const available = Math.max(0, fleetCap - fleetDep);
+                            html += `<div style="padding:8px 10px;margin-bottom:4px;background:var(--bg-panel);border:1px solid var(--border-main);border-left:3px solid ${corpColor};">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <div style="width:28px;height:28px;background:${corpColor}15;border:1px solid ${corpColor}33;display:flex;align-items:center;justify-content:center;font-size:14px;">\uD83D\uDEA2</div>
+                                        <div>
+                                            <div style="font-size:13px;font-weight:700;color:var(--text-bright);">${escapeHtml(corp.faction_name || 'Unknown Corp')}</div>
+                                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${escapeHtml(corp.corp_sector || '')} \u00B7 ${escapeHtml(corp.corp_subsector || '')} \u00B7 Fleet: ${available}/${fleetCap} available</div>
+                                        </div>
+                                    </div>
+                                    <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent);">${fmtBudgetCurrency(app.proposed_rate || 0)}/transit</div>
+                                </div>
+                                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-bottom:6px;">
+                                    Route: ${escapeHtml(app.route?.goods_name || 'Trade goods')} \u00B7 ${escapeHtml(app.route?.origin_port || '?')} \u2192 ${escapeHtml(app.route?.destination_port || '?')}
+                                </div>
+                                <div style="display:flex;gap:6px;">
+                                    <button onclick="approveShippingApp('${app.id}', '${app.route_id}', '${app.faction_id}')" style="flex:1;padding:6px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#000;background:#5cc55c;border:none;cursor:pointer;">APPROVE</button>
+                                    <button onclick="rejectShippingApp('${app.id}')" style="flex:1;padding:6px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:pointer;">REJECT</button>
+                                </div>
+                            </div>`;
+                        }
+                    } else {
+                        html += `<div style="font-size:12px;font-weight:700;color:var(--orange);">No shipping corporation assigned</div>
+                            <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">Route operates at base efficiency. Shipping corporations can apply to service this route.</div>`;
+                    }
+                    html += `</div>`;
                 }
             }
 
