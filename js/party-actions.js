@@ -91,12 +91,57 @@ const LEADER_ACTIONS = [
     },
 ];
 
+// Monarch-only actions (shown instead of standard leader actions in monarchy)
+const MONARCH_ACTIONS = [
+    {
+        id: 'fundraise',
+        name: 'Fundraise',
+        desc: 'Raise royal treasury funds proportional to your seat count. Each use yields less money and costs more momentum.',
+        cost: 'MOMENTUM',
+        costColor: '#c84',
+        moneyCost: 0,
+        tags: ['FINANCIAL', 'CAMPAIGN'],
+        locked: false,
+    },
+    {
+        id: 'grant_seats',
+        name: 'Grant Seats',
+        desc: 'Grant parliamentary seats to a noble house. Sharing power increases legitimacy (+0.5 per seat). Hoarding >70% of seats causes tyranny decay.',
+        cost: 'FREE',
+        costColor: '#5cc55c',
+        moneyCost: 0,
+        tags: ['ROYAL', 'STRUCTURAL'],
+        locked: false,
+    },
+    {
+        id: 'revoke_seats',
+        name: 'Revoke Seats',
+        desc: 'Revoke seats from a noble house. Costs $100k and -1 Legitimacy per seat revoked. Use sparingly — the people do not forget.',
+        cost: '$100k/seat',
+        costColor: '#d44a4a',
+        moneyCost: 100000,
+        tags: ['ROYAL', 'OFFENSIVE'],
+        locked: false,
+    },
+    {
+        id: 'statement',
+        name: 'Royal Decree',
+        desc: 'Issue a public declaration on an issue. Shifts positioning and voter bloc reactions. Media covers it.',
+        cost: '$20k',
+        costColor: '#c8a832',
+        moneyCost: 20000,
+        tags: ['PUBLIC', 'NARRATIVE'],
+        locked: false,
+    },
+];
+
 const TAG_COLORS = {
     PUBLIC: '#8b9a6b', NARRATIVE: '#5a8aaa', STRATEGIC: '#c8a832',
     INTERNAL: '#c84', COALITION: '#5aaa8a', RISKY: '#c55',
     PARLIAMENTARY: '#8b9a6b', FINANCIAL: '#5a8aaa', INTELLIGENCE: '#5a8aaa',
     DEFENSIVE: '#5cc55c', CAMPAIGN: '#c84', VOTER: '#c8a832',
     OFFENSIVE: '#c84', REACTIVE: '#ca5', STRUCTURAL: '#9e9a92',
+    ROYAL: '#c8a832', LEGAL: '#5a8aaa',
 };
 
 // Statement topics
@@ -311,6 +356,8 @@ function renderPage(root) {
         <div class="pa-modal-overlay" id="pa-deputy-modal"></div>
         <!-- Rally Modal -->
         <div class="pa-modal-overlay" id="pa-rally-modal"></div>
+        <!-- Grant/Revoke Seats Modal -->
+        <div class="pa-modal-overlay" id="pa-royal-modal"></div>
     `;
 
     // Bind leader card clicks
@@ -331,6 +378,10 @@ function renderPage(root) {
         const actionId = item.dataset.actionId;
         if (actionId === 'fundraise') {
             executeFundraise(root);
+        } else if (actionId === 'grant_seats') {
+            openGrantSeatsModal(root);
+        } else if (actionId === 'revoke_seats') {
+            openRevokeSeatsModal(root);
         } else if (actionId === 'rally') {
             openRallyModal(root);
         } else if (actionId === 'statement') {
@@ -548,7 +599,12 @@ function renderActionsPanel(leaderName, partyColor, faction) {
     const seats = faction.seats || 0;
     const momentum = faction.momentum ?? 0;
 
-    const actionsHtml = LEADER_ACTIONS.map(action => {
+    // Use monarch-specific actions if this is the monarch in a monarchy
+    const __isMonarchyForActions = isAbsoluteMonarchy(_state.nation);
+    const __isMonarchForActions = __isMonarchyForActions && _state.nation?.monarch_faction_id === faction.id;
+    const actionsList = __isMonarchForActions ? MONARCH_ACTIONS : LEADER_ACTIONS;
+
+    const actionsHtml = actionsList.map(action => {
         const tagsHtml = action.tags.map(t =>
             `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${t}</span>`
         ).join('');
@@ -1990,6 +2046,291 @@ function openLawsuitModal(root) {
             } finally {
                 _lawsuitSubmitting = false;
                 if (btn) { btn.disabled = false; btn.textContent = 'File Lawsuit'; }
+            }
+        });
+    }
+
+    overlay.classList.add('active');
+    render();
+}
+
+// ════════════════════════ GRANT / REVOKE SEATS (Monarchy) ════════════════════════
+
+async function openGrantSeatsModal(root) {
+    const overlay = document.getElementById('pa-royal-modal');
+    if (!overlay) return;
+
+    const nation = _state.nation;
+    const faction = _state.faction;
+    const monarchSeats = faction.seats || 0;
+    const totalSeats = nation?.total_seats || 100;
+
+    // Fetch all factions in this nation
+    const { data: allFactions } = await _supabase.from('factions')
+        .select('id, faction_name, abbreviation, party_color, seats')
+        .eq('nation_id', nation.id).eq('faction_type', 'party').is('abandoned_at', null)
+        .order('faction_name');
+
+    const otherFactions = (allFactions || []).filter(f => f.id !== faction.id);
+    let selectedFactionId = null;
+    let grantAmount = 5;
+
+    function render() {
+        const selected = otherFactions.find(f => f.id === selectedFactionId);
+        const maxGrant = Math.max(0, monarchSeats - 1); // keep at least 1 seat
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:560px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#c8a832;"></div>
+                        <span class="pa-modal-title">Grant Seats</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:3px 8px;color:#c8a832;background:rgba(200,168,50,0.06);border:1px solid rgba(200,168,50,0.15);">ROYAL</span>
+                    </div>
+                    <button class="pa-modal-close" id="royal-close">&times;</button>
+                </div>
+                <div style="padding:8px 20px;border-bottom:1px solid var(--border-main);font-size:12px;color:var(--text-secondary);line-height:1.5;">
+                    Grant parliamentary seats to a noble house. Each seat granted earns <span style="color:#5cc55c;font-weight:700;">+0.5 Legitimacy</span>.
+                    You currently hold <strong>${monarchSeats}</strong> of ${totalSeats} seats.
+                    ${monarchSeats / totalSeats > 0.7 ? '<div style="color:#d44a4a;font-weight:700;margin-top:4px;">⚠ You hold >70% of seats — tyranny legitimacy decay active!</div>' : ''}
+                </div>
+                <div class="pa-modal-body">
+                    <div class="pa-modal-step-label">Select Noble House</div>
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                        ${otherFactions.length > 0 ? otherFactions.map(f => {
+                            const isSel = f.id === selectedFactionId;
+                            return `<div class="pa-action-item ${isSel ? 'selected' : ''}" data-faction-id="${f.id}" style="cursor:pointer;${isSel ? `border-color:${f.party_color || '#888'};background:${(f.party_color || '#888')}08;` : ''}">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <div style="width:8px;height:8px;background:${f.party_color || '#888'};"></div>
+                                        <span style="font-size:14px;font-weight:600;color:var(--text-bright);">${esc(f.faction_name)}</span>
+                                    </div>
+                                    <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-dim);">${f.seats || 0} seats</span>
+                                </div>
+                            </div>`;
+                        }).join('') : '<div style="font-size:12px;color:var(--text-dim);padding:20px;text-align:center;">No other factions in this nation.</div>'}
+                    </div>
+                    ${selected ? `
+                        <div style="margin-top:14px;">
+                            <div class="pa-modal-step-label">Seats to Grant</div>
+                            <div style="display:flex;align-items:center;gap:12px;">
+                                <input type="range" min="1" max="${maxGrant}" value="${grantAmount}" id="grant-slider" style="flex:1;">
+                                <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent);width:40px;text-align:center;" id="grant-count">${grantAmount}</span>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:4px;">
+                                Legitimacy gain: <span style="color:#5cc55c;font-weight:700;">+${(grantAmount * 0.5).toFixed(1)}</span>
+                                &middot; Your seats after: ${monarchSeats - grantAmount} &middot; Their seats after: ${(selected.seats || 0) + grantAmount}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="royal-cancel">Cancel</button>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="royal-grant" ${!selected ? 'disabled' : ''} style="background:#c8a832;">Grant ${grantAmount} Seats</button>
+                </div>
+            </div>
+        `;
+
+        const close = () => overlay.classList.remove('active');
+        document.getElementById('royal-close')?.addEventListener('click', close);
+        document.getElementById('royal-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        // Faction selection
+        overlay.querySelector('.pa-modal-body')?.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-faction-id]');
+            if (item) { selectedFactionId = item.dataset.factionId; render(); }
+        });
+
+        // Slider
+        document.getElementById('grant-slider')?.addEventListener('input', (e) => {
+            grantAmount = parseInt(e.target.value) || 1;
+            document.getElementById('grant-count').textContent = grantAmount;
+            const btn = document.getElementById('royal-grant');
+            if (btn) btn.textContent = `Grant ${grantAmount} Seats`;
+        });
+
+        // Grant button
+        document.getElementById('royal-grant')?.addEventListener('click', async () => {
+            if (!selectedFactionId) return;
+            const btn = document.getElementById('royal-grant');
+            if (btn) { btn.disabled = true; btn.textContent = 'Granting...'; }
+
+            try {
+                const target = otherFactions.find(f => f.id === selectedFactionId);
+                const newMonarchSeats = monarchSeats - grantAmount;
+                const newTargetSeats = (target?.seats || 0) + grantAmount;
+                const legGain = grantAmount * 0.5;
+                const newLeg = Math.min(100, (Number(nation.legitimacy) || 50) + legGain);
+
+                // Update both factions' seats
+                const { error: e1 } = await _supabase.from('factions').update({ seats: newMonarchSeats }).eq('id', faction.id);
+                const { error: e2 } = await _supabase.from('factions').update({ seats: newTargetSeats }).eq('id', selectedFactionId);
+                const { error: e3 } = await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
+
+                if (e1 || e2 || e3) { alert('Failed to grant seats.'); return; }
+
+                faction.seats = newMonarchSeats;
+                nation.legitimacy = newLeg;
+
+                // Log event
+                await _supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: `${nation.monarch_title || 'King'} grants ${grantAmount} seats to ${target?.faction_name || 'unknown'}`,
+                    category: 'government',
+                    description_chosen: `The ${nation.monarch_title || 'King'} has granted ${grantAmount} parliamentary seat${grantAmount !== 1 ? 's' : ''} to ${target?.faction_name}. Legitimacy +${legGain.toFixed(1)}.`,
+                    fired_at_tick: _state.shard?.current_tick || 0,
+                }).catch(() => {});
+
+                close();
+                renderPage(root);
+            } catch (err) {
+                console.error('[GrantSeats] Error:', err);
+                alert('Failed to grant seats.');
+            }
+        });
+    }
+
+    overlay.classList.add('active');
+    render();
+}
+
+async function openRevokeSeatsModal(root) {
+    const overlay = document.getElementById('pa-royal-modal');
+    if (!overlay) return;
+
+    const nation = _state.nation;
+    const faction = _state.faction;
+
+    const { data: allFactions } = await _supabase.from('factions')
+        .select('id, faction_name, abbreviation, party_color, seats')
+        .eq('nation_id', nation.id).eq('faction_type', 'party').is('abandoned_at', null)
+        .order('faction_name');
+
+    const seatedFactions = (allFactions || []).filter(f => f.id !== faction.id && (f.seats || 0) > 0);
+    let selectedFactionId = null;
+    let revokeAmount = 1;
+
+    function render() {
+        const selected = seatedFactions.find(f => f.id === selectedFactionId);
+        const maxRevoke = selected ? selected.seats || 0 : 0;
+        const costPerSeat = 100000;
+        const totalCost = revokeAmount * costPerSeat;
+        const currentFunds = faction.party_funds || 0;
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:560px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#d44a4a;"></div>
+                        <span class="pa-modal-title">Revoke Seats</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:3px 8px;color:#d44a4a;background:rgba(212,74,74,0.06);border:1px solid rgba(212,74,74,0.15);">ROYAL</span>
+                    </div>
+                    <button class="pa-modal-close" id="royal-close">&times;</button>
+                </div>
+                <div style="padding:8px 20px;border-bottom:1px solid var(--border-main);font-size:12px;color:var(--text-secondary);line-height:1.5;">
+                    Revoke seats from a noble house. Costs <span style="color:#d44a4a;font-weight:700;">$100k per seat</span> and
+                    <span style="color:#d44a4a;font-weight:700;">-1 Legitimacy per seat</span>. Revoked seats return to the crown.
+                </div>
+                <div class="pa-modal-body">
+                    <div class="pa-modal-step-label">Select Noble House</div>
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                        ${seatedFactions.length > 0 ? seatedFactions.map(f => {
+                            const isSel = f.id === selectedFactionId;
+                            return `<div class="pa-action-item ${isSel ? 'selected' : ''}" data-faction-id="${f.id}" style="cursor:pointer;${isSel ? 'border-color:#d44a4a;background:rgba(212,74,74,0.04);' : ''}">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <div style="width:8px;height:8px;background:${f.party_color || '#888'};"></div>
+                                        <span style="font-size:14px;font-weight:600;color:var(--text-bright);">${esc(f.faction_name)}</span>
+                                    </div>
+                                    <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-dim);">${f.seats} seats</span>
+                                </div>
+                            </div>`;
+                        }).join('') : '<div style="font-size:12px;color:var(--text-dim);padding:20px;text-align:center;">No factions have seats to revoke.</div>'}
+                    </div>
+                    ${selected ? `
+                        <div style="margin-top:14px;">
+                            <div class="pa-modal-step-label">Seats to Revoke</div>
+                            <div style="display:flex;align-items:center;gap:12px;">
+                                <input type="range" min="1" max="${maxRevoke}" value="${revokeAmount}" id="revoke-slider" style="flex:1;">
+                                <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:#d44a4a;width:40px;text-align:center;" id="revoke-count">${revokeAmount}</span>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:4px;">
+                                Cost: <span style="color:#d44a4a;font-weight:700;">$${Math.round(totalCost / 1000)}k</span>
+                                &middot; Legitimacy: <span style="color:#d44a4a;font-weight:700;">-${revokeAmount}</span>
+                                ${currentFunds < totalCost ? '<span style="color:#d44a4a;margin-left:8px;">⚠ Not enough funds</span>' : ''}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="royal-cancel">Cancel</button>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="royal-revoke" ${!selected || currentFunds < totalCost ? 'disabled' : ''} style="background:#d44a4a;">Revoke ${revokeAmount} Seats</button>
+                </div>
+            </div>
+        `;
+
+        const close = () => overlay.classList.remove('active');
+        document.getElementById('royal-close')?.addEventListener('click', close);
+        document.getElementById('royal-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        overlay.querySelector('.pa-modal-body')?.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-faction-id]');
+            if (item) { selectedFactionId = item.dataset.factionId; revokeAmount = 1; render(); }
+        });
+
+        document.getElementById('revoke-slider')?.addEventListener('input', (e) => {
+            revokeAmount = parseInt(e.target.value) || 1;
+            document.getElementById('revoke-count').textContent = revokeAmount;
+            const btn = document.getElementById('royal-revoke');
+            if (btn) btn.textContent = `Revoke ${revokeAmount} Seats`;
+        });
+
+        document.getElementById('royal-revoke')?.addEventListener('click', async () => {
+            if (!selectedFactionId) return;
+            const btn = document.getElementById('royal-revoke');
+            if (btn) { btn.disabled = true; btn.textContent = 'Revoking...'; }
+
+            try {
+                const target = seatedFactions.find(f => f.id === selectedFactionId);
+                const cost = revokeAmount * 100000;
+
+                // Fetch fresh funds
+                const { data: fresh } = await _supabase.from('factions').select('party_funds').eq('id', faction.id).single();
+                const curFunds = fresh?.party_funds || 0;
+                if (curFunds < cost) { alert('Not enough funds.'); return; }
+
+                const newFunds = curFunds - cost;
+                const newMonarchSeats = (faction.seats || 0) + revokeAmount;
+                const newTargetSeats = Math.max(0, (target?.seats || 0) - revokeAmount);
+                const legCost = revokeAmount;
+                const newLeg = Math.max(0, (Number(nation.legitimacy) || 50) - legCost);
+
+                const { error: e1 } = await _supabase.from('factions').update({ seats: newMonarchSeats, party_funds: newFunds }).eq('id', faction.id);
+                const { error: e2 } = await _supabase.from('factions').update({ seats: newTargetSeats }).eq('id', selectedFactionId);
+                const { error: e3 } = await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
+
+                if (e1 || e2 || e3) { alert('Failed to revoke seats.'); return; }
+
+                faction.seats = newMonarchSeats;
+                faction.party_funds = newFunds;
+                nation.legitimacy = newLeg;
+                sessionStorage.removeItem('nationhood_state');
+
+                await _supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: `${nation.monarch_title || 'King'} revokes ${revokeAmount} seats from ${target?.faction_name || 'unknown'}`,
+                    category: 'political',
+                    description_chosen: `The ${nation.monarch_title || 'King'} has revoked ${revokeAmount} seat${revokeAmount !== 1 ? 's' : ''} from ${target?.faction_name}. Legitimacy -${legCost}.`,
+                    fired_at_tick: _state.shard?.current_tick || 0,
+                }).catch(() => {});
+
+                close();
+                renderPage(root);
+            } catch (err) {
+                console.error('[RevokeSeats] Error:', err);
+                alert('Failed to revoke seats.');
             }
         });
     }
