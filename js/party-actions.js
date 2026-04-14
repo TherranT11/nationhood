@@ -1450,9 +1450,9 @@ const AGITATOR_ACTIONS = [
         id: 'file_lawsuit',
         name: 'File Lawsuit',
         desc: 'Sue a government ministry alleging corruption or negligence. 8-tick timeline with milestone events. Outcome depends on actual corruption growth since government took office.',
-        cost: 'FREE',
-        costColor: '#5cc55c',
-        ap: 0,
+        cost: '$250k',
+        costColor: '#c8a832',
+        moneyCost: 250000,
         tags: ['LEGAL', 'OFFENSIVE'],
         locked: false,
     },
@@ -1905,6 +1905,21 @@ function openLawsuitModal(root) {
             if (btn) { btn.disabled = true; btn.textContent = 'Filing...'; }
 
             try {
+                // Deduct $250k from party funds
+                const lawsuitCost = 250000;
+                const { data: freshFac } = await _supabase.from('factions').select('party_funds').eq('id', faction.id).single();
+                const curFunds = freshFac?.party_funds || 0;
+                if (curFunds < lawsuitCost) {
+                    alert(`Not enough funds. You have $${Math.round(curFunds / 1000)}k, need $250k.`);
+                    _lawsuitSubmitting = false;
+                    if (btn) { btn.disabled = false; btn.textContent = 'File Lawsuit'; }
+                    return;
+                }
+                const newFunds = curFunds - lawsuitCost;
+                await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', faction.id);
+                faction.party_funds = newFunds;
+                sessionStorage.removeItem('nationhood_state');
+
                 const tick = _state.shard?.current_tick || 0;
                 const result = await fileLawsuit(_supabase, {
                     factionId: faction?.id,
