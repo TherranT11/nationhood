@@ -138,6 +138,30 @@ export async function initPartyActions(supabase, state) {
         return;
     }
 
+    // Auto-assign first player as monarch in Absolute Monarchy nations
+    if (isAbsoluteMonarchy(state.nation) && !state.nation.monarch_faction_id) {
+        const leaderName = (faction.leader_first_name && faction.leader_last_name)
+            ? faction.leader_first_name + ' ' + faction.leader_last_name : 'The Monarch';
+        const dynastyName = faction.leader_last_name || faction.faction_name?.split(' ')[0] || 'Royal';
+        const { getNationNames: _getNames } = await import('./game/political-actions.js');
+        const _names = _getNames(state.nation.name);
+        const heirFirst = (_names.firstNames || ['Alexander'])[Math.floor(Math.random() * (_names.firstNames || ['Alexander']).length)];
+
+        await _supabase.from('nations').update({
+            monarch_faction_id: faction.id,
+            monarch_name: leaderName,
+            dynasty_name: dynastyName,
+            heir_name: heirFirst + ' ' + dynastyName,
+            heir_age: 14 + Math.floor(Math.random() * 8),
+            monarch_crowned_tick: state.shard?.current_tick || 0,
+        }).eq('id', state.nation.id);
+
+        // Update local state
+        state.nation.monarch_faction_id = faction.id;
+        state.nation.monarch_name = leaderName;
+        state.nation.dynasty_name = dynastyName;
+    }
+
     // Fetch platforms + agitator + opposition status + electoral standing in parallel
     const [myPlat, nationPlat, agitatorResult, oppositionResult, standingResult] = await Promise.all([
         _supabase.from('faction_platforms').select('*').eq('faction_id', faction.id).order('slot'),

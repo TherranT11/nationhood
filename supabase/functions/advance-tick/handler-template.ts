@@ -2305,12 +2305,66 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const ticksInactive = newTick - ref;
 
                 if (ticksInactive >= 18) {
+                    // Absolute Monarchy: if this is the monarch's faction, trigger succession instead of disband
+                    const isMonarchFaction = nation.monarch_faction_id === party.id
+                        && (nation.government_type || '').toLowerCase().includes('monarchy');
+
+                    if (isMonarchFaction) {
+                        try {
+                            // The monarch has died / been deposed due to inactivity
+                            const monarchName = nation.monarch_name || 'The Monarch';
+                            const heirName = nation.heir_name || 'The Heir';
+                            const dynastyName = nation.dynasty_name || 'Unknown';
+                            const monarchTitle = nation.monarch_title || 'King';
+
+                            // Generate a new heir name
+                            const { getNationNames } = await import('../../js/game/political-actions.js');
+                            const names = getNationNames(nation.name);
+                            const newHeirFirst = (names.firstNames || ['Alexander'])[Math.floor(Math.random() * (names.firstNames || ['Alexander']).length)];
+                            const newHeirAge = 14 + Math.floor(Math.random() * 8); // 14-21
+
+                            // Update nation: heir becomes monarch, generate new heir
+                            await supabase.from('nations').update({
+                                monarch_name: heirName,
+                                heir_name: newHeirFirst + ' ' + dynastyName,
+                                heir_age: newHeirAge,
+                                monarch_crowned_tick: newTick,
+                                legitimacy: Math.max(20, (Number(nation.legitimacy) || 50) - 10), // succession costs -10 legitimacy
+                            }).eq('id', nation.id);
+
+                            // Fire succession event
+                            await supabase.from('event_log').insert({
+                                nation_id: nation.id,
+                                event_name: `${monarchTitle} ${monarchName} has died`,
+                                category: 'government',
+                                description_chosen: `${monarchTitle} ${monarchName} of the ${dynastyName} dynasty has died after a period of inactivity. ${heirName} ascends to the throne as the new ${monarchTitle}. Long live the ${monarchTitle}!`,
+                                fired_at_tick: newTick,
+                            });
+
+                            // Add to admin timeline
+                            await supabase.from('admin_timeline_events').insert({
+                                nation_id: nation.id,
+                                tick: newTick,
+                                type: 'formation',
+                                title: `${monarchTitle} ${monarchName} Has Died`,
+                                description: `${heirName} of House ${dynastyName} ascends to the throne. Legitimacy falls to ${Math.max(20, (Number(nation.legitimacy) || 50) - 10)}%.`,
+                            });
+
+                            // Reset the faction's last_seen_tick so it doesn't immediately disband again
+                            await supabase.from('factions').update({ last_seen_tick: newTick }).eq('id', party.id);
+
+                            console.log(`[Succession] ${monarchTitle} ${monarchName} died in ${nation.name}. ${heirName} takes the throne.`);
+                        } catch (succErr) {
+                            console.error(`[Succession] Failed for ${nation.name}: ${succErr.message}`);
+                        }
+                    } else {
                     // Auto-disband: full cleanup via existing disbandParty()
                     try {
                         await disbandParty(supabase, nation.id, party.id, newTick);
                         console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive)`);
                     } catch (disbandErr) {
                         console.error(`[Inactivity] Auto-disband failed for ${party.faction_name}: ${disbandErr.message}`);
+                    }
                     }
                 } else if (ticksInactive >= 12 && (party.seats || 0) > 0) {
                     // Seat drain: lose 20% of seats per tick (minimum 1)
