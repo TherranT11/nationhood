@@ -1632,10 +1632,131 @@ function renderMinistryExpandedContent(ministry, partyColor) {
     return html;
 }
 
+let _govChatMessages = [];
+let _govChatSubscription = null;
+
+async function loadGovChat() {
+    if (!currentNation) return;
+    try {
+        const { data, error } = await _supabase
+            .from('admin_chat')
+            .select('id, faction_id, message, tick_posted, created_at')
+            .eq('nation_id', currentNation.id)
+            .order('created_at', { ascending: true })
+            .limit(50);
+        if (error) throw error;
+        _govChatMessages = data || [];
+    } catch (err) {
+        console.error('[GovChat] Load failed:', err);
+        _govChatMessages = [];
+    }
+    renderGovChatMessages();
+    subscribeGovChat();
+}
+
+function subscribeGovChat() {
+    if (_govChatSubscription || !currentNation) return;
+    _govChatSubscription = _supabase
+        .channel('gov_admin_chat_' + currentNation.id)
+        .on('postgres_changes', {
+            event: 'INSERT', schema: 'public', table: 'admin_chat',
+            filter: 'nation_id=eq.' + currentNation.id
+        }, (payload) => {
+            const msg = payload.new;
+            if (!_govChatMessages.find(m => m.id === msg.id)) {
+                _govChatMessages.push(msg);
+                renderGovChatMessages();
+            }
+        })
+        .subscribe();
+}
+
+function renderGovChatMessages() {
+    const container = document.getElementById('ga-chat-messages');
+    if (!container) return;
+    const parties = _govData?.parties || [];
+
+    if (_govChatMessages.length === 0) {
+        container.innerHTML = '<div style="padding:16px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No messages yet.</div>';
+        return;
+    }
+
+    container.innerHTML = _govChatMessages.map(m => {
+        const party = parties.find(p => p.id === m.faction_id);
+        const partyName = party?.faction_name || 'Unknown';
+        const partyColor = party?.party_color || '#888';
+        const timeAgo = formatGovChatTime(m.created_at);
+        return `<div class="ga-chat-msg" style="border-left:2px solid ${partyColor};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${partyColor};">${escapeHtml(partyName)}</span>
+                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${timeAgo}</span>
+            </div>
+            <div style="font-size:9px;color:var(--text-dim);line-height:1.4;">${escapeHtml(m.message)}</div>
+        </div>`;
+    }).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+function formatGovChatTime(isoStr) {
+    if (!isoStr) return '';
+    const diffMs = Date.now() - new Date(isoStr).getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return diffMin + 'm ago';
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return diffH + 'h ago';
+    return Math.floor(diffH / 24) + 'd ago';
+}
+
+async function sendGovChat() {
+    const input = document.getElementById('ga-chat-input');
+    const btn = document.getElementById('ga-chat-send');
+    if (!input || !currentFaction || !currentNation) return;
+    const message = input.value.trim();
+    if (!message) return;
+    btn.disabled = true;
+    input.disabled = true;
+    try {
+        const { error } = await _supabase.from('admin_chat').insert({
+            nation_id: currentNation.id,
+            faction_id: currentFaction.id,
+            message: message,
+            tick_posted: currentTick
+        });
+        if (error) throw error;
+        input.value = '';
+        // Manual add if realtime isn't working
+        if (!_govChatSubscription) {
+            _govChatMessages.push({ id: crypto.randomUUID(), faction_id: currentFaction.id, message, tick_posted: currentTick, created_at: new Date().toISOString() });
+            renderGovChatMessages();
+        }
+    } catch (err) {
+        console.error('[GovChat] Send failed:', err);
+    } finally {
+        btn.disabled = false;
+        input.disabled = false;
+        input.focus();
+    }
+}
+
 function renderAdminChat() {
     const el = document.getElementById('gov-admin-chat');
     if (!el) return;
-    el.innerHTML = '<div class="ga-panel"><div class="ga-panel-header"><span class="ga-panel-title">ADMINISTRATIVE COMMUNICATIONS</span></div><div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Phase 6</div></div>';
+
+    el.innerHTML = `<div class="ga-panel">
+        <div class="ga-panel-header">
+            <span class="ga-panel-title">ADMINISTRATIVE COMMUNICATIONS</span>
+        </div>
+        <div id="ga-chat-messages" class="ga-chat-scroll"></div>
+        <div class="ga-chat-input-row">
+            <input type="text" id="ga-chat-input" class="ga-chat-input" placeholder="Type a message..." maxlength="500"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();sendGovChat();}">
+            <button id="ga-chat-send" class="ga-chat-send-btn" onclick="sendGovChat()">SEND</button>
+        </div>
+    </div>`;
+
+    // Load messages async
+    loadGovChat();
 }
 function renderAdminActions() {
     const el = document.getElementById('gov-admin-actions');

@@ -100,6 +100,32 @@
     border: 1px solid rgba(204,85,85,0.15);
 }
 
+/* ── Admin chat ── */
+.ga-chat-scroll { max-height: 240px; overflow-y: auto; }
+.ga-chat-msg { padding: 6px 14px; border-bottom: 1px solid var(--border-light, #2a2a24); }
+.ga-chat-msg:last-child { border-bottom: none; }
+.ga-chat-input-row {
+    padding: 8px 14px; display: flex; gap: 8px; align-items: center;
+    border-top: 1px solid var(--border-main);
+}
+.ga-chat-input {
+    flex: 1; padding: 6px 10px;
+    background: var(--bg-card); border: 1px solid var(--border-main);
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-bright);
+    outline: none;
+}
+.ga-chat-input::placeholder { color: var(--text-dim); }
+.ga-chat-input:focus { border-color: var(--accent); }
+.ga-chat-send-btn {
+    padding: 6px 14px;
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.5px; color: var(--text-dim);
+    background: transparent; border: 1px solid var(--border-main);
+    cursor: pointer; transition: all 0.15s;
+}
+.ga-chat-send-btn:hover { color: var(--text-bright); border-color: var(--accent); }
+.ga-chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* ── Executive Timeline ── */
 .ga-tl-scroll { max-height: 520px; overflow-y: auto; }
 .ga-tl-row { display: flex; gap: 0; border-bottom: 1px solid var(--border-main); }
