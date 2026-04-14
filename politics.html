@@ -47,11 +47,10 @@
     </div>
 </div>
 
-<!-- PAST ELECTIONS panel (placeholder) -->
+<!-- PAST ELECTIONS panel -->
 <div class="pa-panel" id="panel-past-elections">
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100vh - 140px);text-align:center;color:var(--text-secondary);">
-        <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">UI 2.0 IS COMING</div>
-        <div style="font-size:0.85rem;color:var(--text-muted);">Please be patient while we roll this out.</div>
+    <div id="pa-past-elections-root">
+        <div style="display:flex;align-items:center;justify-content:center;min-height:300px;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Loading...</div>
     </div>
 </div>
 
@@ -61,11 +60,13 @@ import { initPage } from './js/common.js';
 import { initPartyActions } from './js/party-actions.js';
 import { initPartyOverview } from './js/party-overview.js';
 import { initCoalitionFormation, isFormationNeeded, renderFormationTab } from './js/coalition-formation.js';
+import { initPastElections } from './js/past-elections.js';
 
 let _state = null;
 let _actionsInitialized = false;
 let _partiesInitialized = false;
 let _electionInitialized = false;
+let _pastElectionsInitialized = false;
 let _coalitionReady = false; // true once initCoalitionFormation has completed
 
 function switchPanel(key) {
@@ -92,6 +93,10 @@ function switchPanel(key) {
                 renderFormationTab(document.getElementById('pa-election-root'));
             });
         }
+    }
+    if (key === 'past-elections' && !_pastElectionsInitialized && _state) {
+        _pastElectionsInitialized = true;
+        initPastElections(_supabase, _state);
     }
 }
 
