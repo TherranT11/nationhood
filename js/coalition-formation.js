@@ -100,35 +100,64 @@ export function isFormationNeeded() {
 export async function renderFormationTab(root) {
     if (!root) return;
 
-    if (!_formationNeeded) {
-        // Check if government is formed but ministries are empty (repair scenario)
-        const nationId = _state.nation?.id;
-        if (nationId) {
-            const { count: vacantCount } = await _supabase.from('ministries')
-                .select('id', { count: 'exact', head: true })
-                .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
+    // Auto-repair: check if any formation has ministry_assignments but cabinet is empty
+    // This handles the case where Form Government "succeeded" (status may be 'active' or 'formed')
+    // but ministry rows were never populated
+    const nationId = _state.nation?.id;
+    if (nationId) {
+        const { count: vacantCount } = await _supabase.from('ministries')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
 
-            if (vacantCount && vacantCount >= 10) {
-                // Government formed but cabinet empty — load formation and offer repair
-                const { data: formedGov } = await _supabase.from('government_formations')
-                    .select('*').eq('nation_id', nationId).eq('status', 'formed')
-                    .order('formed_at', { ascending: false }).limit(1).maybeSingle();
+        if (vacantCount && vacantCount >= 5) {
+            // Find any formation with saved assignments (regardless of status)
+            const { data: govWithAssignments } = await _supabase.from('government_formations')
+                .select('*').eq('nation_id', nationId)
+                .not('ministry_assignments', 'eq', '{}')
+                .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
-                if (formedGov && formedGov.ministry_assignments && Object.keys(formedGov.ministry_assignments).length > 0) {
-                    _ministryAssignments = formedGov.ministry_assignments;
-                    await createMinistriesFromAssignments(nationId);
-                    root.innerHTML = `<div class="cf-page">
-                        <div class="cf-no-formation">
-                            <div class="cf-no-icon">✓</div>
-                            <div class="cf-no-title">Government Formed — Cabinet Populated</div>
-                            <div class="cf-no-desc">Ministry assignments have been applied. Refresh the Government page to see your cabinet.</div>
-                        </div>
-                    </div>`;
-                    return;
+            if (govWithAssignments && govWithAssignments.ministry_assignments
+                && Object.keys(govWithAssignments.ministry_assignments).length >= 5) {
+
+                // Set formation to 'formed' if it isn't already
+                if (govWithAssignments.status !== 'formed') {
+                    await _supabase.from('government_formations').update({
+                        status: 'formed', formed_at: new Date().toISOString(),
+                    }).eq('id', govWithAssignments.id);
+
+                    // Cancel rival formations
+                    await _supabase.from('government_formations').update({ status: 'cancelled' })
+                        .eq('nation_id', nationId).eq('status', 'active').neq('id', govWithAssignments.id);
                 }
+
+                // Populate ministries
+                _ministryAssignments = govWithAssignments.ministry_assignments;
+                await createMinistriesFromAssignments(nationId);
+
+                // Auto-appoint PM
+                const pmPartyId = govWithAssignments.ministry_assignments.prime_minister;
+                if (pmPartyId) {
+                    try {
+                        await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick, { skipCoalitionCheck: true });
+                    } catch (pmErr) {
+                        console.warn('[Coalition] PM appointment during repair failed:', pmErr.message);
+                    }
+                }
+
+                _formationNeeded = false;
+                root.innerHTML = `<div class="cf-page">
+                    <div class="cf-no-formation">
+                        <div class="cf-no-icon">✓</div>
+                        <div class="cf-no-title">Government Formed — Cabinet Populated</div>
+                        <div class="cf-no-desc">Ministry assignments have been applied. Refresh the Government page to see your cabinet.</div>
+                    </div>
+                </div>`;
+                return;
             }
         }
+    }
 
+    if (!_formationNeeded) {
         root.innerHTML = `<div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">✓</div>
