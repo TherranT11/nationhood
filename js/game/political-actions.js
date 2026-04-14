@@ -2941,10 +2941,14 @@ export function weightedRandomPick(weightedItems) {
  * Used for parliamentary systems — the party leader becomes PM immediately
  * when their party receives the PM role during coalition formation.
  */
-export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick) {
-    const coalition = await fetchActiveCoalition(supabase, nationId);
-    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'active' && coalition.status !== 'caretaker')) {
-        throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
+export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick, opts) {
+    // When called from coalition formation flow, skip the coalition check
+    // (the formation was JUST set to 'formed' and cache may be stale)
+    if (!opts?.skipCoalitionCheck) {
+        const coalition = await fetchActiveCoalition(supabase, nationId);
+        if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'active' && coalition.status !== 'caretaker')) {
+            throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
+        }
     }
 
     // Load faction with leader data (including leader_ideology as single source of truth)

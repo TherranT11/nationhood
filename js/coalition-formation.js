@@ -346,11 +346,8 @@ async function handleFormGovernment(formation, root) {
             await formGovernmentFallback(formation);
         }
 
-        // Auto-appoint PM's party leader
-        const pmFaction = _allParties.find(p => p.id === pmPartyId);
-        if (pmFaction) {
-            await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick);
-        }
+        // Auto-appoint PM's party leader (skip coalition check — we just formed it)
+        await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick, { skipCoalitionCheck: true });
 
         _formationNeeded = false;
         alert('Government formed successfully!');
