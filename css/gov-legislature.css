@@ -2,6 +2,19 @@
    GOVERNMENT PAGE — UI 2.0 Legislature Subtab
    ══════════════════════════════════════════════════════════════ */
 
+/* ── Parliament party rows ── */
+.leg-party-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 0; border-bottom: 1px solid rgba(42,42,36,0.3);
+}
+.leg-party-row:last-child { border-bottom: none; }
+.leg-party-dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid; display: flex;
+    align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+}
+
 /* ── Responsive ── */
 @media (max-width: 1200px) {
     #leg-left { width: 100% !important; }
