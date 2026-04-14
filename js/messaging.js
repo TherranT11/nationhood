@@ -269,8 +269,12 @@ function injectStyles() {
 
 /* ── Mobile ── */
 @media (max-width: 480px) {
-    .msg-panel { width: calc(100vw - 20px); right: 10px; bottom: 10px; height: 60vh; }
-    .msg-bubble { bottom: 12px; right: 12px; width: 42px; height: 42px; font-size: 18px; }
+    .msg-panel { width: calc(100vw - 20px); right: 10px; top: 60px; bottom: auto; height: 60vh; }
+    .msg-bubble { top: 62px; right: 12px; bottom: auto; width: 42px; height: 42px; font-size: 18px; }
+}
+@media (max-width: 768px) and (min-width: 481px) {
+    .msg-bubble { top: 62px; right: 16px; bottom: auto; }
+    .msg-panel { top: 60px; bottom: auto; }
 }
     `;
     document.head.appendChild(style);
