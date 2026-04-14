@@ -10,6 +10,7 @@ let _personalities = [];
 let _factionIdeology = null; // cached faction_ideology row for political station gating
 let _myGoodListens = new Set(); // broadcast IDs the current faction has good-listened
 let _expandedBroadcastId = null; // currently expanded broadcast in the feed
+let _allGlobalStations = [];    // all stations across all nations (for global feed)
 let _tuneInMode = false; // true when Tune In view is active
 let _tuneInNations = []; // all nations for Tune In
 let _tuneInSelectedNationId = null; // selected nation in Tune In
@@ -389,31 +390,31 @@ async function selectStation(stationId) {
 }
 
 async function loadAllBroadcasts() {
-    // Load ALL broadcasts from ALL stations in this nation
-    const stationIds = _stations.map(s => s.id);
-    if (stationIds.length === 0) return;
-
+    // Load ALL broadcasts from ALL stations across ALL nations
     const factionId = _state.faction?.id;
-    const [bcResult, persResult, glResult] = await Promise.all([
-        _supabase.from('radio_broadcasts').select('*').in('station_id', stationIds).order('created_at', { ascending: false }).limit(100),
-        _supabase.from('radio_personalities').select('*').in('station_id', stationIds),
+
+    const [bcResult, persResult, glResult, allStationsResult] = await Promise.all([
+        _supabase.from('radio_broadcasts').select('*').order('created_at', { ascending: false }).limit(100),
+        _supabase.from('radio_personalities').select('*'),
         factionId ? _supabase.from('broadcast_good_listens').select('broadcast_id').eq('faction_id', factionId) : { data: [] },
+        _supabase.from('radio_stations').select('id, callsign, frequency, station_type, nation_id, nations!inner(name)').order('created_at'),
     ]);
 
+    // Build a global station lookup (including other nations)
+    _allGlobalStations = (allStationsResult.data || []);
     _personalities = persResult.data || [];
     _broadcasts = bcResult.data || [];
     _myGoodListens = new Set((glResult.data || []).map(r => r.broadcast_id));
     _expandedBroadcastId = null;
     _selectedStationId = null;
 
-    // Enable broadcast button if user has personality on ANY station
+    // Enable broadcast button if user has personality on ANY local station
     const myPers = _personalities.filter(p => p.faction_id === factionId);
     const bcBtn = document.getElementById('radio-broadcast-btn');
     if (bcBtn) {
         bcBtn.disabled = myPers.length === 0;
         bcBtn.title = myPers.length > 0 ? 'Start a broadcast' : 'Create a personality on a station first';
         if (myPers.length > 0) {
-            // Pick the first station the user has a personality on
             const persStation = _stations.find(s => myPers.some(p => p.station_id === s.id));
             bcBtn.onclick = persStation ? () => openBroadcastModal(persStation) : null;
         }
@@ -523,8 +524,9 @@ function renderFeed(station) {
 
         const personality = _personalities.find(p => p.id === bc.personality_id);
         const persName = personality?.name || 'Unknown';
-        const stationInfo = _stations.find(s => s.id === bc.station_id);
-        const stationLabel = stationInfo ? `${stationInfo.callsign} ${stationInfo.frequency}` : '';
+        const stationInfo = _allGlobalStations.find(s => s.id === bc.station_id) || _stations.find(s => s.id === bc.station_id);
+        const nationName = stationInfo?.nations?.name || '';
+        const stationLabel = stationInfo ? `${stationInfo.callsign} ${stationInfo.frequency}${nationName ? ' · ' + nationName : ''}` : '';
         const isExpanded = _expandedBroadcastId === bc.id;
         const isGoodListened = _myGoodListens.has(bc.id);
 
