@@ -277,9 +277,16 @@ function renderRadioPage(root) {
                     <div class="radio-events-panel" id="radio-events-panel">
                         <div class="radio-events-header">
                             <span class="radio-events-title">Events</span>
-                            <div class="radio-events-tabs" id="radio-events-tabs">
-                                <span class="radio-events-tab active" data-scope="local">Local</span>
-                                <span class="radio-events-tab" data-scope="nation">Nation</span>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <div class="radio-events-tabs" id="radio-events-type-tabs">
+                                    <span class="radio-events-tab active" data-type="political">Politics</span>
+                                    <span class="radio-events-tab" data-type="corporate">Corporate</span>
+                                </div>
+                                <div style="width:1px;height:14px;background:var(--border-main);"></div>
+                                <div class="radio-events-tabs" id="radio-events-scope-tabs">
+                                    <span class="radio-events-tab active" data-scope="nation">Nation</span>
+                                    <span class="radio-events-tab" data-scope="world">World</span>
+                                </div>
                             </div>
                         </div>
                         <div class="radio-events-scroll" id="radio-events-scroll">
@@ -1193,30 +1200,51 @@ function renderTuneInView() {
 // ════════════════════════ EVENTS PANEL ════════════════════════
 
 let _radioEvents = [];
-let _radioEventScope = 'local';
+let _radioEventScope = 'nation'; // 'nation' or 'world'
+let _radioEventType = 'political'; // 'political' or 'corporate'
+let _radioAllNations = []; // cached for flag display
 
 async function loadRadioEvents() {
     const currentTick = _state.shard?.current_tick || 0;
     const lookback = Math.max(1, currentTick - 48);
 
-    const { data } = await _supabase
-        .from('event_log')
-        .select('id, nation_id, event_name, category, fired_at_tick, description_chosen')
-        .gte('fired_at_tick', lookback)
-        .order('fired_at_tick', { ascending: false })
-        .limit(80);
+    const [evResult, nationsResult] = await Promise.all([
+        _supabase.from('event_log')
+            .select('id, nation_id, event_name, category, fired_at_tick, description_chosen')
+            .gte('fired_at_tick', lookback)
+            .order('fired_at_tick', { ascending: false })
+            .limit(100),
+        _radioAllNations.length === 0
+            ? _supabase.from('nations').select('id, name, flag_url').order('name')
+            : { data: _radioAllNations },
+    ]);
 
-    _radioEvents = data || [];
+    _radioEvents = evResult.data || [];
+    if (nationsResult.data) _radioAllNations = nationsResult.data;
     renderRadioEvents();
 
-    const tabContainer = document.getElementById('radio-events-tabs');
-    if (tabContainer && !tabContainer._wired) {
-        tabContainer._wired = true;
-        tabContainer.addEventListener('click', (e) => {
+    // Wire type tabs (Politics/Corporate)
+    const typeContainer = document.getElementById('radio-events-type-tabs');
+    if (typeContainer && !typeContainer._wired) {
+        typeContainer._wired = true;
+        typeContainer.addEventListener('click', (e) => {
             const tab = e.target.closest('.radio-events-tab');
-            if (!tab) return;
+            if (!tab || !tab.dataset.type) return;
+            _radioEventType = tab.dataset.type;
+            typeContainer.querySelectorAll('.radio-events-tab').forEach(t => t.classList.toggle('active', t.dataset.type === _radioEventType));
+            renderRadioEvents();
+        });
+    }
+
+    // Wire scope tabs (Nation/World)
+    const scopeContainer = document.getElementById('radio-events-scope-tabs');
+    if (scopeContainer && !scopeContainer._wired) {
+        scopeContainer._wired = true;
+        scopeContainer.addEventListener('click', (e) => {
+            const tab = e.target.closest('.radio-events-tab');
+            if (!tab || !tab.dataset.scope) return;
             _radioEventScope = tab.dataset.scope;
-            tabContainer.querySelectorAll('.radio-events-tab').forEach(t => t.classList.toggle('active', t.dataset.scope === _radioEventScope));
+            scopeContainer.querySelectorAll('.radio-events-tab').forEach(t => t.classList.toggle('active', t.dataset.scope === _radioEventScope));
             renderRadioEvents();
         });
     }
@@ -1227,8 +1255,20 @@ function renderRadioEvents() {
     if (!scroll) return;
 
     const nationId = _state.nation?.id;
+    const POLITICAL_CATS = new Set(['government', 'political', 'crisis', 'diplomatic', 'military']);
+    const CORPORATE_CATS = new Set(['corporate', 'trade', 'economic']);
+
     let events = _radioEvents;
-    if (_radioEventScope === 'local' && nationId) {
+
+    // Filter by type (political vs corporate)
+    if (_radioEventType === 'corporate') {
+        events = events.filter(e => CORPORATE_CATS.has(e.category));
+    } else {
+        events = events.filter(e => POLITICAL_CATS.has(e.category) || !CORPORATE_CATS.has(e.category));
+    }
+
+    // Filter by scope (nation vs world)
+    if (_radioEventScope === 'nation' && nationId) {
         events = events.filter(e => e.nation_id === nationId);
     }
 
@@ -1244,6 +1284,8 @@ function renderRadioEvents() {
         trade: { color: '#5aaa8a', bg: 'rgba(90,170,138,0.06)', border: 'rgba(90,170,138,0.2)' },
         diplomatic: { color: '#5a8aaa', bg: 'rgba(90,138,170,0.06)', border: 'rgba(90,138,170,0.2)' },
         military: { color: '#c84', bg: 'rgba(204,136,68,0.06)', border: 'rgba(204,136,68,0.2)' },
+        corporate: { color: '#5aaa8a', bg: 'rgba(90,170,138,0.06)', border: 'rgba(90,170,138,0.2)' },
+        economic: { color: '#c8a832', bg: 'rgba(200,168,50,0.06)', border: 'rgba(200,168,50,0.2)' },
     };
 
     scroll.innerHTML = events.map(ev => {
@@ -1251,10 +1293,29 @@ function renderRadioEvents() {
         const cs = CAT_COLORS[cat] || CAT_COLORS.government;
         const desc = ev.description_chosen || ev.event_name || '';
         const truncDesc = desc.length > 100 ? desc.slice(0, 97) + '...' : desc;
-        return `<div style="padding:6px 12px;border-bottom:1px solid var(--border-main);display:flex;gap:8px;align-items:flex-start;">
-            <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);flex-shrink:0;width:24px;">${ev.fired_at_tick}</span>
-            <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:1px 5px;color:${cs.color};background:${cs.bg};border:1px solid ${cs.border};flex-shrink:0;text-transform:uppercase;">${esc(cat)}</span>
-            <span style="font-size:11px;color:var(--text-secondary);line-height:1.4;flex:1;">${esc(truncDesc)}</span>
+
+        // Show nation flag+name on World scope
+        let nationHtml = '';
+        if (_radioEventScope === 'world') {
+            const nation = _radioAllNations.find(n => n.id === ev.nation_id);
+            if (nation) {
+                const flagUrl = nation.flag_url || `assets/flags/${nation.name}.png`;
+                nationHtml = `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;">
+                    <img src="${flagUrl}" style="width:16px;height:11px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'" alt="">
+                    <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${esc(nation.name)}</span>
+                </div>`;
+            }
+        }
+
+        return `<div style="padding:8px 14px;border-bottom:1px solid var(--border-main);">
+            <div style="display:flex;gap:8px;align-items:flex-start;">
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);flex-shrink:0;width:26px;">${ev.fired_at_tick}</span>
+                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:1px 5px;color:${cs.color};background:${cs.bg};border:1px solid ${cs.border};flex-shrink:0;text-transform:uppercase;">${esc(cat)}</span>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:12px;color:var(--text-secondary);line-height:1.4;">${esc(truncDesc)}</div>
+                    ${nationHtml}
+                </div>
+            </div>
         </div>`;
     }).join('');
 }
