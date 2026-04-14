@@ -163,6 +163,12 @@ body {
     flex-direction: column;
     overflow: hidden;
 }
+/* All direct children after the top bar should be scrollable by default */
+body > *:not(#top-bar):not(.home-subtabs):not(.pa-subtabs):not(.gov-subtabs):not(.diplo-subtabs):not(script):not(link):not(style) {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
 
 /* ===== SCROLLBARS ===== */
 ::-webkit-scrollbar       { width: 6px; height: 6px; }
