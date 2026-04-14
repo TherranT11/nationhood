@@ -40,11 +40,10 @@
     </div>
 </div>
 
-<!-- ELECTION panel (placeholder) -->
+<!-- ELECTION panel — coalition formation -->
 <div class="pa-panel" id="panel-election">
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100vh - 140px);text-align:center;color:var(--text-secondary);">
-        <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">UI 2.0 IS COMING</div>
-        <div style="font-size:0.85rem;color:var(--text-muted);">Please be patient while we roll this out.</div>
+    <div id="pa-election-root">
+        <div style="display:flex;align-items:center;justify-content:center;min-height:300px;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Loading...</div>
     </div>
 </div>
 
@@ -61,10 +60,12 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { initPartyActions } from './js/party-actions.js';
 import { initPartyOverview } from './js/party-overview.js';
+import { initCoalitionFormation, isFormationNeeded, renderFormationTab } from './js/coalition-formation.js';
 
 let _state = null;
 let _actionsInitialized = false;
 let _partiesInitialized = false;
+let _electionInitialized = false;
 
 function switchPanel(key) {
     document.querySelectorAll('.pa-subtab').forEach(t => t.classList.toggle('active', t.dataset.panel === key));
@@ -79,6 +80,10 @@ function switchPanel(key) {
         _partiesInitialized = true;
         initPartyOverview(_supabase, _state, 'pa-parties-root');
     }
+    if (key === 'election' && !_electionInitialized && _state) {
+        _electionInitialized = true;
+        renderFormationTab(document.getElementById('pa-election-root'));
+    }
 }
 
 document.getElementById('pa-subtabs').addEventListener('click', (e) => {
@@ -89,6 +94,21 @@ document.getElementById('pa-subtabs').addEventListener('click', (e) => {
 
 initPage('politics', async (state) => {
     _state = state;
+
+    // Check for coalition formation need (runs in parallel, non-blocking)
+    initCoalitionFormation(_supabase, state).then(({ needed }) => {
+        if (needed) {
+            // Add amber notification badge to Election tab AND Actions tab
+            const electionTab = document.querySelector('.pa-subtab[data-panel="election"]');
+            const actionsTab = document.querySelector('.pa-subtab[data-panel="actions"]');
+            if (electionTab && !electionTab.querySelector('.pa-subtab-badge')) {
+                electionTab.innerHTML += '<span class="pa-subtab-badge"></span>';
+            }
+            if (actionsTab && !actionsTab.querySelector('.pa-subtab-badge')) {
+                actionsTab.innerHTML += '<span class="pa-subtab-badge"></span>';
+            }
+        }
+    });
 
     const saved = sessionStorage.getItem('party_subtab');
     if (saved && saved !== 'actions') {
