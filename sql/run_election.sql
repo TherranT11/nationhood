@@ -133,12 +133,17 @@ BEGIN
         END LOOP;
     END IF;
 
-    -- ---- Calculate total votes ----
+    -- ---- Calculate total votes (capped at eligible voters) ----
     v_total_votes := 0;
     FOR v_party IN SELECT key, value::BIGINT AS votes FROM jsonb_each_text(v_tally)
     LOOP
         v_total_votes := v_total_votes + v_party.votes;
     END LOOP;
+
+    -- Safety: total votes can never exceed eligible voters
+    IF v_total_votes > v_eligible THEN
+        v_total_votes := v_eligible;
+    END IF;
 
     v_total_abstentions := GREATEST(0, v_eligible - v_total_votes);
 

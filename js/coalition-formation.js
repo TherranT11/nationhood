@@ -1,5 +1,10 @@
 // js/coalition-formation.js — Coalition Formation UI for the Election tab
-// Detects post-election state, shows formation banner, proposal list, and proposal creation.
+// Detects post-election state, shows formation banner, proposal list, proposal creation,
+// ministry assignment, and Form Government action.
+
+import { buildMinistryBaselines } from './game/stats.js';
+import { autoAppointPartyLeaderAsPM, getNationNames } from './game/political-actions.js';
+import { rolloverAdministration } from './game/elections.js';
 
 let _supabase = null;
 let _state = null;
@@ -13,6 +18,9 @@ let _lastElectionTick = null;
 let _currentTick = 0;
 let _proposalSelectedParties = [];
 let _submitting = false;
+let _expandedFormationId = null;  // which proposal card is expanded for ministry assignment
+let _ministryAssignments = {};    // { ministryKey: partyId }
+let _formingGovernment = false;
 
 function esc(str) {
     if (!str) return '';
@@ -188,12 +196,21 @@ export async function renderFormationTab(root) {
                 ? `<button class="cf-withdraw-btn" data-formation-id="${f.id}" data-action="withdraw">Withdraw Support</button>`
                 : '';
 
+            // Show ministry assignment when all coalition members have supported
+            const allSupported = f.supportCount >= f.coalitionSize;
+            const isExpanded = _expandedFormationId === f.id;
+            const isMyProposal = f.proposed_by === faction.id;
+            const showConfigBtn = allSupported && f.iAmInvited && !isExpanded;
+            const showConfig = allSupported && isExpanded;
+
             return `<div class="cf-proposal-card ${f.iAmSupporting ? 'supporting' : ''} ${!f.iAmInvited ? 'not-invited' : ''}">
                 <div class="cf-proposal-title">${esc(proposer?.faction_name || 'Unknown')} Coalition ${statusHtml}</div>
                 <div class="cf-proposal-seats">Seats: <span style="color:${meetsThreshold ? 'var(--green)' : 'var(--red)'};">${coalitionSeats}</span> (${coalitionPct}%) ${meetsThreshold ? '✓' : '— below threshold'}</div>
                 <div class="cf-proposal-chips">${chips}</div>
-                <div class="cf-proposal-support">Support: ${f.supportCount} / ${f.coalitionSize} coalition members</div>
+                <div class="cf-proposal-support">Support: ${f.supportCount} / ${f.coalitionSize} coalition members ${allSupported ? '<span style="color:var(--green);font-weight:700;"> — UNANIMOUS</span>' : ''}</div>
                 ${supportBtns}
+                ${showConfigBtn ? `<button class="cf-support-btn" data-formation-id="${f.id}" data-action="configure" style="margin-top:6px;background:var(--green);color:#000;border-color:var(--green);">Configure Government &amp; Assign Ministries</button>` : ''}
+                ${showConfig ? renderMinistryAssignment(f) : ''}
             </div>`;
         }).join('')}</div>
     ` : '';
@@ -235,6 +252,156 @@ export async function renderFormationTab(root) {
     // Bind events
     _proposalSelectedParties = [faction.id];
     bindFormationEvents(root);
+}
+
+// ════════════════════════ MINISTRY ASSIGNMENT ════════════════════════
+
+const MINISTRY_NAMES = {
+    prime_minister: 'Prime Minister',
+    interior: 'Interior', foreign: 'Foreign Affairs', defense: 'Defense',
+    finance: 'Finance', education: 'Education', healthcare: 'Healthcare',
+    labor: 'Labor', justice: 'Justice', trade: 'Trade',
+    energy: 'Energy', transportation: 'Transportation', security: 'Security',
+};
+const MINISTRY_KEYS = ['prime_minister', 'interior', 'foreign', 'defense', 'finance',
+    'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
+
+function renderMinistryAssignment(formation) {
+    const coalitionParties = (formation.party_ids || [])
+        .map(pid => _allParties.find(p => p.id === pid))
+        .filter(Boolean);
+    const isProposer = formation.proposed_by === _state.faction?.id;
+    const assignments = formation.ministry_assignments || {};
+
+    // Load existing assignments into local state
+    _ministryAssignments = { ...assignments };
+
+    let html = `<div style="padding:12px 16px;border-top:1px solid var(--border-main);background:var(--bg-card);">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--accent);margin-bottom:10px;">CONFIGURE GOVERNMENT</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Assign coalition parties to ministries. The Prime Minister's party will lead the government.</div>`;
+
+    for (const key of MINISTRY_KEYS) {
+        const label = MINISTRY_NAMES[key] || key;
+        const isPM = key === 'prime_minister';
+        const assignedId = _ministryAssignments[key];
+        const assignedParty = assignedId ? coalitionParties.find(p => p.id === assignedId) : null;
+
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
+            <span style="width:140px;font-family:var(--font-mono);font-size:10px;font-weight:${isPM ? '700' : '400'};color:${isPM ? 'var(--accent)' : 'var(--text-secondary)'};letter-spacing:0.5px;">${label}</span>`;
+
+        if (isProposer) {
+            html += `<select data-ministry="${key}" class="cf-ministry-select" style="flex:1;padding:4px 8px;font-family:var(--font-mono);font-size:10px;color:var(--text-bright);background:var(--bg-body);border:1px solid var(--border-main);outline:none;">
+                <option value="">— Select Party —</option>
+                ${coalitionParties.map(p => `<option value="${p.id}" ${assignedId === p.id ? 'selected' : ''}>${esc(p.faction_name)} (${p.seats || 0} seats)</option>`).join('')}
+            </select>`;
+        } else {
+            html += `<span style="flex:1;font-size:11px;color:${assignedParty ? 'var(--text-bright)' : 'var(--text-dim)'};">${assignedParty ? esc(assignedParty.faction_name) : '— Not assigned —'}</span>`;
+        }
+        html += '</div>';
+    }
+
+    // Form Government button (only for proposer, only if PM assigned)
+    if (isProposer) {
+        const pmAssigned = !!_ministryAssignments.prime_minister;
+        html += `<div style="margin-top:14px;display:flex;justify-content:flex-end;">
+            <button id="cf-form-gov-btn" ${!pmAssigned ? 'disabled' : ''} style="padding:10px 28px;font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:1.5px;color:${pmAssigned ? '#000' : 'var(--text-dim)'};background:${pmAssigned ? 'var(--green)' : 'var(--bg-body)'};border:1px solid ${pmAssigned ? 'var(--green)' : 'var(--border-main)'};cursor:${pmAssigned ? 'pointer' : 'not-allowed'};">FORM GOVERNMENT</button>
+        </div>`;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+async function handleFormGovernment(formation, root) {
+    if (_formingGovernment) return;
+    const pmPartyId = _ministryAssignments.prime_minister;
+    if (!pmPartyId) { alert('You must assign a Prime Minister first.'); return; }
+
+    _formingGovernment = true;
+    const btn = document.getElementById('cf-form-gov-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'FORMING...'; }
+
+    try {
+        const nation = _state.nation;
+        const nationId = nation.id;
+
+        // Save ministry assignments to the formation
+        const { error: assignErr } = await _supabase.from('government_formations').update({
+            ministry_assignments: _ministryAssignments,
+        }).eq('id', formation.id);
+        if (assignErr) throw new Error('Failed to save assignments: ' + assignErr.message);
+
+        // Try the atomic RPC first
+        try {
+            const baselines = buildMinistryBaselines ? buildMinistryBaselines(null, nation) : {};
+            const { data: rpcResult, error: rpcErr } = await _supabase.rpc('finalize_government_formation', {
+                p_formation_id: formation.id,
+                p_caller_faction_id: _state.faction.id,
+                p_ministry_baselines: baselines || {},
+            });
+            if (rpcErr) throw rpcErr;
+        } catch (rpcErr) {
+            console.warn('[Coalition] finalize_government_formation RPC failed, using fallback:', rpcErr.message);
+            // Fallback: manual formation steps
+            await formGovernmentFallback(formation);
+        }
+
+        // Auto-appoint PM's party leader
+        const pmFaction = _allParties.find(p => p.id === pmPartyId);
+        if (pmFaction) {
+            await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick);
+        }
+
+        _formationNeeded = false;
+        alert('Government formed successfully!');
+        await renderFormationTab(root);
+    } catch (err) {
+        console.error('[Coalition] Form government failed:', err);
+        alert('Failed to form government: ' + (err.message || err));
+    } finally {
+        _formingGovernment = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'FORM GOVERNMENT'; }
+    }
+}
+
+async function formGovernmentFallback(formation) {
+    const nationId = _state.nation.id;
+
+    // Cancel rival formations
+    await _supabase.from('government_formations').update({ status: 'cancelled' })
+        .eq('nation_id', nationId).eq('status', 'active').neq('id', formation.id);
+
+    // Mark this formation as formed
+    const { error: formErr } = await _supabase.from('government_formations').update({
+        status: 'formed',
+        formed_at: new Date().toISOString(),
+    }).eq('id', formation.id);
+    if (formErr) throw formErr;
+
+    // Reset failed formation attempts
+    await _supabase.from('nations').update({ failed_formation_attempts: 0 }).eq('id', nationId);
+
+    // Create ministry records from assignments
+    for (const [key, partyId] of Object.entries(_ministryAssignments)) {
+        if (!partyId || key === 'prime_minister') continue;
+        const names = getNationNames(_state.nation?.name);
+        const firstName = names.first[Math.floor(Math.random() * names.first.length)];
+        const lastName = names.last[Math.floor(Math.random() * names.last.length)];
+        const age = 35 + Math.floor(Math.random() * 25);
+        const baselines = buildMinistryBaselines ? buildMinistryBaselines(key, _state.nation) : {};
+
+        await _supabase.from('ministries').upsert({
+            nation_id: nationId,
+            ministry_key: key,
+            party_id: partyId,
+            minister_first_name: firstName,
+            minister_last_name: lastName,
+            minister_age: age,
+            minister_approval: 50,
+            stat_baselines: baselines,
+            is_active: true,
+        }, { onConflict: 'nation_id,ministry_key' });
+    }
 }
 
 // ════════════════════════ DATA ════════════════════════
@@ -297,13 +464,56 @@ function bindFormationEvents(root) {
             return;
         }
 
-        // Support/withdraw
+        // Support/withdraw/configure
         const supportBtn = e.target.closest('.cf-support-btn, .cf-withdraw-btn');
         if (supportBtn) {
             const formationId = supportBtn.dataset.formationId;
             const action = supportBtn.dataset.action;
-            await toggleSupport(formationId, action === 'support', root);
+            if (action === 'configure') {
+                _expandedFormationId = formationId;
+                const f = _formations.find(x => x.id === formationId);
+                if (f) _ministryAssignments = { ...(f.ministry_assignments || {}) };
+                await renderFormationTab(root);
+            } else {
+                await toggleSupport(formationId, action === 'support', root);
+            }
             return;
+        }
+
+        // Form Government button
+        if (e.target.closest('#cf-form-gov-btn')) {
+            const f = _formations.find(x => x.id === _expandedFormationId);
+            if (f) await handleFormGovernment(f, root);
+            return;
+        }
+    });
+
+    // Ministry select change handler (delegated)
+    root.addEventListener('change', (e) => {
+        const sel = e.target.closest('.cf-ministry-select');
+        if (!sel) return;
+        const key = sel.dataset.ministry;
+        const val = sel.value || null;
+        _ministryAssignments[key] = val;
+
+        // Save assignments to DB in background
+        if (_expandedFormationId) {
+            _supabase.from('government_formations').update({
+                ministry_assignments: _ministryAssignments,
+            }).eq('id', _expandedFormationId).then(({ error }) => {
+                if (error) console.warn('[Coalition] Failed to save assignment:', error.message);
+            });
+        }
+
+        // Toggle form button state
+        const btn = document.getElementById('cf-form-gov-btn');
+        if (btn) {
+            const pmAssigned = !!_ministryAssignments.prime_minister;
+            btn.disabled = !pmAssigned;
+            btn.style.color = pmAssigned ? '#000' : 'var(--text-dim)';
+            btn.style.background = pmAssigned ? 'var(--green)' : 'var(--bg-body)';
+            btn.style.borderColor = pmAssigned ? 'var(--green)' : 'var(--border-main)';
+            btn.style.cursor = pmAssigned ? 'pointer' : 'not-allowed';
         }
     });
 }
