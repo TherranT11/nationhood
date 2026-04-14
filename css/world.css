@@ -32,24 +32,10 @@
     cursor: grab; user-select: none;
 }
 .world-map-panel:active { cursor: grabbing; }
-.world-map-panel img, .world-map-panel object, .world-map-panel svg {
+.world-map-panel img {
     display: block; transform-origin: 0 0;
     width: 100%; height: auto;
-    will-change: transform;
-}
-/* Make SVG nation paths clickable */
-.world-map-panel .land {
-    cursor: pointer;
-    transition: opacity 0.15s;
-}
-.world-map-panel .land:hover {
-    opacity: 0.75;
-    filter: brightness(1.2);
-}
-.world-map-panel .land.selected-nation {
-    stroke: #c8a64e;
-    stroke-width: 2px;
-    filter: brightness(1.1);
+    pointer-events: none; will-change: transform;
 }
 .world-map-controls {
     position: absolute; bottom: 12px; right: 12px;
