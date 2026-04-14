@@ -20,6 +20,33 @@
     border-bottom: 1px solid var(--bg-panel);
 }
 
+/* ── Shared panels ── */
+.tr-panel {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+}
+.tr-panel-header {
+    padding: 8px 12px; border-bottom: 1px solid var(--border-main);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.tr-panel-title {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 1.5px; color: var(--text-bright);
+}
+
+/* ── Commodity table ── */
+.tr-commodity-header {
+    display: flex; padding: 4px 12px;
+    background: var(--bg-card); border-bottom: 1px solid var(--border-main);
+    font-family: var(--font-mono); font-size: 6px; color: var(--text-dim);
+}
+.tr-commodity-row {
+    display: flex; padding: 4px 12px; align-items: center; cursor: pointer;
+    border-bottom: 1px solid rgba(42,42,36,0.3);
+    transition: background 0.1s;
+}
+.tr-commodity-row:hover { background: rgba(255,255,255,0.015); }
+.tr-commodity-row:last-child { border-bottom: none; }
+
 /* ── Responsive ── */
 @media (max-width: 1200px) {
     #trade-left { width: 100% !important; }
