@@ -1007,30 +1007,36 @@ export async function refreshAP(factionId) {
     try {
         const { data, error } = await _supabase
             .from('factions')
-            .select('action_points')
+            .select('action_points, party_funds')
             .eq('id', factionId)
             .single();
         if (error || !data) return;
-        const ap = data.action_points ?? 0;
 
-        // Update topbar — preserve the AP ledger dropdown
+        // Update topbar with party funds (not AP)
         const apEl = document.getElementById('topbar-ap');
-        if (apEl) renderApDisplay(apEl, ap);
+        if (apEl) {
+            const funds = data.party_funds ?? 0;
+            const fundsStr = funds >= 1000000 ? '$' + (funds / 1000000).toFixed(1) + 'M'
+                : funds >= 1000 ? '$' + Math.round(funds / 1000) + 'k'
+                : '$' + funds;
+            apEl.innerHTML = '<span class="topbar-ap__label">CASH</span><span class="topbar-ap__count" style="font-size:13px;color:var(--accent);margin-left:4px;">' + fundsStr + '</span>';
+        }
 
-        // Sync session cache so page navigations show correct AP
+        // Sync session cache
         try {
             const cached = sessionStorage.getItem(STATE_KEY);
             if (cached) {
                 const state = JSON.parse(cached);
                 if (state.faction) {
-                    state.faction.action_points = ap;
+                    state.faction.action_points = data.action_points ?? 0;
+                    state.faction.party_funds = data.party_funds ?? 0;
                     state.timestamp = Date.now();
                     sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
                 }
             }
         } catch (e) { /* non-blocking */ }
 
-        return ap;
+        return data.action_points ?? 0;
     } catch (e) { console.warn('[refreshAP] Failed:', e); }
 }
 
