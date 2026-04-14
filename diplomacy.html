@@ -1729,14 +1729,13 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
         </div>
     </div>`;
 
-    // ── LEADER ──
+    // ── HEAD OF GOVERNMENT ──
     if (gov.leader) {
-        const partyTag = gov.leaderParty
-            ? ` <span style="font-family:var(--font-mono);font-size:8px;color:${gov.leaderParty.party_color || 'var(--text-dim)'};">[${escapeHtml(gov.leaderParty.abbreviation || gov.leaderParty.faction_name)}]</span>`
-            : '';
-        html += `<div style="margin:4px 0 2px;">
-            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em;">${escapeHtml(gov.leader.title)}</div>
-            <div style="font-size:11px;font-weight:600;color:var(--text-bright);">${escapeHtml(gov.leader.name)}${partyTag}</div>
+        const partyAbbr = gov.leaderParty?.abbreviation || gov.leaderParty?.faction_name || '';
+        const partyColor = gov.leaderParty?.party_color || 'var(--text-dim)';
+        html += `<div style="margin:6px 0 4px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);border-left:3px solid ${partyColor};">
+            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px;">${escapeHtml(gov.leader.title)}</div>
+            <div style="font-size:14px;font-weight:700;color:var(--text-bright);">${escapeHtml(gov.leader.name)} <span style="font-family:var(--font-mono);font-size:11px;color:${partyColor};font-weight:700;">${partyAbbr ? '[' + escapeHtml(partyAbbr) + ']' : ''}</span></div>
         </div>`;
     }
 
