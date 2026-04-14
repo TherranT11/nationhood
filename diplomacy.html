@@ -402,7 +402,9 @@ function renderTradeEconomy() {
             const impDem = Number(flow.import_demand) || 0;
             const expVol = Number(flow.export_volume) || 0;
             const impVol = Number(flow.import_volume) || 0;
-            const unmetDemand = Math.max(0, impDem - impVol);
+            // Unmet demand = demand not covered by production + imports
+            // (import_demand is theoretical; domestic production may already cover it)
+            const unmetDemand = Math.max(0, impDem - expCap - impVol);
 
             // Unit formatting
             const unitProd = formatSectorVolume(expCap, c.key);
@@ -446,6 +448,8 @@ function renderTradeEconomy() {
                         <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${fmtBudgetCurrency(p.trade_volume)}${pUnit ? ' <span style="font-size:9px;">(' + pUnit + ')</span>' : ''}</span>
                     </div>`;
                 }
+            } else if (impVol > 0) {
+                html += `<div style="font-size:11px;color:var(--text-dim);font-style:italic;padding-left:12px;">Distributed across multiple trading partners</div>`;
             } else {
                 html += `<div style="font-size:11px;color:var(--text-dim);font-style:italic;padding-left:12px;">No imports</div>`;
             }
@@ -472,6 +476,8 @@ function renderTradeEconomy() {
                         <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${fmtBudgetCurrency(p.trade_volume)}${pUnit ? ' <span style="font-size:9px;">(' + pUnit + ')</span>' : ''}</span>
                     </div>`;
                 }
+            } else if (expVol > 0) {
+                html += `<div style="font-size:11px;color:var(--text-dim);font-style:italic;padding-left:12px;">Distributed across multiple trading partners</div>`;
             } else {
                 html += `<div style="font-size:11px;color:var(--text-dim);font-style:italic;padding-left:12px;">No exports</div>`;
             }
