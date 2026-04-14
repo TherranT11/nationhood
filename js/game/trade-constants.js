@@ -1100,7 +1100,8 @@ export function calculateImportDemand(nation, sector, opts) {
 
     // ── FUEL & ENERGY ──
     // Demand: population + manufacturing + urbanization + transport needs.
-    // Domestic offset: oil/gas + energy generation (max 70%).
+    // Domestic offset: oil/gas + energy generation. Petro-states (oil >= 70)
+    // can cover up to 95% of domestic demand; others cap at 70%.
     if (sector.key === 'fuel_energy') {
         var manufNorm = (Number(nation.manufacturing_output) || 0) / SN;
         var urbanNorm = (Number(nation.urbanization) || 0) / SN;
@@ -1111,7 +1112,9 @@ export function calculateImportDemand(nation, sector, opts) {
 
         var oilGas = (Number(nation.oil_and_gas) || 0) / 100;
         var energyGen = (Number(nation.energy_generation) || 0) / 100;
-        domesticCoverage = Math.min(0.70, (oilGas + energyGen) / 2);
+        // Petro-states scale the cap: oil >= 70 → up to 95% coverage
+        var coverageCap = oilGas >= 0.7 ? 0.70 + (oilGas - 0.7) * 0.833 : 0.70;
+        domesticCoverage = Math.min(coverageCap, (oilGas + energyGen) / 2);
     }
 
     // ── MINERALS & RAW MATERIALS ──
