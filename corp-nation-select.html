@@ -421,6 +421,10 @@ body {
       <div class="continent-tab__name">Meridian</div>
       <div class="continent-tab__desc">The old world — diverse nations, ancient traditions, kingdoms and republics.</div>
     </div>
+    <div class="continent-tab" data-continent="Al-Makir" onclick="switchContinent('Al-Makir')">
+      <div class="continent-tab__name">Al-Makir</div>
+      <div class="continent-tab__desc">Desert kingdoms — oil wealth, ancient monarchies, and tribal alliances.</div>
+    </div>
   </div>
 
   <div class="nations-grid" id="nations-grid"></div>
@@ -469,6 +473,7 @@ const NATION_CULTURE = {
     'Flandis': 'A nation inspired by Dutch culture and language.',
     'Vostia': 'A nation inspired by Serbian/Montenegrin culture and language.',
     'Sierramar': 'A small Caribbean island democracy with a young, religious population and a service-driven economy. This nation is analogous to Puerto Rico with a Spanish theme.',
+    'Hajjara': 'A vast desert monarchy rich in oil and gas, governed by an absolute king. Inspired by Arabic culture, with deep traditions and a young, growing population.',
 };
 
 let currentUser = null;

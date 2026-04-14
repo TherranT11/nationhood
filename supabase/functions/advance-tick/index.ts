@@ -32510,6 +32510,26 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Passive income failed for ${nation.name} (non-fatal):`, incomeErr);
         }
 
+        // Absolute Monarchy: legitimacy decay/growth based on seat concentration
+        if ((nation.government_type || '').toLowerCase().includes('monarchy') && nation.monarch_faction_id) {
+            try {
+                const { data: monarchFaction } = await supabase.from('factions').select('seats').eq('id', nation.monarch_faction_id).single();
+                const monarchSeats = monarchFaction?.seats || 0;
+                const totalNationSeats = nation.total_seats || 100;
+                const seatPct = totalNationSeats > 0 ? monarchSeats / totalNationSeats : 1;
+                const currentLeg = Number(nation.legitimacy) || 50;
+                let legChange = 0;
+                if (seatPct > 0.7) legChange = -1;
+                else if (seatPct < 0.5) legChange = 0.5;
+                if (legChange !== 0) {
+                    const newLeg = Math.max(0, Math.min(100, currentLeg + legChange));
+                    await supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
+                }
+            } catch (legErr) {
+                console.error(`[advanceTick] Monarchy legitimacy check failed for ${nation.name} (non-fatal):`, legErr);
+            }
+        }
+
         // Timed momentum effects (e.g. State Media Control +2 momentum/tick for governing parties)
         try {
             const effects = Array.isArray(nation.timed_momentum_effects) ? nation.timed_momentum_effects : [];
