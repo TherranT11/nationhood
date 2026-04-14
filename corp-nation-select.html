@@ -830,6 +830,9 @@ async function confirmNation() {
             corp_general_workforce: 375,
             corp_skilled_workforce: 100,
             corp_innovative_workforce: 25,
+            corp_reputation: corpSetup.subsector === 'Megaprojects' ? 85
+                : corpSetup.subsector === 'Industrial Construction' ? 50
+                : 65,
             abandoned_at: null,
         };
 
