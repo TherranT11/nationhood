@@ -236,7 +236,7 @@ function renderPartyOverview(container) {
     const o = _overview;
     const faction = o.myFaction;
     const nation = _state.nation;
-    const partyColor = faction?.color || '#c8a832';
+    const partyColor = faction?.party_color || faction?.color || '#c8a832';
     const currentTick = _state.shard?.current_tick || 0;
 
     // Init visible parties for legend
