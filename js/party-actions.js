@@ -61,7 +61,7 @@ const LEADER_ACTIONS = [
     {
         id: 'fundraise',
         name: 'Fundraise',
-        desc: 'Raise party funds proportional to your seat count. Each use yields less money and costs more momentum. Cannot fundraise at 0 momentum.',
+        desc: 'Raise party funds proportional to your seat count. Each use yields less money and costs more momentum. Momentum cannot drop below 1.',
         cost: 'MOMENTUM',
         costColor: '#c84',
         moneyCost: 0,
@@ -902,7 +902,7 @@ function openRallyModal(root) {
                 const rallyResult = getRallyResult(dieRoll, tier.bonus);
 
                 const newFunds = currentFunds - tier.cost;
-                const newMomentum = Math.max(0, (_state.faction.momentum || 0) + rallyResult.momentum);
+                const newMomentum = Math.max(1, (_state.faction.momentum || 0) + rallyResult.momentum);
 
                 await _supabase.from('factions').update({
                     party_funds: newFunds,
@@ -1179,7 +1179,7 @@ function openRebrandModal(root) {
                         <div style="padding:8px;background:rgba(204,85,85,0.04);border:1px solid rgba(204,85,85,0.12);margin-top:auto;">
                             <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--text-dim);margin-bottom:4px;">COST SUMMARY</div>
                             <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Party Funds</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c84;">$150k</span></div>
-                            <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Momentum</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c55;">-10 (${momentum} → ${Math.max(0, momentum - 10)})</span></div>
+                            <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Momentum</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c55;">-10 (${momentum} → ${Math.max(1, momentum - 10)})</span></div>
                             <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Approval</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c55;">-3 all blocs</span></div>
                             <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Cooldown</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#d44a4a;">120 ticks</span></div>
                             <div style="display:flex;justify-content:space-between;padding:1px 0;border-top:1px solid var(--border-main);margin-top:3px;padding-top:3px;"><span style="font-size:9px;color:#5c5;">Gain</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#5c5;">"Fresh Start" modifier</span></div>
@@ -1360,7 +1360,7 @@ async function executeRebrand(overlay, root, handler) {
 
         // 3. Deduct funds, momentum, and update faction identity
         const newFunds = currentFunds - rebrandCost;
-        const newMomentum = Math.max(0, (faction.momentum || 0) - 10);
+        const newMomentum = Math.max(1, (faction.momentum || 0) - 10);
         await _supabase.from('factions').update({
             party_funds: newFunds,
             momentum: newMomentum,
@@ -1930,7 +1930,7 @@ async function executeFundraise(root) {
 
     try {
         const tick = _state.shard?.current_tick || 0;
-        const newMomentum = Math.max(0, momentum - fi.momCost);
+        const newMomentum = Math.max(1, momentum - fi.momCost);
         const newFunds = (faction.party_funds || 0) + fi.raised;
 
         // Update faction: deduct momentum, add funds
