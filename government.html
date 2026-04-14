@@ -1190,10 +1190,154 @@ function renderAdminTimeline() {
     if (!el) return;
     el.innerHTML = '<div class="ga-panel"><div class="ga-panel-header"><span class="ga-panel-title">EXECUTIVE TIMELINE</span></div><div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Phase 5</div></div>';
 }
+let _expandedMinistry = null;
+
 function renderAdminCabinet() {
     const el = document.getElementById('gov-admin-cabinet');
-    if (!el) return;
-    el.innerHTML = '<div class="ga-panel"><div class="ga-panel-header"><span class="ga-panel-title">CABINET</span></div><div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Phase 3</div></div>';
+    if (!el || !_govData) return;
+    const { ministries, coalition, parties } = _govData;
+    const nation = currentNation;
+    const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+
+    // Build party lookup from coalition + all parties
+    const partyMap = {};
+    for (const p of parties) partyMap[p.id] = p;
+
+    // Count ministries held per party
+    const partyMinistryCount = {};
+    for (const m of ministries) {
+        if (m.party_id) partyMinistryCount[m.party_id] = (partyMinistryCount[m.party_id] || 0) + 1;
+    }
+
+    // Filter to cabinet ministries (exclude prime_minister — shown in banner)
+    const cabinetMinistries = ministries.filter(m => m.ministry_key !== 'prime_minister' && MINISTRY_KEYS_CABINET.includes(m.ministry_key));
+    cabinetMinistries.sort((a, b) => {
+        const order = MINISTRY_KEYS_CABINET.indexOf(a.ministry_key) - MINISTRY_KEYS_CABINET.indexOf(b.ministry_key);
+        return order;
+    });
+
+    // Party legend for header
+    const coalitionPartyIds = coalition?.party_ids || [];
+    const coalParties = coalitionPartyIds.map(id => partyMap[id]).filter(Boolean);
+    const legendHtml = coalParties.map(p => {
+        const count = partyMinistryCount[p.id] || 0;
+        return `<div style="display:flex;align-items:center;gap:3px;">
+            <div style="width:6px;height:6px;background:${p.party_color || '#888'};"></div>
+            <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(p.abbreviation || p.faction_name)} holds ${count}</span>
+        </div>`;
+    }).join('');
+
+    let html = `<div class="ga-panel">
+        <div class="ga-panel-header">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span class="ga-panel-title">CABINET</span>
+                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${cabinetMinistries.length} ministries</span>
+            </div>
+            <div style="display:flex;gap:8px;">${legendHtml}</div>
+        </div>
+    </div>`;
+
+    // 2-column grid of ministry cards
+    html += `<div class="ga-cabinet-grid">`;
+
+    for (const m of cabinetMinistries) {
+        const party = partyMap[m.party_id];
+        const pColor = party?.party_color || m.factions?.party_color || '#888';
+        const pAbbr = party?.abbreviation || m.factions?.abbreviation || '';
+        const pName = party?.faction_name || m.factions?.faction_name || '';
+        const isFilled = m.minister_first_name && m.minister_last_name;
+        const ministerName = isFilled ? `${m.minister_first_name} ${m.minister_last_name}` : 'Vacant';
+        const initials = isFilled ? `${m.minister_first_name[0]}${m.minister_last_name[0]}` : '?';
+        const approval = Math.round(m.minister_approval ?? NEW_MINISTER_APPROVAL);
+        const approvalColor = approval >= 50 ? 'var(--green)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
+        const isExpanded = _expandedMinistry === m.ministry_key;
+
+        // Performance: compute net delta from stat baselines
+        const stats = MINISTRY_TO_STATS[m.ministry_key] || [];
+        const baselines = m.stat_baselines || {};
+        let perfSum = 0, perfCount = 0;
+        for (const statKey of stats) {
+            const sign = statDirectionSign(statKey);
+            if (sign === 0) continue;
+            const baseline = baselines[statKey];
+            if (baseline == null) continue;
+            const current = Number(nation?.[statKey] ?? 50);
+            const delta = (current - baseline) * sign;
+            perfSum += delta;
+            perfCount++;
+        }
+        const performance = perfCount > 0 ? perfSum / perfCount : 0;
+        const perfColor = performance >= 0 ? 'var(--green)' : performance > -3 ? 'var(--amber)' : 'var(--red)';
+
+        // Count available actions for this ministry
+        const actionConfig = MINISTRY_ACTIONS[m.ministry_key];
+        const actionCount = actionConfig?.actions?.filter(a => !a.comingSoon)?.length || 0;
+
+        // Scandal detection (from campaign_actions — simplified: check if ministry has a scandal note)
+        const hasScandalBadge = false; // Phase 5 timeline will surface these
+
+        html += `<div class="ga-ministry-card${isExpanded ? ' expanded' : ''}" data-ministry="${m.ministry_key}" style="border-left:3px solid ${pColor};">`;
+
+        // Ministry header
+        html += `<div class="ga-ministry-header">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:${pColor};display:inline-block;"></span>
+                <span class="ga-ministry-name">${escapeHtml((MINISTRY_NAMES[m.ministry_key] || m.ministry_key).replace('Ministry of ', '').replace('Ministry of the ', '').toUpperCase())}</span>
+            </div>
+        </div>`;
+
+        // Minister info
+        html += `<div class="ga-ministry-body">`;
+        if (isFilled) {
+            html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <div class="ga-leader-avatar" style="width:28px;height:28px;font-size:9px;background:${pColor}15;border-color:${pColor}33;color:${pColor};">${escapeHtml(initials)}</div>
+                <div style="flex:1;">
+                    <div style="font-size:11px;font-weight:700;color:var(--text-bright);">${escapeHtml(ministerName)}</div>
+                    <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Age ${m.minister_age || '?'} · <span style="color:${pColor};">${escapeHtml(pAbbr)}</span> · Appointed T${m.appointed_tick ?? '?'}</div>
+                </div>
+            </div>`;
+
+            // Stats row
+            html += `<div style="display:flex;gap:10px;margin-bottom:4px;">
+                <div>
+                    <div class="ga-stat-label">APPROVAL</div>
+                    <div class="ga-stat-value" style="color:${approvalColor};">${approval}%</div>
+                </div>
+                <div>
+                    <div class="ga-stat-label">PERFORMANCE</div>
+                    <div class="ga-stat-value" style="color:${perfColor};">${performance > 0 ? '+' : ''}${performance.toFixed(1)}</div>
+                </div>
+            </div>`;
+        } else {
+            html += `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;padding:8px 0;">Vacant — awaiting appointment</div>`;
+        }
+
+        // Expanded content placeholder (Phase 4 will fill this)
+        if (isExpanded) {
+            html += `<div id="ga-ministry-expanded-${m.ministry_key}" class="ga-ministry-expanded">Phase 4 — actions will render here</div>`;
+        }
+
+        // Expand hint
+        if (!isExpanded && actionCount > 0) {
+            html += `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">&#9656; ${actionCount} action${actionCount !== 1 ? 's' : ''} available · click to expand</div>`;
+        }
+
+        html += `</div>`; // close body
+        html += `</div>`; // close card
+    }
+
+    html += `</div>`; // close grid
+
+    el.innerHTML = html;
+
+    // Click handler for expand/collapse
+    el.addEventListener('click', (e) => {
+        const card = e.target.closest('.ga-ministry-card');
+        if (!card) return;
+        const key = card.dataset.ministry;
+        _expandedMinistry = _expandedMinistry === key ? null : key;
+        renderAdminCabinet();
+    });
 }
 function renderAdminChat() {
     const el = document.getElementById('gov-admin-chat');

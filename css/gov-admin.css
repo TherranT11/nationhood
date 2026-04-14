@@ -100,6 +100,37 @@
     border: 1px solid rgba(204,85,85,0.15);
 }
 
+/* ── Cabinet grid ── */
+.ga-cabinet-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px;
+}
+.ga-ministry-card {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    cursor: pointer; transition: border-color 0.15s;
+}
+.ga-ministry-card:hover { border-color: var(--border-bright, #444); }
+.ga-ministry-card.expanded { border-color: var(--accent); cursor: default; }
+.ga-ministry-header {
+    padding: 8px 12px; border-bottom: 1px solid var(--border-main);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.ga-ministry-name {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 1px; color: var(--text-bright);
+}
+.ga-ministry-body { padding: 8px 12px; }
+.ga-ministry-expanded {
+    margin-top: 6px; padding-top: 6px;
+    border-top: 1px solid var(--border-main);
+}
+.ga-stat-label {
+    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
+    color: var(--text-dim); letter-spacing: 0.5px;
+}
+.ga-stat-value {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+}
+
 /* ── Responsive ── */
 @media (max-width: 1200px) {
     #gov-admin-timeline { width: 100% !important; }
@@ -107,6 +138,7 @@
     #gov-content > div > div[style*="display:flex"] {
         flex-direction: column !important;
     }
+    .ga-cabinet-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
     #gov-page { padding: 8px; }
