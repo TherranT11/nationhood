@@ -295,7 +295,7 @@ function renderPage(root) {
                     </div>
                     <div class="pa-header-stat">
                         <div class="pa-header-stat-label">Momentum</div>
-                        <div class="pa-header-stat-value" style="color:${momentum > 0 ? 'var(--text-bright)' : 'var(--red)'};">${Math.round(momentum)}</div>
+                        <div class="pa-header-stat-value" style="color:${momentum > 0 ? 'var(--text-bright)' : 'var(--red)'};">${Number(momentum).toFixed(1)}</div>
                     </div>
                     <div class="pa-header-stat">
                         <div class="pa-header-stat-label">${_isMonarchy ? 'Legitimacy' : 'Governance'}</div>
@@ -628,7 +628,7 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             // Check if player can afford the momentum cost (must stay above floor of 1)
             if (momentum - fi.momCost < 1) {
                 isDisabled = true;
-                extraInfo += `<div style="margin-top:3px;font-family:var(--font-mono);font-size:9px;color:var(--red);">Not enough momentum (need ${fi.momCost}, have ${Math.round(momentum)})</div>`;
+                extraInfo += `<div style="margin-top:3px;font-family:var(--font-mono);font-size:9px;color:var(--red);">Not enough momentum (need ${fi.momCost}, have ${Number(momentum).toFixed(1)})</div>`;
             }
         }
 
