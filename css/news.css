@@ -1947,3 +1947,112 @@
 .nws-pub-continental .nws-like-count {
     color: rgba(255, 255, 255, 0.4);
 }
+
+/* ═══════════════════════════════════════
+   AL-SAHWA — Islamic-inspired newspaper
+   ═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
+
+.nws-top-ribbon--alsahwa { background: #141310; }
+.nws-pub-alsahwa { background: #f8f7f3; color: #2a2824; }
+.nws-pub-alsahwa .nws-nav { background: #fff; border-bottom: 1px solid #ede9df; }
+.nws-pub-alsahwa .nws-nav-item { color: #706a5e; }
+.nws-pub-alsahwa .nws-nav-item.active,
+.nws-pub-alsahwa .nws-nav-item:hover { color: #0a6e5c; }
+.nws-pub-alsahwa .nws-nav-item.active { border-bottom-color: #0a6e5c; }
+
+/* Al-Sahwa Masthead */
+.nws-alsahwa-masthead {
+    background: #04483a;
+    color: #fff;
+}
+.nws-alsahwa-geo-border {
+    height: 8px;
+    background: #0a6e5c;
+    position: relative;
+    overflow: hidden;
+}
+.nws-alsahwa-geo-border::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(90deg, transparent 0px, transparent 16px, #c8a24a 16px, #c8a24a 18px, transparent 18px, transparent 26px, #c8a24a 26px, #c8a24a 27px, transparent 27px, transparent 34px);
+    opacity: 0.4;
+}
+.nws-alsahwa-masthead-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.nws-alsahwa-brand {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+.nws-alsahwa-mark {
+    width: 48px; height: 48px;
+    position: relative; flex-shrink: 0;
+}
+.nws-alsahwa-mark-outer {
+    width: 48px; height: 48px;
+    border: 2px solid #c8a24a;
+    transform: rotate(45deg);
+    position: absolute; top: 0; left: 0;
+}
+.nws-alsahwa-mark-inner {
+    width: 30px; height: 30px;
+    border: 1.5px solid #c8a24a;
+    transform: rotate(45deg);
+    position: absolute; top: 9px; left: 9px;
+}
+.nws-alsahwa-mark-dot {
+    width: 8px; height: 8px;
+    background: #c8a24a;
+    border-radius: 50%;
+    position: absolute; top: 20px; left: 20px;
+}
+.nws-alsahwa-titles { display: flex; flex-direction: column; }
+.nws-alsahwa-arabic {
+    font-family: 'Noto Naskh Arabic', serif;
+    font-size: 28px; font-weight: 700;
+    color: #c8a24a; line-height: 1.1;
+}
+.nws-alsahwa-english {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 32px; font-weight: 700;
+    color: #fff; letter-spacing: 0.02em;
+    line-height: 1; margin-top: -2px;
+}
+.nws-alsahwa-subtitle {
+    font-size: 9.5px; font-weight: 500;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: rgba(255,255,255,0.4); margin-top: 3px;
+}
+.nws-alsahwa-right { text-align: right; }
+.nws-alsahwa-date {
+    font-size: 11px; color: rgba(255,255,255,0.45);
+}
+
+/* Al-Sahwa article styling */
+.nws-pub-alsahwa .nws-article-headline { color: #2a2824; }
+.nws-pub-alsahwa .nws-article-section { color: #0a6e5c; }
+.nws-pub-alsahwa .nws-article-body { color: #4a4540; }
+.nws-pub-alsahwa .nws-article-meta { color: #a8a090; }
+.nws-pub-alsahwa .nws-hero-section {
+    background: linear-gradient(135deg, #04483a 0%, #085a4a 50%, #0a6e5c 100%);
+}
+.nws-pub-alsahwa .nws-hero-headline { color: #fff; }
+.nws-pub-alsahwa .nws-hero-lede { color: rgba(255,255,255,0.6); }
+.nws-pub-alsahwa .nws-sidebar-section-title { color: #2a2824; border-bottom-color: #2a2824; }
+
+@media (max-width: 768px) {
+    .nws-alsahwa-arabic { font-size: 20px; }
+    .nws-alsahwa-english { font-size: 24px; }
+    .nws-alsahwa-mark { width: 36px; height: 36px; }
+    .nws-alsahwa-mark-outer { width: 36px; height: 36px; }
+    .nws-alsahwa-mark-inner { width: 22px; height: 22px; top: 7px; left: 7px; }
+    .nws-alsahwa-mark-dot { top: 14px; left: 14px; }
+}
