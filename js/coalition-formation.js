@@ -68,18 +68,11 @@ export async function initCoalitionFormation(supabase, state) {
     const election = electionResult.data;
     const hasFormedGov = !!coalitionResult.data;
 
-    // Check if active coalition exists (different from 'formed' — check for active status)
-    const { data: activeCoalition } = await supabase.from('government_formations')
-        .select('id').eq('nation_id', nation.id).eq('status', 'active').limit(1).maybeSingle();
-
     // Formation is needed if: a completed election exists and no government has been formed
-    console.log('[Coalition] Election:', election?.id, 'hasFormedGov:', hasFormedGov, 'parties:', _allParties.length, 'totalSeats:', _totalSeats);
-
     if (election && !hasFormedGov) {
         _formationNeeded = true;
         _electionId = election.id;
         _lastElectionTick = election.election_tick;
-        console.log('[Coalition] Formation needed — election:', _electionId, 'tick:', _lastElectionTick);
     } else {
         // Even without detection, still allow rendering the Election tab
         _formationNeeded = !hasFormedGov;
