@@ -101,6 +101,34 @@ export async function renderFormationTab(root) {
     if (!root) return;
 
     if (!_formationNeeded) {
+        // Check if government is formed but ministries are empty (repair scenario)
+        const nationId = _state.nation?.id;
+        if (nationId) {
+            const { count: vacantCount } = await _supabase.from('ministries')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
+
+            if (vacantCount && vacantCount >= 10) {
+                // Government formed but cabinet empty — load formation and offer repair
+                const { data: formedGov } = await _supabase.from('government_formations')
+                    .select('*').eq('nation_id', nationId).eq('status', 'formed')
+                    .order('formed_at', { ascending: false }).limit(1).maybeSingle();
+
+                if (formedGov && formedGov.ministry_assignments && Object.keys(formedGov.ministry_assignments).length > 0) {
+                    _ministryAssignments = formedGov.ministry_assignments;
+                    await createMinistriesFromAssignments(nationId);
+                    root.innerHTML = `<div class="cf-page">
+                        <div class="cf-no-formation">
+                            <div class="cf-no-icon">✓</div>
+                            <div class="cf-no-title">Government Formed — Cabinet Populated</div>
+                            <div class="cf-no-desc">Ministry assignments have been applied. Refresh the Government page to see your cabinet.</div>
+                        </div>
+                    </div>`;
+                    return;
+                }
+            }
+        }
+
         root.innerHTML = `<div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">✓</div>
@@ -336,6 +364,9 @@ async function handleFormGovernment(formation, root) {
     const pmPartyId = _ministryAssignments.prime_minister;
     if (!pmPartyId) { alert('You must assign a Prime Minister first.'); return; }
 
+    console.log('[Coalition] handleFormGovernment called. Assignments:', JSON.stringify(_ministryAssignments));
+    console.log('[Coalition] Formation:', formation.id, 'PM party:', pmPartyId);
+
     _formingGovernment = true;
     const btn = document.getElementById('cf-form-gov-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'FORMING...'; }
@@ -437,12 +468,9 @@ async function formGovernmentFallback(formation) {
 }
 
 async function createMinistriesFromAssignments(nationId) {
-    // Deactivate all existing ministries
-    const { error: deactErr } = await _supabase.from('ministries').update({ is_active: false })
-        .eq('nation_id', nationId).eq('is_active', true);
-    if (deactErr) console.warn('[Coalition] Failed to deactivate old ministries:', deactErr.message);
-
-    let created = 0;
+    // UPDATE existing ministry rows (they already exist with party_id=null).
+    // Don't insert — rows are pre-seeded per nation. Just populate them.
+    let updated = 0;
     for (const [key, partyId] of Object.entries(_ministryAssignments)) {
         if (!partyId) continue;
         const names = getNationNames(_state.nation?.name);
@@ -451,10 +479,7 @@ async function createMinistriesFromAssignments(nationId) {
         const age = 35 + Math.floor(Math.random() * 25);
         const baselines = buildMinistryBaselines ? buildMinistryBaselines(key, _state.nation) : {};
 
-        const { error: minErr } = await _supabase.from('ministries').insert({
-            nation_id: nationId,
-            ministry_key: key,
-            ministry_name: MINISTRY_FULL_NAMES[key] || key,
+        const { error: minErr } = await _supabase.from('ministries').update({
             party_id: partyId,
             minister_first_name: firstName,
             minister_last_name: lastName,
@@ -462,14 +487,15 @@ async function createMinistriesFromAssignments(nationId) {
             minister_approval: 50,
             stat_baselines: baselines,
             is_active: true,
-        });
+        }).eq('nation_id', nationId).eq('ministry_key', key);
+
         if (minErr) {
-            console.error(`[Coalition] FAILED to insert ministry ${key}:`, minErr.message);
+            console.error(`[Coalition] FAILED to update ministry ${key}:`, minErr.message);
         } else {
-            created++;
+            updated++;
         }
     }
-    console.log(`[Coalition] Created ${created} ministries for nation ${nationId}`);
+    console.log(`[Coalition] Updated ${updated} ministries for nation ${nationId}`);
 }
 
 // ════════════════════════ DATA ════════════════════════
