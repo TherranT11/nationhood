@@ -1,0 +1,9 @@
+/* ══════════════════════════════════════════════════════════════
+   GOVERNMENT PAGE — UI 2.0 Legislature Subtab
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Responsive ── */
+@media (max-width: 1200px) {
+    #leg-left { width: 100% !important; }
+    #leg-right { width: 100% !important; }
+}

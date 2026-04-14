@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/government.css">
     <link rel="stylesheet" href="css/gov-admin.css">
+    <link rel="stylesheet" href="css/gov-legislature.css">
 </head>
 <body>
 
@@ -1009,6 +1010,8 @@ function renderGovContent() {
 
     if (_govActiveSubtab === 'administrative') {
         renderAdministrationTab(content);
+    } else if (_govActiveSubtab === 'legislative') {
+        renderLegislatureTab(content);
     } else {
         const label = GOV_SUBTABS.find(t => t.id === _govActiveSubtab)?.label || _govActiveSubtab;
         content.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;text-align:center;color:var(--text-dim);">
@@ -1824,6 +1827,115 @@ function renderAdminActions() {
 
     html += `</div>`;
     el.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI 2.0 — LEGISLATURE TAB
+// ═══════════════════════════════════════════════════════════════
+
+let _legData = null;       // { bills, activeLaws, parties }
+let _legInitialized = false;
+let _legFilter = 'active'; // 'active' | 'resolved' | 'laws'
+let _legExpandedBill = null;
+
+function renderLegislatureTab(container) {
+    if (!_legData) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading legislature data...</div>';
+        if (!_legInitialized) {
+            _legInitialized = true;
+            loadLegislatureData().then(() => renderLegislatureTab(container));
+        }
+        return;
+    }
+
+    container.innerHTML = `<div style="display:flex;gap:8px;">
+        <div id="leg-left" style="width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;"></div>
+        <div id="leg-right" style="flex:1;display:flex;flex-direction:column;gap:6px;"></div>
+    </div>`;
+
+    renderParliamentPanel();
+    renderBillsList();
+}
+
+async function loadLegislatureData() {
+    if (!currentNation) return;
+    const nid = currentNation.id;
+
+    try {
+        const [committeeRes, floorRes, frozenRes, resolvedRes, lawsRes, partiesRes] = await Promise.all([
+            _supabase.from('bills')
+                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+                .eq('nation_id', nid).eq('status', 'committee'),
+            _supabase.from('bills')
+                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+                .eq('nation_id', nid).in('status', ['floor', 'voting', 'vetoed', 'referendum_pending', 'referendum_approved']),
+            _supabase.from('bills')
+                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*))')
+                .eq('nation_id', nid).eq('status', 'frozen'),
+            _supabase.from('bills')
+                .select('*, factions(faction_name, party_color, abbreviation)')
+                .eq('nation_id', nid).in('status', ['enacted', 'passed', 'failed', 'rejected'])
+                .order('passed_tick', { ascending: false }).limit(20),
+            _supabase.from('active_laws')
+                .select('*, policies(*)')
+                .eq('nation_id', nid),
+            _supabase.from('factions')
+                .select('id, faction_name, abbreviation, seats, party_color')
+                .eq('nation_id', nid).eq('faction_type', 'party')
+                .order('seats', { ascending: false }),
+        ]);
+
+        const committee = committeeRes.data || [];
+        const floor = floorRes.data || [];
+        const frozen = frozenRes.data || [];
+        const resolved = resolvedRes.data || [];
+        const activeLaws = lawsRes.data || [];
+        const parties = partiesRes.data || [];
+
+        _legData = {
+            committee,
+            floor,
+            frozen,
+            resolved,
+            activeLaws,
+            parties,
+            totalSeats: currentNation.total_seats || GAME_CONFIG.TOTAL_SEATS,
+            majority: Math.floor((currentNation.total_seats || GAME_CONFIG.TOTAL_SEATS) / 2) + 1,
+        };
+    } catch (err) {
+        console.error('[Legislature] loadLegislatureData failed:', err);
+        _legData = { committee: [], floor: [], frozen: [], resolved: [], activeLaws: [], parties: [], totalSeats: 120, majority: 61 };
+    }
+}
+
+// Stub renderers — Phase 2-5 will replace these
+function renderParliamentPanel() {
+    const el = document.getElementById('leg-left');
+    if (!el) return;
+    const { parties, totalSeats, majority } = _legData;
+    const govPartyIds = _govData?.coalition?.party_ids || [];
+    const govParties = parties.filter(p => govPartyIds.includes(p.id));
+    const oppParties = parties.filter(p => !govPartyIds.includes(p.id));
+    const govSeats = govParties.reduce((s, p) => s + (p.seats || 0), 0);
+
+    el.innerHTML = `<div class="ga-panel" style="padding:12px;">
+        <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:8px;">PARLIAMENT</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-bright);">${totalSeats} seats · Majority: ${majority} · Coalition: ${govSeats}</div>
+        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:4px;">Phase 2 — semicircle + party breakdown</div>
+    </div>`;
+}
+
+function renderBillsList() {
+    const el = document.getElementById('leg-right');
+    if (!el) return;
+    const { committee, floor, frozen } = _legData;
+    const totalActive = committee.length + floor.length + frozen.length;
+
+    el.innerHTML = `<div class="ga-panel" style="padding:12px;">
+        <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:8px;">BILLS & LAWS</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-bright);">${totalActive} active bills (${committee.length} committee, ${floor.length} floor, ${frozen.length} frozen)</div>
+        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:4px;">Phase 3 — bill cards with support bars</div>
+    </div>`;
 }
 
 async function loadGovData() {
