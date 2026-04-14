@@ -10,6 +10,12 @@ let _personalities = [];
 let _factionIdeology = null; // cached faction_ideology row for political station gating
 let _myGoodListens = new Set(); // broadcast IDs the current faction has good-listened
 let _expandedBroadcastId = null; // currently expanded broadcast in the feed
+let _tuneInMode = false; // true when Tune In view is active
+let _tuneInNations = []; // all nations for Tune In
+let _tuneInSelectedNationId = null; // selected nation in Tune In
+let _tuneInStations = []; // stations for selected nation
+let _tuneInSelectedStationId = null; // selected station in Tune In
+let _tuneInBroadcasts = []; // broadcasts for selected Tune In station
 
 // Station type config
 const STATION_TYPES = [
@@ -143,12 +149,13 @@ function renderRadioPage(root) {
                     <span class="radio-station-count">${stationCount} station${stationCount !== 1 ? 's' : ''}</span>
                 </div>
                 <div class="radio-header-actions">
-                    <button class="radio-btn radio-btn--outline" id="radio-broadcast-btn" style="display:none;">Start Broadcast</button>
+                    <button class="radio-btn radio-btn--outline" id="radio-tunein-btn">${_tuneInMode ? '&#9664; Back' : '&#128225; Tune In'}</button>
+                    <button class="radio-btn radio-btn--outline" id="radio-broadcast-btn" disabled title="Create a personality on a station first">Start Broadcast</button>
                     <button class="radio-btn radio-btn--primary" id="radio-create-btn">Create Station</button>
                 </div>
             </div>
 
-            ${stationCount === 0 ? renderEmptyState() : renderStationView()}
+            ${_tuneInMode ? renderTuneInView() : (stationCount === 0 ? renderEmptyState() : renderStationView())}
         </div>
 
         <!-- Create Station Modal -->
@@ -166,14 +173,24 @@ function renderRadioPage(root) {
     // Bind create button
     document.getElementById('radio-create-btn')?.addEventListener('click', openCreateModal);
 
-    // Bind station tabs
-    if (stationCount > 0) {
+    // Bind Tune In toggle
+    document.getElementById('radio-tunein-btn')?.addEventListener('click', () => {
+        _tuneInMode = !_tuneInMode;
+        if (_tuneInMode) openTuneIn();
+        else renderRadioPage(root);
+    });
+
+    // Bind station tabs (only in normal mode)
+    if (!_tuneInMode && stationCount > 0) {
         if (!_selectedStationId || !_stations.find(s => s.id === _selectedStationId)) {
             _selectedStationId = _stations[0].id;
         }
         bindStationTabs();
         selectStation(_selectedStationId);
     }
+
+    // Bind Tune In clicks (delegated)
+    if (_tuneInMode) bindTuneInListeners(root);
 
     // Bind modal
     bindCreateModal();
@@ -269,12 +286,13 @@ async function selectStation(stationId) {
     _myGoodListens = new Set((glResult.data || []).map(r => r.broadcast_id));
     _expandedBroadcastId = null;
 
-    // Show/hide Start Broadcast button based on whether user has a personality on this station
+    // Enable/disable Start Broadcast button based on whether user has a personality on this station
     const myPers = _personalities.filter(p => p.faction_id === factionId);
     const bcBtn = document.getElementById('radio-broadcast-btn');
     if (bcBtn) {
-        bcBtn.style.display = myPers.length > 0 ? '' : 'none';
-        bcBtn.onclick = () => openBroadcastModal(station);
+        bcBtn.disabled = myPers.length === 0;
+        bcBtn.title = myPers.length > 0 ? 'Broadcast on this station' : 'Create a personality on a station first';
+        bcBtn.onclick = myPers.length > 0 ? () => openBroadcastModal(station) : null;
     }
 
     renderSidebar(station);
@@ -818,7 +836,7 @@ function renderCreateStationModal() {
                 <!-- Step 4: Description -->
                 <div>
                     <div class="radio-modal-step-label">4 &mdash; Description (optional)</div>
-                    <textarea class="radio-modal-input" id="radio-input-desc" rows="2" placeholder="What does this station cover?" style="resize:none;font-family:var(--font-ui);font-size:10px;line-height:1.5;">${esc(_modalState.description)}</textarea>
+                    <textarea class="radio-modal-input" id="radio-input-desc" rows="2" placeholder="What does this station cover?" style="resize:none;font-family:var(--font-ui);font-size:13px;line-height:1.5;">${esc(_modalState.description)}</textarea>
                 </div>
 
             </div>
@@ -965,4 +983,162 @@ async function submitCreateStation() {
         _submitting = false;
         if (btn) { btn.disabled = false; btn.textContent = 'Launch Station'; }
     }
+}
+
+// ════════════════════════ TUNE IN — CROSS-NATION BROWSING ════════════════════════
+
+async function openTuneIn() {
+    const root = document.getElementById('broadcast-root');
+    if (!root) return;
+
+    // Fetch all nations if not cached
+    if (_tuneInNations.length === 0) {
+        const { data } = await _supabase.from('nations').select('id, name, government_type, flag_url').order('name');
+        _tuneInNations = data || [];
+    }
+
+    // Default to first OTHER nation (exclude own)
+    const myNationId = _state.nation?.id;
+    if (!_tuneInSelectedNationId) {
+        const other = _tuneInNations.find(n => n.id !== myNationId);
+        _tuneInSelectedNationId = other?.id || _tuneInNations[0]?.id || null;
+    }
+
+    await loadTuneInStations();
+    renderRadioPage(root);
+}
+
+async function loadTuneInStations() {
+    if (!_tuneInSelectedNationId) { _tuneInStations = []; _tuneInBroadcasts = []; return; }
+
+    const { data } = await _supabase.from('radio_stations')
+        .select('*')
+        .eq('nation_id', _tuneInSelectedNationId)
+        .order('created_at', { ascending: true });
+
+    _tuneInStations = data || [];
+    _tuneInSelectedStationId = _tuneInStations[0]?.id || null;
+
+    if (_tuneInSelectedStationId) {
+        await loadTuneInBroadcasts();
+    } else {
+        _tuneInBroadcasts = [];
+    }
+}
+
+async function loadTuneInBroadcasts() {
+    if (!_tuneInSelectedStationId) { _tuneInBroadcasts = []; return; }
+
+    const [bcResult, persResult] = await Promise.all([
+        _supabase.from('radio_broadcasts')
+            .select('*')
+            .eq('station_id', _tuneInSelectedStationId)
+            .order('created_at', { ascending: false })
+            .limit(50),
+        _supabase.from('radio_personalities')
+            .select('id, name, title')
+            .eq('station_id', _tuneInSelectedStationId),
+    ]);
+
+    _tuneInBroadcasts = bcResult.data || [];
+    // Attach personality names to broadcasts
+    const persMap = {};
+    for (const p of (persResult.data || [])) persMap[p.id] = p;
+    for (const bc of _tuneInBroadcasts) {
+        bc._personality = persMap[bc.personality_id] || null;
+    }
+}
+
+function renderTuneInView() {
+    const myNationId = _state.nation?.id;
+
+    const nationsHtml = _tuneInNations.map(n => {
+        const isActive = n.id === _tuneInSelectedNationId;
+        const isYou = n.id === myNationId;
+        return `<div class="radio-tunein-nation ${isActive ? 'active' : ''}" data-nation-id="${n.id}">
+            ${esc(n.name)}${isYou ? ' <span style="color:var(--green);font-size:9px;">(YOU)</span>' : ''}
+        </div>`;
+    }).join('');
+
+    const nation = _tuneInNations.find(n => n.id === _tuneInSelectedNationId);
+    const stationsHtml = _tuneInStations.length > 0
+        ? _tuneInStations.map(s => {
+            const color = TYPE_COLORS[s.station_type] || 'var(--text-dim)';
+            const isActive = s.id === _tuneInSelectedStationId;
+            return `<div class="radio-tunein-station ${isActive ? 'active' : ''}" data-station-id="${s.id}" style="border-left-color:${color};">
+                <div class="radio-tunein-station-name">${esc(s.callsign)} &mdash; ${esc(s.name)}</div>
+                <div class="radio-tunein-station-meta">${esc(s.frequency)} &middot; <span style="color:${color};">${esc(s.station_type.toUpperCase())}</span></div>
+            </div>`;
+        }).join('')
+        : '<div class="radio-tunein-empty">No stations in this nation yet.</div>';
+
+    const station = _tuneInStations.find(s => s.id === _tuneInSelectedStationId);
+
+    let timelineHtml = '';
+    if (station && _tuneInBroadcasts.length > 0) {
+        const bcRows = _tuneInBroadcasts.map(bc => {
+            const persName = bc._personality?.name || 'Unknown';
+            const tagsHtml = (bc.tags || []).map(t => `<span class="radio-tunein-bc-tag">${esc(t)}</span>`).join('');
+            return `<div class="radio-tunein-bc">
+                <div class="radio-tunein-bc-subject">${esc(bc.subject)}</div>
+                <div class="radio-tunein-bc-meta">
+                    <span style="font-weight:600;color:var(--text-secondary);">${esc(persName)}</span>
+                    <span>&middot;</span>
+                    <span>Tick ${bc.published_tick ?? '?'}</span>
+                    <span>&middot;</span>
+                    <span>${bc.good_listen_count || 0} &#128266;</span>
+                </div>
+                <div class="radio-tunein-bc-body">${esc(bc.body)}</div>
+                ${tagsHtml ? `<div class="radio-tunein-bc-tags">${tagsHtml}</div>` : ''}
+            </div>`;
+        }).join('');
+
+        timelineHtml = `<div class="radio-tunein-timeline">
+            <div class="radio-tunein-timeline-header">Timeline &mdash; ${esc(station.callsign)} ${esc(station.frequency)}</div>
+            <div style="max-height:500px;overflow-y:auto;">${bcRows}</div>
+        </div>`;
+    } else if (station) {
+        timelineHtml = `<div class="radio-tunein-timeline">
+            <div class="radio-tunein-timeline-header">Timeline &mdash; ${esc(station.callsign)} ${esc(station.frequency)}</div>
+            <div class="radio-tunein-empty">No broadcasts on this station yet.</div>
+        </div>`;
+    }
+
+    return `
+        <div style="margin-top:8px;">
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;">Select a Nation</div>
+            <div class="radio-tunein-nations" id="radio-tunein-nations">${nationsHtml}</div>
+
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+                <div style="width:260px;flex-shrink:0;">
+                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">Stations${nation ? ' in ' + esc(nation.name) : ''}</div>
+                    ${stationsHtml}
+                </div>
+                <div style="flex:1;min-width:0;">${timelineHtml}</div>
+            </div>
+        </div>
+    `;
+}
+
+function bindTuneInListeners(root) {
+    root.addEventListener('click', async (e) => {
+        // Nation selection
+        const nationBtn = e.target.closest('.radio-tunein-nation');
+        if (nationBtn) {
+            _tuneInSelectedNationId = nationBtn.dataset.nationId;
+            _tuneInSelectedStationId = null;
+            _tuneInBroadcasts = [];
+            await loadTuneInStations();
+            renderRadioPage(root);
+            return;
+        }
+        // Station selection
+        const stationBtn = e.target.closest('.radio-tunein-station');
+        if (stationBtn) {
+            _tuneInSelectedStationId = stationBtn.dataset.stationId;
+            await loadTuneInBroadcasts();
+            renderRadioPage(root);
+            return;
+        }
+    });
 }
