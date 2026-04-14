@@ -739,7 +739,7 @@
     display: flex; gap: 12px; margin-top: 8px;
 }
 .radio-col-left { flex: 1; min-width: 0; }
-.radio-col-right { width: 420px; flex-shrink: 0; }
+.radio-col-right { flex: 1; min-width: 0; }
 
 /* ── Events panel ── */
 .radio-events-panel {
