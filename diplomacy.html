@@ -374,14 +374,12 @@ async function loadWorldEvents(state) {
     _worldEventNationFilter = state.nation?.id || null;
     _worldEventTab = 'nation';
 
-    initWorldEventTabs();
     renderWorldEvents();
 }
 
 function initWorldEventTabs() {
     const tabContainer = document.getElementById('world-events-tabs');
-    if (!tabContainer || tabContainer.dataset.bound) return;
-    tabContainer.dataset.bound = '1';
+    if (!tabContainer) return;
 
     tabContainer.addEventListener('click', (e) => {
         const btn = e.target.closest('.world-events-tab');
@@ -432,14 +430,14 @@ function renderWorldEvents() {
         const cat = ev.category || 'government';
         const catStyle = EVENT_CAT_COLORS[cat] || EVENT_CAT_COLORS.government;
         const nation = (_worldAllNations || []).find(n => n.id === ev.nation_id);
-        const nationName = nation?.name || '?';
+        const nationName = nation?.name || 'Unknown';
         const desc = ev.description_chosen || ev.event_name || '';
         const truncDesc = desc.length > 120 ? desc.slice(0, 117) + '...' : desc;
 
         return `<div class="world-event-row">
             <span class="world-event-tick">${ev.fired_at_tick}</span>
             <span class="world-event-cat" style="color:${catStyle.color};border-color:${catStyle.border};background:${catStyle.bg};">${escapeHtml(cat)}</span>
-            <span class="world-event-text">${escapeHtml(truncDesc)}</span>
+            <span class="world-event-text" title="${escapeHtml(desc)}">${escapeHtml(truncDesc)}</span>
             <span class="world-event-nation">${escapeHtml(nationName)}</span>
         </div>`;
     }).join('');
@@ -544,6 +542,8 @@ function initWorldMap() {
 // NATION HIGHLIGHT PANEL
 // ═══════════════════════════════════════════════════
 
+let _worldSelectedNationId = null;
+
 function initNationHighlight(allNations, state) {
     const body = document.getElementById('world-highlight-body');
     if (!body || !allNations.length) return;
@@ -552,20 +552,38 @@ function initNationHighlight(allNations, state) {
     _worldAllNations = allNations;
     _worldState = state;
 
-    // Show your own nation by default
+    // Show your own nation by default (also renders the nation list)
     const myNation = allNations.find(n => n.id === myNationId);
-    if (myNation) selectWorldNation(myNation.id);
+    if (myNation) {
+        selectWorldNation(myNation.id);
+    } else {
+        // No player nation — just render the clickable list
+        renderNationList(allNations, myNationId);
+    }
+}
 
-    // Add clickable nation list below highlight
+function renderNationList(allNations, myNationId) {
+    const body = document.getElementById('world-highlight-body');
+    if (!body) return;
+
+    // Remove old list if it exists
+    const oldList = document.getElementById('world-nation-list');
+    if (oldList) oldList.remove();
+
     const listHtml = allNations.map(n => {
         const isYou = n.id === myNationId;
+        const isSelected = n.id === _worldSelectedNationId;
+        const nameColor = isSelected ? 'var(--accent)' : isYou ? 'var(--accent)' : 'var(--text-bright)';
+        const nameWeight = isSelected || isYou ? '700' : '500';
+        const indicator = isSelected ? ' \u25C0' : '';
         return `<div class="world-highlight-stat-row" style="cursor:pointer;padding:6px 0;" data-nation-id="${n.id}">
-            <span style="font-size:10px;font-weight:${isYou ? '700' : '500'};color:${isYou ? 'var(--accent)' : 'var(--text-bright)'};">${escapeHtml(n.name)}${isYou ? ' (You)' : ''}</span>
+            <span style="font-size:10px;font-weight:${nameWeight};color:${nameColor};">${escapeHtml(n.name)}${isYou ? ' (You)' : ''}${indicator}</span>
             <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(n.government_type || '')}</span>
         </div>`;
     }).join('');
 
     const listDiv = document.createElement('div');
+    listDiv.id = 'world-nation-list';
     listDiv.style.cssText = 'padding:0 14px 14px;border-top:1px solid var(--border-main);';
     listDiv.innerHTML = `<div class="world-highlight-section" style="margin-top:8px;">ALL NATIONS</div>${listHtml}`;
     body.after(listDiv);
@@ -589,6 +607,10 @@ async function selectWorldNation(nationId) {
     const myNationId = _worldState.nation?.id;
     const isYou = nation.id === myNationId;
 
+    // Track selected nation for list highlighting
+    _worldSelectedNationId = nationId;
+    renderNationList(_worldAllNations, myNationId);
+
     // Fetch diplomatic data if not cached
     if (!_worldRelations) {
         const [relResult, agreeResult, ambResult] = await Promise.all([
@@ -601,21 +623,107 @@ async function selectWorldNation(nationId) {
         _worldAmbassadors = ambResult.data || [];
     }
 
-    // Render immediately (trade data loads async below)
-    renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors, null);
+    // Fetch government + crisis data for the selected nation
+    const govData = await fetchNationGovernmentData(nation.id);
+    const extraData = { gov: govData, tradeData: null };
+    renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors, extraData);
 
     // Auto-switch to NATION tab filtered to the selected nation
     _worldEventNationFilter = nation.id;
     _worldEventTab = 'nation';
     renderWorldEvents();
 
-    // Fetch bilateral trade data async, then re-render with it
+    // Fetch bilateral trade data async, then patch just the trade section
     if (!isYou && myNationId) {
         fetchBilateralTrade(myNationId, nation.id).then(tradeData => {
-            renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors, tradeData);
+            // Only patch if this nation is still selected
+            if (_worldSelectedNationId !== nationId) return;
+            const tradeEl = document.getElementById('world-trade-section');
+            if (tradeEl) {
+                tradeEl.innerHTML = buildTradeHTML(tradeData);
+            }
         }).catch(err => {
             console.error('[World] Bilateral trade fetch failed:', err);
         });
+    }
+}
+
+/**
+ * Fetch head of government, coalition parties, and active crises for a nation.
+ * Returns { leader, leaderParty, coalitionParties, crises }
+ */
+async function fetchNationGovernmentData(nationId) {
+    try {
+    const [hogRes, presRes, coalRes, crisisRes, partiesRes] = await Promise.all([
+        _supabase.from('head_of_government')
+            .select('first_name, last_name, faction_id')
+            .eq('nation_id', nationId)
+            .eq('active', true)
+            .limit(1)
+            .maybeSingle(),
+        _supabase.from('presidents')
+            .select('first_name, last_name, faction_id')
+            .eq('nation_id', nationId)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle(),
+        _supabase.from('government_formations')
+            .select('party_ids, ministry_assignments, proposed_by, status')
+            .eq('nation_id', nationId)
+            .in('status', ['formed', 'caretaker'])
+            .order('formed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        _supabase.from('active_crises')
+            .select('crisis_id, crisis_templates(name)')
+            .eq('nation_id', nationId),
+        _supabase.from('factions')
+            .select('id, faction_name, abbreviation, party_color, seats')
+            .eq('nation_id', nationId)
+            .order('seats', { ascending: false }),
+    ]);
+
+    const allParties = partiesRes.data || [];
+    const partyMap = {};
+    for (const p of allParties) partyMap[p.id] = p;
+
+    // Determine leader: prefer president for presidential, else HOG
+    const nation = _worldAllNations.find(n => n.id === nationId);
+    const isPresidential = (nation?.government_type || '').toLowerCase().includes('presidential');
+    const pres = presRes.data;
+    const hog = hogRes.data;
+    let leader = null;
+    let leaderParty = null;
+
+    if (isPresidential && pres) {
+        leader = { name: `${pres.first_name} ${pres.last_name}`, title: 'President' };
+        leaderParty = partyMap[pres.faction_id] || null;
+    } else if (hog) {
+        leader = { name: `${hog.first_name} ${hog.last_name}`, title: 'Prime Minister' };
+        leaderParty = partyMap[hog.faction_id] || null;
+    } else if (pres) {
+        leader = { name: `${pres.first_name} ${pres.last_name}`, title: 'President' };
+        leaderParty = partyMap[pres.faction_id] || null;
+    }
+
+    // Coalition parties
+    const coal = coalRes.data;
+    let coalitionParties = [];
+    if (coal && coal.party_ids) {
+        coalitionParties = coal.party_ids
+            .map(id => partyMap[id])
+            .filter(Boolean);
+    }
+
+    // Crises
+    const crises = (crisisRes.data || [])
+        .map(c => c.crisis_templates?.name || 'Unknown Crisis')
+        .filter(Boolean);
+
+    return { leader, leaderParty, coalitionParties, crises };
+    } catch (err) {
+        console.error('[World] fetchNationGovernmentData failed:', err);
+        return { leader: null, leaderParty: null, coalitionParties: [], crises: [] };
     }
 }
 
@@ -681,16 +789,164 @@ async function fetchBilateralTrade(myNationId, theirNationId) {
     };
 }
 
-function renderNationHighlight(nation, state, relations, agreements, ambassadors, tradeData) {
+const AGREE_TYPE_LABELS = {
+    free_trade: 'Free Trade Agreement',
+    preferential_trade: 'Preferential Trade',
+    resource_supply: 'Resource Supply Contract',
+    export_subsidy: 'Export Subsidy',
+    economic_aid: 'Economic Aid',
+    retaliatory_tariff: 'Retaliatory Tariff',
+    impose_embargo: 'Embargo',
+};
+
+const TRADE_SECTOR_LABELS = {
+    fuel_energy: 'Fuel & Energy',
+    minerals: 'Minerals',
+    food_agriculture: 'Food & Agri',
+    grains_staples: 'Grains',
+    livestock_dairy: 'Livestock',
+    fruits_vegetables: 'Fruits & Veg',
+    cash_crops: 'Cash Crops',
+    manufactured_goods: 'Manufactured',
+    technology: 'Technology',
+    arms: 'Arms',
+    tourism: 'Tourism',
+    services_finance: 'Services',
+};
+
+/**
+ * Build trade section inner HTML (used for both initial render and async patch).
+ */
+function buildTradeHTML(tradeData) {
+    if (!tradeData) {
+        return `<div class="world-trade-loading">Loading trade data\u2026</div>`;
+    }
+    if (tradeData.totalExports === 0 && tradeData.totalImports === 0) {
+        return `<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No active trade routes.</div>`;
+    }
+
+    const allSectors = new Set([
+        ...Object.keys(tradeData.exportsToThem),
+        ...Object.keys(tradeData.importsFromThem),
+    ]);
+    const sectorRows = [];
+    for (const sector of allSectors) {
+        const exp = tradeData.exportsToThem[sector] || 0;
+        const imp = tradeData.importsFromThem[sector] || 0;
+        sectorRows.push({ sector, exp, imp, total: exp + imp });
+    }
+    sectorRows.sort((a, b) => b.total - a.total);
+
+    let h = `<table class="world-trade-table">
+        <thead><tr><th>Sector</th><th>Exports</th><th>Imports</th><th>Net</th></tr></thead><tbody>`;
+    for (const row of sectorRows) {
+        const net = row.exp - row.imp;
+        const netClass = net > 0 ? 'trade-positive' : net < 0 ? 'trade-negative' : 'trade-zero';
+        const netPrefix = net > 0 ? '+' : '';
+        h += `<tr>
+            <td>${escapeHtml(TRADE_SECTOR_LABELS[row.sector] || row.sector)}</td>
+            <td>${fmtBudgetCurrency(row.exp)}</td>
+            <td>${fmtBudgetCurrency(row.imp)}</td>
+            <td class="${netClass}">${netPrefix}${fmtBudgetCurrency(net)}</td>
+        </tr>`;
+    }
+    h += `</tbody></table>`;
+
+    const balance = tradeData.balance;
+    const balClass = balance > 0 ? 'trade-positive' : balance < 0 ? 'trade-negative' : 'trade-zero';
+    const balPrefix = balance > 0 ? '+' : '';
+    h += `<div class="world-trade-balance">
+        <span class="world-trade-balance-label">Trade Balance</span>
+        <span class="world-trade-balance-value ${balClass}">${balPrefix}${fmtBudgetCurrency(balance)}</span>
+    </div>`;
+    h += `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">
+        Total exports: ${fmtBudgetCurrency(tradeData.totalExports)} &middot;
+        Total imports: ${fmtBudgetCurrency(tradeData.totalImports)}
+    </div>`;
+    return h;
+}
+
+function renderNationHighlight(nation, state, relations, agreements, ambassadors, extraData) {
     const body = document.getElementById('world-highlight-body');
     if (!body) return;
 
     const myNationId = state.nation?.id;
     const isYou = nation.id === myNationId;
+    const gov = extraData?.gov || {};
+    const tradeData = extraData?.tradeData;
+
+    // Population
     const pop = Number(nation.population || 0);
     const popLabel = pop >= 1e6 ? (pop / 1e6).toFixed(1) + 'M' : pop.toLocaleString();
 
-    // Find diplomatic relation between us and selected nation
+    // GDP
+    const gdpLabel = fmtBudgetCurrency(Number(nation.gdp || 0));
+
+    // Flag URL
+    const flagSrc = nation.flag_url || `assets/flags/${nation.name}.png`;
+
+    // ── HEADER: Flag + Name + Government Type ──
+    let html = `<div class="world-hl-header-row">
+        <img class="world-hl-flag" src="${escapeHtml(flagSrc)}" alt="" onerror="this.style.display='none'">
+        <div>
+            <div class="world-highlight-name">${escapeHtml(nation.name)}${isYou ? ' <span style="font-family:var(--font-mono);font-size:8px;color:var(--green);font-weight:700;">YOU</span>' : ''}</div>
+            <div class="world-highlight-meta">${escapeHtml(nation.government_type || 'Unknown')}</div>
+        </div>
+    </div>`;
+
+    // ── LEADER ──
+    if (gov.leader) {
+        const partyTag = gov.leaderParty
+            ? ` <span style="font-family:var(--font-mono);font-size:8px;color:${gov.leaderParty.party_color || 'var(--text-dim)'};">[${escapeHtml(gov.leaderParty.abbreviation || gov.leaderParty.faction_name)}]</span>`
+            : '';
+        html += `<div style="margin:4px 0 2px;">
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em;">${escapeHtml(gov.leader.title)}</div>
+            <div style="font-size:11px;font-weight:600;color:var(--text-bright);">${escapeHtml(gov.leader.name)}${partyTag}</div>
+        </div>`;
+    }
+
+    // ── COALITION ──
+    if (gov.coalitionParties && gov.coalitionParties.length > 0) {
+        html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 4px;">`;
+        for (const p of gov.coalitionParties) {
+            const color = p.party_color || '#888';
+            html += `<span style="font-family:var(--font-mono);font-size:7px;padding:2px 6px;border:1px solid ${color};color:${color};letter-spacing:0.03em;">${escapeHtml(p.abbreviation || p.faction_name)}${p.seats ? ' \u00B7 ' + p.seats : ''}</span>`;
+        }
+        html += `</div>`;
+    }
+
+    // ── KEY STATS ──
+    html += `<div class="world-highlight-section">KEY STATS</div>`;
+
+    const stability = nation.stability ?? 0;
+    const stabColor = stability >= 50 ? 'var(--green)' : stability >= 30 ? 'var(--amber)' : 'var(--red)';
+    const stats = [
+        { label: 'Population', value: popLabel },
+        { label: 'GDP', value: gdpLabel },
+        { label: 'Stability', value: stability.toFixed(1), color: stabColor },
+    ];
+    html += stats.map(s => `<div class="world-highlight-stat-row">
+        <span class="world-highlight-stat-label">${escapeHtml(s.label)}</span>
+        <span class="world-highlight-stat-value" style="${s.color ? 'color:' + s.color : ''}">${s.value}</span>
+    </div>`).join('');
+
+    // ── ACTIVE CRISES ──
+    if (gov.crises && gov.crises.length > 0) {
+        html += `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">Active Crises</span>
+            <span class="world-highlight-stat-value" style="color:var(--red);">${gov.crises.length}</span>
+        </div>`;
+        for (const c of gov.crises) {
+            html += `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);padding:1px 0 1px 8px;">\u26A0 ${escapeHtml(c)}</div>`;
+        }
+    } else {
+        html += `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">Active Crises</span>
+            <span class="world-highlight-stat-value" style="color:var(--green);">None</span>
+        </div>`;
+    }
+
+    // ── DIPLOMATIC RELATIONS (foreign nations only) ──
     let relScore = null;
     let proximity = null;
     if (!isYou && myNationId) {
@@ -703,61 +959,17 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
         }
     }
 
-    // Find active agreements between us and selected nation
-    const bilateralAgreements = isYou ? [] : (agreements || []).filter(ag =>
-        (ag.nation_a_id === myNationId && ag.nation_b_id === nation.id) ||
-        (ag.nation_a_id === nation.id && ag.nation_b_id === myNationId)
-    );
+    const ourAmbassador = !isYou ? (ambassadors || []).find(a => a.home_nation_id === myNationId && a.host_nation_id === nation.id) : null;
+    const theirAmbassador = !isYou ? (ambassadors || []).find(a => a.home_nation_id === nation.id && a.host_nation_id === myNationId) : null;
 
-    // Find ambassadors
-    const ourAmbassador = (ambassadors || []).find(a => a.home_nation_id === myNationId && a.host_nation_id === nation.id);
-    const theirAmbassador = (ambassadors || []).find(a => a.home_nation_id === nation.id && a.host_nation_id === myNationId);
-
-    // All agreements for this nation (when viewing yourself)
-    const allNationAgreements = isYou ? (agreements || []).filter(ag =>
-        ag.nation_a_id === nation.id || ag.nation_b_id === nation.id
-    ) : [];
-
-    // Key stats
-    const stats = [
-        { label: 'GDP Growth', value: (nation.gdp_growth ?? 0).toFixed(1), color: nation.gdp_growth >= 50 ? 'var(--green)' : 'var(--text-bright)' },
-        { label: 'Stability', value: (nation.stability ?? 0).toFixed(1), color: nation.stability >= 50 ? 'var(--green)' : nation.stability >= 30 ? 'var(--amber)' : 'var(--red)' },
-        { label: 'Freedom Index', value: (nation.freedom_index ?? 0).toFixed(1), color: nation.freedom_index >= 50 ? 'var(--green)' : 'var(--amber)' },
-        { label: 'Corruption', value: (nation.corruption ?? 0).toFixed(1), color: nation.corruption <= 30 ? 'var(--green)' : nation.corruption <= 60 ? 'var(--amber)' : 'var(--red)' },
-        { label: 'Unemployment', value: (nation.unemployment ?? 0).toFixed(1), color: nation.unemployment <= 30 ? 'var(--green)' : 'var(--amber)' },
-        { label: 'Healthcare', value: (nation.healthcare_quality ?? 0).toFixed(1) },
-        { label: 'Civil Unrest', value: (nation.civil_unrest ?? 0).toFixed(1), color: nation.civil_unrest <= 20 ? 'var(--green)' : nation.civil_unrest <= 50 ? 'var(--amber)' : 'var(--red)' },
-    ];
-
-    // Relation label
-    let relLabel = '', relColor = 'var(--text-dim)';
-    if (relScore !== null) {
+    if (!isYou && relScore !== null) {
+        let relLabel = '', relColor = 'var(--text-dim)';
         if (relScore >= 60) { relLabel = 'FRIENDLY'; relColor = 'var(--green)'; }
         else if (relScore >= 30) { relLabel = 'WARM'; relColor = 'var(--green)'; }
         else if (relScore >= -10) { relLabel = 'NEUTRAL'; relColor = 'var(--amber)'; }
         else if (relScore >= -40) { relLabel = 'COOL'; relColor = 'var(--orange)'; }
         else { relLabel = 'HOSTILE'; relColor = 'var(--red)'; }
-    }
 
-    // Agreement type labels
-    const AGREE_TYPE_LABELS = {
-        free_trade: 'Free Trade Agreement',
-        preferential_trade: 'Preferential Trade',
-        resource_supply: 'Resource Supply Contract',
-        export_subsidy: 'Export Subsidy',
-        economic_aid: 'Economic Aid',
-        retaliatory_tariff: 'Retaliatory Tariff',
-        impose_embargo: 'Embargo',
-    };
-
-    let html = `
-        <div style="margin-bottom:10px;">
-            <div class="world-highlight-name">${escapeHtml(nation.name)}${isYou ? ' <span style="font-family:var(--font-mono);font-size:8px;color:var(--green);font-weight:700;">YOU</span>' : ''}</div>
-            <div class="world-highlight-meta">${escapeHtml(nation.government_type || 'Unknown')} \u00B7 Pop: ${popLabel}</div>
-        </div>`;
-
-    // Diplomatic relation (only when viewing another nation)
-    if (!isYou && relScore !== null) {
         html += `<div class="world-highlight-section">DIPLOMATIC RELATIONS</div>`;
         html += `<div class="world-highlight-stat-row">
             <span class="world-highlight-stat-label">Relation Score</span>
@@ -779,7 +991,15 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
         </div>`;
     }
 
-    // Active agreements
+    // ── AGREEMENTS ──
+    const bilateralAgreements = isYou ? [] : (agreements || []).filter(ag =>
+        (ag.nation_a_id === myNationId && ag.nation_b_id === nation.id) ||
+        (ag.nation_a_id === nation.id && ag.nation_b_id === myNationId)
+    );
+    const allNationAgreements = isYou ? (agreements || []).filter(ag =>
+        ag.nation_a_id === nation.id || ag.nation_b_id === nation.id
+    ) : [];
+
     if (!isYou && bilateralAgreements.length > 0) {
         html += `<div class="world-highlight-section">ACTIVE AGREEMENTS (${bilateralAgreements.length})</div>`;
         for (const ag of bilateralAgreements) {
@@ -795,7 +1015,6 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
         html += `<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No active agreements.</div>`;
     }
 
-    // Your nation: show total agreement count
     if (isYou && allNationAgreements.length > 0) {
         html += `<div class="world-highlight-section">YOUR AGREEMENTS (${allNationAgreements.length})</div>`;
         for (const ag of allNationAgreements.slice(0, 8)) {
@@ -812,89 +1031,11 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
         }
     }
 
-    // Bilateral trade overview (only for foreign nations)
+    // ── BILATERAL TRADE (foreign nations, async-patched) ──
     if (!isYou) {
         html += `<div class="world-highlight-section">BILATERAL TRADE</div>`;
-        if (tradeData === null) {
-            // Still loading
-            html += `<div class="world-trade-loading">Loading trade data\u2026</div>`;
-        } else if (tradeData && (tradeData.totalExports > 0 || tradeData.totalImports > 0)) {
-            // Sector labels for display
-            const SECTOR_LABELS = {
-                fuel_energy: 'Fuel & Energy',
-                minerals: 'Minerals',
-                food_agriculture: 'Food & Agri',
-                grains_staples: 'Grains',
-                livestock_dairy: 'Livestock',
-                fruits_vegetables: 'Fruits & Veg',
-                cash_crops: 'Cash Crops',
-                manufactured_goods: 'Manufactured',
-                technology: 'Technology',
-                arms: 'Arms',
-                tourism: 'Tourism',
-                services_finance: 'Services',
-            };
-
-            // Collect all sectors with any activity
-            const allSectors = new Set([
-                ...Object.keys(tradeData.exportsToThem),
-                ...Object.keys(tradeData.importsFromThem),
-            ]);
-
-            // Build table rows sorted by total volume descending
-            const sectorRows = [];
-            for (const sector of allSectors) {
-                const exp = tradeData.exportsToThem[sector] || 0;
-                const imp = tradeData.importsFromThem[sector] || 0;
-                sectorRows.push({ sector, exp, imp, total: exp + imp });
-            }
-            sectorRows.sort((a, b) => b.total - a.total);
-
-            html += `<table class="world-trade-table">
-                <thead><tr>
-                    <th>Sector</th>
-                    <th>Exports</th>
-                    <th>Imports</th>
-                    <th>Net</th>
-                </tr></thead><tbody>`;
-
-            for (const row of sectorRows) {
-                const net = row.exp - row.imp;
-                const netClass = net > 0 ? 'trade-positive' : net < 0 ? 'trade-negative' : 'trade-zero';
-                const netPrefix = net > 0 ? '+' : '';
-                html += `<tr>
-                    <td>${escapeHtml(SECTOR_LABELS[row.sector] || row.sector)}</td>
-                    <td>${fmtBudgetCurrency(row.exp)}</td>
-                    <td>${fmtBudgetCurrency(row.imp)}</td>
-                    <td class="${netClass}">${netPrefix}${fmtBudgetCurrency(net)}</td>
-                </tr>`;
-            }
-
-            html += `</tbody></table>`;
-
-            // Trade balance summary
-            const balance = tradeData.balance;
-            const balClass = balance > 0 ? 'trade-positive' : balance < 0 ? 'trade-negative' : 'trade-zero';
-            const balPrefix = balance > 0 ? '+' : '';
-            html += `<div class="world-trade-balance">
-                <span class="world-trade-balance-label">Trade Balance</span>
-                <span class="world-trade-balance-value ${balClass}">${balPrefix}${fmtBudgetCurrency(balance)}</span>
-            </div>`;
-            html += `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">
-                Total exports: ${fmtBudgetCurrency(tradeData.totalExports)} &middot;
-                Total imports: ${fmtBudgetCurrency(tradeData.totalImports)}
-            </div>`;
-        } else if (tradeData) {
-            html += `<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No active trade routes.</div>`;
-        }
+        html += `<div id="world-trade-section">${buildTradeHTML(tradeData)}</div>`;
     }
-
-    // Key stats
-    html += `<div class="world-highlight-section">KEY STATS</div>`;
-    html += stats.map(s => `<div class="world-highlight-stat-row">
-        <span class="world-highlight-stat-label">${escapeHtml(s.label)}</span>
-        <span class="world-highlight-stat-value" style="${s.color ? 'color:' + s.color : ''}">${s.value}</span>
-    </div>`).join('');
 
     body.innerHTML = html;
 }
@@ -902,6 +1043,9 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
 initPage('diplomacy', async (state) => {
     // ── World Map: Pan + Zoom ──
     initWorldMap();
+
+    // ── Event tab toggle (bind once) ──
+    initWorldEventTabs();
 
     // ── Nation highlight: load all nations for the panel ──
     try {
