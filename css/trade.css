@@ -1,0 +1,33 @@
+/* ══════════════════════════════════════════════════════════════
+   TRADE SUBTAB — World Page
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Subtab navigation ── */
+.diplo-subtab {
+    padding: 5px 14px;
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text-dim); background: transparent;
+    border: 1px solid transparent;
+    border-bottom: 1px solid var(--border-main);
+    cursor: pointer; transition: all 0.15s;
+}
+.diplo-subtab:hover { color: var(--text-secondary); }
+.diplo-subtab.active {
+    color: var(--text-bright);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-main);
+    border-bottom: 1px solid var(--bg-panel);
+}
+
+/* ── Responsive ── */
+@media (max-width: 1200px) {
+    #trade-left { width: 100% !important; }
+    #trade-right { width: 100% !important; }
+    #trade-page > div[style*="display:flex"] {
+        flex-direction: column !important;
+    }
+}
+@media (max-width: 768px) {
+    .diplo-subtab { padding: 4px 8px; font-size: 7px; }
+}
