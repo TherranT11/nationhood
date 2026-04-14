@@ -1963,6 +1963,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         .eq('nation_id', nation.id).eq('active', true).maybeSingle();
                     if (hog) {
                         const { data: shardDate } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                        // Snapshot current nation stats so governance score has a baseline
+                        // (previously missing — caused stats_at_start to be null/empty, making
+                        // governance deltas calculate against 0 instead of actual starting values)
+                        const safetyNetStats = snapshotNationStats(nation);
                         await supabase.from('administrations').insert({
                             nation_id: nation.id,
                             admin_name: (hog.last_name || 'Interim') + ' Administration',
@@ -1971,7 +1975,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             started_at_tick: hog.appointed_tick || newTick,
                             started_at_date: shardDate?.current_date || '',
                             approval_at_start: Number(nation.gov_approval ?? 50),
-                            pm_party_id: hog.faction_id
+                            pm_party_id: hog.faction_id,
+                            stats_at_start: safetyNetStats
                         });
                         console.log(`[advanceTick] Safety net: created missing administration for ${nation.name} (${hog.last_name} Administration)`);
                     }

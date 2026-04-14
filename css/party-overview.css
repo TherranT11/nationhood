@@ -1,0 +1,150 @@
+/* ══════════════════════════════════════════════════════════════
+   PARTY OVERVIEW — Parties tab
+   ══════════════════════════════════════════════════════════════ */
+
+.po-page { padding: 8px 12px 40px; }
+
+/* ── Top summary bar ── */
+.po-summary {
+    display: flex; gap: 0; margin-bottom: 8px;
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+}
+.po-summary-cell {
+    padding: 8px 14px; border-right: 1px solid var(--border-main);
+    display: flex; flex-direction: column; justify-content: center;
+}
+.po-summary-cell:last-child { border-right: none; }
+.po-summary-label {
+    font-family: var(--font-mono); font-size: 6px; color: var(--text-dim);
+    letter-spacing: 0.06em; text-transform: uppercase;
+}
+.po-summary-value {
+    font-family: var(--font-mono); font-size: 18px; font-weight: 700; margin-top: 1px;
+}
+.po-summary-sub {
+    font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); margin-top: 1px;
+}
+
+/* ── Three column layout ── */
+.po-columns { display: flex; gap: 8px; }
+.po-col-left { width: 38%; display: flex; flex-direction: column; gap: 6px; }
+.po-col-center { width: 30%; display: flex; flex-direction: column; gap: 6px; }
+.po-col-right { width: 32%; display: flex; flex-direction: column; gap: 6px; }
+
+/* ── Card / section box ── */
+.po-card {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+}
+.po-card-header {
+    padding: 6px 12px; border-bottom: 1px solid var(--border-main);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.po-card-title {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.1em; color: var(--text-bright); text-transform: uppercase;
+}
+.po-card-subtitle {
+    font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+}
+
+/* ── Party identity card ── */
+.po-identity {
+    border-left: 3px solid var(--accent);
+}
+.po-identity-inner {
+    padding: 10px 12px; display: flex; align-items: center; gap: 10px;
+}
+.po-identity-logo {
+    width: 48px; height: 48px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 14px; font-weight: 700;
+    border: 1px solid;
+}
+.po-identity-name { font-size: 13px; font-weight: 700; color: var(--text-bright); }
+.po-identity-meta {
+    font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); margin-top: 2px;
+}
+.po-identity-badge {
+    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
+    padding: 1px 5px; border: 1px solid;
+}
+.po-leader-row {
+    display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+    background: var(--bg-card); border: 1px solid var(--border-main); margin-top: 4px;
+}
+.po-leader-avatar {
+    width: 24px; height: 24px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    border: 1px solid;
+}
+
+/* ── Governance stat table ── */
+.po-gov-row {
+    display: flex; padding: 3px 12px; align-items: center;
+}
+.po-gov-stat { flex: 1; font-size: 9px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.po-gov-val { width: 40px; font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); text-align: right; }
+.po-gov-delta { width: 44px; font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-align: right; }
+
+/* ── Ideology axes ── */
+.po-axis { margin-bottom: 6px; }
+.po-axis-labels {
+    display: flex; justify-content: space-between; margin-bottom: 2px;
+}
+.po-axis-label { font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); }
+.po-axis-name { font-family: var(--font-mono); font-size: 7px; color: var(--text-secondary); }
+.po-axis-track {
+    position: relative; height: 18px; background: var(--bg-card);
+    border: 1px solid var(--border-main);
+}
+.po-axis-dot {
+    position: absolute; top: 50%; transform: translate(-50%, -50%);
+    width: 8px; height: 8px; border-radius: 50%;
+    border: 1.5px solid var(--bg-body); z-index: 2;
+}
+.po-axis-zone {
+    position: absolute; top: 0; height: 100%; width: 1px;
+    background: var(--border-main);
+}
+.po-axis-footer {
+    display: flex; justify-content: space-between; margin-top: 2px;
+}
+
+/* ── Legend ── */
+.po-legend { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.po-legend-item {
+    display: flex; align-items: center; gap: 4px; padding: 2px 6px;
+    border: 1px solid var(--border-main); cursor: pointer;
+    transition: all 0.15s;
+}
+.po-legend-item.active { opacity: 1; }
+.po-legend-item.inactive { opacity: 0.35; }
+.po-legend-dot { width: 6px; height: 6px; border-radius: 50%; }
+.po-legend-name { font-family: var(--font-mono); font-size: 7px; color: var(--text-secondary); }
+
+/* ── Caucus rows ── */
+.po-caucus-row {
+    padding: 6px 12px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border-main);
+}
+.po-caucus-row:last-child { border-bottom: none; }
+.po-caucus-name { font-size: 10px; font-weight: 600; color: var(--text-bright); }
+.po-caucus-wing { font-family: var(--font-mono); font-size: 7px; }
+.po-caucus-seats { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-bright); }
+
+/* ── Activity feed ── */
+.po-col-center .po-card { min-height: 0; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .po-columns { flex-direction: column; }
+    .po-col-left, .po-col-center, .po-col-right { width: 100%; }
+    .po-summary { flex-wrap: wrap; }
+    .po-summary-cell { min-width: 100px; }
+}
+@media (max-width: 480px) {
+    .po-page { padding: 6px 6px 32px; }
+    .po-summary-cell { padding: 6px 10px; }
+    .po-summary-value { font-size: 14px; }
+}

@@ -43,8 +43,11 @@ function computeGovernanceScore(nation, statsAtStart, startedAtTick, currentTick
         count++;
     }
     let score = count > 0 ? sum / count : 0;
-    const decayCycles = Math.floor(ticksInPower / 12);
-    const multiplier = score > 0 ? Math.pow(0.95, decayCycles) : 1;
+    // Incumbency decay: 3% per 24-tick cycle (softer than original 5%/12-tick).
+    // Honeymoon phase (first ~24 ticks) has no decay. Governments typically
+    // serve 4-6 years (48-72 ticks) before fatigue becomes meaningful.
+    const decayCycles = Math.floor(ticksInPower / 24);
+    const multiplier = score > 0 ? Math.pow(0.97, decayCycles) : 1;
     score *= multiplier;
     return { score, deltas, decayCycles, multiplier, ticksInPower };
 }
@@ -5333,7 +5336,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
             ${isGoverning ? (() => {
                 const govApp = Number(nation?.gov_approval ?? 50);
                 const approvalFactor = Math.max(-1, Math.min(1, (govApp - 35) / 30));
-                const fatigueFactor = Math.max(0, 1 - ticksInPower / 20);
+                const fatigueFactor = ticksInPower <= 35 ? 1.0 : Math.max(0, 1 - (ticksInPower - 35) / 39);
                 const bonus = Math.round(0.08 * approvalFactor * fatigueFactor * 1000) / 10;
                 const bonusColor = bonus > 0 ? 'var(--dgreen)' : bonus < 0 ? 'var(--dred)' : 'var(--dtext-3)';
                 const bonusSign = bonus > 0 ? '+' : '';
@@ -5371,7 +5374,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
                     <li>Your governance score directly reflects national performance under your watch.</li>
                     <li>Pass bills that move stats in the right direction — raise the stats voters want higher, lower the ones they want lower.</li>
                     <li>Appoint strong ministers — vacant ministries and poor performance drag stats down.</li>
-                    <li>Beware incumbency decay: positive scores erode 5% every 12 ticks. Fresh wins matter more than old ones.</li>
+                    <li>Beware incumbency decay: positive scores erode 3% every 24 ticks. Long-serving governments must keep delivering results.</li>
                 </ul>
             </div>
             <div class="elec-explainer-section">

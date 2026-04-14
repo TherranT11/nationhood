@@ -2316,17 +2316,14 @@ async function dissolveCorporation() {
         await _supabase.from('corp_material_inventory').delete().eq('faction_id', factionId);
         await _supabase.from('corp_warehouse').delete().eq('faction_id', factionId);
 
-        // 6. Mark as dissolved — zero out cash/employees but keep debts + active projects
-        await run(_supabase.from('factions').update({
-            abandoned_at: new Date().toISOString(),
-            corp_cash_reserves: 0,
-            corp_general_workforce: 0,
-            corp_skilled_workforce: 0,
-            corp_innovative_workforce: 0,
-            action_points: 0,
-        }).eq('id', factionId));
+        // 6. Delete executives and agitator pool entries for this corp
+        await _supabase.from('corp_executives').delete().eq('faction_id', factionId);
+        await _supabase.from('faction_agitators').delete().eq('faction_id', factionId);
 
-        // 7. Log bankruptcy event
+        // 7. Delete the corporation row entirely — dissolved corps should not persist
+        await run(_supabase.from('factions').delete().eq('id', factionId));
+
+        // 8. Log bankruptcy event
         const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const dissolveTick = shardData?.current_tick || 0;
         await _supabase.from('event_log').insert({
@@ -2340,7 +2337,7 @@ async function dissolveCorporation() {
             fired_at_tick: dissolveTick,
         });
 
-        // 8. Clear session and redirect
+        // 9. Clear session and redirect
         sessionStorage.removeItem('active_faction_id');
         sessionStorage.removeItem('nationhood_state');
 
@@ -2348,8 +2345,7 @@ async function dissolveCorporation() {
         const { data: remaining, error: remainErr } = await _supabase
             .from('factions')
             .select('id, faction_type')
-            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
-            .is('abandoned_at', null);
+            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
         if (remainErr) console.warn('Failed to check remaining factions:', remainErr.message);
 
         const party = (remaining || []).find(f => f.faction_type === 'party');

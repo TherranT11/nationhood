@@ -15,19 +15,87 @@
     <!-- Shared Styles -->
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/diplomacy.css">
+    <link rel="stylesheet" href="css/world.css">
+    <link rel="stylesheet" href="css/trade.css">
 </head>
 <body>
 
 <!-- ===== TOP BAR (rendered by common.js) ===== -->
 <div id="top-bar"></div>
 
-<!-- ===== CONTENT AREA ===== -->
-<div id="content-area">
+<!-- ===== PAGE HEADER + SUBTABS ===== -->
+<div id="diplo-page-header" style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px 0;">
+    <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:2px;color:var(--text-bright);">WORLD</span>
+    <div id="diplo-subtabs" style="display:flex;gap:0;"></div>
+</div>
+
+<!-- ===== WORLD SUBTAB ===== -->
+<div id="subtab-world" class="diplo-subtab-content">
+<div class="world-page">
+    <!-- Map panel -->
+    <div class="world-map-panel" id="world-map-panel">
+        <img id="world-map-img" src="./assets/map/World Map Crucera 2.5.svg" alt="World Map" draggable="false"
+             style="width:100%;height:auto;">
+        <div class="world-map-controls">
+            <div class="world-map-btn" id="map-zoom-in">+</div>
+            <div class="world-map-btn" id="map-zoom-out">&minus;</div>
+            <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+        </div>
+        <div class="world-map-zoom" id="map-zoom-label">100%</div>
+        <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
+    </div>
+
+    <!-- Nation highlight panel -->
+    <div style="display:flex;flex-direction:column;gap:12px;flex-shrink:0;">
+    <div class="world-highlight" id="world-highlight">
+        <div class="world-highlight-header">
+            <div class="world-highlight-dot" style="background:var(--accent);"></div>
+            <span class="world-highlight-title">Nation Overview</span>
+        </div>
+        <div class="world-highlight-body" id="world-highlight-body">
+            <div class="world-highlight-empty">
+                <div style="font-size:1.5rem;margin-bottom:8px;opacity:0.4;">&#127758;</div>
+                <div style="font-family:var(--font-mono);font-size:10px;">Select a nation</div>
+                <div style="font-family:var(--font-mono);font-size:8px;margin-top:4px;">Click on the map or use the list below</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- World events feed -->
+    <div class="world-events-panel" id="world-events-panel">
+        <div class="world-highlight-header">
+            <div class="world-highlight-dot" style="background:var(--blue);"></div>
+            <span class="world-highlight-title">Events</span>
+            <div class="world-events-tabs" id="world-events-tabs">
+                <button class="world-events-tab active" data-tab="nation">NATION</button>
+                <button class="world-events-tab" data-tab="world">WORLD</button>
+            </div>
+            <span id="world-events-filter-label" style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-left:auto;"></span>
+        </div>
+        <div class="world-events-scroll" id="world-events-scroll">
+            <div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Loading events...</div>
+        </div>
+    </div>
+    </div>
+</div>
+</div><!-- /subtab-world -->
+
+<!-- ===== TRADE SUBTAB ===== -->
+<div id="subtab-trade" class="diplo-subtab-content" style="display:none;">
+    <div id="trade-page" style="padding:0 12px 12px;">
+        <div id="trade-header-stats"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+            <div id="trade-left" style="width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;"></div>
+            <div id="trade-right" style="flex:1;display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Original content hidden during UI 2.0 rollout -->
+<div id="content-area-disabled" style="display:none;">
     <div class="page-header" id="diplo-header"></div>
     <div class="dashboard">
-        <!-- ═══ ROW 1: Three equal columns ═══ -->
         <div class="row">
-            <!-- Foreign Relations -->
             <div class="box box--third box--h450" id="box-relations">
                 <div class="box-header">
                     <div class="box-dot box-dot--teal"></div>
@@ -36,7 +104,6 @@
                 </div>
                 <div class="box-body" id="relations-body"></div>
             </div>
-            <!-- Diplomatic Actions -->
             <div class="box box--third box--h450" id="box-actions">
                 <div class="box-header">
                     <div class="box-dot box-dot--blue"></div>
@@ -44,7 +111,6 @@
                 </div>
                 <div class="box-body" id="actions-body"></div>
             </div>
-            <!-- Agreements -->
             <div class="box box--third box--h450" id="box-negotiations">
                 <div class="box-header">
                     <div class="box-dot box-dot--amber"></div>
@@ -99,6 +165,816 @@ import { getNationNames } from './js/game/political-actions.js';
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
  */
+
+// ═══════════════════════════════════════════════════
+// WORLD/TRADE SUBTAB NAVIGATION
+// ═══════════════════════════════════════════════════
+
+const DIPLO_SUBTABS = [
+    { id: 'world', label: 'WORLD' },
+    { id: 'trade', label: 'TRADE' },
+];
+let _diploActiveSubtab = 'world';
+let _tradeInitialized = false;
+
+function renderDiploSubtabs() {
+    const container = document.getElementById('diplo-subtabs');
+    if (!container) return;
+    container.innerHTML = DIPLO_SUBTABS.map(tab =>
+        `<div class="diplo-subtab${_diploActiveSubtab === tab.id ? ' active' : ''}" data-tab="${tab.id}">${tab.label}</div>`
+    ).join('');
+    container.onclick = (e) => {
+        const el = e.target.closest('.diplo-subtab');
+        if (!el || el.dataset.tab === _diploActiveSubtab) return;
+        _diploActiveSubtab = el.dataset.tab;
+        renderDiploSubtabs();
+        showDiploSubtab();
+    };
+}
+
+function showDiploSubtab() {
+    const worldEl = document.getElementById('subtab-world');
+    const tradeEl = document.getElementById('subtab-trade');
+    if (!worldEl || !tradeEl) return;
+
+    if (_diploActiveSubtab === 'world') {
+        worldEl.style.display = '';
+        tradeEl.style.display = 'none';
+    } else {
+        worldEl.style.display = 'none';
+        tradeEl.style.display = '';
+        // Lazy-init trade tab on first view
+        if (!_tradeInitialized) {
+            _tradeInitialized = true;
+            initTradeTab();
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// TRADE TAB — DATA + RENDERING
+// ═══════════════════════════════════════════════════
+
+const TRADE_SECTOR_ICONS = {
+    fuel_energy: '\u26FD', minerals: '\u26CF\uFE0F', food_agriculture: '\uD83C\uDF3E',
+    grains_staples: '\uD83C\uDF3E', livestock_dairy: '\uD83E\uDD6C', fruits_vegetables: '\uD83C\uDF4E',
+    cash_crops: '\uD83C\uDF3F', manufactured_goods: '\uD83C\uDFED', technology: '\uD83D\uDCBB',
+    arms: '\u2694\uFE0F', tourism: '\u2708\uFE0F', services_finance: '\uD83C\uDFE6',
+};
+const TRADE_SECTOR_LABELS = {
+    fuel_energy: 'Fuel & Energy', minerals: 'Minerals', food_agriculture: 'Food & Agriculture',
+    grains_staples: 'Grains & Staples', livestock_dairy: 'Livestock & Dairy',
+    fruits_vegetables: 'Fruits & Veg', cash_crops: 'Cash Crops',
+    manufactured_goods: 'Manufactured', technology: 'Technology',
+    arms: 'Arms', tourism: 'Tourism', services_finance: 'Services & Finance',
+};
+
+let _tradeFlows = {};       // sector → { export_capacity, import_demand, export_volume, import_volume, net_flow }
+let _tradeSummary = null;   // latest trade_summary row
+let _tradeCommodityFilter = null;  // selected commodity key for partner highlighting
+
+async function initTradeTab() {
+    const left = document.getElementById('trade-left');
+    const right = document.getElementById('trade-right');
+    if (!left || !right) return;
+
+    left.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Loading trade data...</div>';
+    right.innerHTML = '';
+
+    try {
+        await loadTradeFlowData();
+    } catch (err) {
+        console.error('[Trade] Failed to load trade data:', err);
+    }
+
+    // Load all nations' flows for partner analysis
+    try {
+        await loadAllNationFlows();
+    } catch (err) {
+        console.error('[Trade] Failed to load partner flows:', err);
+    }
+
+    // Ensure diplomatic data is cached (same as World tab uses)
+    if (!_worldRelations) {
+        try {
+            const [relRes, agreeRes, ambRes] = await Promise.all([
+                _supabase.from('diplomatic_relations').select('*'),
+                _supabase.from('trade_agreements').select('*').eq('status', 'active'),
+                _supabase.from('ambassadors').select('*').eq('status', 'active'),
+            ]);
+            _worldRelations = relRes.data || [];
+            _worldAgreements = agreeRes.data || [];
+            _worldAmbassadors = ambRes.data || [];
+        } catch (_) {}
+    }
+
+    // Load trade agreements + shipping data
+    try {
+        await Promise.all([loadTradeAgreements(), loadShippingData()]);
+    } catch (err) {
+        console.error('[Trade] Failed to load agreements/shipping:', err);
+    }
+
+    renderTradeHeaderStats();
+    renderTradeEconomy();
+    renderTradeAgreements();
+    renderTradePartners();
+}
+
+function renderTradeHeaderStats() {
+    const el = document.getElementById('trade-header-stats');
+    if (!el) return;
+
+    let totalExports = 0;
+    let totalImports = 0;
+    for (const [sector, flow] of Object.entries(_tradeFlows)) {
+        if (sector === 'food_agriculture' && (_tradeFlows.grains_staples || _tradeFlows.livestock_dairy)) continue;
+        totalExports += Number(flow.export_volume) || 0;
+        totalImports += Number(flow.import_volume) || 0;
+    }
+    const balance = totalExports - totalImports;
+    const activeCount = _tradeAgreementsList.filter(a => a.status === 'active').length;
+
+    el.innerHTML = `<div class="tr-header-stats">
+        <div class="tr-header-stat">
+            <div class="tr-header-stat-label">EXPORTS</div>
+            <div class="tr-header-stat-value" style="color:var(--green);">${fmtBudgetCurrency(totalExports)}</div>
+        </div>
+        <div class="tr-header-stat">
+            <div class="tr-header-stat-label">IMPORTS</div>
+            <div class="tr-header-stat-value" style="color:var(--red);">${fmtBudgetCurrency(totalImports)}</div>
+        </div>
+        <div class="tr-header-stat">
+            <div class="tr-header-stat-label">BALANCE</div>
+            <div class="tr-header-stat-value" style="color:${balance >= 0 ? 'var(--green)' : 'var(--red)'};">${balance >= 0 ? '+' : ''}${fmtBudgetCurrency(balance)}</div>
+        </div>
+        <div class="tr-header-stat">
+            <div class="tr-header-stat-label">AGREEMENTS</div>
+            <div class="tr-header-stat-value">${activeCount} active</div>
+        </div>
+    </div>`;
+}
+
+async function loadTradeFlowData() {
+    const nationId = _worldState?.nation?.id;
+    if (!nationId) return;
+
+    // Get latest trade_summary tick
+    const { data: sumRows } = await _supabase.from('trade_summary')
+        .select('*')
+        .eq('nation_id', nationId)
+        .order('tick', { ascending: false })
+        .limit(1);
+    _tradeSummary = sumRows?.[0] || null;
+
+    if (!_tradeSummary) return;
+
+    // Get trade flows for that tick
+    const { data: flowRows } = await _supabase.from('trade_flows')
+        .select('sector, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
+        .eq('nation_id', nationId)
+        .eq('tick', _tradeSummary.tick);
+
+    _tradeFlows = {};
+    if (flowRows) {
+        for (const row of flowRows) {
+            _tradeFlows[row.sector] = row;
+        }
+    }
+}
+
+function renderTradeEconomy() {
+    const left = document.getElementById('trade-left');
+    if (!left) return;
+
+    // Build commodity rows from trade flows
+    const commodities = [];
+    for (const [sector, flow] of Object.entries(_tradeFlows)) {
+        // Skip parent food_agriculture if subsectors exist
+        if (sector === 'food_agriculture' && (_tradeFlows.grains_staples || _tradeFlows.livestock_dairy)) continue;
+        commodities.push({
+            key: sector,
+            icon: TRADE_SECTOR_ICONS[sector] || '\uD83D\uDCE6',
+            name: TRADE_SECTOR_LABELS[sector] || sector,
+            production: Number(flow.export_capacity) || 0,
+            demand: Number(flow.import_demand) || 0,
+        });
+    }
+    // Sort by total volume descending
+    commodities.sort((a, b) => (b.production + b.demand) - (a.production + a.demand));
+
+    const surpluses = commodities.filter(c => c.production > c.demand).sort((a, b) => (b.production - b.demand) - (a.production - a.demand));
+    const deficits = commodities.filter(c => c.demand > c.production).sort((a, b) => (b.demand - b.production) - (a.demand - a.production));
+
+    let html = '';
+
+    // ── Commodity table ──
+    html += `<div class="tr-panel">
+        <div class="tr-panel-header">
+            <span class="tr-panel-title">YOUR ECONOMY</span>
+            <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${commodities.length} commodities</span>
+        </div>
+        <div class="tr-commodity-header">
+            <span style="flex:1;">COMMODITY</span>
+            <span style="width:55px;text-align:right;">PROD</span>
+            <span style="width:55px;text-align:right;">DEMAND</span>
+            <span style="width:55px;text-align:right;">BAL</span>
+        </div>`;
+
+    for (const c of commodities) {
+        const bal = c.production - c.demand;
+        const isSelected = _tradeCommodityFilter === c.key;
+        const bgStyle = isSelected ? (bal > 0 ? 'background:rgba(92,204,92,0.04);' : 'background:rgba(204,85,85,0.04);') : '';
+        html += `<div class="tr-commodity-row" data-sector="${c.key}" style="${bgStyle}">
+            <div style="flex:1;display:flex;align-items:center;gap:5px;">
+                <span style="font-size:10px;">${c.icon}</span>
+                <span style="font-size:9px;color:${isSelected ? 'var(--text-bright)' : 'var(--text-dim)'};font-weight:${isSelected ? '700' : '400'};">${escapeHtml(c.name)}</span>
+            </div>
+            <span style="width:55px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.production)}</span>
+            <span style="width:55px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.demand)}</span>
+            <span style="width:55px;font-family:var(--font-mono);font-size:9px;font-weight:700;text-align:right;color:${bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text-dim)'};">
+                ${bal === 0 ? '\u2014' : (bal > 0 ? '+' : '') + fmtBudgetCurrency(bal)}
+            </span>
+        </div>`;
+    }
+    html += `</div>`;
+
+    // ── Surpluses / Deficits ──
+    html += `<div style="display:flex;gap:6px;">`;
+
+    // Surpluses
+    html += `<div class="tr-panel" style="flex:1;padding:8px 10px;">
+        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--green);margin-bottom:4px;">SURPLUSES</div>`;
+    for (const c of surpluses.slice(0, 4)) {
+        html += `<div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+            <span style="font-size:8px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
+            <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--green);">+${fmtBudgetCurrency(c.production - c.demand)}</span>
+        </div>`;
+    }
+    if (surpluses.length === 0) html += `<div style="font-size:8px;color:var(--text-dim);font-style:italic;">None</div>`;
+    html += `</div>`;
+
+    // Deficits
+    html += `<div class="tr-panel" style="flex:1;padding:8px 10px;">
+        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--red);margin-bottom:4px;">DEFICITS</div>`;
+    for (const c of deficits.slice(0, 4)) {
+        html += `<div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+            <span style="font-size:8px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
+            <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--red);">${fmtBudgetCurrency(c.production - c.demand)}</span>
+        </div>`;
+    }
+    if (deficits.length === 0) html += `<div style="font-size:8px;color:var(--text-dim);font-style:italic;">None</div>`;
+    html += `</div>`;
+
+    html += `</div>`; // close surpluses/deficits row
+
+    left.innerHTML = html;
+
+    // Commodity filter click handler
+    left.onclick = (e) => {
+        const row = e.target.closest('.tr-commodity-row');
+        if (!row) return;
+        const sector = row.dataset.sector;
+        _tradeCommodityFilter = _tradeCommodityFilter === sector ? null : sector;
+        renderTradeEconomy();
+        renderTradePartners();
+    };
+}
+
+// ═══════════════════════════════════════════════════
+// SHIPPING DATA
+// ═══════════════════════════════════════════════════
+
+let _shippingRoutesByAgreement = {}; // agreementId → [routes]
+let _shippingClaimsByRoute = {};     // routeId → [claims with faction data]
+
+async function loadShippingData() {
+    const nationId = _worldState?.nation?.id;
+    if (!nationId) return;
+
+    // Routes involving our nation
+    const { data: routes } = await _supabase.from('shipping_routes')
+        .select('id, origin_nation_id, destination_nation_id, trade_sector, cargo_category, goods_name, trade_volume, estimated_revenue, transit_ticks, demand_level, trade_agreement_id, trade_agreement_name, status, competition_count')
+        .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`)
+        .eq('status', 'active');
+
+    _shippingRoutesByAgreement = {};
+    const routeIds = [];
+    if (routes) {
+        for (const r of routes) {
+            if (r.trade_agreement_id) {
+                if (!_shippingRoutesByAgreement[r.trade_agreement_id]) _shippingRoutesByAgreement[r.trade_agreement_id] = [];
+                _shippingRoutesByAgreement[r.trade_agreement_id].push(r);
+            }
+            routeIds.push(r.id);
+        }
+    }
+
+    // Claims on those routes (which corporations are servicing them)
+    _shippingClaimsByRoute = {};
+    if (routeIds.length > 0) {
+        const { data: claims } = await _supabase.from('shipping_claims')
+            .select('id, route_id, faction_id, market_share_pct, revenue_per_transit, total_revenue, transits_completed, status, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector)')
+            .in('route_id', routeIds)
+            .eq('status', 'active');
+        if (claims) {
+            for (const c of claims) {
+                if (!_shippingClaimsByRoute[c.route_id]) _shippingClaimsByRoute[c.route_id] = [];
+                _shippingClaimsByRoute[c.route_id].push(c);
+            }
+        }
+    }
+}
+
+function getAgreementShippingInfo(agreementId) {
+    const routes = _shippingRoutesByAgreement[agreementId] || [];
+    if (routes.length === 0) return null;
+
+    // Collect all unique corps servicing this agreement's routes
+    const corps = [];
+    const seen = new Set();
+    let totalRevenue = 0;
+    let totalTransits = 0;
+    for (const r of routes) {
+        const claims = _shippingClaimsByRoute[r.id] || [];
+        for (const c of claims) {
+            totalRevenue += Number(c.total_revenue) || 0;
+            totalTransits += c.transits_completed || 0;
+            if (c.factions && !seen.has(c.faction_id)) {
+                seen.add(c.faction_id);
+                corps.push({
+                    name: c.factions.faction_name || 'Unknown',
+                    abbr: c.factions.abbreviation || '',
+                    color: c.factions.party_color || '#888',
+                    sector: c.factions.corp_subsector || c.factions.corp_sector || 'Shipping',
+                    share: c.market_share_pct || 0,
+                    revenue: Number(c.revenue_per_transit) || 0,
+                });
+            }
+        }
+    }
+
+    return {
+        routeCount: routes.length,
+        corps,
+        totalRevenue,
+        totalTransits,
+        hasLogistics: corps.length > 0,
+    };
+}
+
+// ═══════════════════════════════════════════════════
+// TRADE AGREEMENTS PANEL
+// ═══════════════════════════════════════════════════
+
+let _tradeAgreementsList = [];
+let _tradeExpandedAgreement = null;
+
+async function loadTradeAgreements() {
+    const nationId = _worldState?.nation?.id;
+    if (!nationId) return;
+
+    const { data } = await _supabase.from('trade_agreements')
+        .select('*')
+        .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+        .order('enacted_at_tick', { ascending: false });
+    _tradeAgreementsList = data || [];
+}
+
+function renderTradeAgreements() {
+    const left = document.getElementById('trade-left');
+    if (!left) return;
+    const nationId = _worldState?.nation?.id;
+    const currentTk = _worldState?.shard?.current_tick || 0;
+    const agreements = _tradeAgreementsList;
+
+    const active = agreements.filter(a => a.status === 'active');
+    const expired = agreements.filter(a => a.status !== 'active');
+
+    let html = `<div class="tr-panel">
+        <div class="tr-panel-header">
+            <span class="tr-panel-title">AGREEMENTS</span>
+            <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${active.length} active${expired.length > 0 ? ' \u00B7 ' + expired.length + ' expired' : ''}</span>
+        </div>`;
+
+    if (agreements.length === 0) {
+        html += `<div style="padding:16px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No trade agreements.</div>`;
+    }
+
+    for (let i = 0; i < agreements.length; i++) {
+        const ag = agreements[i];
+        const isActive = ag.status === 'active';
+        const isHostile = ag.agreement_type === 'retaliatory_tariff' || ag.agreement_type === 'impose_embargo';
+        const isExp = _tradeExpandedAgreement === ag.id;
+        const statusColor = isActive ? (isHostile ? 'var(--red)' : 'var(--green)') : 'var(--text-dim)';
+        const statusLabel = isActive ? (isHostile ? 'HOSTILE' : 'ACTIVE') : ag.status?.toUpperCase() || 'ENDED';
+
+        // Partner nation
+        const partnerId = ag.nation_a_id === nationId ? ag.nation_b_id : ag.nation_a_id;
+        const partner = (_worldAllNations || []).find(n => n.id === partnerId);
+        const partnerName = partner?.name || 'Unknown';
+        const typeLabel = AGREE_TYPE_LABELS[ag.agreement_type] || ag.agreement_type;
+
+        // Duration info
+        const remaining = ag.expires_at_tick ? Math.max(0, ag.expires_at_tick - currentTk) : null;
+        const durationLabel = ag.duration_type === 'indefinite' ? 'Ongoing' : (ag.duration_ticks ? ag.duration_ticks + ' ticks' : 'Unknown');
+
+        const agShipInfo = getAgreementShippingInfo(ag.id);
+        const agIsTradeType = ag.agreement_type !== 'retaliatory_tariff' && ag.agreement_type !== 'impose_embargo';
+        const logisticsBadge = agIsTradeType
+            ? (agShipInfo?.hasLogistics
+                ? `<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">\uD83D\uDEA2 ${escapeHtml(agShipInfo.corps[0]?.name || 'Corp')}</span>`
+                : `<span class="tr-badge" style="color:var(--orange);background:rgba(200,136,68,0.06);border-color:rgba(200,136,68,0.15);font-size:5px;">\u26A0 NO LOGISTICS</span>`)
+            : '';
+
+        html += `<div class="tr-agreement-row" data-ag-id="${ag.id}" style="border-left:2px solid ${statusColor};">
+            <div class="tr-agreement-header" style="background:${isExp ? 'var(--bg-card)' : 'transparent'};">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <span style="font-size:9px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        ${logisticsBadge}
+                        <span class="tr-badge" style="color:${statusColor};background:${statusColor}0a;border-color:${statusColor}25;">${statusLabel}</span>
+                    </div>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+                    ${escapeHtml(partnerName)} \u00B7 ${escapeHtml(typeLabel)} \u00B7 ${durationLabel}${remaining !== null ? ' \u00B7 ' + remaining + ' ticks left' : ''}
+                </div>
+            </div>`;
+
+        // Expanded: articles + effects
+        if (isExp) {
+            const articles = ag.articles || [];
+            html += `<div style="padding:0 12px 10px;">`;
+
+            // Render articles
+            if (articles.length > 0) {
+                html += `<div style="font-family:var(--font-mono);font-size:6px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;margin:6px 0 4px;">ARTICLES</div>`;
+                for (let ai = 0; ai < articles.length; ai++) {
+                    const art = articles[ai];
+                    if (art._struck) continue;
+                    const artLabel = TRADE_ARTICLE_TYPES?.[art.type]?.label || art.type || 'Article';
+                    let summary = '';
+
+                    // Build summary from article data
+                    if (art.data) {
+                        if (art.data.sectors && art.data.sectors.length > 0) {
+                            summary = art.data.sectors.map(s => TRADE_SECTOR_LABELS[s] || s).join(', ');
+                        }
+                        if (art.data.percentage) summary += (summary ? ' \u00B7 ' : '') + art.data.percentage + '%';
+                        if (art.data.duration_ticks) summary += (summary ? ' \u00B7 ' : '') + art.data.duration_ticks + ' ticks';
+                        if (art.data.sector) summary += (summary ? '' : '') + (TRADE_SECTOR_LABELS[art.data.sector] || art.data.sector);
+                        if (art.data.volume_pct) summary += (summary ? ' \u00B7 ' : '') + art.data.volume_pct + '% volume';
+                    }
+
+                    html += `<div style="padding:3px 6px;margin-bottom:2px;background:var(--bg-card);border:1px solid var(--border-main);">
+                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-secondary);">Art. ${ai + 1} \u2014 ${escapeHtml(artLabel)}</div>
+                        ${summary ? `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(summary)}</div>` : ''}
+                    </div>`;
+                }
+            }
+
+            // Duration + auto-renew
+            html += `<div style="display:flex;gap:6px;margin-top:6px;">
+                <div style="padding:4px 6px;background:var(--bg-card);border:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">ENACTED</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--text-bright);">${tickToDate(ag.enacted_at_tick)}</div>
+                </div>
+                ${ag.expires_at_tick ? `<div style="padding:4px 6px;background:var(--bg-card);border:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">EXPIRES</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--text-bright);">${tickToDate(ag.expires_at_tick)}</div>
+                </div>` : ''}
+                ${ag.auto_renew ? `<div style="padding:4px 6px;background:var(--bg-card);border:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:7px;color:var(--green);">AUTO-RENEW</div>
+                </div>` : ''}
+            </div>`;
+
+            // Logistics / shipping corporations
+            const shipInfo = getAgreementShippingInfo(ag.id);
+            const isTradeType = ag.agreement_type !== 'retaliatory_tariff' && ag.agreement_type !== 'impose_embargo';
+
+            if (isTradeType) {
+                if (shipInfo && shipInfo.hasLogistics) {
+                    html += `<div style="margin-top:6px;background:var(--bg-card);border:1px solid var(--border-main);padding:8px 10px;">
+                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>`;
+                    for (const corp of shipInfo.corps) {
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <div style="width:24px;height:24px;background:${corp.color}15;border:1px solid ${corp.color}33;display:flex;align-items:center;justify-content:center;font-size:12px;">\uD83D\uDEA2</div>
+                                <div>
+                                    <div style="font-size:9px;font-weight:700;color:var(--text-bright);">${escapeHtml(corp.name)}</div>
+                                    <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(corp.sector)} \u00B7 ${corp.share}% market share</div>
+                                </div>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${fmtBudgetCurrency(corp.revenue)}/transit</div>
+                        </div>`;
+                    }
+                    html += `<div style="display:flex;gap:8px;margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+                        <span>${shipInfo.routeCount} route${shipInfo.routeCount !== 1 ? 's' : ''}</span>
+                        <span>\u00B7 ${shipInfo.totalTransits} transits</span>
+                        <span>\u00B7 ${fmtBudgetCurrency(shipInfo.totalRevenue)} total revenue</span>
+                    </div></div>`;
+                } else {
+                    html += `<div style="margin-top:6px;background:rgba(200,136,68,0.03);border:1px solid rgba(200,136,68,0.15);padding:8px 10px;">
+                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>
+                        <div style="font-size:9px;font-weight:700;color:var(--orange);">No shipping corporation assigned</div>
+                        <div style="font-size:8px;color:var(--text-dim);margin-top:1px;">Route operates at base efficiency. Shipping corporations can apply to service this route.</div>
+                    </div>`;
+                }
+            }
+
+            html += `</div>`;
+        }
+
+        html += `</div>`;
+    }
+
+    html += `</div>`;
+
+    // Append after existing economy panel (don't replace it)
+    const existingAgreements = left.querySelector('.tr-agreements-wrapper');
+    if (existingAgreements) {
+        existingAgreements.innerHTML = html;
+    } else {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'tr-agreements-wrapper';
+        wrapper.innerHTML = html;
+        left.appendChild(wrapper);
+
+        // Click handler for expand/collapse
+        wrapper.onclick = (e) => {
+            const row = e.target.closest('.tr-agreement-row');
+            if (!row) return;
+            const agId = row.dataset.agId;
+            _tradeExpandedAgreement = _tradeExpandedAgreement === agId ? null : agId;
+            renderTradeAgreements();
+        };
+    }
+}
+
+// ── All-nations trade flow data for partner analysis ──
+let _allNationFlows = {}; // nationId → { sector → { export_capacity, import_demand } }
+
+async function loadAllNationFlows() {
+    if (!_tradeSummary) return;
+    const { data: allFlows } = await _supabase.from('trade_flows')
+        .select('nation_id, sector, export_capacity, import_demand')
+        .eq('tick', _tradeSummary.tick);
+    _allNationFlows = {};
+    if (allFlows) {
+        for (const row of allFlows) {
+            if (!_allNationFlows[row.nation_id]) _allNationFlows[row.nation_id] = {};
+            _allNationFlows[row.nation_id][row.sector] = {
+                export_capacity: Number(row.export_capacity) || 0,
+                import_demand: Number(row.import_demand) || 0,
+            };
+        }
+    }
+}
+
+function computeCompatibility(myNationId, theirNationId) {
+    const myFlows = _allNationFlows[myNationId] || {};
+    const theirFlows = _allNationFlows[theirNationId] || {};
+    let matchScore = 0;
+    let totalSectors = 0;
+
+    for (const sector of Object.keys({ ...myFlows, ...theirFlows })) {
+        if (sector === 'food_agriculture' && (myFlows.grains_staples || theirFlows.grains_staples)) continue;
+        const myBal = (myFlows[sector]?.export_capacity || 0) - (myFlows[sector]?.import_demand || 0);
+        const theirBal = (theirFlows[sector]?.export_capacity || 0) - (theirFlows[sector]?.import_demand || 0);
+        totalSectors++;
+        // Complementary: we have surplus + they have deficit (or vice versa)
+        if ((myBal > 0 && theirBal < 0) || (myBal < 0 && theirBal > 0)) {
+            matchScore += Math.min(Math.abs(myBal), Math.abs(theirBal));
+        }
+    }
+    if (totalSectors === 0) return 0;
+    // Normalize to 0-100 scale based on total trade volume
+    const totalVol = Object.values(myFlows).reduce((s, f) => s + (f.export_capacity || 0) + (f.import_demand || 0), 0) || 1;
+    return Math.min(99, Math.round((matchScore / totalVol) * 200));
+}
+
+function getNationSurplusesAndDeficits(nationId) {
+    const flows = _allNationFlows[nationId] || {};
+    const surpluses = [];
+    const deficits = [];
+    for (const [sector, flow] of Object.entries(flows)) {
+        if (sector === 'food_agriculture' && (flows.grains_staples || flows.livestock_dairy)) continue;
+        const bal = flow.export_capacity - flow.import_demand;
+        const entry = {
+            sector,
+            icon: TRADE_SECTOR_ICONS[sector] || '\uD83D\uDCE6',
+            name: TRADE_SECTOR_LABELS[sector] || sector,
+            amount: Math.abs(bal),
+        };
+        if (bal > 0) surpluses.push(entry);
+        else if (bal < 0) deficits.push(entry);
+    }
+    surpluses.sort((a, b) => b.amount - a.amount);
+    deficits.sort((a, b) => b.amount - a.amount);
+    return { surpluses, deficits };
+}
+
+let _tradeExpandedNation = null;
+let _tradePartnerSort = 'compatibility';
+
+function renderTradePartners() {
+    const right = document.getElementById('trade-right');
+    if (!right) return;
+    const myNationId = _worldState?.nation?.id;
+    if (!myNationId) { right.innerHTML = ''; return; }
+
+    const nations = (_worldAllNations || []).filter(n => n.id !== myNationId);
+    const relations = _worldRelations || [];
+    const ambassadors = _worldAmbassadors || [];
+
+    // Compute compatibility for each nation
+    const partnerData = nations.map(n => {
+        const compat = computeCompatibility(myNationId, n.id);
+
+        // Diplomatic relation
+        const a = myNationId < n.id ? myNationId : n.id;
+        const b = myNationId < n.id ? n.id : myNationId;
+        const rel = relations.find(r => r.nation_a_id === a && r.nation_b_id === b);
+        const relScore = rel ? Number(rel.relation_score ?? 0) : 0;
+        let relLabel = 'Neutral';
+        if (relScore >= 60) relLabel = 'Friendly';
+        else if (relScore >= 30) relLabel = 'Warm';
+        else if (relScore >= -10) relLabel = 'Neutral';
+        else if (relScore >= -40) relLabel = 'Cold';
+        else relLabel = 'Hostile';
+
+        // Embassy
+        const ourAmb = ambassadors.find(am => am.home_nation_id === myNationId && am.host_nation_id === n.id);
+        const embassy = ourAmb ? 'Open' : 'Closed';
+
+        // Bilateral trade volume
+        const myFlows = _allNationFlows[myNationId] || {};
+        // Approximate from trade_partners if available, else 0
+        let tradeVol = 0;
+        // We can approximate from the bilateral trade fetch used in the world tab
+        // For now, show compatibility-based estimate
+
+        return { ...n, compat, relLabel, relScore, embassy, tradeVol };
+    });
+
+    // Sort
+    if (_tradePartnerSort === 'compatibility') {
+        partnerData.sort((a, b) => b.compat - a.compat);
+    } else {
+        partnerData.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    const RELATION_COLORS = { Friendly: 'var(--green)', Warm: 'var(--green)', Neutral: 'var(--blue)', Cold: 'var(--blue)', Hostile: 'var(--red)' };
+    const filterComm = _tradeCommodityFilter;
+
+    // Header
+    let html = `<div class="tr-panel" style="padding:8px 14px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span class="tr-panel-title">TRADE PARTNERS</span>`;
+    if (filterComm) {
+        html += `<div style="display:flex;align-items:center;gap:4px;padding:2px 8px;background:var(--bg-card);border:1px solid var(--border-main);">
+            <span style="font-size:9px;">${TRADE_SECTOR_ICONS[filterComm] || ''}</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-bright);">${escapeHtml(TRADE_SECTOR_LABELS[filterComm] || filterComm)}</span>
+            <span class="tr-filter-clear" style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);cursor:pointer;margin-left:4px;">\u2715</span>
+        </div>`;
+    }
+    html += `</div>
+        <div style="display:flex;gap:3px;">
+            <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-right:4px;">SORT:</span>
+            <div class="tr-sort-btn${_tradePartnerSort === 'compatibility' ? ' active' : ''}" data-sort="compatibility">COMPATIBILITY</div>
+            <div class="tr-sort-btn${_tradePartnerSort === 'name' ? ' active' : ''}" data-sort="name">NAME</div>
+        </div>
+    </div>`;
+
+    // Nation cards
+    for (const n of partnerData) {
+        const relColor = RELATION_COLORS[n.relLabel] || 'var(--text-dim)';
+        const isExp = _tradeExpandedNation === n.id;
+        const { surpluses, deficits } = getNationSurplusesAndDeficits(n.id);
+
+        // Commodity filter matching
+        let hasMatch = true;
+        let matchType = null;
+        if (filterComm) {
+            const myFlow = _tradeFlows[filterComm];
+            const myBal = myFlow ? (myFlow.export_capacity || 0) - (myFlow.import_demand || 0) : 0;
+            const theyNeed = deficits.find(d => d.sector === filterComm);
+            const theyHave = surpluses.find(s => s.sector === filterComm);
+            if (myBal > 0 && theyNeed) matchType = 'export';
+            else if (myBal < 0 && theyHave) matchType = 'import';
+            else hasMatch = false;
+        }
+
+        const compatColor = n.compat >= 75 ? 'var(--green)' : n.compat >= 50 ? 'var(--amber)' : 'var(--orange)';
+        const flagSrc = n.flag_url || `assets/flags/${n.name}.png`;
+        const initials = n.name.slice(0, 2).toUpperCase();
+        const pop = Number(n.population || 0);
+        const popLabel = pop >= 1e6 ? (pop / 1e6).toFixed(1) + 'M' : pop.toLocaleString();
+
+        html += `<div class="tr-partner-card${isExp ? ' expanded' : ''}" data-nation="${n.id}" style="opacity:${filterComm && !hasMatch ? '0.3' : '1'};border-color:${isExp ? relColor + '44' : ''};">
+            <div class="tr-partner-header">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <img src="${escapeHtml(flagSrc)}" alt="" style="width:36px;height:24px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                    <div style="width:36px;height:24px;background:${relColor}10;border:1px solid ${relColor}33;display:none;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;font-weight:700;color:${relColor};">${initials}</div>
+                    <div>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:13px;font-weight:700;color:var(--text-bright);">${escapeHtml(n.name)}</span>
+                            <span class="tr-badge" style="color:${relColor};background:${relColor}0a;border-color:${relColor}25;">${n.relLabel.toUpperCase()}</span>
+                            <span class="tr-badge" style="color:${n.embassy === 'Open' ? 'var(--accent)' : 'var(--text-dim)'};">EMBASSY ${n.embassy.toUpperCase()}</span>
+                            ${matchType ? `<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.08);border-color:rgba(92,204,92,0.2);">MATCH</span>` : ''}
+                        </div>
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:1px;">Pop: ${popLabel} \u00B7 Stability: ${(n.stability ?? 50).toFixed(1)}%</div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;">
+                    <div style="text-align:center;">
+                        <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">COMPAT.</div>
+                        <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${compatColor};">${n.compat}</div>
+                    </div>
+                </div>
+            </div>`;
+
+        // Expanded: surpluses + deficits + action buttons
+        if (isExp) {
+            // Check which of their surpluses match our deficits and vice versa
+            const myDeficits = Object.entries(_tradeFlows).filter(([, f]) => (f.import_demand || 0) > (f.export_capacity || 0)).map(([k]) => k);
+            const mySurpluses = Object.entries(_tradeFlows).filter(([, f]) => (f.export_capacity || 0) > (f.import_demand || 0)).map(([k]) => k);
+
+            html += `<div style="border-top:1px solid var(--border-main);">
+                <div style="display:flex;">
+                    <div style="flex:1;padding:10px 14px;border-right:1px solid var(--border-main);">
+                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--teal);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;background:var(--teal);"></span>THEY CAN OFFER</div>`;
+            for (const s of surpluses.slice(0, 6)) {
+                const isWeNeed = myDeficits.includes(s.sector);
+                html += `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <span style="font-size:9px;">${s.icon}</span>
+                        <span style="font-size:9px;color:var(--text-bright);font-weight:${isWeNeed ? '700' : '400'};">${escapeHtml(s.name)}</span>
+                        ${isWeNeed ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">MATCH</span>' : ''}
+                    </div>
+                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}</span>
+                </div>`;
+            }
+            if (surpluses.length === 0) html += `<div style="font-size:8px;color:var(--text-dim);font-style:italic;">No surpluses</div>`;
+
+            html += `</div><div style="flex:1;padding:10px 14px;">
+                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--green);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;background:var(--green);"></span>THEY NEED</div>`;
+            for (const d of deficits.slice(0, 6)) {
+                const weHave = mySurpluses.includes(d.sector);
+                html += `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <span style="font-size:9px;">${d.icon}</span>
+                        <span style="font-size:9px;color:var(--text-bright);font-weight:${weHave ? '700' : '400'};">${escapeHtml(d.name)}</span>
+                        ${weHave ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">MATCH</span>' : ''}
+                    </div>
+                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}</span>
+                </div>`;
+            }
+            if (deficits.length === 0) html += `<div style="font-size:8px;color:var(--text-dim);font-style:italic;">No deficits</div>`;
+
+            html += `</div></div>`;
+
+            // Action buttons
+            html += `<div style="padding:8px 14px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;gap:4px;">
+                <div class="tr-action-btn" onclick="event.stopPropagation();selectWorldNation('${n.id}');_diploActiveSubtab='world';renderDiploSubtabs();showDiploSubtab();">NATION INFO</div>
+                <div class="tr-action-btn tr-action-btn--primary">DRAFT TRADE AGREEMENT</div>
+            </div>`;
+
+            html += `</div>`;
+        }
+
+        html += `</div>`;
+    }
+
+    right.innerHTML = html;
+
+    // Click handlers
+    right.onclick = (e) => {
+        // Sort buttons
+        const sortBtn = e.target.closest('.tr-sort-btn');
+        if (sortBtn) {
+            _tradePartnerSort = sortBtn.dataset.sort;
+            renderTradePartners();
+            return;
+        }
+        // Clear filter
+        if (e.target.closest('.tr-filter-clear')) {
+            _tradeCommodityFilter = null;
+            renderTradeEconomy();
+            renderTradePartners();
+            return;
+        }
+        // Nation card expand
+        const card = e.target.closest('.tr-partner-card');
+        if (card && !e.target.closest('.tr-action-btn')) {
+            const nid = card.dataset.nation;
+            _tradeExpandedNation = _tradeExpandedNation === nid ? null : nid;
+            renderTradePartners();
+        }
+    };
+}
 
 let currentFaction = null;
 let currentNation  = null;
@@ -288,7 +1164,725 @@ function updateUnseenBadge() {
 let activeDraftAction = null;  // { key, label, apCost, type, role }
 let activeDraftTarget = null;  // nation object
 
+// ═══════════════════════════════════════════════════
+// WORLD EVENTS FEED
+// ═══════════════════════════════════════════════════
+
+const EVENT_CAT_COLORS = {
+    government: { color: '#c8a832', bg: 'rgba(200,168,50,0.06)', border: 'rgba(200,168,50,0.2)' },
+    economy: { color: '#5a8aaa', bg: 'rgba(90,138,170,0.06)', border: 'rgba(90,138,170,0.2)' },
+    diplomacy: { color: '#5aaa8a', bg: 'rgba(90,170,138,0.06)', border: 'rgba(90,170,138,0.2)' },
+    military: { color: '#c55', bg: 'rgba(204,85,85,0.06)', border: 'rgba(204,85,85,0.2)' },
+    crisis: { color: '#c84', bg: 'rgba(200,132,68,0.06)', border: 'rgba(200,132,68,0.2)' },
+    legislation: { color: '#8b9a6b', bg: 'rgba(139,154,107,0.06)', border: 'rgba(139,154,107,0.2)' },
+    business: { color: '#aa7a5a', bg: 'rgba(170,122,90,0.06)', border: 'rgba(170,122,90,0.2)' },
+};
+
+let _worldEvents = [];
+let _worldEventNationFilter = null; // nation id for NATION tab filter
+let _worldEventTab = 'nation';      // 'nation' or 'world'
+
+async function loadWorldEvents(state) {
+    const currentTick = state.shard?.current_tick || 0;
+    const lookback = Math.max(1, currentTick - 48); // last 48 ticks of events
+
+    const { data: events, error } = await _supabase
+        .from('event_log')
+        .select('id, nation_id, event_name, category, fired_at_tick, description_chosen')
+        .gte('fired_at_tick', lookback)
+        .order('fired_at_tick', { ascending: false })
+        .limit(100);
+
+    if (error) {
+        console.error('[WorldEvents] Load failed:', error.message);
+        return;
+    }
+
+    _worldEvents = events || [];
+
+    // Default to your nation on first load
+    _worldEventNationFilter = state.nation?.id || null;
+    _worldEventTab = 'nation';
+
+    renderWorldEvents();
+}
+
+function initWorldEventTabs() {
+    const tabContainer = document.getElementById('world-events-tabs');
+    if (!tabContainer) return;
+
+    tabContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.world-events-tab');
+        if (!btn) return;
+        const tab = btn.dataset.tab;
+        if (tab === _worldEventTab) return;
+
+        _worldEventTab = tab;
+
+        // Update active state
+        tabContainer.querySelectorAll('.world-events-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        renderWorldEvents();
+    });
+}
+
+function renderWorldEvents() {
+    const scroll = document.getElementById('world-events-scroll');
+    const filterLabel = document.getElementById('world-events-filter-label');
+    if (!scroll) return;
+
+    let events = _worldEvents;
+
+    if (_worldEventTab === 'nation' && _worldEventNationFilter) {
+        events = events.filter(e => e.nation_id === _worldEventNationFilter);
+        const nation = (_worldAllNations || []).find(n => n.id === _worldEventNationFilter);
+        if (filterLabel) filterLabel.textContent = nation?.name?.toUpperCase() || '';
+    } else {
+        // World tab — show all
+        if (filterLabel) filterLabel.textContent = '';
+    }
+
+    // Sync active tab button state
+    const tabContainer = document.getElementById('world-events-tabs');
+    if (tabContainer) {
+        tabContainer.querySelectorAll('.world-events-tab').forEach(b => {
+            b.classList.toggle('active', b.dataset.tab === _worldEventTab);
+        });
+    }
+
+    if (events.length === 0) {
+        scroll.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No recent events.</div>';
+        return;
+    }
+
+    scroll.innerHTML = events.map(ev => {
+        const cat = ev.category || 'government';
+        const catStyle = EVENT_CAT_COLORS[cat] || EVENT_CAT_COLORS.government;
+        const nation = (_worldAllNations || []).find(n => n.id === ev.nation_id);
+        const nationName = nation?.name || 'Unknown';
+        const desc = ev.description_chosen || ev.event_name || '';
+        const truncDesc = desc.length > 120 ? desc.slice(0, 117) + '...' : desc;
+
+        return `<div class="world-event-row">
+            <span class="world-event-tick">${ev.fired_at_tick}</span>
+            <span class="world-event-cat" style="color:${catStyle.color};border-color:${catStyle.border};background:${catStyle.bg};">${escapeHtml(cat)}</span>
+            <span class="world-event-text" title="${escapeHtml(desc)}">${escapeHtml(truncDesc)}</span>
+            <span class="world-event-nation">${escapeHtml(nationName)}</span>
+        </div>`;
+    }).join('');
+}
+
+// ═══════════════════════════════════════════════════
+// WORLD MAP — Pan + Zoom
+// ═══════════════════════════════════════════════════
+
+function initWorldMap() {
+    const panel = document.getElementById('world-map-panel');
+    const img = document.getElementById('world-map-img');
+    if (!panel || !img) return;
+
+    let scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
+    const minScale = 0.5, maxScale = 4;
+
+    function applyTransform() {
+        img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+        const label = document.getElementById('map-zoom-label');
+        if (label) label.textContent = Math.round(scale * 100) + '%';
+    }
+
+    // Scroll to zoom
+    panel.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = panel.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const oldScale = scale;
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        scale = Math.max(minScale, Math.min(maxScale, scale * delta));
+        // Zoom toward mouse position
+        panX = mx - (mx - panX) * (scale / oldScale);
+        panY = my - (my - panY) * (scale / oldScale);
+        applyTransform();
+    }, { passive: false });
+
+    // Drag to pan
+    panel.addEventListener('mousedown', (e) => {
+        dragging = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        panel.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        applyTransform();
+    });
+    window.addEventListener('mouseup', () => {
+        dragging = false;
+        panel.style.cursor = 'grab';
+    });
+
+    // Touch support
+    let lastTouchDist = 0;
+    panel.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            dragging = true;
+            startX = e.touches[0].clientX - panX;
+            startY = e.touches[0].clientY - panY;
+        } else if (e.touches.length === 2) {
+            lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        }
+    }, { passive: true });
+    panel.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1 && dragging) {
+            panX = e.touches[0].clientX - startX;
+            panY = e.touches[0].clientY - startY;
+            applyTransform();
+        } else if (e.touches.length === 2) {
+            const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            if (lastTouchDist > 0) {
+                scale = Math.max(minScale, Math.min(maxScale, scale * (dist / lastTouchDist)));
+                applyTransform();
+            }
+            lastTouchDist = dist;
+        }
+    }, { passive: true });
+    panel.addEventListener('touchend', () => { dragging = false; lastTouchDist = 0; });
+
+    // Button controls
+    document.getElementById('map-zoom-in')?.addEventListener('click', () => {
+        scale = Math.min(maxScale, scale * 1.25);
+        applyTransform();
+    });
+    document.getElementById('map-zoom-out')?.addEventListener('click', () => {
+        scale = Math.max(minScale, scale * 0.8);
+        applyTransform();
+    });
+    document.getElementById('map-zoom-reset')?.addEventListener('click', () => {
+        scale = 1; panX = 0; panY = 0;
+        applyTransform();
+    });
+
+    applyTransform();
+}
+
+// ═══════════════════════════════════════════════════
+// NATION HIGHLIGHT PANEL
+// ═══════════════════════════════════════════════════
+
+let _worldSelectedNationId = null;
+
+function initNationHighlight(allNations, state) {
+    const body = document.getElementById('world-highlight-body');
+    if (!body || !allNations.length) return;
+
+    const myNationId = state.nation?.id;
+    _worldAllNations = allNations;
+    _worldState = state;
+
+    // Show your own nation by default (also renders the nation list)
+    const myNation = allNations.find(n => n.id === myNationId);
+    if (myNation) {
+        selectWorldNation(myNation.id);
+    } else {
+        // No player nation — just render the clickable list
+        renderNationList(allNations, myNationId);
+    }
+}
+
+function renderNationList(allNations, myNationId) {
+    const body = document.getElementById('world-highlight-body');
+    if (!body) return;
+
+    // Remove old list if it exists
+    const oldList = document.getElementById('world-nation-list');
+    if (oldList) oldList.remove();
+
+    const listHtml = allNations.map(n => {
+        const isYou = n.id === myNationId;
+        const isSelected = n.id === _worldSelectedNationId;
+        const nameColor = isSelected ? 'var(--accent)' : isYou ? 'var(--accent)' : 'var(--text-bright)';
+        const nameWeight = isSelected || isYou ? '700' : '500';
+        const indicator = isSelected ? ' \u25C0' : '';
+        return `<div class="world-highlight-stat-row" style="cursor:pointer;padding:6px 0;" data-nation-id="${n.id}">
+            <span style="font-size:10px;font-weight:${nameWeight};color:${nameColor};">${escapeHtml(n.name)}${isYou ? ' (You)' : ''}${indicator}</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(n.government_type || '')}</span>
+        </div>`;
+    }).join('');
+
+    const listDiv = document.createElement('div');
+    listDiv.id = 'world-nation-list';
+    listDiv.style.cssText = 'padding:0 14px 14px;border-top:1px solid var(--border-main);';
+    listDiv.innerHTML = `<div class="world-highlight-section" style="margin-top:8px;">ALL NATIONS</div>${listHtml}`;
+    body.after(listDiv);
+
+    listDiv.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-nation-id]');
+        if (!row) return;
+        selectWorldNation(row.dataset.nationId);
+    });
+}
+
+let _worldAllNations = [];
+let _worldState = null;
+let _worldRelations = null;
+let _worldAgreements = null;
+
+async function selectWorldNation(nationId) {
+    const nation = _worldAllNations.find(n => n.id === nationId);
+    if (!nation) return;
+
+    const myNationId = _worldState.nation?.id;
+    const isYou = nation.id === myNationId;
+
+    // Track selected nation for list highlighting
+    _worldSelectedNationId = nationId;
+    renderNationList(_worldAllNations, myNationId);
+
+    // Fetch diplomatic data if not cached
+    if (!_worldRelations) {
+        const [relResult, agreeResult, ambResult] = await Promise.all([
+            _supabase.from('diplomatic_relations').select('*'),
+            _supabase.from('trade_agreements').select('*').eq('status', 'active'),
+            _supabase.from('ambassadors').select('*').eq('status', 'active'),
+        ]);
+        _worldRelations = relResult.data || [];
+        _worldAgreements = agreeResult.data || [];
+        _worldAmbassadors = ambResult.data || [];
+    }
+
+    // Fetch government + crisis data for the selected nation
+    const govData = await fetchNationGovernmentData(nation.id);
+    const extraData = { gov: govData, tradeData: null };
+    renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors, extraData);
+
+    // Auto-switch to NATION tab filtered to the selected nation
+    _worldEventNationFilter = nation.id;
+    _worldEventTab = 'nation';
+    renderWorldEvents();
+
+    // Fetch bilateral trade data async, then patch just the trade section
+    if (!isYou && myNationId) {
+        fetchBilateralTrade(myNationId, nation.id).then(tradeData => {
+            // Only patch if this nation is still selected
+            if (_worldSelectedNationId !== nationId) return;
+            const tradeEl = document.getElementById('world-trade-section');
+            if (tradeEl) {
+                tradeEl.innerHTML = buildTradeHTML(tradeData);
+            }
+        }).catch(err => {
+            console.error('[World] Bilateral trade fetch failed:', err);
+        });
+    }
+}
+
+/**
+ * Fetch head of government, coalition parties, and active crises for a nation.
+ * Returns { leader, leaderParty, coalitionParties, crises }
+ */
+async function fetchNationGovernmentData(nationId) {
+    try {
+    const [hogRes, presRes, coalRes, crisisRes, partiesRes] = await Promise.all([
+        _supabase.from('head_of_government')
+            .select('first_name, last_name, faction_id')
+            .eq('nation_id', nationId)
+            .eq('active', true)
+            .limit(1)
+            .maybeSingle(),
+        _supabase.from('presidents')
+            .select('first_name, last_name, faction_id')
+            .eq('nation_id', nationId)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle(),
+        _supabase.from('government_formations')
+            .select('party_ids, ministry_assignments, proposed_by, status')
+            .eq('nation_id', nationId)
+            .in('status', ['formed', 'caretaker'])
+            .order('formed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        _supabase.from('active_crises')
+            .select('crisis_id, crisis_templates(name)')
+            .eq('nation_id', nationId),
+        _supabase.from('factions')
+            .select('id, faction_name, abbreviation, party_color, seats')
+            .eq('nation_id', nationId)
+            .order('seats', { ascending: false }),
+    ]);
+
+    const allParties = partiesRes.data || [];
+    const partyMap = {};
+    for (const p of allParties) partyMap[p.id] = p;
+
+    // Determine leader: prefer president for presidential, else HOG
+    const nation = _worldAllNations.find(n => n.id === nationId);
+    const isPresidential = (nation?.government_type || '').toLowerCase().includes('presidential');
+    const pres = presRes.data;
+    const hog = hogRes.data;
+    let leader = null;
+    let leaderParty = null;
+
+    if (isPresidential && pres) {
+        leader = { name: `${pres.first_name} ${pres.last_name}`, title: 'President' };
+        leaderParty = partyMap[pres.faction_id] || null;
+    } else if (hog) {
+        leader = { name: `${hog.first_name} ${hog.last_name}`, title: 'Prime Minister' };
+        leaderParty = partyMap[hog.faction_id] || null;
+    } else if (pres) {
+        leader = { name: `${pres.first_name} ${pres.last_name}`, title: 'President' };
+        leaderParty = partyMap[pres.faction_id] || null;
+    }
+
+    // Coalition parties
+    const coal = coalRes.data;
+    let coalitionParties = [];
+    if (coal && coal.party_ids) {
+        coalitionParties = coal.party_ids
+            .map(id => partyMap[id])
+            .filter(Boolean);
+    }
+
+    // Crises
+    const crises = (crisisRes.data || [])
+        .map(c => c.crisis_templates?.name || 'Unknown Crisis')
+        .filter(Boolean);
+
+    return { leader, leaderParty, coalitionParties, crises };
+    } catch (err) {
+        console.error('[World] fetchNationGovernmentData failed:', err);
+        return { leader: null, leaderParty: null, coalitionParties: [], crises: [] };
+    }
+}
+
+let _worldAmbassadors = [];
+
+/**
+ * Fetch bilateral trade data between two nations for the latest tick.
+ * Returns { exportsToThem, importsFromThem, totalExports, totalImports, balance, tick }
+ */
+async function fetchBilateralTrade(myNationId, theirNationId) {
+    const currentTick = _worldState.shard?.current_tick || 0;
+    if (currentTick <= 0) return null;
+
+    // Get the latest tick with trade_partners data (might be 1 tick behind)
+    const { data: latestRow } = await _supabase.from('trade_partners')
+        .select('tick')
+        .or(`exporter_nation_id.eq.${myNationId},exporter_nation_id.eq.${theirNationId}`)
+        .order('tick', { ascending: false })
+        .limit(1);
+    const tradeTick = latestRow?.[0]?.tick ?? currentTick;
+
+    // Fetch what we export TO them and what we import FROM them (at the same tick)
+    const [exportsRes, importsRes] = await Promise.all([
+        _supabase.from('trade_partners')
+            .select('sector, trade_volume')
+            .eq('exporter_nation_id', myNationId)
+            .eq('importer_nation_id', theirNationId)
+            .eq('tick', tradeTick),
+        _supabase.from('trade_partners')
+            .select('sector, trade_volume')
+            .eq('exporter_nation_id', theirNationId)
+            .eq('importer_nation_id', myNationId)
+            .eq('tick', tradeTick),
+    ]);
+
+    const exportsToThem = {};   // sector → volume (what we sell to them)
+    const importsFromThem = {}; // sector → volume (what they sell to us)
+    let totalExports = 0;
+    let totalImports = 0;
+
+    if (exportsRes.data) {
+        for (const row of exportsRes.data) {
+            const vol = Number(row.trade_volume) || 0;
+            exportsToThem[row.sector] = (exportsToThem[row.sector] || 0) + vol;
+            totalExports += vol;
+        }
+    }
+    if (importsRes.data) {
+        for (const row of importsRes.data) {
+            const vol = Number(row.trade_volume) || 0;
+            importsFromThem[row.sector] = (importsFromThem[row.sector] || 0) + vol;
+            totalImports += vol;
+        }
+    }
+
+    return {
+        exportsToThem,
+        importsFromThem,
+        totalExports,
+        totalImports,
+        balance: totalExports - totalImports,
+        tick: tradeTick,
+    };
+}
+
+const AGREE_TYPE_LABELS = {
+    free_trade: 'Free Trade Agreement',
+    preferential_trade: 'Preferential Trade',
+    resource_supply: 'Resource Supply Contract',
+    export_subsidy: 'Export Subsidy',
+    economic_aid: 'Economic Aid',
+    retaliatory_tariff: 'Retaliatory Tariff',
+    impose_embargo: 'Embargo',
+};
+
+// TRADE_SECTOR_LABELS defined above (line ~224) — shared by both trade tab and bilateral trade panel
+
+/**
+ * Build trade section inner HTML (used for both initial render and async patch).
+ */
+function buildTradeHTML(tradeData) {
+    if (!tradeData) {
+        return `<div class="world-trade-loading">Loading trade data\u2026</div>`;
+    }
+    if (tradeData.totalExports === 0 && tradeData.totalImports === 0) {
+        return `<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No active trade routes.</div>`;
+    }
+
+    const allSectors = new Set([
+        ...Object.keys(tradeData.exportsToThem),
+        ...Object.keys(tradeData.importsFromThem),
+    ]);
+    const sectorRows = [];
+    for (const sector of allSectors) {
+        const exp = tradeData.exportsToThem[sector] || 0;
+        const imp = tradeData.importsFromThem[sector] || 0;
+        sectorRows.push({ sector, exp, imp, total: exp + imp });
+    }
+    sectorRows.sort((a, b) => b.total - a.total);
+
+    let h = `<table class="world-trade-table">
+        <thead><tr><th>Sector</th><th>Exports</th><th>Imports</th><th>Net</th></tr></thead><tbody>`;
+    for (const row of sectorRows) {
+        const net = row.exp - row.imp;
+        const netClass = net > 0 ? 'trade-positive' : net < 0 ? 'trade-negative' : 'trade-zero';
+        const netPrefix = net > 0 ? '+' : '';
+        h += `<tr>
+            <td>${escapeHtml(TRADE_SECTOR_LABELS[row.sector] || row.sector)}</td>
+            <td>${fmtBudgetCurrency(row.exp)}</td>
+            <td>${fmtBudgetCurrency(row.imp)}</td>
+            <td class="${netClass}">${netPrefix}${fmtBudgetCurrency(net)}</td>
+        </tr>`;
+    }
+    h += `</tbody></table>`;
+
+    const balance = tradeData.balance;
+    const balClass = balance > 0 ? 'trade-positive' : balance < 0 ? 'trade-negative' : 'trade-zero';
+    const balPrefix = balance > 0 ? '+' : '';
+    h += `<div class="world-trade-balance">
+        <span class="world-trade-balance-label">Trade Balance</span>
+        <span class="world-trade-balance-value ${balClass}">${balPrefix}${fmtBudgetCurrency(balance)}</span>
+    </div>`;
+    h += `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">
+        Total exports: ${fmtBudgetCurrency(tradeData.totalExports)} &middot;
+        Total imports: ${fmtBudgetCurrency(tradeData.totalImports)}
+    </div>`;
+    return h;
+}
+
+function renderNationHighlight(nation, state, relations, agreements, ambassadors, extraData) {
+    const body = document.getElementById('world-highlight-body');
+    if (!body) return;
+
+    const myNationId = state.nation?.id;
+    const isYou = nation.id === myNationId;
+    const gov = extraData?.gov || {};
+    const tradeData = extraData?.tradeData;
+
+    // Population
+    const pop = Number(nation.population || 0);
+    const popLabel = pop >= 1e6 ? (pop / 1e6).toFixed(1) + 'M' : pop.toLocaleString();
+
+    // GDP
+    const gdpLabel = fmtBudgetCurrency(Number(nation.gdp || 0));
+
+    // Flag URL
+    const flagSrc = nation.flag_url || `assets/flags/${nation.name}.png`;
+
+    // ── HEADER: Flag + Name + Government Type ──
+    let html = `<div class="world-hl-header-row">
+        <img class="world-hl-flag" src="${escapeHtml(flagSrc)}" alt="" onerror="this.style.display='none'">
+        <div>
+            <div class="world-highlight-name">${escapeHtml(nation.name)}${isYou ? ' <span style="font-family:var(--font-mono);font-size:8px;color:var(--green);font-weight:700;">YOU</span>' : ''}</div>
+            <div class="world-highlight-meta">${escapeHtml(nation.government_type || 'Unknown')}</div>
+        </div>
+    </div>`;
+
+    // ── LEADER ──
+    if (gov.leader) {
+        const partyTag = gov.leaderParty
+            ? ` <span style="font-family:var(--font-mono);font-size:8px;color:${gov.leaderParty.party_color || 'var(--text-dim)'};">[${escapeHtml(gov.leaderParty.abbreviation || gov.leaderParty.faction_name)}]</span>`
+            : '';
+        html += `<div style="margin:4px 0 2px;">
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em;">${escapeHtml(gov.leader.title)}</div>
+            <div style="font-size:11px;font-weight:600;color:var(--text-bright);">${escapeHtml(gov.leader.name)}${partyTag}</div>
+        </div>`;
+    }
+
+    // ── COALITION ──
+    if (gov.coalitionParties && gov.coalitionParties.length > 0) {
+        html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 4px;">`;
+        for (const p of gov.coalitionParties) {
+            const color = p.party_color || '#888';
+            html += `<span style="font-family:var(--font-mono);font-size:7px;padding:2px 6px;border:1px solid ${color};color:${color};letter-spacing:0.03em;">${escapeHtml(p.abbreviation || p.faction_name)}${p.seats ? ' \u00B7 ' + p.seats : ''}</span>`;
+        }
+        html += `</div>`;
+    }
+
+    // ── KEY STATS ──
+    html += `<div class="world-highlight-section">KEY STATS</div>`;
+
+    const stability = nation.stability ?? 0;
+    const stabColor = stability >= 50 ? 'var(--green)' : stability >= 30 ? 'var(--amber)' : 'var(--red)';
+    const stats = [
+        { label: 'Population', value: popLabel },
+        { label: 'GDP', value: gdpLabel },
+        { label: 'Stability', value: stability.toFixed(1), color: stabColor },
+    ];
+    html += stats.map(s => `<div class="world-highlight-stat-row">
+        <span class="world-highlight-stat-label">${escapeHtml(s.label)}</span>
+        <span class="world-highlight-stat-value" style="${s.color ? 'color:' + s.color : ''}">${s.value}</span>
+    </div>`).join('');
+
+    // ── ACTIVE CRISES ──
+    if (gov.crises && gov.crises.length > 0) {
+        html += `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">Active Crises</span>
+            <span class="world-highlight-stat-value" style="color:var(--red);">${gov.crises.length}</span>
+        </div>`;
+        for (const c of gov.crises) {
+            html += `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);padding:1px 0 1px 8px;">\u26A0 ${escapeHtml(c)}</div>`;
+        }
+    } else {
+        html += `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">Active Crises</span>
+            <span class="world-highlight-stat-value" style="color:var(--green);">None</span>
+        </div>`;
+    }
+
+    // ── DIPLOMATIC RELATIONS (foreign nations only) ──
+    let relScore = null;
+    let proximity = null;
+    if (!isYou && myNationId) {
+        const a = myNationId < nation.id ? myNationId : nation.id;
+        const b = myNationId < nation.id ? nation.id : myNationId;
+        const rel = (relations || []).find(r => r.nation_a_id === a && r.nation_b_id === b);
+        if (rel) {
+            relScore = Number(rel.relation_score ?? 0);
+            proximity = Number(rel.proximity ?? 0);
+        }
+    }
+
+    const ourAmbassador = !isYou ? (ambassadors || []).find(a => a.home_nation_id === myNationId && a.host_nation_id === nation.id) : null;
+    const theirAmbassador = !isYou ? (ambassadors || []).find(a => a.home_nation_id === nation.id && a.host_nation_id === myNationId) : null;
+
+    if (!isYou && relScore !== null) {
+        let relLabel = '', relColor = 'var(--text-dim)';
+        if (relScore >= 60) { relLabel = 'FRIENDLY'; relColor = 'var(--green)'; }
+        else if (relScore >= 30) { relLabel = 'WARM'; relColor = 'var(--green)'; }
+        else if (relScore >= -10) { relLabel = 'NEUTRAL'; relColor = 'var(--amber)'; }
+        else if (relScore >= -40) { relLabel = 'COOL'; relColor = 'var(--orange)'; }
+        else { relLabel = 'HOSTILE'; relColor = 'var(--red)'; }
+
+        html += `<div class="world-highlight-section">DIPLOMATIC RELATIONS</div>`;
+        html += `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">Relation Score</span>
+            <span class="world-highlight-stat-value" style="color:${relColor};">${relScore} \u2014 ${relLabel}</span>
+        </div>`;
+        if (proximity !== null) {
+            html += `<div class="world-highlight-stat-row">
+                <span class="world-highlight-stat-label">Proximity</span>
+                <span class="world-highlight-stat-value">${proximity}</span>
+            </div>`;
+        }
+        html += `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">Our Ambassador</span>
+            <span class="world-highlight-stat-value" style="color:${ourAmbassador ? 'var(--green)' : 'var(--text-dim)'};">${ourAmbassador ? 'Posted' : 'None'}</span>
+        </div>`;
+        html += `<div class="world-highlight-stat-row">
+            <span class="world-highlight-stat-label">Their Ambassador</span>
+            <span class="world-highlight-stat-value" style="color:${theirAmbassador ? 'var(--green)' : 'var(--text-dim)'};">${theirAmbassador ? 'Posted' : 'None'}</span>
+        </div>`;
+    }
+
+    // ── AGREEMENTS ──
+    const bilateralAgreements = isYou ? [] : (agreements || []).filter(ag =>
+        (ag.nation_a_id === myNationId && ag.nation_b_id === nation.id) ||
+        (ag.nation_a_id === nation.id && ag.nation_b_id === myNationId)
+    );
+    const allNationAgreements = isYou ? (agreements || []).filter(ag =>
+        ag.nation_a_id === nation.id || ag.nation_b_id === nation.id
+    ) : [];
+
+    if (!isYou && bilateralAgreements.length > 0) {
+        html += `<div class="world-highlight-section">ACTIVE AGREEMENTS (${bilateralAgreements.length})</div>`;
+        for (const ag of bilateralAgreements) {
+            const typeLabel = AGREE_TYPE_LABELS[ag.agreement_type] || ag.agreement_type;
+            const isHostile = ag.agreement_type === 'retaliatory_tariff' || ag.agreement_type === 'impose_embargo';
+            html += `<div style="padding:4px 0;border-bottom:1px solid var(--border-light);">
+                <div style="font-size:9px;font-weight:600;color:${isHostile ? 'var(--red)' : 'var(--text-bright)'};">${escapeHtml(ag.agreement_name || typeLabel)}</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(typeLabel)}</div>
+            </div>`;
+        }
+    } else if (!isYou && bilateralAgreements.length === 0) {
+        html += `<div class="world-highlight-section">AGREEMENTS</div>`;
+        html += `<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No active agreements.</div>`;
+    }
+
+    if (isYou && allNationAgreements.length > 0) {
+        html += `<div class="world-highlight-section">YOUR AGREEMENTS (${allNationAgreements.length})</div>`;
+        for (const ag of allNationAgreements.slice(0, 8)) {
+            const otherNationId = ag.nation_a_id === nation.id ? ag.nation_b_id : ag.nation_a_id;
+            const otherNation = _worldAllNations.find(n => n.id === otherNationId);
+            const typeLabel = AGREE_TYPE_LABELS[ag.agreement_type] || ag.agreement_type;
+            html += `<div style="padding:3px 0;border-bottom:1px solid var(--border-light);">
+                <div style="font-size:9px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">with ${escapeHtml(otherNation?.name || 'Unknown')} \u00B7 ${escapeHtml(typeLabel)}</div>
+            </div>`;
+        }
+        if (allNationAgreements.length > 8) {
+            html += `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">+ ${allNationAgreements.length - 8} more</div>`;
+        }
+    }
+
+    // ── BILATERAL TRADE (foreign nations, async-patched) ──
+    if (!isYou) {
+        html += `<div class="world-highlight-section">BILATERAL TRADE</div>`;
+        html += `<div id="world-trade-section">${buildTradeHTML(tradeData)}</div>`;
+    }
+
+    body.innerHTML = html;
+}
+
 initPage('diplomacy', async (state) => {
+    // ── Subtab navigation ──
+    renderDiploSubtabs();
+
+    // ── World Map: Pan + Zoom ──
+    initWorldMap();
+
+    // ── Event tab toggle (bind once) ──
+    initWorldEventTabs();
+
+    // ── Nation highlight: load all nations for the panel ──
+    try {
+        const { data: allNations } = await _supabase.from('nations').select('*').order('name');
+        initNationHighlight(allNations || [], state);
+    } catch (err) {
+        console.error('[World] Failed to load nations:', err);
+    }
+
+    // ── World events feed ──
+    try {
+        await loadWorldEvents(state);
+    } catch (err) {
+        console.error('[World] Failed to load events:', err);
+    }
+
+    return; // Original diplomacy code preserved below but disabled
     try {
         currentFaction = state.faction;
         currentNation  = state.nation;

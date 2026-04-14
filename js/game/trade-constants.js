@@ -28,7 +28,8 @@ export var TRADE_SECTORS = [
         key: 'fuel_energy',
         label: 'Fuel & Energy',
         export_only: false,
-        export_stats: ['oil_and_gas', 'energy_generation'],
+        export_stat: 'oil_and_gas',            // primary: must clear threshold on its own
+        export_bonus_stats: ['energy_generation'], // secondary: adds to capacity but doesn't gate it
         export_threshold: 15
     },
     {
@@ -773,16 +774,46 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
     }
     driverBonus = Math.max(0.5, Math.min(1.5, driverBonus));
 
-    // Base capacity: land × economy-scale × driver bonus
-    var capacity = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * econScale * driverBonus;
+    // Total production: land × economy-scale × driver bonus
+    var totalProduction = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * econScale * driverBonus;
 
-    // Sub-sector export multiplier (domestic consumption priority)
-    capacity *= subsector.export_multiplier;
-
-    // Spoilage for perishables: reduces effective supply
+    // Spoilage for perishables: reduces effective production
     if (subsector.key === 'fruits_vegetables') {
-        capacity *= calculateSpoilageMultiplier(nation);
+        totalProduction *= calculateSpoilageMultiplier(nation);
     }
+
+    // ── Domestic demand cap: nations must feed their own people first ──
+    // Subtract domestic need from TOTAL production, then take the export
+    // fraction of the surplus. This ensures the domestic-demand check
+    // operates at the correct scale — previously it was applied after
+    // the export_multiplier, which made the $1B domestic need dwarf
+    // the already-reduced $500M export slice and zeroed out exports
+    // for any nation with significant population.
+    var popNorm = (Number(nation.population) || 1) / 5000000;
+    var domesticNeed = 0;
+
+    if (subsector.key === 'grains_staples') {
+        domesticNeed = popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.45;
+    } else if (subsector.key === 'livestock_dairy') {
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
+        domesticNeed = popNorm * (0.3 + sol * 0.7) * cfg.BASE_TRADE_MULTIPLIER * 0.25;
+    } else if (subsector.key === 'fruits_vegetables') {
+        var urban = (Number(nation.urbanization ?? 50)) / 100;
+        var solFV = (Number(nation.standard_of_living ?? 50)) / 100;
+        domesticNeed = popNorm * (0.4 + urban * 0.4 + solFV * 0.3) * cfg.BASE_TRADE_MULTIPLIER * 0.2;
+    } else if (subsector.key === 'cash_crops') {
+        domesticNeed = popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.04; // minimal domestic use
+    }
+
+    // Only export the surplus after domestic needs are met.
+    // If total production < domestic need, no exports.
+    var surplus = totalProduction;
+    if (domesticNeed > 0) {
+        surplus = Math.max(0, totalProduction - domesticNeed);
+    }
+
+    // Export fraction of the surplus (most food stays domestic)
+    var capacity = surplus * subsector.export_multiplier;
 
     // Stability modifier (same as regular sectors)
     var stability = Number(nation.stability ?? 50);
@@ -797,7 +828,7 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
     var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
     capacity *= currencyModifier;
 
-    // Floor: minimal organic trade
+    // Floor: minimal organic trade (even deficit nations have some border trade)
     var minCapacity = Math.round(0.002 * cfg.BASE_TRADE_MULTIPLIER * econScale);
     return Math.max(minCapacity, Math.round(capacity));
 }
@@ -918,6 +949,8 @@ export function calculateExportCapacity(nation, sector, opts) {
     if (gdpModifier <= 0) return 0;
 
     // Calculate primary export score from sector stat(s) (0-100 scale)
+    // Primary stat (export_stat) must clear the threshold on its own.
+    // Bonus stats (export_bonus_stats) add to capacity but don't gate it.
     var score = 0;
     if (sector.export_stat) {
         score = Number(nation[sector.export_stat]) || 0;
@@ -929,39 +962,90 @@ export function calculateExportCapacity(nation, sector, opts) {
         score = sum / sector.export_stats.length;
     }
 
-    // Threshold check: stat must exceed sector threshold to generate any exports
+    // Threshold check: primary stat must exceed sector threshold
     if (score <= (sector.export_threshold || 0)) return 0;
+
+    // Bonus stats: add a fraction of secondary stats to the score (capped at +50% of primary)
+    if (sector.export_bonus_stats) {
+        var bonusSum = 0;
+        for (var bi = 0; bi < sector.export_bonus_stats.length; bi++) {
+            bonusSum += Number(nation[sector.export_bonus_stats[bi]]) || 0;
+        }
+        var bonusAvg = bonusSum / sector.export_bonus_stats.length;
+        score += Math.min(score * 0.5, bonusAvg * 0.3); // bonus capped at 50% of primary, weighted at 30%
+    }
 
     // Normalize from 0-100 codebase scale to 0-20 spec scale
     var normalizedScore = score / 5;
 
-    // Base capacity = normalizedScore × BASE_TRADE_MULTIPLIER × gdpModifier
-    var capacity = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    // Total production = normalizedScore × BASE_TRADE_MULTIPLIER × gdpModifier
+    var totalProduction = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
 
-    // ── Sector-specific modifiers ──
+    // ── Sector-specific production scaling ──
 
-    // Food: tighter supply — farming feeds your people first, only surplus is exported.
-    // Reduces export capacity by ~83% (equivalent to normalizing by /30 instead of /5).
+    // Food: tighter supply (equivalent to normalizing by /30 instead of /5).
     if (sector.key === 'food_agriculture') {
-        capacity *= 0.167;
+        totalProduction *= 0.167;
     }
 
     // Arms: requires meaningful defense spending to have an arms industry
     if (sector.key === 'arms') {
         var defensePct = (opts && opts.defense_pct) || 0;
         if (defensePct <= 8) return 0;
-        capacity *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
+        totalProduction *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
     }
 
     // Tourism: smaller than goods trade + requires stability
     if (sector.key === 'tourism') {
-        capacity *= 0.5;
+        totalProduction *= 0.5;
         if ((Number(nation.stability) || 0) <= 25) return 0;
     }
 
     // Services & Finance: smaller than goods trade
     if (sector.key === 'services_finance') {
-        capacity *= 0.7;
+        totalProduction *= 0.7;
+    }
+
+    // ── Domestic demand: feed your own people/industry first ──
+    // Mirrors grossDemand from calculateImportDemand so both sides of trade
+    // use consistent demand estimates. Only the surplus is available for export.
+    // Export-only sectors (tourism, services_finance) and arms (gated by
+    // defense spending) skip this check.
+    var popNorm = (Number(nation.population) || 1) / 5000000;
+    var SN = 5;
+    var domesticDemand = 0;
+
+    if (sector.key === 'fuel_energy') {
+        var manufNorm = (Number(nation.manufacturing_output) || 0) / SN;
+        var urbanNorm = (Number(nation.urbanization) || 0) / SN;
+        var colNorm = (Number(nation.cost_of_living) || 0) / SN;
+        var railNorm = (Number(nation.rail_network) || 0) / SN;
+        var transportNeed = Math.max(0, 12 - railNorm) * 0.15;
+        domesticDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+
+    else if (sector.key === 'minerals') {
+        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
+        var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
+        var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
+        domesticDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+
+    else if (sector.key === 'manufactured_goods') {
+        var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
+        domesticDemand = popNorm * (solNorm / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
+    }
+
+    else if (sector.key === 'technology') {
+        var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
+        var digiNorm = (Number(nation.digital_infrastructure) || 0) / SN;
+        domesticDemand = popNorm * ((solNorm + digiNorm) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+    }
+
+    // Subtract domestic demand from total production — only export the surplus
+    var capacity = totalProduction;
+    if (domesticDemand > 0) {
+        capacity = Math.max(0, totalProduction - domesticDemand);
     }
 
     // ── Stability modifier ──
