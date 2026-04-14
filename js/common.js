@@ -233,6 +233,15 @@ export async function loadGameState(requireFaction = true) {
                         .from('factions').select('*')
                         .or(`id.eq.${userId},linked_user_id.eq.${userId}`);
                     _userFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
+                    // Shard reset guard: cached faction no longer exists in DB
+                    if (_userFactions.length === 0) {
+                        console.log('Cached faction deleted (shard reset?) — clearing cache');
+                        sessionStorage.removeItem(STATE_KEY);
+                        if (requireFaction) {
+                            window.location.href = 'faction-select.html';
+                            return null;
+                        }
+                    }
                 }
             } catch (_) { /* dropdown will just show current faction */ }
         }

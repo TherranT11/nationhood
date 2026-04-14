@@ -133,6 +133,7 @@ DECLARE
         'valdorian_articles',
         'player_articles',
         'wiki_pages',
+        'nation_profiles',
 
         -- ══ Forum & chat ══
         'forum_replies',

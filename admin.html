@@ -1209,28 +1209,49 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
             logMsg('✓ All factions deleted — players will be sent to faction-select on next login', '#5cb85c');
 
             // 6. Re-seed initial elections for each nation
+            // Uses first_election_tick from seed_stats if set, otherwise half the term length.
+            // Schedules both parliamentary and presidential elections where applicable.
             logMsg('Scheduling initial elections...');
             let electionsSch = 0;
             for (const nation of (nations || [])) {
-                // Skip nations with no parliamentary_term_ticks set (e.g. no elections configured)
-                const govType = (nation.seed_stats?.government_type || '').toLowerCase();
-                const parlTerm = nation.seed_stats?.parliamentary_term_ticks;
-                if (!parlTerm) {
+                const seed = nation.seed_stats || {};
+                const govType = (seed.government_type || '').toLowerCase();
+                const parlTerm = seed.parliamentary_term_ticks;
+                const presTerm = seed.presidential_term_ticks;
+                const customTick = seed.first_election_tick;
+
+                if (!parlTerm && !presTerm) {
                     logMsg(`  — ${nation.name}: no term length in seed, skipping`, '#888');
                     continue;
                 }
-                // Schedule first election at half the term length so players
-                // don't wait a full cycle after reset. E.g., 48-tick term → first
-                // election at tick 24, then every 48 ticks after.
-                const firstElectionTick = Math.max(6, Math.round(parlTerm / 2));
-                const { error: elErr } = await _supabase.from('elections').insert({
-                    nation_id: nation.id,
-                    election_tick: firstElectionTick,
-                    election_type: 'parliamentary',
-                    status: 'scheduled'
-                });
-                if (!elErr) electionsSch++;
-                else logMsg(`  ⚠ ${nation.name} election: ${elErr.message}`, '#d48a3c');
+
+                // First election tick: use seed value if set, otherwise half the parliamentary term
+                const firstTick = customTick || Math.max(6, Math.round((parlTerm || presTerm) / 2));
+
+                // Parliamentary election (all nations with a parliamentary term)
+                if (parlTerm) {
+                    const { error: elErr } = await _supabase.from('elections').insert({
+                        nation_id: nation.id,
+                        election_tick: firstTick,
+                        election_type: 'parliamentary',
+                        status: 'scheduled'
+                    });
+                    if (!elErr) { electionsSch++; logMsg(`  ${nation.name}: parliamentary at tick ${firstTick}`, '#aaa'); }
+                    else logMsg(`  ⚠ ${nation.name} parliamentary: ${elErr.message}`, '#d48a3c');
+                }
+
+                // Presidential election (presidential/semi-presidential nations)
+                if (presTerm && govType.includes('presidential')) {
+                    const presTick = customTick || Math.max(6, Math.round(presTerm / 2));
+                    const { error: elErr } = await _supabase.from('elections').insert({
+                        nation_id: nation.id,
+                        election_tick: presTick,
+                        election_type: 'presidential',
+                        status: 'scheduled'
+                    });
+                    if (!elErr) { electionsSch++; logMsg(`  ${nation.name}: presidential at tick ${presTick}`, '#aaa'); }
+                    else logMsg(`  ⚠ ${nation.name} presidential: ${elErr.message}`, '#d48a3c');
+                }
             }
             logMsg(`✓ ${electionsSch} initial elections scheduled`, '#5cb85c');
 
@@ -4007,7 +4028,7 @@ const SEED_STAT_CATEGORIES = {
     'Security': ['civil_unrest', 'terrorism', 'political_violence'],
     'Migration': ['immigration', 'illegal_immigration', 'emigration'],
     'International': ['international_reputation'],
-    'Government': ['government_type', 'total_seats'],
+    'Government': ['government_type', 'total_seats', 'first_election_tick'],
 };
 
 // Stats stored as raw dollar values (not 0-100 scores)
@@ -4126,6 +4147,7 @@ async function seedSelectNation(nationId) {
             const val = seed[stat];
             const isRaw = SEED_RAW_STATS.has(stat);
             const isString = stat === 'government_type';
+            const isTickField = stat === 'first_election_tick';
             const schemaDefault = SEED_SCHEMA_DEFAULTS[stat];
             const isDefault = schemaDefault !== undefined && (val === schemaDefault || val === undefined || val === null);
             const displayVal = val !== undefined && val !== null ? val : (schemaDefault !== undefined ? schemaDefault : '');
@@ -4163,6 +4185,14 @@ async function seedSelectNation(nationId) {
                     <label style="font-size:9px;color:#aaa;min-width:120px;text-transform:uppercase;letter-spacing:0.03em;">${label}</label>
                     <input type="text" data-stat="${stat}" value="${displayVal}"
                         style="background:#222;color:#eee;border:1px solid #444;padding:3px 6px;font-family:inherit;font-size:11px;width:140px;${warnStyle}">
+                    ${badges}
+                </div>`;
+            } else if (isTickField) {
+                html += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
+                    <label style="font-size:9px;color:#aaa;min-width:120px;text-transform:uppercase;letter-spacing:0.03em;">${label}</label>
+                    <input type="number" data-stat="${stat}" value="${displayVal}" step="1" min="1" max="999"
+                        style="background:#222;color:#eee;border:1px solid #444;padding:3px 6px;font-family:inherit;font-size:11px;width:70px;${warnStyle}"
+                        title="Tick number for first election after reset" placeholder="e.g. 6">
                     ${badges}
                 </div>`;
             } else if (isRaw) {
@@ -4218,7 +4248,7 @@ async function seedSave() {
                 // Parse raw values (remove commas)
                 const num = Number(raw.replace(/,/g, ''));
                 if (!isNaN(num)) seed[stat] = num;
-            } else if (stat === 'total_seats' || stat === 'median_age') {
+            } else if (stat === 'total_seats' || stat === 'median_age' || stat === 'first_election_tick') {
                 seed[stat] = parseInt(raw, 10);
             } else {
                 const num = parseFloat(raw);
