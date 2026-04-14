@@ -130,7 +130,107 @@ export async function initRadio(supabase, state) {
     _stations = stationsResult.data || [];
     _factionIdeology = ideoResult.data || null;
 
+    // Attach event listeners ONCE via delegation — survives innerHTML rebuilds
+    attachRadioListeners(root);
     renderRadioPage(root);
+}
+
+// ════════════════════════ EVENT LISTENERS (attached once) ════════════════════════
+
+function attachRadioListeners(root) {
+    root.addEventListener('click', async (e) => {
+        // Create Station button
+        if (e.target.closest('#radio-create-btn')) { openCreateModal(); return; }
+
+        // Tune In / Back toggle
+        if (e.target.closest('#radio-tunein-btn')) {
+            _tuneInMode = !_tuneInMode;
+            if (_tuneInMode) openTuneIn();
+            else renderRadioPage(root);
+            return;
+        }
+
+        // Station tab click (normal mode)
+        const tab = e.target.closest('.radio-station-tab');
+        if (tab) { selectStation(tab.dataset.stationId); return; }
+
+        // Tune In: nation selection
+        const nationBtn = e.target.closest('.radio-tunein-nation');
+        if (nationBtn) {
+            _tuneInSelectedNationId = nationBtn.dataset.nationId;
+            _tuneInSelectedStationId = null;
+            _tuneInBroadcasts = [];
+            await loadTuneInStations();
+            renderRadioPage(root);
+            return;
+        }
+
+        // Tune In: station selection
+        const stationBtn = e.target.closest('.radio-tunein-station');
+        if (stationBtn) {
+            _tuneInSelectedStationId = stationBtn.dataset.stationId;
+            await loadTuneInBroadcasts();
+            renderRadioPage(root);
+            return;
+        }
+
+        // Create Station modal: type card, ideology card, close, cancel, submit
+        const typeCard = e.target.closest('.radio-type-card');
+        if (typeCard && !typeCard.classList.contains('locked')) {
+            _modalState.stationType = typeCard.dataset.type;
+            if (typeCard.dataset.type !== 'political') _modalState.ideology = null;
+            // Re-render modal inline
+            const overlay = document.getElementById('radio-create-modal');
+            if (overlay) { overlay.innerHTML = renderCreateStationModal(); bindCreateModalInputs(); }
+            return;
+        }
+        const ideoCard = e.target.closest('.radio-ideology-card');
+        if (ideoCard) {
+            _modalState.ideology = ideoCard.dataset.ideology;
+            const overlay = document.getElementById('radio-create-modal');
+            if (overlay) { overlay.innerHTML = renderCreateStationModal(); bindCreateModalInputs(); }
+            return;
+        }
+        if (e.target.closest('#radio-modal-close') || e.target.closest('#radio-modal-cancel')) { closeCreateModal(); return; }
+        if (e.target.closest('#radio-modal-submit')) { submitCreateStation(); return; }
+        // Close modal on overlay click
+        if (e.target.classList.contains('radio-modal-overlay')) { e.target.classList.remove('active'); return; }
+
+        // Create Personality button
+        if (e.target.closest('#radio-create-pers-btn')) {
+            const station = _stations.find(s => s.id === _selectedStationId);
+            if (station) openPersonalityModal(station);
+            return;
+        }
+    });
+
+    // Frequency slider — delegated input listener
+    root.addEventListener('input', (e) => {
+        if (e.target.id === 'radio-freq-slider') {
+            const freq = (e.target.value / 10).toFixed(1);
+            _modalState.frequency = freq;
+            const pct = (e.target.value - 875) / (1080 - 875) * 100;
+            const cursor = document.getElementById('radio-freq-cursor');
+            if (cursor) cursor.style.left = pct + '%';
+            const valueEl = document.getElementById('radio-freq-value');
+            if (valueEl) valueEl.textContent = freq + ' FM';
+            const existingFreqs = _stations.map(s => parseFloat(s.frequency)).filter(f => !isNaN(f));
+            const isOccupied = existingFreqs.some(f => Math.abs(f - parseFloat(freq)) < 0.2);
+            const statusEl = document.getElementById('radio-freq-status');
+            if (statusEl) {
+                statusEl.textContent = isOccupied ? 'OCCUPIED' : 'AVAILABLE';
+                statusEl.className = 'radio-freq-status ' + (isOccupied ? 'radio-freq-status--occupied' : 'radio-freq-status--available');
+            }
+        }
+        if (e.target.id === 'radio-input-callsign') _modalState.callsign = e.target.value;
+        if (e.target.id === 'radio-input-name') _modalState.name = e.target.value;
+        if (e.target.id === 'radio-input-desc') _modalState.description = e.target.value;
+    });
+}
+
+// Bind only the non-delegatable modal inputs (called after modal innerHTML updates)
+function bindCreateModalInputs() {
+    // Frequency slider and text inputs are handled by the delegated input listener above
 }
 
 // ════════════════════════ RENDER PAGE ════════════════════════
@@ -170,28 +270,10 @@ function renderRadioPage(root) {
         <div class="radio-modal-overlay" id="radio-broadcast-modal"></div>
     `;
 
-    // Bind create button
-    document.getElementById('radio-create-btn')?.addEventListener('click', openCreateModal);
-
-    // Bind Tune In toggle
-    document.getElementById('radio-tunein-btn')?.addEventListener('click', () => {
-        _tuneInMode = !_tuneInMode;
-        if (_tuneInMode) openTuneIn();
-        else renderRadioPage(root);
-    });
-
-    // Bind station tabs (only in normal mode)
+    // After render: load data for current mode (no listener re-binding)
     if (!_tuneInMode && stationCount > 0) {
-        bindStationTabs();
-        // Default: load ALL broadcasts from all stations
         loadAllBroadcasts();
     }
-
-    // Bind Tune In clicks (delegated)
-    if (_tuneInMode) bindTuneInListeners(root);
-
-    // Bind modal
-    bindCreateModal();
 }
 
 function renderEmptyState() {
@@ -241,14 +323,6 @@ function renderStationView() {
 }
 
 // ════════════════════════ STATION SELECTION ════════════════════════
-
-function bindStationTabs() {
-    document.getElementById('radio-station-tabs')?.addEventListener('click', (e) => {
-        const tab = e.target.closest('.radio-station-tab');
-        if (!tab) return;
-        selectStation(tab.dataset.stationId);
-    });
-}
 
 async function selectStation(stationId) {
     _selectedStationId = stationId;
@@ -397,8 +471,7 @@ function renderSidebar(station) {
         </div>
     `;
 
-    // Bind Create Personality button
-    document.getElementById('radio-create-pers-btn')?.addEventListener('click', () => openPersonalityModal(station));
+    // Create Personality click is handled by delegated listener in attachRadioListeners
 }
 
 function renderCreatePersonalityButton(station) {
@@ -905,7 +978,7 @@ function openCreateModal() {
     if (overlay) {
         overlay.innerHTML = renderCreateStationModal();
         overlay.classList.add('active');
-        bindCreateModal();
+        // Click/input handlers are delegated from root — no re-binding needed
     }
 }
 
@@ -913,84 +986,8 @@ function closeCreateModal() {
     document.getElementById('radio-create-modal')?.classList.remove('active');
 }
 
-function bindCreateModal() {
-    const overlay = document.getElementById('radio-create-modal');
-    if (!overlay) return;
-
-    // Close
-    document.getElementById('radio-modal-close')?.addEventListener('click', closeCreateModal);
-    document.getElementById('radio-modal-cancel')?.addEventListener('click', closeCreateModal);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeCreateModal(); });
-
-    // Type selection
-    document.getElementById('radio-type-grid')?.addEventListener('click', (e) => {
-        const card = e.target.closest('.radio-type-card');
-        if (!card || card.classList.contains('locked')) return;
-        const type = card.dataset.type;
-        _modalState.stationType = type;
-        if (type !== 'political') _modalState.ideology = null;
-
-        document.querySelectorAll('.radio-type-card').forEach(c => {
-            const isActive = c.dataset.type === type;
-            c.classList.toggle('active', isActive);
-            const nameEl = c.querySelector('.radio-type-name');
-            if (nameEl) nameEl.style.color = isActive ? (TYPE_COLORS[c.dataset.type] || '') : '';
-        });
-
-        const ideoGrid = document.getElementById('radio-ideology-grid');
-        if (ideoGrid) ideoGrid.classList.toggle('visible', type === 'political');
-    });
-
-    // Ideology selection
-    document.getElementById('radio-ideology-grid')?.addEventListener('click', (e) => {
-        const card = e.target.closest('.radio-ideology-card');
-        if (!card) return;
-        const tag = card.dataset.ideology;
-        const info = IDEOLOGY_TAGS.find(i => i.tag === tag);
-        _modalState.ideology = tag;
-
-        document.querySelectorAll('.radio-ideology-card').forEach(c => {
-            const isActive = c.dataset.ideology === tag;
-            c.classList.toggle('active', isActive);
-            if (isActive && info) {
-                c.style.color = info.color;
-                c.style.borderColor = info.color + '44';
-                c.style.background = info.color + '12';
-            } else {
-                c.style.color = '';
-                c.style.borderColor = '';
-                c.style.background = '';
-            }
-        });
-    });
-
-    // Frequency slider
-    const existingFreqs = _stations.map(s => parseFloat(s.frequency)).filter(f => !isNaN(f));
-    document.getElementById('radio-freq-slider')?.addEventListener('input', (e) => {
-        const freq = (e.target.value / 10).toFixed(1);
-        _modalState.frequency = freq;
-        const pct = (e.target.value - 875) / (1080 - 875) * 100;
-        const cursor = document.getElementById('radio-freq-cursor');
-        if (cursor) cursor.style.left = pct + '%';
-        const valueEl = document.getElementById('radio-freq-value');
-        if (valueEl) valueEl.textContent = freq + ' FM';
-
-        const isOccupied = existingFreqs.some(f => Math.abs(f - parseFloat(freq)) < 0.2);
-        const statusEl = document.getElementById('radio-freq-status');
-        if (statusEl) {
-            statusEl.textContent = isOccupied ? 'OCCUPIED' : 'AVAILABLE';
-            statusEl.className = 'radio-freq-status ' + (isOccupied ? 'radio-freq-status--occupied' : 'radio-freq-status--available');
-        }
-    });
-
-    // Input bindings
-    document.getElementById('radio-input-callsign')?.addEventListener('input', (e) => { _modalState.callsign = e.target.value; });
-    document.getElementById('radio-input-name')?.addEventListener('input', (e) => { _modalState.name = e.target.value; });
-    document.getElementById('radio-input-desc')?.addEventListener('input', (e) => { _modalState.description = e.target.value; });
-
-    // Submit
-    document.getElementById('radio-modal-submit')?.addEventListener('click', submitCreateStation);
-}
+// Old bindCreateModal removed — all click/input handling is now delegated
+// from attachRadioListeners() to prevent listener accumulation.
 
 let _submitting = false;
 
@@ -1171,25 +1168,3 @@ function renderTuneInView() {
     `;
 }
 
-function bindTuneInListeners(root) {
-    root.addEventListener('click', async (e) => {
-        // Nation selection
-        const nationBtn = e.target.closest('.radio-tunein-nation');
-        if (nationBtn) {
-            _tuneInSelectedNationId = nationBtn.dataset.nationId;
-            _tuneInSelectedStationId = null;
-            _tuneInBroadcasts = [];
-            await loadTuneInStations();
-            renderRadioPage(root);
-            return;
-        }
-        // Station selection
-        const stationBtn = e.target.closest('.radio-tunein-station');
-        if (stationBtn) {
-            _tuneInSelectedStationId = stationBtn.dataset.stationId;
-            await loadTuneInBroadcasts();
-            renderRadioPage(root);
-            return;
-        }
-    });
-}
