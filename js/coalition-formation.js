@@ -350,19 +350,36 @@ async function handleFormGovernment(formation, root) {
         }).eq('id', formation.id);
         if (assignErr) throw new Error('Failed to save assignments: ' + assignErr.message);
 
-        // Try the atomic RPC first
+        // Try the atomic RPC first (sets formation status, cancels rivals, etc.)
+        let rpcSucceeded = false;
         try {
             const baselines = buildMinistryBaselines ? buildMinistryBaselines(null, nation) : {};
-            const { data: rpcResult, error: rpcErr } = await _supabase.rpc('finalize_government_formation', {
+            const { error: rpcErr } = await _supabase.rpc('finalize_government_formation', {
                 p_formation_id: formation.id,
                 p_caller_faction_id: _state.faction.id,
                 p_ministry_baselines: baselines || {},
             });
             if (rpcErr) throw rpcErr;
+            rpcSucceeded = true;
         } catch (rpcErr) {
-            console.warn('[Coalition] finalize_government_formation RPC failed, using fallback:', rpcErr.message);
-            // Fallback: manual formation steps
+            console.warn('[Coalition] RPC failed, using fallback:', rpcErr.message);
+        }
+
+        // Always run the fallback to ensure ministries are created
+        // (the RPC may succeed at setting status but fail at ministry creation)
+        if (!rpcSucceeded) {
             await formGovernmentFallback(formation);
+        }
+
+        // Ensure ministries exist regardless of RPC path
+        const { count: minCount } = await _supabase.from('ministries')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', nationId)
+            .eq('is_active', true);
+
+        if (!minCount || minCount < 2) {
+            console.warn(`[Coalition] Only ${minCount || 0} active ministries found — creating from assignments`);
+            await createMinistriesFromAssignments(nationId);
         }
 
         // Auto-appoint PM's party leader (skip coalition check — we just formed it)
@@ -399,13 +416,33 @@ async function formGovernmentFallback(formation) {
     const { error: resetErr } = await _supabase.from('nations').update({ failed_formation_attempts: 0 }).eq('id', nationId);
     if (resetErr) console.warn('[Coalition] Failed to reset formation attempts:', resetErr.message);
 
-    // Deactivate all existing ministries before creating new ones
-    await _supabase.from('ministries').update({ is_active: false })
-        .eq('nation_id', nationId).eq('is_active', true);
+    await createMinistriesFromAssignments(nationId);
 
-    // Create ministry records from ALL assignments (including PM)
-    // Uses INSERT (not upsert) because there's no unique constraint on (nation_id, ministry_key)
-    // and old ministries were already deactivated above
+    // Create new administration record
+    try {
+        const coalition = {
+            id: formation.id,
+            party_ids: formation.party_ids || [],
+            lead_party_id: _ministryAssignments.prime_minister,
+        };
+        await rolloverAdministration(
+            _supabase, nationId, _state.nation,
+            'election', coalition, _allParties,
+            _currentTick, _state.shard?.current_date || '',
+            Number(_state.nation?.gov_approval ?? 50)
+        );
+    } catch (adminErr) {
+        console.warn('[Coalition] Administration rollover failed (non-fatal):', adminErr.message);
+    }
+}
+
+async function createMinistriesFromAssignments(nationId) {
+    // Deactivate all existing ministries
+    const { error: deactErr } = await _supabase.from('ministries').update({ is_active: false })
+        .eq('nation_id', nationId).eq('is_active', true);
+    if (deactErr) console.warn('[Coalition] Failed to deactivate old ministries:', deactErr.message);
+
+    let created = 0;
     for (const [key, partyId] of Object.entries(_ministryAssignments)) {
         if (!partyId) continue;
         const names = getNationNames(_state.nation?.name);
@@ -426,25 +463,13 @@ async function formGovernmentFallback(formation) {
             stat_baselines: baselines,
             is_active: true,
         });
-        if (minErr) console.warn(`[Coalition] Failed to create ministry ${key}:`, minErr.message);
+        if (minErr) {
+            console.error(`[Coalition] FAILED to insert ministry ${key}:`, minErr.message);
+        } else {
+            created++;
+        }
     }
-
-    // Create new administration record
-    try {
-        const coalition = {
-            id: formation.id,
-            party_ids: formation.party_ids || [],
-            lead_party_id: _ministryAssignments.prime_minister,
-        };
-        await rolloverAdministration(
-            _supabase, nationId, _state.nation,
-            'election', coalition, _allParties,
-            _currentTick, _state.shard?.current_date || '',
-            Number(_state.nation?.gov_approval ?? 50)
-        );
-    } catch (adminErr) {
-        console.warn('[Coalition] Administration rollover failed (non-fatal):', adminErr.message);
-    }
+    console.log(`[Coalition] Created ${created} ministries for nation ${nationId}`);
 }
 
 // ════════════════════════ DATA ════════════════════════
