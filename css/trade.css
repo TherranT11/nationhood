@@ -95,6 +95,21 @@
 .tr-action-btn--primary:hover { filter: brightness(1.1); }
 .tr-filter-clear:hover { color: var(--text-bright) !important; }
 
+/* ── Header stats bar ── */
+.tr-header-stats {
+    display: flex; gap: 12px; justify-content: flex-end;
+    padding: 4px 0;
+}
+.tr-header-stat { text-align: right; }
+.tr-header-stat-label {
+    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
+    color: var(--text-dim); letter-spacing: 0.8px;
+}
+.tr-header-stat-value {
+    font-family: var(--font-mono); font-size: 14px; font-weight: 700;
+    color: var(--text-bright);
+}
+
 /* ── Responsive ── */
 @media (max-width: 1200px) {
     #trade-left { width: 100% !important; }
@@ -102,7 +117,10 @@
     #trade-page > div[style*="display:flex"] {
         flex-direction: column !important;
     }
+    .tr-header-stats { flex-wrap: wrap; justify-content: flex-start; gap: 16px; }
 }
 @media (max-width: 768px) {
     .diplo-subtab { padding: 4px 8px; font-size: 7px; }
+    .tr-header-stat-value { font-size: 11px; }
+    .tr-partner-header { flex-direction: column; gap: 8px; align-items: flex-start !important; }
 }

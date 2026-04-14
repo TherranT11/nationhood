@@ -275,9 +275,44 @@ async function initTradeTab() {
         console.error('[Trade] Failed to load agreements/shipping:', err);
     }
 
+    renderTradeHeaderStats();
     renderTradeEconomy();
     renderTradeAgreements();
     renderTradePartners();
+}
+
+function renderTradeHeaderStats() {
+    const el = document.getElementById('trade-header-stats');
+    if (!el) return;
+
+    let totalExports = 0;
+    let totalImports = 0;
+    for (const [sector, flow] of Object.entries(_tradeFlows)) {
+        if (sector === 'food_agriculture' && (_tradeFlows.grains_staples || _tradeFlows.livestock_dairy)) continue;
+        totalExports += Number(flow.export_volume) || 0;
+        totalImports += Number(flow.import_volume) || 0;
+    }
+    const balance = totalExports - totalImports;
+    const activeCount = _tradeAgreementsList.filter(a => a.status === 'active').length;
+
+    el.innerHTML = `<div class="tr-header-stats">
+        <div class="tr-header-stat">
+            <div class="tr-header-stat-label">EXPORTS</div>
+            <div class="tr-header-stat-value" style="color:var(--green);">${fmtBudgetCurrency(totalExports)}</div>
+        </div>
+        <div class="tr-header-stat">
+            <div class="tr-header-stat-label">IMPORTS</div>
+            <div class="tr-header-stat-value" style="color:var(--red);">${fmtBudgetCurrency(totalImports)}</div>
+        </div>
+        <div class="tr-header-stat">
+            <div class="tr-header-stat-label">BALANCE</div>
+            <div class="tr-header-stat-value" style="color:${balance >= 0 ? 'var(--green)' : 'var(--red)'};">${balance >= 0 ? '+' : ''}${fmtBudgetCurrency(balance)}</div>
+        </div>
+        <div class="tr-header-stat">
+            <div class="tr-header-stat-label">AGREEMENTS</div>
+            <div class="tr-header-stat-value">${activeCount} active</div>
+        </div>
+    </div>`;
 }
 
 async function loadTradeFlowData() {
