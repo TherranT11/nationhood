@@ -507,9 +507,12 @@ async function createMinistriesFromAssignments(nationId) {
     let updated = 0;
     for (const [key, partyId] of Object.entries(_ministryAssignments)) {
         if (!partyId) continue;
-        const names = getNationNames(_state.nation?.name);
-        const firstName = names.first[Math.floor(Math.random() * names.first.length)];
-        const lastName = names.last[Math.floor(Math.random() * names.last.length)];
+        // getNationNames returns { firstNames: [...], lastNames: [...] }
+        const names = getNationNames(_state.nation?.name) || {};
+        const firstPool = names.firstNames || ['Alex', 'Maria', 'Carlos'];
+        const lastPool = names.lastNames || ['Garcia', 'Torres', 'Silva'];
+        const firstName = firstPool[Math.floor(Math.random() * firstPool.length)];
+        const lastName = lastPool[Math.floor(Math.random() * lastPool.length)];
         const age = 35 + Math.floor(Math.random() * 25);
         const baselines = buildMinistryBaselines ? buildMinistryBaselines(key, _state.nation) : {};
 
