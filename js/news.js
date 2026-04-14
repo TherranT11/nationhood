@@ -85,7 +85,7 @@ export async function initNewspaper(supabase, state) {
     const gameDate = state.shard?.current_date || '[Month], [Year]';
     const canWrite = canWriteToPublication(_publication, state.nation?.name);
     const isHomePub = canWrite;
-    const writeLabel = isHomePub ? 'Write Article' : 'Write Article (1 AP)';
+    const writeLabel = 'Write Article';
 
     // Publication switcher options
     const pubSwitcher = Object.entries(PUBLICATION_CONFIG).map(([key, cfg]) =>
@@ -99,7 +99,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-top-ribbon-inner">
                 <span>${gameDate}</span>
                 <select class="nws-pub-switcher" id="nws-pub-switcher">${pubSwitcher}</select>
-                <span><button class="nws-write-btn" id="nws-write-article-btn">${writeLabel}</button></span>
+                ${canWrite ? `<span><button class="nws-write-btn" id="nws-write-article-btn">${writeLabel}</button></span>` : ''}
             </div>
         </div>
 
@@ -124,7 +124,7 @@ export async function initNewspaper(supabase, state) {
                 </div>
                 <div class="nws-alsahwa-right">
                     <div class="nws-alsahwa-date">${gameDate}</div>
-                    <button class="nws-alsahwa-watch" id="nws-write-article-btn-alsahwa">${writeLabel}</button>
+                    ${canWrite ? `<button class="nws-alsahwa-watch" id="nws-write-article-btn-alsahwa">${writeLabel}</button>` : ''}
                 </div>
             </div>
         </div>
