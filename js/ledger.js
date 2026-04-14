@@ -24,6 +24,24 @@ function esc(str) {
 // Stats that should be formatted as currency (large dollar amounts)
 const CURRENCY_STATS = new Set(['gdp', 'debt']);
 
+// ── Goods / Trade Sector definitions ──
+const GOODS_SECTORS = [
+    { key: 'fuel_energy',        name: 'Fuel & Energy',     icon: '\u26FD' },
+    { key: 'minerals',           name: 'Minerals',          icon: '\u26CF\uFE0F' },
+    { key: 'manufactured_goods', name: 'Manufactured',      icon: '\uD83C\uDFED' },
+    { key: 'technology',         name: 'Technology',         icon: '\uD83D\uDCBB' },
+    { key: 'arms',               name: 'Arms',              icon: '\u2694\uFE0F' },
+    { key: 'grains_staples',     name: 'Grains & Staples',  icon: '\uD83C\uDF3E' },
+    { key: 'livestock_dairy',    name: 'Livestock & Dairy',  icon: '\uD83E\uDD6C' },
+    { key: 'fruits_vegetables',  name: 'Fruits & Veg',      icon: '\uD83C\uDF4E' },
+    { key: 'cash_crops',         name: 'Cash Crops',         icon: '\uD83C\uDF3F' },
+    { key: 'tourism',            name: 'Tourism',            icon: '\u2708\uFE0F' },
+    { key: 'services_finance',   name: 'Services & Finance', icon: '\uD83C\uDFE6' },
+];
+
+// nationId → { sectorKey → { export_capacity, import_demand, export_volume, import_volume } }
+let _allTradeFlows = {};
+
 function fmtVal(val, statId) {
     if (val == null) return '\u2014';
     if (typeof val === 'string') return val;
@@ -126,6 +144,7 @@ const STAT_CATEGORIES = [
         { id: 'carbon_emissions', name: 'Carbon Emissions' },
         { id: 'pollution', name: 'Pollution' },
     ]},
+    { id: 'goods', name: 'Goods', stats: [] }, // rendered via custom trade flow logic
 ];
 
 // ═══════════════════════════════════════════════════
@@ -175,9 +194,62 @@ export async function initLedger(supabase, state) {
     _selectedNationId = state.nation?.id || (_allNations[0]?.id ?? null);
     _compareIds = [_selectedNationId].filter(Boolean);
 
+    // Load trade flows for the Goods tab
+    await loadAllTradeFlows(supabase);
+
     // Attach event listeners ONCE on root — they persist across re-renders
     attachLedgerListeners(root);
     renderLedgerBody(root);
+}
+
+async function loadAllTradeFlows(supabase) {
+    _allTradeFlows = {};
+    try {
+        // Get the latest tick from trade_summary for any nation
+        const { data: sumRows } = await supabase.from('trade_summary')
+            .select('tick')
+            .order('tick', { ascending: false })
+            .limit(1);
+        const tick = sumRows?.[0]?.tick;
+        if (!tick) return;
+
+        // Fetch all nations' flows for that tick
+        const { data: flows } = await supabase.from('trade_flows')
+            .select('nation_id, sector, export_capacity, import_demand, export_volume, import_volume')
+            .eq('tick', tick);
+        if (!flows) return;
+
+        for (const row of flows) {
+            if (!_allTradeFlows[row.nation_id]) _allTradeFlows[row.nation_id] = {};
+            _allTradeFlows[row.nation_id][row.sector] = {
+                export_capacity: Number(row.export_capacity) || 0,
+                import_demand: Number(row.import_demand) || 0,
+                export_volume: Number(row.export_volume) || 0,
+                import_volume: Number(row.import_volume) || 0,
+            };
+        }
+    } catch (err) {
+        console.warn('[Ledger] Failed to load trade flows:', err.message);
+    }
+}
+
+function getGoodsRank(nationId, sectorKey, metric) {
+    const vals = _allNations.map(n => {
+        const flow = _allTradeFlows[n.id]?.[sectorKey];
+        return { id: n.id, val: flow ? Number(flow[metric]) || 0 : 0 };
+    });
+    vals.sort((a, b) => b.val - a.val); // higher is better for production
+    return vals.findIndex(v => v.id === nationId) + 1;
+}
+
+function fmtCurrency(val) {
+    if (val == null || val === 0) return '$0';
+    const abs = Math.abs(val);
+    if (abs >= 1e12) return '$' + (val / 1e12).toFixed(1) + 'T';
+    if (abs >= 1e9) return '$' + (val / 1e9).toFixed(1) + 'B';
+    if (abs >= 1e6) return '$' + (val / 1e6).toFixed(0) + 'M';
+    if (abs >= 1e3) return '$' + Math.round(val / 1e3) + 'k';
+    return '$' + Math.round(val);
 }
 
 // ═══════════════════════════════════════════════════
@@ -228,8 +300,12 @@ function attachLedgerListeners(root) {
         const rankCat = e.target.closest('.lg-rank-cat');
         if (rankCat) {
             _rankingCategory = rankCat.dataset.cat;
-            const newCat = STAT_CATEGORIES.find(c => c.id === _rankingCategory);
-            if (newCat && newCat.stats.length > 0) _rankingStat = newCat.stats[0].id;
+            if (_rankingCategory === 'goods') {
+                _rankingStat = GOODS_SECTORS[0].key;
+            } else {
+                const newCat = STAT_CATEGORIES.find(c => c.id === _rankingCategory);
+                if (newCat && newCat.stats.length > 0) _rankingStat = newCat.stats[0].id;
+            }
             renderLedgerBody(root);
             return;
         }
@@ -252,7 +328,7 @@ function attachLedgerListeners(root) {
 }
 
 function renderLedgerBody(root) {
-    const totalStats = STAT_CATEGORIES.reduce((s, c) => s + c.stats.length, 0);
+    const totalStats = STAT_CATEGORIES.reduce((s, c) => s + c.stats.length, 0) + GOODS_SECTORS.length;
 
     root.innerHTML = `<div class="lg-page">
         <div class="lg-header">
@@ -323,25 +399,55 @@ function renderSingleMode() {
         `<div class="lg-cat-btn ${c.id === _activeCategory ? 'active' : ''}" data-cat="${c.id}">${esc(c.name.toUpperCase())}</div>`
     ).join('');
 
-    // Stat rows
-    const statsHtml = (cat?.stats || []).map(stat => {
-        if (!nation) return '';
-        const val = Number(nation[stat.id] ?? 0);
-        const hb = isHigherBetter(stat.id);
-        const rank = getRank(nation.id, stat.id);
-        const pct = total > 1 ? ((total - rank) / (total - 1)) * 100 : 50;
-        const barColor = pct > 75 ? 'var(--green)' : pct > 50 ? 'var(--amber)' : pct > 25 ? 'var(--orange)' : 'var(--red)';
+    // Stat rows — goods category uses trade flows, others use nation stats
+    let statsHtml = '';
+    if (_activeCategory === 'goods' && nation) {
+        const flows = _allTradeFlows[nation.id] || {};
+        let totalProd = 0;
+        const sectorRows = GOODS_SECTORS.map(s => {
+            const flow = flows[s.key];
+            const prod = flow ? flow.export_capacity : 0;
+            totalProd += prod;
+            const rank = getGoodsRank(nation.id, s.key, 'export_capacity');
+            const pct = total > 1 ? ((total - rank) / (total - 1)) * 100 : 50;
+            const barColor = pct > 75 ? 'var(--green)' : pct > 50 ? 'var(--amber)' : pct > 25 ? 'var(--orange)' : 'var(--red)';
+            return `<div class="lg-stat-row">
+                <span class="lg-stat-name"><span style="margin-right:4px;">${s.icon}</span>${esc(s.name)}</span>
+                <span class="lg-stat-value">${fmtCurrency(prod)}</span>
+                <span class="lg-stat-rank" style="color:${rankColor(rank, total)};">#${rank}</span>
+                <div class="lg-stat-bar-wrap">
+                    <div class="lg-stat-bar"><div class="lg-stat-bar-fill" style="width:${pct}%;background:${barColor};"></div></div>
+                    <span class="lg-stat-pct">${Math.round(pct)}%</span>
+                </div>
+            </div>`;
+        }).join('');
+        // Total production header row
+        statsHtml = `<div class="lg-stat-row" style="background:var(--bg-card);border-bottom:2px solid var(--border-main);">
+            <span class="lg-stat-name" style="font-weight:700;color:var(--text-bright);">Total Production</span>
+            <span class="lg-stat-value" style="font-weight:700;color:var(--accent);">${fmtCurrency(totalProd)}</span>
+            <span class="lg-stat-rank"></span>
+            <div class="lg-stat-bar-wrap"></div>
+        </div>` + sectorRows;
+    } else {
+        statsHtml = (cat?.stats || []).map(stat => {
+            if (!nation) return '';
+            const val = Number(nation[stat.id] ?? 0);
+            const hb = isHigherBetter(stat.id);
+            const rank = getRank(nation.id, stat.id);
+            const pct = total > 1 ? ((total - rank) / (total - 1)) * 100 : 50;
+            const barColor = pct > 75 ? 'var(--green)' : pct > 50 ? 'var(--amber)' : pct > 25 ? 'var(--orange)' : 'var(--red)';
 
-        return `<div class="lg-stat-row">
-            <span class="lg-stat-name">${esc(stat.name)}</span>
-            <span class="lg-stat-value">${fmtVal(val, stat.id)}</span>
-            <span class="lg-stat-rank" style="color:${rankColor(rank, total)};">#${rank}</span>
-            <div class="lg-stat-bar-wrap">
-                <div class="lg-stat-bar"><div class="lg-stat-bar-fill" style="width:${pct}%;background:${barColor};"></div></div>
-                <span class="lg-stat-pct">${Math.round(pct)}%</span>
-            </div>
-        </div>`;
-    }).join('');
+            return `<div class="lg-stat-row">
+                <span class="lg-stat-name">${esc(stat.name)}</span>
+                <span class="lg-stat-value">${fmtVal(val, stat.id)}</span>
+                <span class="lg-stat-rank" style="color:${rankColor(rank, total)};">#${rank}</span>
+                <div class="lg-stat-bar-wrap">
+                    <div class="lg-stat-bar"><div class="lg-stat-bar-fill" style="width:${pct}%;background:${barColor};"></div></div>
+                    <span class="lg-stat-pct">${Math.round(pct)}%</span>
+                </div>
+            </div>`;
+        }).join('');
+    }
 
     return `<div class="lg-main">
         <div class="lg-sidebar">
@@ -399,12 +505,24 @@ function renderCompareMode() {
         </div>`;
     }).join('');
 
-    // Stat rows
-    const statsHtml = (cat?.stats || []).map((stat, si) => {
-        const hb = isHigherBetter(stat.id);
-        const vals = _compareIds.map(nid => ({ id: nid, val: Number(_allNations.find(n => n.id === nid)?.[stat.id] ?? 0) }));
-        const numVals = vals.filter(v => !isNaN(v.val));
+    // Stat rows — goods category uses trade flows
+    const compareStatList = _activeCategory === 'goods'
+        ? GOODS_SECTORS.map(s => ({ id: s.key, name: s.icon + ' ' + s.name, isGoods: true }))
+        : (cat?.stats || []);
 
+    const statsHtml = compareStatList.map((stat, si) => {
+        const isGoods = stat.isGoods;
+
+        const vals = _compareIds.map(nid => {
+            if (isGoods) {
+                const flow = _allTradeFlows[nid]?.[stat.id];
+                return { id: nid, val: flow ? flow.export_capacity : 0 };
+            }
+            return { id: nid, val: Number(_allNations.find(n => n.id === nid)?.[stat.id] ?? 0) };
+        });
+
+        const hb = isGoods ? true : isHigherBetter(stat.id);
+        const numVals = vals.filter(v => !isNaN(v.val));
         let bestId = null;
         if (numVals.length > 0 && hb !== null) {
             bestId = hb
@@ -413,16 +531,18 @@ function renderCompareMode() {
         }
 
         const cellsHtml = _compareIds.map(nid => {
-            const val = Number(_allNations.find(n => n.id === nid)?.[stat.id] ?? 0);
+            const v = vals.find(x => x.id === nid);
+            const val = v ? v.val : 0;
             const isBest = nid === bestId;
+            const display = isGoods ? fmtCurrency(val) : fmtVal(val, stat.id);
             return `<div style="flex:1;text-align:center;">
-                <span style="font-family:var(--font-mono);font-size:17px;font-weight:700;color:${isBest ? 'var(--accent)' : 'var(--text-bright)'};">${fmtVal(val, stat.id)}</span>
+                <span style="font-family:var(--font-mono);font-size:17px;font-weight:700;color:${isBest ? 'var(--accent)' : 'var(--text-bright)'};">${display}</span>
                 ${isBest ? '<span style="font-family:var(--font-mono);font-size:16px;color:var(--accent);margin-left:2px;">\u2605</span>' : ''}
             </div>`;
         }).join('');
 
-        return `<div style="display:flex;padding:5px 14px;align-items:center;border-bottom:${si < (cat?.stats.length || 0) - 1 ? '1px solid rgba(200,196,184,0.03)' : 'none'};">
-            <span style="width:160px;font-size:16px;color:var(--text-secondary);">${esc(stat.name)}</span>
+        return `<div style="display:flex;padding:5px 14px;align-items:center;border-bottom:${si < compareStatList.length - 1 ? '1px solid rgba(200,196,184,0.03)' : 'none'};">
+            <span style="width:160px;font-size:16px;color:var(--text-secondary);">${stat.isGoods ? stat.name : esc(stat.name)}</span>
             ${cellsHtml}
         </div>`;
     }).join('');
@@ -450,18 +570,28 @@ function renderCompareMode() {
 function renderRankingsMode() {
     const myNationId = _state.nation?.id;
     const rankCat = STAT_CATEGORIES.find(c => c.id === _rankingCategory);
-    const statDef = rankCat?.stats.find(s => s.id === _rankingStat);
-    const hb = isHigherBetter(_rankingStat);
+    const isGoodsRanking = _rankingCategory === 'goods';
+    const goodsSector = isGoodsRanking ? GOODS_SECTORS.find(s => s.key === _rankingStat) : null;
+    const statDef = isGoodsRanking ? (goodsSector ? { name: goodsSector.name } : { name: 'Production' }) : rankCat?.stats.find(s => s.id === _rankingStat);
+    const hb = isGoodsRanking ? true : isHigherBetter(_rankingStat);
 
     // Sort nations by selected stat
     const sorted = [..._allNations].sort((a, b) => {
+        if (isGoodsRanking) {
+            const va = _allTradeFlows[a.id]?.[_rankingStat]?.export_capacity || 0;
+            const vb = _allTradeFlows[b.id]?.[_rankingStat]?.export_capacity || 0;
+            return vb - va;
+        }
         const va = Number(a[_rankingStat] ?? 0);
         const vb = Number(b[_rankingStat] ?? 0);
         return hb !== false ? vb - va : va - vb;
     });
 
     // Use the largest absolute value across all nations for bar scaling
-    const maxVal = sorted.length > 0 ? Math.max(...sorted.map(n => Math.abs(Number(n[_rankingStat] ?? 0))), 1) : 1;
+    const maxVal = sorted.length > 0 ? Math.max(...sorted.map(n => {
+        if (isGoodsRanking) return _allTradeFlows[n.id]?.[_rankingStat]?.export_capacity || 0;
+        return Math.abs(Number(n[_rankingStat] ?? 0));
+    }), 1) : 1;
 
     // Category tabs
     const catHtml = STAT_CATEGORIES.map(c =>
@@ -473,20 +603,26 @@ function renderRankingsMode() {
         ">${esc(c.name.toUpperCase())}</div>`
     ).join('');
 
-    // Stat picker
-    const statPickerHtml = (rankCat?.stats || []).map(s =>
+    // Stat picker — goods uses GOODS_SECTORS, others use cat.stats
+    const statPickerList = isGoodsRanking
+        ? GOODS_SECTORS.map(s => ({ id: s.key, name: s.icon + ' ' + s.name }))
+        : (rankCat?.stats || []);
+
+    const statPickerHtml = statPickerList.map(s =>
         `<div class="lg-rank-stat" data-stat="${s.id}" style="
             padding:3px 10px;font-family:var(--font-mono);font-size:17px;cursor:pointer;
             font-weight:${_rankingStat === s.id ? '700' : '400'};
             color:${_rankingStat === s.id ? 'var(--accent)' : 'var(--text-secondary)'};
             background:${_rankingStat === s.id ? 'var(--amber-faint)' : 'transparent'};
             border:1px solid ${_rankingStat === s.id ? 'var(--amber-border)' : 'var(--border-main)'};
-        ">${esc(s.name)}</div>`
+        ">${isGoodsRanking ? s.name : esc(s.name)}</div>`
     ).join('');
 
     // Ranked rows
     const rowsHtml = sorted.map((n, i) => {
-        const val = Number(n[_rankingStat] ?? 0);
+        const val = isGoodsRanking
+            ? (_allTradeFlows[n.id]?.[_rankingStat]?.export_capacity || 0)
+            : Number(n[_rankingStat] ?? 0);
         const pct = maxVal > 0 ? (Math.abs(val) / maxVal) * 100 : 0;
         const isPlayer = n.id === myNationId;
         const medal = i === 0 ? '\uD83E\uDD47' : i === 1 ? '\uD83E\uDD48' : i === 2 ? '\uD83E\uDD49' : `#${i + 1}`;
@@ -502,7 +638,7 @@ function renderRankingsMode() {
                     <div style="font-family:var(--font-mono);font-size:16px;color:var(--text-dim);">${esc(n.government_type || '')}</div>
                 </div>
             </div>
-            <span style="width:100px;font-family:var(--font-mono);font-size:16px;font-weight:700;color:${i === 0 ? 'var(--accent)' : 'var(--text-bright)'};text-align:right;">${fmtVal(val, _rankingStat)}</span>
+            <span style="width:100px;font-family:var(--font-mono);font-size:16px;font-weight:700;color:${i === 0 ? 'var(--accent)' : 'var(--text-bright)'};text-align:right;">${isGoodsRanking ? fmtCurrency(val) : fmtVal(val, _rankingStat)}</span>
             <div style="width:160px;display:flex;align-items:center;gap:6px;justify-content:flex-end;flex-shrink:0;">
                 <div style="width:130px;height:6px;background:var(--border-main);overflow:hidden;">
                     <div style="width:${Math.min(pct, 100)}%;height:100%;background:${barColor};"></div>
