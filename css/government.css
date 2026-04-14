@@ -2190,3 +2190,35 @@ body {
     .create-proposal-section { padding: 14px; }
     .form-gov-btn { padding: 12px 32px; }
 }
+
+/* ── Government subtabs — matching Actions page style ── */
+.gov-subtabs {
+    display: flex;
+    gap: 0;
+    padding: 0 22px;
+    background: var(--bg-body);
+    border-bottom: 1px solid rgba(200,196,184,0.06);
+}
+.gov-subtab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 9px 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #5c5a50;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+.gov-subtab:hover { color: #8a8778; }
+.gov-subtab.active {
+    color: #c8a64e;
+    border-bottom-color: #c8a64e;
+}
+@media (max-width: 768px) {
+    .gov-subtabs { padding: 0 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .gov-subtab { padding: 8px 12px; font-size: 9px; white-space: nowrap; flex-shrink: 0; }
+}
