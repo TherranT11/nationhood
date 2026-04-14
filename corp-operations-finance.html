@@ -699,12 +699,12 @@ function renderDealFlow() {
 
             if (canReview) {
                 if (d.type === 'LOAN') {
-                    const dtrPct = Math.round((d.debt / d.revenue) * 100);
+                    const dtrPct = d.corp_cash_reserves > 0 ? Math.round((d.corp_debt / d.corp_cash_reserves) * 100) : 0;
                     const dtrColor = dtrPct > 50 ? '#c84' : '#5c5';
-                    const debtColor = d.debt > d.revenue * 0.5 ? '#c84' : '#9e9a92';
-                    html += `<div class="df-detail-row"><span class="df-detail-label">ANNUAL REVENUE</span><span class="df-detail-value" style="color:#9e9a92;">${fmtMoney(d.revenue)}</span></div>`;
-                    html += `<div class="df-detail-row"><span class="df-detail-label">EXISTING DEBT</span><span class="df-detail-value" style="color:${debtColor};">${fmtMoney(d.debt)}</span></div>`;
-                    html += `<div class="df-detail-row"><span class="df-detail-label">DEBT/REVENUE</span><span class="df-detail-value" style="color:${dtrColor};font-weight:700;">${dtrPct}%</span></div>`;
+                    const debtColor = d.corp_debt > d.corp_cash_reserves * 0.5 ? '#c84' : '#9e9a92';
+                    html += `<div class="df-detail-row"><span class="df-detail-label">CASH</span><span class="df-detail-value" style="color:#9e9a92;">${fmtMoney(d.corp_cash_reserves)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">DEBT</span><span class="df-detail-value" style="color:${debtColor};">${fmtMoney(d.corp_debt)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">DEBT/CASH</span><span class="df-detail-value" style="color:${dtrColor};font-weight:700;">${dtrPct}%</span></div>`;
                 } else if (d.type === 'BOND') {
                     const stabColor = d.stability >= 50 ? '#5c5' : d.stability >= 30 ? '#ca5' : '#c84';
                     const dtgColor = d.debtToGdp > 60 ? '#c55' : d.debtToGdp > 40 ? '#c84' : '#5c5';
