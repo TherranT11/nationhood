@@ -403,6 +403,24 @@
     .pa-action-item { padding: 10px 12px; }
 }
 
+/* ════════════════════════ REBRAND MODAL ════════════════════════ */
+.rb-color-swatch {
+    height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border-main); transition: all 0.12s;
+}
+.rb-color-swatch:hover { opacity: 0.85; }
+.rb-logo-item {
+    height: 30px; display: flex; align-items: center; justify-content: center;
+    background: var(--bg-card); border: 1px solid var(--border-main);
+    cursor: pointer; font-size: 15px; transition: all 0.12s;
+}
+.rb-logo-item:hover { border-color: var(--text-dim); }
+
+@media (max-width: 768px) {
+    .pa-modal[style*="width:780px"] > div[style*="display:flex"] { flex-direction: column !important; }
+    .pa-modal[style*="width:780px"] > div[style*="display:flex"] > div[style*="width:240px"] { width: 100% !important; }
+}
+
 /* ════════════════════════ COALITION FORMATION (Election tab) ════════════════════════ */
 .cf-page { padding: 16px 20px 40px; max-width: 900px; margin: 0 auto; }
 

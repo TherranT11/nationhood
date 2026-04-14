@@ -247,6 +247,8 @@ function renderPage(root) {
         <div class="pa-modal-overlay" id="pa-hire-modal"></div>
         <!-- File Lawsuit Modal -->
         <div class="pa-modal-overlay" id="pa-lawsuit-modal"></div>
+        <!-- Rebrand Modal -->
+        <div class="pa-modal-overlay" id="pa-rebrand-modal"></div>
     `;
 
     // Bind leader card clicks
@@ -271,6 +273,8 @@ function renderPage(root) {
             openPlatformModal(root);
         } else if (actionId === 'file_lawsuit') {
             openLawsuitModal(root);
+        } else if (actionId === 'rebrand') {
+            openRebrandModal(root);
         }
     });
 
@@ -305,6 +309,11 @@ function renderLeaderCards(leaderName, partyColor, faction) {
             name = 'Not Hired';
             portrait = '+';
             actionCount = 0;
+        } else if (role.id === 'campaign') {
+            isVacant = false;
+            name = 'Campaign Mgr';
+            portrait = 'CM';
+            actionCount = CAMPAIGN_MANAGER_ACTIONS.length;
         } else {
             isVacant = true;
             name = 'Vacant';
@@ -357,7 +366,8 @@ function renderActionsPanel(leaderName, partyColor, faction) {
 
     const isLeader = _selectedRole === 'leader';
     const isAgitator = _selectedRole === 'agitator';
-    const isVacant = !isLeader && !isAgitator;
+    const isCampaign = _selectedRole === 'campaign';
+    const isVacant = !isLeader && !isAgitator && !isCampaign;
 
     if (isVacant) {
         return `
@@ -389,6 +399,11 @@ function renderActionsPanel(leaderName, partyColor, faction) {
     // Agitator: hired → show their actions
     if (isAgitator && _agitator) {
         return renderAgitatorActionsPanel(role);
+    }
+
+    // Campaign Manager: show rebrand action
+    if (isCampaign) {
+        return renderCampaignManagerPanel(role, faction);
     }
 
     const portrait = initials(faction.leader_first_name, faction.leader_last_name);
@@ -437,6 +452,362 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             <span style="color:${role.color};font-weight:700;">${role.title}</span> actions are executed by the party leader. Effectiveness depends on party approval and momentum.
         </div>
     `;
+}
+
+// ════════════════════════ CAMPAIGN MANAGER PANEL ════════════════════════
+
+const CAMPAIGN_MANAGER_ACTIONS = [
+    {
+        id: 'rebrand',
+        name: 'Rebrand Party',
+        desc: 'Change your party name, abbreviation, color, logo, and description. Costly but grants a "Fresh Start" modifier. Nuclear option after scandal or major defeat.',
+        cost: '3 AP + $2M',
+        costColor: '#c84',
+        ap: 3,
+        tags: ['CAMPAIGN', 'STRUCTURAL'],
+        locked: false,
+    },
+];
+
+const PARTY_COLORS_LIST = [
+    { id: 'crimson', hex: '#c43a3a', name: 'Crimson' },
+    { id: 'scarlet', hex: '#d45a2a', name: 'Scarlet' },
+    { id: 'amber', hex: '#c8a832', name: 'Amber' },
+    { id: 'gold', hex: '#d4a017', name: 'Gold' },
+    { id: 'olive', hex: '#8a9a4a', name: 'Olive' },
+    { id: 'emerald', hex: '#2a8a4a', name: 'Emerald' },
+    { id: 'forest', hex: '#3a6a3a', name: 'Forest' },
+    { id: 'teal_c', hex: '#2a8a7a', name: 'Teal' },
+    { id: 'sky', hex: '#4a8aba', name: 'Sky' },
+    { id: 'cobalt', hex: '#3a5a9a', name: 'Cobalt' },
+    { id: 'navy', hex: '#2a3a6a', name: 'Navy' },
+    { id: 'violet', hex: '#7a4a9a', name: 'Violet' },
+    { id: 'plum', hex: '#8a3a7a', name: 'Plum' },
+    { id: 'rose', hex: '#ba4a6a', name: 'Rose' },
+    { id: 'slate', hex: '#5a6a7a', name: 'Slate' },
+    { id: 'iron', hex: '#4a4a4a', name: 'Iron' },
+];
+
+const PARTY_LOGOS_LIST = [
+    { emoji: '🏛️', name: 'Parliament' }, { emoji: '⚖️', name: 'Scales' }, { emoji: '🗽', name: 'Liberty' },
+    { emoji: '🕊️', name: 'Dove' }, { emoji: '🦅', name: 'Eagle' }, { emoji: '🦁', name: 'Lion' },
+    { emoji: '🐻', name: 'Bear' }, { emoji: '🐉', name: 'Dragon' }, { emoji: '🐘', name: 'Elephant' },
+    { emoji: '🏔️', name: 'Mountain' }, { emoji: '🌊', name: 'Wave' }, { emoji: '🔥', name: 'Flame' },
+    { emoji: '⭐', name: 'Star' }, { emoji: '🌟', name: 'Glow Star' }, { emoji: '💎', name: 'Diamond' },
+    { emoji: '🛡️', name: 'Shield' }, { emoji: '⚔️', name: 'Swords' }, { emoji: '🏗️', name: 'Builder' },
+    { emoji: '🌿', name: 'Leaf' }, { emoji: '🌾', name: 'Wheat' }, { emoji: '🔨', name: 'Hammer' },
+    { emoji: '⚡', name: 'Lightning' }, { emoji: '🎯', name: 'Target' }, { emoji: '🏴', name: 'Flag' },
+    { emoji: '🚩', name: 'Red Flag' }, { emoji: '✊', name: 'Fist' }, { emoji: '🤝', name: 'Handshake' },
+    { emoji: '📜', name: 'Scroll' }, { emoji: '🗳️', name: 'Ballot' }, { emoji: '👑', name: 'Crown' },
+];
+
+function renderCampaignManagerPanel(role, faction) {
+    const actionsHtml = CAMPAIGN_MANAGER_ACTIONS.map(action => {
+        const tagsHtml = action.tags.map(t =>
+            `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${t}</span>`
+        ).join('');
+        return `
+            <div class="pa-action-item ${action.locked ? 'locked' : ''}" data-action-id="${action.id}">
+                <div class="pa-action-top">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="pa-action-name">${esc(action.name)}</span>
+                        <div class="pa-action-tags">${tagsHtml}</div>
+                    </div>
+                    <div class="pa-action-right">
+                        <span class="pa-action-cost" style="color:${action.costColor};">${action.cost}</span>
+                    </div>
+                </div>
+                <div class="pa-action-desc">${esc(action.desc)}</div>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="pa-detail-header">
+            <div class="pa-detail-left">
+                <div class="pa-detail-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">CM</div>
+                <div>
+                    <div style="display:flex;align-items:baseline;gap:6px;">
+                        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${role.color};">${role.title}</span>
+                    </div>
+                    <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; ${esc(faction.faction_name)}</div>
+                </div>
+            </div>
+        </div>
+        <div class="pa-actions-list" id="pa-actions-panel">${actionsHtml}</div>
+        <div style="padding:8px 14px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);line-height:1.6;">
+            <strong style="color:var(--text-secondary);">CAMPAIGN MANAGER</strong> actions shape your party's public identity and electoral strategy.
+        </div>
+    `;
+}
+
+function openRebrandModal(root) {
+    const overlay = document.getElementById('pa-rebrand-modal');
+    if (!overlay) return;
+
+    const faction = _state.faction;
+    const nation = _state.nation;
+    const momentum = faction.momentum ?? 50;
+
+    // Get colors claimed by other parties
+    const claimedColors = {};
+    const otherParties = (_state._allParties || []).filter(p => p.id !== faction.id);
+    // We'll detect claimed colors from party_color field later; for now just build the modal
+
+    const selectedColor = { current: faction.party_color || '#4a8aba' };
+    const selectedLogoIdx = { current: 0 };
+    const confirming = { current: false };
+
+    function getActiveColor() { return selectedColor.current; }
+
+    function render() {
+        const ac = getActiveColor();
+        const colorName = PARTY_COLORS_LIST.find(c => c.hex === ac)?.name || 'Custom';
+        const activeLogo = PARTY_LOGOS_LIST[selectedLogoIdx.current]?.emoji || '🏛️';
+
+        const nameVal = document.getElementById('rb-name')?.value ?? faction.faction_name ?? '';
+        const abbrVal = document.getElementById('rb-abbr')?.value ?? faction.abbreviation ?? '';
+        const descVal = document.getElementById('rb-desc')?.value ?? '';
+
+        const colorsHtml = PARTY_COLORS_LIST.map(c => {
+            const isSel = ac === c.hex;
+            return `<div class="rb-color-swatch ${isSel ? 'selected' : ''}" data-hex="${c.hex}" style="background:${c.hex};${isSel ? `box-shadow:0 0 8px ${c.hex}44;border:2px solid var(--text-bright);` : ''}">
+                ${isSel ? '<span style="font-size:10px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5);">✓</span>' : ''}
+            </div>`;
+        }).join('');
+
+        const logosHtml = PARTY_LOGOS_LIST.map((l, i) => {
+            const isSel = selectedLogoIdx.current === i;
+            return `<div class="rb-logo-item ${isSel ? 'selected' : ''}" data-idx="${i}" style="${isSel ? `background:${ac}15;border:2px solid ${ac};box-shadow:0 0 6px ${ac}33;` : ''}">
+                ${l.emoji}
+            </div>`;
+        }).join('');
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:780px;max-width:100%;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#c84;"></div>
+                        <span class="pa-modal-title">Rebrand Party</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:#c84;background:rgba(204,136,68,0.06);border:1px solid rgba(204,136,68,0.15);">3 AP</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:#c55;background:rgba(204,85,85,0.06);border:1px solid rgba(204,85,85,0.15);">-10 MOMENTUM</span>
+                    </div>
+                    <button class="pa-modal-close" id="rb-close">&times;</button>
+                </div>
+
+                <!-- Warning banner -->
+                <div style="padding:8px 20px;background:rgba(212,74,74,0.04);border-bottom:1px solid var(--border-main);display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:12px;">⚠</span>
+                    <div style="font-size:10px;color:var(--text-secondary);line-height:1.5;">
+                        Rebranding costs <span style="color:#c55;font-weight:700;">10 Momentum</span> and resets approval <span style="color:#c55;font-weight:700;">-3 across all voter blocs</span> but grants a <span style="color:#5c5;font-weight:700;">"Fresh Start"</span> modifier. 120 tick cooldown.
+                    </div>
+                </div>
+
+                <div style="display:flex;">
+                    <!-- LEFT: Form -->
+                    <div style="flex:1;padding:14px 20px;border-right:1px solid var(--border-main);">
+                        <div style="margin-bottom:14px;">
+                            <div class="pa-modal-step-label">Party Name</div>
+                            <input class="pa-modal-input" id="rb-name" value="${esc(nameVal)}" maxlength="60" style="font-size:13px;font-weight:600;">
+                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">${nameVal.length}/60 · Min 3</div>
+                        </div>
+                        <div style="margin-bottom:14px;">
+                            <div class="pa-modal-step-label">Abbreviation</div>
+                            <input class="pa-modal-input" id="rb-abbr" value="${esc(abbrVal)}" maxlength="4" style="width:100px;font-size:15px;font-weight:700;letter-spacing:2px;text-transform:uppercase;text-align:center;color:${ac};">
+                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">2-4 uppercase letters</div>
+                        </div>
+                        <div style="margin-bottom:14px;">
+                            <div class="pa-modal-step-label">Description</div>
+                            <textarea class="pa-modal-input" id="rb-desc" rows="3" style="resize:vertical;font-family:var(--font-ui);font-size:11px;line-height:1.5;">${esc(descVal)}</textarea>
+                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">${descVal.length}/200 · Visible to all</div>
+                        </div>
+                        <div style="margin-bottom:14px;">
+                            <div class="pa-modal-step-label">Party Color — <span style="color:${ac};">${esc(colorName)}</span></div>
+                            <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;" id="rb-colors">${colorsHtml}</div>
+                        </div>
+                        <div>
+                            <div class="pa-modal-step-label">Party Logo</div>
+                            <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;" id="rb-logos">${logosHtml}</div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT: Preview -->
+                    <div style="width:240px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;flex-shrink:0;">
+                        <div class="pa-modal-step-label">Live Preview</div>
+                        <div style="background:var(--bg-card);border:1px solid var(--border-main);border-left:3px solid ${ac};padding:10px;">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                                <div style="width:40px;height:40px;background:${ac}15;border:1.5px solid ${ac};display:flex;align-items:center;justify-content:center;font-size:22px;">${activeLogo}</div>
+                                <div>
+                                    <div style="font-size:12px;font-weight:700;color:var(--text-bright);line-height:1.2;">${esc(nameVal || 'Party Name')}</div>
+                                    <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${ac};letter-spacing:1px;">${esc(abbrVal || '???')}</div>
+                                </div>
+                            </div>
+                            <div style="font-size:9px;color:var(--text-secondary);line-height:1.5;">${esc(descVal || 'No description...')}</div>
+                        </div>
+                        <div>
+                            <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);margin-bottom:3px;">BADGES</div>
+                            <div style="display:flex;gap:3px;flex-wrap:wrap;">
+                                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:${ac};background:${ac}0a;border:1px solid ${ac}25;">${esc(abbrVal)}</span>
+                                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:${ac};background:${ac}0a;border:1px solid ${ac}25;">MEMBER</span>
+                            </div>
+                        </div>
+                        <div style="padding:6px 8px;background:${ac}08;border:1px solid ${ac}25;display:flex;align-items:center;gap:8px;">
+                            <div style="width:20px;height:20px;background:${ac};"></div>
+                            <div>
+                                <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${ac};">${esc(colorName.toUpperCase())}</div>
+                                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${ac}</div>
+                            </div>
+                        </div>
+
+                        <!-- Cost summary -->
+                        <div style="padding:8px;background:rgba(204,85,85,0.04);border:1px solid rgba(204,85,85,0.12);margin-top:auto;">
+                            <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--text-dim);margin-bottom:4px;">COST SUMMARY</div>
+                            <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Action Points</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c84;">3 AP</span></div>
+                            <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Momentum</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c55;">-10 (${momentum} → ${Math.max(0, momentum - 10)})</span></div>
+                            <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Approval</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c55;">-3 all blocs</span></div>
+                            <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Cooldown</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#d44a4a;">120 ticks</span></div>
+                            <div style="display:flex;justify-content:space-between;padding:1px 0;border-top:1px solid var(--border-main);margin-top:3px;padding-top:3px;"><span style="font-size:9px;color:#5c5;">Gain</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#5c5;">"Fresh Start" modifier</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pa-modal-footer" style="justify-content:space-between;">
+                    <div style="max-width:400px;font-size:9px;color:var(--text-secondary);line-height:1.5;" id="rb-footer-msg">
+                        ${confirming.current
+                            ? '<span style="color:#d44a4a;font-weight:700;">⚠ Final confirmation. This costs 10 Momentum, 3 AP, and -3 approval. Cannot rebrand again for 120 ticks.</span>'
+                            : 'This will change your party\'s identity across all UI, media, and diplomatic channels.'}
+                    </div>
+                    <div style="display:flex;gap:6px;">
+                        ${confirming.current ? `
+                            <button class="pa-modal-btn pa-modal-btn--cancel" id="rb-back">Go Back</button>
+                            <button class="pa-modal-btn" id="rb-confirm" style="background:#d44a4a;color:#fff;">⚠ Confirm Rebrand</button>
+                        ` : `
+                            <button class="pa-modal-btn pa-modal-btn--cancel" id="rb-cancel">Cancel</button>
+                            <button class="pa-modal-btn pa-modal-btn--submit" id="rb-submit" style="background:#c84;">Rebrand</button>
+                        `}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    render();
+    overlay.classList.add('active');
+
+    // Event delegation on overlay
+    overlay.addEventListener('click', function handler(e) {
+        if (e.target === overlay || e.target.closest('#rb-close') || e.target.closest('#rb-cancel')) {
+            overlay.classList.remove('active');
+            overlay.removeEventListener('click', handler);
+            return;
+        }
+
+        // Color swatch
+        const swatch = e.target.closest('.rb-color-swatch');
+        if (swatch) {
+            selectedColor.current = swatch.dataset.hex;
+            render();
+            return;
+        }
+
+        // Logo item
+        const logo = e.target.closest('.rb-logo-item');
+        if (logo) {
+            selectedLogoIdx.current = parseInt(logo.dataset.idx) || 0;
+            render();
+            return;
+        }
+
+        // Submit → go to confirm
+        if (e.target.closest('#rb-submit')) {
+            const name = document.getElementById('rb-name')?.value?.trim() || '';
+            const abbr = document.getElementById('rb-abbr')?.value?.trim() || '';
+            if (name.length < 3 || abbr.length < 2) { alert('Name must be 3+ chars, abbreviation 2-4 chars.'); return; }
+            confirming.current = true;
+            render();
+            return;
+        }
+
+        // Back from confirm
+        if (e.target.closest('#rb-back')) {
+            confirming.current = false;
+            render();
+            return;
+        }
+
+        // Final confirm → execute rebrand
+        if (e.target.closest('#rb-confirm')) {
+            executeRebrand(overlay, root, handler);
+            return;
+        }
+    });
+}
+
+async function executeRebrand(overlay, root, handler) {
+    const faction = _state.faction;
+    const name = document.getElementById('rb-name')?.value?.trim() || '';
+    const abbr = document.getElementById('rb-abbr')?.value?.trim() || '';
+    const desc = document.getElementById('rb-desc')?.value?.trim() || '';
+    const color = document.querySelector('.rb-color-swatch.selected')?.dataset?.hex || faction.party_color;
+    const logoIdx = document.querySelector('.rb-logo-item.selected')?.dataset?.idx;
+    const logoEmoji = logoIdx != null ? PARTY_LOGOS_LIST[parseInt(logoIdx)]?.emoji : null;
+
+    const btn = document.getElementById('rb-confirm');
+    if (btn) { btn.disabled = true; btn.textContent = 'Rebranding...'; }
+
+    try {
+        const tick = _state.shard?.current_tick || 0;
+
+        // 1. Deduct AP
+        const { data: apResult, error: apErr } = await _supabase.rpc('deduct_ap', {
+            p_faction_id: faction.id,
+            p_cost: 3,
+        });
+        if (apErr || (apResult != null && apResult < 0)) {
+            alert('Not enough AP (need 3).');
+            return;
+        }
+
+        // 2. Deduct momentum
+        const newMomentum = Math.max(0, (faction.momentum || 0) - 10);
+        await _supabase.from('factions').update({
+            momentum: newMomentum,
+            faction_name: name,
+            abbreviation: abbr.toUpperCase(),
+            party_color: color,
+            party_logo: logoEmoji,
+            rebrand_cooldown_until_tick: tick + 120,
+        }).eq('id', faction.id);
+
+        // 3. Log action
+        await _supabase.from('campaign_actions').insert({
+            party_id: faction.id,
+            nation_id: _state.nation?.id,
+            action_type: 'rebrand',
+            ap_cost: 3,
+            money_cost: 0,
+            tick_performed: tick,
+            result: { oldName: faction.faction_name, newName: name, oldAbbr: faction.abbreviation, newAbbr: abbr, oldColor: faction.party_color, newColor: color },
+        });
+
+        // 4. Update local state
+        faction.action_points = apResult;
+        faction.momentum = newMomentum;
+        faction.faction_name = name;
+        faction.abbreviation = abbr.toUpperCase();
+        faction.party_color = color;
+        if (logoEmoji) faction.party_logo = logoEmoji;
+
+        // 5. Close and re-render
+        overlay.classList.remove('active');
+        overlay.removeEventListener('click', handler);
+        renderPage(root);
+    } catch (err) {
+        console.error('[PartyActions] Rebrand error:', err);
+        alert('Failed to rebrand: ' + (err.message || err));
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '⚠ Confirm Rebrand'; }
+    }
 }
 
 // ════════════════════════ AGITATOR ACTIONS PANEL ════════════════════════
