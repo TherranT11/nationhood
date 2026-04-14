@@ -47,6 +47,46 @@
 .tr-commodity-row:hover { background: rgba(255,255,255,0.015); }
 .tr-commodity-row:last-child { border-bottom: none; }
 
+/* ── Trade partner cards ── */
+.tr-partner-card {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    cursor: pointer; transition: border-color 0.15s, opacity 0.15s;
+}
+.tr-partner-card:hover { border-color: var(--border-bright, #444); }
+.tr-partner-card.expanded { cursor: default; }
+.tr-partner-header {
+    padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+}
+.tr-badge {
+    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
+    padding: 1px 5px; border: 1px solid var(--border-main);
+}
+.tr-sort-btn {
+    padding: 2px 8px;
+    font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+    color: var(--text-dim); background: transparent;
+    border: 1px solid transparent; cursor: pointer;
+}
+.tr-sort-btn:hover { color: var(--text-secondary); }
+.tr-sort-btn.active {
+    color: var(--text-bright); background: var(--bg-card);
+    border: 1px solid var(--border-main);
+}
+.tr-action-btn {
+    padding: 4px 14px;
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    color: var(--text-bright); border: 1px solid var(--border-main);
+    cursor: pointer; transition: background 0.15s;
+}
+.tr-action-btn:hover { background: rgba(255,255,255,0.03); }
+.tr-action-btn--primary {
+    color: #000; background: var(--teal);
+    border-color: var(--teal);
+}
+.tr-action-btn--primary:hover { filter: brightness(1.1); }
+.tr-filter-clear:hover { color: var(--text-bright) !important; }
+
 /* ── Responsive ── */
 @media (max-width: 1200px) {
     #trade-left { width: 100% !important; }
