@@ -1040,27 +1040,149 @@ function renderAdministrationTab(container) {
     renderAdminActions();
 }
 
-// Stub renderers — each phase will replace these
 function renderAdminBanner() {
     const el = document.getElementById('gov-admin-banner');
     if (!el || !_govData) return;
-    const { coalition, hog, president, admin } = _govData;
+    const { coalition, hog, president, admin, parties } = _govData;
     const nation = currentNation;
-    const pmName = hog ? `${hog.first_name} ${hog.last_name}` : 'Vacant';
-    const pmParty = hog?.factions?.faction_name || '';
     const approval = Number(nation?.gov_approval ?? 50).toFixed(1);
-    el.innerHTML = `<div class="ga-banner">
-        <div class="ga-banner-top">
-            <div>
-                <div class="ga-banner-name">${escapeHtml(admin?.admin_name || pmName.split(' ').pop() + ' Administration')}</div>
-                <div class="ga-banner-meta">${escapeHtml(nation?.government_type || 'Parliamentary')} · ${coalition ? coalition.party_ids.length + ' parties' : 'No coalition'}</div>
+    const approvalColor = approval >= 55 ? 'var(--green)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
+    const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+
+    // Administration name + status
+    const adminName = admin?.admin_name || (hog ? (hog.last_name || 'Interim') + ' Administration' : 'No Government');
+    const startDate = admin?.started_at_date || tickToDate(admin?.started_at_tick);
+    const isCurrent = admin && !admin.ended_at_tick;
+    const statusBadge = isCurrent
+        ? '<span class="ga-badge ga-badge--green">CURRENT</span>'
+        : admin?.end_reason ? `<span class="ga-badge ga-badge--red">${escapeHtml(admin.end_reason.replace(/_/g, ' ').toUpperCase())}</span>` : '';
+
+    // Coalition info — build from live party data + coalition.party_ids
+    const coalitionPartyIds = coalition?.party_ids || [];
+    const coalitionParties = coalitionPartyIds.map(id => parties.find(p => p.id === id)).filter(Boolean);
+    const coalitionSeats = coalitionParties.reduce((sum, p) => sum + (p.seats || 0), 0);
+
+    // Formation type label
+    const formationLabels = {
+        coalition: 'Coalition Government',
+        emergency_minority: 'Emergency Minority Government',
+        majority: 'Majority Government',
+        presidential: 'Presidential Administration',
+    };
+    const formationType = formationLabels[coalition?.formation_type] || (coalitionParties.length > 1 ? 'Coalition Government' : coalitionParties.length === 1 ? 'Single Party Government' : 'No Government');
+
+    // Government type metadata
+    const govType = nation?.government_type || 'Parliamentary';
+    const metaParts = [formationType, govType, `${totalSeats} Seats`, `Majority: ${Math.floor(totalSeats / 2) + 1}`];
+
+    // ── Build HTML ──
+    let html = `<div class="ga-banner">`;
+
+    // Top row: admin name + approval
+    html += `<div class="ga-banner-top">
+        <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div class="ga-banner-name">${escapeHtml(adminName)}</div>
+                ${statusBadge}
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(startDate || '')}${isCurrent ? ' — Present' : ''}</span>
             </div>
-            <div class="ga-banner-approval">
-                <div class="ga-banner-approval-label">GOVERNMENT APPROVAL</div>
-                <div class="ga-banner-approval-value">${approval}%</div>
-            </div>
+            <div class="ga-banner-meta">${escapeHtml(metaParts.join(' · '))}</div>
+        </div>
+        <div class="ga-banner-approval">
+            <div class="ga-banner-approval-label">GOVERNMENT APPROVAL</div>
+            <div class="ga-banner-approval-value" style="color:${approvalColor};">${approval}%</div>
         </div>
     </div>`;
+
+    // Leaders + coalition row
+    html += `<div class="ga-banner-leaders">`;
+
+    // President section (if applicable)
+    if (president || isPresidential || isSemiPresidential(nation)) {
+        const presName = president ? `${president.first_name} ${president.last_name}` : (nation.head_of_state_first_name ? `${nation.head_of_state_first_name} ${nation.head_of_state_last_name}` : 'Vacant');
+        const presAge = president?.age || nation.head_of_state_age || '';
+        const presParty = president?.factions?.faction_name || '';
+        const presColor = president?.factions?.party_color || 'var(--text-dim)';
+        const presInitials = presName.split(' ').map(n => n[0] || '').join('');
+        html += `<div class="ga-banner-leader">
+            <div class="ga-banner-leader-label">PRESIDENT</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div class="ga-leader-avatar" style="background:${presColor}15;border-color:${presColor}33;color:${presColor};">${escapeHtml(presInitials)}</div>
+                <div>
+                    <div class="ga-leader-name">${escapeHtml(presName)}</div>
+                    <div class="ga-leader-meta">Age ${presAge}${presParty ? ' · ' + escapeHtml(presParty) : ''}</div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // Prime Minister section
+    if (hog) {
+        const pmName = `${hog.first_name} ${hog.last_name}`;
+        const pmAge = hog.age || '';
+        const pmPartyName = hog.factions?.faction_name || '';
+        const pmColor = hog.factions?.party_color || 'var(--accent)';
+        const pmAbbr = hog.factions?.abbreviation || '';
+        const pmInitials = pmName.split(' ').map(n => n[0] || '').join('');
+        const pmApproval = admin?.approval_at_start != null ? '' : ''; // PM approval comes from minister data in Phase 3
+        html += `<div class="ga-banner-leader ga-banner-leader--pm" style="background:${pmColor}04;">
+            <div class="ga-banner-leader-label">PRIME MINISTER</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div class="ga-leader-avatar" style="background:${pmColor}15;border-color:${pmColor}33;color:${pmColor};">${escapeHtml(pmInitials)}</div>
+                <div>
+                    <div class="ga-leader-name">${escapeHtml(pmName)}</div>
+                    <div class="ga-leader-meta">Age ${pmAge} · ${escapeHtml(pmPartyName)}</div>
+                </div>
+            </div>
+        </div>`;
+    } else if (!isPresidential) {
+        html += `<div class="ga-banner-leader">
+            <div class="ga-banner-leader-label">PRIME MINISTER</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;">Vacant — awaiting formation</div>
+        </div>`;
+    }
+
+    // Coalition section
+    html += `<div class="ga-banner-leader">
+        <div class="ga-banner-leader-label">COALITION</div>`;
+
+    if (coalitionParties.length > 0) {
+        html += `<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:8px;">
+            <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--text-bright);">${coalitionSeats}</span>
+            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">/ ${totalSeats} seats</span>
+        </div>`;
+
+        // Seat bar
+        html += `<div style="display:flex;height:8px;margin-bottom:6px;gap:1px;">`;
+        for (const p of coalitionParties) {
+            const pct = totalSeats > 0 ? ((p.seats || 0) / totalSeats * 100) : 0;
+            html += `<div style="width:${pct}%;background:${p.party_color || '#888'};height:100%;"></div>`;
+        }
+        // Opposition gap
+        const oppPct = totalSeats > 0 ? ((totalSeats - coalitionSeats) / totalSeats * 100) : 0;
+        if (oppPct > 0) html += `<div style="width:${oppPct}%;background:var(--border-main);height:100%;"></div>`;
+        html += `</div>`;
+
+        // Party legend
+        html += `<div style="display:flex;gap:12px;flex-wrap:wrap;">`;
+        for (const p of coalitionParties) {
+            const color = p.party_color || '#888';
+            html += `<div style="display:flex;align-items:center;gap:4px;">
+                <div style="width:6px;height:6px;background:${color};"></div>
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(p.abbreviation || p.faction_name)}</span>
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${color};">${p.seats || 0}</span>
+            </div>`;
+        }
+        html += `</div>`;
+    } else {
+        html += `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;">No active coalition</div>`;
+    }
+
+    html += `</div>`; // close coalition section
+    html += `</div>`; // close leaders row
+    html += `</div>`; // close banner
+
+    el.innerHTML = html;
 }
 
 function renderAdminTimeline() {
