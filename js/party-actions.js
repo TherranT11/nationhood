@@ -513,6 +513,8 @@ function renderLeaderCards(leaderName, partyColor, faction) {
 }
 
 function renderActionsPanel(leaderName, partyColor, faction) {
+    const _isMonarchy = isAbsoluteMonarchy(_state.nation);
+    const _isMonarch = _isMonarchy && _state.nation?.monarch_faction_id === faction?.id;
     const role = ROLES.find(r => r.id === _selectedRole);
     if (!role) return '';
 
