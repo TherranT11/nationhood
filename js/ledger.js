@@ -21,9 +21,20 @@ function esc(str) {
     return d.innerHTML;
 }
 
-function fmtVal(val) {
+// Stats that should be formatted as currency (large dollar amounts)
+const CURRENCY_STATS = new Set(['gdp', 'debt']);
+
+function fmtVal(val, statId) {
     if (val == null) return '\u2014';
     if (typeof val === 'string') return val;
+    if (CURRENCY_STATS.has(statId)) {
+        const abs = Math.abs(val);
+        if (abs >= 1e12) return '$' + (val / 1e12).toFixed(1) + 'T';
+        if (abs >= 1e9) return '$' + (val / 1e9).toFixed(1) + 'B';
+        if (abs >= 1e6) return '$' + (val / 1e6).toFixed(1) + 'M';
+        if (abs >= 1e3) return '$' + Math.round(val / 1e3) + 'k';
+        return '$' + val;
+    }
     return val.toFixed(1);
 }
 
@@ -303,7 +314,7 @@ function renderSingleMode() {
             </div>
         </div>
         <div style="font-family:var(--font-mono);font-size:17px;color:var(--text-dim);">
-            GDP Growth: <span style="color:var(--text-bright);font-weight:700;">${fmtVal(nation.gdp_growth)}</span>
+            GDP Growth: <span style="color:var(--text-bright);font-weight:700;">${fmtVal(nation.gdp_growth, 'gdp_growth')}</span>
         </div>
     </div>` : '';
 
@@ -323,7 +334,7 @@ function renderSingleMode() {
 
         return `<div class="lg-stat-row">
             <span class="lg-stat-name">${esc(stat.name)}</span>
-            <span class="lg-stat-value">${fmtVal(val)}</span>
+            <span class="lg-stat-value">${fmtVal(val, stat.id)}</span>
             <span class="lg-stat-rank" style="color:${rankColor(rank, total)};">#${rank}</span>
             <div class="lg-stat-bar-wrap">
                 <div class="lg-stat-bar"><div class="lg-stat-bar-fill" style="width:${pct}%;background:${barColor};"></div></div>
@@ -405,7 +416,7 @@ function renderCompareMode() {
             const val = Number(_allNations.find(n => n.id === nid)?.[stat.id] ?? 0);
             const isBest = nid === bestId;
             return `<div style="flex:1;text-align:center;">
-                <span style="font-family:var(--font-mono);font-size:17px;font-weight:700;color:${isBest ? 'var(--accent)' : 'var(--text-bright)'};">${fmtVal(val)}</span>
+                <span style="font-family:var(--font-mono);font-size:17px;font-weight:700;color:${isBest ? 'var(--accent)' : 'var(--text-bright)'};">${fmtVal(val, stat.id)}</span>
                 ${isBest ? '<span style="font-family:var(--font-mono);font-size:16px;color:var(--accent);margin-left:2px;">\u2605</span>' : ''}
             </div>`;
         }).join('');
@@ -491,7 +502,7 @@ function renderRankingsMode() {
                     <div style="font-family:var(--font-mono);font-size:16px;color:var(--text-dim);">${esc(n.government_type || '')}</div>
                 </div>
             </div>
-            <span style="width:100px;font-family:var(--font-mono);font-size:16px;font-weight:700;color:${i === 0 ? 'var(--accent)' : 'var(--text-bright)'};text-align:right;">${fmtVal(val)}</span>
+            <span style="width:100px;font-family:var(--font-mono);font-size:16px;font-weight:700;color:${i === 0 ? 'var(--accent)' : 'var(--text-bright)'};text-align:right;">${fmtVal(val, _rankingStat)}</span>
             <div style="width:160px;display:flex;align-items:center;gap:6px;justify-content:flex-end;flex-shrink:0;">
                 <div style="width:130px;height:6px;background:var(--border-main);overflow:hidden;">
                     <div style="width:${Math.min(pct, 100)}%;height:100%;background:${barColor};"></div>
