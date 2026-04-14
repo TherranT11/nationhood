@@ -73,8 +73,24 @@
 }
 .leg-propose-btn:hover { background: rgba(255,255,255,0.03); }
 
+/* ── Law cards ── */
+.leg-law-card {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    border-left: 3px solid var(--blue);
+    padding: 8px 14px; margin-bottom: 4px;
+}
+
 /* ── Responsive ── */
 @media (max-width: 1200px) {
     #leg-left { width: 100% !important; }
     #leg-right { width: 100% !important; }
+    #gov-content > div > div[style*="display:flex"] {
+        flex-direction: column !important;
+    }
+}
+@media (max-width: 768px) {
+    .leg-bill-header { flex-direction: column; gap: 6px; align-items: flex-start !important; }
+    .leg-filter-btn { padding: 3px 8px; font-size: 7px; }
+    .leg-propose-btn { font-size: 8px; padding: 3px 10px; }
+    .leg-vote-btn { padding: 3px 10px; font-size: 7px; }
 }

@@ -2320,13 +2320,82 @@ function renderBillsList() {
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">No active bills. Use PROPOSE BILL to introduce legislation.</div>
             </div>`;
         }
-    } else {
-        // Phase 5 will render resolved/laws
-        html += `<div class="ga-panel" style="padding:40px 20px;text-align:center;">
-            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">
-                ${_legFilter === 'resolved' ? resolved.length + ' resolved bills' : activeLaws.length + ' active laws'} — Phase 5
-            </div>
-        </div>`;
+    } else if (_legFilter === 'resolved') {
+        // Resolved bills
+        if (resolved.length === 0) {
+            html += `<div class="ga-panel" style="padding:40px 20px;text-align:center;">
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">No resolved bills yet.</div>
+            </div>`;
+        } else {
+            for (const bill of resolved) {
+                const party = bill.factions || {};
+                const passed = bill.status === 'enacted' || bill.status === 'passed';
+                const statusLabel = passed ? 'ENACTED' : bill.status === 'failed' ? 'FAILED' : bill.status.toUpperCase();
+                const statusColor = passed ? 'var(--green)' : 'var(--red)';
+                const yesVotes = bill.votes_for || 0;
+                const noVotes = bill.votes_against || 0;
+                const totalVotes = yesVotes + noVotes;
+                const yesPct = totalVotes > 0 ? Math.round((yesVotes / totalSeats) * 100) : 0;
+
+                html += `<div class="leg-bill-card" style="border-left:3px solid ${statusColor};cursor:pointer;" onclick="window.location.href='bill.html?id=${bill.id}'">
+                    <div class="leg-bill-header">
+                        <div>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span style="font-size:12px;font-weight:700;color:var(--text-bright);">${escapeHtml(bill.bill_name || 'Untitled')}</span>
+                                <span class="ga-badge" style="color:${statusColor};background:${statusColor}0a;border:1px solid ${statusColor}25;">${statusLabel}</span>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">
+                                ${escapeHtml(party.faction_name || 'Unknown')} \u00B7 ${passed ? 'Passed' : 'Failed'} tick ${bill.passed_tick || '?'} \u00B7 ${yesVotes} YES / ${noVotes} NO
+                            </div>
+                        </div>
+                        <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${statusColor};">${yesPct}%</div>
+                    </div>
+                </div>`;
+            }
+        }
+    } else if (_legFilter === 'laws') {
+        // Active laws
+        if (activeLaws.length === 0) {
+            html += `<div class="ga-panel" style="padding:40px 20px;text-align:center;">
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">No active laws.</div>
+            </div>`;
+        } else {
+            for (const law of activeLaws) {
+                const policy = law.policies || {};
+                const policyName = policy.policy_name || policy.name || 'Unknown Law';
+
+                // Extract effects
+                let effectTags = '';
+                const statEffects = policy.stat_effects || [];
+                if (statEffects.length > 0) {
+                    effectTags = statEffects.map(e => {
+                        const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat_key))
+                            || (e.direction === 'down' && STATS_LOWER_IS_BETTER.has(e.stat_key));
+                        const arrow = e.direction === 'up' ? '\u25B2' : '\u25BC';
+                        const color = isGood ? 'var(--green)' : 'var(--red)';
+                        return `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(e.stat_key)} ${arrow}</span>`;
+                    }).join('');
+                } else if (policy.target_stat) {
+                    const dir = (policy.stat_direction || 'UP').toLowerCase();
+                    const isGood = (dir === 'up' && !STATS_LOWER_IS_BETTER.has(policy.target_stat))
+                        || (dir === 'down' && STATS_LOWER_IS_BETTER.has(policy.target_stat));
+                    const arrow = dir === 'up' ? '\u25B2' : '\u25BC';
+                    const color = isGood ? 'var(--green)' : 'var(--red)';
+                    effectTags = `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(policy.target_stat)} ${arrow}</span>`;
+                }
+
+                html += `<div class="leg-law-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <div style="font-size:11px;font-weight:700;color:var(--text-bright);">${escapeHtml(policyName)}</div>
+                            ${policy.description ? `<div style="font-size:8px;color:var(--text-dim);margin-top:1px;">${escapeHtml(policy.description)}</div>` : ''}
+                        </div>
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Tick ${law.passed_tick || '?'}</div>
+                    </div>
+                    ${effectTags ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${effectTags}</div>` : ''}
+                </div>`;
+            }
+        }
     }
 
     el.innerHTML = html;
