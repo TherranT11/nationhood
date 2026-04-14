@@ -940,12 +940,18 @@ export function calculateFoodImportDemand(nation, subsector, allocation) {
  * @param {Object} [opts]    – optional: { defense_pct } for arms sector (0-100, % of budget)
  * @returns {number} export capacity in dollars (value side, after currency modifier)
  */
+// Resource sectors: production is a fixed endowment (no GDP scaling).
+// You have oil in the ground or you don't — GDP doesn't create more.
+var RESOURCE_SECTORS = new Set(['fuel_energy', 'minerals', 'food_agriculture',
+    'grains_staples', 'livestock_dairy', 'fruits_vegetables', 'cash_crops']);
+
 export function calculateExportCapacity(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
 
-    // GDP modifier: bigger economies trade more in absolute terms
+    // Resource sectors (oil, minerals, food) are fixed endowments — no GDP scaling.
+    // Industrial/service sectors scale with economic size (sqrt for diminishing returns).
     var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
     if (gdpModifier <= 0) return 0;
 
     // Calculate primary export score from sector stat(s) (0-100 scale)
@@ -1009,8 +1015,9 @@ export function calculateExportCapacity(nation, sector, opts) {
     // ── Domestic demand: feed your own people/industry first ──
     // Mirrors grossDemand from calculateImportDemand so both sides of trade
     // use consistent demand estimates. Only the surplus is available for export.
-    // Export-only sectors (tourism, services_finance) and arms (gated by
-    // defense spending) skip this check.
+    // Domestic consumption always scales with GDP (even for resource sectors —
+    // a rich nation consumes more fuel internally than a poor one).
+    var demandGdpMod = Math.sqrt(gdp / cfg.BASELINE_GDP);
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;
     var domesticDemand = 0;
@@ -1021,25 +1028,25 @@ export function calculateExportCapacity(nation, sector, opts) {
         var colNorm = (Number(nation.cost_of_living) || 0) / SN;
         var railNorm = (Number(nation.rail_network) || 0) / SN;
         var transportNeed = Math.max(0, 12 - railNorm) * 0.15;
-        domesticDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        domesticDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod;
     }
 
     else if (sector.key === 'minerals') {
         var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
         var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
         var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
-        domesticDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        domesticDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod;
     }
 
     else if (sector.key === 'manufactured_goods') {
         var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
-        domesticDemand = popNorm * (solNorm / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
+        domesticDemand = popNorm * (solNorm / 8) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod * 0.7;
     }
 
     else if (sector.key === 'technology') {
         var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
         var digiNorm = (Number(nation.digital_infrastructure) || 0) / SN;
-        domesticDemand = popNorm * ((solNorm + digiNorm) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+        domesticDemand = popNorm * ((solNorm + digiNorm) / 16) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod * 0.6;
     }
 
     // Subtract domestic demand from total production — only export the surplus
@@ -1088,7 +1095,7 @@ export function calculateImportDemand(nation, sector, opts) {
 
     var cfg = TRADE_CONFIG;
     var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    var gdpModifier = Math.sqrt(gdp / cfg.BASELINE_GDP);
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;   // stat normalizer: divide 0-100 stats by 5
 
