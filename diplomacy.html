@@ -716,6 +716,13 @@ function renderTradeAgreements() {
                 if (shipInfo && shipInfo.hasLogistics) {
                     html += `<div style="margin-top:6px;background:var(--bg-card);border:1px solid var(--border-main);padding:8px 10px;">
                         <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>`;
+                    // Show efficiency
+                    const shipCount = shipInfo.corps.length;
+                    const efficiency = Math.min(100, 85 + (shipCount * 3));
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Route Efficiency</span>
+                        <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${efficiency >= 100 ? 'var(--green)' : efficiency >= 91 ? 'var(--accent)' : 'var(--orange)'};">${efficiency}%</span>
+                    </div>`;
                     for (const corp of shipInfo.corps) {
                         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
                             <div style="display:flex;align-items:center;gap:6px;">
@@ -776,8 +783,11 @@ function renderTradeAgreements() {
                             </div>`;
                         }
                     } else {
-                        html += `<div style="font-size:12px;font-weight:700;color:var(--orange);">No shipping corporation assigned</div>
-                            <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">Route operates at base efficiency. Shipping corporations can apply to service this route.</div>`;
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                <span style="font-size:12px;font-weight:700;color:var(--orange);">No shipping corporation assigned</span>
+                                <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--orange);">85% efficiency</span>
+                            </div>
+                            <div style="font-size:11px;color:var(--text-dim);">Trade operates at 85% capacity. Each approved shipping corporation adds +3% efficiency (max 100%).</div>`;
                     }
                     html += `</div>`;
                 }

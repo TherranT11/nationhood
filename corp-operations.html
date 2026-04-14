@@ -6392,6 +6392,19 @@ async function arApplyToService() {
         return;
     }
 
+    // Subsector gating — corp must match route's shipping subsector
+    var corpSubsectorMap = {
+        'Bulk Cargo': 'bulk_cargo',
+        'Container Freight': 'container_freight',
+        'Specialized Transport': 'specialized_transport'
+    };
+    var corpDbSubsector = corpSubsectorMap[faction.corp_subsector] || '';
+    if (route.shipping_subsector && corpDbSubsector !== route.shipping_subsector) {
+        var routeSubLabel = route.shipping_subsector.replace(/_/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+        alert('Your fleet specializes in ' + (faction.corp_subsector || '?') + ' but this route requires ' + routeSubLabel + '. You cannot service this route.');
+        return;
+    }
+
     // Check funds — $50k application fee
     var appFee = 50000;
     var { data: freshFac } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();

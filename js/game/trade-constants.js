@@ -2323,6 +2323,50 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             .eq('id', n.id);
     }
 
+    // ── Step 6b: Apply shipping efficiency multiplier ──
+    // Base efficiency: 85% without shipping. +3% per active shipping claim on the route.
+    // Cap at 100%. Routes without any shipping coverage lose 15% of trade volume.
+    try {
+        // Fetch all active shipping claims grouped by route's trade agreement
+        var { data: activeClaims } = await supabase.from('shipping_claims')
+            .select('route_id, shipping_routes!inner(trade_agreement_id, origin_nation_id, destination_nation_id, trade_sector)')
+            .eq('status', 'active');
+
+        if (activeClaims && activeClaims.length > 0) {
+            // Build a map: "exporterNationId|importerNationId|sector" → ship count
+            var shipCountMap = {};
+            for (var sci = 0; sci < activeClaims.length; sci++) {
+                var cl = activeClaims[sci];
+                var sr = cl.shipping_routes;
+                if (!sr) continue;
+                var key1 = sr.origin_nation_id + '|' + sr.destination_nation_id + '|' + sr.trade_sector;
+                var key2 = sr.destination_nation_id + '|' + sr.origin_nation_id + '|' + sr.trade_sector;
+                shipCountMap[key1] = (shipCountMap[key1] || 0) + 1;
+                shipCountMap[key2] = (shipCountMap[key2] || 0) + 1;
+            }
+
+            // Apply efficiency to partner rows
+            var BASE_EFFICIENCY = 0.85;
+            var PER_SHIP_BONUS = 0.03;
+            for (var pri = 0; pri < partnerRows.length; pri++) {
+                var pr = partnerRows[pri];
+                var prKey = pr.exporter_nation_id + '|' + pr.importer_nation_id + '|' + pr.sector;
+                var ships = shipCountMap[prKey] || 0;
+                var efficiency = Math.min(1.0, BASE_EFFICIENCY + (ships * PER_SHIP_BONUS));
+                partnerRows[pri].trade_volume = Math.round(pr.trade_volume * efficiency);
+            }
+
+            console.log('[processTradeFlows] Shipping efficiency applied to ' + partnerRows.length + ' bilateral flows');
+        } else {
+            // No shipping at all — apply base 85% efficiency to all trade
+            for (var pri2 = 0; pri2 < partnerRows.length; pri2++) {
+                partnerRows[pri2].trade_volume = Math.round(partnerRows[pri2].trade_volume * 0.85);
+            }
+        }
+    } catch (shipEffErr) {
+        console.error('[processTradeFlows] Shipping efficiency calculation failed (non-fatal):', shipEffErr);
+    }
+
     // ── Step 7: Write to database ──
     // Insert trade_flows in batches (8 sectors × N nations)
     if (flowRows.length > 0) {
