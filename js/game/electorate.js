@@ -493,8 +493,6 @@ export const ELECTORATE_CONFIG = {
     SOFTMAX_TEMPERATURE: 12,          // softmax k (higher = more uniform distribution)
     TURNOUT_BASE: 0.50,               // base turnout fraction
     TURNOUT_POLARIZATION_SCALE: 0.002, // per polarization point: higher polarization → more turnout
-    TURNOUT_STABILITY_SCALE: -0.001,   // per stability point above 50: higher stability → less urgency → less turnout
-    TURNOUT_ENTHUSIASM_SCALE: 0.003,  // per enthusiasm point above/below 50
     TURNOUT_VISIBILITY_SCALE: 0.002,  // per visibility point above 50
     TURNOUT_MAX: 0.88,               // hard cap on turnout rate
 
@@ -1438,25 +1436,20 @@ function computeContestedVoteShares(updates) {
 function computeRealizedVoteShares(updates, profile, nation) {
     if (updates.length === 0) return;
 
-    const enthusiasm = Number(profile?.enthusiasm ?? 50);
     const polarization = clamp(Number(nation?.polarization ?? 50), 0, 100);
-    const stability = clamp(Number(nation?.stability ?? 50), 0, 100);
 
     // Dynamic base turnout:
     //   Base 50% + polarization pushes it up (polarized electorates are angry, they vote)
-    //   High stability pushes it down (content electorates stay home)
     const polBonus = polarization * CFG.TURNOUT_POLARIZATION_SCALE;
-    const stabPenalty = Math.max(0, stability - 50) * CFG.TURNOUT_STABILITY_SCALE;
-    const nationalBase = CFG.TURNOUT_BASE + polBonus + stabPenalty;
+    const nationalBase = CFG.TURNOUT_BASE + polBonus;
 
     // Compute per-faction turnout rate
     for (const u of updates) {
         const vis = Number(u.visibility ?? CFG.DEFAULT_VISIBILITY);
-        const enthBonus = (enthusiasm - 50) * CFG.TURNOUT_ENTHUSIASM_SCALE;
         const visBonus = Math.max(0, (vis - 50)) * CFG.TURNOUT_VISIBILITY_SCALE;
         // Incumbency bonus: governing parties mobilize supporters better (or worse if unpopular)
         const incumbencyBonus = Number(u._incumbencyBonus ?? 0);
-        u.turnout_rate = round3(clamp(nationalBase + enthBonus + visBonus + incumbencyBonus, 0.25, CFG.TURNOUT_MAX));
+        u.turnout_rate = round3(clamp(nationalBase + visBonus + incumbencyBonus, 0.25, CFG.TURNOUT_MAX));
     }
 
     // realized = contested × turnout (then renormalize)
