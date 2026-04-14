@@ -2073,11 +2073,11 @@ async function openGrantSeatsModal(root) {
 
     const otherFactions = (allFactions || []).filter(f => f.id !== faction.id);
     let selectedFactionId = null;
-    let grantAmount = 5;
+    const maxGrant = Math.max(0, monarchSeats - 1); // keep at least 1 seat
+    let grantAmount = Math.min(5, maxGrant || 1);
 
     function render() {
         const selected = otherFactions.find(f => f.id === selectedFactionId);
-        const maxGrant = Math.max(0, monarchSeats - 1); // keep at least 1 seat
 
         overlay.innerHTML = `
             <div class="pa-modal" style="width:560px;">
