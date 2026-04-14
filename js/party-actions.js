@@ -62,7 +62,7 @@ const LEADER_ACTIONS = [
         desc: 'Raise party funds proportional to your seat count. Each use yields less money and costs more momentum. Cannot fundraise at 0 momentum.',
         cost: 'MOMENTUM',
         costColor: '#c84',
-        ap: 0,
+        moneyCost: 0,
         tags: ['FINANCIAL', 'CAMPAIGN'],
         locked: false,
     },
@@ -70,9 +70,9 @@ const LEADER_ACTIONS = [
         id: 'statement',
         name: 'Issue Statement',
         desc: 'Public declaration on an issue. Shifts party positioning and voter bloc reactions. Media covers it. Other parties may respond.',
-        cost: 'FREE',
-        costColor: '#5cc55c',
-        ap: 1,
+        cost: '$20k',
+        costColor: '#c8a832',
+        moneyCost: 20000,
         tags: ['PUBLIC', 'NARRATIVE'],
         locked: false,
     },
@@ -80,9 +80,9 @@ const LEADER_ACTIONS = [
         id: 'platform',
         name: 'Set Party Platform',
         desc: 'Choose a political focus. Defines which stats you promise to change. Awards momentum based on how many rivals share the same platform.',
-        cost: 'FREE',
-        costColor: '#5cc55c',
-        ap: 2,
+        cost: '$120k',
+        costColor: '#c8a832',
+        moneyCost: 120000,
         tags: ['STRATEGIC'],
         locked: false,
     },
@@ -509,9 +509,9 @@ const CAMPAIGN_MANAGER_ACTIONS = [
         id: 'rebrand',
         name: 'Rebrand Party',
         desc: 'Change your party name, abbreviation, color, logo, and description. Costly but grants a "Fresh Start" modifier. Nuclear option after scandal or major defeat.',
-        cost: '3 AP + $2M',
+        cost: '$150k',
         costColor: '#c84',
-        ap: 3,
+        moneyCost: 150000,
         tags: ['CAMPAIGN', 'STRUCTURAL'],
         locked: false,
     },
@@ -642,7 +642,7 @@ function openRebrandModal(root) {
                     <div class="pa-modal-header-left">
                         <div class="pa-modal-dot" style="background:#c84;"></div>
                         <span class="pa-modal-title">Rebrand Party</span>
-                        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:#c84;background:rgba(204,136,68,0.06);border:1px solid rgba(204,136,68,0.15);">3 AP</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:#c84;background:rgba(204,136,68,0.06);border:1px solid rgba(204,136,68,0.15);">$150k</span>
                         <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:#c55;background:rgba(204,85,85,0.06);border:1px solid rgba(204,85,85,0.15);">-10 MOMENTUM</span>
                     </div>
                     <button class="pa-modal-close" id="rb-close">&times;</button>
@@ -744,7 +744,7 @@ function openRebrandModal(root) {
                         <!-- Cost summary -->
                         <div style="padding:8px;background:rgba(204,85,85,0.04);border:1px solid rgba(204,85,85,0.12);margin-top:auto;">
                             <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--text-dim);margin-bottom:4px;">COST SUMMARY</div>
-                            <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Action Points</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c84;">3 AP</span></div>
+                            <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Party Funds</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c84;">$150k</span></div>
                             <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Momentum</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c55;">-10 (${momentum} → ${Math.max(0, momentum - 10)})</span></div>
                             <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Approval</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c55;">-3 all blocs</span></div>
                             <div style="display:flex;justify-content:space-between;padding:1px 0;"><span style="font-size:9px;color:var(--text-secondary);">Cooldown</span><span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#d44a4a;">120 ticks</span></div>
@@ -756,7 +756,7 @@ function openRebrandModal(root) {
                 <div class="pa-modal-footer" style="justify-content:space-between;">
                     <div style="max-width:400px;font-size:9px;color:var(--text-secondary);line-height:1.5;" id="rb-footer-msg">
                         ${confirming.current
-                            ? '<span style="color:#d44a4a;font-weight:700;">⚠ Final confirmation. This costs 10 Momentum, 3 AP, and -3 approval. Cannot rebrand again for 120 ticks.</span>'
+                            ? '<span style="color:#d44a4a;font-weight:700;">⚠ Final confirmation. This costs $150k, 10 Momentum, and -3 approval. Cannot rebrand again for 120 ticks.</span>'
                             : 'This will change your party\'s identity across all UI, media, and diplomatic channels.'}
                     </div>
                     <div style="display:flex;gap:6px;">
@@ -916,19 +916,19 @@ async function executeRebrand(overlay, root, handler) {
             customLogoUrlFinal = null; // User chose preset, clear custom logo
         }
 
-        // 2. Deduct AP
-        const { data: apResult, error: apErr } = await _supabase.rpc('deduct_ap', {
-            p_faction_id: faction.id,
-            p_cost: 3,
-        });
-        if (apErr || (apResult != null && apResult < 0)) {
-            alert('Not enough AP (need 3).');
+        // 2. Deduct party funds ($150k)
+        const rebrandCost = 150000;
+        const currentFunds = faction.party_funds || 0;
+        if (currentFunds < rebrandCost) {
+            alert(`Not enough funds. You have $${Math.round(currentFunds / 1000)}k, need $150k.`);
             return;
         }
 
-        // 3. Deduct momentum and update faction identity
+        // 3. Deduct funds, momentum, and update faction identity
+        const newFunds = currentFunds - rebrandCost;
         const newMomentum = Math.max(0, (faction.momentum || 0) - 10);
         await _supabase.from('factions').update({
+            party_funds: newFunds,
             momentum: newMomentum,
             faction_name: name,
             abbreviation: abbr.toUpperCase(),
@@ -950,7 +950,7 @@ async function executeRebrand(overlay, root, handler) {
         });
 
         // 4. Update local state
-        faction.action_points = apResult;
+        faction.party_funds = newFunds;
         faction.momentum = newMomentum;
         faction.faction_name = name;
         faction.abbreviation = abbr.toUpperCase();
@@ -1573,7 +1573,7 @@ function openStatementModal(root) {
                 <div style="padding:6px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);">
                     <div style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-bottom:2px;">COST</div>
                     <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
-                        Issuing a statement costs <strong style="color:var(--text-bright);">1 AP</strong>.
+                        Issuing a statement costs <strong style="color:var(--accent);">$20k</strong>.
                         The statement will appear in the national news and may shift voter bloc reactions.
                     </div>
                 </div>
@@ -1635,17 +1635,17 @@ function openStatementModal(root) {
             const topicDef = STATEMENT_TOPICS.find(t => t.id === selectedTopic);
             const topicLabel = topicDef?.label || selectedTopic;
 
-            // 1. Deduct AP
-            const { data: apResult, error: apErr } = await _supabase.rpc('deduct_ap', {
-                p_faction_id: faction.id,
-                p_cost: 1,
-            });
-
-            if (apErr || (apResult != null && apResult < 0)) {
-                const currentAp = apResult != null ? -(apResult) - 1 : '?';
-                alert(`Not enough AP. You have ${currentAp} AP, need 1.`);
+            // 1. Deduct party funds ($20k)
+            const stmtCost = 20000;
+            const currentFunds = faction.party_funds || 0;
+            if (currentFunds < stmtCost) {
+                alert(`Not enough funds. You have $${Math.round(currentFunds / 1000)}k, need $20k.`);
                 return;
             }
+            const newFunds = currentFunds - stmtCost;
+            const { error: fundsErr } = await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', faction.id);
+            if (fundsErr) { alert('Failed to deduct funds: ' + fundsErr.message); return; }
+            faction.party_funds = newFunds;
 
             // 2. Generate headline
             const template = STATEMENT_HEADLINES[Math.floor(Math.random() * STATEMENT_HEADLINES.length)];
@@ -1696,8 +1696,7 @@ function openStatementModal(root) {
                 console.error('[PartyActions] Article creation failed:', articleErr.message);
             }
 
-            // 5. Update local state and close
-            if (faction) faction.action_points = apResult;
+            // 5. Close and re-render (funds already updated above)
             close();
             renderPage(root);
         } catch (err) {
