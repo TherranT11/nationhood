@@ -1186,13 +1186,16 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
 
         // Incumbency turnout modifier for governing parties
         // Bonus: up to +0.08 turnout at high approval, decays with tenure, flips negative below ~35% approval
+        // Timeline: 0-35 ticks = honeymoon (full bonus), 35-74 = linear decay, 74+ = zero
         let incumbencyTurnoutBonus = 0;
         if (governingIds.has(f.id)) {
             // Approval factor: positive above 40, zero at 35, negative below 30
             const approvalFactor = clamp((govApproval - 35) / 30, -1, 1); // -1 to +1
 
-            // Fatigue factor: full at 0 ticks, halved by 10 ticks, near-zero by 20
-            const fatigueFactor = Math.max(0, 1 - incumbencyTicks / 20);
+            // Fatigue factor: full through 35 ticks, linear decay 35-74, zero at 74+
+            const fatigueFactor = incumbencyTicks <= 35
+                ? 1.0
+                : Math.max(0, 1 - (incumbencyTicks - 35) / 39);
 
             // Base bonus: +0.08 at peak, scales with approval and fatigue
             incumbencyTurnoutBonus = round3(0.08 * approvalFactor * fatigueFactor);

@@ -1,0 +1,96 @@
+/* ══════════════════════════════════════════════════════════════
+   GOVERNMENT PAGE — UI 2.0 Legislature Subtab
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Parliament party rows ── */
+.leg-party-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 0; border-bottom: 1px solid rgba(42,42,36,0.3);
+}
+.leg-party-row:last-child { border-bottom: none; }
+.leg-party-dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid; display: flex;
+    align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+}
+
+/* ── Bill cards ── */
+.leg-bill-card {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    margin-bottom: 4px; cursor: pointer; transition: border-color 0.15s;
+}
+.leg-bill-card:hover { border-color: var(--border-bright, #444); }
+.leg-bill-header {
+    padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+}
+.leg-bill-expanded {
+    padding: 8px 14px; border-top: 1px solid var(--border-main);
+    background: var(--bg-card);
+}
+.leg-article-badge {
+    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
+    padding: 1px 5px; border: 1px solid;
+}
+
+/* ── Vote buttons ── */
+.leg-vote-btn {
+    padding: 4px 14px;
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.5px; cursor: pointer; transition: filter 0.15s;
+}
+.leg-vote-btn--yes { color: #000; background: var(--green); }
+.leg-vote-btn--no { color: #000; background: var(--red); }
+.leg-vote-btn--abstain {
+    color: var(--text-dim); background: transparent;
+    border: 1px solid var(--border-main);
+}
+.leg-vote-btn--active { opacity: 0.6; cursor: default; }
+.leg-vote-btn:not(.leg-vote-btn--active):hover { filter: brightness(1.1); }
+
+/* ── Filter bar ── */
+.leg-filter-btn {
+    padding: 4px 12px;
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.5px; color: var(--filter-color);
+    background: transparent; border: 1px solid var(--filter-color, var(--border-main));
+    cursor: pointer; display: flex; align-items: center; gap: 4px;
+    opacity: 0.6; transition: opacity 0.15s;
+}
+.leg-filter-btn:hover { opacity: 0.8; }
+.leg-filter-btn.active {
+    color: #000; background: var(--filter-color);
+    border-color: var(--filter-color); opacity: 1;
+}
+.leg-propose-btn {
+    padding: 4px 14px;
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.5px; color: var(--text-bright);
+    border: 1px solid var(--border-main);
+    cursor: pointer; display: flex; align-items: center; gap: 4px;
+    transition: background 0.15s;
+}
+.leg-propose-btn:hover { background: rgba(255,255,255,0.03); }
+
+/* ── Law cards ── */
+.leg-law-card {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    border-left: 3px solid var(--blue);
+    padding: 8px 14px; margin-bottom: 4px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1200px) {
+    #leg-left { width: 100% !important; }
+    #leg-right { width: 100% !important; }
+    #gov-content > div > div[style*="display:flex"] {
+        flex-direction: column !important;
+    }
+}
+@media (max-width: 768px) {
+    .leg-bill-header { flex-direction: column; gap: 6px; align-items: flex-start !important; }
+    .leg-filter-btn { padding: 3px 8px; font-size: 7px; }
+    .leg-propose-btn { font-size: 8px; padding: 3px 10px; }
+    .leg-vote-btn { padding: 3px 10px; font-size: 7px; }
+}

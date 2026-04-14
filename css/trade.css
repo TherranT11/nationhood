@@ -1,0 +1,126 @@
+/* ══════════════════════════════════════════════════════════════
+   TRADE SUBTAB — World Page
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Subtab navigation ── */
+.diplo-subtab {
+    padding: 5px 14px;
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text-dim); background: transparent;
+    border: 1px solid transparent;
+    border-bottom: 1px solid var(--border-main);
+    cursor: pointer; transition: all 0.15s;
+}
+.diplo-subtab:hover { color: var(--text-secondary); }
+.diplo-subtab.active {
+    color: var(--text-bright);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-main);
+    border-bottom: 1px solid var(--bg-panel);
+}
+
+/* ── Shared panels ── */
+.tr-panel {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+}
+.tr-panel-header {
+    padding: 8px 12px; border-bottom: 1px solid var(--border-main);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.tr-panel-title {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 1.5px; color: var(--text-bright);
+}
+
+/* ── Commodity table ── */
+.tr-commodity-header {
+    display: flex; padding: 4px 12px;
+    background: var(--bg-card); border-bottom: 1px solid var(--border-main);
+    font-family: var(--font-mono); font-size: 6px; color: var(--text-dim);
+}
+.tr-commodity-row {
+    display: flex; padding: 4px 12px; align-items: center; cursor: pointer;
+    border-bottom: 1px solid rgba(42,42,36,0.3);
+    transition: background 0.1s;
+}
+.tr-commodity-row:hover { background: rgba(255,255,255,0.015); }
+.tr-commodity-row:last-child { border-bottom: none; }
+
+/* ── Agreements ── */
+.tr-agreement-row {
+    border-bottom: 1px solid var(--border-main); cursor: pointer;
+}
+.tr-agreement-row:last-child { border-bottom: none; }
+.tr-agreement-row:hover .tr-agreement-header { background: rgba(255,255,255,0.01); }
+.tr-agreement-header { padding: 6px 12px; }
+
+/* ── Trade partner cards ── */
+.tr-partner-card {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    cursor: pointer; transition: border-color 0.15s, opacity 0.15s;
+}
+.tr-partner-card:hover { border-color: var(--border-bright, #444); }
+.tr-partner-card.expanded { cursor: default; }
+.tr-partner-header {
+    padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+}
+.tr-badge {
+    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
+    padding: 1px 5px; border: 1px solid var(--border-main);
+}
+.tr-sort-btn {
+    padding: 2px 8px;
+    font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+    color: var(--text-dim); background: transparent;
+    border: 1px solid transparent; cursor: pointer;
+}
+.tr-sort-btn:hover { color: var(--text-secondary); }
+.tr-sort-btn.active {
+    color: var(--text-bright); background: var(--bg-card);
+    border: 1px solid var(--border-main);
+}
+.tr-action-btn {
+    padding: 4px 14px;
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    color: var(--text-bright); border: 1px solid var(--border-main);
+    cursor: pointer; transition: background 0.15s;
+}
+.tr-action-btn:hover { background: rgba(255,255,255,0.03); }
+.tr-action-btn--primary {
+    color: #000; background: var(--teal);
+    border-color: var(--teal);
+}
+.tr-action-btn--primary:hover { filter: brightness(1.1); }
+.tr-filter-clear:hover { color: var(--text-bright) !important; }
+
+/* ── Header stats bar ── */
+.tr-header-stats {
+    display: flex; gap: 12px; justify-content: flex-end;
+    padding: 4px 0;
+}
+.tr-header-stat { text-align: right; }
+.tr-header-stat-label {
+    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
+    color: var(--text-dim); letter-spacing: 0.8px;
+}
+.tr-header-stat-value {
+    font-family: var(--font-mono); font-size: 14px; font-weight: 700;
+    color: var(--text-bright);
+}
+
+/* ── Responsive ── */
+@media (max-width: 1200px) {
+    #trade-left { width: 100% !important; }
+    #trade-right { width: 100% !important; }
+    #trade-page > div[style*="display:flex"] {
+        flex-direction: column !important;
+    }
+    .tr-header-stats { flex-wrap: wrap; justify-content: flex-start; gap: 16px; }
+}
+@media (max-width: 768px) {
+    .diplo-subtab { padding: 4px 8px; font-size: 7px; }
+    .tr-header-stat-value { font-size: 11px; }
+    .tr-partner-header { flex-direction: column; gap: 8px; align-items: flex-start !important; }
+}

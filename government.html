@@ -7,16 +7,22 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/government.css">
+    <link rel="stylesheet" href="css/gov-admin.css">
+    <link rel="stylesheet" href="css/gov-legislature.css">
 </head>
 <body>
 
 <div id="top-bar"></div>
 
-<div id="content-area">
-    <div class="loading-container">
-        <div class="loading-spinner"></div>
-        <div>Loading government data...</div>
+<!-- ═══ GOVERNMENT PAGE — UI 2.0 ═══ -->
+<div id="gov-page" style="padding:12px;">
+    <!-- Page header + subtabs -->
+    <div id="gov-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:0 2px;">
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:2px;color:var(--text-bright);">GOVERNMENT</span>
+        <div id="gov-subtabs" style="display:flex;gap:0;"></div>
     </div>
+    <!-- Subtab content -->
+    <div id="gov-content"></div>
 </div>
 
 <!-- Assign Minister Modal -->
@@ -66,6 +72,7 @@ import { nominateMinister, nominatePMCandidate } from './js/game/presidential.js
 import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder } from './js/game/executive-orders.js';
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
+import { calculateBillSupport } from './js/game/bills.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -969,13 +976,1537 @@ const FORMATION_MINISTRIES = [
     { key: 'security', name: 'Ministry of Security', description: 'Handles intelligence and counter-terrorism operations.', inactive: true }
 ];
 
+// ═══════════════════════════════════════════════════════════════
+// UI 2.0 — GOVERNMENT PAGE
+// ═══════════════════════════════════════════════════════════════
+
+const GOV_SUBTABS = [
+    { id: 'administrative', label: 'ADMINISTRATIVE' },
+    { id: 'legislative', label: 'LEGISLATIVE' },
+    { id: 'judicial', label: 'JUDICIAL' },
+    { id: 'laws', label: 'LAWS' },
+    { id: 'past', label: 'PAST ADMINISTRATIONS' },
+];
+let _govActiveSubtab = 'administrative';
+
+// Shared data loaded once and used across subtab renders
+let _govData = null; // { coalition, ministries, parties, hog, president, admin, shard tick, etc. }
+
+function renderGovSubtabs() {
+    const container = document.getElementById('gov-subtabs');
+    if (!container) return;
+    container.innerHTML = GOV_SUBTABS.map(tab => `<div class="gov-subtab${_govActiveSubtab === tab.id ? ' active' : ''}" data-tab="${tab.id}">${tab.label}</div>`).join('');
+    container.onclick = (e) => {
+        const el = e.target.closest('.gov-subtab');
+        if (!el || el.dataset.tab === _govActiveSubtab) return;
+        _govActiveSubtab = el.dataset.tab;
+        renderGovSubtabs();
+        renderGovContent();
+    };
+}
+
+function renderGovContent() {
+    const content = document.getElementById('gov-content');
+    if (!content) return;
+
+    if (_govActiveSubtab === 'administrative') {
+        renderAdministrationTab(content);
+    } else if (_govActiveSubtab === 'legislative') {
+        renderLegislatureTab(content);
+    } else {
+        const label = GOV_SUBTABS.find(t => t.id === _govActiveSubtab)?.label || _govActiveSubtab;
+        content.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;text-align:center;color:var(--text-dim);">
+            <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">${escapeHtml(label)}</div>
+            <div style="font-size:0.85rem;color:var(--text-dim);">Coming soon.</div>
+        </div>`;
+    }
+}
+
+function renderAdministrationTab(container) {
+    if (!_govData) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading government data...</div>';
+        return;
+    }
+    // Phase 2+ will populate this
+    container.innerHTML = `<div id="gov-admin-banner"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+            <div id="gov-admin-timeline" style="width:42%;"></div>
+            <div id="gov-admin-right" style="flex:1;display:flex;flex-direction:column;gap:6px;">
+                <div id="gov-admin-cabinet"></div>
+                <div id="gov-admin-chat"></div>
+                <div id="gov-admin-actions"></div>
+            </div>
+        </div>`;
+    renderAdminBanner();
+    renderAdminTimeline(); // renders with cached data or empty state
+    renderAdminCabinet();
+
+    // Load timeline data async, then re-render
+    if (_timelineEvents.length === 0) {
+        loadTimelineData().then(() => renderAdminTimeline());
+    }
+    renderAdminChat();
+    renderAdminActions();
+}
+
+function renderAdminBanner() {
+    const el = document.getElementById('gov-admin-banner');
+    if (!el || !_govData) return;
+    const { coalition, hog, president, admin, parties } = _govData;
+    const nation = currentNation;
+    const approval = Number(nation?.gov_approval ?? 50).toFixed(1);
+    const approvalColor = approval >= 55 ? 'var(--green)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
+    const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+
+    // Administration name + status
+    const adminName = admin?.admin_name || (hog ? (hog.last_name || 'Interim') + ' Administration' : 'No Government');
+    const startDate = admin?.started_at_date || tickToDate(admin?.started_at_tick);
+    const isCurrent = admin && !admin.ended_at_tick;
+    const statusBadge = isCurrent
+        ? '<span class="ga-badge ga-badge--green">CURRENT</span>'
+        : admin?.end_reason ? `<span class="ga-badge ga-badge--red">${escapeHtml(admin.end_reason.replace(/_/g, ' ').toUpperCase())}</span>` : '';
+
+    // Coalition info — build from live party data + coalition.party_ids
+    const coalitionPartyIds = coalition?.party_ids || [];
+    const coalitionParties = coalitionPartyIds.map(id => parties.find(p => p.id === id)).filter(Boolean);
+    const coalitionSeats = coalitionParties.reduce((sum, p) => sum + (p.seats || 0), 0);
+
+    // Formation type label
+    const formationLabels = {
+        coalition: 'Coalition Government',
+        emergency_minority: 'Emergency Minority Government',
+        majority: 'Majority Government',
+        presidential: 'Presidential Administration',
+    };
+    const formationType = formationLabels[coalition?.formation_type] || (coalitionParties.length > 1 ? 'Coalition Government' : coalitionParties.length === 1 ? 'Single Party Government' : 'No Government');
+
+    // Government type metadata
+    const govType = nation?.government_type || 'Parliamentary';
+    const metaParts = [formationType, govType, `${totalSeats} Seats`, `Majority: ${Math.floor(totalSeats / 2) + 1}`];
+
+    // ── Build HTML ──
+    let html = `<div class="ga-banner">`;
+
+    // Top row: admin name + approval
+    html += `<div class="ga-banner-top">
+        <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div class="ga-banner-name">${escapeHtml(adminName)}</div>
+                ${statusBadge}
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(startDate || '')}${isCurrent ? ' — Present' : ''}</span>
+            </div>
+            <div class="ga-banner-meta">${escapeHtml(metaParts.join(' · '))}</div>
+        </div>
+        <div class="ga-banner-approval">
+            <div class="ga-banner-approval-label">GOVERNMENT APPROVAL</div>
+            <div class="ga-banner-approval-value" style="color:${approvalColor};">${approval}%</div>
+        </div>
+    </div>`;
+
+    // Leaders + coalition row
+    html += `<div class="ga-banner-leaders">`;
+
+    // President section (if applicable)
+    if (president || isPresidential || isSemiPresidential(nation)) {
+        const presName = president ? `${president.first_name} ${president.last_name}` : (nation.head_of_state_first_name ? `${nation.head_of_state_first_name} ${nation.head_of_state_last_name}` : 'Vacant');
+        const presAge = president?.age || nation.head_of_state_age || '';
+        const presParty = president?.factions?.faction_name || '';
+        const presColor = president?.factions?.party_color || 'var(--text-dim)';
+        const presInitials = presName.split(' ').map(n => n[0] || '').join('');
+        html += `<div class="ga-banner-leader">
+            <div class="ga-banner-leader-label">PRESIDENT</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div class="ga-leader-avatar" style="background:${presColor}15;border-color:${presColor}33;color:${presColor};">${escapeHtml(presInitials)}</div>
+                <div>
+                    <div class="ga-leader-name">${escapeHtml(presName)}</div>
+                    <div class="ga-leader-meta">Age ${presAge}${presParty ? ' · ' + escapeHtml(presParty) : ''}</div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // Prime Minister section
+    if (hog) {
+        const pmName = `${hog.first_name} ${hog.last_name}`;
+        const pmAge = hog.age || '';
+        const pmPartyName = hog.factions?.faction_name || '';
+        const pmColor = hog.factions?.party_color || 'var(--accent)';
+        const pmAbbr = hog.factions?.abbreviation || '';
+        const pmInitials = pmName.split(' ').map(n => n[0] || '').join('');
+        const pmApproval = admin?.approval_at_start != null ? '' : ''; // PM approval comes from minister data in Phase 3
+        html += `<div class="ga-banner-leader ga-banner-leader--pm" style="background:${pmColor}04;">
+            <div class="ga-banner-leader-label">PRIME MINISTER</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div class="ga-leader-avatar" style="background:${pmColor}15;border-color:${pmColor}33;color:${pmColor};">${escapeHtml(pmInitials)}</div>
+                <div>
+                    <div class="ga-leader-name">${escapeHtml(pmName)}</div>
+                    <div class="ga-leader-meta">Age ${pmAge} · ${escapeHtml(pmPartyName)}</div>
+                </div>
+            </div>
+        </div>`;
+    } else if (!isPresidential) {
+        html += `<div class="ga-banner-leader">
+            <div class="ga-banner-leader-label">PRIME MINISTER</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;">Vacant — awaiting formation</div>
+        </div>`;
+    }
+
+    // Coalition section
+    html += `<div class="ga-banner-leader">
+        <div class="ga-banner-leader-label">COALITION</div>`;
+
+    if (coalitionParties.length > 0) {
+        html += `<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:8px;">
+            <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--text-bright);">${coalitionSeats}</span>
+            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">/ ${totalSeats} seats</span>
+        </div>`;
+
+        // Seat bar
+        html += `<div style="display:flex;height:8px;margin-bottom:6px;gap:1px;">`;
+        for (const p of coalitionParties) {
+            const pct = totalSeats > 0 ? ((p.seats || 0) / totalSeats * 100) : 0;
+            html += `<div style="width:${pct}%;background:${p.party_color || '#888'};height:100%;"></div>`;
+        }
+        // Opposition gap
+        const oppPct = totalSeats > 0 ? ((totalSeats - coalitionSeats) / totalSeats * 100) : 0;
+        if (oppPct > 0) html += `<div style="width:${oppPct}%;background:var(--border-main);height:100%;"></div>`;
+        html += `</div>`;
+
+        // Party legend
+        html += `<div style="display:flex;gap:12px;flex-wrap:wrap;">`;
+        for (const p of coalitionParties) {
+            const color = p.party_color || '#888';
+            html += `<div style="display:flex;align-items:center;gap:4px;">
+                <div style="width:6px;height:6px;background:${color};"></div>
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(p.abbreviation || p.faction_name)}</span>
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${color};">${p.seats || 0}</span>
+            </div>`;
+        }
+        html += `</div>`;
+    } else {
+        html += `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;">No active coalition</div>`;
+    }
+
+    html += `</div>`; // close coalition section
+    html += `</div>`; // close leaders row
+    html += `</div>`; // close banner
+
+    el.innerHTML = html;
+}
+
+let _timelineFilter = 'all';
+let _timelineEvents = [];
+
+async function loadTimelineData() {
+    if (!_govData?.admin || !currentNation) return;
+    const startTick = _govData.admin.started_at_tick || 0;
+    const nationId = currentNation.id;
+
+    try {
+        const [eventsRes, actionsRes, billsRes] = await Promise.all([
+            _supabase.from('event_log')
+                .select('id, event_name, category, fired_at_tick, description_used, description_chosen')
+                .eq('nation_id', nationId)
+                .gte('fired_at_tick', startTick)
+                .order('fired_at_tick', { ascending: false })
+                .limit(80),
+            _supabase.from('campaign_actions')
+                .select('id, action_type, tick_performed, result, action_data')
+                .eq('nation_id', nationId)
+                .gte('tick_performed', startTick)
+                .order('tick_performed', { ascending: false })
+                .limit(50),
+            _supabase.from('bills')
+                .select('id, bill_name, status, passed_tick, proposed_tick, bill_type')
+                .eq('nation_id', nationId)
+                .gte('proposed_tick', startTick)
+                .order('proposed_tick', { ascending: false })
+                .limit(50),
+        ]);
+
+        const merged = [];
+
+        // Events
+        for (const ev of (eventsRes.data || [])) {
+            const cat = (ev.category || '').toLowerCase();
+            let type = 'event';
+            if (cat.includes('crisis') || cat.includes('disaster')) type = 'crisis';
+            else if (cat.includes('politic') || cat.includes('government')) type = 'policy';
+            else if (cat.includes('trade') || cat.includes('econom')) type = 'economy';
+            else if (cat.includes('military') || cat.includes('security')) type = 'military';
+            merged.push({
+                tick: ev.fired_at_tick,
+                type,
+                title: ev.event_name || 'Event',
+                desc: ev.description_chosen || ev.description_used || '',
+                source: 'event',
+            });
+        }
+
+        // Campaign actions (minister appointments, platform changes, etc.)
+        for (const ca of (actionsRes.data || [])) {
+            const aType = ca.action_type || '';
+            let type = 'appointment';
+            let title = aType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            let desc = '';
+            if (aType === 'assign_minister') {
+                type = 'appointment';
+                title = 'Minister Appointed';
+                desc = ca.action_data?.minister_name ? `${ca.action_data.minister_name} appointed to ${ca.action_data.ministry_key || 'ministry'}.` : '';
+            } else if (aType === 'fire_minister' || aType === 'purge_minister') {
+                type = 'reshuffle';
+                title = aType === 'purge_minister' ? 'Minister Purged' : 'Minister Dismissed';
+                desc = ca.action_data?.minister_name ? `${ca.action_data.minister_name} removed from ${ca.action_data.ministry_key || 'ministry'}.` : '';
+            } else if (aType === 'set_platform' || aType === 'adopt_platform') {
+                type = 'policy';
+                title = 'Platform Set';
+                desc = ca.result?.platform_name ? `Administration commits to ${ca.result.platform_name}.` : 'Policy platform adopted.';
+            } else if (aType === 'issue_statement') {
+                type = 'policy';
+                title = 'Statement Issued';
+                desc = ca.result?.statement || ca.action_data?.statement || '';
+            } else if (aType === 'strongman_death') {
+                type = 'crisis';
+                title = 'Leader Succession';
+                desc = ca.result?.deceased_name ? `${ca.result.deceased_name} has died. ${ca.result.successor_name} succeeds.` : '';
+            }
+            merged.push({
+                tick: ca.tick_performed,
+                type,
+                title,
+                desc: desc.length > 150 ? desc.slice(0, 147) + '...' : desc,
+                source: 'action',
+            });
+        }
+
+        // Bills
+        for (const bill of (billsRes.data || [])) {
+            const status = bill.status || '';
+            let type = 'legislation';
+            let title = bill.bill_name || 'Untitled Bill';
+            let desc = '';
+            if (status === 'enacted' || status === 'passed') {
+                desc = `${title} enacted into law.`;
+                title = 'Bill Passed';
+            } else if (status === 'failed' || status === 'rejected') {
+                desc = `${title} failed to pass.`;
+                title = 'Bill Failed';
+                type = 'crisis';
+            } else if (status === 'voting' || status === 'floor') {
+                desc = `${title} is on the floor for debate.`;
+                title = 'Bill Introduced';
+            } else if (status === 'frozen') {
+                desc = `${title} frozen (caretaker government).`;
+                title = 'Bill Frozen';
+            } else {
+                desc = `${title} — ${status}.`;
+            }
+            merged.push({
+                tick: bill.passed_tick || bill.proposed_tick,
+                type,
+                title,
+                desc,
+                source: 'bill',
+            });
+        }
+
+        // Sort by tick descending (most recent first)
+        merged.sort((a, b) => (b.tick || 0) - (a.tick || 0));
+        _timelineEvents = merged;
+    } catch (err) {
+        console.error('[Timeline] Load failed:', err);
+        _timelineEvents = [];
+    }
+}
+
+const TIMELINE_TYPE_CONFIG = {
+    formation:   { color: 'var(--gold, #c8a832)', icon: '\uD83C\uDFDB\uFE0F' },
+    appointment: { color: 'var(--accent)', icon: '\uD83D\uDC65' },
+    policy:      { color: 'var(--blue)', icon: '\uD83D\uDCC8' },
+    legislation: { color: 'var(--green)', icon: '\uD83D\uDCDC' },
+    crisis:      { color: 'var(--orange)', icon: '\uD83D\uDCC9' },
+    scandal:     { color: 'var(--red)', icon: '\uD83D\uDD25' },
+    reshuffle:   { color: 'var(--amber)', icon: '\uD83D\uDD04' },
+    economy:     { color: 'var(--teal)', icon: '\uD83D\uDCB0' },
+    military:    { color: 'var(--red)', icon: '\u2694\uFE0F' },
+    event:       { color: 'var(--text-dim)', icon: '\uD83D\uDCC4' },
+};
+
+const TIMELINE_FILTERS = [
+    { id: 'all', label: 'ALL' },
+    { id: 'legislation', label: 'BILLS' },
+    { id: 'policy', label: 'POLICY' },
+    { id: 'crisis', label: 'CRISIS' },
+    { id: 'appointment', label: 'CABINET' },
+];
+
+function renderAdminTimeline() {
+    const el = document.getElementById('gov-admin-timeline');
+    if (!el) return;
+
+    const filtered = _timelineFilter === 'all'
+        ? _timelineEvents
+        : _timelineEvents.filter(e => e.type === _timelineFilter);
+
+    // Filter buttons
+    let filterHtml = TIMELINE_FILTERS.map(f =>
+        `<div class="ga-tl-filter${_timelineFilter === f.id ? ' active' : ''}" data-filter="${f.id}">${f.label}</div>`
+    ).join('');
+
+    let html = `<div class="ga-panel">
+        <div class="ga-panel-header">
+            <span class="ga-panel-title">EXECUTIVE TIMELINE</span>
+            <div style="display:flex;gap:3px;">${filterHtml}</div>
+        </div>
+        <div class="ga-tl-scroll">`;
+
+    if (filtered.length === 0) {
+        html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No events recorded yet.</div>`;
+    } else {
+        for (let i = 0; i < filtered.length; i++) {
+            const ev = filtered[i];
+            const cfg = TIMELINE_TYPE_CONFIG[ev.type] || TIMELINE_TYPE_CONFIG.event;
+            const isLast = i === filtered.length - 1;
+
+            html += `<div class="ga-tl-row">
+                <div class="ga-tl-spine">
+                    ${i > 0 ? '<div class="ga-tl-line-top"></div>' : ''}
+                    <div class="ga-tl-node" style="border-color:${cfg.color};background:${cfg.color}25;"></div>
+                    ${!isLast ? '<div class="ga-tl-line-bottom"></div>' : ''}
+                    <div class="ga-tl-tick">T${ev.tick || '?'}</div>
+                </div>
+                <div class="ga-tl-content">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:12px;">${cfg.icon}</span>
+                            <span style="font-size:11px;font-weight:700;color:${cfg.color};">${escapeHtml(ev.title)}</span>
+                        </div>
+                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);flex-shrink:0;">${tickToDate(ev.tick)}</span>
+                    </div>
+                    <div style="font-size:9px;color:var(--text-dim);line-height:1.55;">${escapeHtml(ev.desc)}</div>
+                </div>
+            </div>`;
+        }
+    }
+
+    html += `</div></div>`;
+    el.innerHTML = html;
+
+    // Wire filter clicks
+    el.querySelectorAll('.ga-tl-filter').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _timelineFilter = btn.dataset.filter;
+            renderAdminTimeline();
+        });
+    });
+}
+let _expandedMinistry = null;
+
+function renderAdminCabinet() {
+    const el = document.getElementById('gov-admin-cabinet');
+    if (!el || !_govData) return;
+    const { ministries, coalition, parties } = _govData;
+    const nation = currentNation;
+    const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+
+    // Build party lookup from coalition + all parties
+    const partyMap = {};
+    for (const p of parties) partyMap[p.id] = p;
+
+    // Count ministries held per party
+    const partyMinistryCount = {};
+    for (const m of ministries) {
+        if (m.party_id) partyMinistryCount[m.party_id] = (partyMinistryCount[m.party_id] || 0) + 1;
+    }
+
+    // Filter to cabinet ministries (exclude prime_minister — shown in banner)
+    const cabinetMinistries = ministries.filter(m => m.ministry_key !== 'prime_minister' && MINISTRY_KEYS_CABINET.includes(m.ministry_key));
+    cabinetMinistries.sort((a, b) => {
+        const order = MINISTRY_KEYS_CABINET.indexOf(a.ministry_key) - MINISTRY_KEYS_CABINET.indexOf(b.ministry_key);
+        return order;
+    });
+
+    // Party legend for header
+    const coalitionPartyIds = coalition?.party_ids || [];
+    const coalParties = coalitionPartyIds.map(id => partyMap[id]).filter(Boolean);
+    const legendHtml = coalParties.map(p => {
+        const count = partyMinistryCount[p.id] || 0;
+        return `<div style="display:flex;align-items:center;gap:3px;">
+            <div style="width:6px;height:6px;background:${p.party_color || '#888'};"></div>
+            <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(p.abbreviation || p.faction_name)} holds ${count}</span>
+        </div>`;
+    }).join('');
+
+    let html = `<div class="ga-panel">
+        <div class="ga-panel-header">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span class="ga-panel-title">CABINET</span>
+                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${cabinetMinistries.length} ministries</span>
+            </div>
+            <div style="display:flex;gap:8px;">${legendHtml}</div>
+        </div>
+    </div>`;
+
+    // 2-column grid of ministry cards
+    html += `<div class="ga-cabinet-grid">`;
+
+    for (const m of cabinetMinistries) {
+        const party = partyMap[m.party_id];
+        const pColor = party?.party_color || m.factions?.party_color || '#888';
+        const pAbbr = party?.abbreviation || m.factions?.abbreviation || '';
+        const pName = party?.faction_name || m.factions?.faction_name || '';
+        const isFilled = m.minister_first_name && m.minister_last_name;
+        const ministerName = isFilled ? `${m.minister_first_name} ${m.minister_last_name}` : 'Vacant';
+        const initials = isFilled ? `${m.minister_first_name[0]}${m.minister_last_name[0]}` : '?';
+        const approval = Math.round(m.minister_approval ?? NEW_MINISTER_APPROVAL);
+        const approvalColor = approval >= 50 ? 'var(--green)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
+        const isExpanded = _expandedMinistry === m.ministry_key;
+
+        // Performance: compute net delta from stat baselines
+        const stats = MINISTRY_TO_STATS[m.ministry_key] || [];
+        const baselines = m.stat_baselines || {};
+        let perfSum = 0, perfCount = 0;
+        for (const statKey of stats) {
+            const sign = statDirectionSign(statKey);
+            if (sign === 0) continue;
+            const baseline = baselines[statKey];
+            if (baseline == null) continue;
+            const current = Number(nation?.[statKey] ?? 50);
+            const delta = (current - baseline) * sign;
+            perfSum += delta;
+            perfCount++;
+        }
+        const performance = perfCount > 0 ? perfSum / perfCount : 0;
+        const perfColor = performance >= 0 ? 'var(--green)' : performance > -3 ? 'var(--amber)' : 'var(--red)';
+
+        // Count available actions for this ministry
+        const actionConfig = MINISTRY_ACTIONS[m.ministry_key];
+        const actionCount = actionConfig?.actions?.filter(a => !a.comingSoon)?.length || 0;
+
+        // Scandal detection (from campaign_actions — simplified: check if ministry has a scandal note)
+        const hasScandalBadge = false; // Phase 5 timeline will surface these
+
+        html += `<div class="ga-ministry-card${isExpanded ? ' expanded' : ''}" data-ministry="${m.ministry_key}" style="border-left:3px solid ${pColor};">`;
+
+        // Ministry header
+        html += `<div class="ga-ministry-header">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:${pColor};display:inline-block;"></span>
+                <span class="ga-ministry-name">${escapeHtml((MINISTRY_NAMES[m.ministry_key] || m.ministry_key).replace('Ministry of ', '').replace('Ministry of the ', '').toUpperCase())}</span>
+            </div>
+        </div>`;
+
+        // Minister info
+        html += `<div class="ga-ministry-body">`;
+        if (isFilled) {
+            html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <div class="ga-leader-avatar" style="width:28px;height:28px;font-size:9px;background:${pColor}15;border-color:${pColor}33;color:${pColor};">${escapeHtml(initials)}</div>
+                <div style="flex:1;">
+                    <div style="font-size:11px;font-weight:700;color:var(--text-bright);">${escapeHtml(ministerName)}</div>
+                    <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Age ${m.minister_age || '?'} · <span style="color:${pColor};">${escapeHtml(pAbbr)}</span> · Appointed T${m.appointed_tick ?? '?'}</div>
+                </div>
+            </div>`;
+
+            // Stats row
+            html += `<div style="display:flex;gap:10px;margin-bottom:4px;">
+                <div>
+                    <div class="ga-stat-label">APPROVAL</div>
+                    <div class="ga-stat-value" style="color:${approvalColor};">${approval}%</div>
+                </div>
+                <div>
+                    <div class="ga-stat-label">PERFORMANCE</div>
+                    <div class="ga-stat-value" style="color:${perfColor};">${performance > 0 ? '+' : ''}${performance.toFixed(1)}</div>
+                </div>
+            </div>`;
+        } else {
+            html += `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;padding:8px 0;">Vacant — awaiting appointment</div>`;
+        }
+
+        // Expanded content: ministry actions + dismiss/resign
+        if (isExpanded) {
+            html += renderMinistryExpandedContent(m, pColor);
+        }
+
+        // Expand hint
+        if (!isExpanded && actionCount > 0) {
+            html += `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">&#9656; ${actionCount} action${actionCount !== 1 ? 's' : ''} available · click to expand</div>`;
+        }
+
+        html += `</div>`; // close body
+        html += `</div>`; // close card
+    }
+
+    html += `</div>`; // close grid
+
+    el.innerHTML = html;
+
+    // Click handler for expand/collapse (onclick= prevents stacking on re-render)
+    el.onclick = (e) => {
+        const card = e.target.closest('.ga-ministry-card');
+        if (!card) return;
+        // Don't collapse when clicking action buttons inside expanded card
+        if (e.target.closest('.ga-dismiss-btn') || e.target.closest('.ga-action-card')) return;
+        const key = card.dataset.ministry;
+        _expandedMinistry = _expandedMinistry === key ? null : key;
+        renderAdminCabinet();
+    };
+}
+function renderMinistryExpandedContent(ministry, partyColor) {
+    const key = ministry.ministry_key;
+    const isMyMinistry = currentFaction && ministry.party_id === currentFaction.id;
+    const isFilled = ministry.minister_first_name && ministry.minister_last_name;
+
+    let html = `<div class="ga-ministry-expanded">`;
+
+    // Foreign ministry → link to diplomacy
+    if (key === 'foreign') {
+        html += `<div style="padding:5px 8px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);background:var(--bg-card);border:1px solid var(--border-main);">Foreign Ministry actions are conducted in the <a href="diplomacy.html" style="color:var(--accent);text-decoration:underline;">Diplomacy panel</a>.</div>`;
+    } else {
+        // Ministry actions from config
+        const actionConfig = MINISTRY_ACTIONS[key];
+        const actions = actionConfig?.actions?.filter(a => !a.comingSoon) || [];
+
+        if (actions.length > 0) {
+            html += `<div class="ga-stat-label" style="margin-bottom:4px;">MINISTRY ACTIONS</div>`;
+            for (const action of actions) {
+                // AP cost (scaled by use count)
+                const countKey = key + ':' + action.id;
+                const useCount = ministryActionUseCounts[countKey] || 0;
+                const apCost = action.apCosts ? action.apCosts[Math.min(useCount, action.apCosts.length - 1)] : '?';
+
+                // Active check
+                const actionId = key + '-' + action.id;
+                const isActive = !!activeMinistryActions[actionId];
+
+                // Effect tags
+                const effects = action.baseEffects || [];
+                const effectTags = effects.filter(e => e.stat_key !== 'minister_approval').map(e => {
+                    const name = formatStatName(e.stat_key);
+                    const sign = e.direction === 'up' ? '+' : '-';
+                    const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat_key))
+                        || (e.direction === 'down' && STATS_LOWER_IS_BETTER.has(e.stat_key));
+                    const color = isGood ? 'var(--green)' : 'var(--red)';
+                    return `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${name} ${sign}${e.rate}</span>`;
+                });
+
+                // Direction-based actions (healthcare pharma, labor policy)
+                if (action.directions && !action.baseEffects) {
+                    for (const [dir, cfg] of Object.entries(action.directions)) {
+                        const dirEffects = (cfg.baseEffects || []).filter(e => e.stat_key !== 'minister_approval');
+                        for (const e of dirEffects) {
+                            const name = formatStatName(e.stat_key);
+                            const sign = e.direction === 'up' ? '+' : '-';
+                            const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat_key))
+                                || (e.direction === 'down' && STATS_LOWER_IS_BETTER.has(e.stat_key));
+                            effectTags.push(`<span class="ga-effect-tag" style="color:${isGood ? 'var(--green)' : 'var(--red)'};border-color:${isGood ? 'var(--green)' : 'var(--red)'}30;">${name} ${sign}${e.rate}</span>`);
+                        }
+                    }
+                }
+
+                // Tags from config (RAISES CAPITAL, SAVES, etc.)
+                if (action.tags) {
+                    for (const t of action.tags) {
+                        const cls = t.cls === 'positive' ? 'var(--green)' : t.cls === 'negative' ? 'var(--red)' : 'var(--text-dim)';
+                        effectTags.push(`<span class="ga-effect-tag" style="color:${cls};border-color:${cls}30;">${escapeHtml(t.label)}</span>`);
+                    }
+                }
+
+                html += `<div class="ga-action-card${isActive ? ' active' : ''}">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${isActive ? 'var(--green)' : 'var(--text-bright)'};">${escapeHtml(action.name)}${isActive ? ' <span style="font-size:7px;">ACTIVE</span>' : ''}</span>
+                        <span class="ga-ap-badge">${apCost} AP</span>
+                    </div>
+                    <div style="font-size:8px;color:var(--text-dim);line-height:1.4;margin-bottom:4px;">${escapeHtml(action.desc)}</div>
+                    ${effectTags.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;">${effectTags.join('')}</div>` : ''}
+                </div>`;
+            }
+        }
+    }
+
+    // Dismiss / Resign button (PM only)
+    if (isFilled && isPMParty) {
+        const isOwnPartyMinister = ministry.party_id === currentFaction?.id;
+        const actionLabel = isOwnPartyMinister ? 'RESIGN' : 'DISMISS';
+        const actionColor = isOwnPartyMinister ? 'var(--orange)' : 'var(--red)';
+        html += `<div style="margin-top:8px;display:flex;gap:6px;">
+            <div class="ga-dismiss-btn" style="color:${actionColor};border-color:${actionColor}44;"
+                onclick="event.stopPropagation();fireMinister('${escapeHtml(key)}')">${actionLabel}</div>
+        </div>`;
+    }
+
+    html += `</div>`;
+    return html;
+}
+
+let _govChatMessages = [];
+let _govChatSubscription = null;
+
+async function loadGovChat() {
+    if (!currentNation) return;
+    try {
+        const { data, error } = await _supabase
+            .from('admin_chat')
+            .select('id, faction_id, message, tick_posted, created_at')
+            .eq('nation_id', currentNation.id)
+            .order('created_at', { ascending: true })
+            .limit(50);
+        if (error) throw error;
+        _govChatMessages = data || [];
+    } catch (err) {
+        console.error('[GovChat] Load failed:', err);
+        _govChatMessages = [];
+    }
+    renderGovChatMessages();
+    subscribeGovChat();
+}
+
+function subscribeGovChat() {
+    if (_govChatSubscription || !currentNation) return;
+    _govChatSubscription = _supabase
+        .channel('gov_admin_chat_' + currentNation.id)
+        .on('postgres_changes', {
+            event: 'INSERT', schema: 'public', table: 'admin_chat',
+            filter: 'nation_id=eq.' + currentNation.id
+        }, (payload) => {
+            const msg = payload.new;
+            if (!_govChatMessages.find(m => m.id === msg.id)) {
+                _govChatMessages.push(msg);
+                renderGovChatMessages();
+            }
+        })
+        .subscribe();
+}
+
+function renderGovChatMessages() {
+    const container = document.getElementById('ga-chat-messages');
+    if (!container) return;
+    const parties = _govData?.parties || [];
+
+    if (_govChatMessages.length === 0) {
+        container.innerHTML = '<div style="padding:16px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No messages yet.</div>';
+        return;
+    }
+
+    container.innerHTML = _govChatMessages.map(m => {
+        const party = parties.find(p => p.id === m.faction_id);
+        const partyName = party?.faction_name || 'Unknown';
+        const partyColor = party?.party_color || '#888';
+        const timeAgo = formatGovChatTime(m.created_at);
+        return `<div class="ga-chat-msg" style="border-left:2px solid ${partyColor};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${partyColor};">${escapeHtml(partyName)}</span>
+                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${timeAgo}</span>
+            </div>
+            <div style="font-size:9px;color:var(--text-dim);line-height:1.4;">${escapeHtml(m.message)}</div>
+        </div>`;
+    }).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+function formatGovChatTime(isoStr) {
+    if (!isoStr) return '';
+    const diffMs = Date.now() - new Date(isoStr).getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return diffMin + 'm ago';
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return diffH + 'h ago';
+    return Math.floor(diffH / 24) + 'd ago';
+}
+
+async function sendGovChat() {
+    const input = document.getElementById('ga-chat-input');
+    const btn = document.getElementById('ga-chat-send');
+    if (!input || !currentFaction || !currentNation) return;
+    const message = input.value.trim();
+    if (!message) return;
+    btn.disabled = true;
+    input.disabled = true;
+    try {
+        const { error } = await _supabase.from('admin_chat').insert({
+            nation_id: currentNation.id,
+            faction_id: currentFaction.id,
+            message: message,
+            tick_posted: currentTick
+        });
+        if (error) throw error;
+        input.value = '';
+        // Manual add if realtime isn't working
+        if (!_govChatSubscription) {
+            _govChatMessages.push({ id: crypto.randomUUID(), faction_id: currentFaction.id, message, tick_posted: currentTick, created_at: new Date().toISOString() });
+            renderGovChatMessages();
+        }
+    } catch (err) {
+        console.error('[GovChat] Send failed:', err);
+    } finally {
+        btn.disabled = false;
+        input.disabled = false;
+        input.focus();
+    }
+}
+
+function renderAdminChat() {
+    const el = document.getElementById('gov-admin-chat');
+    if (!el) return;
+
+    el.innerHTML = `<div class="ga-panel">
+        <div class="ga-panel-header">
+            <span class="ga-panel-title">ADMINISTRATIVE COMMUNICATIONS</span>
+        </div>
+        <div id="ga-chat-messages" class="ga-chat-scroll"></div>
+        <div class="ga-chat-input-row">
+            <input type="text" id="ga-chat-input" class="ga-chat-input" placeholder="Type a message..." maxlength="500"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();sendGovChat();}">
+            <button id="ga-chat-send" class="ga-chat-send-btn" onclick="sendGovChat()">SEND</button>
+        </div>
+    </div>`;
+
+    // Load messages async
+    loadGovChat();
+}
+function renderAdminActions() {
+    const el = document.getElementById('gov-admin-actions');
+    if (!el || !_govData) return;
+    const { coalition } = _govData;
+    const nation = currentNation;
+
+    // Only show actions if a government exists
+    if (!coalition || !nation) { el.innerHTML = ''; return; }
+
+    const isCaretaker = coalition.status === 'caretaker';
+    const isPM = isPMParty;
+    const approval = Number(nation.gov_approval ?? 50);
+
+    let html = `<div class="ga-panel" style="text-align:center;padding:12px;">`;
+
+    // Call Early Elections (PM only, not caretaker)
+    if (isPM && !isCaretaker) {
+        const tierHint = approval > 50 ? 'Calling from strength — your party gains +3 momentum'
+            : approval < 35 ? 'Opposition gains +5 momentum each — orderly transition'
+            : 'Neutral call — no momentum changes';
+
+        html += `<div class="ga-early-election-btn" onclick="callEarlyElections()">
+            <span style="font-size:12px;">&#9889;</span> CALL EARLY ELECTIONS
+        </div>
+        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">
+            PM only — dissolve the legislature · ${escapeHtml(tierHint)}
+        </div>`;
+    }
+
+    // Caretaker notice
+    if (isCaretaker) {
+        const electionTick = coalition._earlyElectionTick;
+        const ticksLeft = electionTick ? Math.max(0, electionTick - currentTick) : '?';
+        html += `<div style="display:flex;align-items:center;gap:8px;justify-content:center;padding:8px 0;">
+            <span style="font-size:14px;">&#9888;&#65039;</span>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--amber);">CARETAKER GOVERNMENT</div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Election in ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} · Legislation frozen</div>
+            </div>
+        </div>`;
+    }
+
+    // PM Resign (PM only, not caretaker)
+    if (isPM && !isCaretaker) {
+        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-main);">
+            <span class="ga-resign-btn" onclick="resignPMAction()">RESIGN AS PRIME MINISTER</span>
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:3px;">
+                -5 approval · -3 stability · barred from PM for 12 ticks
+            </div>
+        </div>`;
+    }
+
+    // Collapse warning
+    if (approval <= 5 && !isCaretaker) {
+        html += `<div style="margin-top:8px;padding:8px 12px;background:rgba(204,85,85,0.04);border:1px solid rgba(204,85,85,0.15);">
+            <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--red);">&#9888; GOVERNMENT ON VERGE OF COLLAPSE</div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">
+                Approval at ${approval.toFixed(1)}%. Coalition parties losing -5 approval/tick. At 0%, snap elections will be called automatically.
+            </div>
+        </div>`;
+    }
+
+    html += `</div>`;
+    el.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI 2.0 — LEGISLATURE TAB
+// ═══════════════════════════════════════════════════════════════
+
+let _legData = null;       // { bills, activeLaws, parties }
+let _legInitialized = false;
+let _legFilter = 'active'; // 'active' | 'resolved' | 'laws'
+let _legExpandedBill = null;
+
+function renderLegislatureTab(container) {
+    if (!_legData) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading legislature data...</div>';
+        if (!_legInitialized) {
+            _legInitialized = true;
+            loadLegislatureData().then(() => renderLegislatureTab(container));
+        }
+        return;
+    }
+
+    container.innerHTML = `<div style="display:flex;gap:8px;">
+        <div id="leg-left" style="width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;"></div>
+        <div id="leg-right" style="flex:1;display:flex;flex-direction:column;gap:6px;"></div>
+    </div>`;
+
+    renderParliamentPanel();
+    renderBillsList();
+}
+
+async function loadLegislatureData() {
+    if (!currentNation) return;
+    const nid = currentNation.id;
+
+    try {
+        const [committeeRes, floorRes, frozenRes, resolvedRes, lawsRes, partiesRes] = await Promise.all([
+            _supabase.from('bills')
+                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+                .eq('nation_id', nid).eq('status', 'committee'),
+            _supabase.from('bills')
+                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+                .eq('nation_id', nid).in('status', ['floor', 'voting', 'vetoed', 'referendum_pending', 'referendum_approved']),
+            _supabase.from('bills')
+                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*))')
+                .eq('nation_id', nid).eq('status', 'frozen'),
+            _supabase.from('bills')
+                .select('*, factions(faction_name, party_color, abbreviation)')
+                .eq('nation_id', nid).in('status', ['enacted', 'passed', 'failed', 'rejected'])
+                .order('passed_tick', { ascending: false }).limit(20),
+            _supabase.from('active_laws')
+                .select('*, policies(*)')
+                .eq('nation_id', nid),
+            _supabase.from('factions')
+                .select('id, faction_name, abbreviation, seats, party_color')
+                .eq('nation_id', nid).eq('faction_type', 'party')
+                .order('seats', { ascending: false }),
+        ]);
+
+        const committee = committeeRes.data || [];
+        const floor = floorRes.data || [];
+        const frozen = frozenRes.data || [];
+        const resolved = resolvedRes.data || [];
+        const activeLaws = lawsRes.data || [];
+        const parties = partiesRes.data || [];
+
+        _legData = {
+            committee,
+            floor,
+            frozen,
+            resolved,
+            activeLaws,
+            parties,
+            totalSeats: currentNation.total_seats || GAME_CONFIG.TOTAL_SEATS,
+            majority: Math.floor((currentNation.total_seats || GAME_CONFIG.TOTAL_SEATS) / 2) + 1,
+        };
+    } catch (err) {
+        console.error('[Legislature] loadLegislatureData failed:', err);
+        _legData = { committee: [], floor: [], frozen: [], resolved: [], activeLaws: [], parties: [], totalSeats: 120, majority: 61 };
+    }
+}
+
+function generateSemiCircleSeats(total, rows) {
+    const seats = [];
+    if (total <= 0) return seats;
+    rows = rows || Math.max(3, Math.min(6, Math.ceil(total / 20)));
+    const cx = 250, cy = 160;
+    let idx = 0;
+    for (let r = 0; r < rows && idx < total; r++) {
+        const radius = 55 + r * 24;
+        const count = Math.min(Math.round(total / rows) + (r < 2 ? -2 : r > rows - 2 ? 3 : 0), total - idx);
+        const actual = Math.min(count, total - idx);
+        for (let s = 0; s < actual; s++) {
+            const angle = Math.PI * (0.06 + (s / Math.max(actual - 1, 1)) * 0.88);
+            seats.push({
+                x: cx - Math.cos(angle) * radius * 1.5,
+                y: cy - Math.sin(angle) * radius,
+                idx: idx++,
+            });
+        }
+    }
+    return seats;
+}
+
+function renderParliamentPanel() {
+    const el = document.getElementById('leg-left');
+    if (!el || !_legData) return;
+    const { parties, totalSeats, majority } = _legData;
+    const govPartyIds = _govData?.coalition?.party_ids || [];
+    const govParties = parties.filter(p => govPartyIds.includes(p.id));
+    const oppParties = parties.filter(p => !govPartyIds.includes(p.id));
+    const govSeats = govParties.reduce((s, p) => s + (p.seats || 0), 0);
+    const oppSeats = oppParties.reduce((s, p) => s + (p.seats || 0), 0);
+    const aboveMajority = govSeats - majority;
+
+    // Build seat color array: governing parties first, then opposition
+    const seatColors = [];
+    for (const p of [...govParties, ...oppParties]) {
+        for (let i = 0; i < (p.seats || 0); i++) seatColors.push(p.party_color || '#888');
+    }
+    // Fill remaining with dim (unaligned/vacant)
+    while (seatColors.length < totalSeats) seatColors.push('var(--text-dim)');
+
+    const seatPositions = generateSemiCircleSeats(totalSeats);
+
+    let html = '';
+
+    // ── Semicircle SVG ──
+    html += `<div class="ga-panel" style="padding:12px 8px 8px;">
+        <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:4px;padding:0 6px;">CURRENT PARLIAMENTARY MAKEUP</div>
+        <div style="position:relative;width:100%;height:175px;overflow:hidden;">
+            <svg width="100%" height="175" viewBox="0 0 500 175" style="display:block;">
+                <line x1="250" y1="10" x2="250" y2="170" stroke="var(--text-dim)" stroke-width="0.5" stroke-dasharray="3 3" />
+                <text x="250" y="8" text-anchor="middle" fill="var(--text-dim)" font-family="var(--font-mono)" font-size="7">${majority}</text>`;
+
+    for (const s of seatPositions) {
+        const color = seatColors[s.idx] || 'var(--text-dim)';
+        html += `<circle cx="${s.x.toFixed(1)}" cy="${s.y.toFixed(1)}" r="5.5" fill="${color}" opacity="0.85" stroke="var(--bg-body)" stroke-width="1"/>`;
+    }
+
+    html += `<text x="250" y="155" text-anchor="middle" fill="var(--text-bright)" font-family="var(--font-mono)" font-size="18" font-weight="700">${totalSeats}</text>
+                <text x="250" y="167" text-anchor="middle" fill="var(--text-dim)" font-family="var(--font-mono)" font-size="7" letter-spacing="1">TOTAL SEATS</text>
+            </svg>
+        </div>`;
+
+    // Legend (parties with seats)
+    const seatedParties = parties.filter(p => p.seats > 0);
+    if (seatedParties.length > 0) {
+        html += `<div style="display:flex;justify-content:center;gap:16px;padding:4px 0;flex-wrap:wrap;">`;
+        for (const p of seatedParties) {
+            html += `<div style="display:flex;align-items:center;gap:5px;">
+                <div style="width:8px;height:8px;border-radius:50%;background:${p.party_color || '#888'};"></div>
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(p.faction_name)}</span>
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${p.party_color || '#888'};">${p.seats}</span>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+    html += `</div>`;
+
+    // ── Seat bar + Party breakdown ──
+    html += `<div class="ga-panel" style="padding:8px 12px;">`;
+
+    // Seat bar header
+    html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--green);"></span>
+        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--text-bright);">PARLIAMENT</span>
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:auto;">${totalSeats} seats</span>
+    </div>`;
+
+    // Stacked bar
+    html += `<div style="display:flex;height:10px;margin-bottom:8px;gap:1px;">`;
+    for (const p of parties.filter(pp => pp.seats > 0)) {
+        html += `<div style="width:${(p.seats / totalSeats * 100).toFixed(1)}%;background:${p.party_color || '#888'};height:100%;"></div>`;
+    }
+    html += `</div>`;
+
+    // Governing coalition
+    html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;display:flex;justify-content:space-between;">
+        <span>GOVERNING COALITION</span>
+        <span style="color:var(--text-bright);">${govSeats} seats</span>
+    </div>`;
+    for (const p of govParties) {
+        const isYou = currentFaction && p.id === currentFaction.id;
+        html += `<div class="leg-party-row">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div class="leg-party-dot" style="background:${p.party_color || '#888'}20;border-color:${p.party_color || '#888'};color:${p.party_color || '#888'};">${escapeHtml(p.abbreviation || p.faction_name.slice(0, 3))}</div>
+                <span style="font-size:10px;font-weight:600;color:var(--text-bright);">${escapeHtml(p.faction_name)}</span>
+                ${isYou ? '<span class="ga-badge ga-badge--green">YOU</span>' : ''}
+            </div>
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-bright);">${p.seats}</span>
+        </div>`;
+    }
+
+    // Opposition
+    html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-top:10px;margin-bottom:4px;display:flex;justify-content:space-between;">
+        <span>OPPOSITION</span>
+        <span style="color:var(--text-dim);">${oppSeats} seats</span>
+    </div>`;
+    for (const p of oppParties) {
+        html += `<div class="leg-party-row" style="opacity:${p.seats === 0 ? '0.5' : '1'};">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div class="leg-party-dot" style="background:${p.party_color || '#888'}20;border-color:${p.party_color || '#888'};color:${p.party_color || '#888'};">${escapeHtml(p.abbreviation || p.faction_name.slice(0, 3))}</div>
+                <span style="font-size:10px;color:var(--text-dim);">${escapeHtml(p.faction_name)}</span>
+            </div>
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${p.seats > 0 ? 'var(--text-bright)' : 'var(--text-dim)'};">${p.seats}</span>
+        </div>`;
+    }
+
+    // Majority indicator
+    html += `<div style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:${aboveMajority >= 0 ? 'var(--green)' : 'var(--red)'};"></span>
+        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${aboveMajority >= 0 ? 'var(--green)' : 'var(--red)'};">
+            ${aboveMajority >= 0 ? '+' + aboveMajority + ' above majority' : Math.abs(aboveMajority) + ' below majority'}
+        </span>
+    </div>`;
+
+    html += `</div>`;
+
+    el.innerHTML = html;
+}
+
+function getBillSupportPercent(bill) {
+    const { totalSeats, majority, parties } = _legData;
+    // Floor bills: use votes_for directly
+    if (bill.status === 'floor' || bill.status === 'voting' || bill.status === 'vetoed') {
+        const yesVotes = bill.votes_for || 0;
+        return Math.round((yesVotes / totalSeats) * 100);
+    }
+    // Committee bills: use calculateBillSupport
+    const seatMap = {};
+    for (const p of parties) seatMap[p.id] = p.seats || 0;
+    const support = calculateBillSupport(bill.bill_support, bill.proposed_by, seatMap);
+    return support.percent;
+}
+
+function renderBillCard(bill, stageColor) {
+    const { totalSeats, majority } = _legData;
+    const isExp = _legExpandedBill === bill.id;
+    const party = bill.factions || {};
+    const partyName = party.faction_name || 'Unknown';
+    const partyColor = party.party_color || 'var(--text-dim)';
+    const support = getBillSupportPercent(bill);
+    const passing = support >= Math.round((majority / totalSeats) * 100);
+    const articles = (bill.bill_articles || []).sort((a, b) => (a.article_number || 0) - (b.article_number || 0));
+
+    let html = `<div class="leg-bill-card" data-bill-id="${bill.id}" style="border-left:3px solid ${stageColor};">
+        <div class="leg-bill-header">
+            <div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:13px;font-weight:700;color:${stageColor};">${escapeHtml(bill.bill_name || 'Untitled Bill')}</span>`;
+    if (bill.status === 'floor' || bill.status === 'voting') {
+        html += passing
+            ? `<span class="ga-badge ga-badge--green">LIKELY TO PASS</span>`
+            : `<span class="ga-badge ga-badge--red">AT RISK</span>`;
+    }
+    html += `</div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">
+                    Proposed by <span style="color:${partyColor};">${escapeHtml(partyName)}</span>${articles.length > 0 ? ' \u00B7 ' + articles.length + ' articles' : ''}
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${passing ? 'var(--green)' : support >= 45 ? 'var(--amber)' : 'var(--red)'};">${support}%</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">SUPPORT</div>
+            </div>
+        </div>`;
+
+    // Support bar with majority marker
+    const majorityPct = Math.round((majority / totalSeats) * 100);
+    html += `<div style="position:relative;margin:0 14px 8px;">
+        <div style="display:flex;height:4px;gap:0;">
+            <div style="width:${support}%;background:${passing ? 'var(--green)' : 'var(--amber)'};height:100%;"></div>
+            <div style="flex:1;background:var(--border-main);height:100%;"></div>
+        </div>
+        <div style="position:absolute;top:-3px;left:${majorityPct}%;width:1px;height:10px;background:var(--text-bright);"></div>
+    </div>`;
+
+    // Articles (always visible for committee, on expand for floor)
+    if (bill.status === 'committee' || isExp) {
+        html += `<div style="padding:0 14px 8px;">`;
+        for (const art of articles) {
+            const policyName = art.policies?.name || art.article_title || 'Article ' + (art.article_number || '?');
+            const hasBudget = art.funding_data || art.effect_data?.funding_data;
+            const badge = hasBudget ? 'BUDGET' : 'TEXT';
+            const badgeColor = hasBudget ? 'var(--gold, #c8a832)' : 'var(--blue)';
+            html += `<div style="padding:5px 10px;margin-bottom:2px;border-left:2px solid var(--border-main);">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:10px;font-weight:700;color:var(--text-bright);">Art. ${art.article_number || '?'}. ${escapeHtml(policyName)}</span>
+                    <span class="leg-article-badge" style="color:${badgeColor};background:${badgeColor}10;border-color:${badgeColor}33;">${badge}</span>
+                </div>
+                ${art.article_text ? `<div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${escapeHtml(art.article_text)}</div>` : ''}
+            </div>`;
+        }
+        html += `</div>`;
+    }
+
+    // Expanded: effects + vote actions
+    if (isExp) {
+        html += renderBillExpandedContent(bill);
+    }
+
+    // Expand hint for floor bills (articles hidden by default)
+    if (!isExp && (bill.status === 'floor' || bill.status === 'voting') && articles.length > 0) {
+        html += `<div style="padding:0 14px 8px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">&#9656; ${articles.length} article${articles.length !== 1 ? 's' : ''} \u00B7 click to expand &amp; vote</div>`;
+    }
+
+    html += `</div>`;
+    return html;
+}
+
+function renderBillExpandedContent(bill) {
+    const articles = (bill.bill_articles || []).sort((a, b) => (a.article_number || 0) - (b.article_number || 0));
+    const isFloor = bill.status === 'floor' || bill.status === 'voting';
+    const isCommittee = bill.status === 'committee';
+
+    // Collect stat effects from all articles' policies
+    const effects = [];
+    for (const art of articles) {
+        if (!art.policies) continue;
+        const p = art.policies;
+        if (p.stat_effects && Array.isArray(p.stat_effects)) {
+            for (const e of p.stat_effects) {
+                effects.push({ stat: e.stat_key, dir: e.direction });
+            }
+        } else if (p.target_stat) {
+            effects.push({ stat: p.target_stat, dir: (p.stat_direction || 'UP').toLowerCase() });
+        }
+    }
+
+    let html = `<div class="leg-bill-expanded">`;
+
+    // Effects
+    if (effects.length > 0) {
+        html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.8px;margin-bottom:4px;">PROJECTED EFFECTS IF PASSED</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">`;
+        for (const e of effects) {
+            const isGood = (e.dir === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat))
+                || (e.dir === 'down' && STATS_LOWER_IS_BETTER.has(e.stat));
+            const arrow = e.dir === 'up' ? '\u25B2' : '\u25BC';
+            const color = isGood ? 'var(--green)' : 'var(--red)';
+            html += `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(e.stat)} ${arrow}</span>`;
+        }
+        html += `</div>`;
+    }
+
+    // Vote actions (floor bills only)
+    if (isFloor) {
+        // Check existing vote
+        const myVote = (bill.bill_support || []).find(s => s.faction_id === currentFaction?.id);
+        const myStance = myVote?.stance;
+
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+                Bill passes: YES voters +2 momentum per article \u00B7 Bill fails: YES voters -2, NO voters +2
+            </div>
+            <div style="display:flex;gap:4px;">`;
+
+        if (myStance === 'yes' || myStance === 'accept') {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes leg-vote-btn--active">VOTED YES</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes" onclick="event.stopPropagation();legCastVote('${bill.id}','yes')">VOTE YES</div>`;
+        }
+        if (myStance === 'no' || myStance === 'reject') {
+            html += `<div class="leg-vote-btn leg-vote-btn--no leg-vote-btn--active">VOTED NO</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--no" onclick="event.stopPropagation();legCastVote('${bill.id}','no')">VOTE NO</div>`;
+        }
+        if (myStance === 'abstain') {
+            html += `<div class="leg-vote-btn leg-vote-btn--abstain leg-vote-btn--active">ABSTAINED</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--abstain" onclick="event.stopPropagation();legCastVote('${bill.id}','abstain')">ABSTAIN</div>`;
+        }
+
+        html += `</div></div>`;
+    }
+
+    // Committee stance (accept/reject for committee bills)
+    if (isCommittee) {
+        const myVote = (bill.bill_support || []).find(s => s.faction_id === currentFaction?.id);
+        const myStance = myVote?.stance;
+
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+                Support adds your seats to the bill's backing \u00B7 Moves to floor when majority support reached
+            </div>
+            <div style="display:flex;gap:4px;">`;
+        if (myStance === 'accept') {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes leg-vote-btn--active">SUPPORTING</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes" onclick="event.stopPropagation();legCastVote('${bill.id}','accept')">SUPPORT</div>`;
+        }
+        if (myStance === 'reject') {
+            html += `<div class="leg-vote-btn leg-vote-btn--no leg-vote-btn--active">OPPOSING</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--no" onclick="event.stopPropagation();legCastVote('${bill.id}','reject')">OPPOSE</div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Link to full bill page
+    html += `<div style="margin-top:8px;text-align:right;">
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--blue);cursor:pointer;" onclick="event.stopPropagation();window.location.href='bill.html?id=${bill.id}'">
+            View full bill &amp; negotiate \u2192
+        </span>
+    </div>`;
+
+    html += `</div>`;
+    return html;
+}
+
+let _legVoteLock = false;
+
+async function legCastVote(billId, stance) {
+    if (_legVoteLock || !currentFaction) return;
+    _legVoteLock = true;
+    try {
+        const mySeats = currentFaction.seats || 0;
+        const { error } = await _supabase.from('bill_support').upsert({
+            bill_id: billId,
+            faction_id: currentFaction.id,
+            stance: stance,
+            seat_count: mySeats
+        }, { onConflict: 'bill_id,faction_id' });
+        if (error) throw error;
+
+        // Refresh data and re-render
+        await loadLegislatureData();
+        const content = document.getElementById('gov-content');
+        if (content) renderLegislatureTab(content);
+    } catch (err) {
+        console.error('[Legislature] Vote failed:', err);
+        alert('Vote failed: ' + (err.message || 'Unknown error'));
+    } finally {
+        _legVoteLock = false;
+    }
+}
+window.legCastVote = legCastVote;
+
+function renderBillsList() {
+    const el = document.getElementById('leg-right');
+    if (!el || !_legData) return;
+    const { committee, floor, frozen, resolved, activeLaws, totalSeats, majority } = _legData;
+    const totalActive = committee.length + floor.length + frozen.length;
+    const nationName = currentNation?.name || 'Nation';
+
+    let html = '';
+
+    // Filter bar
+    html += `<div class="ga-panel" style="padding:8px 14px;display:flex;justify-content:space-between;align-items:center;">
+        <span class="ga-panel-title">BILLS & LAWS OF ${escapeHtml(nationName.toUpperCase())}</span>
+        <div style="display:flex;gap:4px;align-items:center;">`;
+    const filters = [
+        { id: 'active', label: 'ACTIVE BILLS', color: 'var(--orange)', count: totalActive },
+        { id: 'resolved', label: 'RESOLVED', color: 'var(--green)', count: resolved.length },
+        { id: 'laws', label: 'ALL LAWS', color: 'var(--blue)', count: activeLaws.length },
+    ];
+    for (const f of filters) {
+        const isActive = _legFilter === f.id;
+        html += `<div class="leg-filter-btn${isActive ? ' active' : ''}" data-filter="${f.id}" style="--filter-color:${f.color};">
+            <span style="width:5px;height:5px;background:${isActive ? '#000' : f.color};display:inline-block;"></span>
+            ${f.label}
+        </div>`;
+    }
+    html += `<div style="width:1px;height:20px;background:var(--border-main);margin:0 4px;"></div>
+        <div class="leg-propose-btn" onclick="window.location.href='laws.html'">
+            PROPOSE BILL <span class="ga-ap-badge">2 AP</span>
+        </div>
+    </div></div>`;
+
+    if (_legFilter === 'active') {
+        // IN COMMITTEE
+        if (committee.length > 0) {
+            html += `<div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--orange);padding:4px 0;">IN COMMITTEE</div>`;
+            for (const bill of committee) html += renderBillCard(bill, 'var(--orange)');
+        }
+
+        // ON THE FLOOR
+        if (floor.length > 0) {
+            html += `<div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--green);padding:4px 0;">ON THE FLOOR</div>`;
+            for (const bill of floor) html += renderBillCard(bill, 'var(--green)');
+        }
+
+        // FROZEN
+        if (frozen.length > 0) {
+            html += `<div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--blue);padding:4px 0;">FROZEN (CARETAKER)</div>`;
+            for (const bill of frozen) html += renderBillCard(bill, 'var(--blue)');
+        }
+
+        if (totalActive === 0) {
+            html += `<div class="ga-panel" style="padding:40px 20px;text-align:center;">
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">No active bills. Use PROPOSE BILL to introduce legislation.</div>
+            </div>`;
+        }
+    } else if (_legFilter === 'resolved') {
+        // Resolved bills
+        if (resolved.length === 0) {
+            html += `<div class="ga-panel" style="padding:40px 20px;text-align:center;">
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">No resolved bills yet.</div>
+            </div>`;
+        } else {
+            for (const bill of resolved) {
+                const party = bill.factions || {};
+                const passed = bill.status === 'enacted' || bill.status === 'passed';
+                const statusLabel = passed ? 'ENACTED' : bill.status === 'failed' ? 'FAILED' : bill.status.toUpperCase();
+                const statusColor = passed ? 'var(--green)' : 'var(--red)';
+                const yesVotes = bill.votes_for || 0;
+                const noVotes = bill.votes_against || 0;
+                const totalVotes = yesVotes + noVotes;
+                const yesPct = totalVotes > 0 ? Math.round((yesVotes / totalSeats) * 100) : 0;
+
+                html += `<div class="leg-bill-card" style="border-left:3px solid ${statusColor};cursor:pointer;" onclick="window.location.href='bill.html?id=${bill.id}'">
+                    <div class="leg-bill-header">
+                        <div>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span style="font-size:12px;font-weight:700;color:var(--text-bright);">${escapeHtml(bill.bill_name || 'Untitled')}</span>
+                                <span class="ga-badge" style="color:${statusColor};background:${statusColor}0a;border:1px solid ${statusColor}25;">${statusLabel}</span>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">
+                                ${escapeHtml(party.faction_name || 'Unknown')} \u00B7 ${passed ? 'Passed' : 'Failed'} tick ${bill.passed_tick || '?'} \u00B7 ${yesVotes} YES / ${noVotes} NO
+                            </div>
+                        </div>
+                        <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${statusColor};">${yesPct}%</div>
+                    </div>
+                </div>`;
+            }
+        }
+    } else if (_legFilter === 'laws') {
+        // Active laws
+        if (activeLaws.length === 0) {
+            html += `<div class="ga-panel" style="padding:40px 20px;text-align:center;">
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">No active laws.</div>
+            </div>`;
+        } else {
+            for (const law of activeLaws) {
+                const policy = law.policies || {};
+                const policyName = policy.policy_name || policy.name || 'Unknown Law';
+
+                // Extract effects
+                let effectTags = '';
+                const statEffects = policy.stat_effects || [];
+                if (statEffects.length > 0) {
+                    effectTags = statEffects.map(e => {
+                        const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat_key))
+                            || (e.direction === 'down' && STATS_LOWER_IS_BETTER.has(e.stat_key));
+                        const arrow = e.direction === 'up' ? '\u25B2' : '\u25BC';
+                        const color = isGood ? 'var(--green)' : 'var(--red)';
+                        return `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(e.stat_key)} ${arrow}</span>`;
+                    }).join('');
+                } else if (policy.target_stat) {
+                    const dir = (policy.stat_direction || 'UP').toLowerCase();
+                    const isGood = (dir === 'up' && !STATS_LOWER_IS_BETTER.has(policy.target_stat))
+                        || (dir === 'down' && STATS_LOWER_IS_BETTER.has(policy.target_stat));
+                    const arrow = dir === 'up' ? '\u25B2' : '\u25BC';
+                    const color = isGood ? 'var(--green)' : 'var(--red)';
+                    effectTags = `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(policy.target_stat)} ${arrow}</span>`;
+                }
+
+                html += `<div class="leg-law-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <div style="font-size:11px;font-weight:700;color:var(--text-bright);">${escapeHtml(policyName)}</div>
+                            ${policy.description ? `<div style="font-size:8px;color:var(--text-dim);margin-top:1px;">${escapeHtml(policy.description)}</div>` : ''}
+                        </div>
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Tick ${law.passed_tick || '?'}</div>
+                    </div>
+                    ${effectTags ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${effectTags}</div>` : ''}
+                </div>`;
+            }
+        }
+    }
+
+    el.innerHTML = html;
+
+    // Click handlers
+    el.onclick = (e) => {
+        const filterBtn = e.target.closest('.leg-filter-btn');
+        if (filterBtn) {
+            _legFilter = filterBtn.dataset.filter;
+            renderBillsList();
+            return;
+        }
+        const billCard = e.target.closest('.leg-bill-card');
+        if (billCard && !e.target.closest('.leg-propose-btn')) {
+            const billId = billCard.dataset.billId;
+            _legExpandedBill = _legExpandedBill === billId ? null : billId;
+            renderBillsList();
+        }
+    };
+}
+
+async function loadGovData() {
+    try {
+        // Refresh nation + tick
+        const [freshNationRes, shardRes] = await Promise.all([
+            _supabase.from('nations').select('*').eq('id', currentNation.id).single(),
+            _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+        ]);
+        if (freshNationRes.data) currentNation = freshNationRes.data;
+        if (shardRes.data?.current_tick) currentTick = shardRes.data.current_tick;
+
+        // Bust coalition cache to get fresh status
+        qCacheBust('coalition_');
+
+        // Parallel data fetch
+        const [coalitionRes, ministriesRes, partiesRes, hogRes, adminRes] = await Promise.all([
+            fetchActiveCoalition(_supabase, currentNation.id),
+            _supabase.from('ministries').select('*, factions(id, faction_name, abbreviation, party_color)').eq('nation_id', currentNation.id).eq('is_active', true),
+            _supabase.from('factions').select('id, faction_name, abbreviation, seats, party_color, party_logo, custom_logo_url, leader_first_name, leader_last_name, leader_age, leader_positive_traits, leader_negative_traits').eq('nation_id', currentNation.id).eq('faction_type', 'party'),
+            _supabase.from('head_of_government').select('*, factions(id, faction_name, abbreviation, party_color)').eq('nation_id', currentNation.id).eq('active', true).maybeSingle(),
+            _supabase.from('administrations').select('*').eq('nation_id', currentNation.id).is('ended_at_tick', null).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        ]);
+
+        // Presidential: fetch active president
+        let president = null;
+        if (isPresidential || isSemiPresidential(currentNation)) {
+            const { data } = await _supabase.from('presidents').select('*, factions(id, faction_name, abbreviation, party_color)').eq('nation_id', currentNation.id).eq('is_active', true).maybeSingle();
+            president = data;
+        }
+
+        const coalition = coalitionRes;
+        const hog = hogRes.data;
+        const loadedParties = partiesRes.data || [];
+
+        // Detect PM party
+        if (hog) {
+            pmFactionId = hog.faction_id || null;
+            isPMParty = (currentFaction?.id === pmFactionId);
+        } else if (coalition?.lead_party_id) {
+            pmFactionId = coalition.lead_party_id;
+            isPMParty = (currentFaction?.id === pmFactionId);
+        }
+
+        // Load ministry action logs for active action detection + use counts
+        activeMinistryActions = {};
+        ministryActionUseCounts = {};
+        try {
+            const { data: actionLogs } = await _supabase.from('ministry_action_log')
+                .select('ministry_key, action_key, processed, applied_at_tick, action_data')
+                .eq('nation_id', currentNation.id);
+            if (actionLogs) {
+                for (const log of actionLogs) {
+                    const countKey = log.ministry_key + ':' + log.action_key;
+                    ministryActionUseCounts[countKey] = (ministryActionUseCounts[countKey] || 0) + 1;
+                    if (!log.processed) {
+                        const actionId = log.ministry_key + '-' + log.action_key;
+                        if (log.action_data?.direction) {
+                            activeMinistryActions[actionId] = log.action_data.direction;
+                        } else {
+                            activeMinistryActions[actionId] = true;
+                        }
+                    }
+                }
+            }
+        } catch (_) { /* non-fatal — actions just won't show active state */ }
+
+        // Set legacy globals so existing window.fireMinister etc. still work
+        ministryData = ministriesRes.data || [];
+        coalitionData = coalition;
+        allParties = loadedParties;
+
+        _govData = {
+            coalition,
+            ministries: ministryData,
+            parties: loadedParties,
+            hog,
+            president,
+            admin: adminRes.data,
+        };
+    } catch (err) {
+        console.error('[Government] loadGovData failed:', err);
+        _govData = { coalition: null, ministries: [], parties: [], hog: null, president: null, admin: null };
+    }
+}
+
 initPage('government', async (state) => {
     const { nation, faction } = state;
     currentNation = nation;
     currentFaction = faction;
     initGameConfigForNation(nation);
 
-    // Set nation-specific name pools (Avelia→Avelian, Calveth→Danish, others→Spanish)
     if (nation?.name) {
         const { firstNames, lastNames } = getNationNames(nation.name);
         FIRST_NAMES_POOL = firstNames;
@@ -983,13 +2514,13 @@ initPage('government', async (state) => {
     }
 
     if (!nation) {
-        document.getElementById('content-area').innerHTML = '<div class="placeholder-panel"><div class="ph-icon">🏛️</div><h3>No Nation Selected</h3><p>Your party is not assigned to a nation yet.</p></div>';
+        document.getElementById('gov-content').innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">No nation selected.</div>';
         return;
     }
 
     isPresidential = isGovernmentPresidential(nation);
 
-    // Backfill head of state if missing/incomplete — use nation-specific names
+    // Backfill head of state if missing
     const hasValidHosAge = Number.isFinite(Number(nation.head_of_state_age)) && Number(nation.head_of_state_age) > 0;
     if (!nation.head_of_state_first_name || !nation.head_of_state_last_name || !hasValidHosAge) {
         const { firstNames: hosFirstPool, lastNames: hosLastPool } = getNationNames(nation.name);
@@ -997,9 +2528,7 @@ initPage('government', async (state) => {
         const hosLast = nation.head_of_state_last_name || hosLastPool[Math.floor(Math.random() * hosLastPool.length)];
         const hosAge = hasValidHosAge ? Number(nation.head_of_state_age) : (45 + Math.floor(Math.random() * 25));
         const { error } = await _supabase.from('nations').update({
-            head_of_state_first_name: hosFirst,
-            head_of_state_last_name: hosLast,
-            head_of_state_age: hosAge
+            head_of_state_first_name: hosFirst, head_of_state_last_name: hosLast, head_of_state_age: hosAge
         }).eq('id', nation.id);
         if (!error) {
             currentNation.head_of_state_first_name = hosFirst;
@@ -1012,6 +2541,15 @@ initPage('government', async (state) => {
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     currentTick = shard?.current_tick || 0;
 
+    // Render subtabs immediately, then load data and re-render
+    renderGovSubtabs();
+    renderGovContent(); // shows loading state
+
+    await loadGovData();
+    renderGovContent(); // re-renders with real data
+
+    // Original government page code follows (preserved, disabled by the new UI above)
+    return;
     await renderGovernmentPage();
 });
 

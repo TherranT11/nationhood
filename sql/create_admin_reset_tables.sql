@@ -53,6 +53,7 @@ DECLARE
         'ideology_shift_actions',
 
         -- ══ Bills & legislation ══
+        'bill_articles',
         'bill_comments',
         'bill_amendment_requests',
         'bill_support',
@@ -65,14 +66,21 @@ DECLARE
         'shakeups',
         'presidents',
         'impeachment_proceedings',
+        'ministry_requests',
         'ministries',
         'ministry_action_log',
         'administrations',
+        'government_formation_chat',
+        'government_formation_support',
         'government_formations',
+        'nation_governments',
+        'nation_policies',
 
         -- ══ Coalitions ══
+        'coalition_votes',
         'coalition_messages',
         'coalition_proposals',
+        'active_coalitions',
         'faction_coalitions',
         'loyalty_demands',
 
@@ -125,6 +133,7 @@ DECLARE
         'valdorian_articles',
         'player_articles',
         'wiki_pages',
+        'nation_profiles',
 
         -- ══ Forum & chat ══
         'forum_replies',
@@ -139,7 +148,65 @@ DECLARE
         'direct_messages',
         'group_chat_messages',
         'group_chat_members',
-        'group_chats'
+        'group_chats',
+
+        -- ══ Radio broadcast system ══
+        'broadcast_good_listens',
+        'radio_broadcasts',
+        'radio_personalities',
+        'radio_stations',
+
+        -- ══ Article likes ══
+        'article_likes',
+
+        -- ══ Party platforms ══
+        'faction_platforms',
+
+        -- ══ Agitator & lawsuits ══
+        'lawsuit_events',
+        'lawsuits',
+        'faction_agitators',
+        'agitator_pool',
+
+        -- ══ Subsidiary services ══
+        'subsidiary_auto_policies',
+        'subsidiary_auto_rates',
+        'subsidiary_bids',
+        'subsidiary_sales',
+
+        -- ══ Corp properties & executives ══
+        'corp_properties',
+        'corp_executives',
+        'executive_pool',
+        'corp_material_inventory',
+
+        -- ══ Corp vessels ══
+        'corp_vessels',
+
+        -- ══ Finance system ══
+        'finance_active_loans',
+        'finance_loan_offers',
+        'finance_loan_requests',
+
+        -- ══ Construction contracts ══
+        'contract_bids',
+        'construction_contracts',
+
+        -- ══ Electorate (extended) ══
+        'voter_bloc_demands',
+        'pander_history',
+
+        -- ══ AP tracking ══
+        'ap_ledger',
+
+        -- ══ Food system ══
+        'food_stockpiles',
+
+        -- ══ Shipping ══
+        'shipping_routes',
+
+        -- ══ Misc (extended) ══
+        'pending_actions'
     ];
 BEGIN
     -- First: null out FKs on nations so factions can be deleted

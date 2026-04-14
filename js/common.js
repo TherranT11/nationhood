@@ -233,6 +233,15 @@ export async function loadGameState(requireFaction = true) {
                         .from('factions').select('*')
                         .or(`id.eq.${userId},linked_user_id.eq.${userId}`);
                     _userFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
+                    // Shard reset guard: cached faction no longer exists in DB
+                    if (_userFactions.length === 0) {
+                        console.log('Cached faction deleted (shard reset?) — clearing cache');
+                        sessionStorage.removeItem(STATE_KEY);
+                        if (requireFaction) {
+                            window.location.href = 'faction-select.html';
+                            return null;
+                        }
+                    }
                 }
             } catch (_) { /* dropdown will just show current faction */ }
         }
@@ -432,6 +441,32 @@ export function renderTopBar(activeTab) {
     `;
     document.getElementById('top-bar').innerHTML = topBarHTML;
 
+    // Mobile bottom nav bar
+    if (!document.getElementById('mobile-bottom-nav')) {
+        const overrideNationId = getAdminNationOverride();
+        const overrideFactionId = getAdminFactionOverride();
+        const qs = [];
+        if (overrideNationId) qs.push('nation_id=' + overrideNationId);
+        if (overrideFactionId) qs.push('faction_id=' + overrideFactionId);
+        const suffix = qs.length ? '?' + qs.join('&') : '';
+
+        const mobileNav = document.createElement('nav');
+        mobileNav.id = 'mobile-bottom-nav';
+        mobileNav.className = 'mobile-bottom-nav';
+        mobileNav.innerHTML = [
+            { id: 'dashboard', label: 'Home',  icon: '\uD83C\uDFE0', href: 'dashboard.html' },
+            { id: 'politics',  label: 'Actions', icon: '\u2694\uFE0F', href: 'politics.html' },
+            { id: 'government',label: 'Gov',   icon: '\u2696\uFE0F',  href: 'government.html' },
+            { id: 'nation',    label: 'Nation', icon: '\uD83C\uDF0D', href: 'nation.html' },
+            { id: 'diplomacy', label: 'World', icon: '\uD83C\uDF10', href: 'diplomacy.html' },
+            { id: 'ledger',    label: 'Ledger', icon: '\uD83D\uDCCA', href: 'ledger.html' },
+        ].map(tab => `<a href="${tab.href}${suffix}" class="mobile-bottom-nav__item ${tab.id === activeTab ? 'active' : ''}" data-tab="${tab.id}">
+            <span class="mobile-bottom-nav__icon">${tab.icon}</span>
+            <span class="mobile-bottom-nav__label">${tab.label}</span>
+        </a>`).join('');
+        document.body.appendChild(mobileNav);
+    }
+
     // Work environment banner and Dev Toolbar
     if (IS_WORK_ENV) {
         if (!document.getElementById('work-env-banner')) {
@@ -449,15 +484,11 @@ export function renderTopBar(activeTab) {
 export function renderNavTabs(activeTab) {
     const tabs = [
         { id: 'dashboard', label: 'Home', href: 'dashboard.html' },
-        { id: 'nation', label: 'Nation', href: 'nation.html' },
+        { id: 'politics', label: 'Actions', href: 'politics.html' },
         { id: 'government', label: 'Government', href: 'government.html' },
-        { id: 'politics', label: 'Politics', href: 'politics.html' },
-        { id: 'laws', label: 'Bills', href: 'laws.html' },
-        { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
-        { id: 'news', label: 'News', href: 'news.html' },
-        { id: 'conflicts', label: 'Conflicts', href: 'conflicts.html' },
-        { id: 'economy', label: 'Economy', href: 'economy.html' },
-        { id: 'wiki', label: 'Wiki', href: 'wiki.html' }
+        { id: 'nation', label: 'Nation', href: 'nation.html' },
+        { id: 'diplomacy', label: 'World', href: 'diplomacy.html' },
+        { id: 'ledger', label: 'Ledger', href: 'ledger.html' }
     ];
 
     // Preserve admin overrides in nav links so clicking tabs
@@ -472,14 +503,8 @@ export function renderNavTabs(activeTab) {
         if (overrideFactionId) params.push('faction_id=' + overrideFactionId);
         if (params.length) href += '?' + params.join('&');
         let badgeHtml = '';
-        if (tab.id === 'laws') {
-            badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span>';
-        }
         if (tab.id === 'diplomacy') {
             badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
-        }
-        if (tab.id === 'conflicts') {
-            badgeHtml = '<span class="nav-badge nav-badge--amber" id="conflicts-badge" style="display:none;"></span>';
         }
         return `
             <a href="${href}"

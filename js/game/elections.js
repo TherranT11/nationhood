@@ -1955,15 +1955,29 @@ export async function processElections(supabase, nation, currentTick) {
         const electionType = election.election_type || 'parliamentary';
         console.log(`Processing ${electionType} election for ${nation.name} (tick ${currentTick})`);
 
-        // Safety check: skip snap elections if a government has already been formed
+        // Safety check: skip snap elections if a government has ALREADY FORMED SINCE
+        // the election was scheduled. This prevents snap elections (from no-confidence
+        // votes or dissolutions) from firing after a new government has already taken office.
+        // Regular scheduled elections should NOT be cancelled — they dissolve the existing
+        // government as part of the normal election cycle.
+        // BUG FIX: previously this cancelled ALL parliamentary elections when a government
+        // existed, breaking the normal election cycle entirely.
         if (electionType === 'parliamentary') {
             const existingGov = await fetchActiveCoalition(supabase, nation.id);
             if (existingGov && (existingGov.status === 'formed' || existingGov.status === 'active')) {
-                console.log(`Skipping parliamentary election for ${nation.name} — government already formed (status: ${existingGov.status})`);
-                await supabase.from('elections')
-                    .update({ status: 'cancelled' })
-                    .eq('id', election.id);
-                continue;
+                // Only cancel if the government formed AFTER this election was scheduled
+                // (meaning a new government took office and this snap election is stale)
+                const govStartTick = existingGov.started_at_tick || 0;
+                const electionCreatedAt = election.created_at ? new Date(election.created_at).getTime() : 0;
+                const govCreatedAt = existingGov.created_at ? new Date(existingGov.created_at).getTime() : 0;
+
+                if (govCreatedAt > electionCreatedAt) {
+                    console.log(`Skipping stale snap election for ${nation.name} — government formed after election was scheduled`);
+                    await supabase.from('elections')
+                        .update({ status: 'cancelled' })
+                        .eq('id', election.id);
+                    continue;
+                }
             }
         }
 

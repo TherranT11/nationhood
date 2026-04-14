@@ -1876,3 +1876,74 @@
     .ct-analysis-band { padding: 16px; }
     .ct-footer__inner { padding: 16px; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   ARTICLE LIKE BUTTON
+   ══════════════════════════════════════════════════════════════ */
+.nws-like-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0;
+}
+.nws-like-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    background: transparent;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.nws-like-btn:hover {
+    border-color: #c23a22;
+    color: #c23a22;
+    background: rgba(194, 58, 34, 0.04);
+}
+.nws-like-btn--liked {
+    border-color: #c23a22;
+    color: #c23a22;
+    background: rgba(194, 58, 34, 0.06);
+}
+.nws-like-btn--liked:hover {
+    background: rgba(194, 58, 34, 0.1);
+}
+.nws-like-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.nws-like-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+.nws-like-count {
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #888;
+}
+
+/* Continental publication like override */
+.nws-pub-continental .nws-like-btn {
+    border-color: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.5);
+}
+.nws-pub-continental .nws-like-btn:hover {
+    border-color: #c23a22;
+    color: #c23a22;
+    background: rgba(194, 58, 34, 0.1);
+}
+.nws-pub-continental .nws-like-btn--liked {
+    border-color: #c23a22;
+    color: #c23a22;
+    background: rgba(194, 58, 34, 0.12);
+}
+.nws-pub-continental .nws-like-count {
+    color: rgba(255, 255, 255, 0.4);
+}

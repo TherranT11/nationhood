@@ -1124,7 +1124,8 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
         try {
             // 1. Reset shard clock to tick 1, January 2000
             logMsg('Resetting shard clock...');
-            const nextTick = new Date(Date.now() + currentTickInterval * 60 * 60 * 1000);
+            const tickHours = currentTickInterval || 1; // fallback to 1 hour if undefined
+            const nextTick = new Date(Date.now() + tickHours * 60 * 60 * 1000);
             const { error: shardErr } = await _supabase.from('shard').update({
                 current_date: 'January, 2000', current_tick: 1,
                 next_tick_at: nextTick.toISOString()
@@ -1181,12 +1182,17 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
                 }
                 // Only restore columns that exist in NATION_STAT_COLUMNS + known extras
                 const update = {};
-                const validKeys = new Set([...NATION_STAT_COLUMNS, 'total_seats', 'government_type']);
+                const validKeys = new Set([...NATION_STAT_COLUMNS,
+                    'total_seats', 'government_type', 'gov_approval',
+                    'head_of_state_first_name', 'head_of_state_last_name',
+                    'parliamentary_term_ticks', 'presidential_term_ticks',
+                ]);
                 for (const [k, v] of Object.entries(nation.seed_stats)) {
                     if (validKeys.has(k)) update[k] = v;
                 }
-                // Clear leader references (they point to deleted factions)
+                // Clear references that point to deleted factions/state
                 update.ruling_faction_id = null;
+                update.gov_approval = 50; // reset to neutral
                 // Reset foundational law terms to defaults
                 update.parliamentary_term_ticks = nation.seed_stats.parliamentary_term_ticks || 48;
                 update.presidential_term_ticks = nation.seed_stats.presidential_term_ticks || null;
@@ -1203,24 +1209,49 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
             logMsg('✓ All factions deleted — players will be sent to faction-select on next login', '#5cb85c');
 
             // 6. Re-seed initial elections for each nation
+            // Uses first_election_tick from seed_stats if set, otherwise half the term length.
+            // Schedules both parliamentary and presidential elections where applicable.
             logMsg('Scheduling initial elections...');
             let electionsSch = 0;
             for (const nation of (nations || [])) {
-                // Skip nations with no parliamentary_term_ticks set (e.g. no elections configured)
-                const govType = (nation.seed_stats?.government_type || '').toLowerCase();
-                const parlTerm = nation.seed_stats?.parliamentary_term_ticks;
-                if (!parlTerm) {
+                const seed = nation.seed_stats || {};
+                const govType = (seed.government_type || '').toLowerCase();
+                const parlTerm = seed.parliamentary_term_ticks;
+                const presTerm = seed.presidential_term_ticks;
+                const customTick = seed.first_election_tick;
+
+                if (!parlTerm && !presTerm) {
                     logMsg(`  — ${nation.name}: no term length in seed, skipping`, '#888');
                     continue;
                 }
-                const { error: elErr } = await _supabase.from('elections').insert({
-                    nation_id: nation.id,
-                    election_tick: parlTerm,
-                    election_type: 'parliamentary',
-                    status: 'scheduled'
-                });
-                if (!elErr) electionsSch++;
-                else logMsg(`  ⚠ ${nation.name} election: ${elErr.message}`, '#d48a3c');
+
+                // First election tick: use seed value if set, otherwise half the parliamentary term
+                const firstTick = customTick || Math.max(6, Math.round((parlTerm || presTerm) / 2));
+
+                // Parliamentary election (all nations with a parliamentary term)
+                if (parlTerm) {
+                    const { error: elErr } = await _supabase.from('elections').insert({
+                        nation_id: nation.id,
+                        election_tick: firstTick,
+                        election_type: 'parliamentary',
+                        status: 'scheduled'
+                    });
+                    if (!elErr) { electionsSch++; logMsg(`  ${nation.name}: parliamentary at tick ${firstTick}`, '#aaa'); }
+                    else logMsg(`  ⚠ ${nation.name} parliamentary: ${elErr.message}`, '#d48a3c');
+                }
+
+                // Presidential election (presidential/semi-presidential nations)
+                if (presTerm && govType.includes('presidential')) {
+                    const presTick = customTick || Math.max(6, Math.round(presTerm / 2));
+                    const { error: elErr } = await _supabase.from('elections').insert({
+                        nation_id: nation.id,
+                        election_tick: presTick,
+                        election_type: 'presidential',
+                        status: 'scheduled'
+                    });
+                    if (!elErr) { electionsSch++; logMsg(`  ${nation.name}: presidential at tick ${presTick}`, '#aaa'); }
+                    else logMsg(`  ⚠ ${nation.name} presidential: ${elErr.message}`, '#d48a3c');
+                }
             }
             logMsg(`✓ ${electionsSch} initial elections scheduled`, '#5cb85c');
 
@@ -3976,6 +4007,335 @@ window.isSelectAllMods = isSelectAllMods;
 window.isClearMods = isClearMods;
 window.spawnBilateralIssue = spawnBilateralIssue;
 window.deleteIssue = deleteIssue;
+
+// ==================== SEED STATS EDITOR ====================
+// Allows admin to view and edit per-nation tick-1 seed stats.
+// Changes are written to the seed_stats JSONB column, which the
+// shard reset function uses to restore nation state.
+
+const SEED_STAT_CATEGORIES = {
+    'Economy': ['gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates', 'trade_balance', 'currency_strength', 'foreign_investment', 'credit', 'budget'],
+    'Taxation': ['income_tax', 'corporate_tax', 'sales_tax', 'tariffs'],
+    'Labor': ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality'],
+    'Demographics': ['population', 'population_growth', 'birth_rate', 'death_rate', 'median_age', 'ethnic_diversity', 'eligible_voters'],
+    'Healthcare': ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use'],
+    'Education': ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
+    'Infrastructure': ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage'],
+    'Resources': ['arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices'],
+    'Environment': ['pollution', 'carbon_emissions'],
+    'Society': ['standard_of_living', 'happiness', 'religious', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate', 'cost_of_living', 'housing_affordability', 'manufacturing_output', 'service_output'],
+    'Governance': ['stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence', 'freedom_index', 'polarization'],
+    'Security': ['civil_unrest', 'terrorism', 'political_violence'],
+    'Migration': ['immigration', 'illegal_immigration', 'emigration'],
+    'International': ['international_reputation'],
+    'Government': ['government_type', 'total_seats', 'first_election_tick'],
+};
+
+// Stats stored as raw dollar values (not 0-100 scores)
+const SEED_RAW_STATS = new Set(['gdp', 'debt', 'budget', 'population', 'eligible_voters']);
+// Schema defaults — used to flag stats that were never explicitly set
+const SEED_SCHEMA_DEFAULTS = {
+    standard_of_living: 50, urbanization: 50, population_growth: 0,
+    currency_strength: 50, physical_infrastructure: 50, rail_network: 50,
+    energy_generation: 50, foreign_investment: 50, arable_land: 50,
+    rare_minerals: 50, oil_and_gas: 50, stability: 50, corruption: 50,
+};
+
+let _seedNations = [];
+let _seedSelectedNationId = null;
+
+async function initSeedEditor() {
+    // Insert container after the danger zone section if not already present
+    if (document.getElementById('seed-editor-root')) return;
+
+    // Find a place to put it — after the reset section or at the end of admin content
+    const adminSection = document.getElementById('admin-section');
+    if (!adminSection) return;
+
+    const root = document.createElement('div');
+    root.id = 'seed-editor-root';
+    root.style.cssText = 'margin:20px;padding:20px;background:#1a1a1a;border:1px solid #333;font-family:JetBrains Mono,monospace;';
+    adminSection.appendChild(root);
+
+    root.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:#facc15;"></div>
+            <span style="font-size:11px;font-weight:700;letter-spacing:0.1em;color:#ccc;text-transform:uppercase;">Tick 1 Seed Stats Editor</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;">
+            <select id="seed-nation-select" onchange="seedSelectNation(this.value)"
+                style="background:#222;color:#eee;border:1px solid #444;padding:6px 10px;font-family:inherit;font-size:12px;min-width:200px;">
+                <option value="">— Select a nation —</option>
+            </select>
+            <button onclick="seedSave()" id="seed-save-btn"
+                style="background:#2a6e2a;color:#fff;border:1px solid #3a8a3a;padding:6px 14px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.05em;">
+                SAVE TO SEED
+            </button>
+            <button onclick="seedLoadLive()" id="seed-load-live-btn"
+                style="background:#555;color:#eee;border:1px solid #666;padding:6px 14px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:0.05em;">
+                LOAD LIVE VALUES
+            </button>
+            <span id="seed-editor-status" style="font-size:10px;color:#888;margin-left:auto;"></span>
+        </div>
+        <div id="seed-editor-body" style="max-height:600px;overflow-y:auto;"></div>
+    `;
+
+    // Load nations
+    const { data: nations, error: nErr } = await _supabase.from('nations').select('id, name, seed_stats').order('name');
+    if (nErr) { console.error('[SeedEditor] Failed to load nations:', nErr.message); return; }
+    _seedNations = nations || [];
+
+    const sel = document.getElementById('seed-nation-select');
+    for (const n of _seedNations) {
+        const opt = document.createElement('option');
+        opt.value = n.id;
+        opt.textContent = n.name;
+        sel.appendChild(opt);
+    }
+}
+
+async function seedSelectNation(nationId) {
+    if (!nationId) {
+        document.getElementById('seed-editor-body').innerHTML = '';
+        _seedSelectedNationId = null;
+        return;
+    }
+    _seedSelectedNationId = nationId;
+    const nation = _seedNations.find(n => n.id === nationId);
+    if (!nation) return;
+
+    const seed = nation.seed_stats || {};
+    const body = document.getElementById('seed-editor-body');
+    const statusEl = document.getElementById('seed-editor-status');
+    statusEl.textContent = 'Loading...';
+    statusEl.style.color = '#888';
+
+    // Fetch live nation data for delta comparison
+    let live = {};
+    try {
+        const { data, error } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+        if (!error && data) live = data;
+    } catch (_) { /* non-fatal — deltas just won't show */ }
+
+    // Count coverage: how many stats in the editor have a saved seed value
+    const allEditorStats = Object.values(SEED_STAT_CATEGORIES).flat();
+    const savedCount = allEditorStats.filter(s => seed[s] !== undefined && seed[s] !== null).length;
+    const totalCount = allEditorStats.length;
+    const pct = Math.round((savedCount / totalCount) * 100);
+    const coverageColor = pct >= 90 ? '#5cb85c' : pct >= 60 ? '#c8a64e' : '#d9534f';
+
+    let html = '';
+
+    // Coverage bar
+    html += `<div style="margin-bottom:14px;padding:8px 10px;background:#111;border:1px solid #333;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.06em;">Seed Coverage</span>
+            <span style="font-size:10px;font-weight:700;color:${coverageColor};">${savedCount}/${totalCount} stats (${pct}%)</span>
+        </div>
+        <div style="height:4px;background:#333;border-radius:2px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${coverageColor};border-radius:2px;"></div>
+        </div>
+        ${pct < 100 ? `<div style="font-size:7px;color:#888;margin-top:4px;">Stats not in seed will keep their live values after reset instead of resetting.</div>` : ''}
+    </div>`;
+
+    for (const [category, stats] of Object.entries(SEED_STAT_CATEGORIES)) {
+        html += `<div style="margin-bottom:12px;">
+            <div style="font-size:8px;font-weight:700;letter-spacing:0.08em;color:#888;text-transform:uppercase;padding:4px 0;border-bottom:1px solid #333;margin-bottom:6px;">${category}</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px 16px;">`;
+
+        for (const stat of stats) {
+            const val = seed[stat];
+            const isRaw = SEED_RAW_STATS.has(stat);
+            const isString = stat === 'government_type';
+            const isTickField = stat === 'first_election_tick';
+            const schemaDefault = SEED_SCHEMA_DEFAULTS[stat];
+            const isDefault = schemaDefault !== undefined && (val === schemaDefault || val === undefined || val === null);
+            const displayVal = val !== undefined && val !== null ? val : (schemaDefault !== undefined ? schemaDefault : '');
+            const label = stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+            const warnStyle = isDefault ? 'border-color:#c8a64e;background:#2a2510;' : '';
+            const warnBadge = isDefault ? '<span style="font-size:7px;color:#c8a64e;font-weight:700;margin-left:4px;" title="At schema default — may need tuning">DEFAULT</span>' : '';
+
+            // Delta: compare seed value to live value
+            let deltaHtml = '';
+            const liveVal = live[stat];
+            if (liveVal !== undefined && liveVal !== null && !isString) {
+                const seedNum = (val !== undefined && val !== null) ? Number(val) : (schemaDefault !== undefined ? schemaDefault : null);
+                const liveNum = Number(liveVal);
+                if (seedNum !== null && !isNaN(seedNum) && !isNaN(liveNum) && seedNum !== liveNum) {
+                    const diff = liveNum - seedNum;
+                    if (isRaw) {
+                        const absDiff = Math.abs(diff);
+                        const diffLabel = absDiff >= 1e9 ? (diff/1e9).toFixed(1)+'B' : absDiff >= 1e6 ? (diff/1e6).toFixed(0)+'M' : diff.toLocaleString();
+                        const sign = diff > 0 ? '+' : '';
+                        const color = '#5b9bd5';
+                        deltaHtml = `<span style="font-size:7px;color:${color};font-family:inherit;" title="Live: ${liveNum.toLocaleString()}">live ${sign}${diffLabel}</span>`;
+                    } else {
+                        const sign = diff > 0 ? '+' : '';
+                        const color = Math.abs(diff) > 10 ? '#d9534f' : '#5b9bd5';
+                        deltaHtml = `<span style="font-size:7px;color:${color};font-family:inherit;" title="Live: ${liveNum.toFixed(1)}">live ${sign}${diff.toFixed(1)}</span>`;
+                    }
+                }
+            }
+
+            const badges = [warnBadge, deltaHtml].filter(Boolean).join(' ');
+
+            if (isString) {
+                html += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
+                    <label style="font-size:9px;color:#aaa;min-width:120px;text-transform:uppercase;letter-spacing:0.03em;">${label}</label>
+                    <input type="text" data-stat="${stat}" value="${displayVal}"
+                        style="background:#222;color:#eee;border:1px solid #444;padding:3px 6px;font-family:inherit;font-size:11px;width:140px;${warnStyle}">
+                    ${badges}
+                </div>`;
+            } else if (isTickField) {
+                html += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
+                    <label style="font-size:9px;color:#aaa;min-width:120px;text-transform:uppercase;letter-spacing:0.03em;">${label}</label>
+                    <input type="number" data-stat="${stat}" value="${displayVal}" step="1" min="1" max="999"
+                        style="background:#222;color:#eee;border:1px solid #444;padding:3px 6px;font-family:inherit;font-size:11px;width:70px;${warnStyle}"
+                        title="Tick number for first election after reset" placeholder="e.g. 6">
+                    ${badges}
+                </div>`;
+            } else if (isRaw) {
+                html += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
+                    <label style="font-size:9px;color:#aaa;min-width:120px;text-transform:uppercase;letter-spacing:0.03em;">${label}</label>
+                    <input type="text" data-stat="${stat}" value="${typeof displayVal === 'number' ? displayVal.toLocaleString() : displayVal}"
+                        style="background:#222;color:#eee;border:1px solid #444;padding:3px 6px;font-family:inherit;font-size:11px;width:140px;${warnStyle}"
+                        title="Raw value (not 0-100)">
+                    ${badges}
+                </div>`;
+            } else {
+                html += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
+                    <label style="font-size:9px;color:#aaa;min-width:120px;text-transform:uppercase;letter-spacing:0.03em;">${label}</label>
+                    <input type="number" data-stat="${stat}" value="${displayVal}" step="0.1" min="0" max="100"
+                        style="background:#222;color:#eee;border:1px solid #444;padding:3px 6px;font-family:inherit;font-size:11px;width:70px;${warnStyle}">
+                    ${badges}
+                </div>`;
+            }
+        }
+        html += `</div></div>`;
+    }
+
+    const savedAt = seed._saved_at;
+    const footer = savedAt ? `Last saved: ${new Date(savedAt).toLocaleString()}` : 'No seed saved yet — stats will not be restored on reset';
+    const footerColor = savedAt ? '#666' : '#d9534f';
+    html += `<div style="font-size:9px;color:${footerColor};margin-top:12px;padding-top:8px;border-top:1px solid #333;">${footer}</div>`;
+
+    body.innerHTML = html;
+    statusEl.textContent = `Loaded seed for ${nation.name}`;
+    statusEl.style.color = '#888';
+}
+
+async function seedSave() {
+    if (!_seedSelectedNationId) return;
+    const statusEl = document.getElementById('seed-editor-status');
+    const btn = document.getElementById('seed-save-btn');
+    btn.disabled = true;
+    statusEl.textContent = 'Saving...';
+    statusEl.style.color = '#5b9bd5';
+
+    try {
+        const inputs = document.querySelectorAll('#seed-editor-body [data-stat]');
+        const seed = {};
+
+        for (const input of inputs) {
+            const stat = input.dataset.stat;
+            const raw = input.value.trim();
+            if (raw === '') continue;
+
+            if (stat === 'government_type') {
+                seed[stat] = raw;
+            } else if (SEED_RAW_STATS.has(stat)) {
+                // Parse raw values (remove commas)
+                const num = Number(raw.replace(/,/g, ''));
+                if (!isNaN(num)) seed[stat] = num;
+            } else if (stat === 'total_seats' || stat === 'median_age' || stat === 'first_election_tick') {
+                seed[stat] = parseInt(raw, 10);
+            } else {
+                const num = parseFloat(raw);
+                if (!isNaN(num)) seed[stat] = num;
+            }
+        }
+
+        // Validate GDP/debt are dollar-scale
+        if (seed.gdp !== undefined && seed.gdp >= 0 && seed.gdp <= 100000) {
+            statusEl.textContent = `GDP=${seed.gdp} looks like a stat score, not dollars. Aborting.`;
+            statusEl.style.color = '#d9534f';
+            btn.disabled = false;
+            return;
+        }
+
+        seed._saved_at = new Date().toISOString();
+
+        const { error } = await _supabase.from('nations')
+            .update({ seed_stats: seed })
+            .eq('id', _seedSelectedNationId);
+
+        if (error) throw error;
+
+        // Update local cache
+        const nation = _seedNations.find(n => n.id === _seedSelectedNationId);
+        if (nation) nation.seed_stats = seed;
+
+        const statCount = Object.keys(seed).filter(k => k !== '_saved_at').length;
+        statusEl.textContent = `Saved ${statCount} stats for ${nation?.name || 'nation'}`;
+        statusEl.style.color = '#5cb85c';
+    } catch (err) {
+        console.error('[SeedEditor] Save failed:', err);
+        statusEl.textContent = `Save failed: ${err.message}`;
+        statusEl.style.color = '#d9534f';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function seedLoadLive() {
+    if (!_seedSelectedNationId) return;
+    const statusEl = document.getElementById('seed-editor-status');
+    statusEl.textContent = 'Loading live values...';
+    statusEl.style.color = '#5b9bd5';
+
+    try {
+        const { data: nation, error } = await _supabase.from('nations')
+            .select('*')
+            .eq('id', _seedSelectedNationId)
+            .single();
+        if (error) throw error;
+
+        // Populate inputs with live values instead of seed values
+        const inputs = document.querySelectorAll('#seed-editor-body [data-stat]');
+        for (const input of inputs) {
+            const stat = input.dataset.stat;
+            const val = nation[stat];
+            if (val !== undefined && val !== null) {
+                if (SEED_RAW_STATS.has(stat) && typeof val === 'number') {
+                    input.value = val.toLocaleString();
+                } else {
+                    input.value = val;
+                }
+                // Clear warning styling since we have a live value
+                input.style.borderColor = '#5b9bd5';
+                input.style.background = '#1a2530';
+            }
+        }
+
+        statusEl.textContent = `Loaded live values for ${nation.name} — edit and SAVE TO SEED when ready`;
+        statusEl.style.color = '#5b9bd5';
+    } catch (err) {
+        console.error('[SeedEditor] Load live failed:', err);
+        statusEl.textContent = `Failed: ${err.message}`;
+        statusEl.style.color = '#d9534f';
+    }
+}
+
+window.initSeedEditor = initSeedEditor;
+window.seedSelectNation = seedSelectNation;
+window.seedSave = seedSave;
+window.seedLoadLive = seedLoadLive;
+
+// Auto-init when admin panel loads
+document.addEventListener('admin-panel-loaded', () => {
+    setTimeout(initSeedEditor, 500);
+});
 
 </script>
 </body>
