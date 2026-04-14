@@ -4073,7 +4073,7 @@ async function initSeedEditor() {
     }
 }
 
-function seedSelectNation(nationId) {
+async function seedSelectNation(nationId) {
     if (!nationId) {
         document.getElementById('seed-editor-body').innerHTML = '';
         _seedSelectedNationId = null;
@@ -4085,12 +4085,42 @@ function seedSelectNation(nationId) {
 
     const seed = nation.seed_stats || {};
     const body = document.getElementById('seed-editor-body');
+    const statusEl = document.getElementById('seed-editor-status');
+    statusEl.textContent = 'Loading...';
+    statusEl.style.color = '#888';
+
+    // Fetch live nation data for delta comparison
+    let live = {};
+    try {
+        const { data, error } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+        if (!error && data) live = data;
+    } catch (_) { /* non-fatal — deltas just won't show */ }
+
+    // Count coverage: how many stats in the editor have a saved seed value
+    const allEditorStats = Object.values(SEED_STAT_CATEGORIES).flat();
+    const savedCount = allEditorStats.filter(s => seed[s] !== undefined && seed[s] !== null).length;
+    const totalCount = allEditorStats.length;
+    const pct = Math.round((savedCount / totalCount) * 100);
+    const coverageColor = pct >= 90 ? '#5cb85c' : pct >= 60 ? '#c8a64e' : '#d9534f';
 
     let html = '';
+
+    // Coverage bar
+    html += `<div style="margin-bottom:14px;padding:8px 10px;background:#111;border:1px solid #333;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:8px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.06em;">Seed Coverage</span>
+            <span style="font-size:10px;font-weight:700;color:${coverageColor};">${savedCount}/${totalCount} stats (${pct}%)</span>
+        </div>
+        <div style="height:4px;background:#333;border-radius:2px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${coverageColor};border-radius:2px;"></div>
+        </div>
+        ${pct < 100 ? `<div style="font-size:7px;color:#888;margin-top:4px;">Stats not in seed will keep their live values after reset instead of resetting.</div>` : ''}
+    </div>`;
+
     for (const [category, stats] of Object.entries(SEED_STAT_CATEGORIES)) {
         html += `<div style="margin-bottom:12px;">
             <div style="font-size:8px;font-weight:700;letter-spacing:0.08em;color:#888;text-transform:uppercase;padding:4px 0;border-bottom:1px solid #333;margin-bottom:6px;">${category}</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 16px;">`;
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px 16px;">`;
 
         for (const stat of stats) {
             const val = seed[stat];
@@ -4104,12 +4134,36 @@ function seedSelectNation(nationId) {
             const warnStyle = isDefault ? 'border-color:#c8a64e;background:#2a2510;' : '';
             const warnBadge = isDefault ? '<span style="font-size:7px;color:#c8a64e;font-weight:700;margin-left:4px;" title="At schema default — may need tuning">DEFAULT</span>' : '';
 
+            // Delta: compare seed value to live value
+            let deltaHtml = '';
+            const liveVal = live[stat];
+            if (liveVal !== undefined && liveVal !== null && !isString) {
+                const seedNum = (val !== undefined && val !== null) ? Number(val) : (schemaDefault !== undefined ? schemaDefault : null);
+                const liveNum = Number(liveVal);
+                if (seedNum !== null && !isNaN(seedNum) && !isNaN(liveNum) && seedNum !== liveNum) {
+                    const diff = liveNum - seedNum;
+                    if (isRaw) {
+                        const absDiff = Math.abs(diff);
+                        const diffLabel = absDiff >= 1e9 ? (diff/1e9).toFixed(1)+'B' : absDiff >= 1e6 ? (diff/1e6).toFixed(0)+'M' : diff.toLocaleString();
+                        const sign = diff > 0 ? '+' : '';
+                        const color = '#5b9bd5';
+                        deltaHtml = `<span style="font-size:7px;color:${color};font-family:inherit;" title="Live: ${liveNum.toLocaleString()}">live ${sign}${diffLabel}</span>`;
+                    } else {
+                        const sign = diff > 0 ? '+' : '';
+                        const color = Math.abs(diff) > 10 ? '#d9534f' : '#5b9bd5';
+                        deltaHtml = `<span style="font-size:7px;color:${color};font-family:inherit;" title="Live: ${liveNum.toFixed(1)}">live ${sign}${diff.toFixed(1)}</span>`;
+                    }
+                }
+            }
+
+            const badges = [warnBadge, deltaHtml].filter(Boolean).join(' ');
+
             if (isString) {
                 html += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
                     <label style="font-size:9px;color:#aaa;min-width:120px;text-transform:uppercase;letter-spacing:0.03em;">${label}</label>
                     <input type="text" data-stat="${stat}" value="${displayVal}"
                         style="background:#222;color:#eee;border:1px solid #444;padding:3px 6px;font-family:inherit;font-size:11px;width:140px;${warnStyle}">
-                    ${warnBadge}
+                    ${badges}
                 </div>`;
             } else if (isRaw) {
                 html += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
@@ -4117,14 +4171,14 @@ function seedSelectNation(nationId) {
                     <input type="text" data-stat="${stat}" value="${typeof displayVal === 'number' ? displayVal.toLocaleString() : displayVal}"
                         style="background:#222;color:#eee;border:1px solid #444;padding:3px 6px;font-family:inherit;font-size:11px;width:140px;${warnStyle}"
                         title="Raw value (not 0-100)">
-                    ${warnBadge}
+                    ${badges}
                 </div>`;
             } else {
                 html += `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
                     <label style="font-size:9px;color:#aaa;min-width:120px;text-transform:uppercase;letter-spacing:0.03em;">${label}</label>
                     <input type="number" data-stat="${stat}" value="${displayVal}" step="0.1" min="0" max="100"
                         style="background:#222;color:#eee;border:1px solid #444;padding:3px 6px;font-family:inherit;font-size:11px;width:70px;${warnStyle}">
-                    ${warnBadge}
+                    ${badges}
                 </div>`;
             }
         }
@@ -4132,11 +4186,13 @@ function seedSelectNation(nationId) {
     }
 
     const savedAt = seed._saved_at;
-    const footer = savedAt ? `Last saved: ${new Date(savedAt).toLocaleString()}` : 'No seed saved yet';
-    html += `<div style="font-size:9px;color:#666;margin-top:12px;padding-top:8px;border-top:1px solid #333;">${footer}</div>`;
+    const footer = savedAt ? `Last saved: ${new Date(savedAt).toLocaleString()}` : 'No seed saved yet — stats will not be restored on reset';
+    const footerColor = savedAt ? '#666' : '#d9534f';
+    html += `<div style="font-size:9px;color:${footerColor};margin-top:12px;padding-top:8px;border-top:1px solid #333;">${footer}</div>`;
 
     body.innerHTML = html;
-    document.getElementById('seed-editor-status').textContent = `Loaded seed for ${nation.name}`;
+    statusEl.textContent = `Loaded seed for ${nation.name}`;
+    statusEl.style.color = '#888';
 }
 
 async function seedSave() {
