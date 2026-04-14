@@ -49,7 +49,17 @@ const FUNDRAISE_TIERS = [
     { perSeat: 2000, momDivisor: 5 },  // Use 4: $2k/seat, -1 mom per 5 seats
     { perSeat: 1000, momDivisor: 5 },  // Use 5+: $1k/seat, -1 mom per 5 seats
 ];
-let _fundraiseUseCount = 0; // tracked per session, reset on page load
+let _fundraiseUseCount = 0; // loaded from DB on init, not just session state
+
+async function loadFundraiseCount() {
+    if (!_supabase || !_state?.faction?.id || !_state?.shard?.current_tick) return;
+    const { count, error } = await _supabase.from('campaign_actions')
+        .select('id', { count: 'exact', head: true })
+        .eq('party_id', _state.faction.id)
+        .eq('action_type', 'fundraise')
+        .eq('tick_performed', _state.shard.current_tick);
+    _fundraiseUseCount = (!error && count != null) ? count : 0;
+}
 
 function getFundraiseInfo(seats, useCount) {
     const tier = FUNDRAISE_TIERS[Math.min(useCount, FUNDRAISE_TIERS.length - 1)];
@@ -208,7 +218,7 @@ export async function initPartyActions(supabase, state) {
         state.nation.dynasty_name = dynastyName;
     }
 
-    // Fetch platforms + agitator + opposition status + electoral standing in parallel
+    // Fetch platforms + agitator + opposition status + electoral standing + fundraise count
     const [myPlat, nationPlat, agitatorResult, oppositionResult, standingResult] = await Promise.all([
         _supabase.from('faction_platforms').select('*').eq('faction_id', faction.id).order('slot'),
         _supabase.from('faction_platforms').select('*').eq('nation_id', state.nation?.id),
@@ -220,6 +230,7 @@ export async function initPartyActions(supabase, state) {
             .eq('nation_id', state.nation?.id)
             .maybeSingle(),
     ]);
+    await loadFundraiseCount();
 
     if (myPlat.error) console.error('[PartyActions] Failed to load faction platforms:', myPlat.error.message);
     if (nationPlat.error) console.error('[PartyActions] Failed to load nation platforms:', nationPlat.error.message);
