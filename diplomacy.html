@@ -1023,40 +1023,40 @@ function renderTradePartners() {
 
             html += `<div style="border-top:1px solid var(--border-main);">
                 <div style="display:flex;">
-                    <div style="flex:1;padding:10px 14px;border-right:1px solid var(--border-main);">
-                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--teal);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;background:var(--teal);"></span>THEY CAN OFFER</div>`;
+                    <div style="flex:1;padding:14px 18px;border-right:1px solid var(--border-main);">
+                        <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--teal);margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;background:var(--teal);"></span>THEY CAN OFFER</div>`;
             for (const s of surpluses.slice(0, 6)) {
                 const isWeNeed = myDeficits.includes(s.sector);
-                html += `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
-                    <div style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-size:9px;">${s.icon}</span>
-                        <span style="font-size:9px;color:var(--text-bright);font-weight:${isWeNeed ? '700' : '400'};">${escapeHtml(s.name)}</span>
-                        ${isWeNeed ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">MATCH</span>' : ''}
+                html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:13px;">${s.icon}</span>
+                        <span style="font-size:13px;color:var(--text-bright);font-weight:${isWeNeed ? '700' : '400'};">${escapeHtml(s.name)}</span>
+                        ${isWeNeed ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}</span>
                 </div>`;
             }
-            if (surpluses.length === 0) html += `<div style="font-size:8px;color:var(--text-dim);font-style:italic;">No surpluses</div>`;
+            if (surpluses.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No surpluses</div>`;
 
-            html += `</div><div style="flex:1;padding:10px 14px;">
-                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--green);margin-bottom:4px;display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;background:var(--green);"></span>THEY NEED</div>`;
+            html += `</div><div style="flex:1;padding:14px 18px;">
+                        <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;background:var(--green);"></span>THEY NEED</div>`;
             for (const d of deficits.slice(0, 6)) {
                 const weHave = mySurpluses.includes(d.sector);
-                html += `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
-                    <div style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-size:9px;">${d.icon}</span>
-                        <span style="font-size:9px;color:var(--text-bright);font-weight:${weHave ? '700' : '400'};">${escapeHtml(d.name)}</span>
-                        ${weHave ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">MATCH</span>' : ''}
+                html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:13px;">${d.icon}</span>
+                        <span style="font-size:13px;color:var(--text-bright);font-weight:${weHave ? '700' : '400'};">${escapeHtml(d.name)}</span>
+                        ${weHave ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}</span>
                 </div>`;
             }
-            if (deficits.length === 0) html += `<div style="font-size:8px;color:var(--text-dim);font-style:italic;">No deficits</div>`;
+            if (deficits.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No deficits</div>`;
 
             html += `</div></div>`;
 
             // Action buttons
-            html += `<div style="padding:8px 14px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;gap:4px;">
+            html += `<div style="padding:10px 18px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;gap:6px;">
                 <div class="tr-action-btn" onclick="event.stopPropagation();selectWorldNation('${n.id}');_diploActiveSubtab='world';renderDiploSubtabs();showDiploSubtab();">NATION INFO</div>
                 <div class="tr-action-btn tr-action-btn--primary">DRAFT TRADE AGREEMENT</div>
             </div>`;
