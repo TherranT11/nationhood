@@ -225,8 +225,8 @@ function renderPage(root) {
                         <div class="pa-header-stat-value" style="color:${momentum > 0 ? 'var(--text-bright)' : 'var(--red)'};">${Math.round(momentum)}</div>
                     </div>
                     <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">Approval</div>
-                        <div class="pa-header-stat-value" style="color:var(--green);">${Math.round(approval)}%</div>
+                        <div class="pa-header-stat-label">Governance</div>
+                        <div class="pa-header-stat-value" style="color:var(--green);">${Math.round(Number(_state.nation?.gov_approval ?? 0))}</div>
                     </div>
                 </div>
             </div>
