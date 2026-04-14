@@ -4,6 +4,7 @@
 
 import { buildMinistryBaselines } from './game/stats.js';
 import { autoAppointPartyLeaderAsPM, getNationNames } from './game/political-actions.js';
+import { rolloverAdministration } from './game/elections.js';
 
 let _supabase = null;
 let _state = null;
@@ -389,16 +390,20 @@ async function formGovernmentFallback(formation) {
     const { error: resetErr } = await _supabase.from('nations').update({ failed_formation_attempts: 0 }).eq('id', nationId);
     if (resetErr) console.warn('[Coalition] Failed to reset formation attempts:', resetErr.message);
 
-    // Create ministry records from assignments
+    // Deactivate all existing ministries before creating new ones
+    await _supabase.from('ministries').update({ is_active: false })
+        .eq('nation_id', nationId).eq('is_active', true);
+
+    // Create ministry records from ALL assignments (including PM)
     for (const [key, partyId] of Object.entries(_ministryAssignments)) {
-        if (!partyId || key === 'prime_minister') continue;
+        if (!partyId) continue;
         const names = getNationNames(_state.nation?.name);
         const firstName = names.first[Math.floor(Math.random() * names.first.length)];
         const lastName = names.last[Math.floor(Math.random() * names.last.length)];
         const age = 35 + Math.floor(Math.random() * 25);
         const baselines = buildMinistryBaselines ? buildMinistryBaselines(key, _state.nation) : {};
 
-        await _supabase.from('ministries').upsert({
+        const { error: minErr } = await _supabase.from('ministries').upsert({
             nation_id: nationId,
             ministry_key: key,
             party_id: partyId,
@@ -409,6 +414,24 @@ async function formGovernmentFallback(formation) {
             stat_baselines: baselines,
             is_active: true,
         }, { onConflict: 'nation_id,ministry_key' });
+        if (minErr) console.warn(`[Coalition] Failed to create ministry ${key}:`, minErr.message);
+    }
+
+    // Create new administration record
+    try {
+        const coalition = {
+            id: formation.id,
+            party_ids: formation.party_ids || [],
+            lead_party_id: _ministryAssignments.prime_minister,
+        };
+        await rolloverAdministration(
+            _supabase, nationId, _state.nation,
+            'election', coalition, _allParties,
+            _currentTick, _state.shard?.current_date || '',
+            Number(_state.nation?.gov_approval ?? 50)
+        );
+    } catch (adminErr) {
+        console.warn('[Coalition] Administration rollover failed (non-fatal):', adminErr.message);
     }
 }
 
