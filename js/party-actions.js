@@ -924,8 +924,13 @@ function openRallyModal(root) {
         document.getElementById('rally-submit')?.addEventListener('click', async () => {
             if (selectedTier == null || result) return;
             const tier = RALLY_TIERS[selectedTier];
-            const currentFunds = _state.faction.party_funds || 0;
+            // Fetch fresh funds from DB to avoid stale cache race condition
+            const { data: freshRallyFaction } = await _supabase.from('factions').select('party_funds, momentum').eq('id', _state.faction.id).single();
+            const currentFunds = freshRallyFaction?.party_funds || 0;
             if (currentFunds < tier.cost) { alert('Not enough funds.'); return; }
+            // Use fresh momentum too
+            _state.faction.party_funds = currentFunds;
+            _state.faction.momentum = freshRallyFaction?.momentum ?? _state.faction.momentum;
 
             const btn = document.getElementById('rally-submit');
             if (btn) { btn.disabled = true; btn.textContent = 'Rolling...'; }
@@ -955,6 +960,7 @@ function openRallyModal(root) {
 
                 _state.faction.party_funds = newFunds;
                 _state.faction.momentum = newMomentum;
+                sessionStorage.removeItem('nationhood_state'); // bust stale cache so refreshAP reads correct value
 
                 result = { ...rallyResult, dieRoll, bonus: tier.bonus, total: dieRoll + tier.bonus };
                 render();
@@ -1964,8 +1970,16 @@ async function executeFundraise(root) {
     _fundraiseSubmitting = true;
 
     try {
+        // Fetch fresh values from DB to avoid stale cache
+        const { data: freshFunds } = await _supabase.from('factions').select('party_funds, momentum').eq('id', faction.id).single();
+        if (freshFunds) {
+            faction.party_funds = freshFunds.party_funds ?? 0;
+            faction.momentum = freshFunds.momentum ?? 0;
+        }
+        const freshMomentum = Math.max(1, faction.momentum ?? 0);
+
         const tick = _state.shard?.current_tick || 0;
-        const newMomentum = Math.max(1, momentum - fi.momCost);
+        const newMomentum = Math.max(1, freshMomentum - fi.momCost);
         const newFunds = (faction.party_funds || 0) + fi.raised;
 
         // Update faction: deduct momentum, add funds
@@ -1996,9 +2010,10 @@ async function executeFundraise(root) {
             },
         });
 
-        // Update local state
+        // Update local state + bust cache so refreshAP reads correct value
         faction.momentum = newMomentum;
         faction.party_funds = newFunds;
+        sessionStorage.removeItem('nationhood_state');
         _fundraiseUseCount++;
 
         renderPage(root);
@@ -2121,9 +2136,10 @@ function openStatementModal(root) {
             const topicDef = STATEMENT_TOPICS.find(t => t.id === selectedTopic);
             const topicLabel = topicDef?.label || selectedTopic;
 
-            // 1. Deduct party funds ($20k)
+            // 1. Deduct party funds ($20k) — fetch fresh from DB to avoid stale cache
             const stmtCost = 20000;
-            const currentFunds = faction.party_funds || 0;
+            const { data: freshFaction } = await _supabase.from('factions').select('party_funds').eq('id', faction.id).single();
+            const currentFunds = freshFaction?.party_funds || 0;
             if (currentFunds < stmtCost) {
                 alert(`Not enough funds. You have $${Math.round(currentFunds / 1000)}k, need $20k.`);
                 return;
