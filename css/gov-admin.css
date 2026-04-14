@@ -140,32 +140,32 @@
 .ga-chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Executive Timeline ── */
-.ga-tl-scroll { max-height: 520px; overflow-y: auto; }
+.ga-tl-scroll { max-height: 600px; overflow-y: auto; }
 .ga-tl-row { display: flex; gap: 0; border-bottom: 1px solid var(--border-main); }
 .ga-tl-row:last-child { border-bottom: none; }
 .ga-tl-spine {
-    width: 44px; flex-shrink: 0;
+    width: 56px; flex-shrink: 0;
     display: flex; flex-direction: column; align-items: center;
-    padding: 12px 0; position: relative;
+    padding: 14px 0; position: relative;
 }
 .ga-tl-line-top {
-    position: absolute; top: 0; left: 50%; width: 1px; height: 12px;
+    position: absolute; top: 0; left: 50%; width: 1px; height: 14px;
     background: var(--border-main); transform: translateX(-50%);
 }
 .ga-tl-node {
-    width: 10px; height: 10px; border: 2px solid;
+    width: 14px; height: 14px; border: 2px solid;
     border-radius: 50%; z-index: 1;
 }
 .ga-tl-line-bottom {
-    flex: 1; width: 1px; background: var(--border-main); margin-top: 2px;
+    flex: 1; width: 1px; background: var(--border-main); margin-top: 3px;
 }
 .ga-tl-tick {
-    font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); margin-top: 2px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); margin-top: 3px;
 }
-.ga-tl-content { flex: 1; padding: 10px 14px 10px 0; }
+.ga-tl-content { flex: 1; padding: 14px 18px 14px 0; }
 .ga-tl-filter {
-    padding: 2px 6px;
-    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
+    padding: 3px 8px;
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
     letter-spacing: 0.5px; color: var(--text-dim);
     background: transparent; border: 1px solid transparent;
     cursor: pointer;
