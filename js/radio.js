@@ -269,7 +269,25 @@ function renderRadioPage(root) {
                 </div>
             </div>
 
-            ${_tuneInMode ? renderTuneInView() : (stationCount === 0 ? renderEmptyState() : renderStationView())}
+            <div class="radio-two-col">
+                <div class="radio-col-left">
+                    ${_tuneInMode ? renderTuneInView() : (stationCount === 0 ? renderEmptyState() : renderStationView())}
+                </div>
+                <div class="radio-col-right">
+                    <div class="radio-events-panel" id="radio-events-panel">
+                        <div class="radio-events-header">
+                            <span class="radio-events-title">Events</span>
+                            <div class="radio-events-tabs" id="radio-events-tabs">
+                                <span class="radio-events-tab active" data-scope="local">Local</span>
+                                <span class="radio-events-tab" data-scope="nation">Nation</span>
+                            </div>
+                        </div>
+                        <div class="radio-events-scroll" id="radio-events-scroll">
+                            <div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading events...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Create Station Modal -->
@@ -288,6 +306,9 @@ function renderRadioPage(root) {
     if (!_tuneInMode && stationCount > 0) {
         loadAllBroadcasts();
     }
+
+    // Load events panel
+    loadRadioEvents();
 }
 
 function renderEmptyState() {
@@ -1167,5 +1188,74 @@ function renderTuneInView() {
             </div>
         </div>
     `;
+}
+
+// ════════════════════════ EVENTS PANEL ════════════════════════
+
+let _radioEvents = [];
+let _radioEventScope = 'local';
+
+async function loadRadioEvents() {
+    const currentTick = _state.shard?.current_tick || 0;
+    const lookback = Math.max(1, currentTick - 48);
+
+    const { data } = await _supabase
+        .from('event_log')
+        .select('id, nation_id, event_name, category, fired_at_tick, description_chosen')
+        .gte('fired_at_tick', lookback)
+        .order('fired_at_tick', { ascending: false })
+        .limit(80);
+
+    _radioEvents = data || [];
+    renderRadioEvents();
+
+    const tabContainer = document.getElementById('radio-events-tabs');
+    if (tabContainer && !tabContainer._wired) {
+        tabContainer._wired = true;
+        tabContainer.addEventListener('click', (e) => {
+            const tab = e.target.closest('.radio-events-tab');
+            if (!tab) return;
+            _radioEventScope = tab.dataset.scope;
+            tabContainer.querySelectorAll('.radio-events-tab').forEach(t => t.classList.toggle('active', t.dataset.scope === _radioEventScope));
+            renderRadioEvents();
+        });
+    }
+}
+
+function renderRadioEvents() {
+    const scroll = document.getElementById('radio-events-scroll');
+    if (!scroll) return;
+
+    const nationId = _state.nation?.id;
+    let events = _radioEvents;
+    if (_radioEventScope === 'local' && nationId) {
+        events = events.filter(e => e.nation_id === nationId);
+    }
+
+    if (events.length === 0) {
+        scroll.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">No recent events.</div>';
+        return;
+    }
+
+    const CAT_COLORS = {
+        government: { color: '#8b9a6b', bg: 'rgba(139,154,107,0.06)', border: 'rgba(139,154,107,0.2)' },
+        political: { color: '#c8a832', bg: 'rgba(200,168,50,0.06)', border: 'rgba(200,168,50,0.2)' },
+        crisis: { color: '#d44a4a', bg: 'rgba(212,74,74,0.06)', border: 'rgba(212,74,74,0.2)' },
+        trade: { color: '#5aaa8a', bg: 'rgba(90,170,138,0.06)', border: 'rgba(90,170,138,0.2)' },
+        diplomatic: { color: '#5a8aaa', bg: 'rgba(90,138,170,0.06)', border: 'rgba(90,138,170,0.2)' },
+        military: { color: '#c84', bg: 'rgba(204,136,68,0.06)', border: 'rgba(204,136,68,0.2)' },
+    };
+
+    scroll.innerHTML = events.map(ev => {
+        const cat = ev.category || 'government';
+        const cs = CAT_COLORS[cat] || CAT_COLORS.government;
+        const desc = ev.description_chosen || ev.event_name || '';
+        const truncDesc = desc.length > 100 ? desc.slice(0, 97) + '...' : desc;
+        return `<div style="padding:6px 12px;border-bottom:1px solid var(--border-main);display:flex;gap:8px;align-items:flex-start;">
+            <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);flex-shrink:0;width:24px;">${ev.fired_at_tick}</span>
+            <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:1px 5px;color:${cs.color};background:${cs.bg};border:1px solid ${cs.border};flex-shrink:0;text-transform:uppercase;">${esc(cat)}</span>
+            <span style="font-size:11px;color:var(--text-secondary);line-height:1.4;flex:1;">${esc(truncDesc)}</span>
+        </div>`;
+    }).join('');
 }
 
