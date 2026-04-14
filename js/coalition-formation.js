@@ -268,41 +268,52 @@ function renderMinistryAssignment(formation) {
     const coalitionParties = (formation.party_ids || [])
         .map(pid => _allParties.find(p => p.id === pid))
         .filter(Boolean);
-    const isProposer = formation.proposed_by === _state.faction?.id;
+    const isMember = (formation.party_ids || []).includes(_state.faction?.id);
     const assignments = formation.ministry_assignments || {};
 
     // Load existing assignments into local state
     _ministryAssignments = { ...assignments };
 
+    // Check if current player's party is selected as PM
+    const myFactionId = _state.faction?.id;
+    const pmPartyId = _ministryAssignments.prime_minister;
+    const iAmPM = pmPartyId === myFactionId;
+
     let html = `<div style="padding:12px 16px;border-top:1px solid var(--border-main);background:var(--bg-card);">
         <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--accent);margin-bottom:10px;">CONFIGURE GOVERNMENT</div>
-        <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Assign coalition parties to ministries. The Prime Minister's party will lead the government.</div>`;
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">All coalition members can assign ministries. The party selected as Prime Minister clicks Form Government.</div>`;
 
     for (const key of MINISTRY_KEYS) {
         const label = MINISTRY_NAMES[key] || key;
         const isPM = key === 'prime_minister';
         const assignedId = _ministryAssignments[key];
-        const assignedParty = assignedId ? coalitionParties.find(p => p.id === assignedId) : null;
 
-        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
-            <span style="width:140px;font-family:var(--font-mono);font-size:10px;font-weight:${isPM ? '700' : '400'};color:${isPM ? 'var(--accent)' : 'var(--text-secondary)'};letter-spacing:0.5px;">${label}</span>`;
-
-        if (isProposer) {
-            html += `<select data-ministry="${key}" class="cf-ministry-select" style="flex:1;padding:4px 8px;font-family:var(--font-mono);font-size:10px;color:var(--text-bright);background:var(--bg-body);border:1px solid var(--border-main);outline:none;">
-                <option value="">— Select Party —</option>
-                ${coalitionParties.map(p => `<option value="${p.id}" ${assignedId === p.id ? 'selected' : ''}>${esc(p.faction_name)} (${p.seats || 0} seats)</option>`).join('')}
-            </select>`;
-        } else {
-            html += `<span style="flex:1;font-size:11px;color:${assignedParty ? 'var(--text-bright)' : 'var(--text-dim)'};">${assignedParty ? esc(assignedParty.faction_name) : '— Not assigned —'}</span>`;
+        // All coalition members get dropdowns
+        if (isMember) {
+            html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
+                <span style="width:140px;font-family:var(--font-mono);font-size:10px;font-weight:${isPM ? '700' : '400'};color:${isPM ? 'var(--accent)' : 'var(--text-secondary)'};letter-spacing:0.5px;">${label}</span>
+                <select data-ministry="${key}" class="cf-ministry-select" style="flex:1;padding:4px 8px;font-family:var(--font-mono);font-size:10px;color:var(--text-bright);background:var(--bg-body);border:1px solid var(--border-main);outline:none;">
+                    <option value="">— Select Party —</option>
+                    ${coalitionParties.map(p => `<option value="${p.id}" ${assignedId === p.id ? 'selected' : ''}>${esc(p.faction_name)} (${p.seats || 0} seats)</option>`).join('')}
+                </select>
+            </div>`;
         }
-        html += '</div>';
     }
 
-    // Form Government button (only for proposer, only if PM assigned)
-    if (isProposer) {
-        const pmAssigned = !!_ministryAssignments.prime_minister;
+    // Form Government button — only the party selected as PM can click it
+    const pmAssigned = !!_ministryAssignments.prime_minister;
+    if (pmAssigned && iAmPM) {
         html += `<div style="margin-top:14px;display:flex;justify-content:flex-end;">
-            <button id="cf-form-gov-btn" ${!pmAssigned ? 'disabled' : ''} style="padding:10px 28px;font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:1.5px;color:${pmAssigned ? '#000' : 'var(--text-dim)'};background:${pmAssigned ? 'var(--green)' : 'var(--bg-body)'};border:1px solid ${pmAssigned ? 'var(--green)' : 'var(--border-main)'};cursor:${pmAssigned ? 'pointer' : 'not-allowed'};">FORM GOVERNMENT</button>
+            <button id="cf-form-gov-btn" style="padding:10px 28px;font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:1.5px;color:#000;background:var(--green);border:1px solid var(--green);cursor:pointer;">FORM GOVERNMENT</button>
+        </div>`;
+    } else if (pmAssigned && !iAmPM) {
+        const pmParty = coalitionParties.find(p => p.id === pmPartyId);
+        html += `<div style="margin-top:14px;padding:8px 12px;background:rgba(92,204,92,0.04);border:1px solid rgba(92,204,92,0.12);font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">
+            Waiting for <span style="color:var(--green);font-weight:700;">${esc(pmParty?.faction_name || 'PM party')}</span> to click Form Government.
+        </div>`;
+    } else {
+        html += `<div style="margin-top:14px;padding:8px 12px;background:rgba(200,168,50,0.04);border:1px solid rgba(200,168,50,0.12);font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">
+            Select a Prime Minister to enable government formation.
         </div>`;
     }
 
