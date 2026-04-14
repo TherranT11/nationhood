@@ -1203,8 +1203,8 @@ async function openHireAgitatorModal(root) {
                         </div>
                         <div style="flex:1;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);">
                             <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">HIRE COST</div>
-                            <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--text-bright);">FREE</div>
-                            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:3px;">No AP or money cost</div>
+                            <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--accent);">$${(selected.hire_cost / 1000).toFixed(0)}k</div>
+                            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:3px;">From party funds</div>
                         </div>
                     </div>
 
@@ -1224,7 +1224,8 @@ async function openHireAgitatorModal(root) {
                     </div>
                 </div>
                 <div style="padding:10px 20px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;">
-                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-hire-confirm" style="background:#d44a4a;">Hire ${esc(selected.first_name)}</button>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-right:auto;">Cost: <span style="color:var(--accent);font-weight:700;">$${(selected.hire_cost / 1000).toFixed(0)}k</span></span>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-hire-confirm" style="background:#d44a4a;"${(_state.faction?.party_funds || 0) < selected.hire_cost ? ' disabled title="Not enough funds"' : ''}>Hire ${esc(selected.first_name)}</button>
                 </div>
             `;
         }
@@ -1270,7 +1271,23 @@ async function openHireAgitatorModal(root) {
 
             try {
                 const tick = _state.shard?.current_tick || 0;
-                const result = await hireAgitator(_supabase, _state.faction?.id, candidates[selectedIdx], tick);
+                const candidate = candidates[selectedIdx];
+                const hireCost = candidate.hire_cost || 0;
+                const currentFunds = _state.faction?.party_funds || 0;
+
+                // Deduct party funds
+                if (hireCost > 0 && currentFunds < hireCost) {
+                    alert(`Not enough funds. You have $${Math.round(currentFunds / 1000)}k, need $${Math.round(hireCost / 1000)}k.`);
+                    return;
+                }
+                if (hireCost > 0) {
+                    const newFunds = currentFunds - hireCost;
+                    const { error: fundsErr } = await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', _state.faction.id);
+                    if (fundsErr) { alert('Failed to deduct funds.'); return; }
+                    _state.faction.party_funds = newFunds;
+                }
+
+                const result = await hireAgitator(_supabase, _state.faction?.id, candidate, tick);
                 if (!result.success) {
                     alert(result.error || 'Failed to hire agitator.');
                     return;
