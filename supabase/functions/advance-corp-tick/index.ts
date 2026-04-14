@@ -3077,6 +3077,11 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // Process active shipping claims: advance vessel status, collect
             // revenue on completed transits, restart transit cycles.
             try {
+                // Fetch vessels for fuel checks during transit
+                const { data: corpVesselsForTransit } = await supabase.from('corp_vessels')
+                    .select('id, vessel_name, fuel, condition, status, active_claim_id')
+                    .eq('faction_id', corp.id);
+
                 const { data: activeClaims } = await supabase
                     .from('shipping_claims')
                     .select('id, route_id, faction_id, vessel_status, transit_started_tick, transit_arrives_tick, revenue_per_transit, total_revenue, transits_completed, shipping_routes!inner(transit_ticks, status, destination_nation_id)')
@@ -3107,6 +3112,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         const transitTicks = claim.shipping_routes?.transit_ticks || 2;
 
                         if (claim.vessel_status === 'loading') {
+                            // Check fuel before departure — need at least 15% to start transit
+                            const assignedVessel = (corpVesselsForTransit || []).find(v => v.active_claim_id === claim.id);
+                            if (assignedVessel && assignedVessel.fuel < 15) {
+                                console.log(`[advance-corp-tick] Vessel ${assignedVessel.vessel_name} too low on fuel (${assignedVessel.fuel}%) to depart. Skipping transit.`);
+                                continue; // Ship stays loading, can't depart
+                            }
+
                             // Start transit next tick
                             await supabase.from('shipping_claims').update({
                                 vessel_status: 'in_transit',
@@ -3145,10 +3157,52 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 transit_arrives_tick: null,
                             }).eq('id', claim.id);
 
-                            // Update assigned vessel: arrived at destination port
+                            // Update assigned vessel: arrived at destination port + auto-refuel
                             const destNationId = claim.shipping_routes?.destination_nation_id || claim.nation_id;
+
+                            // Auto-refuel: check for fuel depot in destination nation
+                            // Base fuel cost = $50k per refuel. State = 3x ($150k). Depot owner = +15%.
+                            const { data: fuelDepot } = await supabase.from('corp_properties')
+                                .select('id, faction_id')
+                                .eq('nation_id', destNationId)
+                                .eq('building_type', 'fuel_depot')
+                                .eq('status', 'operational')
+                                .limit(1)
+                                .maybeSingle();
+
+                            const baseFuelCost = 50000;
+                            let fuelCost;
+                            if (fuelDepot && fuelDepot.faction_id === claim.faction_id) {
+                                fuelCost = baseFuelCost; // Own depot
+                            } else if (fuelDepot) {
+                                fuelCost = Math.round(baseFuelCost * 1.15); // Other corp's depot (+15%)
+                                // Pay revenue to depot owner
+                                const depotRevenue = fuelCost - baseFuelCost;
+                                const { data: depotOwner } = await supabase.from('factions')
+                                    .select('corp_cash_reserves').eq('id', fuelDepot.faction_id).single();
+                                if (depotOwner) {
+                                    await supabase.from('factions').update({
+                                        corp_cash_reserves: Number(depotOwner.corp_cash_reserves || 0) + depotRevenue,
+                                    }).eq('id', fuelDepot.faction_id);
+                                }
+                            } else {
+                                fuelCost = baseFuelCost * 3; // State fuel (3x markup)
+                            }
+
+                            // Deduct fuel cost from shipping corp
+                            if (fuelCost > 0) {
+                                const { data: shipCorp } = await supabase.from('factions')
+                                    .select('corp_cash_reserves').eq('id', claim.faction_id).single();
+                                if (shipCorp) {
+                                    await supabase.from('factions').update({
+                                        corp_cash_reserves: Math.max(0, Number(shipCorp.corp_cash_reserves || 0) - fuelCost),
+                                    }).eq('id', claim.faction_id);
+                                }
+                            }
+
                             var { error: arriveErr } = await supabase.from('corp_vessels').update({
                                 status: 'in_port', current_port_nation_id: destNationId,
+                                fuel: 100, // refueled on arrival
                             }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
                             if (arriveErr) console.warn('[advance-corp-tick] Vessel arrival update failed:', arriveErr.message);
 
@@ -3198,17 +3252,72 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
                             // Forced dry dock if condition drops below 20%
                             if (newCond < 20 && v.status !== 'in_transit') {
+                                // Check for dry dock: own > other corp > state
+                                const portNationId = v.current_port_nation_id || nation.id;
+                                const { data: ownDock } = await supabase.from('corp_properties')
+                                    .select('id').eq('faction_id', corp.id).eq('nation_id', portNationId)
+                                    .eq('type', 'dry_dock').eq('is_active', true).limit(1).maybeSingle();
+                                const { data: otherDock } = !ownDock ? await supabase.from('corp_properties')
+                                    .select('id, faction_id').neq('faction_id', corp.id).eq('nation_id', portNationId)
+                                    .eq('type', 'dry_dock').eq('is_active', true).limit(1).maybeSingle() : { data: null };
+
+                                // Repair cost based on damage: $2-5M base
+                                const damagePercent = (100 - newCond) / 100;
+                                const baseRepairCost = 2000000 + Math.round(damagePercent * 3000000);
+                                let repairCost, repairTicks;
+
+                                if (ownDock) {
+                                    repairCost = baseRepairCost; // Own dock: base cost
+                                    repairTicks = 2;
+                                } else if (otherDock) {
+                                    repairCost = Math.round(baseRepairCost * 1.2); // Other corp: +20%
+                                    repairTicks = 2;
+                                    // Pay revenue to dock owner
+                                    const dockRevenue = repairCost - baseRepairCost;
+                                    const { data: dockOwner } = await supabase.from('factions')
+                                        .select('corp_cash_reserves').eq('id', otherDock.faction_id).single();
+                                    if (dockOwner) {
+                                        await supabase.from('factions').update({
+                                            corp_cash_reserves: Number(dockOwner.corp_cash_reserves || 0) + dockRevenue,
+                                        }).eq('id', otherDock.faction_id);
+                                    }
+                                } else {
+                                    repairCost = baseRepairCost * 3; // State dock: 3x
+                                    repairTicks = 3; // Slower at state dock
+                                }
+
+                                // Deduct repair cost
+                                const corpCashForRepair = Number(corp.corp_cash_reserves ?? 0);
+                                await supabase.from('factions').update({
+                                    corp_cash_reserves: Math.max(0, corpCashForRepair - repairCost),
+                                }).eq('id', corp.id);
+
                                 updates.status = 'dry_dock';
-                                updates.drydock_until_tick = currentTick + 3; // 3 ticks to repair
+                                updates.drydock_until_tick = currentTick + repairTicks;
                                 updates.active_claim_id = null;
-                                console.log(`[advance-corp-tick] Vessel ${v.vessel_name}: forced dry dock (condition ${newCond}%)`);
+                                console.log(`[advance-corp-tick] Vessel ${v.vessel_name}: forced dry dock (condition ${newCond}%), cost: $${Math.round(repairCost/1000)}k, ${repairTicks} ticks, ${ownDock ? 'OWN' : otherDock ? 'OTHER CORP' : 'STATE'} dock`);
                             }
                         }
 
                         // Fuel decay: 1d10+5% for vessels in transit
                         if (v.status === 'in_transit') {
                             const fuelBurn = 5 + Math.floor(Math.random() * 10) + 1; // 6-15%
-                            updates.fuel = Math.max(0, v.fuel - fuelBurn);
+                            const newFuel = Math.max(0, v.fuel - fuelBurn);
+                            updates.fuel = newFuel;
+
+                            // Stranded: vessel ran out of fuel mid-transit
+                            if (newFuel <= 0) {
+                                updates.status = 'anchored'; // stranded at sea
+                                updates.active_claim_id = null;
+                                console.log(`[advance-corp-tick] Vessel ${v.vessel_name}: STRANDED (out of fuel mid-transit)`);
+
+                                // Release the shipping claim
+                                if (v.active_claim_id) {
+                                    await supabase.from('shipping_claims').update({
+                                        vessel_status: 'idle', status: 'suspended',
+                                    }).eq('id', v.active_claim_id);
+                                }
+                            }
                         }
 
                         // Maintenance cost (all vessels, even dry dock)
