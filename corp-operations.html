@@ -12519,35 +12519,102 @@ function renderFleetCard() {
 
 let _flActionLock = false;
 
-async function flRefurbish(vesselId, cost) {
+async function flRefurbish(vesselId, baseCost) {
     if (_flActionLock || !faction) return;
-    const cash = Number(faction.corp_cash_reserves ?? 0);
-    if (cash < cost) { alert('Insufficient cash. Need ' + hfFmtBig(cost) + '.'); return; }
-    if (!confirm('Send vessel to dry dock for repairs?\n\nCost: ' + hfFmtBig(cost) + '\nDuration: 3 ticks\nCondition will be restored to 85-100%.')) return;
+
+    const vessel = (_fleetVessels || []).find(v => v.id === vesselId);
+    if (!vessel) return;
+
+    const portNationId = vessel.current_port_nation_id || (shard ? null : null);
+
+    // Check for dry dock: own > other corp > state
+    let dockType = 'state';
+    let costMultiplier = 3;
+    let repairTicks = 3;
+    let dockOwnerFactionId = null;
+    let dockLabel = 'State Dry Dock (3x cost, 3 ticks)';
+
+    if (portNationId) {
+        const { data: ownDock } = await _supabase.from('corp_properties')
+            .select('id').eq('faction_id', faction.id).eq('nation_id', portNationId)
+            .eq('type', 'dry_dock').eq('is_active', true).limit(1).maybeSingle();
+
+        if (ownDock) {
+            dockType = 'own';
+            costMultiplier = 1;
+            repairTicks = 2;
+            dockLabel = 'Your Dry Dock (base cost, 2 ticks)';
+        } else {
+            const { data: otherDock } = await _supabase.from('corp_properties')
+                .select('id, faction_id, factions(faction_name)').neq('faction_id', faction.id).eq('nation_id', portNationId)
+                .eq('type', 'dry_dock').eq('is_active', true).limit(1).maybeSingle();
+            if (otherDock) {
+                dockType = 'other';
+                costMultiplier = 1.2;
+                repairTicks = 2;
+                dockOwnerFactionId = otherDock.faction_id;
+                const ownerName = otherDock.factions?.faction_name || 'Another corp';
+                dockLabel = ownerName + "'s Dry Dock (+20%, 2 ticks)";
+            }
+        }
+    } else {
+        dockLabel = 'State Dry Dock (3x cost, 3 ticks) — no private dock in port';
+    }
+
+    const finalCost = Math.round(baseCost * costMultiplier);
+
+    const { data: freshCash } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
+    const cash = Number(freshCash?.corp_cash_reserves ?? 0);
+    if (cash < finalCost) { alert('Insufficient cash. Need ' + hfFmtBig(finalCost) + ', have ' + hfFmtBig(cash) + '.'); return; }
+
+    if (!confirm('Send ' + (vessel.vessel_name || 'vessel') + ' to dry dock?\n\n'
+        + 'Dock: ' + dockLabel + '\n'
+        + 'Cost: ' + hfFmtBig(finalCost) + '\n'
+        + 'Duration: ' + repairTicks + ' ticks\n'
+        + 'Condition restored to 85-100%.')) return;
 
     _flActionLock = true;
     const currentTick = shard?.current_tick || 0;
 
-    const { error: cashErr } = await _supabase.from('factions').update({
-        corp_cash_reserves: cash - cost,
-    }).eq('id', faction.id);
-    if (cashErr) { alert('Failed: ' + cashErr.message); _flActionLock = false; return; }
+    try {
+        // Deduct cost
+        const { error: cashErr } = await _supabase.from('factions').update({
+            corp_cash_reserves: cash - finalCost,
+        }).eq('id', faction.id);
+        if (cashErr) { alert('Failed: ' + cashErr.message); return; }
 
-    const { error: vesselErr } = await _supabase.from('corp_vessels').update({
-        status: 'dry_dock',
-        drydock_until_tick: currentTick + 3,
-        active_claim_id: null,
-    }).eq('id', vesselId);
-    if (vesselErr) {
-        await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
-        alert('Failed: ' + vesselErr.message);
+        // Pay revenue to dock owner if using another corp's dock
+        if (dockType === 'other' && dockOwnerFactionId) {
+            const dockRevenue = finalCost - baseCost;
+            const { data: dockOwner } = await _supabase.from('factions')
+                .select('corp_cash_reserves').eq('id', dockOwnerFactionId).single();
+            if (dockOwner) {
+                await _supabase.from('factions').update({
+                    corp_cash_reserves: Number(dockOwner.corp_cash_reserves || 0) + dockRevenue,
+                }).eq('id', dockOwnerFactionId);
+            }
+        }
+
+        // Send vessel to dry dock
+        const { error: vesselErr } = await _supabase.from('corp_vessels').update({
+            status: 'dry_dock',
+            drydock_until_tick: currentTick + repairTicks,
+            active_claim_id: null,
+        }).eq('id', vesselId);
+        if (vesselErr) {
+            // Refund on failure
+            await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+            alert('Failed: ' + vesselErr.message);
+            return;
+        }
+
+        faction.corp_cash_reserves = cash - finalCost;
+        await loadFleet();
+    } catch (err) {
+        alert('Dry dock failed: ' + (err.message || 'Error'));
+    } finally {
         _flActionLock = false;
-        return;
     }
-
-    faction.corp_cash_reserves = cash - cost;
-    _flActionLock = false;
-    await loadFleet();
 }
 
 async function flRefuel(vesselId, cost) {

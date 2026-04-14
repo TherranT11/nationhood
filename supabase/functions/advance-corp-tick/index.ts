@@ -3252,10 +3252,50 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
                             // Forced dry dock if condition drops below 20%
                             if (newCond < 20 && v.status !== 'in_transit') {
+                                // Check for dry dock: own > other corp > state
+                                const portNationId = v.current_port_nation_id || nation.id;
+                                const { data: ownDock } = await supabase.from('corp_properties')
+                                    .select('id').eq('faction_id', corp.id).eq('nation_id', portNationId)
+                                    .eq('type', 'dry_dock').eq('is_active', true).limit(1).maybeSingle();
+                                const { data: otherDock } = !ownDock ? await supabase.from('corp_properties')
+                                    .select('id, faction_id').neq('faction_id', corp.id).eq('nation_id', portNationId)
+                                    .eq('type', 'dry_dock').eq('is_active', true).limit(1).maybeSingle() : { data: null };
+
+                                // Repair cost based on damage: $2-5M base
+                                const damagePercent = (100 - newCond) / 100;
+                                const baseRepairCost = 2000000 + Math.round(damagePercent * 3000000);
+                                let repairCost, repairTicks;
+
+                                if (ownDock) {
+                                    repairCost = baseRepairCost; // Own dock: base cost
+                                    repairTicks = 2;
+                                } else if (otherDock) {
+                                    repairCost = Math.round(baseRepairCost * 1.2); // Other corp: +20%
+                                    repairTicks = 2;
+                                    // Pay revenue to dock owner
+                                    const dockRevenue = repairCost - baseRepairCost;
+                                    const { data: dockOwner } = await supabase.from('factions')
+                                        .select('corp_cash_reserves').eq('id', otherDock.faction_id).single();
+                                    if (dockOwner) {
+                                        await supabase.from('factions').update({
+                                            corp_cash_reserves: Number(dockOwner.corp_cash_reserves || 0) + dockRevenue,
+                                        }).eq('id', otherDock.faction_id);
+                                    }
+                                } else {
+                                    repairCost = baseRepairCost * 3; // State dock: 3x
+                                    repairTicks = 3; // Slower at state dock
+                                }
+
+                                // Deduct repair cost
+                                const corpCashForRepair = Number(corp.corp_cash_reserves ?? 0);
+                                await supabase.from('factions').update({
+                                    corp_cash_reserves: Math.max(0, corpCashForRepair - repairCost),
+                                }).eq('id', corp.id);
+
                                 updates.status = 'dry_dock';
-                                updates.drydock_until_tick = currentTick + 3; // 3 ticks to repair
+                                updates.drydock_until_tick = currentTick + repairTicks;
                                 updates.active_claim_id = null;
-                                console.log(`[advance-corp-tick] Vessel ${v.vessel_name}: forced dry dock (condition ${newCond}%)`);
+                                console.log(`[advance-corp-tick] Vessel ${v.vessel_name}: forced dry dock (condition ${newCond}%), cost: $${Math.round(repairCost/1000)}k, ${repairTicks} ticks, ${ownDock ? 'OWN' : otherDock ? 'OTHER CORP' : 'STATE'} dock`);
                             }
                         }
 
