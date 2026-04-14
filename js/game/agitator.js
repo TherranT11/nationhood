@@ -55,9 +55,8 @@ export function getSkillLabel(skill) {
  */
 export function calculateAgitatorCost(skill) {
     var t = Math.max(0, (skill - 20)) / 65; // 0 to 1
-    var curved = t * t * 0.5 + t * 0.5;     // quadratic bias
-    var cost = 200000 + curved * 4800000;    // $200k to $5M
-    return Math.round(cost / 50000) * 50000; // round to nearest $50k
+    var cost = 120000 + t * 280000;          // $120k to $400k, linear
+    return Math.round(cost / 25000) * 25000; // round to nearest $25k
 }
 
 // ═══════════════════════════════════════════════════
