@@ -573,6 +573,7 @@ body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
 }
 .nav-badge--crimson { background: #a65d5d; }
 .nav-badge--amber { background: #b09a5b; }
+@keyframes coalition-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 /* ===== MAIN CONTENT AREA ===== */
 #content-area { flex: 1; overflow-y: auto; overflow-x: hidden; }
 

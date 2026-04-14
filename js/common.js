@@ -506,6 +506,9 @@ export function renderNavTabs(activeTab) {
         if (tab.id === 'diplomacy') {
             badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
         }
+        if (tab.id === 'politics') {
+            badgeHtml = '<span class="nav-badge nav-badge--amber" id="politics-badge" style="display:none;min-width:8px;height:8px;line-height:8px;border-radius:50%;padding:0;top:4px;right:4px;animation:coalition-pulse 1.5s ease-in-out infinite;"></span>';
+        }
         return `
             <a href="${href}"
                class="nav-tab ${tab.id === activeTab ? 'active' : ''}"
@@ -762,6 +765,37 @@ async function updateConflictsBadge(faction, nation) {
     }
 }
 
+
+// ===== COALITION FORMATION BADGE (no government formed after election) =====
+
+async function checkCoalitionFormationBadge(nation) {
+    const badge = document.getElementById('politics-badge');
+    if (!badge || !nation) return;
+    try {
+        // Check: completed election exists AND no formed government
+        const [electionResult, formedResult] = await Promise.all([
+            _supabase.from('elections')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nation.id)
+                .eq('status', 'completed'),
+            _supabase.from('government_formations')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nation.id)
+                .eq('status', 'formed'),
+        ]);
+
+        const hasElection = (electionResult.count || 0) > 0;
+        const hasFormedGov = (formedResult.count || 0) > 0;
+
+        if (hasElection && !hasFormedGov) {
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        // Non-critical — don't break the page
+    }
+}
 
 // ===== IPO INVITE BADGE (pending org invitations) =====
 
@@ -1386,6 +1420,9 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'conflicts') {
         updateConflictsBadge(state.faction, state.nation);
     }
+
+    // Check if coalition formation is needed (amber badge on Actions tab)
+    checkCoalitionFormationBadge(state.nation);
 
     // Lazy-load messaging bubble (deferred — not needed for initial render)
     const _msgState = state;
