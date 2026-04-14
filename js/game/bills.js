@@ -1172,6 +1172,22 @@ export async function resolveExpiredVotes(supabase, nationId) {
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
 
+        // Absolute Monarchy: ordinary bills that pass go to royal assent instead of auto-enacting
+        const isMonarchy = (nation?.government_type || '').toLowerCase().includes('monarchy');
+        const isOrdinaryBill = !isNoConfidence && !isFoundational
+            && bill.bill_type !== 'impeachment_motion' && bill.bill_type !== 'impeachment_conviction'
+            && bill.bill_type !== 'veto_override' && bill.bill_type !== 'default_resolution';
+        if (isMonarchy && passed && isOrdinaryBill) {
+            await supabase.from('bills').update({
+                status: 'awaiting_royal_assent',
+                votes_for: votesFor,
+                votes_against: votesAgainst,
+                votes_abstain: votesAbstain,
+            }).eq('id', bill.id);
+            results.push({ billId: bill.id, billName: bill.bill_name, resolution: 'awaiting_royal_assent', votesFor, votesAgainst });
+            continue; // skip normal enactment — monarch decides
+        }
+
         if (isNoConfidence) {
             // Handle no-confidence resolution (pass or fail)
             if (passed) {
