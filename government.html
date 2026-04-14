@@ -1312,9 +1312,9 @@ function renderAdminCabinet() {
             html += `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;padding:8px 0;">Vacant — awaiting appointment</div>`;
         }
 
-        // Expanded content placeholder (Phase 4 will fill this)
+        // Expanded content: ministry actions + dismiss/resign
         if (isExpanded) {
-            html += `<div id="ga-ministry-expanded-${m.ministry_key}" class="ga-ministry-expanded">Phase 4 — actions will render here</div>`;
+            html += renderMinistryExpandedContent(m, pColor);
         }
 
         // Expand hint
@@ -1339,6 +1339,93 @@ function renderAdminCabinet() {
         renderAdminCabinet();
     });
 }
+function renderMinistryExpandedContent(ministry, partyColor) {
+    const key = ministry.ministry_key;
+    const isMyMinistry = currentFaction && ministry.party_id === currentFaction.id;
+    const isFilled = ministry.minister_first_name && ministry.minister_last_name;
+
+    let html = `<div class="ga-ministry-expanded">`;
+
+    // Foreign ministry → link to diplomacy
+    if (key === 'foreign') {
+        html += `<div style="padding:5px 8px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);background:var(--bg-card);border:1px solid var(--border-main);">Foreign Ministry actions are conducted in the <a href="diplomacy.html" style="color:var(--accent);text-decoration:underline;">Diplomacy panel</a>.</div>`;
+    } else {
+        // Ministry actions from config
+        const actionConfig = MINISTRY_ACTIONS[key];
+        const actions = actionConfig?.actions?.filter(a => !a.comingSoon) || [];
+
+        if (actions.length > 0) {
+            html += `<div class="ga-stat-label" style="margin-bottom:4px;">MINISTRY ACTIONS</div>`;
+            for (const action of actions) {
+                // AP cost (scaled by use count)
+                const countKey = key + ':' + action.id;
+                const useCount = ministryActionUseCounts[countKey] || 0;
+                const apCost = action.apCosts ? action.apCosts[Math.min(useCount, action.apCosts.length - 1)] : '?';
+
+                // Active check
+                const actionId = key + '-' + action.id;
+                const isActive = !!activeMinistryActions[actionId];
+
+                // Effect tags
+                const effects = action.baseEffects || [];
+                const effectTags = effects.filter(e => e.stat_key !== 'minister_approval').map(e => {
+                    const name = formatStatName(e.stat_key);
+                    const sign = e.direction === 'up' ? '+' : '-';
+                    const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat_key))
+                        || (e.direction === 'down' && STATS_LOWER_IS_BETTER.has(e.stat_key));
+                    const color = isGood ? 'var(--green)' : 'var(--red)';
+                    return `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${name} ${sign}${e.rate}</span>`;
+                });
+
+                // Direction-based actions (healthcare pharma, labor policy)
+                if (action.directions && !action.baseEffects) {
+                    for (const [dir, cfg] of Object.entries(action.directions)) {
+                        const dirEffects = (cfg.baseEffects || []).filter(e => e.stat_key !== 'minister_approval');
+                        for (const e of dirEffects) {
+                            const name = formatStatName(e.stat_key);
+                            const sign = e.direction === 'up' ? '+' : '-';
+                            const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat_key))
+                                || (e.direction === 'down' && STATS_LOWER_IS_BETTER.has(e.stat_key));
+                            effectTags.push(`<span class="ga-effect-tag" style="color:${isGood ? 'var(--green)' : 'var(--red)'};border-color:${isGood ? 'var(--green)' : 'var(--red)'}30;">${name} ${sign}${e.rate}</span>`);
+                        }
+                    }
+                }
+
+                // Tags from config (RAISES CAPITAL, SAVES, etc.)
+                if (action.tags) {
+                    for (const t of action.tags) {
+                        const cls = t.cls === 'positive' ? 'var(--green)' : t.cls === 'negative' ? 'var(--red)' : 'var(--text-dim)';
+                        effectTags.push(`<span class="ga-effect-tag" style="color:${cls};border-color:${cls}30;">${escapeHtml(t.label)}</span>`);
+                    }
+                }
+
+                html += `<div class="ga-action-card${isActive ? ' active' : ''}">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${isActive ? 'var(--green)' : 'var(--text-bright)'};">${escapeHtml(action.name)}${isActive ? ' <span style="font-size:7px;">ACTIVE</span>' : ''}</span>
+                        <span class="ga-ap-badge">${apCost} AP</span>
+                    </div>
+                    <div style="font-size:8px;color:var(--text-dim);line-height:1.4;margin-bottom:4px;">${escapeHtml(action.desc)}</div>
+                    ${effectTags.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;">${effectTags.join('')}</div>` : ''}
+                </div>`;
+            }
+        }
+    }
+
+    // Dismiss / Resign button (PM only)
+    if (isFilled && isPMParty) {
+        const isOwnPartyMinister = ministry.party_id === currentFaction?.id;
+        const actionLabel = isOwnPartyMinister ? 'RESIGN' : 'DISMISS';
+        const actionColor = isOwnPartyMinister ? 'var(--orange)' : 'var(--red)';
+        html += `<div style="margin-top:8px;display:flex;gap:6px;">
+            <div class="ga-dismiss-btn" style="color:${actionColor};border-color:${actionColor}44;"
+                onclick="event.stopPropagation();fireMinister('${escapeHtml(key)}')">${actionLabel}</div>
+        </div>`;
+    }
+
+    html += `</div>`;
+    return html;
+}
+
 function renderAdminChat() {
     const el = document.getElementById('gov-admin-chat');
     if (!el) return;
@@ -1392,9 +1479,37 @@ async function loadGovData() {
             isPMParty = (currentFaction?.id === pmFactionId);
         }
 
+        // Load ministry action logs for active action detection + use counts
+        activeMinistryActions = {};
+        ministryActionUseCounts = {};
+        try {
+            const { data: actionLogs } = await _supabase.from('ministry_action_log')
+                .select('ministry_key, action_key, processed, applied_at_tick, action_data')
+                .eq('nation_id', currentNation.id);
+            if (actionLogs) {
+                for (const log of actionLogs) {
+                    const countKey = log.ministry_key + ':' + log.action_key;
+                    ministryActionUseCounts[countKey] = (ministryActionUseCounts[countKey] || 0) + 1;
+                    if (!log.processed) {
+                        const actionId = log.ministry_key + '-' + log.action_key;
+                        if (log.action_data?.direction) {
+                            activeMinistryActions[actionId] = log.action_data.direction;
+                        } else {
+                            activeMinistryActions[actionId] = true;
+                        }
+                    }
+                }
+            }
+        } catch (_) { /* non-fatal — actions just won't show active state */ }
+
+        // Also set legacy globals so existing window.fireMinister etc. still work
+        ministryData = ministriesRes.data || [];
+        coalitionData = coalition;
+        allParties = allParties;
+
         _govData = {
             coalition,
-            ministries: ministriesRes.data || [],
+            ministries: ministryData,
             parties: allParties,
             hog,
             president,
