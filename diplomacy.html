@@ -1287,7 +1287,7 @@ function initWorldMap() {
     if (!panel || !img) return;
 
     let scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
-    const minScale = 0.5, maxScale = 4;
+    const minScale = 1, maxScale = 4;
 
     function applyTransform() {
         img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
