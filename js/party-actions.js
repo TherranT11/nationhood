@@ -536,7 +536,7 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 <div class="pa-detail-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${portrait}</div>
                 <div>
                     <div style="display:flex;align-items:baseline;gap:6px;">
-                        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${role.color};">${role.title}</span>
+                        <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${role.color};">${role.title}</span>
                         <span class="pa-detail-name">${esc(leaderName)}</span>
                     </div>
                     <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; ${esc(faction.faction_name)}${age}</div>
@@ -610,7 +610,7 @@ function renderDeputyActionsPanel(role) {
                 <div class="pa-detail-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${initials(_deputy.first_name, _deputy.last_name)}</div>
                 <div>
                     <div style="display:flex;align-items:baseline;gap:6px;">
-                        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${role.color};">${role.title}</span>
+                        <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${role.color};">${role.title}</span>
                         <span class="pa-detail-name">${esc(_deputy.first_name)} ${esc(_deputy.last_name)}</span>
                     </div>
                     <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; Age ${_deputy.age} &middot; Skill: <span style="color:${sk.color};font-weight:700;">${_deputy.skill}</span></div>
@@ -1010,7 +1010,7 @@ function renderCampaignManagerPanel(role, faction) {
                 <div class="pa-detail-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">CM</div>
                 <div>
                     <div style="display:flex;align-items:baseline;gap:6px;">
-                        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${role.color};">${role.title}</span>
+                        <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${role.color};">${role.title}</span>
                     </div>
                     <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; ${esc(faction.faction_name)}</div>
                 </div>
@@ -1454,7 +1454,7 @@ function renderAgitatorActionsPanel(role) {
                 <div class="pa-detail-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${portrait}</div>
                 <div>
                     <div style="display:flex;align-items:baseline;gap:6px;">
-                        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${role.color};">${role.title}</span>
+                        <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${role.color};">${role.title}</span>
                         <span class="pa-detail-name">${esc(ag.first_name)} ${esc(ag.last_name)}</span>
                     </div>
                     <div class="pa-detail-meta">${esc(role.fullTitle)}, Age ${ag.age}${oppLabel}</div>
