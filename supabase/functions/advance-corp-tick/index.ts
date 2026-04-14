@@ -814,6 +814,7 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             required_workforce: requiredWf,
             modifiers: contractModifiers,
             status: 'open',
+            min_reputation: sector === 'mega_project' ? 60 : sector === 'industrial' ? 30 : 0,
             insurance_required: modifiedBudget >= 100000000,   // $100M+ requires insurance
             bond_required: modifiedBudget >= 200000000,        // $200M+ requires performance bond
             generated_at_tick: currentTick,
@@ -1223,22 +1224,19 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
             continue;
         }
 
-        // Select winner: 33% lowest price, 33% highest quality, 33% random
+        // Select winner: 50% lowest price, 50% highest quality (no random)
+        // This rewards player strategy — either undercut on cost or invest in quality
         const roll = Math.random();
         let winner;
         let method: string;
-        if (roll < 0.33) {
+        if (roll < 0.50) {
             // Lowest price (already sorted ascending)
             winner = bids![0];
             method = 'lowest_price';
-        } else if (roll < 0.66) {
+        } else {
             // Highest quality
             winner = bids!.reduce((best, b) => (b.estimated_quality || 0) > (best.estimated_quality || 0) ? b : best, bids![0]);
             method = 'highest_quality';
-        } else {
-            // Random
-            winner = bids![Math.floor(Math.random() * bids!.length)];
-            method = 'random';
         }
 
         await supabase.from('construction_contracts')

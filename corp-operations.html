@@ -4391,7 +4391,9 @@ async function loadContracts() {
         console.warn('Failed to load contracts:', error.message);
         contracts = [];
     } else {
-        contracts = data || [];
+        // Filter by reputation: corps only see contracts they're reputable enough for
+        const myRep = Number(faction.corp_reputation ?? 0);
+        contracts = (data || []).filter(c => myRep >= (c.min_reputation || 0));
     }
 
     // Load player's existing bids on open contracts
@@ -4480,6 +4482,19 @@ function renderActiveProjects() {
         const isLate = effectiveProgress > totalTicks;
         const isStalled = stalledTicks > 0;
 
+        // Diagnose stall reason
+        let stallReason = '';
+        if (isStalled) {
+            const reqWf = p.required_workforce || {};
+            const assignedWf = p.workers_assigned || {};
+            const wfShort = [];
+            if ((Number(assignedWf.general) || 0) < (Number(reqWf.general) || 0)) wfShort.push('General: ' + (Number(assignedWf.general) || 0) + '/' + (Number(reqWf.general) || 0));
+            if ((Number(assignedWf.skilled) || 0) < (Number(reqWf.skilled) || 0)) wfShort.push('Skilled: ' + (Number(assignedWf.skilled) || 0) + '/' + (Number(reqWf.skilled) || 0));
+            if ((Number(assignedWf.innovative) || 0) < (Number(reqWf.innovative) || 0)) wfShort.push('Innovative: ' + (Number(assignedWf.innovative) || 0) + '/' + (Number(reqWf.innovative) || 0));
+            if (wfShort.length > 0) stallReason = 'Workers needed — ' + wfShort.join(', ');
+            else stallReason = 'Materials needed — allocate from warehouse';
+        }
+
         const specCls = sectorClass(p.sector);
         const specLbl = sectorLabel(p.sector);
 
@@ -4496,7 +4511,7 @@ function renderActiveProjects() {
             </div>
             <div class="ap-budget">
                 <div class="ap-budget__header">
-                    <span class="ap-budget__label">PROGRESS${isStalled ? ' <span style="color:var(--orange);font-weight:700;font-size:7px;">⚠ STALLED ('+stalledTicks+' ticks — hire more workers)</span>' : ''}</span>
+                    <span class="ap-budget__label">PROGRESS${isStalled ? ' <span style="color:var(--orange);font-weight:700;font-size:7px;">⚠ STALLED ('+stalledTicks+' ticks) — '+escapeHtml(stallReason)+'</span>' : ''}</span>
                     <span class="ap-budget__values" style="color:${isLate ? 'var(--red)' : isStalled ? 'var(--orange)' : 'var(--teal)'}">
                         ${effectiveProgress}/${totalTicks} ticks ${isLate ? '<span style="color:var(--red);font-weight:700;"> OVERDUE</span>' : ''}
                     </span>
