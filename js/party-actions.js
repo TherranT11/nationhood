@@ -14,7 +14,8 @@ let _nationPlatforms = [];
 let _agitator = null;        // hired agitator or null
 let _isOpposition = false;   // is this faction in opposition?
 let _administration = null;  // active administration data
-let _lawsuits = [];          // faction's lawsuits (active + resolved) // all platforms in this nation (for momentum calc)
+let _lawsuits = [];          // faction's lawsuits (active + resolved)
+let _standing = null;        // faction_electoral_standing row (pillar scores)
 
 function esc(str) {
     if (!str) return '';
@@ -108,12 +109,17 @@ export async function initPartyActions(supabase, state) {
         return;
     }
 
-    // Fetch platforms + agitator + opposition status in parallel
-    const [myPlat, nationPlat, agitatorResult, oppositionResult] = await Promise.all([
+    // Fetch platforms + agitator + opposition status + electoral standing in parallel
+    const [myPlat, nationPlat, agitatorResult, oppositionResult, standingResult] = await Promise.all([
         _supabase.from('faction_platforms').select('*').eq('faction_id', faction.id).order('slot'),
         _supabase.from('faction_platforms').select('*').eq('nation_id', state.nation?.id),
         fetchActiveAgitator(_supabase, faction.id),
         checkOppositionStatus(_supabase, state.nation?.id, faction.id),
+        _supabase.from('faction_electoral_standing')
+            .select('ideological_alignment, visibility, raw_appeal')
+            .eq('faction_id', faction.id)
+            .eq('nation_id', state.nation?.id)
+            .maybeSingle(),
     ]);
 
     if (myPlat.error) console.error('[PartyActions] Failed to load faction platforms:', myPlat.error.message);
@@ -123,6 +129,7 @@ export async function initPartyActions(supabase, state) {
     _agitator = agitatorResult;
     _isOpposition = oppositionResult.isOpposition;
     _administration = oppositionResult.administration;
+    _standing = standingResult.data || null;
 
     // Fetch lawsuits if agitator is hired
     if (_agitator) {
@@ -176,16 +183,20 @@ function renderPage(root) {
                 </div>
                 <div class="pa-header-stats">
                     <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">Actions</div>
-                        <div class="pa-header-stat-value" style="color:var(--accent);">${ap} AP</div>
+                        <div class="pa-header-stat-label">Governance</div>
+                        <div class="pa-header-stat-value" style="color:var(--green);">${Math.round(approval)}</div>
                     </div>
                     <div class="pa-header-stat">
                         <div class="pa-header-stat-label">Momentum</div>
-                        <div class="pa-header-stat-value" style="color:var(--text-bright);">${momentum}</div>
+                        <div class="pa-header-stat-value" style="color:var(--text-bright);">${Math.round(momentum)}</div>
                     </div>
                     <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">Approval</div>
-                        <div class="pa-header-stat-value" style="color:#ca5;">${approval}%</div>
+                        <div class="pa-header-stat-label">Ideology</div>
+                        <div class="pa-header-stat-value" style="color:var(--purple, #8b7ec8);">${_standing ? Math.round(Number(_standing.ideological_alignment ?? 50)) : '\u2014'}</div>
+                    </div>
+                    <div class="pa-header-stat">
+                        <div class="pa-header-stat-label">Total</div>
+                        <div class="pa-header-stat-value" style="color:var(--accent);">${_standing ? Math.round(Number(_standing.raw_appeal ?? 0)) : '\u2014'}</div>
                     </div>
                 </div>
             </div>
@@ -955,7 +966,7 @@ function openStatementModal(root) {
                     <textarea class="pa-modal-input" id="pa-stmt-body" rows="5" placeholder="Write your public statement..." style="resize:none;font-family:var(--font-ui);font-size:11px;line-height:1.6;"></textarea>
                     <div style="display:flex;justify-content:space-between;margin-top:3px;">
                         <span id="pa-stmt-charcount" style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">0 characters</span>
-                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Min 50 characters</span>
+                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Min 10 characters</span>
                     </div>
                 </div>
                 <div style="padding:6px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);">
@@ -983,17 +994,17 @@ function openStatementModal(root) {
     document.getElementById('pa-stmt-cancel')?.addEventListener('click', close);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
-    // Topic selection
+    // Topic selection — reset inactive cards to original dim color (not empty string)
     document.getElementById('pa-stmt-topics')?.addEventListener('click', (e) => {
         const card = e.target.closest('.pa-topic-card');
         if (!card) return;
         selectedTopic = card.dataset.topic;
         document.querySelectorAll('.pa-topic-card').forEach(c => {
             const isActive = c.dataset.topic === selectedTopic;
-            c.style.borderColor = isActive ? partyColor : '';
+            c.style.borderColor = isActive ? partyColor : 'var(--border-mid)';
             c.style.background = isActive ? partyColor + '0a' : '';
             const label = c.querySelector('span:last-child');
-            if (label) label.style.color = isActive ? 'var(--text-bright)' : '';
+            if (label) label.style.color = isActive ? 'var(--text-bright)' : 'var(--text-secondary)';
         });
         updateSubmitState();
     });
@@ -1004,7 +1015,7 @@ function openStatementModal(root) {
         const btn = document.getElementById('pa-stmt-submit');
         const cc = document.getElementById('pa-stmt-charcount');
         if (cc) cc.textContent = `${body.length} characters`;
-        if (btn) btn.disabled = !(selectedTopic && body.length >= 50);
+        if (btn) btn.disabled = !(selectedTopic && body.length >= 10);
     };
     document.getElementById('pa-stmt-body')?.addEventListener('input', updateSubmitState);
 
@@ -1012,7 +1023,7 @@ function openStatementModal(root) {
     document.getElementById('pa-stmt-submit')?.addEventListener('click', async () => {
         if (submitting) return;
         const body = document.getElementById('pa-stmt-body')?.value?.trim();
-        if (!selectedTopic || !body || body.length < 50) return;
+        if (!selectedTopic || !body || body.length < 10) return;
 
         submitting = true;
         const btn = document.getElementById('pa-stmt-submit');

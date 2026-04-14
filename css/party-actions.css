@@ -402,3 +402,95 @@
     .pa-detail-header { padding: 8px 12px; }
     .pa-action-item { padding: 10px 12px; }
 }
+
+/* ════════════════════════ COALITION FORMATION (Election tab) ════════════════════════ */
+.cf-page { padding: 16px 20px 40px; max-width: 900px; margin: 0 auto; }
+
+/* Banner */
+.cf-banner { border: 1px solid var(--border-main); margin-bottom: 16px; }
+.cf-banner--safe { border-left: 3px solid var(--accent); }
+.cf-banner--warning { border-left: 3px solid var(--orange); }
+.cf-banner--critical { border-left: 3px solid var(--red); }
+.cf-banner-header { padding: 14px 16px; display: flex; gap: 10px; align-items: flex-start; background: var(--bg-card); }
+.cf-banner-icon { font-size: 20px; }
+.cf-banner-title { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--text-bright); letter-spacing: 0.06em; }
+.cf-banner-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.cf-countdown { padding: 10px 16px; }
+.cf-countdown-track { height: 6px; background: var(--bg-hover); margin-bottom: 6px; }
+.cf-countdown-fill { height: 100%; transition: width 0.3s; }
+.cf-countdown-fill--safe { background: var(--accent); }
+.cf-countdown-fill--warning { background: var(--orange); }
+.cf-countdown-fill--critical { background: var(--red); }
+.cf-countdown-text { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.cf-penalties { display: flex; gap: 6px; padding: 0 16px 14px; }
+.cf-penalty-card { flex: 1; padding: 8px 12px; background: var(--bg-panel); border: 1px solid var(--border-main); text-align: center; }
+.cf-penalty-val { font-family: var(--font-mono); font-size: 18px; font-weight: 700; }
+.cf-penalty-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+
+/* No formation state */
+.cf-no-formation { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 300px; text-align: center; }
+.cf-no-icon { font-size: 2rem; margin-bottom: 10px; color: var(--green); }
+.cf-no-title { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--text-bright); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+.cf-no-desc { font-size: 13px; color: var(--text-dim); }
+.cf-note { padding: 10px 14px; font-size: 13px; color: var(--text-dim); border: 1px solid var(--border-main); background: var(--bg-card); margin-bottom: 12px; }
+
+/* Section titles */
+.cf-section-title { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+.cf-section-desc { font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
+
+/* Party checkbox grid */
+.cf-party-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 10px; }
+.cf-party-check { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border: 1px solid var(--border-main); transition: background 0.12s; }
+.cf-party-check:hover { background: var(--bg-hover); }
+.cf-party-check.checked { background: var(--bg-card); }
+.cf-party-check.disabled { opacity: 0.5; cursor: default; }
+.cf-check-box { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--green); border: 1px solid var(--border-mid); flex-shrink: 0; }
+.cf-check-name { font-size: 13px; font-weight: 600; color: var(--text-bright); flex: 1; }
+.cf-check-seats { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+/* Seat preview */
+.cf-seat-preview { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); padding: 8px 0; margin-bottom: 10px; }
+.cf-preview-val { font-weight: 700; color: var(--text-bright); }
+
+/* Submit button */
+.cf-submit-btn { display: block; width: 100%; max-width: 300px; margin: 0 auto; padding: 10px 20px; font-family: var(--font-mono); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--bg-body); background: var(--accent); border: none; cursor: pointer; transition: opacity 0.15s; }
+.cf-submit-btn:hover { opacity: 0.85; }
+.cf-submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Proposals grid */
+.cf-proposals-grid { display: flex; flex-direction: column; gap: 6px; }
+.cf-proposal-card { padding: 12px 16px; border: 1px solid var(--border-main); border-left: 3px solid var(--border-main); background: var(--bg-panel); }
+.cf-proposal-card.supporting { border-left-color: var(--green); background: rgba(92,184,92,0.04); }
+.cf-proposal-card.not-invited { opacity: 0.5; }
+.cf-proposal-title { font-size: 14px; font-weight: 700; color: var(--text-bright); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.cf-proposal-seats { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.cf-proposal-chips { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+.cf-party-chip { font-family: var(--font-mono); font-size: 10px; padding: 2px 8px; border: 1px solid var(--border-mid); color: var(--text-secondary); }
+.cf-proposal-support { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+.cf-status { font-family: var(--font-mono); font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 2px; }
+.cf-status--supporting { color: var(--green); background: rgba(92,184,92,0.12); }
+.cf-status--invited { color: var(--amber); background: rgba(200,166,78,0.12); }
+.cf-status--locked { color: var(--text-dim); background: rgba(255,255,255,0.04); }
+
+/* Support/withdraw buttons */
+.cf-support-btn, .cf-withdraw-btn { padding: 6px 16px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; cursor: pointer; border: none; }
+.cf-support-btn { color: #fff; background: var(--green); }
+.cf-support-btn:hover { opacity: 0.85; }
+.cf-withdraw-btn { color: var(--red); background: transparent; border: 1px solid var(--red-border); }
+.cf-withdraw-btn:hover { background: var(--red-faint); }
+
+/* Notification badge */
+.pa-subtab-badge { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); margin-left: 6px; vertical-align: middle; animation: cf-pulse 1.5s ease-in-out infinite; }
+@keyframes cf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .cf-party-grid { grid-template-columns: 1fr; }
+    .cf-penalties { flex-direction: column; }
+}
+@media (max-width: 480px) {
+    .cf-page { padding: 10px 8px 32px; }
+    .cf-banner-title { font-size: 12px; }
+    .cf-banner-subtitle { font-size: 12px; }
+    .cf-penalty-val { font-size: 14px; }
+}
