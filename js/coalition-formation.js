@@ -4,7 +4,6 @@
 
 import { buildMinistryBaselines } from './game/stats.js';
 import { autoAppointPartyLeaderAsPM, getNationNames } from './game/political-actions.js';
-import { rolloverAdministration } from './game/elections.js';
 
 let _supabase = null;
 let _state = null;
@@ -199,7 +198,6 @@ export async function renderFormationTab(root) {
             // Show ministry assignment when all coalition members have supported
             const allSupported = f.supportCount >= f.coalitionSize;
             const isExpanded = _expandedFormationId === f.id;
-            const isMyProposal = f.proposed_by === faction.id;
             const showConfigBtn = allSupported && f.iAmInvited && !isExpanded;
             const showConfig = allSupported && isExpanded;
 
@@ -365,8 +363,9 @@ async function formGovernmentFallback(formation) {
     const nationId = _state.nation.id;
 
     // Cancel rival formations
-    await _supabase.from('government_formations').update({ status: 'cancelled' })
+    const { error: cancelErr } = await _supabase.from('government_formations').update({ status: 'cancelled' })
         .eq('nation_id', nationId).eq('status', 'active').neq('id', formation.id);
+    if (cancelErr) console.warn('[Coalition] Failed to cancel rival formations:', cancelErr.message);
 
     // Mark this formation as formed
     const { error: formErr } = await _supabase.from('government_formations').update({
@@ -376,7 +375,8 @@ async function formGovernmentFallback(formation) {
     if (formErr) throw formErr;
 
     // Reset failed formation attempts
-    await _supabase.from('nations').update({ failed_formation_attempts: 0 }).eq('id', nationId);
+    const { error: resetErr } = await _supabase.from('nations').update({ failed_formation_attempts: 0 }).eq('id', nationId);
+    if (resetErr) console.warn('[Coalition] Failed to reset formation attempts:', resetErr.message);
 
     // Create ministry records from assignments
     for (const [key, partyId] of Object.entries(_ministryAssignments)) {
