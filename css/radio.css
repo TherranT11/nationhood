@@ -734,8 +734,46 @@
 .stype-commercial { color: var(--blue); }
 .stype-state      { color: var(--amber); }
 
+/* ── Two column layout: broadcasts left, events right ── */
+.radio-two-col {
+    display: flex; gap: 12px; margin-top: 8px;
+}
+.radio-col-left { flex: 1; min-width: 0; }
+.radio-col-right { width: 340px; flex-shrink: 0; }
+
+/* ── Events panel ── */
+.radio-events-panel {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    display: flex; flex-direction: column; max-height: calc(100vh - 200px);
+    position: sticky; top: 12px;
+}
+.radio-events-header {
+    padding: 10px 14px; border-bottom: 1px solid var(--border-main);
+    background: var(--bg-card); display: flex; justify-content: space-between; align-items: center;
+    flex-shrink: 0;
+}
+.radio-events-title {
+    font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+    letter-spacing: 0.1em; color: var(--accent); text-transform: uppercase;
+}
+.radio-events-tabs { display: flex; gap: 2px; }
+.radio-events-tab {
+    padding: 2px 10px; font-family: var(--font-mono); font-size: 9px;
+    font-weight: 700; cursor: pointer; color: var(--text-dim);
+    background: transparent; border: 1px solid var(--border-main);
+}
+.radio-events-tab.active {
+    color: var(--text-bright); background: var(--bg-card);
+    border-color: var(--accent);
+}
+.radio-events-scroll {
+    flex: 1; overflow-y: auto;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
+    .radio-two-col { flex-direction: column; }
+    .radio-col-right { width: 100%; }
     .radio-main { flex-direction: column; }
     .radio-sidebar { width: 100%; min-width: 0; }
     .radio-header { flex-direction: column; align-items: flex-start; gap: 8px; }

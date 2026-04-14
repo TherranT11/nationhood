@@ -141,20 +141,44 @@ function fillTemplate(template, vars) {
 export async function fileLawsuit(supabase, params) {
     var { factionId, nationId, agitatorId, targetMinistry, basis, currentTick, partyName, administration } = params;
 
-    // Calculate corruption growth
-    var corruptionAtStart = Number(administration?.stats_at_start?.corruption ?? 50);
-    var { data: nationRow, error: nationErr } = await supabase
-        .from('nations')
-        .select('corruption')
-        .eq('id', nationId)
-        .single();
+    // Calculate metric growth based on legal basis
+    // civil_rights: uses freedom_index DECLINE (lower freedom = stronger case)
+    // all others: uses corruption GROWTH (higher corruption = stronger case)
+    var metricAtStart, metricNow, growth;
 
-    if (nationErr) {
-        return { success: false, lawsuit: null, tier: 0, error: 'Failed to fetch corruption data.' };
+    if (basis === 'civil_rights') {
+        // Freedom index: decline is bad for government, good for lawsuit
+        var freedomAtStart = Number(administration?.stats_at_start?.freedom_index ?? 50);
+        var { data: nationRow, error: nationErr } = await supabase
+            .from('nations')
+            .select('freedom_index')
+            .eq('id', nationId)
+            .single();
+        if (nationErr) {
+            return { success: false, lawsuit: null, tier: 0, error: 'Failed to fetch freedom index data.' };
+        }
+        metricNow = Number(nationRow?.freedom_index ?? 50);
+        metricAtStart = freedomAtStart;
+        // Growth = how much freedom DECLINED (positive = freedom dropped = stronger case)
+        growth = Math.max(0, metricAtStart - metricNow);
+    } else {
+        // Corruption: growth is bad for government, good for lawsuit
+        var corruptionAtStart = Number(administration?.stats_at_start?.corruption ?? 50);
+        var { data: nationRow, error: nationErr } = await supabase
+            .from('nations')
+            .select('corruption')
+            .eq('id', nationId)
+            .single();
+        if (nationErr) {
+            return { success: false, lawsuit: null, tier: 0, error: 'Failed to fetch corruption data.' };
+        }
+        metricNow = Number(nationRow?.corruption ?? 50);
+        metricAtStart = corruptionAtStart;
+        growth = Math.max(0, metricNow - metricAtStart);
     }
 
-    var corruptionNow = Number(nationRow?.corruption ?? 50);
-    var growth = Math.max(0, corruptionNow - corruptionAtStart);
+    var corruptionAtStart = metricAtStart; // for DB storage compatibility
+    var corruptionNow = metricNow;
     var tierInfo = calculateTier(growth);
     var effects = TIER_EFFECTS[tierInfo.tier];
     var resolvesAt = currentTick + 8;
