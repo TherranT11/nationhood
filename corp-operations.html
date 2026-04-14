@@ -2777,6 +2777,19 @@ body.light-mode .av-empty__text { color: #1a1a17; }
       <div class="fl-card__footer" id="fl-footer"></div>
     </div>
 
+    <!-- Port Facilities (Shipping corps only — Fuel Depots & Dry Docks) -->
+    <div class="sm-card" id="port-facilities-container" style="display:none;">
+      <div class="sm-card__header">
+        <div class="sm-card__header-left">
+          <div class="sm-card__dot" style="background:#c86a4a;"></div>
+          <span class="sm-card__label">Port Facilities</span>
+        </div>
+        <span class="sm-card__count" id="pf-count">0 FACILITIES</span>
+      </div>
+      <div id="pf-list" style="max-height:300px;overflow:auto;"></div>
+      <div id="pf-footer" style="padding:6px 12px;border-top:1px solid var(--border-0);background:var(--bg-3);display:flex;gap:6px;justify-content:space-between;"></div>
+    </div>
+
     <!-- Ship Market card (Shipping corps only) -->
     <div class="sm-card" id="sm-container" style="display:none;">
       <div class="sm-card__header">
@@ -7121,7 +7134,8 @@ async function init() {
         document.getElementById('av-container').style.display = '';
         document.getElementById('fl-container').style.display = '';
         document.getElementById('sm-container').style.display = '';
-        await Promise.all([loadAvailableRoutes(), loadActiveVoyages(), loadFleet(), loadShipMarket()]);
+        document.getElementById('port-facilities-container').style.display = '';
+        await Promise.all([loadAvailableRoutes(), loadActiveVoyages(), loadFleet(), loadShipMarket(), loadPortFacilities()]);
     } else {
         // Construction corps: load all construction data
         try {
@@ -12463,7 +12477,7 @@ function renderFleetCard() {
 
                 html += `<div style="display:flex;gap:4px;">
                     <div onclick="${locked ? '' : "flRefurbish('" + v.id + "'," + refurbCost + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${locked ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${locked ? 'var(--text-dim)' : '#5c5'};border:1px solid ${locked ? 'var(--border-0)' : '#2a5a3a'};background:${locked ? 'transparent' : 'rgba(74,170,136,0.06)'};opacity:${locked ? 0.35 : 1};">REFURBISH<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(refurbCost)}</span></div>
-                    <div onclick="${isTransit ? '' : "flRefuel('" + v.id + "'," + refuelCost + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${isTransit ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${isTransit ? 'var(--text-dim)' : '#c86a4a'};border:1px solid ${isTransit ? 'var(--border-0)' : 'rgba(200,106,74,0.3)'};opacity:${isTransit ? 0.35 : 1};">REFUEL<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(refuelCost)}</span></div>
+                    <div onclick="${isTransit ? '' : "flRefuel('" + v.id + "'," + refuelCost + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${isTransit ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${isTransit ? 'var(--text-dim)' : '#c86a4a'};border:1px solid ${isTransit ? 'var(--border-0)' : 'rgba(200,106,74,0.3)'};opacity:${isTransit ? 0.35 : 1};">REFUEL<br><span style="font-weight:400;font-size:6px;">from ${hfFmtBig(refuelCost)}</span></div>
                     <div onclick="${locked ? '' : "flSell('" + v.id + "','" + escapeHtml(v.vessel_name).replace(/'/g, '') + "'," + sellPrice + ")"}" style="flex:1;padding:5px 0;text-align:center;cursor:${locked ? 'not-allowed' : 'pointer'};font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:${locked ? 'var(--text-dim)' : '#c84'};border:1px solid ${locked ? 'var(--border-0)' : 'rgba(204,136,68,0.3)'};opacity:${locked ? 0.35 : 1};">LIST<br><span style="font-weight:400;font-size:6px;">${hfFmtBig(sellPrice)}</span></div>
                 </div>`;
 
@@ -12617,32 +12631,92 @@ async function flRefurbish(vesselId, baseCost) {
     }
 }
 
-async function flRefuel(vesselId, cost) {
+async function flRefuel(vesselId, baseCost) {
     if (_flActionLock || !faction) return;
-    const cash = Number(faction.corp_cash_reserves ?? 0);
-    if (cash < cost) { alert('Insufficient cash. Need ' + hfFmtBig(cost) + '.'); return; }
-    if (cost <= 0) { alert('Fuel tanks are already full.'); return; }
+    if (baseCost <= 0) { alert('Fuel tanks are already full.'); return; }
+
+    const vessel = (_fleetVessels || []).find(v => v.id === vesselId);
+    if (!vessel) return;
+
+    const portNationId = vessel.current_port_nation_id || faction.nation_id;
+
+    // Check for fuel depot: own > other corp > state (3x)
+    let depotType = 'state';
+    let costMultiplier = 3;
+    let depotOwnerFactionId = null;
+    let depotLabel = 'State Fuel (3x cost) — no private depot in port';
+
+    if (portNationId) {
+        const { data: ownDepot } = await _supabase.from('corp_properties')
+            .select('id').eq('faction_id', faction.id).eq('nation_id', portNationId)
+            .eq('type', 'fuel_depot').eq('is_active', true).limit(1).maybeSingle();
+
+        if (ownDepot) {
+            depotType = 'own';
+            costMultiplier = 1;
+            depotLabel = 'Your Fuel Depot (base cost)';
+        } else {
+            const { data: otherDepot } = await _supabase.from('corp_properties')
+                .select('id, faction_id, factions(faction_name)').neq('faction_id', faction.id).eq('nation_id', portNationId)
+                .eq('type', 'fuel_depot').eq('is_active', true).limit(1).maybeSingle();
+            if (otherDepot) {
+                depotType = 'other';
+                costMultiplier = 1.15;
+                depotOwnerFactionId = otherDepot.faction_id;
+                const ownerName = otherDepot.factions?.faction_name || 'Another corp';
+                depotLabel = ownerName + "'s Fuel Depot (+15%)";
+            }
+        }
+    }
+
+    const finalCost = Math.round(baseCost * costMultiplier);
+
+    const { data: freshCash } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
+    const cash = Number(freshCash?.corp_cash_reserves ?? 0);
+    if (cash < finalCost) { alert('Insufficient cash. Need ' + hfFmtBig(finalCost) + ', have ' + hfFmtBig(cash) + '.'); return; }
+
+    if (!confirm('Refuel ' + (vessel.vessel_name || 'vessel') + '?\n\n'
+        + 'Source: ' + depotLabel + '\n'
+        + 'Cost: ' + hfFmtBig(finalCost) + '\n'
+        + 'Fuel restored to 100%.')) return;
 
     _flActionLock = true;
 
-    const { error: cashErr } = await _supabase.from('factions').update({
-        corp_cash_reserves: cash - cost,
-    }).eq('id', faction.id);
-    if (cashErr) { alert('Failed: ' + cashErr.message); _flActionLock = false; return; }
+    try {
+        const { error: cashErr } = await _supabase.from('factions').update({
+            corp_cash_reserves: cash - finalCost,
+        }).eq('id', faction.id);
+        if (cashErr) { alert('Failed: ' + cashErr.message); return; }
 
-    const { error: vesselErr } = await _supabase.from('corp_vessels').update({
-        fuel: 100,
-    }).eq('id', vesselId);
-    if (vesselErr) {
-        await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
-        alert('Failed: ' + vesselErr.message);
+        // Pay revenue to depot owner if using another corp's depot
+        if (depotType === 'other' && depotOwnerFactionId) {
+            const depotRevenue = finalCost - baseCost;
+            const { data: depotOwner } = await _supabase.from('factions')
+                .select('corp_cash_reserves').eq('id', depotOwnerFactionId).single();
+            if (depotOwner) {
+                await _supabase.from('factions').update({
+                    corp_cash_reserves: Number(depotOwner.corp_cash_reserves || 0) + depotRevenue,
+                }).eq('id', depotOwnerFactionId);
+            }
+        }
+
+        const { error: vesselErr } = await _supabase.from('corp_vessels').update({
+            fuel: 100,
+        }).eq('id', vesselId);
+        if (vesselErr) {
+            // Refund on failure
+            await _supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', faction.id);
+            alert('Failed: ' + vesselErr.message);
+            return;
+        }
+
+        faction.corp_cash_reserves = cash - finalCost;
+        await loadFleet();
+    } catch (err) {
+        alert('Refuel failed: ' + (err.message || 'Error'));
+    } finally {
         _flActionLock = false;
-        return;
     }
-
-    faction.corp_cash_reserves = cash - cost;
-    _flActionLock = false;
-    await loadFleet();
 }
 
 async function flSell(vesselId, vesselName, price) {
@@ -12797,6 +12871,185 @@ async function flFileClaim(vesselId, vesselName) {
 
 window.flRequestInsurance = flRequestInsurance;
 window.flFileClaim = flFileClaim;
+
+// ════════════════════════════════════════════════════════════════════════════════
+// PORT FACILITIES — Fuel Depots & Dry Docks (Shipping corps)
+// ════════════════════════════════════════════════════════════════════════════════
+
+const PF_FACILITY_TYPES = {
+    fuel_depot: { label: 'FUEL DEPOT', color: '#c86a4a', icon: '⛽', desc: 'Bunkering facility — refuel at base cost, earn revenue from visiting fleets.' },
+    dry_dock:   { label: 'DRY DOCK',   color: '#c84',    icon: '🔧', desc: 'Repair & maintenance dock — dock at base cost, earn revenue from visiting fleets.' },
+};
+
+const PF_CATALOG = [
+    { type: 'fuel_depot', name: 'Fuel Depot — Standard',  cost: 15000000,  maint: 85000,  style: 'Basic',  desc: 'Bulk fuel storage and bunkering facility.' },
+    { type: 'fuel_depot', name: 'Fuel Depot — Advanced',  cost: 20000000,  maint: 110000, style: 'Modern', desc: 'High-capacity fuel terminal with pipeline infrastructure.' },
+    { type: 'dry_dock',   name: 'Dry Dock — Standard',    cost: 35000000,  maint: 150000, style: 'Basic',  desc: 'Ship repair and maintenance facility.' },
+    { type: 'dry_dock',   name: 'Dry Dock — Advanced',    cost: 50000000,  maint: 200000, style: 'Modern', desc: 'Full-service shipyard with drydock and crane facilities.' },
+];
+
+let _portFacilities = [];
+
+async function loadPortFacilities() {
+    if (!faction || faction.corp_sector !== 'Shipping') return;
+    const { data } = await _supabase.from('corp_properties')
+        .select('*')
+        .eq('faction_id', faction.id)
+        .in('type', ['fuel_depot', 'dry_dock'])
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+    _portFacilities = data || [];
+    renderPortFacilities();
+}
+
+function renderPortFacilities() {
+    const countEl = document.getElementById('pf-count');
+    const listEl = document.getElementById('pf-list');
+    const footerEl = document.getElementById('pf-footer');
+    if (!countEl || !listEl || !footerEl) return;
+
+    const facilities = _portFacilities;
+    countEl.textContent = facilities.length + ' FACILIT' + (facilities.length === 1 ? 'Y' : 'IES');
+
+    if (facilities.length === 0) {
+        listEl.innerHTML = `<div style="padding:20px;text-align:center;">
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-bottom:6px;">No port facilities built.</div>
+            <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">Build a <span style="color:#c86a4a;font-weight:700;">Fuel Depot</span> to refuel your fleet at base cost<br>and earn revenue from other corps refueling here.<br>Build a <span style="color:#c84;font-weight:700;">Dry Dock</span> to repair vessels at base cost.</div>
+        </div>`;
+    } else {
+        let totalMaint = 0;
+        listEl.innerHTML = facilities.map(f => {
+            const meta = PF_FACILITY_TYPES[f.type] || PF_FACILITY_TYPES.fuel_depot;
+            const cc = f.condition >= 75 ? '#5c5' : f.condition >= 50 ? '#ca5' : '#c84';
+            totalMaint += Number(f.monthly_maintenance || 0);
+            return `<div style="padding:8px 12px;border-bottom:1px solid var(--border-0);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:12px;">${meta.icon}</span>
+                        <span style="font-size:11px;font-weight:600;color:var(--text-bright);">${escapeHtml(f.name)}</span>
+                    </div>
+                    <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:1px 5px;color:${meta.color};background:${meta.color}12;border:1px solid ${meta.color}25;">${meta.label}</span>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:4px;">${f.city || 'Port'} · ${(f.style || 'Basic').toUpperCase()}</div>
+                <div style="display:flex;gap:12px;margin-bottom:4px;">
+                    <div style="flex:1;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                            <span style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.5px;">CONDITION</span>
+                            <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${cc};">${f.condition}%</span>
+                        </div>
+                        <div style="width:100%;height:3px;background:var(--border-0);"><div style="width:${f.condition}%;height:100%;background:${cc};"></div></div>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                            <span style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.5px;">MAINT / TICK</span>
+                            <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:#a44;">${hfFmtBig(f.monthly_maintenance || 0)}</span>
+                        </div>
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">VALUE: ${hfFmtBig(f.purchase_price || 0)}</div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // Footer: BUILD buttons
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const hasDepot = facilities.some(f => f.type === 'fuel_depot');
+    const hasDock = facilities.some(f => f.type === 'dry_dock');
+
+    footerEl.innerHTML = `
+        <div onclick="pfOpenBuild('fuel_depot')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.5px;color:#c86a4a;border:1px solid rgba(200,106,74,0.3);background:rgba(200,106,74,0.04);">
+            ${hasDepot ? '+ FUEL DEPOT' : 'BUILD FUEL DEPOT'}
+        </div>
+        <div onclick="pfOpenBuild('dry_dock')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.5px;color:#c84;border:1px solid rgba(204,136,68,0.3);background:rgba(204,136,68,0.04);">
+            ${hasDock ? '+ DRY DOCK' : 'BUILD DRY DOCK'}
+        </div>`;
+}
+
+let _pfBuilding = false;
+
+async function pfOpenBuild(facilityType) {
+    if (_pfBuilding || !faction || !shard) return;
+
+    // Get available catalog options for this type
+    const options = PF_CATALOG.filter(c => c.type === facilityType);
+    if (options.length === 0) return;
+
+    const meta = PF_FACILITY_TYPES[facilityType];
+    const capital = nationStats?.capital || 'Port City';
+
+    // Check how many of this type the corp already has in this nation
+    const existingCount = _portFacilities.filter(f => f.type === facilityType && f.nation_id === faction.nation_id).length;
+
+    // Build selection prompt
+    let promptMsg = meta.label + ' CONSTRUCTION\n' + '─'.repeat(30) + '\n';
+    if (existingCount > 0) {
+        promptMsg += 'You already have ' + existingCount + ' ' + meta.label.toLowerCase() + (existingCount > 1 ? 's' : '') + ' in this nation.\n\n';
+    }
+    promptMsg += meta.desc + '\n\n';
+
+    for (let i = 0; i < options.length; i++) {
+        const o = options[i];
+        promptMsg += (i + 1) + '. ' + o.name + '\n';
+        promptMsg += '   Cost: ' + hfFmtBig(o.cost) + ' · Maint: ' + hfFmtBig(o.maint) + '/tick\n';
+        promptMsg += '   ' + o.desc + '\n\n';
+    }
+
+    const { data: freshCash } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
+    const cash = Number(freshCash?.corp_cash_reserves ?? 0);
+    promptMsg += 'Your cash: ' + hfFmtBig(cash) + '\n\n';
+    promptMsg += 'Enter 1 or 2 to select (or cancel):';
+
+    const choice = prompt(promptMsg);
+    if (!choice) return;
+    const idx = parseInt(choice, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= options.length) { alert('Invalid selection.'); return; }
+
+    const selected = options[idx];
+    if (cash < selected.cost) {
+        alert('Insufficient cash.\nNeed: ' + hfFmtBig(selected.cost) + '\nHave: ' + hfFmtBig(cash));
+        return;
+    }
+
+    if (!confirm('Build ' + selected.name + ' in ' + capital + '?\n\nCost: ' + hfFmtBig(selected.cost) + '\nMaintenance: ' + hfFmtBig(selected.maint) + '/tick\n\nThis will be deducted from your cash reserves immediately.')) return;
+
+    _pfBuilding = true;
+    const currentTick = shard.current_tick || 0;
+
+    try {
+        // Insert facility
+        const { error: insertErr } = await _supabase.from('corp_properties').insert({
+            faction_id: faction.id,
+            nation_id: faction.nation_id,
+            name: selected.name,
+            type: facilityType,
+            style: selected.style,
+            capacity: 50,
+            purchase_price: selected.cost,
+            monthly_maintenance: selected.maint,
+            condition: 100,
+            city: capital + ' Port',
+            purchased_at_tick: currentTick,
+            is_active: true,
+        });
+        if (insertErr) throw insertErr;
+
+        // Deduct cash
+        const { error: cashErr } = await _supabase.from('factions').update({
+            corp_cash_reserves: cash - selected.cost,
+        }).eq('id', faction.id);
+        if (cashErr) throw cashErr;
+
+        faction.corp_cash_reserves = cash - selected.cost;
+        await loadPortFacilities();
+        alert(selected.name + ' constructed!\n\nLocation: ' + capital + ' Port\nYour fleet can now use this facility at base cost.\nOther corps will be charged a markup, generating revenue for you.');
+    } catch (err) {
+        alert('Construction failed: ' + (err.message || 'Error'));
+    } finally {
+        _pfBuilding = false;
+    }
+}
+
+window.pfOpenBuild = pfOpenBuild;
 
 // ════════════════════════════════════════════════════════════════════════════════
 // SHIP MARKET (Shipping corps)
