@@ -1034,8 +1034,13 @@ function renderAdministrationTab(container) {
             </div>
         </div>`;
     renderAdminBanner();
-    renderAdminTimeline();
+    renderAdminTimeline(); // renders with cached data or empty state
     renderAdminCabinet();
+
+    // Load timeline data async, then re-render
+    if (_timelineEvents.length === 0) {
+        loadTimelineData().then(() => renderAdminTimeline());
+    }
     renderAdminChat();
     renderAdminActions();
 }
@@ -1185,10 +1190,211 @@ function renderAdminBanner() {
     el.innerHTML = html;
 }
 
+let _timelineFilter = 'all';
+let _timelineEvents = [];
+
+async function loadTimelineData() {
+    if (!_govData?.admin || !currentNation) return;
+    const startTick = _govData.admin.started_at_tick || 0;
+    const nationId = currentNation.id;
+
+    try {
+        const [eventsRes, actionsRes, billsRes] = await Promise.all([
+            _supabase.from('event_log')
+                .select('id, event_name, category, fired_at_tick, description_used, description_chosen')
+                .eq('nation_id', nationId)
+                .gte('fired_at_tick', startTick)
+                .order('fired_at_tick', { ascending: false })
+                .limit(80),
+            _supabase.from('campaign_actions')
+                .select('id, action_type, tick_performed, result, action_data')
+                .eq('nation_id', nationId)
+                .gte('tick_performed', startTick)
+                .order('tick_performed', { ascending: false })
+                .limit(50),
+            _supabase.from('bills')
+                .select('id, bill_name, status, passed_tick, proposed_tick, bill_type')
+                .eq('nation_id', nationId)
+                .gte('proposed_tick', startTick)
+                .order('proposed_tick', { ascending: false })
+                .limit(50),
+        ]);
+
+        const merged = [];
+
+        // Events
+        for (const ev of (eventsRes.data || [])) {
+            const cat = (ev.category || '').toLowerCase();
+            let type = 'event';
+            if (cat.includes('crisis') || cat.includes('disaster')) type = 'crisis';
+            else if (cat.includes('politic') || cat.includes('government')) type = 'policy';
+            else if (cat.includes('trade') || cat.includes('econom')) type = 'economy';
+            else if (cat.includes('military') || cat.includes('security')) type = 'military';
+            merged.push({
+                tick: ev.fired_at_tick,
+                type,
+                title: ev.event_name || 'Event',
+                desc: ev.description_chosen || ev.description_used || '',
+                source: 'event',
+            });
+        }
+
+        // Campaign actions (minister appointments, platform changes, etc.)
+        for (const ca of (actionsRes.data || [])) {
+            const aType = ca.action_type || '';
+            let type = 'appointment';
+            let title = aType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            let desc = '';
+            if (aType === 'assign_minister') {
+                type = 'appointment';
+                title = 'Minister Appointed';
+                desc = ca.action_data?.minister_name ? `${ca.action_data.minister_name} appointed to ${ca.action_data.ministry_key || 'ministry'}.` : '';
+            } else if (aType === 'fire_minister' || aType === 'purge_minister') {
+                type = 'reshuffle';
+                title = aType === 'purge_minister' ? 'Minister Purged' : 'Minister Dismissed';
+                desc = ca.action_data?.minister_name ? `${ca.action_data.minister_name} removed from ${ca.action_data.ministry_key || 'ministry'}.` : '';
+            } else if (aType === 'set_platform' || aType === 'adopt_platform') {
+                type = 'policy';
+                title = 'Platform Set';
+                desc = ca.result?.platform_name ? `Administration commits to ${ca.result.platform_name}.` : 'Policy platform adopted.';
+            } else if (aType === 'issue_statement') {
+                type = 'policy';
+                title = 'Statement Issued';
+                desc = ca.result?.statement || ca.action_data?.statement || '';
+            } else if (aType === 'strongman_death') {
+                type = 'crisis';
+                title = 'Leader Succession';
+                desc = ca.result?.deceased_name ? `${ca.result.deceased_name} has died. ${ca.result.successor_name} succeeds.` : '';
+            }
+            merged.push({
+                tick: ca.tick_performed,
+                type,
+                title,
+                desc: desc.length > 150 ? desc.slice(0, 147) + '...' : desc,
+                source: 'action',
+            });
+        }
+
+        // Bills
+        for (const bill of (billsRes.data || [])) {
+            const status = bill.status || '';
+            let type = 'legislation';
+            let title = bill.bill_name || 'Untitled Bill';
+            let desc = '';
+            if (status === 'enacted' || status === 'passed') {
+                desc = `${title} enacted into law.`;
+                title = 'Bill Passed';
+            } else if (status === 'failed' || status === 'rejected') {
+                desc = `${title} failed to pass.`;
+                title = 'Bill Failed';
+                type = 'crisis';
+            } else if (status === 'voting' || status === 'floor') {
+                desc = `${title} is on the floor for debate.`;
+                title = 'Bill Introduced';
+            } else if (status === 'frozen') {
+                desc = `${title} frozen (caretaker government).`;
+                title = 'Bill Frozen';
+            } else {
+                desc = `${title} — ${status}.`;
+            }
+            merged.push({
+                tick: bill.passed_tick || bill.proposed_tick,
+                type,
+                title,
+                desc,
+                source: 'bill',
+            });
+        }
+
+        // Sort by tick descending (most recent first)
+        merged.sort((a, b) => (b.tick || 0) - (a.tick || 0));
+        _timelineEvents = merged;
+    } catch (err) {
+        console.error('[Timeline] Load failed:', err);
+        _timelineEvents = [];
+    }
+}
+
+const TIMELINE_TYPE_CONFIG = {
+    formation:   { color: 'var(--gold, #c8a832)', icon: '\uD83C\uDFDB\uFE0F' },
+    appointment: { color: 'var(--accent)', icon: '\uD83D\uDC65' },
+    policy:      { color: 'var(--blue)', icon: '\uD83D\uDCC8' },
+    legislation: { color: 'var(--green)', icon: '\uD83D\uDCDC' },
+    crisis:      { color: 'var(--orange)', icon: '\uD83D\uDCC9' },
+    scandal:     { color: 'var(--red)', icon: '\uD83D\uDD25' },
+    reshuffle:   { color: 'var(--amber)', icon: '\uD83D\uDD04' },
+    economy:     { color: 'var(--teal)', icon: '\uD83D\uDCB0' },
+    military:    { color: 'var(--red)', icon: '\u2694\uFE0F' },
+    event:       { color: 'var(--text-dim)', icon: '\uD83D\uDCC4' },
+};
+
+const TIMELINE_FILTERS = [
+    { id: 'all', label: 'ALL' },
+    { id: 'legislation', label: 'BILLS' },
+    { id: 'policy', label: 'POLICY' },
+    { id: 'crisis', label: 'CRISIS' },
+    { id: 'appointment', label: 'CABINET' },
+];
+
 function renderAdminTimeline() {
     const el = document.getElementById('gov-admin-timeline');
     if (!el) return;
-    el.innerHTML = '<div class="ga-panel"><div class="ga-panel-header"><span class="ga-panel-title">EXECUTIVE TIMELINE</span></div><div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Phase 5</div></div>';
+
+    const filtered = _timelineFilter === 'all'
+        ? _timelineEvents
+        : _timelineEvents.filter(e => e.type === _timelineFilter);
+
+    // Filter buttons
+    let filterHtml = TIMELINE_FILTERS.map(f =>
+        `<div class="ga-tl-filter${_timelineFilter === f.id ? ' active' : ''}" data-filter="${f.id}">${f.label}</div>`
+    ).join('');
+
+    let html = `<div class="ga-panel">
+        <div class="ga-panel-header">
+            <span class="ga-panel-title">EXECUTIVE TIMELINE</span>
+            <div style="display:flex;gap:3px;">${filterHtml}</div>
+        </div>
+        <div class="ga-tl-scroll">`;
+
+    if (filtered.length === 0) {
+        html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No events recorded yet.</div>`;
+    } else {
+        for (let i = 0; i < filtered.length; i++) {
+            const ev = filtered[i];
+            const cfg = TIMELINE_TYPE_CONFIG[ev.type] || TIMELINE_TYPE_CONFIG.event;
+            const isLast = i === filtered.length - 1;
+
+            html += `<div class="ga-tl-row">
+                <div class="ga-tl-spine">
+                    ${i > 0 ? '<div class="ga-tl-line-top"></div>' : ''}
+                    <div class="ga-tl-node" style="border-color:${cfg.color};background:${cfg.color}25;"></div>
+                    ${!isLast ? '<div class="ga-tl-line-bottom"></div>' : ''}
+                    <div class="ga-tl-tick">T${ev.tick || '?'}</div>
+                </div>
+                <div class="ga-tl-content">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:12px;">${cfg.icon}</span>
+                            <span style="font-size:11px;font-weight:700;color:${cfg.color};">${escapeHtml(ev.title)}</span>
+                        </div>
+                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);flex-shrink:0;">${tickToDate(ev.tick)}</span>
+                    </div>
+                    <div style="font-size:9px;color:var(--text-dim);line-height:1.55;">${escapeHtml(ev.desc)}</div>
+                </div>
+            </div>`;
+        }
+    }
+
+    html += `</div></div>`;
+    el.innerHTML = html;
+
+    // Wire filter clicks
+    el.querySelectorAll('.ga-tl-filter').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _timelineFilter = btn.dataset.filter;
+            renderAdminTimeline();
+        });
+    });
 }
 let _expandedMinistry = null;
 
