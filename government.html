@@ -2123,9 +2123,9 @@ function renderBillCard(bill, stageColor) {
         html += `</div>`;
     }
 
-    // Phase 4 will add: expanded effects + vote buttons
+    // Expanded: effects + vote actions
     if (isExp) {
-        html += `<div id="leg-bill-expanded-${bill.id}" class="leg-bill-expanded"></div>`;
+        html += renderBillExpandedContent(bill);
     }
 
     // Expand hint for floor bills (articles hidden by default)
@@ -2136,6 +2136,134 @@ function renderBillCard(bill, stageColor) {
     html += `</div>`;
     return html;
 }
+
+function renderBillExpandedContent(bill) {
+    const articles = (bill.bill_articles || []).sort((a, b) => (a.article_number || 0) - (b.article_number || 0));
+    const isFloor = bill.status === 'floor' || bill.status === 'voting';
+    const isCommittee = bill.status === 'committee';
+
+    // Collect stat effects from all articles' policies
+    const effects = [];
+    for (const art of articles) {
+        if (!art.policies) continue;
+        const p = art.policies;
+        if (p.stat_effects && Array.isArray(p.stat_effects)) {
+            for (const e of p.stat_effects) {
+                effects.push({ stat: e.stat_key, dir: e.direction });
+            }
+        } else if (p.target_stat) {
+            effects.push({ stat: p.target_stat, dir: (p.stat_direction || 'UP').toLowerCase() });
+        }
+    }
+
+    let html = `<div class="leg-bill-expanded">`;
+
+    // Effects
+    if (effects.length > 0) {
+        html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.8px;margin-bottom:4px;">PROJECTED EFFECTS IF PASSED</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">`;
+        for (const e of effects) {
+            const isGood = (e.dir === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat))
+                || (e.dir === 'down' && STATS_LOWER_IS_BETTER.has(e.stat));
+            const arrow = e.dir === 'up' ? '\u25B2' : '\u25BC';
+            const color = isGood ? 'var(--green)' : 'var(--red)';
+            html += `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(e.stat)} ${arrow}</span>`;
+        }
+        html += `</div>`;
+    }
+
+    // Vote actions (floor bills only)
+    if (isFloor) {
+        // Check existing vote
+        const myVote = (bill.bill_support || []).find(s => s.faction_id === currentFaction?.id);
+        const myStance = myVote?.stance;
+
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+                Bill passes: YES voters +2 momentum per article \u00B7 Bill fails: YES voters -2, NO voters +2
+            </div>
+            <div style="display:flex;gap:4px;">`;
+
+        if (myStance === 'yes' || myStance === 'accept') {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes leg-vote-btn--active">VOTED YES</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes" onclick="event.stopPropagation();legCastVote('${bill.id}','yes')">VOTE YES</div>`;
+        }
+        if (myStance === 'no' || myStance === 'reject') {
+            html += `<div class="leg-vote-btn leg-vote-btn--no leg-vote-btn--active">VOTED NO</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--no" onclick="event.stopPropagation();legCastVote('${bill.id}','no')">VOTE NO</div>`;
+        }
+        if (myStance === 'abstain') {
+            html += `<div class="leg-vote-btn leg-vote-btn--abstain leg-vote-btn--active">ABSTAINED</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--abstain" onclick="event.stopPropagation();legCastVote('${bill.id}','abstain')">ABSTAIN</div>`;
+        }
+
+        html += `</div></div>`;
+    }
+
+    // Committee stance (accept/reject for committee bills)
+    if (isCommittee) {
+        const myVote = (bill.bill_support || []).find(s => s.faction_id === currentFaction?.id);
+        const myStance = myVote?.stance;
+
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+                Support adds your seats to the bill's backing \u00B7 Moves to floor when majority support reached
+            </div>
+            <div style="display:flex;gap:4px;">`;
+        if (myStance === 'accept') {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes leg-vote-btn--active">SUPPORTING</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes" onclick="event.stopPropagation();legCastVote('${bill.id}','accept')">SUPPORT</div>`;
+        }
+        if (myStance === 'reject') {
+            html += `<div class="leg-vote-btn leg-vote-btn--no leg-vote-btn--active">OPPOSING</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--no" onclick="event.stopPropagation();legCastVote('${bill.id}','reject')">OPPOSE</div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    // Link to full bill page
+    html += `<div style="margin-top:8px;text-align:right;">
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--blue);cursor:pointer;" onclick="event.stopPropagation();window.location.href='bill.html?id=${bill.id}'">
+            View full bill &amp; negotiate \u2192
+        </span>
+    </div>`;
+
+    html += `</div>`;
+    return html;
+}
+
+let _legVoteLock = false;
+
+async function legCastVote(billId, stance) {
+    if (_legVoteLock || !currentFaction) return;
+    _legVoteLock = true;
+    try {
+        const mySeats = currentFaction.seats || 0;
+        const { error } = await _supabase.from('bill_support').upsert({
+            bill_id: billId,
+            faction_id: currentFaction.id,
+            stance: stance,
+            seat_count: mySeats
+        }, { onConflict: 'bill_id,faction_id' });
+        if (error) throw error;
+
+        // Refresh data and re-render
+        await loadLegislatureData();
+        const content = document.getElementById('gov-content');
+        if (content) renderLegislatureTab(content);
+    } catch (err) {
+        console.error('[Legislature] Vote failed:', err);
+        alert('Vote failed: ' + (err.message || 'Unknown error'));
+    } finally {
+        _legVoteLock = false;
+    }
+}
+window.legCastVote = legCastVote;
 
 function renderBillsList() {
     const el = document.getElementById('leg-right');

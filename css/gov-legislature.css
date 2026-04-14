@@ -34,6 +34,21 @@
     padding: 1px 5px; border: 1px solid;
 }
 
+/* ── Vote buttons ── */
+.leg-vote-btn {
+    padding: 4px 14px;
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.5px; cursor: pointer; transition: filter 0.15s;
+}
+.leg-vote-btn--yes { color: #000; background: var(--green); }
+.leg-vote-btn--no { color: #000; background: var(--red); }
+.leg-vote-btn--abstain {
+    color: var(--text-dim); background: transparent;
+    border: 1px solid var(--border-main);
+}
+.leg-vote-btn--active { opacity: 0.6; cursor: default; }
+.leg-vote-btn:not(.leg-vote-btn--active):hover { filter: brightness(1.1); }
+
 /* ── Filter bar ── */
 .leg-filter-btn {
     padding: 4px 12px;
