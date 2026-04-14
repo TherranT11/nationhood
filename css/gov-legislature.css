@@ -15,6 +15,49 @@
     font-family: var(--font-mono); font-size: 7px; font-weight: 700;
 }
 
+/* ── Bill cards ── */
+.leg-bill-card {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    margin-bottom: 4px; cursor: pointer; transition: border-color 0.15s;
+}
+.leg-bill-card:hover { border-color: var(--border-bright, #444); }
+.leg-bill-header {
+    padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+}
+.leg-bill-expanded {
+    padding: 8px 14px; border-top: 1px solid var(--border-main);
+    background: var(--bg-card);
+}
+.leg-article-badge {
+    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
+    padding: 1px 5px; border: 1px solid;
+}
+
+/* ── Filter bar ── */
+.leg-filter-btn {
+    padding: 4px 12px;
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.5px; color: var(--filter-color);
+    background: transparent; border: 1px solid var(--filter-color, var(--border-main));
+    cursor: pointer; display: flex; align-items: center; gap: 4px;
+    opacity: 0.6; transition: opacity 0.15s;
+}
+.leg-filter-btn:hover { opacity: 0.8; }
+.leg-filter-btn.active {
+    color: #000; background: var(--filter-color);
+    border-color: var(--filter-color); opacity: 1;
+}
+.leg-propose-btn {
+    padding: 4px 14px;
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.5px; color: var(--text-bright);
+    border: 1px solid var(--border-main);
+    cursor: pointer; display: flex; align-items: center; gap: 4px;
+    transition: background 0.15s;
+}
+.leg-propose-btn:hover { background: rgba(255,255,255,0.03); }
+
 /* ── Responsive ── */
 @media (max-width: 1200px) {
     #leg-left { width: 100% !important; }
