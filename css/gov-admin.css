@@ -2,22 +2,19 @@
    GOVERNMENT PAGE — UI 2.0 Administration Subtab
    ══════════════════════════════════════════════════════════════ */
 
-/* ── Subtab navigation ── */
+/* ── Subtab navigation — matches Actions/Home page pattern ── */
 .gov-subtab {
-    padding: 5px 14px;
-    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
-    letter-spacing: 1px; text-transform: uppercase;
-    color: var(--text-dim); background: transparent;
-    border: 1px solid transparent;
-    border-bottom: 1px solid var(--border-main);
-    cursor: pointer; transition: all 0.15s;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 9px 18px; background: transparent; border: none;
+    border-bottom: 2px solid transparent;
+    color: #5c5a50; cursor: pointer; transition: color 0.15s;
 }
-.gov-subtab:hover { color: var(--text-secondary); }
+.gov-subtab:hover { color: #8a8778; }
 .gov-subtab.active {
-    color: var(--text-bright);
-    background: var(--bg-panel);
-    border: 1px solid var(--border-main);
-    border-bottom: 1px solid var(--bg-panel);
+    color: #c8a64e;
+    border-bottom-color: #c8a64e;
 }
 
 /* ── Shared panel styles ── */
@@ -249,7 +246,7 @@
     #gov-page { padding: 8px; }
     .ga-banner-name { font-size: 12px; }
     .ga-banner-approval-value { font-size: 18px; }
-    .gov-subtab { padding: 4px 8px; font-size: 7px; }
+    .gov-subtab { padding: 8px 12px; font-size: 9px; white-space: nowrap; flex-shrink: 0; }
     .ga-banner-leaders { flex-direction: column; }
     .ga-banner-leader { border-right: none; border-bottom: 1px solid var(--border-main); }
     .ga-banner-leader:last-child { border-bottom: none; }
