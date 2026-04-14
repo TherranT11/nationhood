@@ -362,19 +362,18 @@ async function createProposal(root) {
 
         if (error) { alert('Error: ' + error.message); return; }
 
-        // Auto-support own proposal (ignore errors — RPC may not exist yet)
-        try {
-            await _supabase.rpc('toggle_formation_support', {
-                p_formation_id: data.id,
-                p_faction_id: faction.id,
-                p_supports: true,
-            });
-        } catch (e) { console.warn('[Coalition] Auto-support RPC failed:', e); }
+        // Auto-support own proposal via direct insert (avoids RPC compatibility issues)
+        const { error: supportErr } = await _supabase.from('government_formation_support').upsert({
+            formation_id: data.id,
+            faction_id: faction.id,
+            supports: true,
+        }, { onConflict: 'formation_id,faction_id' });
+        if (supportErr) console.warn('[Coalition] Auto-support insert failed:', supportErr.message);
 
         await renderFormationTab(root);
     } catch (err) {
         console.error('[Coalition] Create proposal error:', err);
-        alert('Failed to create proposal.');
+        alert('Failed to create proposal: ' + (err.message || err));
     } finally {
         _submitting = false;
     }
@@ -382,11 +381,13 @@ async function createProposal(root) {
 
 async function toggleSupport(formationId, supports, root) {
     try {
-        await _supabase.rpc('toggle_formation_support', {
-            p_formation_id: formationId,
-            p_faction_id: _state.faction?.id,
-            p_supports: supports,
-        });
+        // Use direct upsert instead of RPC for compatibility
+        const { error } = await _supabase.from('government_formation_support').upsert({
+            formation_id: formationId,
+            faction_id: _state.faction?.id,
+            supports: supports,
+        }, { onConflict: 'formation_id,faction_id' });
+        if (error) console.error('[Coalition] Toggle support error:', error.message);
         await renderFormationTab(root);
     } catch (err) {
         console.error('[Coalition] Toggle support error:', err);
