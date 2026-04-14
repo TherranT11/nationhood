@@ -2222,3 +2222,77 @@ body {
     .gov-subtabs { padding: 0 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .gov-subtab { padding: 8px 12px; font-size: 9px; white-space: nowrap; flex-shrink: 0; }
 }
+
+/* ════════════════════════ GOVERNMENT PAGE SIZE-UP (~30%) + COLOR ════════════════════════ */
+
+/* Ministry cards — larger, more colorful */
+.ministry-card { width: 440px; }
+.ministry-card__header { padding: 12px 20px; }
+.ministry-card__dot { width: 7px; height: 7px; box-shadow: 0 0 4px var(--teal); }
+.ministry-card__title { font-size: 0.9rem; font-weight: 600; letter-spacing: 0.1em; color: var(--text-bright); }
+.ministry-card__badge { font-size: 0.7rem; padding: 3px 10px; }
+.ministry-card__minister { padding: 14px 20px; }
+.ministry-card__minister-name { font-size: 1rem; }
+.ministry-card__minister-meta { font-size: 0.78rem; }
+.ministry-card__mgmt { padding: 10px 20px; }
+.ministry-card__mgmt-btn { font-size: 0.7rem; padding: 6px 16px; }
+.ministry-grid { gap: 12px; }
+
+/* Admin header area */
+#gov-page { padding: 16px 20px; }
+
+/* Timeline events — larger text */
+.tl-event-title { font-size: 14px !important; }
+.tl-event-body { font-size: 13px !important; }
+.tl-event-date { font-size: 12px !important; }
+.tl-tick-label { font-size: 11px !important; }
+
+/* Cabinet header */
+.section-header {
+    font-size: 14px !important;
+    letter-spacing: 0.12em !important;
+    padding: 10px 0 !important;
+}
+
+/* PM and coalition boxes — add accent borders */
+.pm-box {
+    border-left: 3px solid var(--accent) !important;
+}
+.coalition-box {
+    border-left: 3px solid var(--teal) !important;
+}
+
+/* Approval display — bigger, colored */
+.approval-display {
+    font-size: 2.4rem !important;
+}
+
+/* Executive order cards */
+.eo-card { padding: 14px 18px !important; }
+.eo-card-title { font-size: 14px !important; }
+.eo-card-desc { font-size: 12px !important; }
+.eo-card-cost { font-size: 12px !important; }
+
+/* Law cards */
+.law-card { padding: 12px 16px !important; }
+.law-card-name { font-size: 14px !important; }
+.law-card-meta { font-size: 11px !important; }
+
+/* Formation cards */
+.proposal-card { padding: 14px 18px !important; }
+.proposal-card-title { font-size: 14px !important; }
+.proposal-card-meta { font-size: 12px !important; }
+
+/* General text scaling for gov page */
+#gov-page .section-header,
+#gov-content .section-header {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-main);
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+}
