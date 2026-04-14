@@ -34,8 +34,8 @@
 <div class="world-page">
     <!-- Map panel -->
     <div class="world-map-panel" id="world-map-panel">
-        <img id="world-map-img" src="./assets/map/World Map Crucera 2.5.svg" alt="World Map" draggable="false"
-             style="width:100%;height:auto;">
+        <object id="world-map-svg" data="./assets/map/World Map Crucera 2.5.svg" type="image/svg+xml"
+                style="width:100%;height:auto;pointer-events:all;"></object>
         <div class="world-map-controls">
             <div class="world-map-btn" id="map-zoom-in">+</div>
             <div class="world-map-btn" id="map-zoom-out">&minus;</div>
@@ -1279,9 +1279,34 @@ function renderWorldEvents() {
 
 function initWorldMap() {
     const panel = document.getElementById('world-map-panel');
-    const img = document.getElementById('world-map-img');
-    if (!panel || !img) return;
+    const svgObj = document.getElementById('world-map-svg');
+    if (!panel || !svgObj) return;
 
+    // Wait for SVG to load, then attach nation click handlers
+    svgObj.addEventListener('load', () => {
+        const svgDoc = svgObj.contentDocument;
+        if (!svgDoc) return;
+        const paths = svgDoc.querySelectorAll('.land');
+        paths.forEach(path => {
+            path.style.cursor = 'pointer';
+            path.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Get nation name from path id or data attribute
+                const nationName = path.getAttribute('data-nation-name') || path.id || '';
+                if (nationName) {
+                    // Clear previous selection
+                    svgDoc.querySelectorAll('.land.selected-nation').forEach(l => l.classList.remove('selected-nation'));
+                    path.classList.add('selected-nation');
+                    // Trigger nation selection on the page
+                    if (typeof selectNation === 'function') selectNation(nationName);
+                    else if (typeof window.selectWorldNation === 'function') window.selectWorldNation(nationName);
+                }
+            });
+        });
+    });
+
+    // Use the object element for transforms
+    const img = svgObj;
     let scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
     const minScale = 0.5, maxScale = 4;
 

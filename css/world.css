@@ -20,21 +20,36 @@
 
 .world-page {
     display: flex; gap: 12px; padding: 12px;
-    height: calc(100vh - 100px); overflow: hidden;
+    flex: 1; min-height: 0; overflow-y: auto;
 }
 
 /* ── Map panel (left/center) ── */
 .world-map-panel {
-    flex: 1; height: auto; max-height: 500px;
+    flex: 1; height: fit-content; max-height: calc(100vh - 140px);
     background: var(--ocean-bg, #87CEEB);
     border: 1px solid var(--border-main);
     overflow: hidden; position: relative;
     cursor: grab; user-select: none;
 }
 .world-map-panel:active { cursor: grabbing; }
-.world-map-panel img {
+.world-map-panel img, .world-map-panel object, .world-map-panel svg {
     display: block; transform-origin: 0 0;
-    pointer-events: none; will-change: transform;
+    width: 100%; height: auto;
+    will-change: transform;
+}
+/* Make SVG nation paths clickable */
+.world-map-panel .land {
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+.world-map-panel .land:hover {
+    opacity: 0.75;
+    filter: brightness(1.2);
+}
+.world-map-panel .land.selected-nation {
+    stroke: #c8a64e;
+    stroke-width: 2px;
+    filter: brightness(1.1);
 }
 .world-map-controls {
     position: absolute; bottom: 12px; right: 12px;
@@ -62,10 +77,11 @@
 
 /* ── Nation highlight panel (right) ── */
 .world-highlight {
-    width: 380px; height: 520px;
-    max-height: calc(100vh - 120px);
+    width: 380px;
+    max-height: calc(100vh - 140px);
     background: var(--bg-panel); border: 1px solid var(--border-main);
     display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+    position: sticky; top: 12px;
 }
 .world-highlight-header {
     padding: 10px 14px; border-bottom: 1px solid var(--border-main);
