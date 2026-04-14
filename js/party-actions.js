@@ -225,8 +225,8 @@ function renderPage(root) {
                         <div class="pa-header-stat-value" style="color:${momentum > 0 ? 'var(--text-bright)' : 'var(--red)'};">${Math.round(momentum)}</div>
                     </div>
                     <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">Approval</div>
-                        <div class="pa-header-stat-value" style="color:var(--green);">${Math.round(approval)}%</div>
+                        <div class="pa-header-stat-label">Governance</div>
+                        <div class="pa-header-stat-value" style="color:var(--green);">${Math.round(Number(_state.nation?.gov_approval ?? 0))}</div>
                     </div>
                 </div>
             </div>
@@ -376,11 +376,13 @@ function renderLeaderCards(leaderName, partyColor, faction) {
             actionCount = 0;
         }
 
+        const isGovLocked = role.oppositionOnly && !_isOpposition;
+
         let html = `
-            <div class="pa-leader-card ${isActive ? 'active' : ''} ${isVacant ? 'vacant' : ''}"
+            <div class="pa-leader-card ${isActive ? 'active' : ''} ${isVacant ? 'vacant' : ''} ${isGovLocked ? 'vacant' : ''}"
                  data-role="${role.id}"
-                 style="${isActive ? `border-left-color:${role.color};` : ''}">
-                ${role.oppositionOnly ? '<div style="position:absolute;top:0;right:0;font-family:var(--font-mono);font-size:5px;font-weight:700;letter-spacing:0.04em;padding:1px 4px;color:#d44a4a;background:rgba(212,74,74,0.1);border:1px solid rgba(212,74,74,0.2);border-top:none;border-right:none;">OPPOSITION ONLY</div>' : ''}
+                 style="${isActive ? `border-left-color:${role.color};` : ''}${isGovLocked ? 'opacity:0.35;' : ''}">
+                ${role.oppositionOnly ? `<div style="position:absolute;top:0;right:0;font-family:var(--font-mono);font-size:5px;font-weight:700;letter-spacing:0.04em;padding:1px 4px;color:${isGovLocked ? 'var(--text-dim)' : '#d44a4a'};background:${isGovLocked ? 'rgba(100,100,100,0.1)' : 'rgba(212,74,74,0.1)'};border:1px solid ${isGovLocked ? 'rgba(100,100,100,0.2)' : 'rgba(212,74,74,0.2)'};border-top:none;border-right:none;">${isGovLocked ? 'IN GOVERNMENT' : 'OPPOSITION ONLY'}</div>` : ''}
                 <div class="pa-leader-top">
                     <div class="pa-leader-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${portrait}</div>
                     <div class="pa-leader-info">
@@ -431,6 +433,21 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 <div>
                     <div class="pa-vacant-title">${esc(role.fullTitle)} — Vacant</div>
                     <div class="pa-vacant-sub">This position has not been filled. Recruitment coming in a future update.</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Agitator: blocked if in government
+    if (isAgitator && !_isOpposition) {
+        return `
+            <div class="pa-vacant-msg" style="opacity:0.4;">
+                <div style="text-align:center;">
+                    <div style="font-size:2rem;margin-bottom:12px;opacity:0.3;">🚫</div>
+                    <div class="pa-vacant-title">Agitator Unavailable</div>
+                    <div class="pa-vacant-sub" style="max-width:400px;margin:8px auto;">
+                        Your party is in government. The Agitator role is only available to opposition parties.
+                    </div>
                 </div>
             </div>
         `;
