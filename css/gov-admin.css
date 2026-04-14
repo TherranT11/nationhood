@@ -100,6 +100,22 @@
     border: 1px solid rgba(204,85,85,0.15);
 }
 
+/* ── Bottom action buttons ── */
+.ga-early-election-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 28px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.5px; color: #000; background: var(--orange, #c84);
+    cursor: pointer; transition: filter 0.15s;
+}
+.ga-early-election-btn:hover { filter: brightness(1.1); }
+.ga-resign-btn {
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.5px; color: var(--text-dim);
+    cursor: pointer; transition: color 0.15s;
+}
+.ga-resign-btn:hover { color: var(--red); }
+
 /* ── Admin chat ── */
 .ga-chat-scroll { max-height: 240px; overflow-y: auto; }
 .ga-chat-msg { padding: 6px 14px; border-bottom: 1px solid var(--border-light, #2a2a24); }

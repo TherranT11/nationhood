@@ -1760,8 +1760,68 @@ function renderAdminChat() {
 }
 function renderAdminActions() {
     const el = document.getElementById('gov-admin-actions');
-    if (!el) return;
-    el.innerHTML = '';
+    if (!el || !_govData) return;
+    const { coalition } = _govData;
+    const nation = currentNation;
+
+    // Only show actions if a government exists
+    if (!coalition || !nation) { el.innerHTML = ''; return; }
+
+    const isCaretaker = coalition.status === 'caretaker';
+    const isPM = isPMParty;
+    const approval = Number(nation.gov_approval ?? 50);
+
+    let html = `<div class="ga-panel" style="text-align:center;padding:12px;">`;
+
+    // Call Early Elections (PM only, not caretaker)
+    if (isPM && !isCaretaker) {
+        const tierHint = approval > 50 ? 'Calling from strength — your party gains +3 momentum'
+            : approval < 35 ? 'Opposition gains +5 momentum each — orderly transition'
+            : 'Neutral call — no momentum changes';
+
+        html += `<div class="ga-early-election-btn" onclick="callEarlyElections()">
+            <span style="font-size:12px;">&#9889;</span> CALL EARLY ELECTIONS
+        </div>
+        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">
+            PM only — dissolve the legislature · ${escapeHtml(tierHint)}
+        </div>`;
+    }
+
+    // Caretaker notice
+    if (isCaretaker) {
+        const electionTick = coalition._earlyElectionTick;
+        const ticksLeft = electionTick ? Math.max(0, electionTick - currentTick) : '?';
+        html += `<div style="display:flex;align-items:center;gap:8px;justify-content:center;padding:8px 0;">
+            <span style="font-size:14px;">&#9888;&#65039;</span>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--amber);">CARETAKER GOVERNMENT</div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Election in ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} · Legislation frozen</div>
+            </div>
+        </div>`;
+    }
+
+    // PM Resign (PM only, not caretaker)
+    if (isPM && !isCaretaker) {
+        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-main);">
+            <span class="ga-resign-btn" onclick="resignPMAction()">RESIGN AS PRIME MINISTER</span>
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:3px;">
+                -5 approval · -3 stability · barred from PM for 12 ticks
+            </div>
+        </div>`;
+    }
+
+    // Collapse warning
+    if (approval <= 5 && !isCaretaker) {
+        html += `<div style="margin-top:8px;padding:8px 12px;background:rgba(204,85,85,0.04);border:1px solid rgba(204,85,85,0.15);">
+            <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--red);">&#9888; GOVERNMENT ON VERGE OF COLLAPSE</div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">
+                Approval at ${approval.toFixed(1)}%. Coalition parties losing -5 approval/tick. At 0%, snap elections will be called automatically.
+            </div>
+        </div>`;
+    }
+
+    html += `</div>`;
+    el.innerHTML = html;
 }
 
 async function loadGovData() {
