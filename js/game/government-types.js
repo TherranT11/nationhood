@@ -10,7 +10,8 @@
 export const CANONICAL_GOVERNMENT_TYPES = Object.freeze({
     PARLIAMENTARY_DEMOCRACY: 'Democracy',
     PRESIDENTIAL_REPUBLIC: 'Presidential',
-    SEMI_PRESIDENTIAL: 'Semi-Presidential'
+    SEMI_PRESIDENTIAL: 'Semi-Presidential',
+    ABSOLUTE_MONARCHY: 'Absolute Monarchy'
 });
 
 export const GOVERNMENT_TYPE_ALIASES = Object.freeze({
@@ -24,7 +25,10 @@ export const GOVERNMENT_TYPE_ALIASES = Object.freeze({
     'executive presidency': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
     'semi-presidential': CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL,
     'semi presidential': CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL,
-    semipresidential: CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL
+    semipresidential: CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL,
+    'absolute monarchy': CANONICAL_GOVERNMENT_TYPES.ABSOLUTE_MONARCHY,
+    'absolute_monarchy': CANONICAL_GOVERNMENT_TYPES.ABSOLUTE_MONARCHY,
+    monarchy: CANONICAL_GOVERNMENT_TYPES.ABSOLUTE_MONARCHY,
 });
 
 export function getCanonicalGovernmentType(input, fallbackType = CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY) {
@@ -37,10 +41,20 @@ export function isParliamentaryDemocracy(input) { return getCanonicalGovernmentT
 export function isPresidentialRepublic(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC; }
 export function isSemiPresidential(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL; }
 
+export function isAbsoluteMonarchy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.ABSOLUTE_MONARCHY; }
+
 /** Capability helpers — use these instead of type checks where possible.
  *  Semi-presidential has BOTH an elected president AND a parliamentary PM. */
 export function hasElectedPresident(input) { return isPresidentialRepublic(input) || isSemiPresidential(input); }
 export function hasParliamentaryPM(input) { return isParliamentaryDemocracy(input) || isSemiPresidential(input); }
+export function hasMonarch(input) { return isAbsoluteMonarchy(input); }
+
+/** Get the head of state title for display */
+export function getHeadOfStateTitle(nation) {
+    if (isAbsoluteMonarchy(nation)) return nation.monarch_title || 'King';
+    if (hasElectedPresident(nation)) return 'President';
+    return nation.hos_title || 'Head of State';
+}
 
 export function isGovernmentPresidential(nation) { return hasElectedPresident(nation); }
 

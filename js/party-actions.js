@@ -6,6 +6,7 @@ import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, checkOppositionStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
 import { getNationNames } from './game/political-actions.js';
+import { isAbsoluteMonarchy } from './game/government-types.js';
 
 let _supabase = null;
 let _state = null;
@@ -177,6 +178,8 @@ export async function initPartyActions(supabase, state) {
 function renderPage(root) {
     const faction = _state.faction;
     const nation = _state.nation;
+    const _isMonarchy = isAbsoluteMonarchy(nation);
+    const _isMonarch = _isMonarchy && nation?.monarch_faction_id === faction?.id;
     const partyColor = faction.color || '#c8a832';
     const leaderName = faction.leader_first_name && faction.leader_last_name
         ? `${faction.leader_first_name} ${faction.leader_last_name}` : 'Unknown Leader';
@@ -209,7 +212,7 @@ function renderPage(root) {
             <!-- Header -->
             <div class="pa-header">
                 <div class="pa-header-left">
-                    <span class="pa-title" style="color:${partyColor};">Party Actions</span>
+                    <span class="pa-title" style="color:${partyColor};">${_isMonarch ? 'Royal Court' : 'Party Actions'}</span>
                     <div class="pa-party-badge">
                         <div class="pa-party-dot" style="background:${partyColor};"></div>
                         <span class="pa-party-name">${esc(faction.faction_name)}</span>
@@ -225,8 +228,8 @@ function renderPage(root) {
                         <div class="pa-header-stat-value" style="color:${momentum > 0 ? 'var(--text-bright)' : 'var(--red)'};">${Math.round(momentum)}</div>
                     </div>
                     <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">Governance</div>
-                        <div class="pa-header-stat-value" style="color:var(--green);">${Math.round(Number(_state.nation?.gov_approval ?? 0))}</div>
+                        <div class="pa-header-stat-label">${_isMonarchy ? 'Legitimacy' : 'Governance'}</div>
+                        <div class="pa-header-stat-value" style="color:var(--green);">${_isMonarchy ? Math.round(Number(_state.nation?.legitimacy ?? _state.nation?.gov_approval ?? 50)) : Math.round(Number(_state.nation?.gov_approval ?? 0))}</div>
                     </div>
                 </div>
             </div>
@@ -345,12 +348,20 @@ function renderLeaderCards(leaderName, partyColor, faction) {
             portrait = initials(faction.leader_first_name, faction.leader_last_name);
             actionCount = LEADER_ACTIONS.length;
             // Determine political role label
-            const isPM = _administration?.pm_party_id === faction.id;
-            const isPresident = _state.nation?.hos_election_method === 'elected' && _administration?.president_party_id === faction.id;
-            if (isPM) roleSubLabel = { text: 'PRIME MINISTER', color: '#5cc55c' };
-            else if (isPresident) roleSubLabel = { text: 'PRESIDENT', color: '#5cc55c' };
-            else if (!_isOpposition) roleSubLabel = { text: 'GOVERNING', color: '#8b9a6b' };
-            else roleSubLabel = { text: 'OPPOSITION', color: '#c84' };
+            const __isMonarchy = isAbsoluteMonarchy(_state.nation);
+            const __isMonarch = __isMonarchy && _state.nation?.monarch_faction_id === faction.id;
+            if (__isMonarch) {
+                roleSubLabel = { text: (_state.nation?.monarch_title || 'KING').toUpperCase(), color: '#c8a832' };
+            } else if (__isMonarchy) {
+                roleSubLabel = { text: 'NOBLE HOUSE', color: '#8b9a6b' };
+            } else {
+                const isPM = _administration?.pm_party_id === faction.id;
+                const isPresident = _state.nation?.hos_election_method === 'elected' && _administration?.president_party_id === faction.id;
+                if (isPM) roleSubLabel = { text: 'PRIME MINISTER', color: '#5cc55c' };
+                else if (isPresident) roleSubLabel = { text: 'PRESIDENT', color: '#5cc55c' };
+                else if (!_isOpposition) roleSubLabel = { text: 'GOVERNING', color: '#8b9a6b' };
+                else roleSubLabel = { text: 'OPPOSITION', color: '#c84' };
+            }
         } else if (isAgitator && _agitator) {
             isVacant = false;
             name = `${_agitator.first_name} ${_agitator.last_name}`;
@@ -562,10 +573,13 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 <div class="pa-detail-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${portrait}</div>
                 <div>
                     <div style="display:flex;align-items:baseline;gap:6px;">
-                        <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${role.color};">${role.title}</span>
+                        <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${role.color};">${_isMonarch ? (_state.nation?.monarch_title || 'KING').toUpperCase() : role.title}</span>
                         <span class="pa-detail-name">${esc(leaderName)}</span>
+                        ${_isMonarchy && _state.nation?.dynasty_name ? `<span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);font-style:italic;">House ${esc(_state.nation.dynasty_name)}</span>` : ''}
                     </div>
-                    <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; ${esc(faction.faction_name)}${age}${(() => {
+                    <div class="pa-detail-meta">${_isMonarch ? esc((_state.nation?.monarch_title || 'King') + ' of ' + (_state.nation?.name || '')) : esc(role.fullTitle) + ' &middot; ' + esc(faction.faction_name)}${age}${(() => {
+                        if (_isMonarch) return ' <span style="color:#c8a832;font-weight:700;"> &middot; ' + (_state.nation?.monarch_title || 'MONARCH').toUpperCase() + '</span>';
+                        if (_isMonarchy) return ' <span style="color:#8b9a6b;font-weight:700;"> &middot; NOBLE HOUSE</span>';
                         const isPM = _administration?.pm_party_id === faction.id;
                         const isPresident = _state.nation?.hos_election_method === 'elected' && _administration?.president_party_id === faction.id;
                         if (isPM) return ' <span style="color:#5cc55c;font-weight:700;"> &middot; PRIME MINISTER</span>';
