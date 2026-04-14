@@ -525,8 +525,12 @@ function getAgreementShippingInfo(agreementId) {
 
 // ── Shipping Application Approve / Reject ──
 
+let _shippingApprovalPending = false;
+
 window.approveShippingApp = async function(appId, routeId, corpFactionId) {
+    if (_shippingApprovalPending) return;
     if (!confirm('Approve this shipping corporation to service this route?')) return;
+    _shippingApprovalPending = true;
 
     try {
         const tick = _worldState?.shard?.current_tick || 0;
@@ -560,11 +564,15 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
     } catch (err) {
         console.error('[ShippingApproval] Error:', err);
         alert('Failed to approve application.');
+    } finally {
+        _shippingApprovalPending = false;
     }
 };
 
 window.rejectShippingApp = async function(appId) {
+    if (_shippingApprovalPending) return;
     const reason = prompt('Rejection reason (optional):') || '';
+    _shippingApprovalPending = true;
 
     try {
         const tick = _worldState?.shard?.current_tick || 0;
@@ -578,6 +586,8 @@ window.rejectShippingApp = async function(appId) {
     } catch (err) {
         console.error('[ShippingReject] Error:', err);
         alert('Failed to reject application.');
+    } finally {
+        _shippingApprovalPending = false;
     }
 };
 
