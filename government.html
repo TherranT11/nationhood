@@ -7,16 +7,21 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/government.css">
+    <link rel="stylesheet" href="css/gov-admin.css">
 </head>
 <body>
 
 <div id="top-bar"></div>
 
-<div id="content-area">
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100vh - 100px);text-align:center;color:var(--text-secondary);">
-        <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">UI 2.0 IS COMING</div>
-        <div style="font-size:0.85rem;color:var(--text-muted);">Please be patient while we roll this out.</div>
+<!-- ═══ GOVERNMENT PAGE — UI 2.0 ═══ -->
+<div id="gov-page" style="padding:12px;">
+    <!-- Page header + subtabs -->
+    <div id="gov-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:0 2px;">
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:2px;color:var(--text-bright);">GOVERNMENT</span>
+        <div id="gov-subtabs" style="display:flex;gap:0;"></div>
     </div>
+    <!-- Subtab content -->
+    <div id="gov-content"></div>
 </div>
 
 <!-- Assign Minister Modal -->
