@@ -182,11 +182,9 @@ function renderRadioPage(root) {
 
     // Bind station tabs (only in normal mode)
     if (!_tuneInMode && stationCount > 0) {
-        if (!_selectedStationId || !_stations.find(s => s.id === _selectedStationId)) {
-            _selectedStationId = _stations[0].id;
-        }
         bindStationTabs();
-        selectStation(_selectedStationId);
+        // Default: load ALL broadcasts from all stations
+        loadAllBroadcasts();
     }
 
     // Bind Tune In clicks (delegated)
@@ -295,8 +293,57 @@ async function selectStation(stationId) {
         bcBtn.onclick = myPers.length > 0 ? () => openBroadcastModal(station) : null;
     }
 
+    // Show sidebar when a specific station is selected
+    const sidebarEl = document.getElementById('radio-sidebar');
+    if (sidebarEl) sidebarEl.style.display = '';
+
     renderSidebar(station);
     renderFeed(station);
+}
+
+async function loadAllBroadcasts() {
+    // Load ALL broadcasts from ALL stations in this nation
+    const stationIds = _stations.map(s => s.id);
+    if (stationIds.length === 0) return;
+
+    const factionId = _state.faction?.id;
+    const [bcResult, persResult, glResult] = await Promise.all([
+        _supabase.from('radio_broadcasts').select('*').in('station_id', stationIds).order('created_at', { ascending: false }).limit(100),
+        _supabase.from('radio_personalities').select('*').in('station_id', stationIds),
+        factionId ? _supabase.from('broadcast_good_listens').select('broadcast_id').eq('faction_id', factionId) : { data: [] },
+    ]);
+
+    _personalities = persResult.data || [];
+    _broadcasts = bcResult.data || [];
+    _myGoodListens = new Set((glResult.data || []).map(r => r.broadcast_id));
+    _expandedBroadcastId = null;
+    _selectedStationId = null;
+
+    // Enable broadcast button if user has personality on ANY station
+    const myPers = _personalities.filter(p => p.faction_id === factionId);
+    const bcBtn = document.getElementById('radio-broadcast-btn');
+    if (bcBtn) {
+        bcBtn.disabled = myPers.length === 0;
+        bcBtn.title = myPers.length > 0 ? 'Start a broadcast' : 'Create a personality on a station first';
+        if (myPers.length > 0) {
+            // Pick the first station the user has a personality on
+            const persStation = _stations.find(s => myPers.some(p => p.station_id === s.id));
+            bcBtn.onclick = persStation ? () => openBroadcastModal(persStation) : null;
+        }
+    }
+
+    // Clear active tab state
+    document.querySelectorAll('.radio-station-tab').forEach(t => {
+        t.classList.remove('active');
+        t.style.borderColor = '';
+        t.style.borderBottomColor = 'transparent';
+    });
+
+    // Hide sidebar, show feed with all broadcasts
+    const sidebarEl = document.getElementById('radio-sidebar');
+    if (sidebarEl) sidebarEl.style.display = 'none';
+
+    renderFeed(null);
 }
 
 // ════════════════════════ SIDEBAR ════════════════════════
@@ -369,7 +416,8 @@ function renderFeed(station) {
     const scrollEl = document.getElementById('radio-feed-scroll');
     if (!countEl || !scrollEl) return;
 
-    countEl.textContent = `${_broadcasts.length} broadcast${_broadcasts.length !== 1 ? 's' : ''}`;
+    const allMode = !station;
+    countEl.textContent = `${_broadcasts.length} broadcast${_broadcasts.length !== 1 ? 's' : ''}${allMode ? ' (all stations)' : ''}`;
 
     if (_broadcasts.length === 0) {
         scrollEl.innerHTML = `
@@ -384,41 +432,44 @@ function renderFeed(station) {
     scrollEl.innerHTML = _broadcasts.map(bc => {
         const tags = (bc.tags || []);
         const tagsHtml = tags.map(t =>
-            `<span style="padding:1px 5px;font-family:var(--font-mono);font-size:6px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-mid);line-height:11px;">${esc(t)}</span>`
+            `<span style="padding:2px 7px;font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-mid);line-height:14px;">${esc(t)}</span>`
         ).join('');
 
         const personality = _personalities.find(p => p.id === bc.personality_id);
         const persName = personality?.name || 'Unknown';
+        const stationInfo = _stations.find(s => s.id === bc.station_id);
+        const stationLabel = stationInfo ? `${stationInfo.callsign} ${stationInfo.frequency}` : '';
         const isExpanded = _expandedBroadcastId === bc.id;
         const isGoodListened = _myGoodListens.has(bc.id);
 
         const bodyStyle = isExpanded
-            ? 'font-family:var(--font-serif);font-size:11px;color:var(--text-secondary);line-height:1.7;margin-bottom:8px;'
-            : 'font-family:var(--font-serif);font-size:11px;color:var(--text-secondary);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;';
+            ? 'font-family:var(--font-serif);font-size:14px;color:var(--text-secondary);line-height:1.7;margin-bottom:10px;'
+            : 'font-family:var(--font-serif);font-size:14px;color:var(--text-secondary);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;';
 
         const glBtnStyle = isGoodListened
-            ? 'padding:3px 10px;cursor:pointer;font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.04em;color:var(--bg-body);background:var(--green);border:1px solid var(--green);'
-            : 'padding:3px 10px;cursor:pointer;font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.04em;color:var(--green);background:transparent;border:1px solid var(--green-border);';
+            ? 'padding:5px 14px;cursor:pointer;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.04em;color:var(--bg-body);background:var(--green);border:1px solid var(--green);'
+            : 'padding:5px 14px;cursor:pointer;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.04em;color:var(--green);background:transparent;border:1px solid var(--green-border);';
 
         return `
             <div style="border-bottom:1px solid var(--border-main);">
-                <div style="padding:10px 16px;cursor:pointer;" data-bc-toggle="${bc.id}">
-                    <div style="font-family:var(--font-serif);font-size:14px;font-weight:600;color:var(--text-bright);line-height:1.3;margin-bottom:4px;">${esc(bc.subject)}</div>
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);">${esc(persName)}</span>
-                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">&middot;</span>
-                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Tick ${bc.published_tick || '?'}</span>
+                <div style="padding:14px 20px;cursor:pointer;" data-bc-toggle="${bc.id}">
+                    <div style="font-family:var(--font-serif);font-size:18px;font-weight:600;color:var(--text-bright);line-height:1.3;margin-bottom:6px;">${esc(bc.subject)}</div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);font-weight:600;">${esc(persName)}</span>
+                        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">&middot;</span>
+                        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Tick ${bc.published_tick || '?'}</span>
+                        ${stationLabel ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">&middot; ${esc(stationLabel)}</span>` : ''}
                     </div>
                     <div style="${bodyStyle}">${esc(bc.body)}</div>
-                    ${tagsHtml ? `<div style="display:flex;gap:3px;margin-top:6px;flex-wrap:wrap;">${tagsHtml}</div>` : ''}
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:6px;border-top:1px solid var(--border-main);">
-                        <div style="display:flex;gap:10px;">
-                            <div style="display:flex;align-items:center;gap:3px;">
-                                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">GOOD LISTENS</span>
-                                <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--green);" id="gl-count-${bc.id}">${bc.good_listen_count || 0}</span>
+                    ${tagsHtml ? `<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">${tagsHtml}</div>` : ''}
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-main);">
+                        <div style="display:flex;gap:12px;">
+                            <div style="display:flex;align-items:center;gap:4px;">
+                                <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">LISTENERS</span>
+                                <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);" id="gl-count-${bc.id}">${bc.good_listen_count || 0}</span>
                             </div>
                         </div>
-                        <div style="${glBtnStyle}" data-gl-btn="${bc.id}" id="gl-btn-${bc.id}">${isGoodListened ? '\u2713 GOOD LISTEN' : 'GOOD LISTEN'}</div>
+                        <div style="${glBtnStyle}" data-gl-btn="${bc.id}" id="gl-btn-${bc.id}">${isGoodListened ? '\u2713 LISTEN' : 'LISTEN'}</div>
                     </div>
                 </div>
             </div>
@@ -444,7 +495,7 @@ function renderFeed(station) {
     });
 }
 
-// ════════════════════════ GOOD LISTEN ════════════════════════
+// ════════════════════════ LISTEN ════════════════════════
 
 let _glInFlight = new Set();
 
@@ -486,12 +537,12 @@ async function toggleGoodListen(broadcastId) {
                 btn.style.color = 'var(--bg-body)';
                 btn.style.background = 'var(--green)';
                 btn.style.borderColor = 'var(--green)';
-                btn.textContent = '\u2713 GOOD LISTEN';
+                btn.textContent = '\u2713 LISTEN';
             } else {
                 btn.style.color = 'var(--green)';
                 btn.style.background = 'transparent';
                 btn.style.borderColor = 'var(--green-border)';
-                btn.textContent = 'GOOD LISTEN';
+                btn.textContent = 'LISTEN';
             }
         }
         if (countEl) countEl.textContent = data.good_listen_count;
