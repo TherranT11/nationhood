@@ -262,6 +262,15 @@ const MINISTRY_NAMES = {
     labor: 'Labor', justice: 'Justice', trade: 'Trade',
     energy: 'Energy', transportation: 'Transportation', security: 'Security',
 };
+const MINISTRY_FULL_NAMES = {
+    prime_minister: 'Prime Minister',
+    interior: 'Ministry of the Interior', foreign: 'Foreign Ministry',
+    defense: 'Ministry of Defense', finance: 'Ministry of Finance',
+    education: 'Ministry of Education', healthcare: 'Ministry of Healthcare',
+    labor: 'Ministry of Labor', justice: 'Ministry of Justice',
+    trade: 'Ministry of Trade', energy: 'Ministry of Energy',
+    transportation: 'Ministry of Transportation', security: 'Ministry of Security',
+};
 const MINISTRY_KEYS = ['prime_minister', 'interior', 'foreign', 'defense', 'finance',
     'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
 
@@ -395,6 +404,8 @@ async function formGovernmentFallback(formation) {
         .eq('nation_id', nationId).eq('is_active', true);
 
     // Create ministry records from ALL assignments (including PM)
+    // Uses INSERT (not upsert) because there's no unique constraint on (nation_id, ministry_key)
+    // and old ministries were already deactivated above
     for (const [key, partyId] of Object.entries(_ministryAssignments)) {
         if (!partyId) continue;
         const names = getNationNames(_state.nation?.name);
@@ -403,9 +414,10 @@ async function formGovernmentFallback(formation) {
         const age = 35 + Math.floor(Math.random() * 25);
         const baselines = buildMinistryBaselines ? buildMinistryBaselines(key, _state.nation) : {};
 
-        const { error: minErr } = await _supabase.from('ministries').upsert({
+        const { error: minErr } = await _supabase.from('ministries').insert({
             nation_id: nationId,
             ministry_key: key,
+            ministry_name: MINISTRY_FULL_NAMES[key] || key,
             party_id: partyId,
             minister_first_name: firstName,
             minister_last_name: lastName,
@@ -413,7 +425,7 @@ async function formGovernmentFallback(formation) {
             minister_approval: 50,
             stat_baselines: baselines,
             is_active: true,
-        }, { onConflict: 'nation_id,ministry_key' });
+        });
         if (minErr) console.warn(`[Coalition] Failed to create ministry ${key}:`, minErr.message);
     }
 
