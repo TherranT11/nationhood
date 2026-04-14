@@ -1032,6 +1032,22 @@ async function submitCreateStation() {
     if (btn) { btn.disabled = true; btn.textContent = 'Launching...'; }
 
     try {
+        // Check for duplicate frequency across ALL stations globally
+        const freqVal = parseFloat(frequency);
+        const { data: existingStations } = await _supabase.from('radio_stations')
+            .select('id, callsign, frequency')
+            .order('created_at');
+        const duplicate = (existingStations || []).find(s => {
+            const existing = parseFloat(s.frequency);
+            return !isNaN(existing) && Math.abs(existing - freqVal) < 0.05;
+        });
+        if (duplicate) {
+            alert(`Frequency ${frequency} FM is already taken by station ${duplicate.callsign}. Choose a different frequency.`);
+            _submitting = false;
+            if (btn) { btn.disabled = false; btn.textContent = 'Launch Station'; }
+            return;
+        }
+
         const { data, error } = await _supabase.from('radio_stations').insert({
             nation_id: _state.nation?.id,
             creator_faction_id: _state.faction?.id,

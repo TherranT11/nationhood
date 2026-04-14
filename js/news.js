@@ -104,9 +104,11 @@ export async function initNewspaper(supabase, state) {
         </div>
 
         ${_publication === 'alsahwa' ? `
+        <!-- AL-SAHWA GEOMETRIC BORDER -->
+        <div class="nws-alsahwa-geo-border"></div>
+
         <!-- AL-SAHWA MASTHEAD -->
         <div class="nws-alsahwa-masthead">
-            <div class="nws-alsahwa-geo-border"></div>
             <div class="nws-alsahwa-masthead-inner">
                 <div class="nws-alsahwa-brand">
                     <div class="nws-alsahwa-mark">
@@ -122,7 +124,34 @@ export async function initNewspaper(supabase, state) {
                 </div>
                 <div class="nws-alsahwa-right">
                     <div class="nws-alsahwa-date">${gameDate}</div>
+                    <button class="nws-alsahwa-watch" id="nws-write-article-btn-alsahwa">${writeLabel}</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- AL-SAHWA NAV -->
+        <nav class="nws-alsahwa-nav">
+            <div class="nws-alsahwa-nav-inner">
+                <a class="nws-alsahwa-nav-item nws-alsahwa-nav-item--active" data-cat="all">Front Page</a>
+                <a class="nws-alsahwa-nav-item" data-cat="politics">Governance</a>
+                <a class="nws-alsahwa-nav-item" data-cat="economy">Economy</a>
+                <a class="nws-alsahwa-nav-item" data-cat="business">Energy</a>
+                <a class="nws-alsahwa-nav-item" data-cat="social">Society</a>
+                <a class="nws-alsahwa-nav-item" data-cat="international">World</a>
+                <a class="nws-alsahwa-nav-item" data-cat="opinion">Opinion</a>
+                <a class="nws-alsahwa-nav-item" data-cat="entertainment">Culture</a>
+                <a class="nws-alsahwa-nav-item" data-cat="sports">Sport</a>
+            </div>
+        </nav>
+
+        <!-- AL-SAHWA ENERGY STRIP -->
+        <div class="nws-alsahwa-energy">
+            <div class="nws-alsahwa-energy-inner">
+                <span class="nws-alsahwa-energy-label">Energy</span>
+                <span class="nws-alsahwa-energy-item"><span class="nws-alsahwa-energy-name">Brent</span> <span class="nws-alsahwa-energy-val">$72.40</span> <span class="nws-alsahwa-energy-up">\u25B2 2.1%</span></span>
+                <span class="nws-alsahwa-energy-item"><span class="nws-alsahwa-energy-name">WTI</span> <span class="nws-alsahwa-energy-val">$68.20</span> <span class="nws-alsahwa-energy-up">\u25B2 1.8%</span></span>
+                <span class="nws-alsahwa-energy-item"><span class="nws-alsahwa-energy-name">LNG</span> <span class="nws-alsahwa-energy-val">$14.80</span> <span class="nws-alsahwa-energy-up">\u25B2 8.2%</span></span>
+                <span class="nws-alsahwa-energy-item"><span class="nws-alsahwa-energy-name">Gold</span> <span class="nws-alsahwa-energy-val">$1,412</span> <span class="nws-alsahwa-energy-up">\u25B2 3.4%</span></span>
             </div>
         </div>` : _publication === 'continental' ? `
         <!-- CONTINENTAL MASTHEAD -->

@@ -15,8 +15,9 @@
     justify-content: flex-start;
     gap: 12px;
     margin-bottom: 14px;
+    flex-wrap: wrap;
 }
-.radio-header-actions { margin-left: auto; }
+.radio-header-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 .radio-header-left {
     display: flex;
     align-items: center;
