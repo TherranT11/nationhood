@@ -1536,14 +1536,16 @@ function renderAdminCabinet() {
 
     el.innerHTML = html;
 
-    // Click handler for expand/collapse
-    el.addEventListener('click', (e) => {
+    // Click handler for expand/collapse (onclick= prevents stacking on re-render)
+    el.onclick = (e) => {
         const card = e.target.closest('.ga-ministry-card');
         if (!card) return;
+        // Don't collapse when clicking action buttons inside expanded card
+        if (e.target.closest('.ga-dismiss-btn') || e.target.closest('.ga-action-card')) return;
         const key = card.dataset.ministry;
         _expandedMinistry = _expandedMinistry === key ? null : key;
         renderAdminCabinet();
-    });
+    };
 }
 function renderMinistryExpandedContent(ministry, partyColor) {
     const key = ministry.ministry_key;
@@ -1855,7 +1857,7 @@ async function loadGovData() {
 
         const coalition = coalitionRes;
         const hog = hogRes.data;
-        const allParties = partiesRes.data || [];
+        const loadedParties = partiesRes.data || [];
 
         // Detect PM party
         if (hog) {
@@ -1889,15 +1891,15 @@ async function loadGovData() {
             }
         } catch (_) { /* non-fatal — actions just won't show active state */ }
 
-        // Also set legacy globals so existing window.fireMinister etc. still work
+        // Set legacy globals so existing window.fireMinister etc. still work
         ministryData = ministriesRes.data || [];
         coalitionData = coalition;
-        allParties = allParties;
+        allParties = loadedParties;
 
         _govData = {
             coalition,
             ministries: ministryData,
-            parties: allParties,
+            parties: loadedParties,
             hog,
             president,
             admin: adminRes.data,
