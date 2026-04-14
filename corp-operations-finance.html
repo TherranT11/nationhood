@@ -429,6 +429,39 @@ async function loadDealFlow() {
         .eq('offering_faction_id', faction.id);
     const offeredSet = new Set((myOffers || []).map(o => o.request_id));
 
+    // Fetch active loan counts + total outstanding per borrower faction
+    const borrowerFactionIds = [...new Set((requests || []).filter(r => r.requesting_faction?.id).map(r => r.requesting_faction.id))];
+    let borrowerLoanData = {}; // factionId → { count, totalOutstanding }
+    if (borrowerFactionIds.length > 0) {
+        const { data: activeLoans } = await _supabase
+            .from('finance_active_loans')
+            .select('borrower_faction_id, principal, total_paid')
+            .in('borrower_faction_id', borrowerFactionIds)
+            .in('status', ['current', 'late', 'delinquent']);
+        for (const loan of (activeLoans || [])) {
+            if (!borrowerLoanData[loan.borrower_faction_id]) {
+                borrowerLoanData[loan.borrower_faction_id] = { count: 0, totalOutstanding: 0 };
+            }
+            borrowerLoanData[loan.borrower_faction_id].count++;
+            const outstanding = Math.max(0, Number(loan.principal || 0) - Number(loan.total_paid || 0));
+            borrowerLoanData[loan.borrower_faction_id].totalOutstanding += outstanding;
+        }
+        // Also check auto-rate loan policies
+        const { data: autoPolicies } = await _supabase
+            .from('subsidiary_auto_policies')
+            .select('borrower_faction_id, principal, remaining_principal')
+            .in('borrower_faction_id', borrowerFactionIds)
+            .eq('service_type', 'loan')
+            .eq('status', 'active');
+        for (const p of (autoPolicies || [])) {
+            if (!borrowerLoanData[p.borrower_faction_id]) {
+                borrowerLoanData[p.borrower_faction_id] = { count: 0, totalOutstanding: 0 };
+            }
+            borrowerLoanData[p.borrower_faction_id].count++;
+            borrowerLoanData[p.borrower_faction_id].totalOutstanding += Number(p.remaining_principal || p.principal || 0);
+        }
+    }
+
     const subsector = (faction.corp_subsector || '').toLowerCase();
 
     dfDeals = (requests || []).filter(req => {
@@ -512,6 +545,8 @@ async function loadDealFlow() {
             revenue: Number(req.requesting_faction?.corp_cash_reserves ?? 0),
             corp_cash_reserves: Number(req.requesting_faction?.corp_cash_reserves ?? 0),
             corp_debt: Number(req.requesting_faction?.corp_debt ?? 0),
+            activeLoans: (borrowerLoanData[req.requesting_faction?.id] || {}).count || 0,
+            totalOutstanding: (borrowerLoanData[req.requesting_faction?.id] || {}).totalOutstanding || 0,
             creditRating: Number(borrowerNations[req.requesting_faction?.nation_id]?.credit ?? 50),
             stability: Number(borrowerNations[req.requesting_faction?.nation_id]?.stability ?? 50),
             risk: (() => {
@@ -1764,10 +1799,18 @@ function renderReviewDeal() {
             </div>
             <div style="font-size:10px;color:#9e9a92;line-height:1.5;margin-bottom:6px;">${escapeHtml(d.purpose)}</div>
             <div class="rd-applicant__stats">
-                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">REVENUE</div><div class="rd-applicant__stat-value" style="color:#5c5;">${fmtMoney(d.revenue || 0)}</div></div>
-                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">DEBT</div><div class="rd-applicant__stat-value" style="color:#c84;">${fmtMoney(d.debt || 0)}</div></div>
+                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">CASH</div><div class="rd-applicant__stat-value" style="color:#5c5;">${fmtMoney(d.corp_cash_reserves || 0)}</div></div>
+                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">TOTAL DEBT</div><div class="rd-applicant__stat-value" style="color:#c84;">${fmtMoney(d.corp_debt || 0)}</div></div>
                 <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">REP</div><div class="rd-applicant__stat-value" style="color:${repColor};">${d.reputation || '—'}</div></div>
                 <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">REQUESTED</div><div class="rd-applicant__stat-value" style="color:#e8e4dc;">${fmtMoney(d.amount)}</div></div>
+            </div>
+            <div style="margin-top:6px;padding:6px 8px;background:rgba(200,136,68,0.04);border:1px solid rgba(200,136,68,0.12);">
+                <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:#c84;letter-spacing:0.8px;margin-bottom:4px;">EXISTING OBLIGATIONS</div>
+                <div style="display:flex;gap:16px;">
+                    <div><span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">ACTIVE LOANS</span><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${d.activeLoans > 0 ? '#c84' : '#5c5'};">${d.activeLoans}</div></div>
+                    <div><span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">OUTSTANDING</span><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${d.totalOutstanding > 0 ? '#c84' : '#5c5'};">${fmtMoney(d.totalOutstanding)}</div></div>
+                    <div><span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">DEBT-TO-CASH</span><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${d.corp_debt > d.corp_cash_reserves ? '#c55' : d.corp_debt > 0 ? '#ca5' : '#5c5'};">${d.corp_cash_reserves > 0 ? (d.corp_debt / d.corp_cash_reserves * 100).toFixed(0) + '%' : '—'}</div></div>
+                </div>
             </div>
         </div>`;
 
