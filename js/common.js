@@ -913,16 +913,13 @@ export function updateTopBarInfo(faction, shard, nation) {
 
     const apEl = document.getElementById('topbar-ap');
     if (apEl && faction) {
-        if (faction.faction_type === 'corporation') {
-            apEl.style.display = 'none';
-        } else {
-            // Show party funds instead of AP
-            const funds = faction.party_funds ?? 0;
-            const fundsStr = funds >= 1000000 ? '$' + (funds / 1000000).toFixed(1) + 'M'
-                : funds >= 1000 ? '$' + Math.round(funds / 1000) + 'k'
-                : '$' + funds;
-            apEl.innerHTML = '<span class="topbar-ap__label">CASH</span><span class="topbar-ap__count" style="font-size:13px;color:var(--accent);margin-left:4px;">' + fundsStr + '</span>';
-        }
+        // Unified cash display for both parties and corporations
+        const isCorp = faction.faction_type === 'corporation';
+        const funds = isCorp ? (faction.corp_cash_reserves ?? 0) : (faction.party_funds ?? 0);
+        const fundsStr = funds >= 1000000 ? '$' + (funds / 1000000).toFixed(1) + 'M'
+            : funds >= 1000 ? '$' + Math.round(funds / 1000) + 'k'
+            : '$' + funds;
+        apEl.innerHTML = '<span class="topbar-ap__label">CASH</span><span class="topbar-ap__count" style="font-size:13px;color:var(--accent);margin-left:4px;">' + fundsStr + '</span>';
     }
     
     const nationFlag = document.getElementById('nation-flag');
@@ -1007,15 +1004,16 @@ export async function refreshAP(factionId) {
     try {
         const { data, error } = await _supabase
             .from('factions')
-            .select('action_points, party_funds')
+            .select('action_points, party_funds, corp_cash_reserves, faction_type')
             .eq('id', factionId)
             .single();
         if (error || !data) return;
 
-        // Update topbar with party funds (not AP)
+        // Update topbar with cash (party_funds or corp_cash_reserves)
         const apEl = document.getElementById('topbar-ap');
         if (apEl) {
-            const funds = data.party_funds ?? 0;
+            const isCorp = data.faction_type === 'corporation';
+            const funds = isCorp ? (data.corp_cash_reserves ?? 0) : (data.party_funds ?? 0);
             const fundsStr = funds >= 1000000 ? '$' + (funds / 1000000).toFixed(1) + 'M'
                 : funds >= 1000 ? '$' + Math.round(funds / 1000) + 'k'
                 : '$' + funds;
@@ -1030,6 +1028,7 @@ export async function refreshAP(factionId) {
                 if (state.faction) {
                     state.faction.action_points = data.action_points ?? 0;
                     state.faction.party_funds = data.party_funds ?? 0;
+                    if (data.corp_cash_reserves != null) state.faction.corp_cash_reserves = data.corp_cash_reserves;
                     state.timestamp = Date.now();
                     sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
                 }
