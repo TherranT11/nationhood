@@ -523,10 +523,7 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 <span>$${(fi.perSeat / 1000).toFixed(0)}k/seat × ${seats}</span>
                 ${_fundraiseUseCount > 0 ? `<span style="color:var(--orange);">Use #${_fundraiseUseCount + 1}</span>` : ''}
             </div>`;
-            if (momentum <= 0) {
-                isDisabled = true;
-                extraInfo += `<div style="margin-top:3px;font-family:var(--font-mono);font-size:8px;color:var(--red);">Cannot fundraise at 0 momentum</div>`;
-            }
+            // Fundraise is always available — momentum floor of 1 prevents death spiral
         }
 
         return `
@@ -1930,12 +1927,8 @@ async function executeFundraise(root) {
     if (_fundraiseSubmitting) return;
     const faction = _state.faction;
     const seats = faction.seats || 0;
-    const momentum = faction.momentum ?? 0;
+    const momentum = Math.max(1, faction.momentum ?? 0); // enforce floor client-side
 
-    if (momentum <= 0) {
-        alert('Cannot fundraise at 0 momentum.');
-        return;
-    }
     if (seats <= 0) {
         alert('Your party has no seats — nothing to fundraise from.');
         return;
