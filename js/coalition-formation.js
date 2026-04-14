@@ -362,12 +362,14 @@ async function createProposal(root) {
 
         if (error) { alert('Error: ' + error.message); return; }
 
-        // Auto-support own proposal
-        await _supabase.rpc('toggle_formation_support', {
-            p_formation_id: data.id,
-            p_faction_id: faction.id,
-            p_supports: true,
-        }).catch(() => {});
+        // Auto-support own proposal (ignore errors — RPC may not exist yet)
+        try {
+            await _supabase.rpc('toggle_formation_support', {
+                p_formation_id: data.id,
+                p_faction_id: faction.id,
+                p_supports: true,
+            });
+        } catch (e) { console.warn('[Coalition] Auto-support RPC failed:', e); }
 
         await renderFormationTab(root);
     } catch (err) {
