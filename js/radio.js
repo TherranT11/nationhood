@@ -1292,7 +1292,7 @@ function renderRadioEvents() {
         const cat = ev.category || 'government';
         const cs = CAT_COLORS[cat] || CAT_COLORS.government;
         const desc = ev.description_chosen || ev.event_name || '';
-        const truncDesc = desc.length > 100 ? desc.slice(0, 97) + '...' : desc;
+        const truncDesc = desc; // show full text, no truncation
 
         // Show nation flag+name on World scope
         let nationHtml = '';

@@ -1450,9 +1450,9 @@ const AGITATOR_ACTIONS = [
         id: 'file_lawsuit',
         name: 'File Lawsuit',
         desc: 'Sue a government ministry alleging corruption or negligence. 8-tick timeline with milestone events. Outcome depends on actual corruption growth since government took office.',
-        cost: 'FREE',
-        costColor: '#5cc55c',
-        ap: 0,
+        cost: '$250k',
+        costColor: '#c8a832',
+        moneyCost: 250000,
         tags: ['LEGAL', 'OFFENSIVE'],
         locked: false,
     },
@@ -1905,6 +1905,21 @@ function openLawsuitModal(root) {
             if (btn) { btn.disabled = true; btn.textContent = 'Filing...'; }
 
             try {
+                // Deduct $250k from party funds
+                const lawsuitCost = 250000;
+                const { data: freshFac } = await _supabase.from('factions').select('party_funds').eq('id', faction.id).single();
+                const curFunds = freshFac?.party_funds || 0;
+                if (curFunds < lawsuitCost) {
+                    alert(`Not enough funds. You have $${Math.round(curFunds / 1000)}k, need $250k.`);
+                    _lawsuitSubmitting = false;
+                    if (btn) { btn.disabled = false; btn.textContent = 'File Lawsuit'; }
+                    return;
+                }
+                const newFunds = curFunds - lawsuitCost;
+                await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', faction.id);
+                faction.party_funds = newFunds;
+                sessionStorage.removeItem('nationhood_state');
+
                 const tick = _state.shard?.current_tick || 0;
                 const result = await fileLawsuit(_supabase, {
                     factionId: faction?.id,
@@ -2198,7 +2213,25 @@ function openStatementModal(root) {
                 console.error('[PartyActions] Article creation failed:', articleErr.message);
             }
 
-            // 5. Close and re-render (funds already updated above)
+            // 5. Write to event_log (shows in Events panel + Executive Timeline)
+            await _supabase.from('event_log').insert({
+                nation_id: _state.nation?.id,
+                event_name: headline,
+                category: 'political',
+                description_chosen: `${leaderName} (${faction.faction_name}) issued a statement on ${topicLabel}: "${body.substring(0, 150)}${body.length > 150 ? '...' : ''}"`,
+                fired_at_tick: tick,
+            }).catch(e => console.warn('[Statement] event_log insert failed:', e));
+
+            // 6. Write to admin timeline (under Communications filter)
+            await _supabase.from('admin_timeline_events').insert({
+                nation_id: _state.nation?.id,
+                tick: tick,
+                type: 'communications',
+                title: 'Statement Issued',
+                description: `${leaderName} issued a public statement on ${topicLabel}: "${body.substring(0, 120)}${body.length > 120 ? '...' : ''}"`,
+            }).catch(e => console.warn('[Statement] timeline insert failed:', e));
+
+            // 7. Close and re-render (funds already updated above)
             close();
             renderPage(root);
         } catch (err) {

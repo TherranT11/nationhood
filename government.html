@@ -1326,6 +1326,7 @@ const TIMELINE_TYPE_CONFIG = {
     reshuffle:   { color: 'var(--amber)', icon: '\uD83D\uDD04' },
     economy:     { color: 'var(--teal)', icon: '\uD83D\uDCB0' },
     military:    { color: 'var(--red)', icon: '\u2694\uFE0F' },
+    communications: { color: 'var(--blue)', icon: '\uD83D\uDCE2' },
     event:       { color: 'var(--text-dim)', icon: '\uD83D\uDCC4' },
 };
 
@@ -1333,9 +1334,36 @@ const TIMELINE_FILTERS = [
     { id: 'all', label: 'ALL' },
     { id: 'legislation', label: 'BILLS' },
     { id: 'policy', label: 'POLICY' },
+    { id: 'communications', label: 'COMMS' },
     { id: 'crisis', label: 'CRISIS' },
     { id: 'appointment', label: 'CABINET' },
 ];
+
+function formatTimelineDesc(ev) {
+    const desc = ev.desc || '';
+    // Detect election results: "Parliamentary election held. Results: Party1: 30, Party2: 26, ..."
+    if (desc.includes('Results:') && (desc.includes('election held') || ev.title === 'Election Held')) {
+        const parts = desc.split('Results:');
+        const prefix = escapeHtml(parts[0].trim()) + ' Results: ';
+        const resultsPart = parts[1] || '';
+        // Parse "PartyName: 30, PartyName2: 26, ..."
+        const partyResults = resultsPart.split(',').map(s => s.trim()).filter(Boolean);
+        const colorized = partyResults.map(pr => {
+            const match = pr.match(/^(.+?):\s*(\d+)$/);
+            if (!match) return escapeHtml(pr);
+            const partyName = match[1].trim();
+            const seats = match[2];
+            // Find party color from allParties
+            const party = (allParties || []).find(p =>
+                p.faction_name === partyName || p.abbreviation === partyName
+            );
+            const color = party?.party_color || 'var(--text-secondary)';
+            return `<span style="color:${color};font-weight:600;">${escapeHtml(partyName)}: <strong style="font-size:15px;">${seats}</strong></span>`;
+        }).join(', ');
+        return prefix + colorized;
+    }
+    return escapeHtml(desc);
+}
 
 function renderAdminTimeline() {
     const el = document.getElementById('gov-admin-timeline');
@@ -1380,7 +1408,7 @@ function renderAdminTimeline() {
                         </div>
                         <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);flex-shrink:0;">${tickToDate(ev.tick)}</span>
                     </div>
-                    <div style="font-size:14px;color:var(--text-dim);line-height:1.6;">${escapeHtml(ev.desc)}</div>
+                    <div style="font-size:14px;color:var(--text-dim);line-height:1.6;">${formatTimelineDesc(ev)}</div>
                 </div>
             </div>`;
         }
