@@ -23,11 +23,8 @@
 <!-- ===== TOP BAR (rendered by common.js) ===== -->
 <div id="top-bar"></div>
 
-<!-- ===== PAGE HEADER + SUBTABS ===== -->
-<div id="diplo-page-header" style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px 0;">
-    <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:2px;color:var(--text-bright);">WORLD</span>
-    <div id="diplo-subtabs" style="display:flex;gap:0;"></div>
-</div>
+<!-- ===== SUBTABS (matching Actions/Home page style) ===== -->
+<div id="diplo-subtabs" class="diplo-subtabs"></div>
 
 <!-- ===== WORLD SUBTAB ===== -->
 <div id="subtab-world" class="diplo-subtab-content">
@@ -1287,7 +1284,7 @@ function initWorldMap() {
     if (!panel || !img) return;
 
     let scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
-    const minScale = 0.5, maxScale = 4;
+    const minScale = 1, maxScale = 4;
 
     function applyTransform() {
         img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;

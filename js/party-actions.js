@@ -338,12 +338,19 @@ function renderLeaderCards(leaderName, partyColor, faction) {
         const isActive = _selectedRole === role.id;
 
         // Agitator: populated if hired, otherwise hireable
-        let isVacant, name, portrait, actionCount;
+        let isVacant, name, portrait, actionCount, roleSubLabel;
         if (isLeader) {
             isVacant = false;
             name = leaderName;
             portrait = initials(faction.leader_first_name, faction.leader_last_name);
             actionCount = LEADER_ACTIONS.length;
+            // Determine political role label
+            const isPM = _administration?.pm_party_id === faction.id;
+            const isPresident = _state.nation?.hos_election_method === 'elected' && _administration?.president_party_id === faction.id;
+            if (isPM) roleSubLabel = { text: 'PRIME MINISTER', color: '#5cc55c' };
+            else if (isPresident) roleSubLabel = { text: 'PRESIDENT', color: '#5cc55c' };
+            else if (!_isOpposition) roleSubLabel = { text: 'GOVERNING', color: '#8b9a6b' };
+            else roleSubLabel = { text: 'OPPOSITION', color: '#c84' };
         } else if (isAgitator && _agitator) {
             isVacant = false;
             name = `${_agitator.first_name} ${_agitator.last_name}`;
@@ -391,6 +398,7 @@ function renderLeaderCards(leaderName, partyColor, faction) {
                             ${actionCount > 0 ? `<span class="pa-leader-role-count">${actionCount} actions</span>` : ''}
                         </div>
                         <div class="pa-leader-name">${esc(name)}</div>
+                        ${roleSubLabel ? `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:${roleSubLabel.color};margin-top:2px;">${roleSubLabel.text}</div>` : ''}
                         ${isAgitator && _agitator ? `<div style="display:flex;align-items:center;gap:3px;margin-top:2px;"><div style="flex:1;height:2px;background:var(--border-mid);"><div style="height:100%;width:${_agitator.skill}%;background:${getSkillLabel(_agitator.skill).color};"></div></div><span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);width:16px;text-align:right;">${_agitator.skill}</span></div>` : ''}
                         ${isAgitator && !_agitator ? '<div style="font-family:var(--font-mono);font-size:7px;color:#d44a4a;margin-top:2px;">Click to recruit</div>' : ''}
                     </div>
@@ -553,7 +561,14 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                         <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${role.color};">${role.title}</span>
                         <span class="pa-detail-name">${esc(leaderName)}</span>
                     </div>
-                    <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; ${esc(faction.faction_name)}${age}</div>
+                    <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; ${esc(faction.faction_name)}${age}${(() => {
+                        const isPM = _administration?.pm_party_id === faction.id;
+                        const isPresident = _state.nation?.hos_election_method === 'elected' && _administration?.president_party_id === faction.id;
+                        if (isPM) return ' <span style="color:#5cc55c;font-weight:700;"> &middot; PRIME MINISTER</span>';
+                        if (isPresident) return ' <span style="color:#5cc55c;font-weight:700;"> &middot; PRESIDENT</span>';
+                        if (!_isOpposition) return ' <span style="color:#8b9a6b;font-weight:700;"> &middot; GOVERNING</span>';
+                        return ' <span style="color:#c84;font-weight:700;"> &middot; OPPOSITION</span>';
+                    })()}</div>
                 </div>
             </div>
         </div>
