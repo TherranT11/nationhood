@@ -108,14 +108,15 @@ initPage('politics', async (state) => {
     initCoalitionFormation(_supabase, state).then(({ needed }) => {
         _coalitionReady = true;
         if (needed) {
-            // Add amber notification badge to Election tab AND Actions tab
+            // Add amber badge to Election subtab
             const electionTab = document.querySelector('.pa-subtab[data-panel="election"]');
-            const actionsTab = document.querySelector('.pa-subtab[data-panel="actions"]');
             if (electionTab && !electionTab.querySelector('.pa-subtab-badge')) {
                 electionTab.innerHTML += '<span class="pa-subtab-badge"></span>';
             }
-            if (actionsTab && !actionsTab.querySelector('.pa-subtab-badge')) {
-                actionsTab.innerHTML += '<span class="pa-subtab-badge"></span>';
+            // Add amber badge to ACTIONS top nav tab (not the subtab)
+            const topNavTab = document.querySelector('.nav-tab[data-tab="politics"]');
+            if (topNavTab && !topNavTab.querySelector('.pa-subtab-badge')) {
+                topNavTab.innerHTML += '<span class="pa-subtab-badge"></span>';
             }
         }
         // If user already clicked Election tab while we were loading, render now
