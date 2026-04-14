@@ -14,6 +14,30 @@
         #SanEstrella.land.selected-nation { fill: #ff8833; }
         #Palvera.land.selected-nation { fill: #d47070; }
 
+/* ── World/Trade subtabs (matching Actions page style) ── */
+.diplo-subtabs {
+    display: flex; gap: 0; padding: 0 22px;
+    background: var(--bg-body, #141412);
+    border-bottom: 1px solid rgba(200,196,184,0.06);
+}
+.diplo-subtab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 9px 18px; background: transparent; border: none;
+    border-bottom: 2px solid transparent;
+    color: #5c5a50; cursor: pointer; transition: color 0.15s;
+}
+.diplo-subtab:hover { color: #8a8778; }
+.diplo-subtab.active {
+    color: #c8a64e;
+    border-bottom-color: #c8a64e;
+}
+@media (max-width: 768px) {
+    .diplo-subtabs { padding: 0 10px; }
+    .diplo-subtab { padding: 8px 12px; font-size: 9px; }
+}
+
 /* ══════════════════════════════════════════════════════════════
    WORLD PAGE — Map + Nation Highlight
    ══════════════════════════════════════════════════════════════ */
