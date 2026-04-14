@@ -1881,7 +1881,105 @@ function renderLegislatureTab(container) {
 
     renderParliamentPanel();
     renderBillsList();
+    renderRoyalAssentPanel();
 }
+
+// ==================== ROYAL ASSENT (Absolute Monarchy) ====================
+
+function renderRoyalAssentPanel() {
+    const isMonarchy = (currentNation?.government_type || '').toLowerCase().includes('monarchy');
+    if (!isMonarchy || !_legData) return;
+
+    const assentBills = (_legData.floor || []).filter(b => b.status === 'awaiting_royal_assent');
+    if (assentBills.length === 0) return;
+
+    const isMonarch = currentNation?.monarch_faction_id === currentFaction?.id;
+    const monarchTitle = currentNation?.monarch_title || 'King';
+    const totalSeats = _legData.totalSeats || 100;
+    const majority = Math.floor(totalSeats / 2) + 1;
+
+    const rightEl = document.getElementById('leg-right');
+    if (!rightEl) return;
+
+    let html = `<div class="ga-panel" style="border-left:3px solid #c8a832;">
+        <div class="ga-panel-header" style="background:rgba(200,168,50,0.06);">
+            <span class="ga-panel-title" style="color:#c8a832;">&#128081; ROYAL ASSENT</span>
+            <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">${assentBills.length} bill${assentBills.length !== 1 ? 's' : ''} awaiting</span>
+        </div>`;
+
+    for (const bill of assentBills) {
+        const proposer = bill.factions?.faction_name || 'Unknown';
+        const proposerColor = bill.factions?.party_color || '#888';
+        const forSeats = bill.votes_for || 0;
+        const againstSeats = bill.votes_against || 0;
+        const hasMajority = forSeats >= majority;
+        const supportPct = totalSeats > 0 ? Math.round((forSeats / totalSeats) * 100) : 0;
+
+        html += `<div style="padding:12px 16px;border-bottom:1px solid var(--border-main);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <div>
+                    <div style="font-size:15px;font-weight:700;color:var(--text-bright);">${escapeHtml(bill.bill_name)}</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;color:${proposerColor};margin-top:2px;">Proposed by ${escapeHtml(proposer)}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${hasMajority ? 'var(--green)' : 'var(--red)'};">${forSeats} YES / ${againstSeats} NO</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">${supportPct}% support ${hasMajority ? '(majority)' : ''}</div>
+                </div>
+            </div>
+            ${isMonarch ? `
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button onclick="royalAssent('${bill.id}', true)" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#000;background:#c8a832;border:none;cursor:pointer;letter-spacing:0.06em;">&#128081; ENACT (+1 Legitimacy)</button>
+                    <button onclick="royalAssent('${bill.id}', false)" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:pointer;letter-spacing:0.06em;">&#10006; VETO ${hasMajority ? '(-3 Legitimacy)' : '(-1 Legitimacy)'}</button>
+                </div>
+            ` : `
+                <div style="font-family:var(--font-mono);font-size:10px;color:#c8a832;margin-top:6px;font-style:italic;">Awaiting the ${escapeHtml(monarchTitle)}'s decision...</div>
+            `}
+        </div>`;
+    }
+
+    html += `</div>`;
+    rightEl.insertAdjacentHTML('afterbegin', html);
+}
+
+window.royalAssent = async function(billId, enact) {
+    const isMonarch = currentNation?.monarch_faction_id === currentFaction?.id;
+    if (!isMonarch) { alert('Only the Monarch can grant royal assent.'); return; }
+
+    const bill = (_legData?.floor || []).find(b => b.id === billId);
+    if (!bill) return;
+
+    const totalSeats = _legData?.totalSeats || 100;
+    const majority = Math.floor(totalSeats / 2) + 1;
+    const hasMajority = (bill.votes_for || 0) >= majority;
+
+    try {
+        if (enact) {
+            // Enact the bill
+            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            await _supabase.from('bills').update({ status: 'passed', passed_tick: shard?.current_tick || 0 }).eq('id', billId);
+            // +1 legitimacy
+            const newLeg = Math.min(100, (currentNation.legitimacy || 50) + 1);
+            await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', currentNation.id);
+            currentNation.legitimacy = newLeg;
+        } else {
+            // Veto the bill
+            await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
+            // -3 legitimacy if majority supported, -1 otherwise
+            const legCost = hasMajority ? -3 : -1;
+            const newLeg = Math.max(0, (currentNation.legitimacy || 50) + legCost);
+            await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', currentNation.id);
+            currentNation.legitimacy = newLeg;
+        }
+
+        // Reload legislature
+        await loadLegislatureData();
+        const content = document.getElementById('gov-content');
+        if (content) renderLegislatureTab(content);
+    } catch (err) {
+        console.error('[RoyalAssent] Error:', err);
+        alert('Failed to process royal assent.');
+    }
+};
 
 async function loadLegislatureData() {
     if (!currentNation) return;
@@ -1894,7 +1992,7 @@ async function loadLegislatureData() {
                 .eq('nation_id', nid).eq('status', 'committee'),
             _supabase.from('bills')
                 .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
-                .eq('nation_id', nid).in('status', ['floor', 'voting', 'vetoed', 'referendum_pending', 'referendum_approved']),
+                .eq('nation_id', nid).in('status', ['floor', 'voting', 'vetoed', 'referendum_pending', 'referendum_approved', 'awaiting_royal_assent']),
             _supabase.from('bills')
                 .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*))')
                 .eq('nation_id', nid).eq('status', 'frozen'),
