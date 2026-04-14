@@ -12,7 +12,7 @@ let _articleReaderHandler = null; // stored ref to prevent listener accumulation
 let _archiveBackContext = null; // navigation context for article reader back button
 let _editingArticleId = null; // null = create mode, UUID string = edit mode
 let _removeExistingImage = false; // flag: user wants to drop the current image on edit
-let _publication = 'cruceran'; // 'cruceran' or 'continental'
+let _publication = 'cruceran'; // 'cruceran', 'continental', or 'alsahwa'
 let _publicationSetByUser = false; // true when user manually switched via dropdown
 
 // Nation-to-publication mapping (data-driven for future expansion)
@@ -30,6 +30,14 @@ const PUBLICATION_CONFIG = {
         tagline: 'Where Ideas Converge',
         nations: ['Calveth', 'Flandis', 'Vostia'],
         style: 'continental'
+    },
+    alsahwa: {
+        key: 'alsahwa',
+        name: 'Al-Sahwa',
+        tagline: 'Independent Voice of Al-Makir',
+        nations: ['Hajjara'],
+        continent: 'Al-Makir',
+        style: 'alsahwa'
     }
 };
 
@@ -87,7 +95,7 @@ export async function initNewspaper(supabase, state) {
     root.innerHTML = `<div class="newspaper-container nws-pub-${_publication}">
 
         <!-- TOP RIBBON -->
-        <div class="nws-top-ribbon${_publication === 'continental' ? ' nws-top-ribbon--continental' : ''}">
+        <div class="nws-top-ribbon${_publication === 'continental' ? ' nws-top-ribbon--continental' : _publication === 'alsahwa' ? ' nws-top-ribbon--alsahwa' : ''}">
             <div class="nws-top-ribbon-inner">
                 <span>${gameDate}</span>
                 <select class="nws-pub-switcher" id="nws-pub-switcher">${pubSwitcher}</select>
@@ -95,7 +103,28 @@ export async function initNewspaper(supabase, state) {
             </div>
         </div>
 
-        ${_publication === 'continental' ? `
+        ${_publication === 'alsahwa' ? `
+        <!-- AL-SAHWA MASTHEAD -->
+        <div class="nws-alsahwa-masthead">
+            <div class="nws-alsahwa-geo-border"></div>
+            <div class="nws-alsahwa-masthead-inner">
+                <div class="nws-alsahwa-brand">
+                    <div class="nws-alsahwa-mark">
+                        <div class="nws-alsahwa-mark-outer"></div>
+                        <div class="nws-alsahwa-mark-inner"></div>
+                        <div class="nws-alsahwa-mark-dot"></div>
+                    </div>
+                    <div class="nws-alsahwa-titles">
+                        <div class="nws-alsahwa-arabic">\u0627\u0644\u0635\u062D\u0648\u0629</div>
+                        <div class="nws-alsahwa-english">Al-Sahwa</div>
+                        <div class="nws-alsahwa-subtitle">Independent Voice of Al-Makir</div>
+                    </div>
+                </div>
+                <div class="nws-alsahwa-right">
+                    <div class="nws-alsahwa-date">${gameDate}</div>
+                </div>
+            </div>
+        </div>` : _publication === 'continental' ? `
         <!-- CONTINENTAL MASTHEAD -->
         <div class="nws-continental-masthead">
             <div class="nws-continental-masthead-top">
@@ -1087,7 +1116,16 @@ async function loadAndDisplayArticles() {
     if (!_supabase || !_state) return;
 
     try {
-        const nationIds = await getShardNationIds();
+        let nationIds = await getShardNationIds();
+
+        // Al-Sahwa: filter to only Al-Makir continent nations
+        if (_publication === 'alsahwa') {
+            const { data: alMakirNations } = await _supabase
+                .from('nations').select('id').eq('continent', 'Al-Makir');
+            if (alMakirNations && alMakirNations.length > 0) {
+                nationIds = alMakirNations.map(n => n.id);
+            }
+        }
 
         // Filter by publication — articles without the column default to 'cruceran'
         let query = _supabase
@@ -1097,7 +1135,9 @@ async function loadAndDisplayArticles() {
             .eq('status', 'published')
             .order('created_at', { ascending: false });
         // Filter by publication — international articles show on all sites
-        if (_publication !== 'cruceran') {
+        if (_publication === 'alsahwa') {
+            query = query.or('publication.eq.alsahwa,publication.eq.international');
+        } else if (_publication !== 'cruceran') {
             query = query.or(`publication.eq.${_publication},publication.eq.international`);
         } else {
             // Include articles with no publication set (legacy), explicitly 'cruceran', or international
