@@ -128,6 +128,23 @@
     font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); flex-shrink: 0;
 }
 
+/* ── Events tab toggle ── */
+.world-events-tabs {
+    display: flex; gap: 2px; margin-left: 8px;
+}
+.world-events-tab {
+    font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 3px 8px; border: 1px solid var(--border-main);
+    background: transparent; color: var(--text-dim);
+    cursor: pointer; transition: all 0.15s;
+}
+.world-events-tab:hover { color: var(--text-secondary); background: var(--bg-hover); }
+.world-events-tab.active {
+    background: var(--accent); color: var(--bg-body);
+    border-color: var(--accent);
+}
+
 /* ── Trade overview ── */
 .world-trade-table {
     width: 100%; border-collapse: collapse; margin-top: 4px;

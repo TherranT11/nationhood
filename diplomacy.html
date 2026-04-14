@@ -57,8 +57,12 @@
     <div class="world-events-panel" id="world-events-panel">
         <div class="world-highlight-header">
             <div class="world-highlight-dot" style="background:var(--blue);"></div>
-            <span class="world-highlight-title">World Events</span>
-            <span id="world-events-filter-label" style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-left:auto;">ALL NATIONS</span>
+            <span class="world-highlight-title">Events</span>
+            <div class="world-events-tabs" id="world-events-tabs">
+                <button class="world-events-tab active" data-tab="nation">NATION</button>
+                <button class="world-events-tab" data-tab="world">WORLD</button>
+            </div>
+            <span id="world-events-filter-label" style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-left:auto;"></span>
         </div>
         <div class="world-events-scroll" id="world-events-scroll">
             <div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Loading events...</div>
@@ -345,7 +349,8 @@ const EVENT_CAT_COLORS = {
 };
 
 let _worldEvents = [];
-let _worldEventNationFilter = null; // null = all nations
+let _worldEventNationFilter = null; // nation id for NATION tab filter
+let _worldEventTab = 'nation';      // 'nation' or 'world'
 
 async function loadWorldEvents(state) {
     const currentTick = state.shard?.current_tick || 0;
@@ -364,7 +369,34 @@ async function loadWorldEvents(state) {
     }
 
     _worldEvents = events || [];
+
+    // Default to your nation on first load
+    _worldEventNationFilter = state.nation?.id || null;
+    _worldEventTab = 'nation';
+
+    initWorldEventTabs();
     renderWorldEvents();
+}
+
+function initWorldEventTabs() {
+    const tabContainer = document.getElementById('world-events-tabs');
+    if (!tabContainer || tabContainer.dataset.bound) return;
+    tabContainer.dataset.bound = '1';
+
+    tabContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.world-events-tab');
+        if (!btn) return;
+        const tab = btn.dataset.tab;
+        if (tab === _worldEventTab) return;
+
+        _worldEventTab = tab;
+
+        // Update active state
+        tabContainer.querySelectorAll('.world-events-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        renderWorldEvents();
+    });
 }
 
 function renderWorldEvents() {
@@ -373,12 +405,22 @@ function renderWorldEvents() {
     if (!scroll) return;
 
     let events = _worldEvents;
-    if (_worldEventNationFilter) {
+
+    if (_worldEventTab === 'nation' && _worldEventNationFilter) {
         events = events.filter(e => e.nation_id === _worldEventNationFilter);
         const nation = (_worldAllNations || []).find(n => n.id === _worldEventNationFilter);
-        if (filterLabel) filterLabel.textContent = nation?.name?.toUpperCase() || 'FILTERED';
+        if (filterLabel) filterLabel.textContent = nation?.name?.toUpperCase() || '';
     } else {
-        if (filterLabel) filterLabel.textContent = 'ALL NATIONS';
+        // World tab — show all
+        if (filterLabel) filterLabel.textContent = '';
+    }
+
+    // Sync active tab button state
+    const tabContainer = document.getElementById('world-events-tabs');
+    if (tabContainer) {
+        tabContainer.querySelectorAll('.world-events-tab').forEach(b => {
+            b.classList.toggle('active', b.dataset.tab === _worldEventTab);
+        });
     }
 
     if (events.length === 0) {
@@ -562,8 +604,9 @@ async function selectWorldNation(nationId) {
     // Render immediately (trade data loads async below)
     renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors, null);
 
-    // Filter events to selected nation (or all if viewing yourself)
-    _worldEventNationFilter = isYou ? null : nation.id;
+    // Auto-switch to NATION tab filtered to the selected nation
+    _worldEventNationFilter = nation.id;
+    _worldEventTab = 'nation';
     renderWorldEvents();
 
     // Fetch bilateral trade data async, then re-render with it
