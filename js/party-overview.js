@@ -163,7 +163,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             supabase.from('faction_ideology').select('*'),  // fetch all, filter by party IDs after
             supabase.from('faction_electoral_standing').select('*').eq('nation_id', nationId),
             supabase.from('campaign_actions').select('*').eq('party_id', factionId).order('tick_performed', { ascending: false }).limit(20),
-            supabase.from('caucus_factions').select('*').eq('party_id', factionId),
+            supabase.from('caucus_factions').select('*').eq('party_id', factionId).eq('is_active', true),
             supabase.from('elections').select('*').eq('nation_id', nationId).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(1),
         ]);
 
@@ -263,7 +263,6 @@ function renderPartyOverview(container) {
             <div class="po-col-center" id="po-center-col">
                 ${renderMomentumCard(o, momentum)}
                 ${renderActivityFeed(o)}
-                ${renderQuickInfoCards()}
             </div>
             <div class="po-col-right" id="po-right-col">
                 ${renderRivalParties(o, faction)}
@@ -404,7 +403,7 @@ function renderIdeologySection(o, faction, partyColor) {
     // Build legend
     const allLegend = [
         { id: faction?.id, name: 'You', color: partyColor },
-        ...o.rivalParties.map(p => ({ id: p.id, name: p.abbreviation || p.faction_name?.slice(0, 3) || '?', color: p.color || '#666' })),
+        ...o.rivalParties.map(p => ({ id: p.id, name: p.abbreviation || p.faction_name?.slice(0, 3) || '?', color: p.party_color || '#666' })),
     ];
 
     const legendHtml = allLegend.map(p => {
@@ -447,7 +446,8 @@ function renderIdeologySection(o, faction, partyColor) {
 }
 
 function renderCaucuses(o) {
-    if (!o.caucuses || o.caucuses.length === 0) {
+    const activeCaucuses = (o.caucuses || []).filter(c => c.name && c.name !== 'Unnamed');
+    if (activeCaucuses.length === 0) {
         return `<div class="po-card">
             <div class="po-card-header">
                 <span class="po-card-title">INTERNAL CAUCUSES</span>
@@ -456,21 +456,24 @@ function renderCaucuses(o) {
         </div>`;
     }
 
-    const totalSeats = o.caucuses.reduce((s, c) => s + (c.seats || 0), 0);
-    const rowsHtml = o.caucuses.map(c => {
-        const loyalty = c.loyalty ?? 50;
+    const mySeats = o.faction?.seats || 0;
+    const rowsHtml = activeCaucuses.map(c => {
+        const loyalty = c.relationship_score ?? 50;
         const loyaltyColor = loyalty > 60 ? 'var(--green)' : loyalty > 40 ? 'var(--amber)' : 'var(--red)';
+        const caucusSeats = Math.round((c.seat_share || 0) * mySeats);
+        const axisLabel = (c.dominant_axis || '').replace(/_/g, '/');
+        const wingLabel = c.wing_end === 'left' ? axisLabel.split('/')[0] : axisLabel.split('/')[1] || '';
         return `<div class="po-caucus-row">
             <div>
-                <div class="po-caucus-name">${esc(c.caucus_name || c.wing || 'Unnamed')}</div>
-                <div class="po-caucus-wing" style="color:${c.color || 'var(--text-dim)'};">${esc(c.axis_label || '')}</div>
+                <div class="po-caucus-name">${esc(c.name)}</div>
+                <div class="po-caucus-wing" style="color:var(--text-dim);">${esc(wingLabel)}</div>
             </div>
             <div style="display:flex;align-items:center;gap:10px;">
-                <span class="po-caucus-seats">${c.seats || 0} seats</span>
-                <div style="width:40px;">
-                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);text-align:right;margin-bottom:1px;">LOYALTY</div>
+                <span class="po-caucus-seats">${caucusSeats} seats</span>
+                <div style="width:50px;">
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);text-align:right;margin-bottom:1px;">LOYALTY</div>
                     <div style="width:100%;height:3px;background:var(--border-main);"><div style="height:100%;width:${loyalty}%;background:${loyaltyColor};"></div></div>
-                    <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${loyaltyColor};text-align:right;margin-top:1px;">${loyalty}</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${loyaltyColor};text-align:right;margin-top:1px;">${loyalty}</div>
                 </div>
             </div>
         </div>`;
@@ -479,7 +482,7 @@ function renderCaucuses(o) {
     return `<div class="po-card">
         <div class="po-card-header">
             <span class="po-card-title">INTERNAL CAUCUSES</span>
-            <span class="po-card-subtitle">${o.caucuses.length} active \u00B7 ${totalSeats} seats</span>
+            <span class="po-card-subtitle">${activeCaucuses.length} active \u00B7 ${mySeats} seats</span>
         </div>
         ${rowsHtml}
     </div>`;
@@ -628,7 +631,7 @@ function renderRivalParties(o, myFaction) {
     const AXIS_KEYS = ['security_freedom', 'tradition_progress', 'individualism_collectivism', 'liberty_equality', 'globalism_nationalism'];
 
     const rivalHtml = rivals.map(party => {
-        const pColor = party.color || '#666';
+        const pColor = party.party_color || '#666';
         const abbr = party.abbreviation || party.faction_name?.slice(0, 3)?.toUpperCase() || '?';
         const leaderName = (party.leader_first_name && party.leader_last_name)
             ? `${party.leader_first_name} ${party.leader_last_name}` : 'Unknown';
@@ -658,37 +661,37 @@ function renderRivalParties(o, myFaction) {
         const miniAxesHtml = AXIS_KEYS.map((key, i) => {
             const score = ideo ? Number(ideo[key] ?? 0) : 0;
             const pos = (score + 100) / 200;
-            return `<div style="display:flex;align-items:center;gap:4px;">
-                <span style="font-family:var(--font-mono);font-size:5px;color:var(--text-dim);width:32px;text-align:right;">${AXIS_LABELS[i]}</span>
-                <div style="flex:1;height:4px;background:var(--border-main);position:relative;">
-                    <div style="position:absolute;top:50%;left:${pos * 100}%;transform:translate(-50%,-50%);width:6px;height:6px;border-radius:50%;background:${pColor};"></div>
+            return `<div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);width:42px;text-align:right;">${AXIS_LABELS[i]}</span>
+                <div style="flex:1;height:5px;background:var(--border-main);position:relative;">
+                    <div style="position:absolute;top:50%;left:${pos * 100}%;transform:translate(-50%,-50%);width:8px;height:8px;border-radius:50%;background:${pColor};"></div>
                 </div>
             </div>`;
         }).join('');
 
-        return `<div style="padding:8px 12px;border-bottom:1px solid var(--border-main);">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <div style="display:flex;align-items:center;gap:6px;">
-                    <div style="width:24px;height:24px;background:${pColor}15;border:1px solid ${pColor}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:8px;font-weight:700;color:${pColor};">${esc(abbr)}</div>
+        return `<div style="padding:12px 16px;border-bottom:1px solid var(--border-main);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="width:36px;height:36px;background:${pColor}15;border:1px solid ${pColor}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:12px;font-weight:700;color:${pColor};">${esc(abbr)}</div>
                     <div>
-                        <div style="font-size:10px;font-weight:700;color:var(--text-bright);">${esc(party.faction_name)}</div>
-                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${esc(leaderName)}</div>
+                        <div style="font-size:15px;font-weight:700;color:var(--text-bright);">${esc(party.faction_name)}</div>
+                        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${esc(leaderName)}</div>
                     </div>
                 </div>
-                <span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;color:${statusColor};background:${statusColor}0a;border:1px solid ${statusColor}44;white-space:nowrap;">${statusLabel}</span>
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:2px 7px;color:${statusColor};background:${statusColor}0a;border:1px solid ${statusColor}44;white-space:nowrap;">${statusLabel}</span>
             </div>
-            <div style="display:flex;gap:8px;margin-bottom:6px;">
-                <div style="display:flex;align-items:center;gap:4px;">
-                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">SEATS</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${seats > 0 ? 'var(--text-bright)' : 'var(--text-dim)'};">${seats}</span>
-                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">/ ${totalSeats}</span>
+            <div style="display:flex;gap:10px;margin-bottom:8px;">
+                <div style="display:flex;align-items:center;gap:5px;">
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">SEATS</span>
+                    <span style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${seats > 0 ? 'var(--text-bright)' : 'var(--text-dim)'};">${seats}</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">/ ${totalSeats}</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:4px;">
-                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">VS YOU</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${diffColor};">${seatDiff > 0 ? '+' : ''}${seatDiff}</span>
+                <div style="display:flex;align-items:center;gap:5px;">
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">VS YOU</span>
+                    <span style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${diffColor};">${seatDiff > 0 ? '+' : ''}${seatDiff}</span>
                 </div>
             </div>
-            <div style="display:flex;flex-direction:column;gap:2px;">${miniAxesHtml}</div>
+            <div style="display:flex;flex-direction:column;gap:3px;">${miniAxesHtml}</div>
         </div>`;
     }).join('');
 
