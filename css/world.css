@@ -63,7 +63,7 @@
 
 /* ── Nation highlight panel (right) ── */
 .world-highlight {
-    width: 380px; height: 450px;
+    width: 380px; height: 520px;
     max-height: calc(100vh - 120px);
     background: var(--bg-panel); border: 1px solid var(--border-main);
     display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
@@ -126,6 +126,45 @@
 .world-event-text { font-size: 9px; color: var(--text-secondary); flex: 1; line-height: 1.4; }
 .world-event-nation {
     font-family: var(--font-mono); font-size: 7px; color: var(--text-dim); flex-shrink: 0;
+}
+
+/* ── Trade overview ── */
+.world-trade-table {
+    width: 100%; border-collapse: collapse; margin-top: 4px;
+}
+.world-trade-table th {
+    font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+    color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 3px 4px; text-align: right; border-bottom: 1px solid var(--border-main);
+}
+.world-trade-table th:first-child { text-align: left; }
+.world-trade-table td {
+    font-family: var(--font-mono); font-size: 8px;
+    padding: 3px 4px; text-align: right; border-bottom: 1px solid var(--border-light);
+    color: var(--text-secondary);
+}
+.world-trade-table td:first-child {
+    text-align: left; font-weight: 600; color: var(--text-bright); font-size: 8px;
+}
+.world-trade-table tr:last-child td { border-bottom: none; }
+.world-trade-table .trade-positive { color: var(--green); }
+.world-trade-table .trade-negative { color: var(--red); }
+.world-trade-table .trade-zero { color: var(--text-dim); }
+.world-trade-balance {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0; margin-top: 4px;
+    border-top: 1px solid var(--border-main);
+}
+.world-trade-balance-label {
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.world-trade-balance-value {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+}
+.world-trade-loading {
+    font-family: var(--font-mono); font-size: 8px; color: var(--text-dim);
+    font-style: italic; padding: 4px 0;
 }
 
 /* ── Responsive ── */

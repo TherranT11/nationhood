@@ -545,6 +545,7 @@ async function selectWorldNation(nationId) {
     if (!nation) return;
 
     const myNationId = _worldState.nation?.id;
+    const isYou = nation.id === myNationId;
 
     // Fetch diplomatic data if not cached
     if (!_worldRelations) {
@@ -558,17 +559,86 @@ async function selectWorldNation(nationId) {
         _worldAmbassadors = ambResult.data || [];
     }
 
-    renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors);
+    // Render immediately (trade data loads async below)
+    renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors, null);
 
     // Filter events to selected nation (or all if viewing yourself)
-    const isYou = nation.id === _worldState.nation?.id;
     _worldEventNationFilter = isYou ? null : nation.id;
     renderWorldEvents();
+
+    // Fetch bilateral trade data async, then re-render with it
+    if (!isYou && myNationId) {
+        fetchBilateralTrade(myNationId, nation.id).then(tradeData => {
+            renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors, tradeData);
+        }).catch(err => {
+            console.error('[World] Bilateral trade fetch failed:', err);
+        });
+    }
 }
 
 let _worldAmbassadors = [];
 
-function renderNationHighlight(nation, state, relations, agreements, ambassadors) {
+/**
+ * Fetch bilateral trade data between two nations for the latest tick.
+ * Returns { exportsToThem, importsFromThem, totalExports, totalImports, balance, tick }
+ */
+async function fetchBilateralTrade(myNationId, theirNationId) {
+    const currentTick = _worldState.shard?.current_tick || 0;
+    if (currentTick <= 0) return null;
+
+    // Get the latest tick with trade_partners data (might be 1 tick behind)
+    const { data: latestRow } = await _supabase.from('trade_partners')
+        .select('tick')
+        .or(`exporter_nation_id.eq.${myNationId},exporter_nation_id.eq.${theirNationId}`)
+        .order('tick', { ascending: false })
+        .limit(1);
+    const tradeTick = latestRow?.[0]?.tick ?? currentTick;
+
+    // Fetch what we export TO them and what we import FROM them (at the same tick)
+    const [exportsRes, importsRes] = await Promise.all([
+        _supabase.from('trade_partners')
+            .select('sector, trade_volume')
+            .eq('exporter_nation_id', myNationId)
+            .eq('importer_nation_id', theirNationId)
+            .eq('tick', tradeTick),
+        _supabase.from('trade_partners')
+            .select('sector, trade_volume')
+            .eq('exporter_nation_id', theirNationId)
+            .eq('importer_nation_id', myNationId)
+            .eq('tick', tradeTick),
+    ]);
+
+    const exportsToThem = {};   // sector → volume (what we sell to them)
+    const importsFromThem = {}; // sector → volume (what they sell to us)
+    let totalExports = 0;
+    let totalImports = 0;
+
+    if (exportsRes.data) {
+        for (const row of exportsRes.data) {
+            const vol = Number(row.trade_volume) || 0;
+            exportsToThem[row.sector] = (exportsToThem[row.sector] || 0) + vol;
+            totalExports += vol;
+        }
+    }
+    if (importsRes.data) {
+        for (const row of importsRes.data) {
+            const vol = Number(row.trade_volume) || 0;
+            importsFromThem[row.sector] = (importsFromThem[row.sector] || 0) + vol;
+            totalImports += vol;
+        }
+    }
+
+    return {
+        exportsToThem,
+        importsFromThem,
+        totalExports,
+        totalImports,
+        balance: totalExports - totalImports,
+        tick: tradeTick,
+    };
+}
+
+function renderNationHighlight(nation, state, relations, agreements, ambassadors, tradeData) {
     const body = document.getElementById('world-highlight-body');
     if (!body) return;
 
@@ -696,6 +766,83 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
         }
         if (allNationAgreements.length > 8) {
             html += `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">+ ${allNationAgreements.length - 8} more</div>`;
+        }
+    }
+
+    // Bilateral trade overview (only for foreign nations)
+    if (!isYou) {
+        html += `<div class="world-highlight-section">BILATERAL TRADE</div>`;
+        if (tradeData === null) {
+            // Still loading
+            html += `<div class="world-trade-loading">Loading trade data\u2026</div>`;
+        } else if (tradeData && (tradeData.totalExports > 0 || tradeData.totalImports > 0)) {
+            // Sector labels for display
+            const SECTOR_LABELS = {
+                fuel_energy: 'Fuel & Energy',
+                minerals: 'Minerals',
+                food_agriculture: 'Food & Agri',
+                grains_staples: 'Grains',
+                livestock_dairy: 'Livestock',
+                fruits_vegetables: 'Fruits & Veg',
+                cash_crops: 'Cash Crops',
+                manufactured_goods: 'Manufactured',
+                technology: 'Technology',
+                arms: 'Arms',
+                tourism: 'Tourism',
+                services_finance: 'Services',
+            };
+
+            // Collect all sectors with any activity
+            const allSectors = new Set([
+                ...Object.keys(tradeData.exportsToThem),
+                ...Object.keys(tradeData.importsFromThem),
+            ]);
+
+            // Build table rows sorted by total volume descending
+            const sectorRows = [];
+            for (const sector of allSectors) {
+                const exp = tradeData.exportsToThem[sector] || 0;
+                const imp = tradeData.importsFromThem[sector] || 0;
+                sectorRows.push({ sector, exp, imp, total: exp + imp });
+            }
+            sectorRows.sort((a, b) => b.total - a.total);
+
+            html += `<table class="world-trade-table">
+                <thead><tr>
+                    <th>Sector</th>
+                    <th>Exports</th>
+                    <th>Imports</th>
+                    <th>Net</th>
+                </tr></thead><tbody>`;
+
+            for (const row of sectorRows) {
+                const net = row.exp - row.imp;
+                const netClass = net > 0 ? 'trade-positive' : net < 0 ? 'trade-negative' : 'trade-zero';
+                const netPrefix = net > 0 ? '+' : '';
+                html += `<tr>
+                    <td>${escapeHtml(SECTOR_LABELS[row.sector] || row.sector)}</td>
+                    <td>${fmtBudgetCurrency(row.exp)}</td>
+                    <td>${fmtBudgetCurrency(row.imp)}</td>
+                    <td class="${netClass}">${netPrefix}${fmtBudgetCurrency(net)}</td>
+                </tr>`;
+            }
+
+            html += `</tbody></table>`;
+
+            // Trade balance summary
+            const balance = tradeData.balance;
+            const balClass = balance > 0 ? 'trade-positive' : balance < 0 ? 'trade-negative' : 'trade-zero';
+            const balPrefix = balance > 0 ? '+' : '';
+            html += `<div class="world-trade-balance">
+                <span class="world-trade-balance-label">Trade Balance</span>
+                <span class="world-trade-balance-value ${balClass}">${balPrefix}${fmtBudgetCurrency(balance)}</span>
+            </div>`;
+            html += `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">
+                Total exports: ${fmtBudgetCurrency(tradeData.totalExports)} &middot;
+                Total imports: ${fmtBudgetCurrency(tradeData.totalImports)}
+            </div>`;
+        } else if (tradeData) {
+            html += `<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No active trade routes.</div>`;
         }
     }
 
