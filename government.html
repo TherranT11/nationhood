@@ -974,14 +974,178 @@ const FORMATION_MINISTRIES = [
     { key: 'security', name: 'Ministry of Security', description: 'Handles intelligence and counter-terrorism operations.', inactive: true }
 ];
 
+// ═══════════════════════════════════════════════════════════════
+// UI 2.0 — GOVERNMENT PAGE
+// ═══════════════════════════════════════════════════════════════
+
+const GOV_SUBTABS = [
+    { id: 'administrative', label: 'ADMINISTRATIVE' },
+    { id: 'legislative', label: 'LEGISLATIVE' },
+    { id: 'judicial', label: 'JUDICIAL' },
+    { id: 'laws', label: 'LAWS' },
+    { id: 'past', label: 'PAST ADMINISTRATIONS' },
+];
+let _govActiveSubtab = 'administrative';
+
+// Shared data loaded once and used across subtab renders
+let _govData = null; // { coalition, ministries, parties, hog, president, admin, shard tick, etc. }
+
+function renderGovSubtabs() {
+    const container = document.getElementById('gov-subtabs');
+    if (!container) return;
+    container.innerHTML = GOV_SUBTABS.map(tab => `<div class="gov-subtab${_govActiveSubtab === tab.id ? ' active' : ''}" data-tab="${tab.id}">${tab.label}</div>`).join('');
+    container.onclick = (e) => {
+        const el = e.target.closest('.gov-subtab');
+        if (!el || el.dataset.tab === _govActiveSubtab) return;
+        _govActiveSubtab = el.dataset.tab;
+        renderGovSubtabs();
+        renderGovContent();
+    };
+}
+
+function renderGovContent() {
+    const content = document.getElementById('gov-content');
+    if (!content) return;
+
+    if (_govActiveSubtab === 'administrative') {
+        renderAdministrationTab(content);
+    } else {
+        const label = GOV_SUBTABS.find(t => t.id === _govActiveSubtab)?.label || _govActiveSubtab;
+        content.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;text-align:center;color:var(--text-dim);">
+            <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">${escapeHtml(label)}</div>
+            <div style="font-size:0.85rem;color:var(--text-dim);">Coming soon.</div>
+        </div>`;
+    }
+}
+
+function renderAdministrationTab(container) {
+    if (!_govData) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading government data...</div>';
+        return;
+    }
+    // Phase 2+ will populate this
+    container.innerHTML = `<div id="gov-admin-banner"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+            <div id="gov-admin-timeline" style="width:42%;"></div>
+            <div id="gov-admin-right" style="flex:1;display:flex;flex-direction:column;gap:6px;">
+                <div id="gov-admin-cabinet"></div>
+                <div id="gov-admin-chat"></div>
+                <div id="gov-admin-actions"></div>
+            </div>
+        </div>`;
+    renderAdminBanner();
+    renderAdminTimeline();
+    renderAdminCabinet();
+    renderAdminChat();
+    renderAdminActions();
+}
+
+// Stub renderers — each phase will replace these
+function renderAdminBanner() {
+    const el = document.getElementById('gov-admin-banner');
+    if (!el || !_govData) return;
+    const { coalition, hog, president, admin } = _govData;
+    const nation = currentNation;
+    const pmName = hog ? `${hog.first_name} ${hog.last_name}` : 'Vacant';
+    const pmParty = hog?.factions?.faction_name || '';
+    const approval = Number(nation?.gov_approval ?? 50).toFixed(1);
+    el.innerHTML = `<div class="ga-banner">
+        <div class="ga-banner-top">
+            <div>
+                <div class="ga-banner-name">${escapeHtml(admin?.admin_name || pmName.split(' ').pop() + ' Administration')}</div>
+                <div class="ga-banner-meta">${escapeHtml(nation?.government_type || 'Parliamentary')} · ${coalition ? coalition.party_ids.length + ' parties' : 'No coalition'}</div>
+            </div>
+            <div class="ga-banner-approval">
+                <div class="ga-banner-approval-label">GOVERNMENT APPROVAL</div>
+                <div class="ga-banner-approval-value">${approval}%</div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderAdminTimeline() {
+    const el = document.getElementById('gov-admin-timeline');
+    if (!el) return;
+    el.innerHTML = '<div class="ga-panel"><div class="ga-panel-header"><span class="ga-panel-title">EXECUTIVE TIMELINE</span></div><div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Phase 5</div></div>';
+}
+function renderAdminCabinet() {
+    const el = document.getElementById('gov-admin-cabinet');
+    if (!el) return;
+    el.innerHTML = '<div class="ga-panel"><div class="ga-panel-header"><span class="ga-panel-title">CABINET</span></div><div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Phase 3</div></div>';
+}
+function renderAdminChat() {
+    const el = document.getElementById('gov-admin-chat');
+    if (!el) return;
+    el.innerHTML = '<div class="ga-panel"><div class="ga-panel-header"><span class="ga-panel-title">ADMINISTRATIVE COMMUNICATIONS</span></div><div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Phase 6</div></div>';
+}
+function renderAdminActions() {
+    const el = document.getElementById('gov-admin-actions');
+    if (!el) return;
+    el.innerHTML = '';
+}
+
+async function loadGovData() {
+    try {
+        // Refresh nation + tick
+        const [freshNationRes, shardRes] = await Promise.all([
+            _supabase.from('nations').select('*').eq('id', currentNation.id).single(),
+            _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+        ]);
+        if (freshNationRes.data) currentNation = freshNationRes.data;
+        if (shardRes.data?.current_tick) currentTick = shardRes.data.current_tick;
+
+        // Bust coalition cache to get fresh status
+        qCacheBust('coalition_');
+
+        // Parallel data fetch
+        const [coalitionRes, ministriesRes, partiesRes, hogRes, adminRes] = await Promise.all([
+            fetchActiveCoalition(_supabase, currentNation.id),
+            _supabase.from('ministries').select('*, factions(id, faction_name, abbreviation, party_color)').eq('nation_id', currentNation.id).eq('is_active', true),
+            _supabase.from('factions').select('id, faction_name, abbreviation, seats, party_color, party_logo, custom_logo_url, leader_first_name, leader_last_name, leader_age, leader_positive_traits, leader_negative_traits').eq('nation_id', currentNation.id).eq('faction_type', 'party'),
+            _supabase.from('head_of_government').select('*, factions(id, faction_name, abbreviation, party_color)').eq('nation_id', currentNation.id).eq('active', true).maybeSingle(),
+            _supabase.from('administrations').select('*').eq('nation_id', currentNation.id).is('ended_at_tick', null).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        ]);
+
+        // Presidential: fetch active president
+        let president = null;
+        if (isPresidential || isSemiPresidential(currentNation)) {
+            const { data } = await _supabase.from('presidents').select('*, factions(id, faction_name, abbreviation, party_color)').eq('nation_id', currentNation.id).eq('is_active', true).maybeSingle();
+            president = data;
+        }
+
+        const coalition = coalitionRes;
+        const hog = hogRes.data;
+        const allParties = partiesRes.data || [];
+
+        // Detect PM party
+        if (hog) {
+            pmFactionId = hog.faction_id || null;
+            isPMParty = (currentFaction?.id === pmFactionId);
+        } else if (coalition?.lead_party_id) {
+            pmFactionId = coalition.lead_party_id;
+            isPMParty = (currentFaction?.id === pmFactionId);
+        }
+
+        _govData = {
+            coalition,
+            ministries: ministriesRes.data || [],
+            parties: allParties,
+            hog,
+            president,
+            admin: adminRes.data,
+        };
+    } catch (err) {
+        console.error('[Government] loadGovData failed:', err);
+        _govData = { coalition: null, ministries: [], parties: [], hog: null, president: null, admin: null };
+    }
+}
+
 initPage('government', async (state) => {
-    return; // UI 2.0 placeholder — full government page disabled
     const { nation, faction } = state;
     currentNation = nation;
     currentFaction = faction;
     initGameConfigForNation(nation);
 
-    // Set nation-specific name pools (Avelia→Avelian, Calveth→Danish, others→Spanish)
     if (nation?.name) {
         const { firstNames, lastNames } = getNationNames(nation.name);
         FIRST_NAMES_POOL = firstNames;
@@ -989,13 +1153,13 @@ initPage('government', async (state) => {
     }
 
     if (!nation) {
-        document.getElementById('content-area').innerHTML = '<div class="placeholder-panel"><div class="ph-icon">🏛️</div><h3>No Nation Selected</h3><p>Your party is not assigned to a nation yet.</p></div>';
+        document.getElementById('gov-content').innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">No nation selected.</div>';
         return;
     }
 
     isPresidential = isGovernmentPresidential(nation);
 
-    // Backfill head of state if missing/incomplete — use nation-specific names
+    // Backfill head of state if missing
     const hasValidHosAge = Number.isFinite(Number(nation.head_of_state_age)) && Number(nation.head_of_state_age) > 0;
     if (!nation.head_of_state_first_name || !nation.head_of_state_last_name || !hasValidHosAge) {
         const { firstNames: hosFirstPool, lastNames: hosLastPool } = getNationNames(nation.name);
@@ -1003,9 +1167,7 @@ initPage('government', async (state) => {
         const hosLast = nation.head_of_state_last_name || hosLastPool[Math.floor(Math.random() * hosLastPool.length)];
         const hosAge = hasValidHosAge ? Number(nation.head_of_state_age) : (45 + Math.floor(Math.random() * 25));
         const { error } = await _supabase.from('nations').update({
-            head_of_state_first_name: hosFirst,
-            head_of_state_last_name: hosLast,
-            head_of_state_age: hosAge
+            head_of_state_first_name: hosFirst, head_of_state_last_name: hosLast, head_of_state_age: hosAge
         }).eq('id', nation.id);
         if (!error) {
             currentNation.head_of_state_first_name = hosFirst;
@@ -1018,6 +1180,15 @@ initPage('government', async (state) => {
     const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
     currentTick = shard?.current_tick || 0;
 
+    // Render subtabs immediately, then load data and re-render
+    renderGovSubtabs();
+    renderGovContent(); // shows loading state
+
+    await loadGovData();
+    renderGovContent(); // re-renders with real data
+
+    // Original government page code follows (preserved, disabled by the new UI above)
+    return;
     await renderGovernmentPage();
 });
 
