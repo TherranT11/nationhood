@@ -112,12 +112,13 @@ export async function processAutoRatePolicies(supabase, nationId, currentTick) {
 
                 // Reduce borrower's corp_debt by principal paid down
                 if (principalPortion > 0) {
-                    var { data: debtRow } = await supabase.from('factions')
+                    var { data: debtRow, error: debtErr } = await supabase.from('factions')
                         .select('corp_debt').eq('id', p.borrower_faction_id).single();
-                    if (debtRow) {
-                        await supabase.from('factions').update({
+                    if (!debtErr && debtRow) {
+                        var { error: debtUpErr } = await supabase.from('factions').update({
                             corp_debt: Math.max(0, Number(debtRow.corp_debt ?? 0) - principalPortion),
                         }).eq('id', p.borrower_faction_id);
+                        if (debtUpErr) console.warn('[SubPayments] Failed to reduce corp_debt:', debtUpErr.message);
                     }
                 }
 

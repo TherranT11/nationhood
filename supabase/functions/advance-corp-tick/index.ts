@@ -1694,11 +1694,6 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                     console.log(`[Projects] Deal flow insurance closed for completed project: ${contract.name}`);
                 }
 
-                // Auto-rate policies (subsidiary_auto_policies)
-                await supabase.from('subsidiary_auto_policies').update({
-                    status: 'lapsed',
-                }).eq('insured_contract_id', contract.id).eq('status', 'active');
-
                 // Refund performance bond if one exists
                 if (contract.bond_id) {
                     const { data: bond } = await supabase.from('finance_active_loans')

@@ -5,14 +5,7 @@
 -- 1. Corporate debt tracking on factions
 ALTER TABLE factions ADD COLUMN IF NOT EXISTS corp_debt BIGINT NOT NULL DEFAULT 0;
 
--- 2. Add 'bond' to finance_loan_requests.request_type if not already there
--- (Some setups already have loan/bond/insurance; this is idempotent)
-ALTER TABLE finance_loan_requests DROP CONSTRAINT IF EXISTS finance_loan_requests_status_check;
-ALTER TABLE finance_loan_requests
-    ADD CONSTRAINT finance_loan_requests_status_check
-    CHECK (status IN ('open', 'funded', 'expired', 'cancelled'));
-
--- Ensure request_type supports bond
+-- 2. Ensure request_type column exists (idempotent — already present from earlier migrations)
 DO $$ BEGIN
     ALTER TABLE finance_loan_requests
         ADD COLUMN IF NOT EXISTS request_type TEXT NOT NULL DEFAULT 'loan';
