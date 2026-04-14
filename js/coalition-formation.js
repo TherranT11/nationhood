@@ -336,6 +336,9 @@ async function handleFormGovernment(formation, root) {
     const pmPartyId = _ministryAssignments.prime_minister;
     if (!pmPartyId) { alert('You must assign a Prime Minister first.'); return; }
 
+    console.log('[Coalition] handleFormGovernment called. Assignments:', JSON.stringify(_ministryAssignments));
+    console.log('[Coalition] Formation:', formation.id, 'PM party:', pmPartyId);
+
     _formingGovernment = true;
     const btn = document.getElementById('cf-form-gov-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'FORMING...'; }
@@ -437,13 +440,19 @@ async function formGovernmentFallback(formation) {
 }
 
 async function createMinistriesFromAssignments(nationId) {
+    console.log('[Coalition] createMinistriesFromAssignments called for nation:', nationId);
+    console.log('[Coalition] Assignments to create:', JSON.stringify(_ministryAssignments));
+
     // Deactivate all existing ministries
     const { error: deactErr } = await _supabase.from('ministries').update({ is_active: false })
         .eq('nation_id', nationId).eq('is_active', true);
     if (deactErr) console.warn('[Coalition] Failed to deactivate old ministries:', deactErr.message);
 
+    const entries = Object.entries(_ministryAssignments);
+    console.log('[Coalition] Ministry entries to process:', entries.length);
+
     let created = 0;
-    for (const [key, partyId] of Object.entries(_ministryAssignments)) {
+    for (const [key, partyId] of entries) {
         if (!partyId) continue;
         const names = getNationNames(_state.nation?.name);
         const firstName = names.first[Math.floor(Math.random() * names.first.length)];
