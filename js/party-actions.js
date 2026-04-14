@@ -1917,7 +1917,7 @@ function openLawsuitModal(root) {
                 close();
 
                 // Show a brief result notification
-                alert(`Lawsuit filed against ${LAWSUIT_TARGETS.find(t => t.key === selectedTarget)?.label || selectedTarget}.\nCorruption Growth: ${result.lawsuit?.corruption_growth?.toFixed(1) || '?'} \u2192 Tier ${result.tier}: ${tierInfo.label}\nResolves in 8 ticks.`);
+                alert(`Lawsuit filed against ${LAWSUIT_TARGETS.find(t => t.key === selectedTarget)?.label || selectedTarget}.\nThe case is now under investigation. Results will be determined when it resolves in 8 ticks.`);
 
                 renderPage(root);
             } catch (err) {
