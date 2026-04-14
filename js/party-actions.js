@@ -1799,34 +1799,34 @@ function openLawsuitModal(root) {
         const targetsHtml = LAWSUIT_TARGETS.map(t => {
             const isSel = selectedTarget === t.key;
             return `<div class="pa-lawsuit-target ${isSel ? 'selected' : ''}" data-target="${t.key}">
-                <span style="font-size:14px;">${t.icon}</span>
-                <span style="font-size:9px;font-weight:600;color:${isSel ? 'var(--text-bright)' : 'var(--text-secondary)'};">${esc(t.label)}</span>
+                <span style="font-size:18px;">${t.icon}</span>
+                <span style="font-size:12px;font-weight:600;color:${isSel ? 'var(--text-bright)' : 'var(--text-secondary)'};">${esc(t.label)}</span>
             </div>`;
         }).join('');
 
         const basesHtml = LAWSUIT_BASES.map(b => {
             const isSel = selectedBasis === b.key;
             return `<div class="pa-lawsuit-basis ${isSel ? 'selected' : ''}" data-basis="${b.key}">
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <div style="width:12px;height:12px;border-radius:50%;border:2px solid ${isSel ? '#d44a4a' : 'var(--border-mid)'};display:flex;align-items:center;justify-content:center;">
-                        ${isSel ? '<div style="width:6px;height:6px;border-radius:50%;background:#d44a4a;"></div>' : ''}
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:16px;height:16px;border-radius:50%;border:2px solid ${isSel ? '#d44a4a' : 'var(--border-mid)'};display:flex;align-items:center;justify-content:center;">
+                        ${isSel ? '<div style="width:8px;height:8px;border-radius:50%;background:#d44a4a;"></div>' : ''}
                     </div>
                     <div>
-                        <div style="font-size:10px;font-weight:600;color:${isSel ? 'var(--text-bright)' : 'var(--text-secondary)'};">${esc(b.label)}</div>
-                        <div style="font-size:8px;color:var(--text-dim);margin-top:1px;">${esc(b.desc)}</div>
+                        <div style="font-size:14px;font-weight:600;color:${isSel ? 'var(--text-bright)' : 'var(--text-secondary)'};">${esc(b.label)}</div>
+                        <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${esc(b.desc)}</div>
                     </div>
                 </div>
             </div>`;
         }).join('');
 
         overlay.innerHTML = `
-            <div class="pa-modal" style="width:560px;">
+            <div class="pa-modal" style="width:700px;">
                 <div class="pa-modal-header">
                     <div class="pa-modal-header-left">
                         <div class="pa-modal-dot" style="background:#d44a4a;"></div>
                         <span class="pa-modal-title">File Lawsuit</span>
-                        <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:2px 6px;color:#5a8aaa;background:rgba(90,138,170,0.08);border:1px solid rgba(90,138,170,0.2);margin-left:6px;">LEGAL</span>
-                        <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:2px 6px;color:#c84;background:rgba(200,132,0,0.08);border:1px solid rgba(200,132,0,0.2);">OFFENSIVE</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:3px 8px;color:#5a8aaa;background:rgba(90,138,170,0.08);border:1px solid rgba(90,138,170,0.2);margin-left:6px;">LEGAL</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:3px 8px;color:#c84;background:rgba(200,132,0,0.08);border:1px solid rgba(200,132,0,0.2);">OFFENSIVE</span>
                     </div>
                     <button class="pa-modal-close" id="pa-lawsuit-close">&times;</button>
                 </div>
