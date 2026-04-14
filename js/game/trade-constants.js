@@ -978,33 +978,74 @@ export function calculateExportCapacity(nation, sector, opts) {
     // Normalize from 0-100 codebase scale to 0-20 spec scale
     var normalizedScore = score / 5;
 
-    // Base capacity = normalizedScore × BASE_TRADE_MULTIPLIER × gdpModifier
-    var capacity = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    // Total production = normalizedScore × BASE_TRADE_MULTIPLIER × gdpModifier
+    var totalProduction = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
 
-    // ── Sector-specific modifiers ──
+    // ── Sector-specific production scaling ──
 
-    // Food: tighter supply — farming feeds your people first, only surplus is exported.
-    // Reduces export capacity by ~83% (equivalent to normalizing by /30 instead of /5).
+    // Food: tighter supply (equivalent to normalizing by /30 instead of /5).
     if (sector.key === 'food_agriculture') {
-        capacity *= 0.167;
+        totalProduction *= 0.167;
     }
 
     // Arms: requires meaningful defense spending to have an arms industry
     if (sector.key === 'arms') {
         var defensePct = (opts && opts.defense_pct) || 0;
         if (defensePct <= 8) return 0;
-        capacity *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
+        totalProduction *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
     }
 
     // Tourism: smaller than goods trade + requires stability
     if (sector.key === 'tourism') {
-        capacity *= 0.5;
+        totalProduction *= 0.5;
         if ((Number(nation.stability) || 0) <= 25) return 0;
     }
 
     // Services & Finance: smaller than goods trade
     if (sector.key === 'services_finance') {
-        capacity *= 0.7;
+        totalProduction *= 0.7;
+    }
+
+    // ── Domestic demand: feed your own people/industry first ──
+    // Mirrors grossDemand from calculateImportDemand so both sides of trade
+    // use consistent demand estimates. Only the surplus is available for export.
+    // Export-only sectors (tourism, services_finance) and arms (gated by
+    // defense spending) skip this check.
+    var popNorm = (Number(nation.population) || 1) / 5000000;
+    var SN = 5;
+    var domesticDemand = 0;
+
+    if (sector.key === 'fuel_energy') {
+        var manufNorm = (Number(nation.manufacturing_output) || 0) / SN;
+        var urbanNorm = (Number(nation.urbanization) || 0) / SN;
+        var colNorm = (Number(nation.cost_of_living) || 0) / SN;
+        var railNorm = (Number(nation.rail_network) || 0) / SN;
+        var transportNeed = Math.max(0, 12 - railNorm) * 0.15;
+        domesticDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+
+    else if (sector.key === 'minerals') {
+        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
+        var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
+        var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
+        domesticDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+
+    else if (sector.key === 'manufactured_goods') {
+        var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
+        domesticDemand = popNorm * (solNorm / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
+    }
+
+    else if (sector.key === 'technology') {
+        var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
+        var digiNorm = (Number(nation.digital_infrastructure) || 0) / SN;
+        domesticDemand = popNorm * ((solNorm + digiNorm) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+    }
+
+    // Subtract domestic demand from total production — only export the surplus
+    var capacity = totalProduction;
+    if (domesticDemand > 0) {
+        capacity = Math.max(0, totalProduction - domesticDemand);
     }
 
     // ── Stability modifier ──
