@@ -38,8 +38,34 @@ const ROLES = [
     { id: 'agitator', title: 'AGITATOR', fullTitle: 'Opposition Coordinator', color: '#d44a4a', oppositionOnly: true },
 ];
 
-// Leader actions (only Issue Statement and Set Party Platform are live)
+// Fundraise escalation: each use yields less money and costs more momentum
+const FUNDRAISE_TIERS = [
+    { perSeat: 5000, momDivisor: 10 }, // Use 1: $5k/seat, -1 mom per 10 seats
+    { perSeat: 4000, momDivisor: 8 },  // Use 2: $4k/seat, -1 mom per 8 seats
+    { perSeat: 3000, momDivisor: 6 },  // Use 3: $3k/seat, -1 mom per 6 seats
+    { perSeat: 2000, momDivisor: 5 },  // Use 4: $2k/seat, -1 mom per 5 seats
+    { perSeat: 1000, momDivisor: 5 },  // Use 5+: $1k/seat, -1 mom per 5 seats
+];
+let _fundraiseUseCount = 0; // tracked per session, reset on page load
+
+function getFundraiseInfo(seats, useCount) {
+    const tier = FUNDRAISE_TIERS[Math.min(useCount, FUNDRAISE_TIERS.length - 1)];
+    const raised = seats * tier.perSeat;
+    const momCost = Math.max(1, Math.floor(seats / tier.momDivisor)); // minimum 1
+    return { raised, momCost, perSeat: tier.perSeat, tierIdx: Math.min(useCount, FUNDRAISE_TIERS.length - 1) };
+}
+
 const LEADER_ACTIONS = [
+    {
+        id: 'fundraise',
+        name: 'Fundraise',
+        desc: 'Raise party funds proportional to your seat count. Each use yields less money and costs more momentum. Cannot fundraise at 0 momentum.',
+        cost: 'MOMENTUM',
+        costColor: '#c84',
+        ap: 0,
+        tags: ['FINANCIAL', 'CAMPAIGN'],
+        locked: false,
+    },
     {
         id: 'statement',
         name: 'Issue Statement',
@@ -153,6 +179,7 @@ function renderPage(root) {
     const ap = faction.action_points ?? 0;
     const approval = faction.approval_rating ?? 0;
     const momentum = faction.momentum ?? 50;
+    const partyFunds = faction.party_funds ?? 0;
 
     // Platform slots display with promise progress
     const promiseProgress = getPromiseProgress(_myPlatforms, nation);
@@ -183,20 +210,16 @@ function renderPage(root) {
                 </div>
                 <div class="pa-header-stats">
                     <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">Governance</div>
-                        <div class="pa-header-stat-value" style="color:var(--green);">${Math.round(approval)}</div>
+                        <div class="pa-header-stat-label">Party Funds</div>
+                        <div class="pa-header-stat-value" style="color:var(--accent);">$${partyFunds >= 1000000 ? (partyFunds / 1000000).toFixed(1) + 'M' : partyFunds >= 1000 ? Math.round(partyFunds / 1000) + 'k' : partyFunds}</div>
                     </div>
                     <div class="pa-header-stat">
                         <div class="pa-header-stat-label">Momentum</div>
-                        <div class="pa-header-stat-value" style="color:var(--text-bright);">${Math.round(momentum)}</div>
+                        <div class="pa-header-stat-value" style="color:${momentum > 0 ? 'var(--text-bright)' : 'var(--red)'};">${Math.round(momentum)}</div>
                     </div>
                     <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">Ideology</div>
-                        <div class="pa-header-stat-value" style="color:var(--purple, #8b7ec8);">${_standing ? Math.round(Number(_standing.ideological_alignment ?? 50)) : '\u2014'}</div>
-                    </div>
-                    <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">Total</div>
-                        <div class="pa-header-stat-value" style="color:var(--accent);">${_standing ? Math.round(Number(_standing.raw_appeal ?? 0)) : '\u2014'}</div>
+                        <div class="pa-header-stat-label">Approval</div>
+                        <div class="pa-header-stat-value" style="color:var(--green);">${Math.round(approval)}%</div>
                     </div>
                 </div>
             </div>
@@ -267,7 +290,9 @@ function renderPage(root) {
         const item = e.target.closest('.pa-action-item');
         if (!item || item.classList.contains('locked')) return;
         const actionId = item.dataset.actionId;
-        if (actionId === 'statement') {
+        if (actionId === 'fundraise') {
+            executeFundraise(root);
+        } else if (actionId === 'statement') {
             openStatementModal(root);
         } else if (actionId === 'platform') {
             openPlatformModal(root);
@@ -409,24 +434,47 @@ function renderActionsPanel(leaderName, partyColor, faction) {
     const portrait = initials(faction.leader_first_name, faction.leader_last_name);
     const age = faction.leader_age ? `, Age ${faction.leader_age}` : '';
 
+    const seats = faction.seats || 0;
+    const momentum = faction.momentum ?? 0;
+
     const actionsHtml = LEADER_ACTIONS.map(action => {
         const tagsHtml = action.tags.map(t =>
             `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${t}</span>`
         ).join('');
 
+        // Fundraise: show dynamic cost/yield info
+        let extraInfo = '';
+        let costDisplay = action.cost;
+        let costColor = action.costColor;
+        let isDisabled = action.locked;
+        if (action.id === 'fundraise') {
+            const fi = getFundraiseInfo(seats, _fundraiseUseCount);
+            costDisplay = `-${fi.momCost} MOM`;
+            costColor = '#c84';
+            extraInfo = `<div style="margin-top:4px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);display:flex;gap:12px;">
+                <span>Raises: <span style="color:var(--accent);font-weight:700;">$${(fi.raised / 1000).toFixed(0)}k</span></span>
+                <span>$${(fi.perSeat / 1000).toFixed(0)}k/seat × ${seats}</span>
+                ${_fundraiseUseCount > 0 ? `<span style="color:var(--orange);">Use #${_fundraiseUseCount + 1}</span>` : ''}
+            </div>`;
+            if (momentum <= 0) {
+                isDisabled = true;
+                extraInfo += `<div style="margin-top:3px;font-family:var(--font-mono);font-size:8px;color:var(--red);">Cannot fundraise at 0 momentum</div>`;
+            }
+        }
+
         return `
-            <div class="pa-action-item ${action.locked ? 'locked' : ''}" data-action-id="${action.id}">
+            <div class="pa-action-item ${isDisabled ? 'locked' : ''}" data-action-id="${action.id}">
                 <div class="pa-action-top">
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span class="pa-action-name">${esc(action.name)}</span>
                         <div class="pa-action-tags">${tagsHtml}</div>
                     </div>
                     <div class="pa-action-right">
-                        <span class="pa-action-cost" style="color:${action.costColor};">${action.cost}</span>
-                        ${action.ap > 0 ? `<span class="pa-action-ap">${action.ap} AP</span>` : ''}
+                        <span class="pa-action-cost" style="color:${costColor};">${costDisplay}</span>
                     </div>
                 </div>
                 <div class="pa-action-desc">${esc(action.desc)}</div>
+                ${extraInfo}
                 ${action.locked && action.lockReason ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;"><span>\u2298</span><span>${esc(action.lockReason)}</span></div>` : ''}
             </div>
         `;
@@ -1404,6 +1452,76 @@ function openLawsuitModal(root) {
 
     overlay.classList.add('active');
     render();
+}
+
+// ════════════════════════ FUNDRAISE ════════════════════════
+
+let _fundraiseSubmitting = false;
+
+async function executeFundraise(root) {
+    if (_fundraiseSubmitting) return;
+    const faction = _state.faction;
+    const seats = faction.seats || 0;
+    const momentum = faction.momentum ?? 0;
+
+    if (momentum <= 0) {
+        alert('Cannot fundraise at 0 momentum.');
+        return;
+    }
+    if (seats <= 0) {
+        alert('Your party has no seats — nothing to fundraise from.');
+        return;
+    }
+
+    const fi = getFundraiseInfo(seats, _fundraiseUseCount);
+
+    _fundraiseSubmitting = true;
+
+    try {
+        const tick = _state.shard?.current_tick || 0;
+        const newMomentum = Math.max(0, momentum - fi.momCost);
+        const newFunds = (faction.party_funds || 0) + fi.raised;
+
+        // Update faction: deduct momentum, add funds
+        const { error } = await _supabase.from('factions').update({
+            momentum: newMomentum,
+            party_funds: newFunds,
+        }).eq('id', faction.id);
+
+        if (error) {
+            alert('Fundraise failed: ' + error.message);
+            return;
+        }
+
+        // Log action
+        await _supabase.from('campaign_actions').insert({
+            party_id: faction.id,
+            nation_id: _state.nation?.id,
+            action_type: 'fundraise',
+            ap_cost: 0,
+            money_cost: 0,
+            tick_performed: tick,
+            result: {
+                raised: fi.raised,
+                perSeat: fi.perSeat,
+                momCost: fi.momCost,
+                useNumber: _fundraiseUseCount + 1,
+                seats: seats,
+            },
+        });
+
+        // Update local state
+        faction.momentum = newMomentum;
+        faction.party_funds = newFunds;
+        _fundraiseUseCount++;
+
+        renderPage(root);
+    } catch (err) {
+        console.error('[PartyActions] Fundraise error:', err);
+        alert('Fundraise failed.');
+    } finally {
+        _fundraiseSubmitting = false;
+    }
 }
 
 // ════════════════════════ ISSUE STATEMENT MODAL ════════════════════════
