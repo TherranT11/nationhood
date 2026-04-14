@@ -42,6 +42,8 @@ export function isPresidentialRepublic(input) { return getCanonicalGovernmentTyp
 export function isSemiPresidential(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL; }
 
 export function isAbsoluteMonarchy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.ABSOLUTE_MONARCHY; }
+// KNOWN GAP: Monarchy nations have no elections. Seats are currently static.
+// Future Phase 4: Add "Grant Seats" royal action for monarch to appoint seats to noble houses.
 
 /** Capability helpers — use these instead of type checks where possible.
  *  Semi-presidential has BOTH an elected president AND a parliamentary PM. */
