@@ -3165,8 +3165,8 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             const { data: fuelDepot } = await supabase.from('corp_properties')
                                 .select('id, faction_id')
                                 .eq('nation_id', destNationId)
-                                .eq('building_type', 'fuel_depot')
-                                .eq('status', 'operational')
+                                .eq('type', 'fuel_depot')
+                                .eq('is_active', true)
                                 .limit(1)
                                 .maybeSingle();
 
