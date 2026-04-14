@@ -66,6 +66,7 @@ DECLARE
         'shakeups',
         'presidents',
         'impeachment_proceedings',
+        'ministry_requests',
         'ministries',
         'ministry_action_log',
         'administrations',
