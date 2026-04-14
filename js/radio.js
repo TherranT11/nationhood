@@ -526,7 +526,8 @@ function renderFeed(station) {
         const persName = personality?.name || 'Unknown';
         const stationInfo = _allGlobalStations.find(s => s.id === bc.station_id) || _stations.find(s => s.id === bc.station_id);
         const nationName = stationInfo?.nations?.name || '';
-        const stationLabel = stationInfo ? `${stationInfo.callsign} ${stationInfo.frequency}${nationName ? ' · ' + nationName : ''}` : '';
+        const stationColor = TYPE_COLORS[stationInfo?.station_type] || 'var(--text-dim)';
+        const stationTuning = stationInfo ? `${stationInfo.frequency} — ${stationInfo.callsign}${nationName ? ' · ' + nationName : ''}` : '';
         const isExpanded = _expandedBroadcastId === bc.id;
         const isGoodListened = _myGoodListens.has(bc.id);
 
@@ -541,12 +542,15 @@ function renderFeed(station) {
         return `
             <div style="border-bottom:1px solid var(--border-main);">
                 <div style="padding:14px 20px;cursor:pointer;" data-bc-toggle="${bc.id}">
+                    ${stationTuning ? `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                        <span style="width:6px;height:6px;border-radius:50%;background:${stationColor};flex-shrink:0;box-shadow:0 0 4px ${stationColor}44;"></span>
+                        <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${stationColor};letter-spacing:0.04em;">${esc(stationTuning)}</span>
+                    </div>` : ''}
                     <div style="font-family:var(--font-serif);font-size:18px;font-weight:600;color:var(--text-bright);line-height:1.3;margin-bottom:6px;">${esc(bc.subject)}</div>
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                         <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);font-weight:600;">${esc(persName)}</span>
                         <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">&middot;</span>
                         <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Tick ${bc.published_tick || '?'}</span>
-                        ${stationLabel ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">&middot; ${esc(stationLabel)}</span>` : ''}
                     </div>
                     <div style="${bodyStyle}">${esc(bc.body)}</div>
                     ${tagsHtml ? `<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">${tagsHtml}</div>` : ''}
