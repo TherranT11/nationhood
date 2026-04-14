@@ -1953,7 +1953,7 @@ function renderParliamentPanel() {
 
     // ── Semicircle SVG ──
     html += `<div class="ga-panel" style="padding:12px 8px 8px;">
-        <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:4px;padding:0 6px;">CURRENT PARLIAMENTARY MAKEUP</div>
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:6px;padding:0 8px;">CURRENT PARLIAMENTARY MAKEUP</div>
         <div style="position:relative;width:100%;height:175px;overflow:hidden;">
             <svg width="100%" height="175" viewBox="0 0 500 175" style="display:block;">
                 <line x1="250" y1="10" x2="250" y2="170" stroke="var(--text-dim)" stroke-width="0.5" stroke-dasharray="3 3" />
@@ -1974,10 +1974,10 @@ function renderParliamentPanel() {
     if (seatedParties.length > 0) {
         html += `<div style="display:flex;justify-content:center;gap:16px;padding:4px 0;flex-wrap:wrap;">`;
         for (const p of seatedParties) {
-            html += `<div style="display:flex;align-items:center;gap:5px;">
-                <div style="width:8px;height:8px;border-radius:50%;background:${p.party_color || '#888'};"></div>
-                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(p.faction_name)}</span>
-                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${p.party_color || '#888'};">${p.seats}</span>
+            html += `<div style="display:flex;align-items:center;gap:6px;">
+                <div style="width:10px;height:10px;border-radius:50%;background:${p.party_color || '#888'};"></div>
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">${escapeHtml(p.faction_name)}</span>
+                <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${p.party_color || '#888'};">${p.seats}</span>
             </div>`;
         }
         html += `</div>`;
@@ -1990,8 +1990,8 @@ function renderParliamentPanel() {
     // Seat bar header
     html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
         <span style="width:6px;height:6px;border-radius:50%;background:var(--green);"></span>
-        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--text-bright);">PARLIAMENT</span>
-        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:auto;">${totalSeats} seats</span>
+        <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;letter-spacing:1.5px;color:var(--text-bright);">PARLIAMENT</span>
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-left:auto;">${totalSeats} seats</span>
     </div>`;
 
     // Stacked bar
@@ -2008,13 +2008,18 @@ function renderParliamentPanel() {
     </div>`;
     for (const p of govParties) {
         const isYou = currentFaction && p.id === currentFaction.id;
+        const govDotContent = p.custom_logo_url
+            ? `<img src="${p.custom_logo_url}" alt="">`
+            : p.party_logo
+            ? `<span style="font-size:16px;">${p.party_logo}</span>`
+            : escapeHtml(p.abbreviation || p.faction_name.slice(0, 3));
         html += `<div class="leg-party-row">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <div class="leg-party-dot" style="background:${p.party_color || '#888'}20;border-color:${p.party_color || '#888'};color:${p.party_color || '#888'};">${escapeHtml(p.abbreviation || p.faction_name.slice(0, 3))}</div>
-                <span style="font-size:10px;font-weight:600;color:var(--text-bright);">${escapeHtml(p.faction_name)}</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div class="leg-party-dot" style="background:${p.party_color || '#888'}20;border-color:${p.party_color || '#888'};color:${p.party_color || '#888'};">${govDotContent}</div>
+                <span style="font-size:14px;font-weight:600;color:var(--text-bright);">${escapeHtml(p.faction_name)}</span>
                 ${isYou ? '<span class="ga-badge ga-badge--green">YOU</span>' : ''}
             </div>
-            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-bright);">${p.seats}</span>
+            <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-bright);">${p.seats}</span>
         </div>`;
     }
 
@@ -2024,19 +2029,24 @@ function renderParliamentPanel() {
         <span style="color:var(--text-dim);">${oppSeats} seats</span>
     </div>`;
     for (const p of oppParties) {
+        const oppDotContent = p.custom_logo_url
+            ? `<img src="${p.custom_logo_url}" alt="">`
+            : p.party_logo
+            ? `<span style="font-size:16px;">${p.party_logo}</span>`
+            : escapeHtml(p.abbreviation || p.faction_name.slice(0, 3));
         html += `<div class="leg-party-row" style="opacity:${p.seats === 0 ? '0.5' : '1'};">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <div class="leg-party-dot" style="background:${p.party_color || '#888'}20;border-color:${p.party_color || '#888'};color:${p.party_color || '#888'};">${escapeHtml(p.abbreviation || p.faction_name.slice(0, 3))}</div>
-                <span style="font-size:10px;color:var(--text-dim);">${escapeHtml(p.faction_name)}</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div class="leg-party-dot" style="background:${p.party_color || '#888'}20;border-color:${p.party_color || '#888'};color:${p.party_color || '#888'};">${oppDotContent}</div>
+                <span style="font-size:14px;color:var(--text-dim);">${escapeHtml(p.faction_name)}</span>
             </div>
-            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${p.seats > 0 ? 'var(--text-bright)' : 'var(--text-dim)'};">${p.seats}</span>
+            <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${p.seats > 0 ? 'var(--text-bright)' : 'var(--text-dim)'};">${p.seats}</span>
         </div>`;
     }
 
     // Majority indicator
     html += `<div style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px;">
         <span style="width:8px;height:8px;border-radius:50%;background:${aboveMajority >= 0 ? 'var(--green)' : 'var(--red)'};"></span>
-        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${aboveMajority >= 0 ? 'var(--green)' : 'var(--red)'};">
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${aboveMajority >= 0 ? 'var(--green)' : 'var(--red)'};">
             ${aboveMajority >= 0 ? '+' + aboveMajority + ' above majority' : Math.abs(aboveMajority) + ' below majority'}
         </span>
     </div>`;
