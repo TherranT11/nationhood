@@ -1255,8 +1255,8 @@ function renderRadioEvents() {
     if (!scroll) return;
 
     const nationId = _state.nation?.id;
-    const POLITICAL_CATS = new Set(['government', 'political', 'crisis', 'diplomatic', 'military']);
-    const CORPORATE_CATS = new Set(['corporate', 'trade', 'economic']);
+    const POLITICAL_CATS = new Set(['government', 'political', 'crisis', 'diplomatic', 'military', 'trade', 'economic']);
+    const CORPORATE_CATS = new Set(['corporate', 'ipo', 'shipping', 'insurance', 'corp_action']);
 
     let events = _radioEvents;
 

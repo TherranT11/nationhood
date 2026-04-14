@@ -2,6 +2,11 @@
    TRADE SUBTAB — World Page (scaled up ~35%)
    ══════════════════════════════════════════════════════════════ */
 
+/* Global text scale for trade page content */
+#subtab-trade { font-size: 13px; }
+#subtab-trade .tr-panel-title { font-size: 15px; }
+#trade-page { font-size: 13px; }
+
 /* ── Shared panels ── */
 .tr-panel {
     background: var(--bg-panel); border: 1px solid var(--border-main);

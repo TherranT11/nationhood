@@ -6,8 +6,6 @@
 .radio-page {
     padding: 16px 20px 40px;
     font-family: var(--font-ui);
-    max-width: 1100px;
-    margin: 0 auto;
 }
 
 /* ── Page header ── */
