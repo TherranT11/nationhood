@@ -914,10 +914,14 @@ export function updateTopBarInfo(faction, shard, nation) {
     const apEl = document.getElementById('topbar-ap');
     if (apEl && faction) {
         if (faction.faction_type === 'corporation') {
-            apEl.style.display = 'none'; // Corporations don't use AP
+            apEl.style.display = 'none';
         } else {
-            const ap = faction.action_points ?? 0;
-            renderApDisplay(apEl, ap);
+            // Show party funds instead of AP
+            const funds = faction.party_funds ?? 0;
+            const fundsStr = funds >= 1000000 ? '$' + (funds / 1000000).toFixed(1) + 'M'
+                : funds >= 1000 ? '$' + Math.round(funds / 1000) + 'k'
+                : '$' + funds;
+            apEl.innerHTML = '<span class="topbar-ap__label">CASH</span><span class="topbar-ap__count" style="font-size:13px;color:var(--accent);margin-left:4px;">' + fundsStr + '</span>';
         }
     }
     

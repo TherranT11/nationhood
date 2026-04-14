@@ -5,6 +5,7 @@ import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo }
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, checkOppositionStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
+import { getNationNames } from './game/political-actions.js';
 
 let _supabase = null;
 let _state = null;
@@ -12,6 +13,7 @@ let _selectedRole = 'leader';
 let _myPlatforms = [];
 let _nationPlatforms = [];
 let _agitator = null;        // hired agitator or null
+let _deputy = null;          // hired deputy leader or null
 let _isOpposition = false;   // is this faction in opposition?
 let _administration = null;  // active administration data
 let _lawsuits = [];          // faction's lawsuits (active + resolved)
@@ -157,6 +159,11 @@ export async function initPartyActions(supabase, state) {
     _administration = oppositionResult.administration;
     _standing = standingResult.data || null;
 
+    // Fetch deputy leader
+    const { data: deputyData } = await _supabase.from('faction_deputies')
+        .select('*').eq('faction_id', faction.id).eq('status', 'active').maybeSingle();
+    _deputy = deputyData || null;
+
     // Fetch lawsuits if agitator is hired
     if (_agitator) {
         _lawsuits = await fetchActiveLawsuits(_supabase, faction.id);
@@ -272,6 +279,10 @@ function renderPage(root) {
         <div class="pa-modal-overlay" id="pa-lawsuit-modal"></div>
         <!-- Rebrand Modal -->
         <div class="pa-modal-overlay" id="pa-rebrand-modal"></div>
+        <!-- Hire Deputy Modal -->
+        <div class="pa-modal-overlay" id="pa-deputy-modal"></div>
+        <!-- Rally Modal -->
+        <div class="pa-modal-overlay" id="pa-rally-modal"></div>
     `;
 
     // Bind leader card clicks
@@ -292,6 +303,8 @@ function renderPage(root) {
         const actionId = item.dataset.actionId;
         if (actionId === 'fundraise') {
             executeFundraise(root);
+        } else if (actionId === 'rally') {
+            openRallyModal(root);
         } else if (actionId === 'statement') {
             openStatementModal(root);
         } else if (actionId === 'platform') {
@@ -306,8 +319,15 @@ function renderPage(root) {
     // Bind hire agitator button
     document.getElementById('pa-hire-agitator-btn')?.addEventListener('click', () => openHireAgitatorModal(root));
     document.getElementById('pa-hire-agitator-panel')?.addEventListener('click', (e) => {
-        if (e.target.closest('#pa-hire-agitator-btn')) return; // let button handle it
+        if (e.target.closest('#pa-hire-agitator-btn')) return;
         openHireAgitatorModal(root);
+    });
+
+    // Bind hire deputy button
+    document.getElementById('pa-hire-deputy-btn')?.addEventListener('click', () => openHireDeputyModal(root));
+    document.getElementById('pa-hire-deputy-panel')?.addEventListener('click', (e) => {
+        if (e.target.closest('#pa-hire-deputy-btn')) return;
+        openHireDeputyModal(root);
     });
 }
 
@@ -331,6 +351,16 @@ function renderLeaderCards(leaderName, partyColor, faction) {
             actionCount = 1; // File Lawsuit (others coming later)
         } else if (isAgitator && !_agitator) {
             isVacant = false; // not vacant — hireable
+            name = 'Not Hired';
+            portrait = '+';
+            actionCount = 0;
+        } else if (role.id === 'deputy' && _deputy) {
+            isVacant = false;
+            name = `${_deputy.first_name} ${_deputy.last_name}`;
+            portrait = initials(_deputy.first_name, _deputy.last_name);
+            actionCount = 1; // Rally
+        } else if (role.id === 'deputy' && !_deputy) {
+            isVacant = false;
             name = 'Not Hired';
             portrait = '+';
             actionCount = 0;
@@ -392,7 +422,8 @@ function renderActionsPanel(leaderName, partyColor, faction) {
     const isLeader = _selectedRole === 'leader';
     const isAgitator = _selectedRole === 'agitator';
     const isCampaign = _selectedRole === 'campaign';
-    const isVacant = !isLeader && !isAgitator && !isCampaign;
+    const isDeputy = _selectedRole === 'deputy';
+    const isVacant = !isLeader && !isAgitator && !isCampaign && !isDeputy;
 
     if (isVacant) {
         return `
@@ -424,6 +455,25 @@ function renderActionsPanel(leaderName, partyColor, faction) {
     // Agitator: hired → show their actions
     if (isAgitator && _agitator) {
         return renderAgitatorActionsPanel(role);
+    }
+
+    // Deputy: not hired → show hire prompt; hired → show Rally action
+    if (isDeputy && !_deputy) {
+        return `
+            <div class="pa-vacant-msg" style="cursor:pointer;" id="pa-hire-deputy-panel">
+                <div style="text-align:center;">
+                    <div style="font-size:2rem;margin-bottom:12px;opacity:0.4;">🤝</div>
+                    <div class="pa-vacant-title">Hire a Deputy Party Leader</div>
+                    <div class="pa-vacant-sub" style="max-width:400px;margin:8px auto 16px;">
+                        The Deputy supports your party leader — organizing rallies, boosting momentum, and energizing the base.
+                    </div>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-hire-deputy-btn" style="background:#8b9a6b;">Search Candidates</button>
+                </div>
+            </div>
+        `;
+    }
+    if (isDeputy && _deputy) {
+        return renderDeputyActionsPanel(role);
     }
 
     // Campaign Manager: show rebrand action
@@ -500,6 +550,390 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             <span style="color:${role.color};font-weight:700;">${role.title}</span> actions are executed by the party leader. Effectiveness depends on party approval and momentum.
         </div>
     `;
+}
+
+// ════════════════════════ DEPUTY LEADER PANEL ════════════════════════
+
+const DEPUTY_ACTIONS = [
+    {
+        id: 'rally',
+        name: 'Hold a Rally',
+        desc: 'Invest party funds into a public rally. Higher investment improves your odds, but a bad roll can backfire. Roll 1d6 + rally bonus for momentum.',
+        cost: '$50k-$200k',
+        costColor: '#8b9a6b',
+        tags: ['CAMPAIGN', 'RISKY'],
+        locked: false,
+    },
+];
+
+const RALLY_TIERS = [
+    { cost: 50000, bonus: 1, label: '$50k (+1)' },
+    { cost: 80000, bonus: 2, label: '$80k (+2)' },
+    { cost: 120000, bonus: 3, label: '$120k (+3)' },
+    { cost: 150000, bonus: 4, label: '$150k (+4)' },
+    { cost: 200000, bonus: 5, label: '$200k (+5)' },
+];
+
+function getRallyResult(dieRoll, bonus) {
+    const total = dieRoll + bonus;
+    if (total >= 8) return { momentum: 3, label: 'Rousing Success', color: '#5cc55c' };
+    if (total >= 5) return { momentum: 2, label: 'Solid Turnout', color: '#8b9a6b' };
+    if (total >= 3) return { momentum: 0, label: 'Flat Response', color: '#ca5' };
+    return { momentum: -2, label: 'Backfire', color: '#c55' };
+}
+
+function renderDeputyActionsPanel(role) {
+    const actionsHtml = DEPUTY_ACTIONS.map(action => {
+        const tagsHtml = action.tags.map(t =>
+            `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${t}</span>`
+        ).join('');
+        return `
+            <div class="pa-action-item ${action.locked ? 'locked' : ''}" data-action-id="${action.id}">
+                <div class="pa-action-top">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="pa-action-name">${esc(action.name)}</span>
+                        <div class="pa-action-tags">${tagsHtml}</div>
+                    </div>
+                    <div class="pa-action-right">
+                        <span class="pa-action-cost" style="color:${action.costColor};">${action.cost}</span>
+                    </div>
+                </div>
+                <div class="pa-action-desc">${esc(action.desc)}</div>
+            </div>
+        `;
+    }).join('');
+
+    const sk = getSkillLabel(_deputy.skill);
+    return `
+        <div class="pa-detail-header">
+            <div class="pa-detail-left">
+                <div class="pa-detail-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${initials(_deputy.first_name, _deputy.last_name)}</div>
+                <div>
+                    <div style="display:flex;align-items:baseline;gap:6px;">
+                        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${role.color};">${role.title}</span>
+                        <span class="pa-detail-name">${esc(_deputy.first_name)} ${esc(_deputy.last_name)}</span>
+                    </div>
+                    <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; Age ${_deputy.age} &middot; Skill: <span style="color:${sk.color};font-weight:700;">${_deputy.skill}</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="pa-actions-list" id="pa-actions-panel">${actionsHtml}</div>
+    `;
+}
+
+// ════════════════════════ HIRE DEPUTY MODAL ════════════════════════
+
+function generateDeputyCandidates(nationName) {
+    const names = getNationNames(nationName);
+    const firstNames = names.firstNames || [];
+    const lastNames = names.lastNames || [];
+    if (firstNames.length === 0 || lastNames.length === 0) return [];
+
+    const count = 5 + Math.floor(Math.random() * 3); // 5-7
+    const usedNames = new Set();
+    const candidates = [];
+
+    for (let i = 0; i < count; i++) {
+        let fn, ln, full;
+        let attempts = 0;
+        do {
+            fn = firstNames[Math.floor(Math.random() * firstNames.length)];
+            ln = lastNames[Math.floor(Math.random() * lastNames.length)];
+            full = fn + ' ' + ln;
+            attempts++;
+        } while (usedNames.has(full) && attempts < 20);
+        usedNames.add(full);
+
+        const skill = 20 + Math.floor(Math.random() * 66); // 20-85
+        const age = 28 + Math.floor(Math.random() * 30); // 28-57
+        // Cost: $125k (skill 20) to $650k (skill 85), linear
+        const t = Math.max(0, (skill - 20)) / 65;
+        const cost = Math.round((125000 + t * 525000) / 25000) * 25000; // round to $25k
+
+        candidates.push({ first_name: fn, last_name: ln, age, skill, hire_cost: cost });
+    }
+
+    return candidates.sort((a, b) => b.skill - a.skill);
+}
+
+async function openHireDeputyModal(root) {
+    const overlay = document.getElementById('pa-deputy-modal');
+    if (!overlay) return;
+
+    const nationName = _state.nation?.name;
+    const candidates = generateDeputyCandidates(nationName);
+    let selectedIdx = null;
+
+    function render() {
+        const selected = selectedIdx != null ? candidates[selectedIdx] : null;
+        const selSkill = selected ? getSkillLabel(selected.skill) : null;
+
+        const listHtml = candidates.map((c, i) => {
+            const isSel = selectedIdx === i;
+            const sk = getSkillLabel(c.skill);
+            return `<div class="pa-hire-row ${isSel ? 'selected' : ''}" data-idx="${i}">
+                <div style="width:32px;height:32px;border-radius:50%;background:#8b9a6b15;border:1px solid #8b9a6b33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#8b9a6b;flex-shrink:0;">${initials(c.first_name, c.last_name)}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:11px;font-weight:600;color:${isSel ? 'var(--text-bright)' : 'var(--text-secondary)'};">${esc(c.first_name)} ${esc(c.last_name)}</div>
+                    <div style="display:flex;align-items:center;gap:3px;margin-top:2px;">
+                        <div style="flex:1;height:2px;background:var(--border-mid);max-width:60px;"><div style="height:100%;width:${c.skill}%;background:${sk.color};"></div></div>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:${sk.color};">${c.skill}</span>
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Age ${c.age}</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--accent);">$${Math.round(c.hire_cost / 1000)}k</div>
+                </div>
+            </div>`;
+        }).join('');
+
+        let detailHtml;
+        if (!selected) {
+            detailHtml = `<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px;"><div style="text-align:center;">
+                <div style="font-family:var(--font-mono);font-size:24px;color:var(--border-mid);margin-bottom:8px;">\u2190</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Select a candidate to review</div>
+            </div></div>`;
+        } else {
+            detailHtml = `
+                <div style="padding:16px 20px;">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                        <div style="width:48px;height:48px;border-radius:50%;background:#8b9a6b15;border:1px solid #8b9a6b33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:16px;font-weight:700;color:#8b9a6b;">${initials(selected.first_name, selected.last_name)}</div>
+                        <div>
+                            <div style="font-size:16px;font-weight:700;color:var(--text-bright);">${esc(selected.first_name)} ${esc(selected.last_name)}</div>
+                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:1px;">Age ${selected.age} &middot; Deputy Leader Candidate</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:12px;margin-bottom:14px;">
+                        <div style="flex:1;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);">
+                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">SKILL</div>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <div style="flex:1;height:3px;background:var(--border-mid);"><div style="height:100%;width:${selected.skill}%;background:${selSkill.color};"></div></div>
+                                <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${selSkill.color};">${selected.skill}</span>
+                            </div>
+                            <div style="font-family:var(--font-mono);font-size:8px;color:${selSkill.color};margin-top:3px;font-weight:700;">${selSkill.label}</div>
+                        </div>
+                        <div style="flex:1;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);">
+                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">HIRE COST</div>
+                            <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--accent);">$${Math.round(selected.hire_cost / 1000)}k</div>
+                            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:3px;">From party funds</div>
+                        </div>
+                    </div>
+                    <div style="padding:8px 10px;background:rgba(139,154,107,0.04);border:1px solid rgba(139,154,107,0.12);">
+                        <div style="font-family:var(--font-mono);font-size:7px;color:#8b9a6b;letter-spacing:0.06em;margin-bottom:3px;">ROLE: DEPUTY PARTY LEADER</div>
+                        <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">Organizes rallies, boosts momentum, and energizes the party base. Higher skill improves rally outcomes.</div>
+                    </div>
+                </div>
+                <div style="padding:10px 20px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;align-items:center;">
+                    <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-right:auto;">Cost: <span style="color:var(--accent);font-weight:700;">$${Math.round(selected.hire_cost / 1000)}k</span></span>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-dep-hire-confirm" style="background:#8b9a6b;"${(_state.faction?.party_funds || 0) < selected.hire_cost ? ' disabled title="Not enough funds"' : ''}>Hire ${esc(selected.first_name)}</button>
+                </div>
+            `;
+        }
+
+        overlay.innerHTML = `
+            <div style="width:100%;max-width:700px;background:var(--bg-panel);border:1px solid var(--border-mid);box-shadow:0 20px 60px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-height:80vh;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#8b9a6b;"></div>
+                        <span class="pa-modal-title">Hire Deputy Leader</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:8px;">${candidates.length} candidates</span>
+                    </div>
+                    <button class="pa-modal-close" id="pa-dep-close">&times;</button>
+                </div>
+                <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
+                    <div style="width:240px;border-right:1px solid var(--border-main);overflow-y:auto;" id="pa-dep-list">${listHtml}</div>
+                    <div style="flex:1;overflow-y:auto;">${detailHtml}</div>
+                </div>
+            </div>
+        `;
+
+        const close = () => overlay.classList.remove('active');
+        document.getElementById('pa-dep-close')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+        document.getElementById('pa-dep-list')?.addEventListener('click', (e) => {
+            const row = e.target.closest('.pa-hire-row');
+            if (!row) return;
+            selectedIdx = parseInt(row.dataset.idx, 10);
+            render();
+        });
+        document.getElementById('pa-dep-hire-confirm')?.addEventListener('click', async () => {
+            if (selectedIdx == null) return;
+            const c = candidates[selectedIdx];
+            const funds = _state.faction?.party_funds || 0;
+            if (funds < c.hire_cost) { alert('Not enough funds.'); return; }
+
+            const btn = document.getElementById('pa-dep-hire-confirm');
+            if (btn) { btn.disabled = true; btn.textContent = 'Hiring...'; }
+
+            try {
+                const newFunds = funds - c.hire_cost;
+                const tick = _state.shard?.current_tick || 0;
+
+                // Insert deputy
+                const { data, error } = await _supabase.from('faction_deputies').insert({
+                    faction_id: _state.faction.id,
+                    first_name: c.first_name,
+                    last_name: c.last_name,
+                    age: c.age,
+                    skill: c.skill,
+                    status: 'active',
+                    hired_at_tick: tick,
+                }).select('*').single();
+
+                if (error) { alert('Failed: ' + error.message); return; }
+
+                // Deduct funds
+                await _supabase.from('factions').update({ party_funds: newFunds }).eq('id', _state.faction.id);
+                _state.faction.party_funds = newFunds;
+                _deputy = data;
+                _selectedRole = 'deputy';
+                close();
+                renderPage(root);
+            } catch (err) {
+                console.error('[Deputy] Hire error:', err);
+            } finally {
+                if (btn) { btn.disabled = false; }
+            }
+        });
+    }
+
+    overlay.classList.add('active');
+    render();
+}
+
+// ════════════════════════ RALLY MODAL ════════════════════════
+
+function openRallyModal(root) {
+    const overlay = document.getElementById('pa-rally-modal');
+    if (!overlay) return;
+    if (!_deputy) return;
+
+    const faction = _state.faction;
+    const funds = faction.party_funds || 0;
+    let selectedTier = null;
+    let result = null;
+
+    function render() {
+        const tiersHtml = RALLY_TIERS.map((t, i) => {
+            const canAfford = funds >= t.cost;
+            const isSel = selectedTier === i;
+            return `<div class="pa-action-item ${isSel ? 'selected' : ''} ${!canAfford ? 'locked' : ''}" data-tier="${i}" style="cursor:${canAfford ? 'pointer' : 'not-allowed'};${isSel ? 'border-color:#8b9a6b;background:rgba(139,154,107,0.06);' : ''}">
+                <div class="pa-action-top">
+                    <span style="font-size:13px;font-weight:700;color:${isSel ? '#8b9a6b' : 'var(--text-bright)'};">$${Math.round(t.cost / 1000)}k Investment</span>
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#8b9a6b;">+${t.bonus} Rally Bonus</span>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Roll 1d6 + ${t.bonus} = range ${1 + t.bonus} to ${6 + t.bonus}</div>
+            </div>`;
+        }).join('');
+
+        let resultHtml = '';
+        if (result) {
+            resultHtml = `
+                <div style="padding:16px;background:${result.color}08;border:1px solid ${result.color}22;margin-top:12px;">
+                    <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${result.color};margin-bottom:4px;">${result.label}</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);margin-bottom:6px;">
+                        Die roll: <strong>${result.dieRoll}</strong> + Rally bonus: <strong>${result.bonus}</strong> = <strong>${result.total}</strong>
+                    </div>
+                    <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${result.color};">
+                        ${result.momentum >= 0 ? '+' : ''}${result.momentum} Momentum
+                    </div>
+                </div>
+            `;
+        }
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:520px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#8b9a6b;"></div>
+                        <span class="pa-modal-title">Hold a Rally</span>
+                    </div>
+                    <button class="pa-modal-close" id="rally-close">&times;</button>
+                </div>
+                <div style="padding:8px 16px;border-bottom:1px solid var(--border-main);display:flex;align-items:center;gap:8px;">
+                    <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);">Organized by:</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#8b9a6b;">${esc(_deputy.first_name)} ${esc(_deputy.last_name)}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">&middot; Skill ${_deputy.skill}</span>
+                </div>
+                <div class="pa-modal-body" style="gap:6px;">
+                    <div class="pa-modal-step-label">Choose Investment Level</div>
+                    <div id="rally-tiers">${tiersHtml}</div>
+
+                    <div style="margin-top:8px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);font-family:var(--font-mono);font-size:9px;color:var(--text-dim);line-height:1.6;">
+                        <strong>Outcome table:</strong> Roll 1d6 + bonus<br>
+                        8-11 = <span style="color:#5cc55c;">+3 Momentum</span> &middot;
+                        5-7 = <span style="color:#8b9a6b;">+2 Momentum</span> &middot;
+                        3-4 = <span style="color:#ca5;">+0 Momentum</span> &middot;
+                        1-2 = <span style="color:#c55;">-2 Momentum</span>
+                    </div>
+
+                    ${resultHtml}
+                </div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="rally-cancel">${result ? 'Close' : 'Cancel'}</button>
+                    ${!result ? `<button class="pa-modal-btn pa-modal-btn--submit" id="rally-submit" style="background:#8b9a6b;" ${selectedTier == null ? 'disabled' : ''}>Hold Rally</button>` : ''}
+                </div>
+            </div>
+        `;
+
+        const close = () => { overlay.classList.remove('active'); if (result) renderPage(root); };
+        document.getElementById('rally-close')?.addEventListener('click', close);
+        document.getElementById('rally-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        document.getElementById('rally-tiers')?.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-tier]');
+            if (!item || item.classList.contains('locked')) return;
+            selectedTier = parseInt(item.dataset.tier, 10);
+            render();
+        });
+
+        document.getElementById('rally-submit')?.addEventListener('click', async () => {
+            if (selectedTier == null || result) return;
+            const tier = RALLY_TIERS[selectedTier];
+            const currentFunds = _state.faction.party_funds || 0;
+            if (currentFunds < tier.cost) { alert('Not enough funds.'); return; }
+
+            const btn = document.getElementById('rally-submit');
+            if (btn) { btn.disabled = true; btn.textContent = 'Rolling...'; }
+
+            try {
+                const dieRoll = 1 + Math.floor(Math.random() * 6);
+                const rallyResult = getRallyResult(dieRoll, tier.bonus);
+
+                const newFunds = currentFunds - tier.cost;
+                const newMomentum = Math.max(0, (_state.faction.momentum || 0) + rallyResult.momentum);
+
+                await _supabase.from('factions').update({
+                    party_funds: newFunds,
+                    momentum: newMomentum,
+                }).eq('id', _state.faction.id);
+
+                const tick = _state.shard?.current_tick || 0;
+                await _supabase.from('campaign_actions').insert({
+                    party_id: _state.faction.id,
+                    nation_id: _state.nation?.id,
+                    action_type: 'rally',
+                    ap_cost: 0,
+                    money_cost: tier.cost,
+                    tick_performed: tick,
+                    result: { dieRoll, bonus: tier.bonus, total: dieRoll + tier.bonus, momentum: rallyResult.momentum, label: rallyResult.label },
+                });
+
+                _state.faction.party_funds = newFunds;
+                _state.faction.momentum = newMomentum;
+
+                result = { ...rallyResult, dieRoll, bonus: tier.bonus, total: dieRoll + tier.bonus };
+                render();
+            } catch (err) {
+                console.error('[Rally] Error:', err);
+                alert('Rally failed.');
+            }
+        });
+    }
+
+    overlay.classList.add('active');
+    render();
 }
 
 // ════════════════════════ CAMPAIGN MANAGER PANEL ════════════════════════
