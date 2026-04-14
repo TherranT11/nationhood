@@ -446,6 +446,8 @@ function renderTradeEconomy() {
                         <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${fmtBudgetCurrency(p.trade_volume)}${pUnit ? ' <span style="font-size:9px;">(' + pUnit + ')</span>' : ''}</span>
                     </div>`;
                 }
+            } else if (impVol > 0) {
+                html += `<div style="font-size:11px;color:var(--text-dim);font-style:italic;padding-left:12px;">Distributed across multiple trading partners</div>`;
             } else {
                 html += `<div style="font-size:11px;color:var(--text-dim);font-style:italic;padding-left:12px;">No imports</div>`;
             }
@@ -472,6 +474,8 @@ function renderTradeEconomy() {
                         <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${fmtBudgetCurrency(p.trade_volume)}${pUnit ? ' <span style="font-size:9px;">(' + pUnit + ')</span>' : ''}</span>
                     </div>`;
                 }
+            } else if (expVol > 0) {
+                html += `<div style="font-size:11px;color:var(--text-dim);font-style:italic;padding-left:12px;">Distributed across multiple trading partners</div>`;
             } else {
                 html += `<div style="font-size:11px;color:var(--text-dim);font-style:italic;padding-left:12px;">No exports</div>`;
             }
