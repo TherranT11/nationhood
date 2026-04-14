@@ -2188,12 +2188,14 @@ async function rdSubmitOffer() {
             corp_cash_reserves: Math.max(0, cash - rdBondAmount)
         }).eq('id', faction.id);
 
-        // Credit nation treasury (reduce debt)
+        // Nation receives bond proceeds (government borrows from banker)
+        // Debt INCREASES because the nation now owes this principal back at maturity
         const { data: nationData } = await _supabase.from('nations').select('debt').eq('id', rdDeal.nation_id).single();
         if (nationData) {
-            await _supabase.from('nations').update({
-                debt: Math.max(0, Number(nationData.debt || 0) - rdBondAmount)
+            const { error: debtErr } = await _supabase.from('nations').update({
+                debt: Number(nationData.debt || 0) + rdBondAmount
             }).eq('id', rdDeal.nation_id);
+            if (debtErr) console.warn('[Bonds] Failed to update nation debt:', debtErr.message);
         }
 
         faction.corp_cash_reserves = Math.max(0, cash - rdBondAmount);

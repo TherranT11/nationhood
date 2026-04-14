@@ -31290,7 +31290,48 @@ async function enactSovereignDefault(supabase, bill, currentTick) {
         executed_at_tick: currentTick
     });
 
-    // 8. Update resolution status
+    // 8. Restructure active bonds — bondholders take losses
+    try {
+        const { data: activeBonds } = await supabase.from('finance_active_loans')
+            .select('id, principal, lender_faction_id, total_paid, payments_made, term_months')
+            .eq('nation_id', nation.id)
+            .eq('status', 'current')
+            .eq('purpose', 'Government Bond');
+
+        if (activeBonds && activeBonds.length > 0) {
+            const repaymentRate = resolution.default_type === 'full' ? 0 : (resolution.repayment_rate || 0.5);
+
+            for (const bond of activeBonds) {
+                if (resolution.default_type === 'full') {
+                    // Full default: bonds are worthless — no principal recovery
+                    await supabase.from('finance_active_loans').update({
+                        status: 'defaulted',
+                        completed_tick: currentTick,
+                    }).eq('id', bond.id);
+
+                    console.log(`[enactSovereignDefault] Bond ${bond.id} DEFAULTED (full): $${Math.round(bond.principal / 1000)}k lost by ${bond.lender_faction_id}`);
+                } else {
+                    // Partial restructuring: reduce principal to repayment_rate
+                    const newPrincipal = Math.round(bond.principal * repaymentRate);
+                    const newMonthlyPayment = bond.term_months > 0
+                        ? Math.round(newPrincipal * ((bond.principal > 0 ? (bond.total_paid / bond.payments_made / bond.principal * 12) : 0.05) / 100) / 12)
+                        : 0;
+
+                    await supabase.from('finance_active_loans').update({
+                        principal: newPrincipal,
+                        monthly_payment: Math.max(1, newMonthlyPayment || Math.round(newPrincipal * 0.005)),
+                    }).eq('id', bond.id);
+
+                    console.log(`[enactSovereignDefault] Bond ${bond.id} RESTRUCTURED: $${Math.round(bond.principal / 1000)}k → $${Math.round(newPrincipal / 1000)}k (${Math.round(repaymentRate * 100)}% recovery)`);
+                }
+            }
+            console.log(`[enactSovereignDefault] ${activeBonds.length} bonds affected by ${resolution.default_type} default`);
+        }
+    } catch (bondErr) {
+        console.warn(`[enactSovereignDefault] Bond restructuring failed (non-fatal):`, bondErr.message);
+    }
+
+    // 9. Update resolution status
     await supabase.from('default_resolutions').update({
         status: 'passed',
         resolved_at_tick: currentTick

@@ -2602,6 +2602,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             }
 
             // Nation pays coupon to bondholder (including trading floor bonus)
+            // Coupons are interest expense — paid from treasury, do NOT change debt principal
             const { data: lender } = await supabase.from('factions')
                 .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
             if (lender) {
@@ -2610,16 +2611,8 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 }).eq('id', loan.lender_faction_id);
             }
 
-            // Increase nation debt by coupon amount
-            const { data: nation } = await supabase.from('nations')
-                .select('debt').eq('id', nationId).single();
-            if (nation) {
-                await supabase.from('nations').update({
-                    debt: Number(nation.debt || 0) + payment
-                }).eq('id', nationId);
-            }
-
-            // At maturity: return principal to bondholder, add to nation debt
+            // At maturity: return principal to bondholder and REDUCE nation debt
+            // (nation repays the borrowed amount, so debt decreases)
             if (isMatured) {
                 if (lender) {
                     const { data: lenderFresh } = await supabase.from('factions')
@@ -2632,9 +2625,10 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                     .select('debt').eq('id', nationId).single();
                 if (nationFresh) {
                     await supabase.from('nations').update({
-                        debt: Number(nationFresh.debt || 0) + loan.principal
+                        debt: Math.max(0, Number(nationFresh.debt || 0) - loan.principal)
                     }).eq('id', nationId);
                 }
+                console.log(`[Bonds] Bond matured: $${Math.round(loan.principal / 1000)}k returned to ${loan.lender_faction_id}, nation debt reduced`);
             }
 
             await supabase.from('finance_active_loans').update({
