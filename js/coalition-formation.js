@@ -396,20 +396,25 @@ async function handleFormGovernment(formation, root) {
             console.warn('[Coalition] RPC failed, using fallback:', rpcErr.message);
         }
 
-        // Always run the fallback to ensure ministries are created
-        // (the RPC may succeed at setting status but fail at ministry creation)
+        // Always run the fallback to ensure formation is marked 'formed' + ministries created
         if (!rpcSucceeded) {
             await formGovernmentFallback(formation);
         }
 
-        // Ensure ministries exist regardless of RPC path
-        const { count: minCount } = await _supabase.from('ministries')
-            .select('id', { count: 'exact', head: true })
-            .eq('nation_id', nationId)
-            .eq('is_active', true);
+        // Even if RPC "succeeded", ensure status is 'formed' (RPC may have partially failed)
+        await _supabase.from('government_formations').update({
+            status: 'formed',
+            formed_at: new Date().toISOString(),
+        }).eq('id', formation.id);
 
-        if (!minCount || minCount < 2) {
-            console.warn(`[Coalition] Only ${minCount || 0} active ministries found — creating from assignments`);
+        // Ensure ministries are populated regardless of RPC path
+        // Check for VACANT ministries (party_id is null) — rows exist but are empty
+        const { count: vacantCount } = await _supabase.from('ministries')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
+
+        if (vacantCount && vacantCount >= 5) {
+            console.warn(`[Coalition] ${vacantCount} vacant ministries — populating from assignments`);
             await createMinistriesFromAssignments(nationId);
         }
 
