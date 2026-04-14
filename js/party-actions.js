@@ -2213,7 +2213,25 @@ function openStatementModal(root) {
                 console.error('[PartyActions] Article creation failed:', articleErr.message);
             }
 
-            // 5. Close and re-render (funds already updated above)
+            // 5. Write to event_log (shows in Events panel + Executive Timeline)
+            await _supabase.from('event_log').insert({
+                nation_id: _state.nation?.id,
+                event_name: headline,
+                category: 'political',
+                description_chosen: `${leaderName} (${faction.faction_name}) issued a statement on ${topicLabel}: "${body.substring(0, 150)}${body.length > 150 ? '...' : ''}"`,
+                fired_at_tick: tick,
+            }).catch(e => console.warn('[Statement] event_log insert failed:', e));
+
+            // 6. Write to admin timeline (under Communications filter)
+            await _supabase.from('admin_timeline_events').insert({
+                nation_id: _state.nation?.id,
+                tick: tick,
+                type: 'communications',
+                title: 'Statement Issued',
+                description: `${leaderName} issued a public statement on ${topicLabel}: "${body.substring(0, 120)}${body.length > 120 ? '...' : ''}"`,
+            }).catch(e => console.warn('[Statement] timeline insert failed:', e));
+
+            // 7. Close and re-render (funds already updated above)
             close();
             renderPage(root);
         } catch (err) {
