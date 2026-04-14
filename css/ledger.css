@@ -59,6 +59,16 @@
 .lg-nation-continent { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
 .lg-nation-you { font-family: var(--font-mono); font-size: 13px; color: var(--green); font-weight: 700; }
 
+/* ── Nation flag ── */
+.lg-nation-flag {
+    width: 28px; height: 19px; object-fit: cover; border-radius: 2px;
+    border: 1px solid var(--border-main); flex-shrink: 0;
+}
+.lg-header-flag {
+    width: 48px; height: 32px; object-fit: cover; border-radius: 2px;
+    border: 1px solid var(--border-main); flex-shrink: 0;
+}
+
 /* ── Nation header ── */
 .lg-nation-header {
     background: var(--bg-panel); border: 1px solid var(--border-main);
