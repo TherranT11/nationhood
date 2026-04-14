@@ -162,14 +162,83 @@ export async function initLedger(supabase, state) {
     _selectedNationId = state.nation?.id || (_allNations[0]?.id ?? null);
     _compareIds = [_selectedNationId].filter(Boolean);
 
-    renderLedger(root);
+    // Attach event listeners ONCE on root — they persist across re-renders
+    attachLedgerListeners(root);
+    renderLedgerBody(root);
 }
 
 // ═══════════════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════════════
 
-function renderLedger(root) {
+// Flag URL helper — nation.flag_url with fallback to assets/flags/{name}.png
+function flagUrl(nation) {
+    return nation.flag_url || `assets/flags/${nation.name}.png`;
+}
+
+// Attach event listeners ONCE on root via delegation (survives innerHTML rebuilds)
+function attachLedgerListeners(root) {
+    root.addEventListener('click', (e) => {
+        // Mode switcher
+        const modeBtn = e.target.closest('.lg-mode-btn');
+        if (modeBtn) {
+            _mode = modeBtn.dataset.mode;
+            renderLedgerBody(root);
+            return;
+        }
+        // Nation selector clicks (single mode)
+        const row = e.target.closest('.lg-nation-row');
+        if (row) {
+            _selectedNationId = row.dataset.nationId;
+            renderLedgerBody(root);
+            return;
+        }
+        const catBtn = e.target.closest('.lg-cat-btn');
+        if (catBtn) {
+            _activeCategory = catBtn.dataset.cat;
+            renderLedgerBody(root);
+            return;
+        }
+        // Compare mode: toggle nation
+        const compBtn = e.target.closest('.lg-comp-nation');
+        if (compBtn) {
+            const nid = compBtn.dataset.nationId;
+            if (_compareIds.includes(nid)) {
+                if (_compareIds.length > 1) _compareIds = _compareIds.filter(id => id !== nid);
+            } else if (_compareIds.length < 4) {
+                _compareIds.push(nid);
+            }
+            renderLedgerBody(root);
+            return;
+        }
+        // Rankings mode: category picker
+        const rankCat = e.target.closest('.lg-rank-cat');
+        if (rankCat) {
+            _rankingCategory = rankCat.dataset.cat;
+            const newCat = STAT_CATEGORIES.find(c => c.id === _rankingCategory);
+            if (newCat && newCat.stats.length > 0) _rankingStat = newCat.stats[0].id;
+            renderLedgerBody(root);
+            return;
+        }
+        // Rankings mode: stat picker
+        const rankStat = e.target.closest('.lg-rank-stat');
+        if (rankStat) {
+            _rankingStat = rankStat.dataset.stat;
+            renderLedgerBody(root);
+            return;
+        }
+    });
+
+    // Search: use delegated input event on root
+    root.addEventListener('input', (e) => {
+        if (e.target.matches('.lg-search input')) {
+            _searchTerm = e.target.value;
+            renderLedgerBody(root);
+        }
+    });
+}
+
+function renderLedgerBody(root) {
     const totalStats = STAT_CATEGORIES.reduce((s, c) => s + c.stats.length, 0);
 
     root.innerHTML = `<div class="lg-page">
@@ -184,68 +253,12 @@ function renderLedger(root) {
                 <div class="lg-mode-btn ${_mode === 'rankings' ? 'active' : ''}" data-mode="rankings">GLOBAL RANKINGS</div>
             </div>
         </div>
-        <div id="lg-body">${_mode === 'single' ? renderSingleMode() : _mode === 'compare' ? renderCompareMode() : _mode === 'rankings' ? renderRankingsMode() : renderSingleMode()}</div>
+        <div id="lg-body">${_mode === 'single' ? renderSingleMode() : _mode === 'compare' ? renderCompareMode() : renderRankingsMode()}</div>
     </div>`;
 
-    // Mode switcher
-    document.getElementById('lg-mode-bar')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('.lg-mode-btn');
-        if (!btn) return;
-        _mode = btn.dataset.mode;
-        renderLedger(root);
-    });
-
-    // Nation selector clicks (single mode)
-    root.addEventListener('click', (e) => {
-        const row = e.target.closest('.lg-nation-row');
-        if (row) {
-            _selectedNationId = row.dataset.nationId;
-            renderLedger(root);
-            return;
-        }
-        const catBtn = e.target.closest('.lg-cat-btn');
-        if (catBtn) {
-            _activeCategory = catBtn.dataset.cat;
-            renderLedger(root);
-            return;
-        }
-        // Compare mode: toggle nation
-        const compBtn = e.target.closest('.lg-comp-nation');
-        if (compBtn) {
-            const nid = compBtn.dataset.nationId;
-            if (_compareIds.includes(nid)) {
-                if (_compareIds.length > 1) _compareIds = _compareIds.filter(id => id !== nid);
-            } else if (_compareIds.length < 4) {
-                _compareIds.push(nid);
-            }
-            renderLedger(root);
-            return;
-        }
-        // Rankings mode: category picker
-        const rankCat = e.target.closest('.lg-rank-cat');
-        if (rankCat) {
-            _rankingCategory = rankCat.dataset.cat;
-            const newCat = STAT_CATEGORIES.find(c => c.id === _rankingCategory);
-            if (newCat && newCat.stats.length > 0) _rankingStat = newCat.stats[0].id;
-            renderLedger(root);
-            return;
-        }
-        // Rankings mode: stat picker
-        const rankStat = e.target.closest('.lg-rank-stat');
-        if (rankStat) {
-            _rankingStat = rankStat.dataset.stat;
-            renderLedger(root);
-            return;
-        }
-    });
-
-    // Search
+    // Restore search value after innerHTML rebuild
     const searchInput = root.querySelector('.lg-search input');
     if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-            _searchTerm = e.target.value;
-            renderLedger(root);
-        });
         searchInput.value = _searchTerm;
     }
 }
@@ -269,7 +282,8 @@ function renderSingleMode() {
         const isActive = n.id === _selectedNationId;
         const isYou = n.id === myNationId;
         return `<div class="lg-nation-row ${isActive ? 'active' : ''}" data-nation-id="${n.id}">
-            <div style="flex:1;">
+            <img class="lg-nation-flag" src="${flagUrl(n)}" alt="" onerror="this.style.display='none'">
+            <div style="flex:1;min-width:0;">
                 <div class="lg-nation-name">${esc(n.name)}</div>
                 <div class="lg-nation-continent">${esc(n.government_type || '')}</div>
             </div>
@@ -279,9 +293,12 @@ function renderSingleMode() {
 
     // Nation header
     const headerHtml = nation ? `<div class="lg-nation-header" style="border-left-color:var(--accent);">
-        <div>
-            <div class="lg-nation-title">${esc(nation.name)}</div>
-            <div class="lg-nation-sub">${esc(nation.government_type || '')} \u00B7 Pop: ${Number(nation.population || 0).toLocaleString()}</div>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <img class="lg-header-flag" src="${flagUrl(nation)}" alt="" onerror="this.style.display='none'">
+            <div>
+                <div class="lg-nation-title">${esc(nation.name)}</div>
+                <div class="lg-nation-sub">${esc(nation.government_type || '')} \u00B7 Pop: ${Number(nation.population || 0).toLocaleString()}</div>
+            </div>
         </div>
         <div style="font-family:var(--font-mono);font-size:17px;color:var(--text-dim);">
             GDP Growth: <span style="color:var(--text-bright);font-weight:700;">${fmtVal(nation.gdp_growth)}</span>

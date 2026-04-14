@@ -2704,7 +2704,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
                 </div>
                 <span class="ca-item-ap">${paApLabel}</span>
             </div>
-            <div class="ca-item-desc" style="font-size:9px;color:#4a4840;">Issue a public statement calling for calm. Reduces civil unrest buildup this tick.</div>
+            <div class="ca-item-desc" style="color:#4a4840;">Issue a public statement calling for calm. Reduces civil unrest buildup this tick.</div>
         </div>`;
     }
 
@@ -2724,9 +2724,9 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
         const group = categoryGroups[gi];
         const catDef = CA_ACTION_CATEGORIES.find(c => c.key === group.key);
         if (catDef) {
-            listHtml += `<div style="font-family:var(--dfont-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${catDef.color};padding:8px 6px 2px;${gi > 0 ? 'border-top:1px solid var(--dborder-0);margin-top:4px;' : ''}">${catDef.label}</div>`;
+            listHtml += `<div style="font-family:var(--dfont-mono);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${catDef.color};padding:10px 8px 3px;${gi > 0 ? 'border-top:1px solid var(--dborder-0);margin-top:6px;' : ''}">${catDef.label}</div>`;
         }
-        listHtml += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:0 2px;">`;
+        listHtml += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 3px;">`;
 
         for (const act of group.actions) {
             const isSel = _caSelected === act.id;
@@ -2837,13 +2837,13 @@ function renderCampaignUI(container, f, n, ap, otherParties, factionIdeo, tick, 
             if (canManage(a.action_type)) {
                 if (isPaused || isSuspended) {
                     btnsHtml = `<td style="text-align:right;white-space:nowrap">
-                        <button class="ca-manage-btn" data-action="continue" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#5cb85c;color:#fff;border:none;border-radius:3px">Continue — 1 AP</button>
-                        <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
+                        <button class="ca-manage-btn" data-action="continue" data-id="${a.id}" style="font-size:12px;padding:4px 10px;margin-left:6px;cursor:pointer;background:#5cb85c;color:#fff;border:none;border-radius:3px">Continue — 1 AP</button>
+                        <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:12px;padding:4px 10px;margin-left:6px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
                     </td>`;
                 } else {
                     btnsHtml = `<td style="text-align:right;white-space:nowrap">
-                        <button class="ca-manage-btn" data-action="suspend" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#c8a44e;color:#fff;border:none;border-radius:3px">Suspend — 1 AP</button>
-                        <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:9px;padding:2px 6px;margin-left:4px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
+                        <button class="ca-manage-btn" data-action="suspend" data-id="${a.id}" style="font-size:12px;padding:4px 10px;margin-left:6px;cursor:pointer;background:#c8a44e;color:#fff;border:none;border-radius:3px">Suspend — 1 AP</button>
+                        <button class="ca-manage-btn" data-action="cancel" data-id="${a.id}" style="font-size:12px;padding:4px 10px;margin-left:6px;cursor:pointer;background:#d9534f;color:#fff;border:none;border-radius:3px">Cancel — 2 AP</button>
                     </td>`;
                 }
             } else {
