@@ -25,12 +25,11 @@
 
 /* ── Map panel (left/center) ── */
 .world-map-panel {
-    width: 1140px; height: 900px;
-    max-height: calc(100vh - 120px);
+    flex: 1; height: auto; max-height: 500px;
     background: var(--ocean-bg, #87CEEB);
     border: 1px solid var(--border-main);
     overflow: hidden; position: relative;
-    cursor: grab; user-select: none; flex-shrink: 0;
+    cursor: grab; user-select: none;
 }
 .world-map-panel:active { cursor: grabbing; }
 .world-map-panel img {
