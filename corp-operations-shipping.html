@@ -3372,7 +3372,7 @@ async function pmDeployEquipment(equipmentKey, units) {
         const { error } = await _supabase.from('corp_equipment')
             .update({ deployed: newDeployed, assigned_projects: assignments })
             .eq('faction_id', faction.id)
-            .eq('equipment_key', equipmentKey);
+            .eq('equipment_key', eqRow.equipment_key);
         if (error) { alert('Deploy failed: ' + error.message); return; }
 
         await loadEquipment();
@@ -3402,7 +3402,7 @@ async function pmUndeployEquipment(equipmentKey) {
         const { error } = await _supabase.from('corp_equipment')
             .update({ deployed: newDeployed, assigned_projects: assignments })
             .eq('faction_id', faction.id)
-            .eq('equipment_key', equipmentKey);
+            .eq('equipment_key', eqRow.equipment_key);
         if (error) { alert('Undeploy failed: ' + error.message); return; }
 
         await loadEquipment();
@@ -5837,12 +5837,37 @@ let _arLoadState = 'ready';
 let _arLoadError = null;
 let arFilter = 'ALL';
 let arSelected = -1;
+let _shippingMarketplaceUnavailable = false;
 
 const AR_SCOPE_META = {
     COASTAL:       { color: '#8b9a6b', label: 'COASTAL' },
     INTERNATIONAL: { color: '#5a8aaa', label: 'INTL' },
     GOVERNMENT:    { color: '#c8a832', label: 'GOV CONTRACT' },
 };
+
+function isFeatureUnavailableSupabaseError(error) {
+    if (!error) return false;
+    const code = String(error.code || '').toUpperCase();
+    const message = String(error.message || '');
+    return code === 'PGRST202'
+        || code === 'PGRST205'
+        || code === '42P01'
+        || /Could not find the table/i.test(message)
+        || /schema cache/i.test(message);
+}
+
+async function runShippingMarketplaceQuery(queryPromise, label) {
+    const { data, error } = await queryPromise;
+    if (!error) return { data: data || [], error: null, unavailable: false };
+
+    if (isFeatureUnavailableSupabaseError(error)) {
+        console.warn('[ShippingOps] ' + label + ' unavailable in this environment:', error.message);
+        return { data: [], error, unavailable: true };
+    }
+
+    console.warn('[ShippingOps] Failed to load ' + label + ':', error.message);
+    return { data: [], error, unavailable: false };
+}
 
 function arSetFilter(scope) {
     arFilter = scope;
@@ -5940,7 +5965,9 @@ function renderAvailableRoutes() {
 
     if (filtered.length === 0) {
         listEl.innerHTML = '<div class="ar-empty"><div class="ar-empty__text">'
-            + (arRoutes.length === 0
+            + (_shippingMarketplaceUnavailable
+                ? 'Shipping marketplace unavailable on this environment.'
+                : arRoutes.length === 0
                 ? 'No routes available.<br>Routes are generated from bilateral<br>trade each tick. Check back after<br>the next corp tick fires.'
                 : 'No ' + arFilter.toLowerCase() + ' routes available.')
             + '</div></div>';
@@ -6389,7 +6416,11 @@ function renderActiveVoyages() {
     }
 
     if (avClaims.length === 0) {
-        listEl.innerHTML = '<div class="av-empty"><div class="av-empty__text">No active voyages.<br>Claim a shipping route to<br>deploy your fleet.</div></div>';
+        listEl.innerHTML = '<div class="av-empty"><div class="av-empty__text">'
+            + (_shippingMarketplaceUnavailable
+                ? 'Shipping marketplace unavailable on this environment.'
+                : 'No active voyages.<br>Claim a shipping route to<br>deploy your fleet.')
+            + '</div></div>';
         return;
     }
 

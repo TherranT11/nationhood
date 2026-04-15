@@ -3548,7 +3548,7 @@ async function pmDeployEquipment(equipmentKey, units) {
         const { error } = await _supabase.from('corp_equipment')
             .update({ deployed: newDeployed, assigned_projects: assignments })
             .eq('faction_id', faction.id)
-            .eq('equipment_key', equipmentKey);
+            .eq('equipment_key', eqRow.equipment_key);
         if (error) { alert('Deploy failed: ' + error.message); return; }
 
         await loadEquipment();
@@ -3580,7 +3580,7 @@ async function pmUndeployEquipment(equipmentKey) {
         const { error } = await _supabase.from('corp_equipment')
             .update({ deployed: newDeployed, assigned_projects: assignments })
             .eq('faction_id', faction.id)
-            .eq('equipment_key', equipmentKey);
+            .eq('equipment_key', eqRow.equipment_key);
         if (error) { alert('Undeploy failed: ' + error.message); return; }
 
         await loadEquipment();
@@ -10449,6 +10449,31 @@ async function subPutForSale(propId) {
 
 // ─── SUBSIDIARY MARKETPLACE: show listings + bids ───
 let _marketplaceListings = [];
+let _subsidiaryMarketplaceUnavailable = false;
+
+function isFeatureUnavailableSupabaseError(error) {
+    if (!error) return false;
+    const code = String(error.code || '').toUpperCase();
+    const message = String(error.message || '');
+    return code === 'PGRST202'
+        || code === 'PGRST205'
+        || code === '42P01'
+        || /Could not find the table/i.test(message)
+        || /schema cache/i.test(message);
+}
+
+async function runSubsidiaryMarketplaceQuery(queryPromise, label) {
+    const { data, error } = await queryPromise;
+    if (!error) return { data: data || [], error: null, unavailable: false };
+
+    if (isFeatureUnavailableSupabaseError(error)) {
+        console.warn('[SubMarket] ' + label + ' unavailable in this environment:', error.message);
+        return { data: [], error, unavailable: true };
+    }
+
+    console.error('[SubMarket] ' + label + ' failed:', error.message);
+    return { data: [], error, unavailable: false };
+}
 
 let _subMarketLoadState = 'ready';
 let _subMarketLoadError = null;
