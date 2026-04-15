@@ -11210,9 +11210,11 @@ function renderCreateSubsidiaryCard() {
 
     // ─── COST BREAKDOWN FOOTER ───
     const baseCost = 50000000;
+    const sectorMult = subGetSectorMultiplier();
     const subsectorMod = selectedSub.mod;
     const nationMult = sel ? subCalcNationMultiplier(sel) : null;
     const finalCost = sel ? subCalcEntryCost(sel) : null;
+    const estimateCost = Math.round(baseCost * sectorMult * (1 + subsectorMod)); // estimate without nation
 
     let costHtml = `
     <div style="background:${C.bg};border:1px solid ${C.border};padding:6px 8px;margin-bottom:6px;">
@@ -11220,17 +11222,21 @@ function renderCreateSubsidiaryCard() {
             <span style="font-family:${mono};font-size:8px;color:${C.dim}">BASE</span>
             <span style="font-family:${mono};font-size:9px;color:${C.muted}">${hfFmtBig(baseCost)}</span>
         </div>
+        ${sectorMult > 1 ? `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
+            <span style="font-family:${mono};font-size:8px;color:${C.dim}">SECTOR (${currentSector})</span>
+            <span style="font-family:${mono};font-size:9px;font-weight:700;color:${C.orange}">×${sectorMult}</span>
+        </div>` : ''}
         <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
             <span style="font-family:${mono};font-size:8px;color:${C.dim}">SUBSECTOR (${selectedSub.name})</span>
             <span style="font-family:${mono};font-size:9px;color:${subsectorMod === 0 ? C.greenBright : C.orange}">${subsectorMod === 0 ? '±0%' : '+' + Math.round(subsectorMod * 100) + '%'}</span>
         </div>
         <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
-            <span style="font-family:${mono};font-size:8px;color:${C.dim}">NATION (${sel ? sel.name : '—'})</span>
+            <span style="font-family:${mono};font-size:8px;color:${C.dim}">NATION (${sel ? sel.name : 'select below'})</span>
             <span style="font-family:${mono};font-size:9px;color:${sel ? (nationMult > 1 ? C.orange : C.greenBright) : C.dim}">${sel ? '×' + nationMult.toFixed(2) : '—'}</span>
         </div>
         <div style="display:flex;justify-content:space-between;padding:3px 0;">
             <span style="font-family:${mono};font-size:9px;font-weight:700;color:${C.text}">TOTAL COST</span>
-            <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${sel ? hfFmtBig(finalCost) : '—'}</span>
+            <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${sel ? hfFmtBig(finalCost) : '~' + hfFmtBig(estimateCost)}</span>
         </div>
     </div>`;
 
@@ -11261,7 +11267,7 @@ function renderCreateSubsidiaryCard() {
                     onmouseout="this.style.filter='';this.style.transform=''"
                     onmousedown="this.style.transform='scale(0.97)'"
                     onmouseup="this.style.transform='scale(1.02)'"
-                    style="padding:6px 22px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${canCreate ? '#000' : C.dim};background:${canCreate ? C.gold : C.surface};border:1px solid ${canCreate ? C.gold : C.border};cursor:pointer;opacity:${canCreate ? 1 : 0.5};transition:all 0.1s ease;user-select:none">CREATE SUBSIDIARY</div>
+                    style="padding:6px 22px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${canCreate ? '#000' : '#c8a832'};background:${canCreate ? C.gold : 'rgba(200,168,50,0.08)'};border:1px solid ${canCreate ? C.gold : 'rgba(200,168,50,0.3)'};cursor:pointer;opacity:${canCreate ? 1 : 0.7};transition:all 0.1s ease;user-select:none">CREATE SUBSIDIARY</div>
             </div>
         </div>
     </div>`;
