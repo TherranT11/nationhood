@@ -541,12 +541,27 @@ async function formGovernmentFallback(formation) {
 }
 
 async function createMinistriesFromAssignments(nationId) {
-    // UPDATE existing ministry rows (they already exist with party_id=null).
-    // Don't insert — rows are pre-seeded per nation. Just populate them.
+    // Upsert ministry rows — update if they exist, insert if they don't.
+    // Also update the cabinet_members table for the government display.
+    const MINISTRY_DISPLAY_NAMES = {
+        prime_minister: 'Prime Minister',
+        interior: 'Minister of the Interior',
+        foreign: 'Minister of Foreign Affairs',
+        defense: 'Minister of Defense',
+        finance: 'Minister of Finance',
+        education: 'Minister of Education',
+        healthcare: 'Minister of Health',
+        labor: 'Minister of Labor',
+        justice: 'Minister of Justice',
+        trade: 'Minister of Trade',
+        energy: 'Minister of Energy',
+        transportation: 'Minister of Transportation',
+        security: 'Minister of Security',
+    };
+
     let updated = 0;
     for (const [key, partyId] of Object.entries(_ministryAssignments)) {
         if (!partyId) continue;
-        // getNationNames returns { firstNames: [...], lastNames: [...] }
         const names = getNationNames(_state.nation?.name) || {};
         const firstPool = names.firstNames || ['Alex', 'Maria', 'Carlos'];
         const lastPool = names.lastNames || ['Garcia', 'Torres', 'Silva'];
@@ -554,8 +569,10 @@ async function createMinistriesFromAssignments(nationId) {
         const lastName = lastPool[Math.floor(Math.random() * lastPool.length)];
         const age = 35 + Math.floor(Math.random() * 25);
         const baselines = buildMinistryBaselines ? buildMinistryBaselines(key, _state.nation) : {};
+        const displayName = MINISTRY_DISPLAY_NAMES[key] || key;
 
-        const { error: minErr } = await _supabase.from('ministries').update({
+        // Try update first
+        const { data: updatedRows, error: minErr } = await _supabase.from('ministries').update({
             party_id: partyId,
             minister_first_name: firstName,
             minister_last_name: lastName,
@@ -563,13 +580,39 @@ async function createMinistriesFromAssignments(nationId) {
             minister_approval: 50,
             stat_baselines: baselines,
             is_active: true,
-        }).eq('nation_id', nationId).eq('ministry_key', key);
+        }).eq('nation_id', nationId).eq('ministry_key', key).select('id');
 
         if (minErr) {
             console.error(`[Coalition] FAILED to update ministry ${key}:`, minErr.message);
+        } else if (!updatedRows || updatedRows.length === 0) {
+            // No existing row — insert
+            const { error: insErr } = await _supabase.from('ministries').insert({
+                nation_id: nationId,
+                ministry_key: key,
+                ministry_name: displayName,
+                party_id: partyId,
+                minister_first_name: firstName,
+                minister_last_name: lastName,
+                minister_age: age,
+                minister_approval: 50,
+                stat_baselines: baselines,
+                is_active: true,
+            });
+            if (insErr) {
+                console.error(`[Coalition] FAILED to insert ministry ${key}:`, insErr.message);
+            } else {
+                updated++;
+            }
         } else {
             updated++;
         }
+
+        // Also update cabinet_members if the table has rows for this nation
+        const position = displayName;
+        await _supabase.from('cabinet_members').update({
+            party_id: partyId,
+            person_name: firstName + ' ' + lastName,
+        }).eq('nation_id', nationId).eq('position', position).eq('is_active', true);
     }
     console.log(`[Coalition] Updated ${updated} ministries for nation ${nationId}`);
 }
