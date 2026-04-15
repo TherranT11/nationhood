@@ -623,7 +623,16 @@ function renderQuickInfoCards() {
 function renderRivalParties(o, myFaction) {
     const rivals = o.rivalParties;
     const admin = o.administration;
-    const coalitionIds = new Set((admin?.coalition_parties || []).map(p => p.party_id));
+    const coalitionIds = new Set(
+        (Array.isArray(admin?.coalition_parties) ? admin.coalition_parties : [])
+            .map(entry => {
+                if (!entry) return null;
+                if (typeof entry === 'string') return entry;
+                if (typeof entry === 'object') return entry.party_id || entry.id || null;
+                return null;
+            })
+            .filter(Boolean)
+    );
     const pmPartyId = admin?.pm_party_id;
     const totalSeats = _state.nation?.total_seats || 100;
 

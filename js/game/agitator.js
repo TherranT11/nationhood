@@ -161,11 +161,21 @@ export async function checkOppositionStatus(supabase, nationId, factionId) {
         return { isOpposition: true, administration: null };
     }
 
-    // Check if faction is in the coalition
-    var coalitionParties = admin.coalition_parties || [];
-    var inCoalition = coalitionParties.some(function(p) {
-        return p.party_id === factionId;
-    });
+    // Check if faction is in the coalition.
+    // Support both legacy/object formats:
+    // - [{ party_id: 'uuid', ... }]
+    // - [{ id: 'uuid', ... }]
+    // - ['uuid', ...]
+    var coalitionParties = Array.isArray(admin.coalition_parties) ? admin.coalition_parties : [];
+    var coalitionIds = coalitionParties
+        .map(function(entry) {
+            if (!entry) return null;
+            if (typeof entry === 'string') return entry;
+            if (typeof entry === 'object') return entry.party_id || entry.id || null;
+            return null;
+        })
+        .filter(Boolean);
+    var inCoalition = coalitionIds.includes(factionId) || admin.pm_party_id === factionId;
 
     return { isOpposition: !inCoalition, administration: admin };
 }
