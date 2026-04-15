@@ -151,22 +151,22 @@ body {
 
 /* ── Nav tabs ── */
 .corp-nav { display: flex; padding: 0 22px; gap: 0; height: 40px; background: var(--bg-2); border-bottom: 1px solid var(--border-0); }
-.corp-nav__tab {
+.corp-nav-tab {
   position: relative; font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
   letter-spacing: 0.06em; text-transform: uppercase; padding: 10px 15px;
   background: transparent; border: none; border-bottom: 2px solid transparent;
   color: #8a8978; cursor: pointer; transition: color 0.1s; white-space: nowrap; text-decoration: none;
 }
-.corp-nav__tab:hover { color: #a8a797; }
-.corp-nav__tab.active { color: var(--text-bright); border-bottom-color: var(--text-bright); }
+.corp-nav-tab:hover { color: #a8a797; }
+.corp-nav-tab.active { color: var(--text-bright); border-bottom-color: var(--text-bright); }
 .corp-hamburger {
   display: none; background: var(--bg-3); border: 1px solid var(--border-0);
   color: var(--text-dim); font-size: 18px; padding: 4px 10px; cursor: pointer; margin: 4px 22px;
 }
 .corp-hamburger:hover { color: var(--text-muted); }
-body.light-mode .corp-nav__tab { color: #666660; }
-body.light-mode .corp-nav__tab:hover { color: #333330; }
-body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a1a17; }
+body.light-mode .corp-nav-tab { color: #666660; }
+body.light-mode .corp-nav-tab:hover { color: #333330; }
+body.light-mode .corp-nav-tab.active { color: #1a1a17; border-bottom-color: #1a1a17; }
 
 /* ── Content ── */
 .content {
@@ -2067,8 +2067,8 @@ body.light-mode .av-empty__text { color: #1a1a17; }
   .corp-hamburger { display: block; }
   .corp-nav { display: none; flex-direction: column; height: auto; padding: 0; }
   .corp-nav.nav-open { display: flex; }
-  .corp-nav.nav-open .corp-nav__tab { padding: 10px 22px; border-bottom: none; border-left: 2px solid transparent; }
-  .corp-nav.nav-open .corp-nav__tab.active { border-left-color: var(--text-bright); border-bottom: none; }
+  .corp-nav.nav-open .corp-nav-tab { padding: 10px 22px; border-bottom: none; border-left: 2px solid transparent; }
+  .corp-nav.nav-open .corp-nav-tab.active { border-left-color: var(--text-bright); border-bottom: none; }
 }
 @media (max-width: 480px) {
   .top-bar-row1 { padding: 6px 8px; }
@@ -7099,10 +7099,10 @@ async function init() {
 
     // Check for ?tab= param to auto-switch on load (urlTab declared above in redirect check)
     if (urlTab === 'expansion') {
-        const expTab = document.querySelector('[data-tab="expansion"]');
+        const expTab = document.querySelector('[data-tab-action="expansion"]');
         if (expTab) switchToExpansion({ preventDefault: () => {}, target: expTab });
     } else if (urlTab === 'actions') {
-        const actTab = document.querySelector('[data-tab="actions"]');
+        const actTab = document.querySelector('[data-tab-action="actions"]');
         if (actTab) switchToActions({ preventDefault: () => {}, target: actTab });
     }
 }
@@ -7204,7 +7204,7 @@ async function switchToExpansion(e) {
     expEl.style.gap = '12px';
     expEl.style.alignItems = 'flex-start';
     expEl.style.flexWrap = 'wrap';
-    document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.corp-nav-tab').forEach(t => t.classList.remove('active'));
     e.target.classList.add('active');
     await loadOwnedProperties();
     renderHireFireCard();
@@ -7226,8 +7226,8 @@ function switchToOperations(e) {
     document.getElementById('operations-content').style.display = 'flex';
     document.getElementById('expansion-content').style.display = 'none';
     document.getElementById('actions-content').style.display = 'none';
-    document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
-    document.querySelector('[data-tab="operations"]')?.classList.add('active');
+    document.querySelectorAll('.corp-nav-tab').forEach(t => t.classList.remove('active'));
+    getOperationsTabEl()?.classList.add('active');
 }
 
 async function switchToActions(e) {
@@ -7235,10 +7235,19 @@ async function switchToActions(e) {
     document.getElementById('operations-content').style.display = 'none';
     document.getElementById('expansion-content').style.display = 'none';
     document.getElementById('actions-content').style.display = 'block';
-    document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
-    (e.target || document.querySelector('[data-tab="actions"]')).classList.add('active');
+    document.querySelectorAll('.corp-nav-tab').forEach(t => t.classList.remove('active'));
+    (e.target || document.querySelector('[data-tab-action="actions"]'))?.classList.add('active');
     await loadExecutives();
     renderActionsTab();
+}
+
+function getOperationsTabEl() {
+    return Array.from(document.querySelectorAll('.corp-nav-tab[href]:not([data-tab-action])')).find((tab) => {
+        const href = tab.getAttribute('href');
+        if (!href) return false;
+        const tabUrl = new URL(href, window.location.href);
+        return tabUrl.pathname === window.location.pathname && !tabUrl.searchParams.get('tab');
+    }) || null;
 }
 
 async function loadExecutives() {
@@ -13797,9 +13806,15 @@ window.hfSetChange = hfSetChange;
 window.hfReset = hfReset;
 window.hfConfirm = hfConfirm;
 
-// Wire Operations tab to switch back
-document.querySelector('[data-tab="operations"]')?.addEventListener('click', function(e) {
-    if (this.classList.contains('active')) return;
+// Wire Operations tab to switch back (shared topbar renders nav dynamically)
+document.addEventListener('click', function(e) {
+    const tab = e.target.closest('.corp-nav-tab[href]:not([data-tab-action])');
+    if (!tab) return;
+    const href = tab.getAttribute('href');
+    if (!href) return;
+    const tabUrl = new URL(href, window.location.href);
+    if (tabUrl.pathname !== window.location.pathname || tabUrl.searchParams.get('tab')) return;
+    if (tab.classList.contains('active')) return;
     e.preventDefault();
     switchToOperations(e);
 });
