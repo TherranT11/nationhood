@@ -990,6 +990,21 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
   letter-spacing: 0.8px; padding: 1px 6px;
   color: var(--teal); background: var(--teal-faint); border: 1px solid var(--teal-border);
 }
+.pr-nation-bar {
+  padding: 6px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.pr-nation-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 1px; text-transform: uppercase; flex-shrink: 0;
+}
+.pr-nation-select {
+  flex: 1; padding: 3px 6px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  background: var(--bg-3); border: 1px solid var(--border-0);
+  color: var(--text-bright); cursor: pointer; outline: none;
+}
+.pr-nation-select:focus { border-color: var(--teal-border); }
 
 /* Material selector grid — 2×4 */
 .pr-mat-grid {
@@ -2516,6 +2531,11 @@ body.light-mode .av-empty__text { color: #1a1a17; }
         <span class="pr-card__nation-badge" id="pr-nation-badge">LOCAL — --</span>
       </div>
 
+      <div class="pr-nation-bar">
+        <span class="pr-nation-label">MARKET</span>
+        <select class="pr-nation-select" id="pr-nation-select" onchange="switchPrNation(this.value)"></select>
+      </div>
+
       <!-- Material selector grid -->
       <div class="pr-mat-grid" id="pr-mat-grid"></div>
 
@@ -2756,6 +2776,7 @@ const canonicalMaterialKey = (key) => MATERIAL_KEY_ALIASES[key] || key;
 let prSelectedMat = 'concrete';
 let prSelectedTier = 'STD';
 let prPurchaseQty = 500;
+let prSelectedNation = null; // null = HQ nation (nationStats)
 
 // Equipment state
 let equipmentData = [];   // rows from corp_equipment
@@ -2788,6 +2809,10 @@ let emSelectedNation = null; // null = HQ nation (nationStats), otherwise a fore
 let emAllNations = [];       // all nations for the dropdown
 let nextTickAt = null;
 let tickInterval = null;
+
+function getPrMarketNation() {
+    return prSelectedNation || nationStats;
+}
 
 // Filters
 let typeFilter = 'ALL';
@@ -4728,10 +4753,25 @@ const PRICE_DRIVER_LABELS = {
 };
 
 function renderProcurement() {
-    const nationName = (nationStats?.name || faction?.nation || '—').toUpperCase();
+    const marketNation = getPrMarketNation();
+    const nationName = (marketNation?.name || nationStats?.name || faction?.nation || '—').toUpperCase();
+    const isImport = !!(prSelectedNation && nationStats && prSelectedNation.id !== nationStats.id);
 
     // Nation badge
-    document.getElementById('pr-nation-badge').textContent = 'LOCAL — ' + nationName;
+    document.getElementById('pr-nation-badge').textContent = (isImport ? 'IMPORT — ' : 'LOCAL — ') + nationName;
+
+    // Nation dropdown
+    const select = document.getElementById('pr-nation-select');
+    if (select && select.options.length === 0) {
+        const hqName = nationStats?.name || faction?.nation || '—';
+        let opts = `<option value="">${escapeHtml(hqName)} (HQ)</option>`;
+        for (const n of emAllNations) {
+            if (n.id === nationStats?.id) continue;
+            opts += `<option value="${n.id}">${escapeHtml(n.name)}</option>`;
+        }
+        select.innerHTML = opts;
+    }
+    if (select) select.value = prSelectedNation?.id || '';
 
     // Footer: cash + warehouse capacity
     const cash = Number(faction?.corp_cash_reserves) || 0;
@@ -4749,12 +4789,13 @@ function renderProcurement() {
 }
 
 function renderPrMatGrid() {
+    const marketNation = getPrMarketNation();
     const grid = document.getElementById('pr-mat-grid');
     let html = '';
     for (const mat of MATERIALS) {
         const active = prSelectedMat === mat.key;
         // Check if ALL tiers are locked
-        const allLocked = QUALITY_TIERS.every(t => !checkTierAvailability(mat.key, t, nationStats).available);
+        const allLocked = QUALITY_TIERS.every(t => !checkTierAvailability(mat.key, t, marketNation).available);
         const cls = 'pr-mat-btn' + (active ? ' active' : '') + (allLocked ? ' all-locked' : '');
         html += `<span class="${cls}" onclick="setPrMat('${mat.key}')">${escapeHtml(mat.name)}</span>`;
     }
@@ -4762,12 +4803,13 @@ function renderPrMatGrid() {
 }
 
 function renderPrTierBar() {
+    const marketNation = getPrMarketNation();
     const bar = document.getElementById('pr-tier-bar');
     let html = '<span class="pr-tier-label">GRADE</span>';
     for (const tier of QUALITY_TIERS) {
-        const avail = checkTierAvailability(prSelectedMat, tier, nationStats);
+        const avail = checkTierAvailability(prSelectedMat, tier, marketNation);
         const active = prSelectedTier === tier;
-        const price = avail.available ? calculateBasePrice(prSelectedMat, tier, nationStats) : null;
+        const price = avail.available ? calculateBasePrice(prSelectedMat, tier, marketNation) : null;
         const dotColor = MATERIAL_QUALITY_COLORS[tier];
         const locked = !avail.available;
         const cls = 'pr-tier-btn' + (active ? ' active' : '') + (locked ? ' locked' : '');
@@ -4786,8 +4828,9 @@ function renderPrTierBar() {
 }
 
 function renderPrContent() {
+    const marketNation = getPrMarketNation();
     const content = document.getElementById('pr-content');
-    const avail = checkTierAvailability(prSelectedMat, prSelectedTier, nationStats);
+    const avail = checkTierAvailability(prSelectedMat, prSelectedTier, marketNation);
     const mat = MATERIALS.find(m => m.key === prSelectedMat);
     if (!mat) return;
 
@@ -4798,7 +4841,7 @@ function renderPrContent() {
                 <div class="pr-locked-box__title">QUALITY TIER UNAVAILABLE</div>
                 <div class="pr-locked-box__desc">
                     ${escapeHtml(mat.name)} — ${QUALITY_LABELS[prSelectedTier]} grade
-                    is not produced domestically in ${escapeHtml(nationStats?.name || '—')}.
+                    is not produced domestically in ${escapeHtml(marketNation?.name || '—')}.
                 </div>
                 <div class="pr-locked-box__reason">
                     ${escapeHtml(avail.failedStat || 'unknown')} &lt; ${avail.failedMin || '?'}
@@ -4811,8 +4854,8 @@ function renderPrContent() {
         return;
     }
 
-    const price = calculateBasePrice(prSelectedMat, prSelectedTier, nationStats);
-    const supply = calculateSupply(prSelectedMat, prSelectedTier, nationStats);
+    const price = calculateBasePrice(prSelectedMat, prSelectedTier, marketNation);
+    const supply = calculateSupply(prSelectedMat, prSelectedTier, marketNation);
     const totalCost = price * prPurchaseQty;
 
     // Demand estimate: ratio of supply to a baseline
@@ -4820,7 +4863,7 @@ function renderPrContent() {
     const demandColor = demandRatio === 'LOW' ? 'var(--green)' : demandRatio === 'MODERATE' ? 'var(--amber)' : 'var(--red)';
 
     // Trend: simple heuristic based on inflation and demand
-    const inflation = Number(nationStats?.inflation ?? 50);
+    const inflation = Number(marketNation?.inflation ?? 50);
     const trend = inflation > 55 ? 'up' : inflation < 45 ? 'down' : 'flat';
     const trendChar = trend === 'up' ? '&#9650;' : trend === 'down' ? '&#9660;' : '&#8212;';
     const trendColor = trend === 'up' ? 'var(--red)' : trend === 'down' ? 'var(--green)' : 'var(--text-dim)';
@@ -4850,9 +4893,9 @@ function renderPrContent() {
 
     // Price drivers
     html += `<div class="pr-drivers">
-        <div class="pr-drivers__title">Price Drivers (${escapeHtml(nationStats?.name || '—')})</div>`;
+        <div class="pr-drivers__title">Price Drivers (${escapeHtml(marketNation?.name || '—')})</div>`;
     for (const statKey of mat.priceDrivers) {
-        const val = Number(nationStats?.[statKey] ?? 50);
+        const val = Number(marketNation?.[statKey] ?? 50);
         const barColor = val >= 50 ? 'var(--green)' : val >= 30 ? 'var(--amber)' : val >= 15 ? 'var(--orange)' : 'var(--red)';
         const label = PRICE_DRIVER_LABELS[statKey] || statKey;
         html += `<div class="pr-driver-row">
@@ -4920,11 +4963,12 @@ function renderPrContent() {
 }
 
 function setPrMat(key) {
+    const marketNation = getPrMarketNation();
     prSelectedMat = key;
     // Auto-select highest available tier
     prSelectedTier = 'STD';
     for (const tier of ['STD', 'HIGH', 'LOW']) {
-        if (checkTierAvailability(key, tier, nationStats).available) {
+        if (checkTierAvailability(key, tier, marketNation).available) {
             prSelectedTier = tier;
             break;
         }
@@ -4947,12 +4991,43 @@ function setPrQty(qty) {
 
 let _prPurchasing = false;
 
+async function switchPrNation(nationId) {
+    if (!nationId) {
+        prSelectedNation = null; // back to HQ
+    } else {
+        let n = emAllNations.find(x => x.id === nationId);
+        if (!n) {
+            try {
+                const { data } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+                n = data;
+            } catch (_) { /* fall back to HQ */ }
+        }
+        prSelectedNation = n || null;
+    }
+
+    // Keep current selection valid for the selected nation
+    const marketNation = getPrMarketNation();
+    if (!checkTierAvailability(prSelectedMat, prSelectedTier, marketNation).available) {
+        prSelectedTier = 'STD';
+        for (const tier of ['STD', 'HIGH', 'LOW']) {
+            if (checkTierAvailability(prSelectedMat, tier, marketNation).available) {
+                prSelectedTier = tier;
+                break;
+            }
+        }
+    }
+    const select = document.getElementById('pr-nation-select');
+    if (select) select.value = nationId || '';
+    renderProcurement();
+}
+
 async function purchaseMaterial() {
     if (_prPurchasing) return;
     if (!faction || !nationStats) return;
 
-    const price = calculateBasePrice(prSelectedMat, prSelectedTier, nationStats);
-    const supply = calculateSupply(prSelectedMat, prSelectedTier, nationStats);
+    const marketNation = getPrMarketNation();
+    const price = calculateBasePrice(prSelectedMat, prSelectedTier, marketNation);
+    const supply = calculateSupply(prSelectedMat, prSelectedTier, marketNation);
     const totalCost = price * prPurchaseQty;
     const cash = Number(faction.corp_cash_reserves) || 0;
 
@@ -5009,6 +5084,22 @@ async function purchaseMaterial() {
         faction.corp_cash_reserves = newCash;
         if (!warehouseData[materialKey]) warehouseData[materialKey] = {};
         warehouseData[materialKey][prSelectedTier] = { qty: newQty, value: newValue };
+
+        // Economic spillover: source nation gets +0.01 GDP growth per $1M purchased
+        const millionBlocks = Math.floor(totalCost / 1000000);
+        if (millionBlocks >= 1 && marketNation?.id) {
+            const gdpBoost = millionBlocks * 0.01;
+            const { data: sourceNation, error: srcErr } = await _supabase
+                .from('nations')
+                .select('gdp_growth')
+                .eq('id', marketNation.id)
+                .single();
+            if (!srcErr && sourceNation) {
+                const nextGrowth = Math.min(100, Math.round((Number(sourceNation.gdp_growth ?? 50) + gdpBoost) * 100) / 100);
+                await _supabase.from('nations').update({ gdp_growth: nextGrowth }).eq('id', marketNation.id);
+                if (nationStats?.id === marketNation.id) nationStats.gdp_growth = nextGrowth;
+            }
+        }
 
         // Re-render both cards
         renderWarehouse();
@@ -7212,6 +7303,7 @@ window.setEmType = setEmType;
 window.setEmListing = setEmListing;
 window.setEmQty = setEmQty;
 window.purchaseEquipment = purchaseEquipment;
+window.switchPrNation = switchPrNation;
 window.setPrMat = setPrMat;
 window.setPrTier = setPrTier;
 window.setPrQty = setPrQty;
