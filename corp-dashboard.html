@@ -1112,9 +1112,14 @@ async function init() {
     if (shardRes.error) console.warn('Shard load failed:', shardRes.error.message);
     shard = shardRes.data;
 
-    // Populate top bar — left side
+    // Populate top bar — left side (logo image or ticker text)
     const ticker = faction.corp_ticker || faction.abbreviation || '';
-    document.getElementById('corp-logo').textContent = ticker.slice(0, 2) || '—';
+    const logoEl = document.getElementById('corp-logo');
+    if (faction.custom_logo_url) {
+        logoEl.innerHTML = `<img src="${faction.custom_logo_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:5px;">`;
+    } else {
+        logoEl.textContent = ticker.slice(0, 2) || '—';
+    }
     document.getElementById('corp-name-bar').textContent = faction.faction_name || 'Unnamed Corp';
 
     // Tick info — corp tick fires at midpoint of political tick interval
@@ -2231,6 +2236,9 @@ async function handleCorpLogoUpload(e) {
         // Update display immediately
         const logoEl = document.getElementById('id-logo');
         if (logoEl) logoEl.innerHTML = `<img src="${logoUrl}" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:4px;">`;
+        // Update top bar logo too
+        const topLogo = document.getElementById('corp-logo');
+        if (topLogo) topLogo.innerHTML = `<img src="${logoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:5px;">`;
         if (label) label.textContent = 'Change Logo';
     } catch (err) {
         console.error('Logo upload failed:', err);
