@@ -13025,9 +13025,6 @@ async function pfOpenBuild(facilityType) {
         promptMsg += '   ' + o.desc + '\n\n';
     }
 
-    const { data: freshCash } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
-    const cash = Number(freshCash?.corp_cash_reserves ?? 0);
-    promptMsg += 'Your cash: ' + hfFmtBig(cash) + '\n\n';
     promptMsg += 'Enter 1 or 2 to select (or cancel):';
 
     const choice = prompt(promptMsg);
@@ -13036,45 +13033,68 @@ async function pfOpenBuild(facilityType) {
     if (isNaN(idx) || idx < 0 || idx >= options.length) { alert('Invalid selection.'); return; }
 
     const selected = options[idx];
-    if (cash < selected.cost) {
-        alert('Insufficient cash.\nNeed: ' + hfFmtBig(selected.cost) + '\nHave: ' + hfFmtBig(cash));
-        return;
-    }
+    const nationName = nationStats?.name || faction?.nation || 'Unknown';
 
-    if (!confirm('Build ' + selected.name + ' in ' + capital + '?\n\nCost: ' + hfFmtBig(selected.cost) + '\nMaintenance: ' + hfFmtBig(selected.maint) + '/tick\n\nThis will be deducted from your cash reserves immediately.')) return;
+    if (!confirm('Commission ' + selected.name + ' in ' + capital + '?\n\nBudget: ' + hfFmtBig(selected.cost) + '\n\nThis will create a construction contract that construction corporations can bid on. Payment occurs when the contract is awarded.')) return;
 
     _pfBuilding = true;
     const currentTick = shard.current_tick || 0;
+    const gameYear = (shard.current_date || '').match(/\d{4}/)?.[0] || '2015';
 
     try {
-        // Insert facility
-        const { error: insertErr } = await _supabase.from('corp_properties').insert({
-            faction_id: faction.id,
+        // Generate project code
+        const { count: existingContracts } = await _supabase.from('construction_contracts')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', faction.nation_id)
+            .eq('issuer_type', 'PRIVATE');
+        const seq = (existingContracts || 0) + 1;
+        const projectCode = `PVT-P${seq}-${gameYear}`;
+
+        // Port facility material/workforce requirements (smaller than buildings)
+        const isAdvanced = selected.style === 'Modern';
+        const materials = {
+            concrete: isAdvanced ? 6 : 4,
+            steel: isAdvanced ? 5 : 3,
+            heavy_parts: isAdvanced ? 3 : 2,
+            aggregate: isAdvanced ? 3 : 2,
+        };
+        const equipment = { work_trucks: 1, concrete_mixers: 1, excavators: 1 };
+        const workforce = { general: isAdvanced ? 12 : 8, skilled: isAdvanced ? 5 : 3 };
+        const timeline = isAdvanced ? 6 : 4;
+
+        // Insert construction contract
+        const { error } = await _supabase.from('construction_contracts').insert({
             nation_id: faction.nation_id,
+            template_key: facilityType,
+            sector: 'civil_engineering',
             name: selected.name,
-            type: facilityType,
-            style: selected.style,
-            capacity: 50,
-            purchase_price: selected.cost,
-            monthly_maintenance: selected.maint,
-            condition: 100,
-            city: capital + ' Port',
-            purchased_at_tick: currentTick,
-            is_active: true,
+            project_type: meta.label,
+            project_subtype: selected.style,
+            description: `${selected.name} at ${capital} Port — commissioned by ${faction.faction_name}. ${selected.desc}`,
+            project_code: projectCode,
+            budget_ceiling: selected.cost,
+            timeline_ticks: timeline,
+            required_materials: materials,
+            required_equipment: equipment,
+            required_workforce: workforce,
+            status: 'open',
+            generated_at_tick: currentTick,
+            bidding_ends_tick: currentTick + 3,
+            issuer_type: 'PRIVATE',
+            issuer_name: faction.faction_name,
+            issuer_faction_id: faction.id,
         });
-        if (insertErr) throw insertErr;
+        if (error) throw error;
 
-        // Deduct cash
-        const { error: cashErr } = await _supabase.from('factions').update({
-            corp_cash_reserves: cash - selected.cost,
-        }).eq('id', faction.id);
-        if (cashErr) throw cashErr;
-
-        faction.corp_cash_reserves = cash - selected.cost;
         await loadPortFacilities();
-        alert(selected.name + ' constructed!\n\nLocation: ' + capital + ' Port\nYour fleet can now use this facility at base cost.\nOther corps will be charged a markup, generating revenue for you.');
+        alert('Construction contract posted!\n\n' +
+            'Project: ' + selected.name + '\n' +
+            'Code: ' + projectCode + '\n' +
+            'Budget: ' + hfFmtBig(selected.cost) + '\n' +
+            'Timeline: ' + timeline + ' ticks\n\n' +
+            'Construction corporations in ' + nationName + ' can now bid on this project.');
     } catch (err) {
-        alert('Construction failed: ' + (err.message || 'Error'));
+        alert('Failed to post contract: ' + (err.message || 'Error'));
     } finally {
         _pfBuilding = false;
     }
