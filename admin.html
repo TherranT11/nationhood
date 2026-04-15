@@ -1225,8 +1225,8 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
                     continue;
                 }
 
-                // First election tick: use seed value if set, otherwise half the parliamentary term
-                const firstTick = customTick || Math.max(6, Math.round((parlTerm || presTerm) / 2));
+                // First election tick: 1d6+1 (random 2-7 ticks after reset)
+                const firstTick = Math.floor(Math.random() * 6) + 2;
 
                 // Parliamentary election (all nations with a parliamentary term)
                 if (parlTerm) {
