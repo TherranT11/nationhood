@@ -1248,8 +1248,9 @@ async function loadAndDisplayArticles() {
             return;
         }
 
-        // Separate news articles (opinions are handled separately via opinionArticles above)
-        const newsArticles = filtered.filter(a => a.category !== 'opinion');
+        // Separate news articles from opinions (unless filtering for opinion specifically)
+        const showingOpinion = _categoryFilter === 'opinion';
+        const newsArticles = showingOpinion ? filtered : filtered.filter(a => a.category !== 'opinion');
 
         // Sort news by published_tick DESC — most recent gets A1
         const sorted = [...newsArticles].sort((a, b) =>
@@ -1274,8 +1275,9 @@ async function loadAndDisplayArticles() {
             if (lead) populateLeadSection(lead, sidebar);
             // Populate secondary grid
             populateSecondaryGrid(secondary);
-            // Populate opinion strip (up to 4 opinion articles)
-            populateOpinionStrip(opinionArticles.slice(0, 4));
+            // Populate opinion strip (unless opinion is the active filter — already showing in main grid)
+            if (!showingOpinion) populateOpinionStrip(opinionArticles.slice(0, 4));
+            else populateOpinionStrip([]);
             // Populate briefs
             populateBriefs(briefs);
         }
@@ -1613,14 +1615,23 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
 // === CATEGORY NAV ===
 
 function bindCategoryNav(root) {
+    // Standard Cruceran/Continental nav
     const navItems = root.querySelectorAll('.nws-nav-item[data-category]');
     navItems.forEach(item => {
         item.addEventListener('click', () => {
-            // Update active state
             navItems.forEach(n => n.classList.remove('active'));
             item.classList.add('active');
-            // Set filter and reload
             _categoryFilter = item.dataset.category;
+            loadAndDisplayArticles();
+        });
+    });
+    // Al-Sahwa nav (uses data-cat instead of data-category)
+    const alsahwaItems = root.querySelectorAll('.nws-alsahwa-nav-item[data-cat]');
+    alsahwaItems.forEach(item => {
+        item.addEventListener('click', () => {
+            alsahwaItems.forEach(n => n.classList.remove('nws-alsahwa-nav-item--active'));
+            item.classList.add('nws-alsahwa-nav-item--active');
+            _categoryFilter = item.dataset.cat;
             loadAndDisplayArticles();
         });
     });
