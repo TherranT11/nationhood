@@ -10868,7 +10868,16 @@ let _subSelectedNation = null;
 let _subCreating = false;
 let _subCustomName = '';
 let _subCustomAbbr = '';
+let _subSelectedSector = ''; // defaults to parent's sector, can be changed
 let _subSelectedSubsector = ''; // defaults to parent's subsector
+
+// Cross-sector subsidiary cost multipliers (relative to same-sector base)
+const SUB_SECTOR_MULTIPLIERS = {
+    'Construction': 4,
+    'Finance': 5,
+    'Shipping': 4,
+};
+const SUB_AVAILABLE_SECTORS = ['Construction', 'Shipping', 'Finance'];
 
 // Subsector definitions with cost modifiers (relative to parent subsector)
 const SUB_SUBSECTORS = {
@@ -10919,13 +10928,28 @@ async function loadNationsForSubsidiary() {
         if (c.nation_id) _subNationCorpCounts[c.nation_id] = (_subNationCorpCounts[c.nation_id] || 0) + 1;
     }
 
-    // Default subsector to parent's subsector
+    // Default sector and subsector to parent's
+    _subSelectedSector = faction?.corp_sector || '';
     _subSelectedSubsector = faction?.corp_subsector || '';
 }
 
 function subGetSubsectors() {
-    const sector = faction?.corp_sector || '';
+    const sector = _subSelectedSector || faction?.corp_sector || '';
     return SUB_SUBSECTORS[sector] || [{ id: 'general', name: sector || 'General', mod: 0 }];
+}
+
+function subSetSector(sector) {
+    _subSelectedSector = sector;
+    // Reset subsector to first option of new sector
+    const subs = SUB_SUBSECTORS[sector];
+    _subSelectedSubsector = subs ? subs[0].name : '';
+    renderCreateSubsidiaryCard();
+}
+
+function subGetSectorMultiplier() {
+    const parentSector = faction?.corp_sector || '';
+    if (_subSelectedSector === parentSector) return 1;
+    return SUB_SECTOR_MULTIPLIERS[_subSelectedSector] || 4;
 }
 
 function subGetSubsectorMod() {
@@ -10942,9 +10966,10 @@ function subCalcNationMultiplier(n) {
 
 function subCalcEntryCost(n) {
     const BASE = 50000000;
+    const sectorMult = subGetSectorMultiplier();
     const subsectorMod = 1 + subGetSubsectorMod();
     const nationMult = subCalcNationMultiplier(n);
-    return Math.round(Math.max(10000000, BASE * subsectorMod * nationMult));
+    return Math.round(Math.max(10000000, BASE * sectorMult * subsectorMod * nationMult));
 }
 
 function subGetDemand(nationId) {
@@ -11022,6 +11047,7 @@ async function subCreate() {
             city: nation.capital || nation.name,
             purchased_at_tick: currentTick,
             is_active: true,
+            sector: _subSelectedSector || faction?.corp_sector || null,
             subsector: _subSelectedSubsector || faction?.corp_subsector || null,
         });
         if (propErr) throw propErr;
@@ -11067,14 +11093,25 @@ function renderCreateSubsidiaryCard() {
 
     const canCreate = _subCustomName.trim().length > 0 && _subCustomAbbr.trim().length >= 2 && sel !== null;
 
-    // ─── SECTOR (locked to parent) ───
+    // ─── SECTOR (selectable — cross-sector has cost multiplier) ───
+    const currentSector = _subSelectedSector || parentSector;
+    const sectorMult = subGetSectorMultiplier();
     let sectorHtml = `
     <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
         <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Sector</div>
-        <div style="padding:4px 10px;background:${C.card};border:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-family:${mono};font-size:10px;font-weight:700;color:${C.accent}">${parentSector}</span>
-            <span style="font-family:${mono};font-size:8px;color:${C.dim}">LOCKED TO PARENT</span>
+        <div style="display:flex;gap:3px;">
+            ${SUB_AVAILABLE_SECTORS.map(s => {
+                const active = s === currentSector;
+                const isSame = s === parentSector;
+                const mult = isSame ? 1 : (SUB_SECTOR_MULTIPLIERS[s] || 4);
+                const multColor = isSame ? C.greenBright : C.orange;
+                return `<div onclick="subSetSector('${s}')" style="flex:1;padding:5px 4px;text-align:center;cursor:pointer;background:${active ? C.accent + '18' : 'transparent'};border:1px solid ${active ? C.accent + '44' : C.border};">
+                    <div style="font-family:${mono};font-size:9px;font-weight:700;color:${active ? C.accentBright : C.dim}">${s}</div>
+                    <div style="font-family:${mono};font-size:7px;margin-top:2px;color:${multColor}">${isSame ? 'PARENT · ×1' : '×' + mult + ' COST'}</div>
+                </div>`;
+            }).join('')}
         </div>
+        ${sectorMult > 1 ? `<div style="font-family:${mono};font-size:7px;color:${C.orange};margin-top:4px;padding:3px 6px;background:rgba(204,136,68,0.06);border:1px solid rgba(204,136,68,0.15);">Cross-sector subsidiary: base cost ×${sectorMult}</div>` : ''}
     </div>`;
 
     // ─── SUBSECTOR ───
@@ -11220,6 +11257,7 @@ window.subSelectNation = subSelectNation;
 window.subCreate = subCreate;
 window.subSetName = subSetName;
 window.subSetAbbr = subSetAbbr;
+window.subSetSector = subSetSector;
 window.subSetSubsector = subSetSubsector;
 
 // ==================== CORPORATIONS CARD (760×450) ====================
