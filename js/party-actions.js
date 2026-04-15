@@ -2851,7 +2851,7 @@ function openPlatformModal(root) {
                     <div style="width:380px;border-right:1px solid var(--border-main);padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:4px;align-content:start;overflow-y:auto;" id="pa-plat-grid">
                         ${gridHtml}
                     </div>
-                    <div style="flex:1;display:flex;flex-direction:column;min-width:0;" id="pa-plat-detail">
+                    <div style="flex:1;display:flex;flex-direction:column;min-width:0;overflow-y:auto;" id="pa-plat-detail">
                         ${detailHtml}
                     </div>
                 </div>
