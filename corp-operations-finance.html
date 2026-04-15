@@ -2358,11 +2358,6 @@ async function init() {
         renderCorpTopBar(_topBarContainer, { faction, shard, activeTab: 'operations', allUserFactions });
     }
 
-    if (shard) {
-        document.getElementById('game-date').textContent = shard.current_date || tickToDate(shard.current_tick);
-        document.getElementById('tick-number').textContent = shard.current_tick || '--';
-    }
-
     // Faction switcher
     renderFactionSwitcher();
 
@@ -2419,7 +2414,8 @@ function toggleTheme() {
     document.body.classList.toggle('light-mode');
     const isLight = document.body.classList.contains('light-mode');
     localStorage.setItem('theme', isLight ? 'light' : 'dark');
-    document.getElementById('theme-toggle').textContent = isLight ? 'Dark' : 'Light';
+    const toggleBtn = document.getElementById('theme-toggle');
+    if (toggleBtn) toggleBtn.textContent = isLight ? 'Dark' : 'Light';
 }
 
 async function doLogout() {
@@ -2429,6 +2425,7 @@ async function doLogout() {
 
 function startCountdown(nextTickAt) {
     const el = document.getElementById('tick-countdown');
+    if (!el) return;
     function update() {
         const diff = new Date(nextTickAt) - new Date();
         if (diff <= 0) { el.textContent = 'Processing...'; return; }
@@ -2444,7 +2441,8 @@ function startCountdown(nextTickAt) {
 // Theme on load
 if (localStorage.getItem('theme') === 'light') {
     document.body.classList.add('light-mode');
-    document.getElementById('theme-toggle').textContent = 'Dark';
+    const toggleBtn = document.getElementById('theme-toggle');
+    if (toggleBtn) toggleBtn.textContent = 'Dark';
 }
 
 window.toggleCorpDropdown = toggleCorpDropdown;
