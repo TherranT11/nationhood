@@ -2670,7 +2670,6 @@ function renderBillsList() {
     const filters = [
         { id: 'active', label: 'ACTIVE BILLS', color: 'var(--orange)', count: totalActive },
         { id: 'resolved', label: 'RESOLVED', color: 'var(--green)', count: resolved.length },
-        { id: 'laws', label: 'ALL LAWS', color: 'var(--blue)', count: activeLaws.length },
     ];
     for (const f of filters) {
         const isActive = _legFilter === f.id;
