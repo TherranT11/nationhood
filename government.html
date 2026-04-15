@@ -758,7 +758,7 @@ async function cancelMinistryAction(actionId, actionName) {
         delete activeMinistryActions[actionId];
 
         // Refresh the full government page UI
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         alert('Failed to cancel: ' + (e.message || 'Unknown error'));
     }
@@ -1608,8 +1608,8 @@ function renderMinistryExpandedContent(ministry, partyColor) {
                 const effectTags = effects.filter(e => e.stat_key !== 'minister_approval').map(e => {
                     const name = formatStatName(e.stat_key);
                     const sign = e.direction === 'up' ? '+' : '-';
-                    const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat_key))
-                        || (e.direction === 'down' && STATS_LOWER_IS_BETTER.has(e.stat_key));
+                    const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.includes(e.stat_key))
+                        || (e.direction === 'down' && STATS_LOWER_IS_BETTER.includes(e.stat_key));
                     const color = isGood ? 'var(--green)' : 'var(--red)';
                     return `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${name} ${sign}${e.rate}</span>`;
                 });
@@ -1621,8 +1621,8 @@ function renderMinistryExpandedContent(ministry, partyColor) {
                         for (const e of dirEffects) {
                             const name = formatStatName(e.stat_key);
                             const sign = e.direction === 'up' ? '+' : '-';
-                            const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat_key))
-                                || (e.direction === 'down' && STATS_LOWER_IS_BETTER.has(e.stat_key));
+                            const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.includes(e.stat_key))
+                                || (e.direction === 'down' && STATS_LOWER_IS_BETTER.includes(e.stat_key));
                             effectTags.push(`<span class="ga-effect-tag" style="color:${isGood ? 'var(--green)' : 'var(--red)'};border-color:${isGood ? 'var(--green)' : 'var(--red)'}30;">${name} ${sign}${e.rate}</span>`);
                         }
                     }
@@ -1636,27 +1636,49 @@ function renderMinistryExpandedContent(ministry, partyColor) {
                     }
                 }
 
-                html += `<div class="ga-action-card${isActive ? ' active' : ''}">
+                const canExecute = isMyMinistry && !isActive;
+                html += `<div class="ga-action-card${isActive ? ' active' : ''}" id="${actionId}"${canExecute ? ` onclick="event.stopPropagation();ministryActionSelect('${actionId}')" style="cursor:pointer;"` : ''}>
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
                         <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${isActive ? 'var(--green)' : 'var(--text-bright)'};">${escapeHtml(action.name)}${isActive ? ' <span style="font-size:7px;">ACTIVE</span>' : ''}</span>
-                        <span class="ga-ap-badge">${apCost} AP</span>
+                        ${canExecute ? `<span class="ga-ap-badge" style="cursor:pointer;">&#9654; ${apCost} AP</span>` : `<span class="ga-ap-badge">${apCost} AP</span>`}
                     </div>
                     <div style="font-size:8px;color:var(--text-dim);line-height:1.4;margin-bottom:4px;">${escapeHtml(action.desc)}</div>
                     ${effectTags.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;">${effectTags.join('')}</div>` : ''}
+                    <div id="${actionId}-btns" style="margin-top:4px;"></div>
                 </div>`;
             }
         }
     }
 
-    // Dismiss / Resign button (PM only)
-    if (isFilled && isPMParty) {
-        const isOwnPartyMinister = ministry.party_id === currentFaction?.id;
-        const actionLabel = isOwnPartyMinister ? 'RESIGN' : 'DISMISS';
-        const actionColor = isOwnPartyMinister ? 'var(--orange)' : 'var(--red)';
-        html += `<div style="margin-top:8px;display:flex;gap:6px;">
-            <div class="ga-dismiss-btn" style="color:${actionColor};border-color:${actionColor}44;"
-                onclick="event.stopPropagation();fireMinister('${escapeHtml(key)}')">${actionLabel}</div>
-        </div>`;
+    // Management buttons: resign / dismiss / appoint
+    const isCaretaker = coalitionData?.status === 'caretaker';
+    let mgmtBtns = '';
+
+    // Resign: any party can resign their own minister
+    if (isFilled && isMyMinistry && !isCaretaker) {
+        mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--orange);border-color:var(--orange)44;"
+            onclick="event.stopPropagation();resignMinistry('${escapeHtml(key)}')">RESIGN</div>`;
+    }
+
+    // Dismiss: PM can dismiss other parties' ministers (costs 1 AP)
+    if (isFilled && isPMParty && !isMyMinistry && !isCaretaker) {
+        const ap = currentFaction?.action_points || 0;
+        if (ap >= 1) {
+            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--red);border-color:var(--red)44;"
+                onclick="event.stopPropagation();fireMinister('${escapeHtml(key)}')">DISMISS</div>`;
+        } else {
+            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--red);border-color:var(--red)44;opacity:0.4;cursor:not-allowed;" title="Need 1 AP">DISMISS</div>`;
+        }
+    }
+
+    // Appoint: PM can fill vacant ministries
+    if (!isFilled && isPMParty && !isCaretaker) {
+        mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--accent);border-color:var(--accent)44;"
+            onclick="event.stopPropagation();openAssignModal('${escapeHtml(key)}')">APPOINT</div>`;
+    }
+
+    if (mgmtBtns) {
+        html += `<div style="margin-top:8px;display:flex;gap:6px;">${mgmtBtns}</div>`;
     }
 
     html += `</div>`;
@@ -2332,8 +2354,8 @@ function renderBillExpandedContent(bill) {
         html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.8px;margin-bottom:4px;">PROJECTED EFFECTS IF PASSED</div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">`;
         for (const e of effects) {
-            const isGood = (e.dir === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat))
-                || (e.dir === 'down' && STATS_LOWER_IS_BETTER.has(e.stat));
+            const isGood = (e.dir === 'up' && !STATS_LOWER_IS_BETTER.includes(e.stat))
+                || (e.dir === 'down' && STATS_LOWER_IS_BETTER.includes(e.stat));
             const arrow = e.dir === 'up' ? '\u25B2' : '\u25BC';
             const color = isGood ? 'var(--green)' : 'var(--red)';
             html += `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(e.stat)} ${arrow}</span>`;
@@ -2538,16 +2560,16 @@ function renderBillsList() {
                 const statEffects = policy.stat_effects || [];
                 if (statEffects.length > 0) {
                     effectTags = statEffects.map(e => {
-                        const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.has(e.stat_key))
-                            || (e.direction === 'down' && STATS_LOWER_IS_BETTER.has(e.stat_key));
+                        const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.includes(e.stat_key))
+                            || (e.direction === 'down' && STATS_LOWER_IS_BETTER.includes(e.stat_key));
                         const arrow = e.direction === 'up' ? '\u25B2' : '\u25BC';
                         const color = isGood ? 'var(--green)' : 'var(--red)';
                         return `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(e.stat_key)} ${arrow}</span>`;
                     }).join('');
                 } else if (policy.target_stat) {
                     const dir = (policy.stat_direction || 'UP').toLowerCase();
-                    const isGood = (dir === 'up' && !STATS_LOWER_IS_BETTER.has(policy.target_stat))
-                        || (dir === 'down' && STATS_LOWER_IS_BETTER.has(policy.target_stat));
+                    const isGood = (dir === 'up' && !STATS_LOWER_IS_BETTER.includes(policy.target_stat))
+                        || (dir === 'down' && STATS_LOWER_IS_BETTER.includes(policy.target_stat));
                     const arrow = dir === 'up' ? '\u25B2' : '\u25BC';
                     const color = isGood ? 'var(--green)' : 'var(--red)';
                     effectTags = `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(policy.target_stat)} ${arrow}</span>`;
@@ -2619,14 +2641,18 @@ async function loadGovData() {
         const hog = hogRes.data;
         const loadedParties = partiesRes.data || [];
 
-        // Detect PM party
-        if (hog) {
-            pmFactionId = hog.faction_id || null;
-            isPMParty = (currentFaction?.id === pmFactionId);
+        // Detect PM party (robust: HOG → coalition lead → PM ministry → allocations)
+        const _pmMinistry = (ministriesRes.data || []).find(m => m.ministry_key === 'prime_minister');
+        if (hog?.faction_id) {
+            pmFactionId = hog.faction_id;
         } else if (coalition?.lead_party_id) {
             pmFactionId = coalition.lead_party_id;
-            isPMParty = (currentFaction?.id === pmFactionId);
+        } else if (_pmMinistry?.party_id) {
+            pmFactionId = _pmMinistry.party_id;
+        } else if (coalition?.ministry_allocations?.prime_minister) {
+            pmFactionId = coalition.ministry_allocations.prime_minister;
         }
+        isPMParty = !!(currentFaction && pmFactionId && currentFaction.id === pmFactionId);
 
         // Load ministry action logs for active action detection + use counts
         activeMinistryActions = {};
@@ -2719,7 +2745,7 @@ initPage('government', async (state) => {
 
     // Original government page code follows (preserved, disabled by the new UI above)
     return;
-    await renderGovernmentPage();
+    await refreshGovernmentUI();
 });
 
 
@@ -3590,7 +3616,7 @@ async function handleDissolveParliament() {
     try {
         await dissolveParliament(_supabase, currentNation.id, currentFaction.id);
         alert('Parliament dissolved — snap elections scheduled.');
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         alert('Failed: ' + (e.message || e));
     } finally { _govActionLock = false; }
@@ -3737,7 +3763,7 @@ async function confirmPMNomination() {
         await nominatePMCandidate(_supabase, currentNation.id, currentFaction.id, nominee);
         alert(`PM nomination submitted — parliament will vote on ${genFirst} ${genLast} from ${nominee.partyName}.`);
         closeAssignModal();
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         alert('Nomination failed: ' + (e.message || e));
     }
@@ -6984,7 +7010,7 @@ async function confirmBuildOilReserves() {
 
         // Close confirm panel and re-render
         closeBuildOilReserves();
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
 
     } catch (err) {
         alert('Build Oil Reserves failed: ' + (err.message || 'Unknown error'));
@@ -7158,7 +7184,7 @@ async function confirmReleaseOilReserves() {
         if (releaseEvtErr) console.warn('[Energy] Release event failed:', releaseEvtErr.message);
 
         closeReleaseOilReserves();
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
 
     } catch (err) {
         alert('Release failed: ' + (err.message || 'Unknown error'));
@@ -8404,7 +8430,7 @@ async function protestCrisisAction(actionType) {
                 // If not resolved, subtle feedback — just re-render
             }
 
-            await renderGovernmentPage();
+            await refreshGovernmentUI();
         } else if (result) {
             alert(result.error || 'Action failed.');
         }
@@ -8768,7 +8794,7 @@ async function confirmPresidentialNomination() {
         await nominateMinister(_supabase, currentNation.id, currentFaction.id, assignMinistryKey, selectedCandidate);
         closeAssignModal();
         alert('Nomination submitted — parliament will vote on confirmation.');
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         console.error('Nomination error:', e);
         alert('Error: ' + e.message);
@@ -8876,7 +8902,7 @@ async function confirmAssign() {
         if (freshMinistry && freshMinistry.minister_first_name) {
             alert('This ministry has already been filled.');
             closeAssignModal();
-            await renderGovernmentPage();
+            await refreshGovernmentUI();
             return;
         }
 
@@ -8990,7 +9016,7 @@ async function confirmAssign() {
 
         closeAssignModal();
         alert('✦ ' + selectedCandidate.firstName + ' ' + selectedCandidate.lastName + ' appointed to ' + (MINISTRY_NAMES[assignMinistryKey] || assignMinistryKey) + '!');
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         console.error('Assign error:', e);
         alert('Error: ' + e.message);
@@ -9007,7 +9033,7 @@ async function confirmAppointment() {
             .eq('is_active', true)
             .maybeSingle();
         if (!fresh) { alert('Ministry slot not found.'); closeAssignModal(); return; }
-        if (fresh.minister_first_name) { alert('This ministry has already been filled.'); closeAssignModal(); await renderGovernmentPage(); return; }
+        if (fresh.minister_first_name) { alert('This ministry has already been filled.'); closeAssignModal(); await refreshGovernmentUI(); return; }
 
         const { error } = await _supabase.from('ministries').update({
             party_id: selectedCandidate.partyId,
@@ -9035,7 +9061,7 @@ async function confirmAppointment() {
         });
 
         closeAssignModal();
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         console.error('Appoint minister error:', e);
         alert('Error appointing minister: ' + e.message);
@@ -9187,7 +9213,7 @@ async function purgeMinister(ministryKey) {
 
         alert(resultMsg);
 
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         console.error('Purge error:', e);
         alert('Error: ' + e.message);
@@ -9219,7 +9245,7 @@ async function requestMinistry(ministryKey) {
         if (error) throw error;
 
 
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         console.error('Request error:', e);
         alert('Error: ' + e.message);
@@ -9229,14 +9255,14 @@ async function requestMinistry(ministryKey) {
 async function unrequestMinistry(requestId) {
     try {
         await _supabase.from('ministry_requests').delete().eq('id', requestId);
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
 async function denyRequest(requestId) {
     try {
         await _supabase.from('ministry_requests').delete().eq('id', requestId);
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
@@ -10594,7 +10620,7 @@ async function callEarlyElections() {
         qCacheBust('coalition_');
 
         alert(`⚡ The legislature has been dissolved.\n\nCaretaker government in place. Elections scheduled for tick ${result.electionTick}.`);
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         console.error('Early elections error:', e);
         alert('Error: ' + e.message);
@@ -10790,11 +10816,21 @@ async function resignPMAction() {
             'Your party cannot hold the PM seat for 12 ticks.'
         );
 
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         console.error('Resign error:', e);
         alert('Error: ' + e.message);
     } finally { _govActionLock = false; }
+}
+
+// Refresh the correct UI after a ministry action (admin tab vs legacy page)
+async function refreshGovernmentUI() {
+    if (document.getElementById('gov-admin-cabinet')) {
+        await loadGovData();
+        renderGovContent();
+    } else {
+        await renderGovernmentPage();
+    }
 }
 
     async function fireMinister(ministryKey) {
@@ -10846,7 +10882,7 @@ async function resignPMAction() {
         await adjustGovernmentApprovalEvent(_supabase, currentNation.id, 3, 'minister:fired');
 
         alert(ministerName + ' has been dismissed from ' + ministryName + '.\n+3 government approval event applied.');
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         console.error('Fire minister error:', e);
         alert('Error: ' + e.message);
@@ -10900,7 +10936,7 @@ async function resignPMAction() {
         } catch (_) { /* non-blocking */ }
 
         alert(ministerName + ' has resigned from ' + (ministry.ministry_name || ministryKey) + '.');
-        await renderGovernmentPage();
+        await refreshGovernmentUI();
     } catch (e) {
         console.error('Resign ministry error:', e);
         alert('Error: ' + e.message);
