@@ -1644,7 +1644,7 @@ function renderMinistryExpandedContent(ministry, partyColor) {
                     </div>
                     <div style="font-size:8px;color:var(--text-dim);line-height:1.4;margin-bottom:4px;">${escapeHtml(action.desc)}</div>
                     ${effectTags.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;">${effectTags.join('')}</div>` : ''}
-                    <div id="${actionId}-btns" style="margin-top:4px;"></div>
+                    ${canExecute ? `<div id="${actionId}-btns" style="margin-top:4px;"></div>` : ''}
                 </div>`;
             }
         }
