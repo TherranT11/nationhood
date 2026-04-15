@@ -402,7 +402,7 @@ async function loadStatEffectSources(nationId, nation) {
             .eq('item_type', 'institution')
             .order('created_at', { ascending: true }),
         _supabase.from('ministry_institution_config')
-            .select('id, institution_name, primary_stat, secondary_stat, growth_stat, growth_ceiling')
+            .select('*')
     ]);
     } catch (e) {
         console.warn('[loadStatEffectSources] Failed to fetch effect sources:', e.message);
