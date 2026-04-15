@@ -13157,15 +13157,57 @@ async function pfOpenBuild(facilityType) {
     if (options.length === 0) return;
 
     const meta = PF_FACILITY_TYPES[facilityType];
-    const capital = nationStats?.capital || 'Port City';
 
-    // Check how many of this type the corp already has in this nation
-    const existingCount = _portFacilities.filter(f => f.type === facilityType && f.nation_id === faction.nation_id).length;
+    // Build list of eligible nations: National HQ (home) + Regional HQs + Shipping Subsidiaries
+    const homeNationId = faction.nation_id;
+    const homeNationName = nationStats?.name || faction?.nation || 'Home Nation';
+    const homeCapital = nationStats?.capital || 'Port City';
 
-    // Build selection prompt
-    let promptMsg = meta.label + ' CONSTRUCTION\n' + '─'.repeat(30) + '\n';
+    const eligibleNations = [{ id: homeNationId, name: homeNationName, capital: homeCapital, label: 'National HQ' }];
+
+    // Fetch regional_hq properties (subsidiaries) in other nations
+    const { data: hqProps } = await _supabase.from('corp_properties')
+        .select('nation_id, name, city, nations!nation_id(name, capital)')
+        .eq('faction_id', faction.id)
+        .eq('type', 'regional_hq')
+        .eq('is_active', true);
+    for (const hq of (hqProps || [])) {
+        if (hq.nation_id === homeNationId) continue;
+        eligibleNations.push({
+            id: hq.nation_id,
+            name: hq.nations?.name || hq.city || 'Unknown',
+            capital: hq.nations?.capital || hq.city || 'Port City',
+            label: hq.name || 'Subsidiary',
+        });
+    }
+
+    // Step 1: Choose nation (skip if only home nation)
+    let targetNation = eligibleNations[0];
+    if (eligibleNations.length > 1) {
+        let nationPrompt = meta.label + ' — SELECT LOCATION\n' + '─'.repeat(30) + '\n';
+        nationPrompt += 'Build in which nation?\n\n';
+        for (let i = 0; i < eligibleNations.length; i++) {
+            const n = eligibleNations[i];
+            const existing = _portFacilities.filter(f => f.type === facilityType && f.nation_id === n.id).length;
+            nationPrompt += (i + 1) + '. ' + n.name + '  (' + n.label + ')';
+            if (existing > 0) nationPrompt += '  [' + existing + ' existing]';
+            nationPrompt += '\n';
+        }
+        nationPrompt += '\nEnter number (or cancel):';
+        const nationChoice = prompt(nationPrompt);
+        if (!nationChoice) return;
+        const nIdx = parseInt(nationChoice, 10) - 1;
+        if (isNaN(nIdx) || nIdx < 0 || nIdx >= eligibleNations.length) { alert('Invalid selection.'); return; }
+        targetNation = eligibleNations[nIdx];
+    }
+
+    // Check how many of this type the corp already has in the target nation
+    const existingCount = _portFacilities.filter(f => f.type === facilityType && f.nation_id === targetNation.id).length;
+
+    // Step 2: Choose facility variant
+    let promptMsg = meta.label + ' CONSTRUCTION — ' + targetNation.name.toUpperCase() + '\n' + '─'.repeat(30) + '\n';
     if (existingCount > 0) {
-        promptMsg += 'You already have ' + existingCount + ' ' + meta.label.toLowerCase() + (existingCount > 1 ? 's' : '') + ' in this nation.\n\n';
+        promptMsg += 'You already have ' + existingCount + ' ' + meta.label.toLowerCase() + (existingCount > 1 ? 's' : '') + ' here.\n\n';
     }
     promptMsg += meta.desc + '\n\n';
 
@@ -13184,9 +13226,8 @@ async function pfOpenBuild(facilityType) {
     if (isNaN(idx) || idx < 0 || idx >= options.length) { alert('Invalid selection.'); return; }
 
     const selected = options[idx];
-    const nationName = nationStats?.name || faction?.nation || 'Unknown';
 
-    if (!confirm('Commission ' + selected.name + ' in ' + capital + '?\n\nBudget: ' + hfFmtBig(selected.cost) + '\n\nThis will create a construction contract that construction corporations can bid on. Payment occurs when the contract is awarded.')) return;
+    if (!confirm('Commission ' + selected.name + ' in ' + targetNation.capital + ', ' + targetNation.name + '?\n\nBudget: ' + hfFmtBig(selected.cost) + '\n\nThis will create a construction contract that construction corporations can bid on. Payment occurs when the contract is awarded.')) return;
 
     _pfBuilding = true;
     const currentTick = shard.current_tick || 0;
@@ -13196,7 +13237,7 @@ async function pfOpenBuild(facilityType) {
         // Generate project code
         const { count: existingContracts } = await _supabase.from('construction_contracts')
             .select('id', { count: 'exact', head: true })
-            .eq('nation_id', faction.nation_id)
+            .eq('nation_id', targetNation.id)
             .eq('issuer_type', 'PRIVATE');
         const seq = (existingContracts || 0) + 1;
         const projectCode = `PVT-P${seq}-${gameYear}`;
@@ -13215,13 +13256,13 @@ async function pfOpenBuild(facilityType) {
 
         // Insert construction contract
         const { error } = await _supabase.from('construction_contracts').insert({
-            nation_id: faction.nation_id,
+            nation_id: targetNation.id,
             template_key: facilityType,
             sector: 'industrial',
             name: selected.name,
             project_type: meta.label,
             project_subtype: selected.style,
-            description: `${selected.name} at ${capital} Port — commissioned by ${faction.faction_name}. ${selected.desc}`,
+            description: `${selected.name} at ${targetNation.capital} Port — commissioned by ${faction.faction_name}. ${selected.desc}`,
             project_code: projectCode,
             budget_ceiling: selected.cost,
             timeline_ticks: timeline,
@@ -13240,10 +13281,11 @@ async function pfOpenBuild(facilityType) {
         await loadPortFacilities();
         alert('Construction contract posted!\n\n' +
             'Project: ' + selected.name + '\n' +
+            'Location: ' + targetNation.capital + ', ' + targetNation.name + '\n' +
             'Code: ' + projectCode + '\n' +
             'Budget: ' + hfFmtBig(selected.cost) + '\n' +
             'Timeline: ' + timeline + ' ticks\n\n' +
-            'Construction corporations in ' + nationName + ' can now bid on this project.');
+            'Construction corporations in ' + targetNation.name + ' can now bid on this project.');
     } catch (err) {
         alert('Failed to post contract: ' + (err.message || 'Error'));
     } finally {
