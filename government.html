@@ -8604,7 +8604,11 @@ function renderCabinet(ministries, coalition) {
     const isCaretaker = coalition && coalition.status === 'caretaker';
     const pmMinistry = ministries?.find(m => m.ministry_key === 'prime_minister');
     const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
-    const isPMPartyLocal = currentFaction && coalition && currentFaction.id === coalition.lead_party_id;
+    const isPMPartyLocal = currentFaction && (
+        (coalition && currentFaction.id === coalition.lead_party_id) ||
+        (coalition && coalition.ministry_allocations?.prime_minister === currentFaction.id) ||
+        (pmMinistry && pmMinistry.party_id === currentFaction.id)
+    );
     const canAppoint = isPMPartyLocal && pmFilled && !isCaretaker;
 
     let govType = 'parliamentary';
