@@ -3139,7 +3139,9 @@ function openContractDetail(contract) {
     const equipMet = [];
     const equipShort = [];
     for (const e of equipment) {
-        const corpEquip = equipmentData.find(ce => ce.equipment_key === e.key);
+        const EQUIP_ALIASES = { work_trucks: 'trucks', concrete_mixers: 'mixers', tower_cranes: 'cranes', heavy_haulers: 'haulers', pile_drivers: 'piledrivers', asphalt_plants: 'asphalt' };
+        const canonKey = EQUIP_ALIASES[e.key] || e.key;
+        const corpEquip = equipmentData.find(ce => ce.equipment_key === canonKey || ce.equipment_key === e.key);
         if (corpEquip && corpEquip.owned >= e.qty) {
             equipMet.push(e);
         } else {
@@ -3234,14 +3236,14 @@ const BID_MATERIALS = [
 ];
 
 const BID_EQUIPMENT = [
-    { key: 'work_trucks', name: 'Work Trucks', tier: 1 },
+    { key: 'trucks', name: 'Work Trucks', tier: 1 },
     { key: 'excavators', name: 'Excavators', tier: 1 },
     { key: 'bulldozers', name: 'Bulldozers', tier: 1 },
-    { key: 'concrete_mixers', name: 'Concrete Mixers', tier: 1 },
-    { key: 'tower_cranes', name: 'Tower Cranes', tier: 2 },
-    { key: 'heavy_haulers', name: 'Heavy Haulers', tier: 2 },
-    { key: 'pile_drivers', name: 'Pile Drivers', tier: 2 },
-    { key: 'asphalt_plants', name: 'Asphalt Plants', tier: 2 },
+    { key: 'mixers', name: 'Concrete Mixers', tier: 1 },
+    { key: 'cranes', name: 'Tower Cranes', tier: 2 },
+    { key: 'haulers', name: 'Heavy Haulers', tier: 2 },
+    { key: 'piledrivers', name: 'Pile Drivers', tier: 2 },
+    { key: 'asphalt', name: 'Asphalt Plants', tier: 2 },
 ];
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -3330,8 +3332,11 @@ async function openProjectModal(projectId) {
     const equipEntries = Array.isArray(rawReqEquip)
         ? rawReqEquip.map(k => [k, 1])
         : Object.entries(rawReqEquip);
+    // Map legacy contract equipment keys to canonical corp_equipment keys
+    const EQUIP_KEY_ALIASES = { work_trucks: 'trucks', concrete_mixers: 'mixers', tower_cranes: 'cranes', heavy_haulers: 'haulers', pile_drivers: 'piledrivers', asphalt_plants: 'asphalt' };
     const equipment = equipEntries.map(([eqKey, reqQty]) => {
-        const owned = equipmentData.find(e => e.equipment_key === eqKey);
+        const canonKey = EQUIP_KEY_ALIASES[eqKey] || eqKey;
+        const owned = equipmentData.find(e => e.equipment_key === canonKey || e.equipment_key === eqKey);
         const assignments = owned?.assigned_projects || [];
         const thisAssignment = assignments.find(a => a.contract_id === project.id);
         const assignedUnits = thisAssignment ? thisAssignment.units : 0;
@@ -3521,7 +3526,9 @@ async function pmDeployEquipment(equipmentKey, units) {
     if (_pmAllocLock || !pmState || !faction) return;
     _pmAllocLock = true;
     try {
-        const eqRow = equipmentData.find(e => e.equipment_key === equipmentKey);
+        const _EA = { work_trucks: 'trucks', concrete_mixers: 'mixers', tower_cranes: 'cranes', heavy_haulers: 'haulers', pile_drivers: 'piledrivers', asphalt_plants: 'asphalt' };
+        const canonKey = _EA[equipmentKey] || equipmentKey;
+        const eqRow = equipmentData.find(e => e.equipment_key === canonKey || e.equipment_key === equipmentKey);
         if (!eqRow) { alert('Equipment not found in inventory.'); return; }
         const available = Math.max(0, (eqRow.owned || 0) - (eqRow.deployed || 0));
         if (available < units) { alert('Not enough available ' + equipmentKey + ' (' + available + ' available).'); return; }
@@ -3556,7 +3563,9 @@ async function pmUndeployEquipment(equipmentKey) {
     if (_pmAllocLock || !pmState || !faction) return;
     _pmAllocLock = true;
     try {
-        const eqRow = equipmentData.find(e => e.equipment_key === equipmentKey);
+        const _EA = { work_trucks: 'trucks', concrete_mixers: 'mixers', tower_cranes: 'cranes', heavy_haulers: 'haulers', pile_drivers: 'piledrivers', asphalt_plants: 'asphalt' };
+        const canonKey = _EA[equipmentKey] || equipmentKey;
+        const eqRow = equipmentData.find(e => e.equipment_key === canonKey || e.equipment_key === equipmentKey);
         if (!eqRow) { alert('Equipment not found.'); return; }
 
         const assignments = [...(eqRow.assigned_projects || [])];
@@ -9704,9 +9713,9 @@ async function cpSubmit() {
             })(),
             required_equipment: (() => {
                 const sz = _cpData.size;
-                const equip = { work_trucks: Math.ceil(sz / 2000) + 1, concrete_mixers: Math.ceil(sz / 3000) + 1 };
-                if (sz > 1000) { equip.excavators = Math.ceil(sz / 3000) + 1; equip.tower_cranes = Math.ceil(sz / 4000) + 1; }
-                if (sz > 3000) { equip.bulldozers = Math.ceil(sz / 4000) + 1; equip.heavy_haulers = Math.ceil(sz / 5000) + 1; }
+                const equip = { trucks: Math.ceil(sz / 2000) + 1, mixers: Math.ceil(sz / 3000) + 1 };
+                if (sz > 1000) { equip.excavators = Math.ceil(sz / 3000) + 1; equip.cranes = Math.ceil(sz / 4000) + 1; }
+                if (sz > 3000) { equip.bulldozers = Math.ceil(sz / 4000) + 1; equip.haulers = Math.ceil(sz / 5000) + 1; }
                 if (sz > 8000) { equip.pile_drivers = Math.ceil(sz / 6000) + 1; }
                 return equip;
             })(),
@@ -13181,7 +13190,7 @@ async function pfOpenBuild(facilityType) {
             heavy_parts: isAdvanced ? 3 : 2,
             aggregate: isAdvanced ? 3 : 2,
         };
-        const equipment = { work_trucks: 1, concrete_mixers: 1, excavators: 1 };
+        const equipment = { trucks: 1, mixers: 1, excavators: 1 };
         const workforce = { general: isAdvanced ? 12 : 8, skilled: isAdvanced ? 5 : 3 };
         const timeline = isAdvanced ? 6 : 4;
 

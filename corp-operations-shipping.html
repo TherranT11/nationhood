@@ -3065,14 +3065,14 @@ const BID_MATERIALS = [
 ];
 
 const BID_EQUIPMENT = [
-    { key: 'work_trucks', name: 'Work Trucks', tier: 1 },
+    { key: 'trucks', name: 'Work Trucks', tier: 1 },
     { key: 'excavators', name: 'Excavators', tier: 1 },
     { key: 'bulldozers', name: 'Bulldozers', tier: 1 },
-    { key: 'concrete_mixers', name: 'Concrete Mixers', tier: 1 },
-    { key: 'tower_cranes', name: 'Tower Cranes', tier: 2 },
-    { key: 'heavy_haulers', name: 'Heavy Haulers', tier: 2 },
-    { key: 'pile_drivers', name: 'Pile Drivers', tier: 2 },
-    { key: 'asphalt_plants', name: 'Asphalt Plants', tier: 2 },
+    { key: 'mixers', name: 'Concrete Mixers', tier: 1 },
+    { key: 'cranes', name: 'Tower Cranes', tier: 2 },
+    { key: 'haulers', name: 'Heavy Haulers', tier: 2 },
+    { key: 'piledrivers', name: 'Pile Drivers', tier: 2 },
+    { key: 'asphalt', name: 'Asphalt Plants', tier: 2 },
 ];
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -9521,10 +9521,10 @@ async function cpSubmit() {
             })(),
             required_equipment: (() => {
                 const sz = _cpData.size;
-                const equip = { work_trucks: Math.ceil(sz / 2000) + 1, concrete_mixers: Math.ceil(sz / 3000) + 1 };
-                if (sz > 1000) { equip.excavators = Math.ceil(sz / 3000) + 1; equip.tower_cranes = Math.ceil(sz / 4000) + 1; }
-                if (sz > 3000) { equip.bulldozers = Math.ceil(sz / 4000) + 1; equip.heavy_haulers = Math.ceil(sz / 5000) + 1; }
-                if (sz > 8000) { equip.pile_drivers = Math.ceil(sz / 6000) + 1; }
+                const equip = { trucks: Math.ceil(sz / 2000) + 1, mixers: Math.ceil(sz / 3000) + 1 };
+                if (sz > 1000) { equip.excavators = Math.ceil(sz / 3000) + 1; equip.cranes = Math.ceil(sz / 4000) + 1; }
+                if (sz > 3000) { equip.bulldozers = Math.ceil(sz / 4000) + 1; equip.haulers = Math.ceil(sz / 5000) + 1; }
+                if (sz > 8000) { equip.piledrivers = Math.ceil(sz / 6000) + 1; }
                 return equip;
             })(),
             required_workforce: { general: Math.ceil(_cpData.size * 0.08), skilled: Math.ceil(_cpData.size * 0.03) },
@@ -12998,7 +12998,7 @@ async function pfOpenBuild(facilityType) {
             heavy_parts: isAdvanced ? 3 : 2,
             aggregate: isAdvanced ? 3 : 2,
         };
-        const equipment = { work_trucks: 1, concrete_mixers: 1, excavators: 1 };
+        const equipment = { trucks: 1, mixers: 1, excavators: 1 };
         const workforce = { general: isAdvanced ? 12 : 8, skilled: isAdvanced ? 5 : 3 };
         const timeline = isAdvanced ? 6 : 4;
 
