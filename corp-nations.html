@@ -276,7 +276,7 @@ async function init() {
             _supabase.from('shipping_claims').select('id, shipping_routes(origin_nation_id, destination_nation_id)').eq('faction_id', faction.id).eq('status', 'active'),
             _supabase.from('finance_active_loans').select('nation_id, principal, status, lender_faction_id, borrower_faction_id, finance_loan_requests(request_type)').in('status', ['current', 'late', 'delinquent']),
             _supabase.from('factions')
-                .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_cash_reserves, nation_id, corp_ticker')
+                .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_cash_reserves, nation_id, corp_ticker, custom_logo_url')
                 .eq('faction_type', 'corporation').is('abandoned_at', null),
         ]);
 
@@ -598,8 +598,11 @@ function renderNationDetail() {
         for (const c of corps) {
             const isYours = c.id === faction.id;
             const ticker = (c.abbreviation || c.corp_ticker || '??').toUpperCase();
+            const logoHtml = c.custom_logo_url
+                ? `<img src="${escapeHtml(c.custom_logo_url)}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;">`
+                : `<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);border-radius:4px;flex-shrink:0;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--gold);">${escapeHtml(ticker.slice(0,3))}</div>`;
             html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 20px;border-bottom:1px solid var(--border-0);">
-                <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--gold);width:44px;">${escapeHtml(ticker)}</span>
+                ${logoHtml}
                 <div style="flex:1;min-width:0;">
                     <div style="font-size:14px;font-weight:600;color:${isYours ? '#5c5' : 'var(--text-primary)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                         ${escapeHtml(c.faction_name)}${isYours ? ' <span style="font-family:var(--font-mono);font-size:9px;color:#5c5;border:1px solid rgba(92,204,92,0.2);padding:1px 4px;">YOU</span>' : ''}
