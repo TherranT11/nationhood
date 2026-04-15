@@ -164,6 +164,13 @@ initPage('politics', async (state) => {
     if (coalition && coalition.party_ids && coalition.party_ids.includes(f.id)) {
         role = coalition.lead_party_id === f.id ? 'Lead — Governing' : 'Governing Coalition';
     }
+    // Absolute monarchy: monarch faction with majority is the government
+    const _isAbsMonarchy = (nation?.government_type || '').toLowerCase().includes('absolute');
+    if (_isAbsMonarchy && nation?.monarch_faction_id === f.id) {
+        const _totalSeats = nation?.total_seats || 100;
+        const _majorityThreshold = Math.floor(_totalSeats / 2) + 1;
+        if ((f.seats || 0) >= _majorityThreshold) role = 'Lead — Governing';
+    }
 
     // Fetch active crises
     const { data: activeCrises } = await _supabase
@@ -5047,6 +5054,12 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
         let status = 'opposition';
         if (coalitionPartyIds.includes(p.id)) {
             status = p.id === coalitionLeadId ? 'governing_head' : 'governing_junior';
+        }
+        // Absolute monarchy: monarch faction with majority is the government
+        const isAbsMonarchy = (nation?.government_type || '').toLowerCase().includes('absolute');
+        if (isAbsMonarchy && nation?.monarch_faction_id === p.id) {
+            const majorityThreshold = Math.floor((totalSeats || 100) / 2) + 1;
+            if ((p.seats || 0) >= majorityThreshold) status = 'governing_head';
         }
 
         const isGov = status.startsWith('governing');
