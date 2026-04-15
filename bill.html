@@ -324,6 +324,12 @@ initPage('laws', async (state) => {
     if (nation) {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isNoGovernment = !coalition;
+        // Absolute monarchy: legislature is open if a PM is appointed (no coalition needed)
+        if (isNoGovernment && (nation.government_type || '').toLowerCase().includes('absolute')) {
+            const { data: activeHog } = await _supabase.from('head_of_government')
+                .select('id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+            if (activeHog) isNoGovernment = false;
+        }
         coalitionPartyIds = coalition?.party_ids || [];
         coalitionLeadPartyId = coalition?.lead_party_id || null;
     }
