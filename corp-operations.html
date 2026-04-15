@@ -9820,7 +9820,7 @@ async function cpSubmit() {
             'Project: ' + _cpData.name.trim() + '\n' +
             'Code: ' + projectCode + '\n' +
             'Budget: ' + hfFmtBig(budget.adjusted) + '\n' +
-            'Expected Reputation: +' + repGain + '\n\n' +
+            'Expected Reputation: +' + Math.ceil((budget.adjusted / 100_000_000) * 3) + ' (+3 per $100M)\n\n' +
             'All construction corporations in ' + nationName + ' can now bid on this project.');
     } catch (err) {
         alert('Failed to submit project: ' + err.message);
@@ -9842,7 +9842,7 @@ function renderConstructionModal() {
 
     const budget = cpCalcBudget();
     const nationName = nationStats?.name || faction?.nation || 'Nation';
-    const repGain = CP_STYLE_META[_cpData.style]?.repGain || 1;
+    const repGain = Math.ceil((budget.adjusted / 100_000_000) * 3); // +3 per $100M, rounded up
     const repColor = repGain >= 4 ? C.gold : repGain >= 3 ? C.greenBright : repGain >= 2 ? C.accent : C.dim;
 
     // Style grid

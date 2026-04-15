@@ -1710,13 +1710,14 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance + permitQualityBonus + materialQualityPenalty + missingPermitPenalty + modifierPermitPenalty));
 
             let deliveryResult = 'PASS';
-            let repChange = 2;
+            // Reputation: +3 per $100M spent, rounded up
+            let repChange = Math.ceil((payment / 100_000_000) * 3);
             let qualityBonus = 0;
             let penalties = 0;
-            if (qualityScore >= 85) { deliveryResult = 'DISTINCTION'; repChange = 5; qualityBonus = Math.round(payment * 0.15); }
-            else if (qualityScore >= 60) { deliveryResult = 'PASS'; repChange = 2; }
+            if (qualityScore >= 85) { deliveryResult = 'DISTINCTION'; qualityBonus = Math.round(payment * 0.15); }
+            else if (qualityScore >= 60) { deliveryResult = 'PASS'; }
             else if (qualityScore >= 40) { deliveryResult = 'CONDITIONAL'; repChange = 0; penalties = Math.round(payment * 0.20); }
-            else { deliveryResult = 'FAIL'; repChange = -3; penalties = Math.round(payment * 0.40); }
+            else { deliveryResult = 'FAIL'; repChange = -repChange; penalties = Math.round(payment * 0.40); }
 
             // Apply building modifier reputation bonuses/penalties at delivery
             let modifierRepBonus = 0;
