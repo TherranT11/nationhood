@@ -1836,6 +1836,162 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
     }
 
 
+// ==================== CORPORATION INSPECTOR ====================
+
+let _corpInspectorLoaded = false;
+
+function initCorpInspector() {
+    if (_corpInspectorLoaded) return;
+    _corpInspectorLoaded = true;
+
+    // Inject the Corporation Inspector tab button after existing tabs
+    const tabBar = document.querySelector('.tabs');
+    if (tabBar) {
+        const corpTab = document.createElement('div');
+        corpTab.className = 'tab';
+        corpTab.setAttribute('onclick', "showTab('corp-inspector')");
+        corpTab.textContent = 'Corp Inspector';
+        tabBar.appendChild(corpTab);
+    }
+
+    // Inject the tab content panel
+    const adminSection = document.getElementById('admin-section');
+    if (!adminSection) return;
+
+    const panel = document.createElement('div');
+    panel.id = 'tab-corp-inspector';
+    panel.className = 'tab-content';
+    panel.innerHTML = `
+        <h2>🏢 Corporation Inspector</h2>
+        <p style="color:#888;">View the UI of any corporation for debugging. Select a nation, then a corporation, then a page to inspect.</p>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">
+            <select id="ci-nation-select" onchange="ciLoadCorps()" style="padding:6px 10px;background:#1a1a17;border:1px solid #333;color:#c4c2b8;font-family:'JetBrains Mono',monospace;font-size:11px;min-width:200px;">
+                <option value="">-- Choose a nation --</option>
+            </select>
+            <select id="ci-corp-select" style="padding:6px 10px;background:#1a1a17;border:1px solid #333;color:#c4c2b8;font-family:'JetBrains Mono',monospace;font-size:11px;min-width:260px;">
+                <option value="">-- Choose a corporation --</option>
+            </select>
+            <select id="ci-page-select" style="padding:6px 10px;background:#1a1a17;border:1px solid #333;color:#c4c2b8;font-family:'JetBrains Mono',monospace;font-size:11px;">
+                <option value="corp-dashboard.html">Dashboard</option>
+                <option value="corp-operations.html">Operations</option>
+                <option value="corp-operations-finance.html">Finance Ops</option>
+            </select>
+            <button onclick="ciLoadInspector()" style="padding:6px 16px;background:#5aafa5;color:#0e0e0c;border:none;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:0.06em;">INSPECT</button>
+            <button onclick="ciOpenNewTab()" style="padding:6px 12px;background:transparent;border:1px solid #333;color:#888;font-family:'JetBrains Mono',monospace;font-size:10px;cursor:pointer;" title="Open in new tab">↗ NEW TAB</button>
+        </div>
+
+        <div id="ci-current" class="hidden" style="margin:8px 0;padding:6px 12px;background:#1a2a2a;border:1px solid rgba(90,175,165,0.2);font-family:'JetBrains Mono',monospace;font-size:10px;color:#5aafa5;">
+            Viewing: <span id="ci-current-label"></span>
+            <button onclick="ciReload()" style="margin-left:12px;padding:2px 8px;background:transparent;border:1px solid #333;color:#888;font-size:9px;cursor:pointer;">⟳ Reload</button>
+        </div>
+
+        <div id="ci-frame-container" class="hidden" style="margin-top:8px;">
+            <iframe id="ci-frame" style="width:100%;height:800px;border:1px solid #2a2a24;background:#0e0e0c;" src="about:blank"></iframe>
+        </div>
+    `;
+    adminSection.appendChild(panel);
+}
+
+async function ciLoadNations() {
+    try {
+        const { data } = await _supabase.from('nations').select('id, name').order('name');
+        const select = document.getElementById('ci-nation-select');
+        if (!select) return;
+        select.innerHTML = '<option value="">-- Choose a nation --</option>';
+        (data || []).forEach(n => {
+            select.innerHTML += `<option value="${n.id}">${escHtml(n.name)}</option>`;
+        });
+    } catch (err) { console.error('[CorpInspector] Nations load error:', err); }
+}
+
+async function ciLoadCorps() {
+    const nationId = document.getElementById('ci-nation-select')?.value;
+    const select = document.getElementById('ci-corp-select');
+    if (!select) return;
+    select.innerHTML = '<option value="">-- Choose a corporation --</option>';
+    if (!nationId) return;
+    try {
+        const { data } = await _supabase.from('factions')
+            .select('id, faction_name, abbreviation, corp_sector, corp_subsector')
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'corporation')
+            .is('abandoned_at', null)
+            .order('faction_name');
+        (data || []).forEach(f => {
+            const label = f.faction_name + (f.abbreviation ? ' [' + f.abbreviation + ']' : '') + ' — ' + (f.corp_sector || '?') + '/' + (f.corp_subsector || '?');
+            select.innerHTML += `<option value="${f.id}">${escHtml(label)}</option>`;
+        });
+    } catch (err) { console.error('[CorpInspector] Corps load error:', err); }
+}
+
+function ciLoadInspector() {
+    const nationId = document.getElementById('ci-nation-select')?.value;
+    const corpId = document.getElementById('ci-corp-select')?.value;
+    const page = document.getElementById('ci-page-select')?.value || 'corp-dashboard.html';
+
+    if (!nationId) { alert('Select a nation first.'); return; }
+    if (!corpId) { alert('Select a corporation first.'); return; }
+
+    const nationSelect = document.getElementById('ci-nation-select');
+    const corpSelect = document.getElementById('ci-corp-select');
+    const nationName = nationSelect.options[nationSelect.selectedIndex].text;
+    const corpLabel = corpSelect.options[corpSelect.selectedIndex].text;
+
+    localStorage.setItem('nation_id', nationId);
+    localStorage.setItem('nation_name', nationName);
+
+    const url = page + '?nation_id=' + nationId + '&faction_id=' + corpId;
+    const frame = document.getElementById('ci-frame');
+    frame.src = url;
+
+    document.getElementById('ci-current-label').textContent = corpLabel + '  →  ' + page;
+    document.getElementById('ci-current').classList.remove('hidden');
+    document.getElementById('ci-frame-container').classList.remove('hidden');
+}
+
+function ciOpenNewTab() {
+    const nationId = document.getElementById('ci-nation-select')?.value;
+    const corpId = document.getElementById('ci-corp-select')?.value;
+    const page = document.getElementById('ci-page-select')?.value || 'corp-dashboard.html';
+    if (!nationId || !corpId) { alert('Select a nation and corporation first.'); return; }
+
+    const nationSelect = document.getElementById('ci-nation-select');
+    localStorage.setItem('nation_id', nationId);
+    localStorage.setItem('nation_name', nationSelect.options[nationSelect.selectedIndex].text);
+
+    window.open(page + '?nation_id=' + nationId + '&faction_id=' + corpId, '_blank');
+}
+
+function ciReload() {
+    const frame = document.getElementById('ci-frame');
+    if (frame?.src && frame.src !== 'about:blank') {
+        frame.contentWindow.location.reload();
+    }
+}
+
+window.ciLoadCorps = ciLoadCorps;
+window.ciLoadInspector = ciLoadInspector;
+window.ciOpenNewTab = ciOpenNewTab;
+window.ciReload = ciReload;
+
+// Hook into showTab to lazy-init the corp inspector
+var _prevShowTabCI = showTab;
+showTab = function(tabName) {
+    _prevShowTabCI(tabName);
+    if (tabName === 'corp-inspector' && !_corpInspectorLoaded) {
+        // Already loaded via admin-panel-loaded
+    }
+};
+window.showTab = showTab;
+
+// Init corp inspector when admin panel loads
+document.addEventListener('admin-panel-loaded', () => {
+    initCorpInspector();
+    ciLoadNations();
+});
+
+
 // ==================== MINISTRY INSTITUTION CONFIG ====================
 
     const MINISTRY_ORDER = [

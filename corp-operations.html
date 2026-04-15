@@ -10868,7 +10868,16 @@ let _subSelectedNation = null;
 let _subCreating = false;
 let _subCustomName = '';
 let _subCustomAbbr = '';
+let _subSelectedSector = ''; // defaults to parent's sector, can be changed
 let _subSelectedSubsector = ''; // defaults to parent's subsector
+
+// Cross-sector subsidiary cost multipliers (relative to same-sector base)
+const SUB_SECTOR_MULTIPLIERS = {
+    'Construction': 4,
+    'Finance': 5,
+    'Shipping': 4,
+};
+const SUB_AVAILABLE_SECTORS = ['Construction', 'Shipping', 'Finance'];
 
 // Subsector definitions with cost modifiers (relative to parent subsector)
 const SUB_SUBSECTORS = {
@@ -10919,13 +10928,28 @@ async function loadNationsForSubsidiary() {
         if (c.nation_id) _subNationCorpCounts[c.nation_id] = (_subNationCorpCounts[c.nation_id] || 0) + 1;
     }
 
-    // Default subsector to parent's subsector
+    // Default sector and subsector to parent's
+    _subSelectedSector = faction?.corp_sector || '';
     _subSelectedSubsector = faction?.corp_subsector || '';
 }
 
 function subGetSubsectors() {
-    const sector = faction?.corp_sector || '';
+    const sector = _subSelectedSector || faction?.corp_sector || '';
     return SUB_SUBSECTORS[sector] || [{ id: 'general', name: sector || 'General', mod: 0 }];
+}
+
+function subSetSector(sector) {
+    _subSelectedSector = sector;
+    // Reset subsector to first option of new sector
+    const subs = SUB_SUBSECTORS[sector];
+    _subSelectedSubsector = subs ? subs[0].name : '';
+    renderCreateSubsidiaryCard();
+}
+
+function subGetSectorMultiplier() {
+    const parentSector = faction?.corp_sector || '';
+    if (_subSelectedSector === parentSector) return 1;
+    return SUB_SECTOR_MULTIPLIERS[_subSelectedSector] || 4;
 }
 
 function subGetSubsectorMod() {
@@ -10942,9 +10966,10 @@ function subCalcNationMultiplier(n) {
 
 function subCalcEntryCost(n) {
     const BASE = 50000000;
+    const sectorMult = subGetSectorMultiplier();
     const subsectorMod = 1 + subGetSubsectorMod();
     const nationMult = subCalcNationMultiplier(n);
-    return Math.round(Math.max(10000000, BASE * subsectorMod * nationMult));
+    return Math.round(Math.max(10000000, BASE * sectorMult * subsectorMod * nationMult));
 }
 
 function subGetDemand(nationId) {
@@ -11022,6 +11047,7 @@ async function subCreate() {
             city: nation.capital || nation.name,
             purchased_at_tick: currentTick,
             is_active: true,
+            sector: _subSelectedSector || faction?.corp_sector || null,
             subsector: _subSelectedSubsector || faction?.corp_subsector || null,
         });
         if (propErr) throw propErr;
@@ -11067,14 +11093,25 @@ function renderCreateSubsidiaryCard() {
 
     const canCreate = _subCustomName.trim().length > 0 && _subCustomAbbr.trim().length >= 2 && sel !== null;
 
-    // ─── SECTOR (locked to parent) ───
+    // ─── SECTOR (selectable — cross-sector has cost multiplier) ───
+    const currentSector = _subSelectedSector || parentSector;
+    const sectorMult = subGetSectorMultiplier();
     let sectorHtml = `
     <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
         <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Sector</div>
-        <div style="padding:4px 10px;background:${C.card};border:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-family:${mono};font-size:10px;font-weight:700;color:${C.accent}">${parentSector}</span>
-            <span style="font-family:${mono};font-size:8px;color:${C.dim}">LOCKED TO PARENT</span>
+        <div style="display:flex;gap:3px;">
+            ${SUB_AVAILABLE_SECTORS.map(s => {
+                const active = s === currentSector;
+                const isSame = s === parentSector;
+                const mult = isSame ? 1 : (SUB_SECTOR_MULTIPLIERS[s] || 4);
+                const multColor = isSame ? C.greenBright : C.orange;
+                return `<div onclick="subSetSector('${s}')" style="flex:1;padding:5px 4px;text-align:center;cursor:pointer;background:${active ? C.accent + '18' : 'transparent'};border:1px solid ${active ? C.accent + '44' : C.border};">
+                    <div style="font-family:${mono};font-size:9px;font-weight:700;color:${active ? C.accentBright : C.dim}">${s}</div>
+                    <div style="font-family:${mono};font-size:7px;margin-top:2px;color:${multColor}">${isSame ? 'PARENT · ×1' : '×' + mult + ' COST'}</div>
+                </div>`;
+            }).join('')}
         </div>
+        ${sectorMult > 1 ? `<div style="font-family:${mono};font-size:7px;color:${C.orange};margin-top:4px;padding:3px 6px;background:rgba(204,136,68,0.06);border:1px solid rgba(204,136,68,0.15);">Cross-sector subsidiary: base cost ×${sectorMult}</div>` : ''}
     </div>`;
 
     // ─── SUBSECTOR ───
@@ -11220,6 +11257,7 @@ window.subSelectNation = subSelectNation;
 window.subCreate = subCreate;
 window.subSetName = subSetName;
 window.subSetAbbr = subSetAbbr;
+window.subSetSector = subSetSector;
 window.subSetSubsector = subSetSubsector;
 
 // ==================== CORPORATIONS CARD (760×450) ====================
@@ -11233,19 +11271,23 @@ let _corpSortBy = 'REPUTATION';
 async function loadAllCorporations() {
     const { data } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_company_type, corp_ticker, corp_cash_reserves, nation_id, nation, linked_user_id')
+        .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_company_type, corp_ticker, corp_cash_reserves, corp_reputation, nation_id, nation, linked_user_id')
         .eq('faction_type', 'corporation')
         .is('abandoned_at', null)
         .order('faction_name');
-    _allCorps = (data || []).map(c => ({
-        ...c,
-        abbr: c.corp_ticker || c.abbreviation || c.faction_name?.slice(0,4).toUpperCase() || '???',
-        status: (c.corp_company_type || 'Private').toUpperCase(),
-        isPlayer: !!c.linked_user_id,
-        reputation: 50, // placeholder until reputation system exists
-        revenue: c.status === 'PUBLIC' ? Number(c.corp_cash_reserves || 0) * 0.1 : null, // estimate
-        valuation: c.status === 'PUBLIC' ? Number(c.corp_cash_reserves || 0) * 3 : null,
-    }));
+    _allCorps = (data || []).map(c => {
+        const status = (c.corp_company_type || 'Private').toUpperCase();
+        const cash = Number(c.corp_cash_reserves || 0);
+        return {
+            ...c,
+            abbr: c.corp_ticker || c.abbreviation || c.faction_name?.slice(0,4).toUpperCase() || '???',
+            status,
+            isPlayer: !!c.linked_user_id,
+            reputation: Math.round(Number(c.corp_reputation ?? 50)),
+            revenue: Math.round(cash * 0.1),
+            valuation: Math.round(cash * 3),
+        };
+    });
 }
 
 function corpSelect(idx) { _corpSelected = idx; renderCorporationsCard(); }
@@ -11267,11 +11309,17 @@ async function corpInvestigate(targetCorpId) {
 
     // Reload the target corp's full data (including hidden financials)
     const { data: fullCorpData } = await _supabase.from('factions')
-        .select('corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
+        .select('corp_cash_reserves, corp_loans, corp_reputation, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
         .eq('id', targetCorpId).single();
     if (fullCorpData) {
         const corp = _allCorps.find(c => c.id === targetCorpId);
-        if (corp) Object.assign(corp, fullCorpData);
+        if (corp) {
+            Object.assign(corp, fullCorpData);
+            const cash = Number(fullCorpData.corp_cash_reserves || 0);
+            corp.reputation = Math.round(Number(fullCorpData.corp_reputation ?? 50));
+            corp.revenue = Math.round(cash * 0.1);
+            corp.valuation = Math.round(cash * 3);
+        }
     }
 
     renderCorporationsCard();
@@ -11321,17 +11369,17 @@ function renderCorporationsCard() {
         const csm = STATUS_META[c.status] || STATUS_META.PRIVATE;
         const hidden = c.status === 'PRIVATE';
         tableRows += `
-        <div onclick="corpSelect(${i})" style="display:flex;align-items:center;padding:6px 14px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
-            <span style="width:36px;font-family:${mono};font-size:9px;font-weight:700;color:${C.gold}">${c.abbr}</span>
+        <div onclick="corpSelect(${i})" style="display:flex;align-items:center;padding:7px 16px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
+            <span style="width:42px;font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${c.abbr}</span>
             <div style="flex:1.3;">
-                <div style="font-size:10px;font-weight:600;color:${C.text};line-height:1.2">${c.faction_name}</div>
-                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:1px">${c.corp_subsector || c.corp_sector || '—'}</div>
+                <div style="font-size:12px;font-weight:600;color:${C.text};line-height:1.2">${c.faction_name}</div>
+                <div style="font-family:${mono};font-size:8px;color:${C.dim};margin-top:1px">${c.corp_subsector || c.corp_sector || '—'}</div>
             </div>
-            <span style="width:55px"><span style="font-family:${mono};font-size:7px;padding:1px 4px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(c.nation || '—').toUpperCase().slice(0,6)}</span></span>
-            <span style="width:50px;font-family:${mono};font-size:8px;font-weight:700;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.revenue)}</span>
-            <span style="width:30px;font-family:${mono};font-size:9px;font-weight:700;color:${c.reputation >= 70 ? C.greenBright : c.reputation >= 40 ? C.accent : C.yellow};text-align:right">${c.reputation}</span>
-            <span style="width:50px;font-family:${mono};font-size:8px;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.valuation)}</span>
-            <span style="width:42px;text-align:center"><span style="font-family:${mono};font-size:6px;font-weight:700;padding:1px 4px;color:${csm.color};background:${csm.bg};border:1px solid ${csm.border}">${c.status}</span></span>
+            <span style="width:62px"><span style="font-family:${mono};font-size:8px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(c.nation || '—').toUpperCase().slice(0,6)}</span></span>
+            <span style="width:56px;font-family:${mono};font-size:9px;font-weight:700;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.revenue)}</span>
+            <span style="width:34px;font-family:${mono};font-size:10px;font-weight:700;color:${c.reputation >= 70 ? C.greenBright : c.reputation >= 40 ? C.accent : C.yellow};text-align:right">${c.reputation}</span>
+            <span style="width:56px;font-family:${mono};font-size:9px;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.valuation)}</span>
+            <span style="width:48px;text-align:center"><span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${csm.color};background:${csm.bg};border:1px solid ${csm.border}">${c.status}</span></span>
         </div>`;
     }
 
@@ -11349,20 +11397,20 @@ function renderCorporationsCard() {
         ];
 
         detailHtml = `
-        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-                <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.gold}">${sel.abbr}</span>
-                <span style="font-size:12px;font-weight:700;color:${C.text}">${sel.faction_name}</span>
+        <div style="padding:10px 16px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+                <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${sel.abbr}</span>
+                <span style="font-size:14px;font-weight:700;color:${C.text}">${sel.faction_name}</span>
             </div>
             <div style="display:flex;gap:6px;align-items:center;">
-                <span style="font-family:${mono};font-size:7px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(sel.nation || '—').toUpperCase()}</span>
-                <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${sm.color};background:${sm.bg};border:1px solid ${sm.border}">${sel.status}</span>
-                ${sel.isPlayer ? `<span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${C.blue};background:rgba(90,138,170,0.08);border:1px solid rgba(90,138,170,0.2)">PLAYER</span>` : `<span style="font-family:${mono};font-size:7px;color:${C.dim}">NPC</span>`}
+                <span style="font-family:${mono};font-size:8px;padding:2px 6px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(sel.nation || '—').toUpperCase()}</span>
+                <span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:${sm.color};background:${sm.bg};border:1px solid ${sm.border}">${sel.status}</span>
+                ${sel.isPlayer ? `<span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:${C.blue};background:rgba(90,138,170,0.08);border:1px solid rgba(90,138,170,0.2)">PLAYER</span>` : `<span style="font-family:${mono};font-size:8px;color:${C.dim}">NPC</span>`}
             </div>
         </div>
-        ${stats.map(r => `<div style="display:flex;justify-content:space-between;padding:4px 14px;border-bottom:1px solid ${C.border};">
-            <span style="font-family:${mono};font-size:9px;color:${C.dim};text-transform:uppercase">${r.label}</span>
-            <span style="font-family:${mono};font-size:10px;font-weight:700;color:${r.value === 'UNDISCLOSED' ? C.dim : r.color};${r.value === 'UNDISCLOSED' ? 'font-style:italic;' : ''}">${r.value}</span>
+        ${stats.map(r => `<div style="display:flex;justify-content:space-between;padding:5px 16px;border-bottom:1px solid ${C.border};">
+            <span style="font-family:${mono};font-size:10px;color:${C.dim};text-transform:uppercase">${r.label}</span>
+            <span style="font-family:${mono};font-size:11px;font-weight:700;color:${r.value === 'UNDISCLOSED' ? C.dim : r.color};${r.value === 'UNDISCLOSED' ? 'font-style:italic;' : ''}">${r.value}</span>
         </div>`).join('')}
         <div style="padding:6px 14px;border-bottom:1px solid ${C.border};flex-shrink:0;">
             <div style="width:100%;height:4px;background:${C.border}"><div style="width:${sel.reputation}%;height:100%;background:${sel.reputation >= 70 ? C.greenBright : sel.reputation >= 40 ? C.accent : C.yellow}"></div></div>
@@ -11394,43 +11442,43 @@ function renderCorporationsCard() {
 
     // Filter pills
     const filterHtml = `
-    <div style="padding:5px 14px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;gap:12px;align-items:center;flex-shrink:0;">
+    <div style="padding:6px 16px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;gap:12px;align-items:center;flex-shrink:0;">
         <div style="display:flex;gap:3px;align-items:center;">
-            <span style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px;width:32px">NATION</span>
-            <span onclick="corpFilterNation('ALL')" style="padding:2px 7px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${_corpFilterNation === 'ALL' ? '#000' : C.dim};background:${_corpFilterNation === 'ALL' ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === 'ALL' ? C.accent : C.border}">ALL</span>
-            ${nations.map(n => `<span onclick="corpFilterNation('${n}')" style="padding:2px 7px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${_corpFilterNation === n ? '#000' : C.dim};background:${_corpFilterNation === n ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === n ? C.accent : C.border}">${n}</span>`).join('')}
+            <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px;width:40px">NATION</span>
+            <span onclick="corpFilterNation('ALL')" style="padding:3px 8px;font-family:${mono};font-size:8px;font-weight:700;cursor:pointer;color:${_corpFilterNation === 'ALL' ? '#000' : C.dim};background:${_corpFilterNation === 'ALL' ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === 'ALL' ? C.accent : C.border}">ALL</span>
+            ${nations.map(n => `<span onclick="corpFilterNation('${n}')" style="padding:3px 8px;font-family:${mono};font-size:8px;font-weight:700;cursor:pointer;color:${_corpFilterNation === n ? '#000' : C.dim};background:${_corpFilterNation === n ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === n ? C.accent : C.border}">${n}</span>`).join('')}
         </div>
         <div style="flex:1"></div>
         <div style="display:flex;gap:3px;align-items:center;">
-            <span style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">SORT</span>
-            ${['REPUTATION', 'REVENUE', 'VALUATION'].map(s => `<span onclick="corpSort('${s}')" style="padding:2px 7px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${_corpSortBy === s ? '#000' : C.dim};background:${_corpSortBy === s ? C.accent : 'transparent'};border:1px solid ${_corpSortBy === s ? C.accent : C.border}">${s}</span>`).join('')}
+            <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">SORT</span>
+            ${['REPUTATION', 'REVENUE', 'VALUATION'].map(s => `<span onclick="corpSort('${s}')" style="padding:3px 8px;font-family:${mono};font-size:8px;font-weight:700;cursor:pointer;color:${_corpSortBy === s ? '#000' : C.dim};background:${_corpSortBy === s ? C.accent : 'transparent'};border:1px solid ${_corpSortBy === s ? C.accent : C.border}">${s}</span>`).join('')}
         </div>
     </div>`;
 
     container.innerHTML = `
-    <div style="width:760px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
-        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+    <div style="width:874px;height:520px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:10px 16px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:8px;color:${C.accent}">●</span>
-                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Corporations</span>
+                <span style="font-size:9px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Corporations</span>
             </div>
-            <span style="font-family:${mono};font-size:9px;color:${C.dim}">${_allCorps.length} IN DATABASE</span>
+            <span style="font-family:${mono};font-size:10px;color:${C.dim}">${_allCorps.length} IN DATABASE</span>
         </div>
         ${filterHtml}
         <div style="flex:1;display:flex;overflow:hidden;">
             <div style="flex:1;border-right:1px solid ${C.border};display:flex;flex-direction:column;">
-                <div style="display:flex;padding:4px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
-                    <span style="width:36px;font-family:${mono};font-size:7px;color:${C.dim}">ABBR</span>
-                    <span style="flex:1.3;font-family:${mono};font-size:7px;color:${C.dim}">CORPORATION</span>
-                    <span style="width:55px;font-family:${mono};font-size:7px;color:${C.dim}">NATION</span>
-                    <span style="width:50px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">REV</span>
-                    <span style="width:30px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">REP</span>
-                    <span style="width:50px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">VALUE</span>
-                    <span style="width:42px;font-family:${mono};font-size:7px;color:${C.dim};text-align:center">STATUS</span>
+                <div style="display:flex;padding:5px 16px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+                    <span style="width:42px;font-family:${mono};font-size:8px;color:${C.dim}">ABBR</span>
+                    <span style="flex:1.3;font-family:${mono};font-size:8px;color:${C.dim}">CORPORATION</span>
+                    <span style="width:62px;font-family:${mono};font-size:8px;color:${C.dim}">NATION</span>
+                    <span style="width:56px;font-family:${mono};font-size:8px;color:${C.dim};text-align:right">REV</span>
+                    <span style="width:34px;font-family:${mono};font-size:8px;color:${C.dim};text-align:right">REP</span>
+                    <span style="width:56px;font-family:${mono};font-size:8px;color:${C.dim};text-align:right">VALUE</span>
+                    <span style="width:48px;font-family:${mono};font-size:8px;color:${C.dim};text-align:center">STATUS</span>
                 </div>
                 <div style="flex:1;overflow:auto;">${tableRows}</div>
             </div>
-            <div style="width:280px;display:flex;flex-direction:column;overflow:auto;">
+            <div style="width:322px;display:flex;flex-direction:column;overflow:auto;">
                 ${detailHtml}
             </div>
         </div>
