@@ -11369,17 +11369,17 @@ function renderCorporationsCard() {
         const csm = STATUS_META[c.status] || STATUS_META.PRIVATE;
         const hidden = c.status === 'PRIVATE';
         tableRows += `
-        <div onclick="corpSelect(${i})" style="display:flex;align-items:center;padding:6px 14px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
-            <span style="width:36px;font-family:${mono};font-size:9px;font-weight:700;color:${C.gold}">${c.abbr}</span>
+        <div onclick="corpSelect(${i})" style="display:flex;align-items:center;padding:7px 16px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
+            <span style="width:42px;font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${c.abbr}</span>
             <div style="flex:1.3;">
-                <div style="font-size:10px;font-weight:600;color:${C.text};line-height:1.2">${c.faction_name}</div>
-                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:1px">${c.corp_subsector || c.corp_sector || '—'}</div>
+                <div style="font-size:12px;font-weight:600;color:${C.text};line-height:1.2">${c.faction_name}</div>
+                <div style="font-family:${mono};font-size:8px;color:${C.dim};margin-top:1px">${c.corp_subsector || c.corp_sector || '—'}</div>
             </div>
-            <span style="width:55px"><span style="font-family:${mono};font-size:7px;padding:1px 4px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(c.nation || '—').toUpperCase().slice(0,6)}</span></span>
-            <span style="width:50px;font-family:${mono};font-size:8px;font-weight:700;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.revenue)}</span>
-            <span style="width:30px;font-family:${mono};font-size:9px;font-weight:700;color:${c.reputation >= 70 ? C.greenBright : c.reputation >= 40 ? C.accent : C.yellow};text-align:right">${c.reputation}</span>
-            <span style="width:50px;font-family:${mono};font-size:8px;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.valuation)}</span>
-            <span style="width:42px;text-align:center"><span style="font-family:${mono};font-size:6px;font-weight:700;padding:1px 4px;color:${csm.color};background:${csm.bg};border:1px solid ${csm.border}">${c.status}</span></span>
+            <span style="width:62px"><span style="font-family:${mono};font-size:8px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(c.nation || '—').toUpperCase().slice(0,6)}</span></span>
+            <span style="width:56px;font-family:${mono};font-size:9px;font-weight:700;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.revenue)}</span>
+            <span style="width:34px;font-family:${mono};font-size:10px;font-weight:700;color:${c.reputation >= 70 ? C.greenBright : c.reputation >= 40 ? C.accent : C.yellow};text-align:right">${c.reputation}</span>
+            <span style="width:56px;font-family:${mono};font-size:9px;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.valuation)}</span>
+            <span style="width:48px;text-align:center"><span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${csm.color};background:${csm.bg};border:1px solid ${csm.border}">${c.status}</span></span>
         </div>`;
     }
 
@@ -11397,20 +11397,20 @@ function renderCorporationsCard() {
         ];
 
         detailHtml = `
-        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-                <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.gold}">${sel.abbr}</span>
-                <span style="font-size:12px;font-weight:700;color:${C.text}">${sel.faction_name}</span>
+        <div style="padding:10px 16px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+                <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${sel.abbr}</span>
+                <span style="font-size:14px;font-weight:700;color:${C.text}">${sel.faction_name}</span>
             </div>
             <div style="display:flex;gap:6px;align-items:center;">
-                <span style="font-family:${mono};font-size:7px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(sel.nation || '—').toUpperCase()}</span>
-                <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${sm.color};background:${sm.bg};border:1px solid ${sm.border}">${sel.status}</span>
-                ${sel.isPlayer ? `<span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${C.blue};background:rgba(90,138,170,0.08);border:1px solid rgba(90,138,170,0.2)">PLAYER</span>` : `<span style="font-family:${mono};font-size:7px;color:${C.dim}">NPC</span>`}
+                <span style="font-family:${mono};font-size:8px;padding:2px 6px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(sel.nation || '—').toUpperCase()}</span>
+                <span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:${sm.color};background:${sm.bg};border:1px solid ${sm.border}">${sel.status}</span>
+                ${sel.isPlayer ? `<span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:${C.blue};background:rgba(90,138,170,0.08);border:1px solid rgba(90,138,170,0.2)">PLAYER</span>` : `<span style="font-family:${mono};font-size:8px;color:${C.dim}">NPC</span>`}
             </div>
         </div>
-        ${stats.map(r => `<div style="display:flex;justify-content:space-between;padding:4px 14px;border-bottom:1px solid ${C.border};">
-            <span style="font-family:${mono};font-size:9px;color:${C.dim};text-transform:uppercase">${r.label}</span>
-            <span style="font-family:${mono};font-size:10px;font-weight:700;color:${r.value === 'UNDISCLOSED' ? C.dim : r.color};${r.value === 'UNDISCLOSED' ? 'font-style:italic;' : ''}">${r.value}</span>
+        ${stats.map(r => `<div style="display:flex;justify-content:space-between;padding:5px 16px;border-bottom:1px solid ${C.border};">
+            <span style="font-family:${mono};font-size:10px;color:${C.dim};text-transform:uppercase">${r.label}</span>
+            <span style="font-family:${mono};font-size:11px;font-weight:700;color:${r.value === 'UNDISCLOSED' ? C.dim : r.color};${r.value === 'UNDISCLOSED' ? 'font-style:italic;' : ''}">${r.value}</span>
         </div>`).join('')}
         <div style="padding:6px 14px;border-bottom:1px solid ${C.border};flex-shrink:0;">
             <div style="width:100%;height:4px;background:${C.border}"><div style="width:${sel.reputation}%;height:100%;background:${sel.reputation >= 70 ? C.greenBright : sel.reputation >= 40 ? C.accent : C.yellow}"></div></div>
@@ -11442,43 +11442,43 @@ function renderCorporationsCard() {
 
     // Filter pills
     const filterHtml = `
-    <div style="padding:5px 14px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;gap:12px;align-items:center;flex-shrink:0;">
+    <div style="padding:6px 16px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;gap:12px;align-items:center;flex-shrink:0;">
         <div style="display:flex;gap:3px;align-items:center;">
-            <span style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px;width:32px">NATION</span>
-            <span onclick="corpFilterNation('ALL')" style="padding:2px 7px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${_corpFilterNation === 'ALL' ? '#000' : C.dim};background:${_corpFilterNation === 'ALL' ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === 'ALL' ? C.accent : C.border}">ALL</span>
-            ${nations.map(n => `<span onclick="corpFilterNation('${n}')" style="padding:2px 7px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${_corpFilterNation === n ? '#000' : C.dim};background:${_corpFilterNation === n ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === n ? C.accent : C.border}">${n}</span>`).join('')}
+            <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px;width:40px">NATION</span>
+            <span onclick="corpFilterNation('ALL')" style="padding:3px 8px;font-family:${mono};font-size:8px;font-weight:700;cursor:pointer;color:${_corpFilterNation === 'ALL' ? '#000' : C.dim};background:${_corpFilterNation === 'ALL' ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === 'ALL' ? C.accent : C.border}">ALL</span>
+            ${nations.map(n => `<span onclick="corpFilterNation('${n}')" style="padding:3px 8px;font-family:${mono};font-size:8px;font-weight:700;cursor:pointer;color:${_corpFilterNation === n ? '#000' : C.dim};background:${_corpFilterNation === n ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === n ? C.accent : C.border}">${n}</span>`).join('')}
         </div>
         <div style="flex:1"></div>
         <div style="display:flex;gap:3px;align-items:center;">
-            <span style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">SORT</span>
-            ${['REPUTATION', 'REVENUE', 'VALUATION'].map(s => `<span onclick="corpSort('${s}')" style="padding:2px 7px;font-family:${mono};font-size:7px;font-weight:700;cursor:pointer;color:${_corpSortBy === s ? '#000' : C.dim};background:${_corpSortBy === s ? C.accent : 'transparent'};border:1px solid ${_corpSortBy === s ? C.accent : C.border}">${s}</span>`).join('')}
+            <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">SORT</span>
+            ${['REPUTATION', 'REVENUE', 'VALUATION'].map(s => `<span onclick="corpSort('${s}')" style="padding:3px 8px;font-family:${mono};font-size:8px;font-weight:700;cursor:pointer;color:${_corpSortBy === s ? '#000' : C.dim};background:${_corpSortBy === s ? C.accent : 'transparent'};border:1px solid ${_corpSortBy === s ? C.accent : C.border}">${s}</span>`).join('')}
         </div>
     </div>`;
 
     container.innerHTML = `
-    <div style="width:760px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
-        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+    <div style="width:874px;height:520px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:10px 16px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:8px;color:${C.accent}">●</span>
-                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Corporations</span>
+                <span style="font-size:9px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Corporations</span>
             </div>
-            <span style="font-family:${mono};font-size:9px;color:${C.dim}">${_allCorps.length} IN DATABASE</span>
+            <span style="font-family:${mono};font-size:10px;color:${C.dim}">${_allCorps.length} IN DATABASE</span>
         </div>
         ${filterHtml}
         <div style="flex:1;display:flex;overflow:hidden;">
             <div style="flex:1;border-right:1px solid ${C.border};display:flex;flex-direction:column;">
-                <div style="display:flex;padding:4px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
-                    <span style="width:36px;font-family:${mono};font-size:7px;color:${C.dim}">ABBR</span>
-                    <span style="flex:1.3;font-family:${mono};font-size:7px;color:${C.dim}">CORPORATION</span>
-                    <span style="width:55px;font-family:${mono};font-size:7px;color:${C.dim}">NATION</span>
-                    <span style="width:50px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">REV</span>
-                    <span style="width:30px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">REP</span>
-                    <span style="width:50px;font-family:${mono};font-size:7px;color:${C.dim};text-align:right">VALUE</span>
-                    <span style="width:42px;font-family:${mono};font-size:7px;color:${C.dim};text-align:center">STATUS</span>
+                <div style="display:flex;padding:5px 16px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+                    <span style="width:42px;font-family:${mono};font-size:8px;color:${C.dim}">ABBR</span>
+                    <span style="flex:1.3;font-family:${mono};font-size:8px;color:${C.dim}">CORPORATION</span>
+                    <span style="width:62px;font-family:${mono};font-size:8px;color:${C.dim}">NATION</span>
+                    <span style="width:56px;font-family:${mono};font-size:8px;color:${C.dim};text-align:right">REV</span>
+                    <span style="width:34px;font-family:${mono};font-size:8px;color:${C.dim};text-align:right">REP</span>
+                    <span style="width:56px;font-family:${mono};font-size:8px;color:${C.dim};text-align:right">VALUE</span>
+                    <span style="width:48px;font-family:${mono};font-size:8px;color:${C.dim};text-align:center">STATUS</span>
                 </div>
                 <div style="flex:1;overflow:auto;">${tableRows}</div>
             </div>
-            <div style="width:280px;display:flex;flex-direction:column;overflow:auto;">
+            <div style="width:322px;display:flex;flex-direction:column;overflow:auto;">
                 ${detailHtml}
             </div>
         </div>
