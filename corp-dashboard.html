@@ -1189,7 +1189,18 @@ async function init() {
         execCompensation = (execRows || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
     }
 
-    await renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation, propData);
+    // Load fleet maintenance (shipping corps)
+    let fleetMaint = 0;
+    if (faction?.id && faction.corp_sector === 'Shipping') {
+        const { data: vessels } = await _supabase
+            .from('corp_vessels')
+            .select('base_maintenance')
+            .eq('faction_id', faction.id)
+            .neq('status', 'for_sale');
+        fleetMaint = (vessels || []).reduce((sum, v) => sum + (Number(v.base_maintenance) || 0), 0);
+    }
+
+    await renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation, propData, fleetMaint);
     renderValuation(nationStats, nationName, faction, wfData, propData);
 
     // Messaging bubble
@@ -1338,7 +1349,7 @@ function renderWorkforce(nation, nationName, factionData) {
     return { totalWages, generalTotal, skilledTotal, innovativeTotal, monthlyWages: Math.round(totalWages / 12) };
 }
 
-async function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint, execCompensation, propData) {
+async function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint, execCompensation, propData, fleetMaint) {
     const currentTick = shard?.current_tick || 0;
     document.getElementById('fin-tick').textContent = 'TICK ' + currentTick;
 
@@ -1382,10 +1393,11 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         ? Math.round((outstandingDebt * (LOAN_ANNUAL_RATE / 12)) / (1 - Math.pow(1 + LOAN_ANNUAL_RATE / 12, -LOAN_TERM_MONTHS)))
         : 0;
     const execSalaries = Math.round((execCompensation || 0) / 12);
+    const fleet = fleetMaint || 0;
     const FIXED_OVERHEAD = 75000; // minimum operating costs (matches tick processor)
     // Corporate tax: applied to positive income (matches tick processor formula)
     const corpTaxRate = Math.max(0, Math.min(1, (Number(nation?.corporate_tax ?? 0) / 100) || 0));
-    const preExpenses = wages + execSalaries + materials + properties + equipment + debtService + FIXED_OVERHEAD;
+    const preExpenses = wages + execSalaries + materials + properties + equipment + fleet + debtService + FIXED_OVERHEAD;
     const taxableIncome = Math.max(0, totalRevenue - preExpenses);
     const taxes = Math.round(taxableIncome * corpTaxRate);
 
@@ -1468,6 +1480,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
             <div class="fin-row"><span class="fin-row__label">Materials & Supplies</span><span class="fin-row__value" style="color:#a44">${fmtMoney(materials)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Properties</span><span class="fin-row__value" style="color:#a44">${fmtMoney(properties)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Equipment</span><span class="fin-row__value" style="color:#a44">${fmtMoney(equipment)}</span></div>
+            ${fleet > 0 ? `<div class="fin-row"><span class="fin-row__label">Fleet Maintenance</span><span class="fin-row__value" style="color:#a44">${fmtMoney(fleet)}</span></div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Debt Service</span><span class="fin-row__value" style="color:#a44">${fmtMoney(debtService)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Taxes</span><span class="fin-row__value" style="color:#a44">${fmtMoney(taxes)}</span></div>
             ${taxBreakdownHtml ? `<div style="padding:2px 12px 6px 20px;border-bottom:1px solid rgba(255,255,255,0.04);">${taxBreakdownHtml}</div>` : ''}
