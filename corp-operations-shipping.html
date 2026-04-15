@@ -5834,12 +5834,37 @@ let arRoutes = [];
 let _myShippingApps = []; // current corp's pending/approved applications
 let arFilter = 'ALL';
 let arSelected = -1;
+let _shippingMarketplaceUnavailable = false;
 
 const AR_SCOPE_META = {
     COASTAL:       { color: '#8b9a6b', label: 'COASTAL' },
     INTERNATIONAL: { color: '#5a8aaa', label: 'INTL' },
     GOVERNMENT:    { color: '#c8a832', label: 'GOV CONTRACT' },
 };
+
+function isFeatureUnavailableSupabaseError(error) {
+    if (!error) return false;
+    const code = String(error.code || '').toUpperCase();
+    const message = String(error.message || '');
+    return code === 'PGRST202'
+        || code === 'PGRST205'
+        || code === '42P01'
+        || /Could not find the table/i.test(message)
+        || /schema cache/i.test(message);
+}
+
+async function runShippingMarketplaceQuery(queryPromise, label) {
+    const { data, error } = await queryPromise;
+    if (!error) return { data: data || [], error: null, unavailable: false };
+
+    if (isFeatureUnavailableSupabaseError(error)) {
+        console.warn('[ShippingOps] ' + label + ' unavailable in this environment:', error.message);
+        return { data: [], error, unavailable: true };
+    }
+
+    console.warn('[ShippingOps] Failed to load ' + label + ':', error.message);
+    return { data: [], error, unavailable: false };
+}
 
 function arSetFilter(scope) {
     arFilter = scope;
@@ -5868,15 +5893,22 @@ async function loadAvailableRoutes() {
     const dbSubsector = subsectorMap[faction.corp_subsector] || '';
 
     const [routeResult, appResult] = await Promise.all([
-        _supabase.from('shipping_routes').select('*')
+        runShippingMarketplaceQuery(
+            _supabase.from('shipping_routes').select('*')
             .eq('status', 'active').eq('shipping_subsector', dbSubsector)
             .order('estimated_revenue', { ascending: false }),
-        _supabase.from('shipping_applications').select('*')
+            'shipping routes'
+        ),
+        runShippingMarketplaceQuery(
+            _supabase.from('shipping_applications').select('*')
             .eq('faction_id', faction.id).in('status', ['pending', 'approved']),
+            'shipping applications'
+        ),
     ]);
 
-    arRoutes = routeResult.data || [];
-    _myShippingApps = appResult.data || [];
+    _shippingMarketplaceUnavailable = !!(routeResult.unavailable || appResult.unavailable);
+    arRoutes = _shippingMarketplaceUnavailable ? [] : (routeResult.data || []);
+    _myShippingApps = _shippingMarketplaceUnavailable ? [] : (appResult.data || []);
 
     arSelected = -1;
     renderAvailableRoutes();
@@ -5938,7 +5970,9 @@ function renderAvailableRoutes() {
     const listEl = document.getElementById('ar-list');
     if (filtered.length === 0) {
         listEl.innerHTML = '<div class="ar-empty"><div class="ar-empty__text">'
-            + (arRoutes.length === 0
+            + (_shippingMarketplaceUnavailable
+                ? 'Shipping marketplace unavailable on this environment.'
+                : arRoutes.length === 0
                 ? 'No routes available.<br>Routes are generated from bilateral<br>trade each tick. Check back after<br>the next corp tick fires.'
                 : 'No ' + arFilter.toLowerCase() + ' routes available.')
             + '</div></div>';
@@ -6295,19 +6329,17 @@ let avSelected = -1;
 async function loadActiveVoyages() {
     if (!faction) return;
 
-    const { data, error } = await _supabase
+    const result = await runShippingMarketplaceQuery(
+        _supabase
         .from('shipping_claims')
         .select('*, shipping_routes(*)')
         .eq('faction_id', faction.id)
         .eq('status', 'active')
-        .order('claimed_at_tick', { ascending: false });
-
-    if (error) {
-        console.warn('Failed to load active voyages:', error.message);
-        avClaims = [];
-    } else {
-        avClaims = data || [];
-    }
+        .order('claimed_at_tick', { ascending: false }),
+        'active voyages'
+    );
+    _shippingMarketplaceUnavailable = _shippingMarketplaceUnavailable || result.unavailable;
+    avClaims = result.data || [];
 
     renderActiveVoyages();
 }
@@ -6385,7 +6417,11 @@ function renderActiveVoyages() {
     // List
     const listEl = document.getElementById('av-list');
     if (avClaims.length === 0) {
-        listEl.innerHTML = '<div class="av-empty"><div class="av-empty__text">No active voyages.<br>Claim a shipping route to<br>deploy your fleet.</div></div>';
+        listEl.innerHTML = '<div class="av-empty"><div class="av-empty__text">'
+            + (_shippingMarketplaceUnavailable
+                ? 'Shipping marketplace unavailable on this environment.'
+                : 'No active voyages.<br>Claim a shipping route to<br>deploy your fleet.')
+            + '</div></div>';
         return;
     }
 
