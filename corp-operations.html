@@ -7083,8 +7083,7 @@ async function init() {
     }
 
     // Top bar — right
-    document.getElementById('corp-name-badge').textContent =
-        (ticker ? '[' + ticker + ']' : (faction.faction_name || 'Corp')) + ' ▾';
+    // Badge text is rendered by renderCorpTopBar(...)
     // Cash display next to abbreviation
     const cashEl = document.getElementById('topbar-cash');
     if (cashEl) {
