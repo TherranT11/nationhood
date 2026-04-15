@@ -11283,7 +11283,8 @@ window.subSetSubsector = subSetSubsector;
 
 let _allCorps = [];
 let _corpSelected = 0;
-let _investigatedCorps = {}; // { corpId: tickInvestigated }
+// Persist investigations to localStorage so they survive page refresh
+let _investigatedCorps = JSON.parse(localStorage.getItem('nationhood_investigated_corps') || '{}');
 let _corpFilterNation = 'ALL';
 let _corpSortBy = 'REPUTATION';
 
@@ -11324,7 +11325,8 @@ async function corpInvestigate(targetCorpId) {
     if (error) { alert('Failed: ' + error.message); return; }
 
     faction.corp_cash_reserves = cash - 500000;
-    _investigatedCorps[targetCorpId] = shard.current_tick || 0;
+    _investigatedCorps[targetCorpId] = true;
+    localStorage.setItem('nationhood_investigated_corps', JSON.stringify(_investigatedCorps));
 
     // Reload the target corp's full data (including hidden financials)
     const { data: fullCorpData } = await _supabase.from('factions')
@@ -11373,7 +11375,7 @@ function renderCorporationsCard() {
     if (_corpSelected >= filtered.length) _corpSelected = 0;
     const sel = filtered[_corpSelected] || null;
     const currentTick = shard?.current_tick || 0;
-    const isInvestigated = sel && _investigatedCorps[sel.id] === currentTick;
+    const isInvestigated = sel && !!_investigatedCorps[sel.id];
     const isPrivateHidden = sel && sel.status === 'PRIVATE' && !isInvestigated;
     const isState = sel && sel.status === 'STATE';
 
@@ -11386,7 +11388,7 @@ function renderCorporationsCard() {
         const c = filtered[i];
         const isSel = i === _corpSelected;
         const csm = STATUS_META[c.status] || STATUS_META.PRIVATE;
-        const hidden = c.status === 'PRIVATE';
+        const hidden = c.status === 'PRIVATE' && !_investigatedCorps[c.id];
         tableRows += `
         <div onclick="corpSelect(${i})" style="display:flex;align-items:center;padding:7px 16px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
             <span style="width:42px;font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${c.abbr}</span>
