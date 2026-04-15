@@ -51,8 +51,17 @@ function getPublicationForNation(nationName) {
 function canWriteToPublication(pubKey, nationName) {
     const cfg = PUBLICATION_CONFIG[pubKey];
     if (!cfg) return false;
-    return cfg.nations.some(n => n.toLowerCase() === (nationName || '').toLowerCase());
+    // Check home nation
+    if (cfg.nations.some(n => n.toLowerCase() === (nationName || '').toLowerCase())) return true;
+    // Check corporate presence nations (subsidiaries/regional HQs)
+    if (_corpPresenceNations && _corpPresenceNations.length > 0) {
+        return cfg.nations.some(n => _corpPresenceNations.includes(n.toLowerCase()));
+    }
+    return false;
 }
+
+// Corporate presence nations — loaded during init for corps with subsidiaries
+let _corpPresenceNations = [];
 
 // Season key for quarterly issue grouping
 // Spring: Feb(1), Mar(2), Apr(3)  Summer: May(4), Jun(5), Jul(6)
@@ -75,6 +84,20 @@ export async function initNewspaper(supabase, state) {
 
     const root = document.getElementById('newspaper-root');
     if (!root) return;
+
+    // Load corporate presence nations (for corps with subsidiaries)
+    _corpPresenceNations = [];
+    if (state.faction?.faction_type === 'corporation') {
+        try {
+            const { data: props } = await supabase.from('corp_properties')
+                .select('nation_id, nations:nation_id(name)')
+                .eq('faction_id', state.faction.id)
+                .eq('is_active', true);
+            if (props) {
+                _corpPresenceNations = props.map(p => (p.nations?.name || '').toLowerCase()).filter(Boolean);
+            }
+        } catch (_) { /* non-blocking */ }
+    }
 
     // Set default publication on first load only — on re-init from the
     // publication switcher, _publication is already set to the user's choice.

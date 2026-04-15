@@ -366,6 +366,13 @@ initPage('laws', async (state) => {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isCaretaker = coalition?.status === 'caretaker';
         isNoGovernment = !coalition;
+
+        // Absolute monarchies: legislature is open if a PM is appointed (no coalition needed)
+        if (isNoGovernment && (nation.government_type || '').toLowerCase().includes('absolute')) {
+            const { data: activeHog } = await _supabase.from('head_of_government')
+                .select('id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+            if (activeHog) isNoGovernment = false;
+        }
         // Fallback: frozen bills are ground truth for caretaker status
         if (!isCaretaker) {
             const { count: frozenCount } = await _supabase
