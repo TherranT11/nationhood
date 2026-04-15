@@ -360,6 +360,25 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
                 .eq('id', rate.id);
 
             _myPolicies.push(data);
+
+            // Log corporate event for news ticker
+            try {
+                const borrowerName = _state.faction?.faction_name || 'A corporation';
+                const lenderSub = rate.corp_properties?.name || 'a financial institution';
+                const nationId = rate.nation_id || _state.faction?.nation_id;
+                if (nationId) {
+                    await _supabase.from('event_log').insert({
+                        nation_id: nationId,
+                        event_name: isInsurance ? 'Insurance Policy Issued' : 'Loan Agreement Signed',
+                        category: 'corporate',
+                        description_chosen: isInsurance
+                            ? `${borrowerName} has secured an insurance policy with ${lenderSub}.`
+                            : `${borrowerName} has just agreed to terms on a substantial loan with ${lenderSub}.`,
+                        fired_at_tick: tick,
+                    });
+                }
+            } catch (_) { /* non-blocking */ }
+
             close();
             renderPanel(container, filterType);
         } catch (err) {

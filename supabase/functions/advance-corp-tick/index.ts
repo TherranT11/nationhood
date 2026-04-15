@@ -1382,6 +1382,19 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
 
         results.push({ contract: contract.name, result: 'awarded', winner: winner.faction_id, price: winner.bid_price, method });
 
+        // Log corporate event for news ticker
+        try {
+            const { data: winnerFaction } = await supabase.from('factions').select('faction_name').eq('id', winner.faction_id).single();
+            const { data: contractNation } = await supabase.from('nations').select('name').eq('id', nationId).single();
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'Construction Contract Awarded',
+                category: 'corporate',
+                description_chosen: `${winnerFaction?.faction_name || 'A corporation'} has just won a contract to build ${contract.name} in the nation of ${contractNation?.name || 'Unknown'}.`,
+                fired_at_tick: currentTick,
+            });
+        } catch (_) { /* non-blocking */ }
+
         // GDP growth nudge: +0.01 per $100M contracted (fire-and-forget)
         try {
             const gdpNudge = (winner.bid_price / 100_000_000) * 0.01;
