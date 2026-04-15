@@ -1839,12 +1839,12 @@ function renderStats(nationName, faction) {
                             ${s.decay ? '<span class="stat-item__decay">DECAYS</span>' : ''}
                         </div>
                         <div class="stats-hero__right">
-                            <span class="stats-hero__val">${s.value}</span>
+                            <span class="stats-hero__val">${Math.round(s.value)}</span>
                             <span class="stats-hero__max">/100</span>
                             ${changeHtml(s.change)}
                         </div>
                     </div>
-                    <div class="stats-hero__bar"><div class="stats-hero__bar-fill" style="width:${s.value}%"></div></div>
+                    <div class="stats-hero__bar"><div class="stats-hero__bar-fill" style="width:${Math.min(100, s.value)}%"></div></div>
                 </div>`;
             continue;
         }
@@ -1864,7 +1864,7 @@ function renderStats(nationName, faction) {
                     ${s.nation ? '<span class="stat-item__nation">' + escapeHtml(s.nation) + '</span>' : ''}
                 </div>
                 <div class="stat-item__right">
-                    <span class="stat-item__val" style="color:${hasMax ? valColor(s.value, s.max) : 'var(--text-primary)'}">${typeof s.value === 'number' ? s.value.toLocaleString() : s.value}</span>
+                    <span class="stat-item__val" style="color:${hasMax ? valColor(s.value, s.max) : 'var(--text-primary)'}">${typeof s.value === 'number' ? (hasMax ? Math.round(s.value) : s.value.toLocaleString()) : s.value}</span>
                     ${hasMax ? '<span class="stat-item__max">/100</span>' : ''}
                     ${changeHtml(s.change)}
                 </div>
