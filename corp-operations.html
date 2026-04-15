@@ -11087,7 +11087,6 @@ async function subCreate() {
             city: nation.capital || nation.name,
             purchased_at_tick: currentTick,
             is_active: true,
-            sector: _subSelectedSector || faction?.corp_sector || null,
             subsector: _subSelectedSubsector || faction?.corp_subsector || null,
         });
         if (propErr) throw propErr;
