@@ -1151,10 +1151,20 @@ function renderAdminBanner() {
     }
 
     // Head of State section (Monarch / President / ceremonial head)
-    const hosFirst = nation?.head_of_state_first_name;
-    const hosLast = nation?.head_of_state_last_name;
-    const hosAge = nation?.head_of_state_age;
+    // Absolute monarchies: use the monarch faction's leader, not nations.head_of_state_*
     const isMonarchyGov = (nation?.government_type || '').toLowerCase().includes('monarchy');
+    const isAbsoluteMonarchyGov = (nation?.government_type || '').toLowerCase().includes('absolute');
+    let hosFirst, hosLast, hosAge;
+    if (isAbsoluteMonarchyGov && nation?.monarch_faction_id) {
+        const monarchParty = parties.find(p => p.id === nation.monarch_faction_id);
+        hosFirst = monarchParty?.leader_first_name || nation?.head_of_state_first_name;
+        hosLast = monarchParty?.leader_last_name || nation?.head_of_state_last_name;
+        hosAge = monarchParty?.leader_age || nation?.head_of_state_age;
+    } else {
+        hosFirst = nation?.head_of_state_first_name;
+        hosLast = nation?.head_of_state_last_name;
+        hosAge = nation?.head_of_state_age;
+    }
     const hosTitle = isMonarchyGov ? (nation?.monarch_title || 'King') : 'Head of State';
     if (hosFirst && hosLast) {
         const hosName = `${hosFirst} ${hosLast}`;
