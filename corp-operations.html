@@ -13217,7 +13217,7 @@ async function pfOpenBuild(facilityType) {
         const { error } = await _supabase.from('construction_contracts').insert({
             nation_id: faction.nation_id,
             template_key: facilityType,
-            sector: 'civil_engineering',
+            sector: 'industrial',
             name: selected.name,
             project_type: meta.label,
             project_subtype: selected.style,
