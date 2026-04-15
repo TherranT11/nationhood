@@ -7083,8 +7083,12 @@ async function init() {
     }
 
     // Top bar — right
-    document.getElementById('corp-name-badge').textContent =
-        (ticker ? '[' + ticker + ']' : (faction.faction_name || 'Corp')) + ' ▾';
+    const ticker = (faction?.abbreviation || faction?.corp_ticker || '').toUpperCase();
+    const corpNameBadge = document.getElementById('corp-name-badge');
+    if (corpNameBadge) {
+        corpNameBadge.textContent =
+            (ticker ? '[' + ticker + ']' : (faction.faction_name || 'Corp')) + ' ▾';
+    }
     // Cash display next to abbreviation
     const cashEl = document.getElementById('topbar-cash');
     if (cashEl) {
