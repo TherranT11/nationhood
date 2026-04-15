@@ -2657,107 +2657,6 @@ body.light-mode .av-empty__text { color: #1a1a17; }
       </div>
     </div>
 
-    <!-- Available Routes card (Shipping corps only) -->
-    <div class="ar-card" id="ar-container" style="display:none;">
-      <div class="ar-card__header">
-        <div class="ar-card__header-left">
-          <div class="ar-card__dot"></div>
-          <span class="ar-card__label">Available Routes</span>
-        </div>
-        <span class="ar-card__count" id="ar-count">0 ROUTES</span>
-      </div>
-
-      <div class="ar-filters">
-        <span class="ar-pill active-all" data-ar-filter="ALL" onclick="arSetFilter('ALL')">All</span>
-        <span class="ar-pill" data-ar-filter="COASTAL" onclick="arSetFilter('COASTAL')">Coastal</span>
-        <span class="ar-pill" data-ar-filter="INTERNATIONAL" onclick="arSetFilter('INTERNATIONAL')">Intl</span>
-        <span class="ar-pill" data-ar-filter="GOVERNMENT" onclick="arSetFilter('GOVERNMENT')">Gov Contract</span>
-      </div>
-
-      <div class="ar-list" id="ar-list">
-        <div class="ar-empty">
-          <div class="ar-empty__text">No routes available.<br>Routes are generated from bilateral<br>trade each tick. Check back after<br>the next corp tick fires.</div>
-        </div>
-      </div>
-
-      <div class="ar-card__footer">
-        <div class="ar-footer__counts" id="ar-footer-counts"></div>
-        <div class="ar-claim-btn" id="ar-claim-btn" onclick="arApplyToService()">APPLY TO SERVICE — $50k</div>
-      </div>
-    </div>
-
-    <!-- Active Voyages card (Shipping corps only) -->
-    <div class="av-card" id="av-container" style="display:none;">
-      <div class="av-card__header">
-        <div class="av-card__header-left">
-          <div class="av-card__dot"></div>
-          <span class="av-card__label">Active Voyages</span>
-        </div>
-        <span class="av-card__count" id="av-count">0 ACTIVE</span>
-      </div>
-      <div class="av-summary" id="av-summary"></div>
-      <div class="av-list" id="av-list">
-        <div class="av-empty">
-          <div class="av-empty__text">No active voyages.<br>Claim a shipping route to<br>deploy your fleet.</div>
-        </div>
-      </div>
-      <div class="av-card__footer" id="av-footer">
-        <div>
-          <div class="av-footer__label">TOTAL REVENUE</div>
-          <div class="av-footer__value" id="av-total-revenue" style="color:var(--text-dim);">$0</div>
-        </div>
-        <div style="display:flex;gap:12px;">
-          <div style="text-align:center;">
-            <div class="av-footer__label">FLEET</div>
-            <div class="av-footer__value" id="av-fleet-status" style="font-size:11px;color:var(--text-bright);">0/0</div>
-          </div>
-          <div style="text-align:center;">
-            <div class="av-footer__label">SUBSECTOR</div>
-            <div class="av-footer__value" id="av-subsector" style="font-size:9px;color:#5a8aaa;">--</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Active Fleet card (Shipping corps only) -->
-    <div class="fl-card" id="fl-container" style="display:none;">
-      <div class="fl-card__header">
-        <div class="fl-card__header-left">
-          <div class="fl-card__dot"></div>
-          <span class="fl-card__label">Active Fleet</span>
-        </div>
-        <span class="fl-card__count" id="fl-count">0 VESSELS</span>
-      </div>
-      <div id="fl-summary" style="display:flex;border-bottom:1px solid var(--border-0);background:var(--bg-3);flex-shrink:0;"></div>
-      <div class="fl-card__list" id="fl-list"></div>
-      <div class="fl-card__footer" id="fl-footer"></div>
-    </div>
-
-    <!-- Port Facilities (Shipping corps only — Fuel Depots & Dry Docks) -->
-    <div class="sm-card" id="port-facilities-container" style="display:none;">
-      <div class="sm-card__header">
-        <div class="sm-card__header-left">
-          <div class="sm-card__dot" style="background:#c86a4a;"></div>
-          <span class="sm-card__label">Port Facilities</span>
-        </div>
-        <span class="sm-card__count" id="pf-count">0 FACILITIES</span>
-      </div>
-      <div id="pf-list" style="max-height:300px;overflow:auto;"></div>
-      <div id="pf-footer" style="padding:6px 12px;border-top:1px solid var(--border-0);background:var(--bg-3);display:flex;gap:6px;justify-content:space-between;"></div>
-    </div>
-
-    <!-- Ship Market card (Shipping corps only) -->
-    <div class="sm-card" id="sm-container" style="display:none;">
-      <div class="sm-card__header">
-        <div class="sm-card__header-left">
-          <div class="sm-card__dot"></div>
-          <span class="sm-card__label">Ship Market</span>
-        </div>
-        <span class="sm-card__count" id="sm-count">0 AVAILABLE</span>
-      </div>
-      <div class="sm-card__list" id="sm-list"></div>
-      <div class="sm-card__footer" id="sm-footer"></div>
-    </div>
 
     <!-- Auto Insurance & Credit from Finance Subsidiaries -->
     <div id="auto-services-container"></div>
@@ -7052,26 +6951,13 @@ async function init() {
     }
 
     // Redirect non-Construction corps to their sector-specific operations page
-    // BUT allow them to stay for the shared Expansion and Actions tabs
+    // Redirect non-Construction corps to their correct operations page
     const urlTab = new URLSearchParams(window.location.search).get('tab');
     const isSharedTab = urlTab === 'expansion' || urlTab === 'actions';
-    if (faction.corp_sector && faction.corp_sector !== 'Construction' && !isSharedTab) {
-        const SECTOR_OPS = { Finance: 'corp-operations-finance.html' };
+    if (faction.corp_sector !== 'Construction' && !isSharedTab) {
+        const SECTOR_OPS = { Finance: 'corp-operations-finance.html', Shipping: 'corp-operations-shipping.html' };
         const targetPage = SECTOR_OPS[faction.corp_sector];
-        if (targetPage) {
-            window.location.href = targetPage;
-            return;
-        }
-    }
-
-    // If non-Construction corp is here for expansion, update Operations nav link to their sector page
-    if (faction.corp_sector && faction.corp_sector !== 'Construction') {
-        const SECTOR_OPS = { Finance: 'corp-operations-finance.html' };
-        const sectorPage = SECTOR_OPS[faction.corp_sector];
-        if (sectorPage) {
-            const opsTab = document.querySelector('[data-tab="operations"]');
-            if (opsTab) opsTab.href = sectorPage;
-        }
+        if (targetPage) { window.location.href = targetPage; return; }
     }
 
     // Load nation + shard
@@ -7160,33 +7046,22 @@ async function init() {
         dd.innerHTML = ddHtml;
     }
 
-    // Shipping corps: show shipping cards, hide construction cards
-    if (faction.corp_sector === 'Shipping') {
-        document.querySelectorAll('.oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card, .pm-card, .dl-card').forEach(el => el.style.display = 'none');
-        document.getElementById('ar-container').style.display = '';
-        document.getElementById('av-container').style.display = '';
-        document.getElementById('fl-container').style.display = '';
-        document.getElementById('sm-container').style.display = '';
-        document.getElementById('port-facilities-container').style.display = '';
-        await Promise.all([loadAvailableRoutes(), loadActiveVoyages(), loadFleet(), loadShipMarket(), loadPortFacilities()]);
-    } else {
-        // Construction corps: load all construction data
-        try {
-            const { data: modDefs } = await _supabase.from('building_modifiers').select('*');
-            modifierDefs = {};
-            for (const m of (modDefs || [])) modifierDefs[m.modifier_key] = m;
-        } catch (_) { /* table may not exist yet */ }
+    // Load construction operations data
+    try {
+        const { data: modDefs } = await _supabase.from('building_modifiers').select('*');
+        modifierDefs = {};
+        for (const m of (modDefs || [])) modifierDefs[m.modifier_key] = m;
+    } catch (_) { /* table may not exist yet */ }
 
-        await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment(), loadPermits(), loadDeliveries(), loadOwnedProperties()]);
+    await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment(), loadPermits(), loadDeliveries(), loadOwnedProperties()]);
 
-        try {
-            const { data: nations } = await _supabase.from('nations').select('*').order('name');
-            emAllNations = nations || [];
-        } catch (_) { emAllNations = []; }
+    try {
+        const { data: nations } = await _supabase.from('nations').select('*').order('name');
+        emAllNations = nations || [];
+    } catch (_) { emAllNations = []; }
 
-        renderProcurement();
-        renderEquipmentMarket();
-    }
+    renderProcurement();
+    renderEquipmentMarket();
 
     // Messaging bubble
     initMessaging(faction, nationStats, shard);
