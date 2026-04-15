@@ -3820,7 +3820,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             console.log(`[enactFoundationalBill] PM formation triggered`);
         }
 
-        // ── Gaining monarchy (→ Constitutional Monarchy) ──
+        // ── Gaining monarchy (→ Absolute Monarchy) ──
         if (!currentIsMonarchy && targetIsMonarchy) {
             const { firstNames } = getNationNames(nation?.name);
             const monarchFirstName = firstNames[Math.floor(Math.random() * firstNames.length)];
@@ -3841,7 +3841,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             console.log(`[enactFoundationalBill] Monarch generated: ${nationUpdate.head_of_state_title} ${monarchFirstName} ${dynastyLastName}, age ${monarchAge}`);
         }
 
-        // ── Losing monarchy (Constitutional Monarchy → anything) ──
+        // ── Losing monarchy (Absolute Monarchy → anything) ──
         if (currentIsMonarchy && !targetIsMonarchy) {
             nationUpdate.dynasty_name = null;
             nationUpdate.dynasty_established_tick = null;
@@ -3888,7 +3888,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
         const systemLabels = {
             parliamentary: 'Parliamentary Democracy',
-            constitutional_monarchy: 'Constitutional Monarchy',
+            constitutional_monarchy: 'Absolute Monarchy',
             presidential: 'Presidential Republic',
             semi_presidential: 'Semi-Presidential Republic'
         };
@@ -4073,7 +4073,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             // No stat changes for appointed (it's the default low-friction option)
         }
 
-        const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
+        const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Absolute Monarchy' };
         console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS election method set to "${methodLabels[newMethod]}".`);
         return true;
     }
