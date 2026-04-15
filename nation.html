@@ -20,10 +20,6 @@
 
 <!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100vh - 100px);text-align:center;color:var(--text-secondary);">
-        <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">UI 2.0 IS COMING</div>
-        <div style="font-size:0.85rem;color:var(--text-muted);">Please be patient while we roll this out.</div>
-    </div>
 </div>
 
 <!-- Shared Scripts -->
@@ -234,7 +230,6 @@ function toggleSection(catId) {
 
 // Initialize page
 initPage('nation', async (state) => {
-    return; // UI 2.0 placeholder — full nation page disabled
     const { nation, faction } = state;
     if (!nation) {
         document.getElementById('content-area').innerHTML = '<div class="loading-container"><div style="font-size:24px">No Nation</div><div>Your party is not assigned to a nation yet.</div></div>';
