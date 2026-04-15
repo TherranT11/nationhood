@@ -2308,25 +2308,28 @@ async function openAppointPMModal(root) {
                     .eq('nation_id', nation.id).eq('active', true);
 
                 // Insert new PM record
-                await _supabase.from('head_of_government').insert({
+                const { error: hogErr } = await _supabase.from('head_of_government').insert({
                     nation_id: nation.id,
                     faction_id: selectedPartyId,
                     first_name: party.leader_first_name || 'Unknown',
                     last_name: party.leader_last_name || 'Unknown',
                     age: party.leader_age || 50,
-                    ideology: null,
+                    ideology: 'Centrist',
                     active: true,
                     appointed_tick: currentTick,
                 });
+                if (hogErr) throw hogErr;
 
-                // Log event
-                await _supabase.from('event_log').insert({
-                    nation_id: nation.id,
-                    event_name: `${nation.monarch_title || 'King'} appoints Prime Minister`,
-                    category: 'government',
-                    description_chosen: `${nation.monarch_title || 'The King'} has appointed ${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} as Prime Minister.`,
-                    fired_at_tick: currentTick,
-                }).catch(() => {});
+                // Log event (non-blocking)
+                try {
+                    await _supabase.from('event_log').insert({
+                        nation_id: nation.id,
+                        event_name: `${nation.monarch_title || 'King'} appoints Prime Minister`,
+                        category: 'government',
+                        description_chosen: `${nation.monarch_title || 'The King'} has appointed ${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} as Prime Minister.`,
+                        fired_at_tick: currentTick,
+                    });
+                } catch (_) { /* non-blocking */ }
 
                 close();
                 alert(`${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} has been appointed Prime Minister.`);
