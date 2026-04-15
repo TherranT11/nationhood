@@ -8484,9 +8484,9 @@ async function actSubmitRebrand(costOverride, repLossOverride) {
     const { error: rebrandLogErr } = await _supabase.from('event_log').insert({
         nation_id: faction.nation_id,
         faction_id: faction.id,
-        event_name: oldName + ' rebrands as ' + newName,
+        event_name: 'Corporation Rebranded',
         description_used: oldName + ' has rebranded to ' + newName + ' (' + newAbbr + '). The rebrand costs $20M and reputation takes a temporary hit.',
-        category: 'business',
+        category: 'corporate',
         trigger_key: 'corp_rebrand',
         effects_applied: { old_name: oldName, new_name: newName, new_abbr: newAbbr, rep_loss: rebrandRepLoss, cost: rebrandCost },
         fired_at_tick: currentTick,
