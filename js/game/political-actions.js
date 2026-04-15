@@ -3296,12 +3296,18 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
 // ==================== DISBAND PARTY ====================
 
 export async function disbandParty(supabase, nationId, factionId, currentTick) {
-    // 1. Cooldown check
+    // Guard: never disband corporations
     const { data: faction } = await supabase
         .from('factions')
-        .select('disband_cooldown_until_tick, faction_name')
+        .select('disband_cooldown_until_tick, faction_name, faction_type')
         .eq('id', factionId)
         .single();
+
+    if (faction?.faction_type === 'corporation') {
+        throw new Error('Corporations cannot be disbanded.');
+    }
+
+    // 1. Cooldown check
 
     if (faction?.disband_cooldown_until_tick && faction.disband_cooldown_until_tick > currentTick) {
         const remaining = faction.disband_cooldown_until_tick - currentTick;
