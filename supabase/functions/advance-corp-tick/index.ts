@@ -836,6 +836,132 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
     return generated;
 }
 
+// ==================== INFRASTRUCTURE RENEWAL POLICY CONTRACTS ====================
+// When the National Infrastructure Renewal Act is active, generate bonus construction
+// contracts on a staggered schedule:
+//   Wave 1 (tick offset 1): 3 civil, 1 industrial, 1 megaproject
+//   Wave 2 (tick offset 6): 3 civil, 2 industrial
+//   Wave 3 (tick offset 12): 3 civil
+
+const INFRA_RENEWAL_WAVES = [
+    { tickOffset: 1,  civil: 3, industrial: 1, mega: 1 },
+    { tickOffset: 6,  civil: 3, industrial: 2, mega: 0 },
+    { tickOffset: 12, civil: 3, industrial: 0, mega: 0 },
+];
+
+async function generateInfraRenewalContracts(supabase, nation, currentTick) {
+    // Check for active Infrastructure Renewal policy in this nation
+    const { data: activePolicy } = await supabase
+        .from('nation_policies')
+        .select('id, activated_at_tick, ticks_elapsed')
+        .eq('nation_id', nation.id)
+        .eq('status', 'active')
+        .eq('major_sector', 'ECONOMICS')
+        .maybeSingle();
+
+    // Also look up by joining to policies table for the specific policy_key
+    const { data: renewalPolicy } = await supabase
+        .from('nation_policies')
+        .select('id, activated_at_tick, ticks_elapsed, policy_id, policies!inner(policy_key)')
+        .eq('nation_id', nation.id)
+        .eq('status', 'active')
+        .eq('policies.policy_key', 'national_infrastructure_renewal')
+        .maybeSingle();
+
+    if (!renewalPolicy) return;
+
+    const ticksSinceActivation = currentTick - (renewalPolicy.activated_at_tick || 0);
+
+    // Check which wave fires this tick
+    const wave = INFRA_RENEWAL_WAVES.find(w => w.tickOffset === ticksSinceActivation);
+    if (!wave) return;
+
+    console.log(`[InfraRenewal] ${nation.name}: Wave at tick offset ${wave.tickOffset} — ${wave.civil} civil, ${wave.industrial} industrial, ${wave.mega} mega`);
+
+    // Game year for project codes
+    const { data: shardDate } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+    const gameYear = (shardDate?.current_date || '').match(/\d{4}/)?.[0] || '2014';
+
+    const GOVT_ISSUERS = [
+        'Ministry of Public Works', 'National Infrastructure Agency',
+        'Department of Urban Development', 'Bureau of Civil Engineering',
+        'Government Construction Authority', 'National Building Commission',
+    ];
+
+    // Build the slot list
+    const slots: string[] = [];
+    for (let i = 0; i < wave.civil; i++) slots.push('civil_engineering');
+    for (let i = 0; i < wave.industrial; i++) slots.push('industrial');
+    for (let i = 0; i < wave.mega; i++) slots.push('mega_project');
+
+    let seq = 1;
+    for (const sector of slots) {
+        const pool = sector === 'mega_project' ? CC_MEGA : sector === 'industrial' ? CC_INDUSTRIAL : CC_CIVIL_PRIVATE;
+        const key = ccPick(pool);
+        const tmpl = CC_TEMPLATES[key];
+        if (!tmpl) continue;
+
+        const reqs = CC_REQUIREMENTS[key];
+        const requiredMats: Record<string, number> = {};
+        if (reqs?.mat) {
+            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 1.5);
+        }
+        const requiredWf = reqs?.wf
+            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]) * 2, skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) * 2 }
+            : {};
+
+        // Budget calculation (same as regular generation)
+        const MAT_PRICE = { concrete: 360000, steel: 500000, glass_facades: 560000, em_systems: 640000, lumber: 240000, heavy_parts: 800000, aggregate: 160000, asphalt: 280000 };
+        let lowCost = 0, highCost = 0;
+        for (const [matKey, qty] of Object.entries(requiredMats)) {
+            const basePrice = (MAT_PRICE as any)[matKey] || 300000;
+            lowCost += qty * Math.round(basePrice * 0.5);
+            highCost += qty * Math.round(basePrice * 2.0);
+        }
+        const totalWorkers = ((requiredWf as any).general || 0) + ((requiredWf as any).skilled || 0);
+        const estTimeline = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
+        const laborCost = totalWorkers * 15200 * estTimeline;
+        lowCost += laborCost;
+        highCost = Math.round((highCost + laborCost) * 1.40);
+        const budget = ccRand(lowCost, highCost);
+
+        const projectId = `GOV-R${seq}-${gameYear}`;
+        seq++;
+
+        const issuerName = GOVT_ISSUERS[Math.floor(Math.random() * GOVT_ISSUERS.length)];
+
+        const { error } = await supabase.from('construction_contracts').insert({
+            nation_id: nation.id,
+            template_key: key,
+            sector: tmpl.sector,
+            name: tmpl.name + ' (Infrastructure Renewal)',
+            description: tmpl.desc + ' — Funded by the National Infrastructure Renewal Act.',
+            project_code: projectId,
+            budget_ceiling: budget,
+            timeline_ticks: estTimeline,
+            required_materials: requiredMats,
+            required_equipment: (() => {
+                const equipDef = CC_REQUIREMENTS[key]?.equip || {};
+                const result = {};
+                for (const [ek, range] of Object.entries(equipDef)) {
+                    result[ek] = Array.isArray(range) ? ccRand(range[0], range[1]) : (range || 1);
+                }
+                return result;
+            })(),
+            required_workforce: requiredWf,
+            status: 'open',
+            min_reputation: sector === 'mega_project' ? 60 : sector === 'industrial' ? 30 : 0,
+            insurance_required: budget >= 100000000,
+            bond_required: budget >= 200000000,
+            generated_at_tick: currentTick,
+            bidding_ends_tick: currentTick + 3,
+            issuer_type: 'GOVERNMENT',
+            issuer_name: issuerName,
+        });
+        if (error) console.error(`[InfraRenewal] Contract insert failed:`, error.message);
+    }
+}
+
 // ==================== PROPERTY MARKETPLACE GENERATOR ====================
 
 async function replenishPropertyMarketplace(supabase, nation, currentTick) {
@@ -2835,6 +2961,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 const genResults = await generateConstructionContracts(supabase, nation, currentTick);
                 if (genResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'generated', data: genResults });
+                }
+
+                // Policy-driven contract generation: Infrastructure Renewal Act
+                try {
+                    await generateInfraRenewalContracts(supabase, nation, currentTick);
+                } catch (irErr) {
+                    console.warn(`[advance-corp-tick] Infra Renewal contract gen failed for ${nation.name}:`, irErr.message);
                 }
 
                 // Project events: generate random events on in_progress projects
