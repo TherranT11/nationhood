@@ -2118,7 +2118,7 @@ async function openGrantSeatsModal(root) {
                                         <div style="width:8px;height:8px;background:${f.party_color || '#888'};"></div>
                                         <span style="font-size:14px;font-weight:600;color:var(--text-bright);">${esc(f.faction_name)}</span>
                                     </div>
-                                    <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-dim);">${f.seats || 0} seats</span>
+                                    <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-dim);">${Math.max(0, f.seats || 0)} seats</span>
                                 </div>
                             </div>`;
                         }).join('') : '<div style="font-size:12px;color:var(--text-dim);padding:20px;text-align:center;">No other factions in this nation.</div>'}

@@ -24318,6 +24318,30 @@ const VOSTIA_LAST_NAMES = [
 
 const VOSTIA_NATIONS = ['Vostia'];
 
+// Al-Makir names (Arabic)
+const ALMAKIR_FIRST_NAMES = [
+    'Ahmad','Muhammad','Ali','Omar','Hassan','Hussein','Khalid','Abdullah','Ibrahim','Yusuf',
+    'Ismail','Hamza','Tariq','Zayd','Saeed','Faisal','Nasser','Salman','Rashid','Kareem',
+    'Mahmoud','Farid','Jamal','Samir','Hadi','Anwar','Imran','Bilal','Qasim','Majid',
+    'Walid','Fadi','Rami','Zahir','Adnan','Amin','Haris','Yasin','Tamer','Nabil',
+    'Bashir','Dawood','Zakaria','Munir','Latif','Jaber','Mazen','Kamil','Rauf','Shadi',
+];
+
+const ALMAKIR_LAST_NAMES = [
+    'Al-Farouq','Al-Hakim','Al-Masri','Al-Sabah','Al-Najjar','Al-Haddad','Al-Saleh','Al-Sharif',
+    'Al-Khalifa','Al-Qahtani','Al-Harbi','Al-Otaibi','Al-Anzi','Al-Zahrani','Al-Ghamdi','Al-Dosari',
+    'Al-Rashidi','Al-Suwaidi','Al-Mansouri','Al-Mutairi','Al-Ahmadi','Al-Saeed','Al-Jabari','Al-Khatib',
+    'Al-Basri','Al-Tamimi','Al-Hashimi','Al-Kurdi','Al-Husseini','Al-Yamani','Al-Shammari','Al-Farsi',
+    'Al-Hamadi','Al-Siddiqi','Al-Qureshi','Al-Azmi','Al-Salem','Al-Din','Al-Rahman','Al-Majid',
+    'Al-Bakri','Al-Saadi','Al-Hilali','Al-Makki','Al-Madani','Al-Baghdadi','Al-Dimashqi','Al-Andalusi',
+    'Al-Maghribi','Al-Samarrai','Al-Tikriti','Al-Nasiri','Al-Fahd','Al-Karim','Al-Nouri','Al-Sayegh',
+    'Al-Rifai','Al-Qadri','Al-Ayoubi','Al-Barghouti','Al-Khatri','Al-Shihabi','Al-Awadi','Al-Sarraf',
+    'Al-Zubaidi','Al-Hussein','Al-Attar','Al-Safadi','Al-Hourani','Al-Kassab','Al-Taleb','Al-Hamdan',
+    'Al-Rantisi','Al-Banna','Al-Khatour',
+];
+
+const ALMAKIR_NATIONS = ['Hajjara'];
+
 // Female first names from both name pools (used for gendered title selection)
 const FEMALE_NAMES = new Set([
     // Crucera
@@ -24334,6 +24358,7 @@ const FEMALE_NAMES = new Set([
     // Vostia
     'Dragana', 'Svetlana', 'Jelena', 'Milica', 'Danica', 'Zora', 'Radmila',
     'Snežana', 'Vesna'
+    // Al-Makir: all names are male — no female entries needed
 ]);
 
 function isFemaleName(firstName) {
@@ -24352,6 +24377,9 @@ function getNationNames(nationName) {
     }
     if (VOSTIA_NATIONS.includes(nationName)) {
         return { firstNames: VOSTIA_FIRST_NAMES, lastNames: VOSTIA_LAST_NAMES };
+    }
+    if (ALMAKIR_NATIONS.includes(nationName)) {
+        return { firstNames: ALMAKIR_FIRST_NAMES, lastNames: ALMAKIR_LAST_NAMES };
     }
     return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
 }
