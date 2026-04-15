@@ -159,14 +159,16 @@ function startCorpCountdown(shard) {
     const el = document.getElementById('tick-countdown');
     if (!el || !shard?.next_tick_at) return;
 
-    // Corp tick fires at midpoint of political tick interval
+    // Corp tick fires at midpoint of political tick interval (4h offset on 8h ticks)
     const nextPoliticalTick = new Date(shard.next_tick_at).getTime();
-    const intervalMs = (shard.tick_interval_hours || 6) * 3600000;
-    const corpTickAt = nextPoliticalTick - (intervalMs / 2);
+    const intervalMs = (Number(shard.tick_interval_hours) || 8) * 3600000;
+    const lastAdvanceAt = nextPoliticalTick - intervalMs;
+    const corpDueAt = lastAdvanceAt + (intervalMs / 2);
 
     function update() {
         const now = Date.now();
-        const target = corpTickAt > now ? corpTickAt : nextPoliticalTick;
+        // If this cycle's corp tick has passed, count down to the next cycle midpoint
+        const target = corpDueAt > now ? corpDueAt : nextPoliticalTick + (intervalMs / 2);
         const diff = Math.max(0, target - now);
         const h = Math.floor(diff / 3600000);
         const m = Math.floor((diff % 3600000) / 60000);
