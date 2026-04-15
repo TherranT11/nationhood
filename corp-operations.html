@@ -10445,16 +10445,44 @@ async function subPutForSale(propId) {
 
 // ─── SUBSIDIARY MARKETPLACE: show listings + bids ───
 let _marketplaceListings = [];
+let _subsidiaryMarketplaceUnavailable = false;
+
+function isFeatureUnavailableSupabaseError(error) {
+    if (!error) return false;
+    const code = String(error.code || '').toUpperCase();
+    const message = String(error.message || '');
+    return code === 'PGRST202'
+        || code === 'PGRST205'
+        || code === '42P01'
+        || /Could not find the table/i.test(message)
+        || /schema cache/i.test(message);
+}
+
+async function runSubsidiaryMarketplaceQuery(queryPromise, label) {
+    const { data, error } = await queryPromise;
+    if (!error) return { data: data || [], error: null, unavailable: false };
+
+    if (isFeatureUnavailableSupabaseError(error)) {
+        console.warn('[SubMarket] ' + label + ' unavailable in this environment:', error.message);
+        return { data: [], error, unavailable: true };
+    }
+
+    console.error('[SubMarket] ' + label + ' failed:', error.message);
+    return { data: [], error, unavailable: false };
+}
 
 async function loadMarketplaceListings() {
-    const { data, error } = await _supabase
+    const result = await runSubsidiaryMarketplaceQuery(
+        _supabase
         .from('subsidiary_sales')
         .select('*, subsidiary_bids(*)')
         .eq('status', 'listed')
-        .order('listed_at_tick', { ascending: false });
+        .order('listed_at_tick', { ascending: false }),
+        'load listings'
+    );
 
-    if (error) { console.error('[SubMarket] Load failed:', error.message); return; }
-    _marketplaceListings = data || [];
+    _subsidiaryMarketplaceUnavailable = result.unavailable;
+    _marketplaceListings = result.data || [];
 }
 
 function renderSubsidiaryMarketplaceCard() {
@@ -10502,7 +10530,11 @@ function renderSubsidiaryMarketplaceCard() {
 
     // Available listings (buyer view)
     if (listings.length === 0) {
-        html += `<div style="padding:24px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim};font-style:italic;">No subsidiaries for sale right now.</div>`;
+        html += `<div style="padding:24px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim};font-style:italic;">${
+            _subsidiaryMarketplaceUnavailable
+                ? 'Shipping marketplace unavailable on this environment.'
+                : 'No subsidiaries for sale right now.'
+        }</div>`;
     } else {
         for (const l of listings) {
             const myBid = (l.subsidiary_bids || []).find(b => b.bidder_faction_id === faction?.id && b.status === 'pending');
