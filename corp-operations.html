@@ -11610,6 +11610,8 @@ let _bidWorkers = 120;
 let _bidMarkup = 15;
 let _bidWarehouse = {};
 let _bidCompetitors = [];
+let _bidPermitRequirements = [];
+let _bidPermitCosts = {};
 
 async function openBidAssembly() {
     if (!selectedContract) return;
@@ -11650,6 +11652,38 @@ async function openBidAssembly() {
         }));
     } catch (_) { /* table may not exist */ }
 
+    // Load permit requirements for this project/corporation from backend RPC
+    _bidPermitRequirements = [];
+    _bidPermitCosts = {};
+    try {
+        const { data: permitReqs, error: permitReqErr } = await _supabase.rpc('get_project_permit_requirements', {
+            p_contract_id: _bidContract.id,
+            p_faction_id: faction.id,
+            p_nation_id: _bidContract.nation_id
+        });
+        if (permitReqErr) throw permitReqErr;
+
+        _bidPermitRequirements = Array.isArray(permitReqs) ? permitReqs : [];
+        const requiredKeys = _bidPermitRequirements.map(r => r.permit_key).filter(Boolean);
+        if (requiredKeys.length > 0) {
+            const { data: permitDefs, error: permitDefsErr } = await _supabase
+                .from('construction_permits')
+                .select('permit_key, cost, processing_ticks')
+                .in('permit_key', requiredKeys);
+            if (permitDefsErr) throw permitDefsErr;
+            for (const p of (permitDefs || [])) {
+                _bidPermitCosts[p.permit_key] = {
+                    cost: Number(p.cost || 0),
+                    ticks: Number(p.processing_ticks || 0),
+                };
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to load project permit requirements', err);
+        _bidPermitRequirements = [];
+        _bidPermitCosts = {};
+    }
+
     // Initialize grades to STD for each required material
     _bidGrades = {};
     const mats = _bidContract.required_materials || {};
@@ -11669,6 +11703,8 @@ async function openBidAssembly() {
 function closeBidAssembly() {
     document.getElementById('bid-assembly-overlay')?.remove();
     _bidContract = null;
+    _bidPermitRequirements = [];
+    _bidPermitCosts = {};
 }
 
 function bidSetGrade(matKey, grade) {
@@ -11782,18 +11818,19 @@ function renderBidAssembly() {
     const laborCost = _bidWorkers * wageRate * estCompletionTicks;
 
     // ── PERMITS ──
-    const budget = budgetCeiling;
-    const PERMIT_TEMPLATES = [
-        { name: 'Municipal Zoning Approval', cost: 180000, ticks: 2, required: true },
-        { name: 'Structural Engineering Cert.', cost: 240000, ticks: 3, required: true },
-        { name: 'Environmental Impact Assessment', cost: 340000, ticks: 8, required: budget > 20000000 },
-        { name: 'Seismic Resilience Compliance', cost: 210000, ticks: 4, required: budget > 50000000 },
-        { name: 'Heritage Conservation Review', cost: 160000, ticks: 6, required: false },
-        { name: 'Fire Safety Certification', cost: 120000, ticks: 2, required: budget > 10000000 },
-    ];
-    const permits = PERMIT_TEMPLATES.filter(p => p.required);
-    const heldPermitNames = new Set(['Municipal Zoning Approval', 'Structural Engineering Cert.']);
-    const permitCost = permits.filter(p => !heldPermitNames.has(p.name)).reduce((s, p) => s + p.cost, 0);
+    const permits = (_bidPermitRequirements || []).map(req => {
+        const def = _bidPermitCosts[req.permit_key] || {};
+        return {
+            permit_key: req.permit_key,
+            name: req.permit_name || req.permit_key,
+            requiredByPolicy: req.required_by_policy || '—',
+            hasPermit: !!req.has_permit,
+            statusLabel: req.status_label || (req.has_permit ? 'HAS_PERMIT' : 'NEEDS_TO_GET'),
+            cost: Number(def.cost || 0),
+            ticks: Number(def.ticks || 0),
+        };
+    });
+    const permitCost = permits.filter(p => !p.hasPermit).reduce((s, p) => s + p.cost, 0);
 
     const overhead = 400000;
     const totalCost = materialCost + laborCost + permitCost + overhead;
@@ -11894,21 +11931,25 @@ function renderBidAssembly() {
                 <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
                     <span style="font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1.5px;color:${C.accentBright};text-transform:uppercase">Permits</span>
                 </div>
+                ${permits.length === 0
+                    ? `<div style="padding:8px 14px;border-bottom:1px solid ${C.border};font-family:${mono};font-size:8px;color:${C.dim};">No active permit laws apply to this project.</div>`
+                    : ''
+                }
                 ${permits.map(p => {
-                    const held = heldPermitNames.has(p.name);
+                    const held = p.hasPermit;
                     return `<div style="display:flex;align-items:center;padding:4px 14px;border-bottom:1px solid ${C.border};">
                         <div style="flex:1;display:flex;align-items:center;gap:6px;">
                             <span style="font-family:${mono};font-size:8px;font-weight:700;color:${held ? C.greenBright : C.orange}">${held ? '✓' : '○'}</span>
                             <span style="font-size:10px;color:${held ? C.muted : C.text}">${p.name}</span>
                         </div>
                         ${held
-                            ? `<span style="font-family:${mono};font-size:8px;color:${C.greenBright}">HELD</span>`
+                            ? `<span style="font-family:${mono};font-size:8px;color:${C.greenBright}">${p.statusLabel}</span>`
                             : `<div style="text-align:right">
                                 <span style="font-family:${mono};font-size:9px;color:${C.redDim}">${hfFmtBig(p.cost)}</span>
                                 <span style="font-family:${mono};font-size:7px;color:${C.dim};margin-left:4px">${p.ticks}t</span>
                             </div>`
                         }
-                    </div>`;
+                    </div><div style="padding:0 14px 4px 28px;border-bottom:1px solid ${C.border};font-family:${mono};font-size:7px;color:${C.dim};">Required by: ${escapeHtml(p.requiredByPolicy)}</div>`;
                 }).join('')}
                 <div style="display:flex;justify-content:space-between;padding:5px 14px;border-bottom:1px solid ${C.border};background:rgba(139,154,107,0.02);">
                     <span style="font-family:${mono};font-size:9px;color:${C.muted}">PERMIT COSTS</span>
@@ -12053,16 +12094,9 @@ async function submitBidAssembly() {
     const laborCost = _bidWorkers * wageRate * _sestTicks;
 
     // Permits
-    const budget = budgetCeiling;
-    const PERMIT_TEMPLATES = [
-        { name: 'Municipal Zoning Approval', cost: 180000, required: true },
-        { name: 'Structural Engineering Cert.', cost: 240000, required: true },
-        { name: 'Environmental Impact Assessment', cost: 340000, required: budget > 20000000 },
-        { name: 'Seismic Resilience Compliance', cost: 210000, required: budget > 50000000 },
-        { name: 'Fire Safety Certification', cost: 120000, required: budget > 10000000 },
-    ];
-    const heldPermitNames = new Set(['Municipal Zoning Approval', 'Structural Engineering Cert.']);
-    const permitCost = PERMIT_TEMPLATES.filter(p => p.required && !heldPermitNames.has(p.name)).reduce((s, p) => s + p.cost, 0);
+    const permitCost = (_bidPermitRequirements || [])
+        .filter(req => !req.has_permit)
+        .reduce((sum, req) => sum + Number(_bidPermitCosts[req.permit_key]?.cost || 0), 0);
 
     const overhead = 400000;
     const totalCost = materialCost + laborCost + permitCost + overhead;
