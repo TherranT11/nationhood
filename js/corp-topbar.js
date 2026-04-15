@@ -6,12 +6,12 @@ const CORP_VERSION = 'Alpha 2.1.5.3';
 const CORP_NAV_TABS = [
     { id: 'home', label: 'HOME', href: 'corp-dashboard.html' },
     { id: 'operations', label: 'OPERATIONS', href: 'corp-operations.html' },
-    { id: 'expansion', label: 'EXPANSION', href: 'corp-operations.html#expansion' },
-    { id: 'actions', label: 'ACTIONS', href: 'corp-operations.html#actions' },
-    { id: 'innovation', label: 'INNOVATION', href: 'corp-operations.html#innovation' },
+    { id: 'expansion', label: 'EXPANSION', href: 'corp-operations.html?tab=expansion', samePageAction: 'expansion' },
+    { id: 'actions', label: 'ACTIONS', href: 'corp-operations.html?tab=actions', samePageAction: 'actions' },
+    { id: 'innovation', label: 'INNOVATION', disabled: true },
     { id: 'nations', label: 'NATIONS', href: 'corp-nations.html' },
-    { id: 'news', label: 'NEWS', href: 'corp-dashboard.html#news' },
-    { id: 'wiki', label: 'WIKI', href: 'corp-operations.html#wiki' },
+    { id: 'news', label: 'NEWS', href: 'news.html' },
+    { id: 'wiki', label: 'WIKI', href: 'wiki.html' },
 ];
 
 function escHtml(str) {
@@ -48,9 +48,19 @@ export function renderCorpTopBar(container, opts = {}) {
     const gameDate = shard?.current_date || '--';
     const tickNum = shard?.current_tick ?? '--';
 
-    // Nav tabs
+    // Nav tabs — same-page tabs use onclick, cross-page tabs use href
+    const currentPage = window.location.pathname.split('/').pop().split('?')[0];
+    const isOnOperations = currentPage === 'corp-operations.html';
+
     const tabsHtml = CORP_NAV_TABS.map(t => {
         const isActive = t.id === activeTab;
+        if (t.disabled) {
+            return `<span class="corp-nav-tab disabled">${t.label}</span>`;
+        }
+        // Same-page tab switching (expansion/actions on operations page)
+        if (t.samePageAction && isOnOperations) {
+            return `<a href="#" class="corp-nav-tab${isActive ? ' active' : ''}" data-tab-action="${t.samePageAction}" style="text-decoration:none;">${t.label}</a>`;
+        }
         return `<a href="${t.href}" class="corp-nav-tab${isActive ? ' active' : ''}" style="text-decoration:none;">${t.label}</a>`;
     }).join('');
 
@@ -105,6 +115,23 @@ export function renderCorpTopBar(container, opts = {}) {
         </div>
         <div class="corp-topbar__nav">${tabsHtml}</div>
     `;
+
+    // Bind same-page tab actions (expansion/actions within operations page)
+    container.querySelectorAll('[data-tab-action]').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            e.preventDefault();
+            const action = tab.dataset.tabAction;
+            // Update active state visually
+            container.querySelectorAll('.corp-nav-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            // Call the page's tab switcher if it exists
+            if (action === 'expansion' && typeof window.switchToExpansion === 'function') {
+                window.switchToExpansion(e);
+            } else if (action === 'actions' && typeof window.switchToActions === 'function') {
+                window.switchToActions(e);
+            }
+        });
+    });
 
     // Bind dropdown clicks
     const dropdown = container.querySelector('#corp-faction-dropdown');
