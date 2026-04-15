@@ -1078,10 +1078,11 @@ async function init() {
     // ── Populate identity card ──
     document.getElementById('id-type-badge').textContent = faction.corp_company_type || '—';
     const idLogoEl = document.getElementById('id-logo');
+    const ticker = (faction.corp_ticker || faction.abbreviation || '').toUpperCase();
     if (faction.custom_logo_url) {
         idLogoEl.innerHTML = `<img src="${escapeHtml(faction.custom_logo_url)}" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:4px;">`;
     } else {
-        logoEl.textContent = ticker.slice(0, 3) || '—';
+        idLogoEl.textContent = ticker.slice(0, 3) || '—';
     }
     document.getElementById('id-corp-name').textContent = faction.faction_name || 'Unnamed Corp';
     const currentSlogan = faction.party_description || '';
