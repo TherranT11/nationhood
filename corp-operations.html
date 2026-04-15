@@ -11314,13 +11314,24 @@ let _corpFilterNation = 'ALL';
 let _corpSortBy = 'REPUTATION';
 
 async function loadAllCorporations() {
-    const { data } = await _supabase
-        .from('factions')
-        .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_company_type, corp_ticker, corp_cash_reserves, corp_reputation, nation_id, nation, linked_user_id')
-        .eq('faction_type', 'corporation')
-        .is('abandoned_at', null)
-        .order('faction_name');
-    _allCorps = (data || []).map(c => {
+    const [corpsRes, subsRes] = await Promise.all([
+        _supabase.from('factions')
+            .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_company_type, corp_ticker, corp_cash_reserves, corp_reputation, nation_id, nation, linked_user_id')
+            .eq('faction_type', 'corporation')
+            .is('abandoned_at', null)
+            .order('faction_name'),
+        _supabase.from('corp_properties')
+            .select('id, faction_id, name, nation_id, subsector, type, factions(faction_name, corp_sector, corp_ticker, abbreviation, corp_reputation, corp_company_type, linked_user_id)')
+            .eq('type', 'regional_hq')
+            .eq('is_active', true),
+    ]);
+
+    // Build parent lookup
+    const parentMap = {};
+    for (const c of (corpsRes.data || [])) parentMap[c.id] = c;
+
+    // Map corporations
+    const corps = (corpsRes.data || []).map(c => {
         const status = (c.corp_company_type || 'Private').toUpperCase();
         const cash = Number(c.corp_cash_reserves || 0);
         return {
@@ -11331,8 +11342,40 @@ async function loadAllCorporations() {
             reputation: Math.round(Number(c.corp_reputation ?? 50)),
             revenue: Math.round(cash * 0.1),
             valuation: Math.round(cash * 3),
+            _isSub: false,
         };
     });
+
+    // Map subsidiaries as pseudo-corp entries
+    const { data: nationNames } = await _supabase.from('nations').select('id, name');
+    const nationMap = {};
+    (nationNames || []).forEach(n => { nationMap[n.id] = n.name; });
+
+    for (const sub of (subsRes.data || [])) {
+        const parent = parentMap[sub.faction_id];
+        if (!parent) continue;
+        const parentStatus = (parent.corp_company_type || 'Private').toUpperCase();
+        corps.push({
+            id: sub.id,
+            faction_name: sub.name || 'Subsidiary',
+            abbreviation: parent.abbreviation,
+            corp_sector: parent.corp_sector,
+            corp_subsector: sub.subsector || parent.corp_subsector,
+            corp_ticker: parent.corp_ticker,
+            nation_id: sub.nation_id,
+            nation: nationMap[sub.nation_id] || '?',
+            abbr: (parent.corp_ticker || parent.abbreviation || '??').slice(0, 4),
+            status: parentStatus,
+            isPlayer: !!parent.linked_user_id,
+            reputation: Math.round(Number(parent.corp_reputation ?? 50)),
+            revenue: 0,
+            valuation: 0,
+            _isSub: true,
+            _parentName: parent.faction_name,
+        });
+    }
+
+    _allCorps = corps;
 }
 
 function corpSelect(idx) { _corpSelected = idx; renderCorporationsCard(); }
@@ -11418,8 +11461,8 @@ function renderCorporationsCard() {
         <div onclick="corpSelect(${i})" style="display:flex;align-items:center;padding:7px 16px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
             <span style="width:42px;font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${c.abbr}</span>
             <div style="flex:1.3;">
-                <div style="font-size:12px;font-weight:600;color:${C.text};line-height:1.2">${c.faction_name}</div>
-                <div style="font-family:${mono};font-size:8px;color:${C.dim};margin-top:1px">${c.corp_subsector || c.corp_sector || '—'}</div>
+                <div style="font-size:11px;font-weight:600;color:${C.text};line-height:1.2">${c.faction_name}</div>
+                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:1px">${c._isSub ? '<span style="color:#8a6aaa;">SUB</span> · ' : ''}${c.corp_subsector || c.corp_sector || '—'}</div>
             </div>
             <span style="width:62px"><span style="font-family:${mono};font-size:8px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(c.nation || '—').toUpperCase().slice(0,6)}</span></span>
             <span style="width:56px;font-family:${mono};font-size:9px;font-weight:700;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.revenue)}</span>
@@ -11434,6 +11477,7 @@ function renderCorporationsCard() {
     if (sel) {
         const sm = STATUS_META[sel.status] || STATUS_META.PRIVATE;
         const stats = [
+            ...(sel._isSub ? [{ label: 'Parent', value: sel._parentName || '—', color: '#8a6aaa' }] : []),
             { label: 'Sector', value: sel.corp_sector || '—', color: C.text },
             { label: 'Subsector', value: sel.corp_subsector || '—', color: C.accent },
             { label: 'Reputation', value: sel.reputation + '/100', color: sel.reputation >= 70 ? C.greenBright : sel.reputation >= 40 ? C.accent : C.yellow },
@@ -11451,6 +11495,7 @@ function renderCorporationsCard() {
             <div style="display:flex;gap:6px;align-items:center;">
                 <span style="font-family:${mono};font-size:8px;padding:2px 6px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(sel.nation || '—').toUpperCase()}</span>
                 <span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:${sm.color};background:${sm.bg};border:1px solid ${sm.border}">${sel.status}</span>
+                ${sel._isSub ? `<span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:#8a6aaa;background:rgba(138,106,170,0.08);border:1px solid rgba(138,106,170,0.2)">SUBSIDIARY</span>` : ''}
                 ${sel.isPlayer ? `<span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:${C.blue};background:rgba(90,138,170,0.08);border:1px solid rgba(90,138,170,0.2)">PLAYER</span>` : `<span style="font-family:${mono};font-size:8px;color:${C.dim}">NPC</span>`}
             </div>
         </div>
@@ -11502,13 +11547,13 @@ function renderCorporationsCard() {
     </div>`;
 
     container.innerHTML = `
-    <div style="width:874px;height:520px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
-        <div style="padding:10px 16px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+    <div style="width:760px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:9px;color:${C.accent}">●</span>
-                <span style="font-family:${mono};font-size:13px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Corporations</span>
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Corporations</span>
             </div>
-            <span style="font-family:${mono};font-size:10px;color:${C.dim}">${_allCorps.length} IN DATABASE</span>
+            <span style="font-family:${mono};font-size:9px;color:${C.dim}">${_allCorps.length} IN DATABASE</span>
         </div>
         ${filterHtml}
         <div style="flex:1;display:flex;overflow:hidden;">
@@ -11524,7 +11569,7 @@ function renderCorporationsCard() {
                 </div>
                 <div style="flex:1;overflow:auto;">${tableRows}</div>
             </div>
-            <div style="width:322px;display:flex;flex-direction:column;overflow:auto;">
+            <div style="width:280px;display:flex;flex-direction:column;overflow:auto;">
                 ${detailHtml}
             </div>
         </div>
