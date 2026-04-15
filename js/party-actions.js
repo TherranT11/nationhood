@@ -440,6 +440,7 @@ function renderPage(root) {
 }
 
 function renderLeaderCards(leaderName, partyColor, faction) {
+    const _isMonarchLocal = isAbsoluteMonarchy(_state.nation) && _state.nation?.monarch_faction_id === faction?.id;
     return ROLES.map(role => {
         const isLeader = role.id === 'leader';
         const isAgitator = role.id === 'agitator';
@@ -510,7 +511,7 @@ function renderLeaderCards(leaderName, partyColor, faction) {
                     <div class="pa-leader-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${portrait}</div>
                     <div class="pa-leader-info">
                         <div class="pa-leader-role">
-                            <span class="pa-leader-role-label" style="color:${role.color};">${isLeader && _isMonarch ? (_state.nation?.monarch_title || 'King').toUpperCase() : role.title}</span>
+                            <span class="pa-leader-role-label" style="color:${role.color};">${isLeader && _isMonarchLocal ? (_state.nation?.monarch_title || 'King').toUpperCase() : role.title}</span>
                             ${actionCount > 0 ? `<span class="pa-leader-role-count">${actionCount} actions</span>` : ''}
                         </div>
                         <div class="pa-leader-name">${esc(name)}</div>
