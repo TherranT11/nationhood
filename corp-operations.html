@@ -3237,18 +3237,47 @@ function openContractDetail(contract) {
     const permitsPending = permits.length - permitsApproved;
     const equipTotal = equipment.length;
     // Check which equipment types the corp owns at least 1 of
-    const equipOwned = equipment.filter(e => {
+    const equipMet = [];
+    const equipShort = [];
+    for (const e of equipment) {
         const corpEquip = equipmentData.find(ce => ce.equipment_key === e.key);
-        return corpEquip && corpEquip.owned >= e.qty;
-    }).length;
-    const equipMissing = equipTotal - equipOwned;
+        if (corpEquip && corpEquip.owned >= e.qty) {
+            equipMet.push(e);
+        } else {
+            equipShort.push(e);
+        }
+    }
+    const equipMissing = equipShort.length;
+
+    // Check which materials the corp has in warehouse
+    const rawMats = contract.required_materials || {};
+    const matEntries = typeof rawMats === 'object' && !Array.isArray(rawMats) ? Object.entries(rawMats) : [];
+    const matShort = [];
+    for (const [matKey, reqQty] of matEntries) {
+        const stock = warehouseData[matKey] || {};
+        const totalOwned = (stock.LOW?.qty || 0) + (stock.STD?.qty || 0) + (stock.HIGH?.qty || 0);
+        if (totalOwned < reqQty) {
+            matShort.push({ key: matKey, need: reqQty, have: totalOwned });
+        }
+    }
+
+    const fmtKey = (k) => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
     let badgesHtml = '';
     if (equipTotal > 0) {
         if (equipMissing === 0) {
             badgesHtml += `<span class="cd-footer__badge ok">ALL EQUIPMENT MET</span>`;
         } else {
-            badgesHtml += `<span class="cd-footer__badge bad">${equipMissing} EQUIPMENT SHORT</span>`;
+            const shortList = equipShort.map(e => fmtKey(e.key)).join(', ');
+            badgesHtml += `<span class="cd-footer__badge bad" title="${escapeHtml(shortList)}">${equipMissing} SHORT: ${escapeHtml(shortList)}</span>`;
+        }
+    }
+    if (matEntries.length > 0) {
+        if (matShort.length === 0) {
+            badgesHtml += `<span class="cd-footer__badge ok">ALL MATERIALS MET</span>`;
+        } else {
+            const shortList = matShort.map(m => fmtKey(m.key) + ' (' + m.have + '/' + m.need + ')').join(', ');
+            badgesHtml += `<span class="cd-footer__badge bad" title="${escapeHtml(shortList)}">${matShort.length} MAT SHORT: ${escapeHtml(shortList)}</span>`;
         }
     }
     if (permits.length > 0) {
