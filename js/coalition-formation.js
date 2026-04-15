@@ -157,12 +157,51 @@ export async function renderFormationTab(root) {
         }
     }
 
+    // Absolute monarchies don't hold elections
+    const govType = (_state.nation?.government_type || '').toLowerCase();
+    if (govType.includes('absolute') && govType.includes('monarchy')) {
+        root.innerHTML = `<div class="cf-page">
+            <div class="cf-no-formation">
+                <div class="cf-no-icon">&#128081;</div>
+                <div class="cf-no-title">Absolute Monarchy</div>
+                <div class="cf-no-desc">The Crown rules by decree. There are no elections.</div>
+            </div>
+        </div>`;
+        return;
+    }
+
     if (!_formationNeeded) {
         root.innerHTML = `<div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">✓</div>
                 <div class="cf-no-title">Government Formed</div>
                 <div class="cf-no-desc">A coalition government is currently active. No formation needed.</div>
+            </div>
+        </div>`;
+        return;
+    }
+
+    // Pre-election state: no completed election yet, but one is scheduled
+    if (!_electionId) {
+        const nationId = _state.nation?.id;
+        let ticksUntil = '?';
+        if (nationId) {
+            const { data: scheduled } = await _supabase.from('elections')
+                .select('election_tick')
+                .eq('nation_id', nationId)
+                .eq('status', 'scheduled')
+                .order('election_tick', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+            if (scheduled) {
+                ticksUntil = Math.max(0, scheduled.election_tick - _currentTick);
+            }
+        }
+        root.innerHTML = `<div class="cf-page">
+            <div class="cf-no-formation">
+                <div class="cf-no-icon" style="font-size:2rem;">&#9878;</div>
+                <div class="cf-no-title">No Government</div>
+                <div class="cf-no-desc">No election has been held yet. The first election is in <strong style="color:var(--accent);">${ticksUntil}</strong> tick${ticksUntil !== 1 ? 's' : ''}.</div>
             </div>
         </div>`;
         return;

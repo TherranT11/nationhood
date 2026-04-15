@@ -86,24 +86,24 @@ function renderPanel(container, filterType) {
 
     // Available insurance
     if (showInsurance) {
-        html += '<div class="cas-section"><div class="cas-section-title">Available Insurance</div>';
+        html += '<div class="cas-section"><div class="cas-section-title">Available Insurance</div><div class="cas-section-body">';
         if (insuranceRates.length === 0) {
             html += '<div class="cas-empty">No insurance subsidiaries operate in this nation.</div>';
         } else {
             html += insuranceRates.map(r => renderRateCard(r, 'insurance')).join('');
         }
-        html += '</div>';
+        html += '</div></div>';
     }
 
     // Available loans
     if (showLoans) {
-        html += '<div class="cas-section"><div class="cas-section-title">Available Credit</div>';
+        html += '<div class="cas-section"><div class="cas-section-title">Available Credit</div><div class="cas-section-body">';
         if (loanRates.length === 0) {
             html += '<div class="cas-empty">No banking subsidiaries operate in this nation.</div>';
         } else {
             html += loanRates.map(r => renderRateCard(r, 'loan')).join('');
         }
-        html += '</div>';
+        html += '</div></div>';
     }
 
     if (!html) {
