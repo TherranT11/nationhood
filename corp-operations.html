@@ -4065,7 +4065,17 @@ function tickToDate(tick) {
 
 async function requestInsurance(contractId, budgetCeiling) {
     if (!faction || !shard) return;
-    if (!confirm('Request insurance for this project? Insurance corps will see this in their Deal Flow.')) return;
+
+    const coverageDesc = prompt(
+        'REQUEST CONSTRUCTION INSURANCE\n' +
+        '─'.repeat(35) + '\n\n' +
+        'Describe what this policy should cover:\n\n' +
+        'e.g., "Full coverage for weather delays, material damage, and labor disputes during construction. ' +
+        'Should cover cost overruns up to 20% of budget."\n\n' +
+        'Insurance corps will see this in their Deal Flow.'
+    );
+    if (coverageDesc === null) return; // cancelled
+    const purpose = coverageDesc.trim() || 'Construction Insurance';
 
     const currentTick = shard.current_tick || 0;
     const { error } = await _supabase.from('finance_loan_requests').insert({
@@ -4075,7 +4085,7 @@ async function requestInsurance(contractId, budgetCeiling) {
         insured_contract_id: contractId,
         amount: budgetCeiling,
         term_months: 0,
-        purpose: 'Construction Insurance',
+        purpose: purpose,
         status: 'open',
         created_tick: currentTick,
         expires_tick: currentTick + 12,

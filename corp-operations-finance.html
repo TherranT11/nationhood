@@ -1610,6 +1610,7 @@ let rdLoanCollateral = 'equipment';
 let rdInsurePremium = 3.5;
 let rdInsureCoverage = 12000000;
 let rdInsureDeductible = 10;
+let rdPolicyTerms = '';
 
 // Bond controls
 let rdBondAmount = 25000000;
@@ -1636,6 +1637,7 @@ function rdOpen(dealIdx) {
         rdInsurePremium = 3.5;
         rdInsureCoverage = deal.amount;
         rdInsureDeductible = 10;
+        rdPolicyTerms = '';
     } else if (deal.type === 'BOND') {
         rdBondAmount = Math.round(deal.amount * 0.25);
     }
@@ -1821,6 +1823,14 @@ function renderReviewDeal() {
             </div>
         </div>`;
 
+        // Show requestor's desired coverage
+        if (d.purpose && d.purpose !== 'Construction Insurance') {
+            html += `<div style="padding:8px 14px;background:rgba(170,122,90,0.04);border-bottom:1px solid rgba(170,122,90,0.12);">
+                <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:#aa7a5a;letter-spacing:0.8px;margin-bottom:3px;">REQUESTED COVERAGE</div>
+                <div style="font-size:10px;color:#e8e4dc;line-height:1.5;white-space:pre-wrap;">${escapeHtml(d.purpose)}</div>
+            </div>`;
+        }
+
         html += `<div class="rd-section-bar" style="color:#aa7a5a;">Set Policy Terms</div>`;
 
         // Premium Rate slider
@@ -1864,6 +1874,16 @@ function renderReviewDeal() {
         }
         html += `</div>
             <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Policyholder pays first ${rdInsureDeductible}% of any claim (${fmtMoney(Math.round(rdInsureCoverage * rdInsureDeductible / 100))})</div>
+        </div>`;
+
+        // Agreed coverage terms text box
+        html += `<div class="rd-control">
+            <div class="rd-control__header">
+                <span class="rd-control__label">WHAT WE AGREE TO COVER</span>
+            </div>
+            <textarea id="rd-policy-terms" rows="3" placeholder="e.g., Covers weather delays, material damage, and labor disputes. Excludes negligence and acts of war. Maximum payout per claim: 50% of coverage."
+                style="width:100%;box-sizing:border-box;padding:6px 8px;font-family:var(--font-mono);font-size:9px;color:#e8e4dc;background:#1a1a16;border:1px solid #2a2a24;resize:vertical;line-height:1.5;"
+                oninput="rdPolicyTerms=this.value">${rdPolicyTerms || ''}</textarea>
         </div>`;
     }
 
@@ -2199,6 +2219,7 @@ async function rdSubmitOffer() {
             monthly_payment: monthlyPremiumAmt,
             started_tick: currentTick,
             deductible_pct: deductible,
+            policy_terms: rdPolicyTerms.trim() || null,
         };
         // Link to vessel or contract
         if (rdDeal.insuredVesselId) policyRow.insured_vessel_id = rdDeal.insuredVesselId;
