@@ -143,6 +143,16 @@ const MONARCH_ACTIONS = [
         tags: ['PUBLIC', 'NARRATIVE'],
         locked: false,
     },
+    {
+        id: 'appoint_pm',
+        name: 'Appoint Prime Minister',
+        desc: 'Choose a party to lead the government as Prime Minister. The PM can then assign cabinet ministries. You may appoint your own party.',
+        cost: 'FREE',
+        costColor: '#5cc55c',
+        moneyCost: 0,
+        tags: ['ROYAL', 'STRUCTURAL'],
+        locked: false,
+    },
 ];
 
 const TAG_COLORS = {
@@ -361,6 +371,8 @@ function renderPage(root) {
         <div class="pa-modal-overlay" id="pa-hire-modal"></div>
         <!-- File Lawsuit Modal -->
         <div class="pa-modal-overlay" id="pa-lawsuit-modal"></div>
+        <!-- Appoint PM Modal -->
+        <div class="pa-modal-overlay" id="pa-appoint-pm-modal"></div>
         <!-- Modernize Modal -->
         <div class="pa-modal-overlay" id="pa-modernize-modal"></div>
         <!-- Rebrand Modal -->
@@ -403,6 +415,8 @@ function renderPage(root) {
             openPlatformModal(root);
         } else if (actionId === 'file_lawsuit') {
             openLawsuitModal(root);
+        } else if (actionId === 'appoint_pm') {
+            openAppointPMModal(root);
         } else if (actionId === 'modernize') {
             openModernizeModal(root);
         } else if (actionId === 'rebrand') {
@@ -426,6 +440,7 @@ function renderPage(root) {
 }
 
 function renderLeaderCards(leaderName, partyColor, faction) {
+    const _isMonarchLocal = isAbsoluteMonarchy(_state.nation) && _state.nation?.monarch_faction_id === faction?.id;
     return ROLES.map(role => {
         const isLeader = role.id === 'leader';
         const isAgitator = role.id === 'agitator';
@@ -496,7 +511,7 @@ function renderLeaderCards(leaderName, partyColor, faction) {
                     <div class="pa-leader-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${portrait}</div>
                     <div class="pa-leader-info">
                         <div class="pa-leader-role">
-                            <span class="pa-leader-role-label" style="color:${role.color};">${isLeader && _isMonarch ? (_state.nation?.monarch_title || 'King').toUpperCase() : role.title}</span>
+                            <span class="pa-leader-role-label" style="color:${role.color};">${isLeader && _isMonarchLocal ? (_state.nation?.monarch_title || 'King').toUpperCase() : role.title}</span>
                             ${actionCount > 0 ? `<span class="pa-leader-role-count">${actionCount} actions</span>` : ''}
                         </div>
                         <div class="pa-leader-name">${esc(name)}</div>
@@ -2189,6 +2204,144 @@ function openLawsuitModal(root) {
 }
 
 // ════════════════════════ GRANT / REVOKE SEATS (Monarchy) ════════════════════════
+
+async function openAppointPMModal(root) {
+    const overlay = document.getElementById('pa-appoint-pm-modal');
+    if (!overlay) return;
+
+    const nation = _state.nation;
+    const faction = _state.faction;
+
+    // Fetch all parties in this nation
+    const { data: allFactions } = await _supabase.from('factions')
+        .select('id, faction_name, abbreviation, party_color, seats, leader_first_name, leader_last_name, leader_age')
+        .eq('nation_id', nation.id).eq('faction_type', 'party').is('abandoned_at', null)
+        .order('seats', { ascending: false });
+
+    const parties = allFactions || [];
+    let selectedPartyId = null;
+    let submitting = false;
+
+    // Check current PM
+    const { data: currentHog } = await _supabase.from('head_of_government')
+        .select('faction_id, first_name, last_name, factions(faction_name)')
+        .eq('nation_id', nation.id).eq('active', true).maybeSingle();
+
+    function render() {
+        const selected = parties.find(p => p.id === selectedPartyId);
+        const currentPmName = currentHog ? `${currentHog.first_name} ${currentHog.last_name}` : null;
+        const currentPmParty = currentHog?.factions?.faction_name || null;
+        const isSameAsCurrentPM = currentHog && selectedPartyId === currentHog.faction_id;
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:500px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#c8a832;"></div>
+                        <span class="pa-modal-title">Appoint Prime Minister</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:3px 8px;color:#c8a832;background:rgba(200,168,50,0.06);border:1px solid rgba(200,168,50,0.15);">ROYAL</span>
+                    </div>
+                    <button class="pa-modal-close" id="apm-close">&times;</button>
+                </div>
+                <div style="padding:8px 20px;border-bottom:1px solid var(--border-main);font-size:12px;color:var(--text-secondary);line-height:1.5;">
+                    Choose a party to lead the government. Their leader becomes Prime Minister and can assign cabinet ministries.
+                    ${currentPmName ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Current PM: <strong style="color:var(--text-bright);">${esc(currentPmName)}</strong> (${esc(currentPmParty || '?')})</div>` : '<div style="margin-top:4px;font-family:var(--font-mono);font-size:9px;color:var(--amber);">No Prime Minister appointed.</div>'}
+                </div>
+                <div class="pa-modal-body" style="max-height:300px;overflow-y:auto;">
+                    <div class="pa-modal-step-label">Select a Party</div>
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                        ${parties.map(p => {
+                            const isSel = p.id === selectedPartyId;
+                            const isCurrent = currentHog && p.id === currentHog.faction_id;
+                            const leaderName = p.leader_first_name && p.leader_last_name ? `${p.leader_first_name} ${p.leader_last_name}` : '?';
+                            return `<div class="pa-action-item ${isSel ? 'selected' : ''}" data-party-id="${p.id}" style="cursor:pointer;${isSel ? `border-color:${p.party_color || '#888'};background:${(p.party_color || '#888')}08;` : ''}">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <div style="width:8px;height:8px;background:${p.party_color || '#888'};"></div>
+                                        <div>
+                                            <div style="font-size:13px;font-weight:600;color:var(--text-bright);">${esc(p.faction_name)}</div>
+                                            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${esc(leaderName)}, Age ${p.leader_age || '?'} · ${p.seats || 0} seats</div>
+                                        </div>
+                                    </div>
+                                    ${isCurrent ? '<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:2px 6px;color:var(--green);background:rgba(92,204,92,0.08);border:1px solid rgba(92,204,92,0.2);">CURRENT PM</span>' : ''}
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="apm-cancel">Cancel</button>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="apm-confirm" ${!selected || submitting || isSameAsCurrentPM ? 'disabled' : ''} style="background:#c8a832;">${selected ? (isSameAsCurrentPM ? 'Already PM' : `Appoint ${esc(selected.faction_name)}`) : 'Select a party'}</button>
+                </div>
+            </div>
+        `;
+
+        const close = () => overlay.classList.remove('active');
+        document.getElementById('apm-close')?.addEventListener('click', close);
+        document.getElementById('apm-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        // Party selection
+        overlay.querySelector('.pa-modal-body')?.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-party-id]');
+            if (item) { selectedPartyId = item.dataset.partyId; render(); }
+        });
+
+        // Confirm appointment
+        document.getElementById('apm-confirm')?.addEventListener('click', async () => {
+            if (!selectedPartyId || submitting) return;
+            const party = parties.find(p => p.id === selectedPartyId);
+            if (!party) return;
+
+            if (!confirm(`Appoint ${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} as Prime Minister?`)) return;
+
+            submitting = true;
+            const btn = document.getElementById('apm-confirm');
+            if (btn) { btn.disabled = true; btn.textContent = 'Appointing...'; }
+
+            try {
+                const currentTick = _state.shard?.current_tick || 0;
+
+                // Deactivate current PM
+                await _supabase.from('head_of_government')
+                    .update({ active: false })
+                    .eq('nation_id', nation.id).eq('active', true);
+
+                // Insert new PM record
+                await _supabase.from('head_of_government').insert({
+                    nation_id: nation.id,
+                    faction_id: selectedPartyId,
+                    first_name: party.leader_first_name || 'Unknown',
+                    last_name: party.leader_last_name || 'Unknown',
+                    age: party.leader_age || 50,
+                    ideology: null,
+                    active: true,
+                    appointed_tick: currentTick,
+                });
+
+                // Log event
+                await _supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: `${nation.monarch_title || 'King'} appoints Prime Minister`,
+                    category: 'government',
+                    description_chosen: `${nation.monarch_title || 'The King'} has appointed ${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} as Prime Minister.`,
+                    fired_at_tick: currentTick,
+                }).catch(() => {});
+
+                close();
+                alert(`${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} has been appointed Prime Minister.`);
+                renderPage(root);
+            } catch (err) {
+                alert('Failed to appoint PM: ' + (err.message || 'Error'));
+                submitting = false;
+                if (btn) { btn.disabled = false; btn.textContent = `Appoint ${esc(party.faction_name)}`; }
+            }
+        });
+    }
+
+    overlay.classList.add('active');
+    render();
+}
 
 async function openGrantSeatsModal(root) {
     const overlay = document.getElementById('pa-royal-modal');

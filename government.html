@@ -1150,6 +1150,30 @@ function renderAdminBanner() {
         </div>`;
     }
 
+    // Head of State section (Monarch / President / ceremonial head)
+    const hosFirst = nation?.head_of_state_first_name;
+    const hosLast = nation?.head_of_state_last_name;
+    const hosAge = nation?.head_of_state_age;
+    const isMonarchyGov = (nation?.government_type || '').toLowerCase().includes('monarchy');
+    const hosTitle = isMonarchyGov ? (nation?.monarch_title || 'King') : 'Head of State';
+    if (hosFirst && hosLast) {
+        const hosName = `${hosFirst} ${hosLast}`;
+        const hosInitials = hosName.split(' ').map(n => n[0] || '').join('');
+        const hosColor = isMonarchyGov ? '#c8a832' : 'var(--text-dim)';
+        const dynastyHtml = isMonarchyGov && nation?.dynasty_name ? `<div class="ga-leader-meta" style="font-style:italic;">House ${escapeHtml(nation.dynasty_name)}</div>` : '';
+        html += `<div class="ga-banner-leader" style="background:${hosColor}04;">
+            <div class="ga-banner-leader-label" style="color:${hosColor};">${escapeHtml(hosTitle.toUpperCase())}</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div class="ga-leader-avatar" style="background:${hosColor}15;border-color:${hosColor}33;color:${hosColor};">${escapeHtml(hosInitials)}</div>
+                <div>
+                    <div class="ga-leader-name">${escapeHtml(hosName)}</div>
+                    <div class="ga-leader-meta">Age ${hosAge || '?'}</div>
+                    ${dynastyHtml}
+                </div>
+            </div>
+        </div>`;
+    }
+
     // Coalition section
     html += `<div class="ga-banner-leader">
         <div class="ga-banner-leader-label">COALITION</div>`;
