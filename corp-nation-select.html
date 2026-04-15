@@ -584,6 +584,7 @@ function renderNations() {
         const pop = nation.population ? nation.population.toLocaleString() : '—';
         const gdp = nation.gdp ? '$' + (nation.gdp / 1e9).toFixed(1) + 'B' : '—';
         const stab = nation.stability != null ? Math.round(nation.stability) : '—';
+        const corpTax = nation.corporate_tax != null ? Math.round(nation.corporate_tax) + '%' : '—';
 
         return `
             <div class="nation-card${isSelected ? ' selected' : ''}${isShippingBlocked ? ' disabled' : ''}" data-id="${nation.id}" onclick="${isShippingBlocked ? '' : "selectNation(\'" + nation.id + "\')"}">
@@ -606,6 +607,10 @@ function renderNations() {
                     <div class="stat-row">
                         <span class="stat-row__label">Stability</span>
                         <span class="stat-row__value">${stab}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-row__label">Corporate Tax</span>
+                        <span class="stat-row__value">${corpTax}</span>
                     </div>
                     <div class="stat-row">
                         <span class="stat-row__label">${escapeHtml(corpSetup.subsector)}</span>
