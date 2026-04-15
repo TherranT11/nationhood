@@ -12,34 +12,86 @@
 
     <!-- Supabase SDK -->
 
-    <!-- Shared Styles -->
-  <script type="module" crossorigin src="/assets/diplomacy-CjcxF8nM.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-BvxJk5Cq.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
-  <link rel="modulepreload" crossorigin href="/assets/party-icons-CJ7uQoDE.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-types-BwzErBjP.js">
-  <link rel="modulepreload" crossorigin href="/assets/ideology-Dqw3ro_Z.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-structure-ZDj3uFqp.js">
+    <!-- Shared Styles -->
+  <script type="module" crossorigin src="/assets/diplomacy-BeYGW8fs.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-Dw7LFAqK.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CU9qpvmC.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-types-BkFNm8Vo.js">
   <link rel="modulepreload" crossorigin href="/assets/config-fKhFNVuq.js">
-  <link rel="modulepreload" crossorigin href="/assets/stats-DqgGwtpW.js">
-  <link rel="modulepreload" crossorigin href="/assets/elections-BIp8ALon.js">
-  <link rel="modulepreload" crossorigin href="/assets/trade-constants-DKyfPF_u.js">
-  <link rel="stylesheet" crossorigin href="/assets/dashboard-Bk9Ly0o-.css">
-  <link rel="stylesheet" crossorigin href="/assets/diplomacy-a_hR8aIn.css">
+  <link rel="modulepreload" crossorigin href="/assets/ideology-BIAflN4K.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-Bk9cRChq.js">
+  <link rel="modulepreload" crossorigin href="/assets/elections-DdqkBKAd.js">
+  <link rel="modulepreload" crossorigin href="/assets/trade-constants-CAarBqlF.js">
+  <link rel="stylesheet" crossorigin href="/assets/diplomacy-BKI3L5jY.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
+  <link rel="stylesheet" crossorigin href="/assets/diplomacy-CFvZNfLC.css">
 </head>
 <body>
 
 <!-- ===== TOP BAR (rendered by common.js) ===== -->
 <div id="top-bar"></div>
 
-<!-- ===== CONTENT AREA ===== -->
-<div id="content-area">
+<!-- ===== SUBTABS (matching Actions/Home page style) ===== -->
+<div id="diplo-subtabs" class="diplo-subtabs"></div>
+
+<!-- ===== WORLD SUBTAB ===== -->
+<div id="subtab-world" class="diplo-subtab-content">
+<div class="world-page">
+    <!-- Map panel -->
+    <div class="world-map-panel" id="world-map-panel">
+        <img id="world-map-img" src="/assets/World%20Map%20Crucera%202.5-DzBnInXn.svg" alt="World Map" draggable="false"
+             style="width:100%;height:auto;pointer-events:none;">
+        <div class="world-map-controls">
+            <div class="world-map-btn" id="map-zoom-in">+</div>
+            <div class="world-map-btn" id="map-zoom-out">&minus;</div>
+            <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+        </div>
+        <div class="world-map-zoom" id="map-zoom-label">100%</div>
+        <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
+    </div>
+
+    <!-- Nation highlight panel -->
+    <div style="display:flex;flex-direction:column;gap:12px;flex-shrink:0;">
+    <div class="world-highlight" id="world-highlight">
+        <div class="world-highlight-header">
+            <div class="world-highlight-dot" style="background:var(--accent);"></div>
+            <span class="world-highlight-title">Nation Overview</span>
+        </div>
+        <!-- Search input -->
+        <div style="padding:8px 14px;border-bottom:1px solid var(--border-main);">
+            <input id="world-nation-search" type="text" placeholder="Search nations..." style="width:100%;padding:6px 10px;background:var(--bg-card);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;outline:none;box-sizing:border-box;">
+        </div>
+        <div class="world-highlight-body" id="world-highlight-body">
+            <div class="world-highlight-empty">
+                <div style="font-size:1.5rem;margin-bottom:8px;opacity:0.4;">&#127758;</div>
+                <div style="font-family:var(--font-mono);font-size:10px;">Select a nation</div>
+                <div style="font-family:var(--font-mono);font-size:8px;margin-top:4px;">Type a name above or select from the list</div>
+            </div>
+        </div>
+    </div>
+
+    </div>
+</div>
+</div><!-- /subtab-world -->
+
+<!-- ===== TRADE SUBTAB ===== -->
+<div id="subtab-trade" class="diplo-subtab-content" style="display:none;">
+    <div id="trade-page" style="padding:0 12px 12px;">
+        <div id="trade-header-stats"></div>
+        <div style="display:flex;gap:10px;margin-top:8px;">
+            <div id="trade-left" style="width:480px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;"></div>
+            <div id="trade-right" style="flex:1;display:flex;flex-direction:column;gap:8px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Original content hidden during UI 2.0 rollout -->
+<div id="content-area-disabled" style="display:none;">
     <div class="page-header" id="diplo-header"></div>
     <div class="dashboard">
-        <!-- ═══ ROW 1: Three equal columns ═══ -->
         <div class="row">
-            <!-- Foreign Relations -->
             <div class="box box--third box--h450" id="box-relations">
                 <div class="box-header">
                     <div class="box-dot box-dot--teal"></div>
@@ -48,7 +100,6 @@
                 </div>
                 <div class="box-body" id="relations-body"></div>
             </div>
-            <!-- Diplomatic Actions -->
             <div class="box box--third box--h450" id="box-actions">
                 <div class="box-header">
                     <div class="box-dot box-dot--blue"></div>
@@ -56,7 +107,6 @@
                 </div>
                 <div class="box-body" id="actions-body"></div>
             </div>
-            <!-- Agreements -->
             <div class="box box--third box--h450" id="box-negotiations">
                 <div class="box-header">
                     <div class="box-dot box-dot--amber"></div>
@@ -93,7 +143,7 @@
 
 <!-- Shared Scripts -->
 
-<!-- Page-Specific Script -->
+<!-- Page-Specific Script -->
 
 </body>
 </html>

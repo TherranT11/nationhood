@@ -852,65 +852,21 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
   }
 }
 </style>
-  <script type="module" crossorigin src="/assets/corp-dashboard-CpNzb9iZ.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
-  <link rel="modulepreload" crossorigin href="/assets/messaging-B5Fng3EZ.js">
+  <script type="module" crossorigin src="/assets/corp-dashboard-DGz9iGPx.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CU9qpvmC.js">
+  <link rel="modulepreload" crossorigin href="/assets/messaging-C0xL7QdF.js">
   <link rel="modulepreload" crossorigin href="/assets/equipment-DsuDdEne.js">
+  <link rel="stylesheet" crossorigin href="/assets/corp-topbar-gfsg-rAx.css">
 </head>
 <body>
 
 <div id="loading" class="loading-msg">LOADING CORPORATION...</div>
 
 <div id="page-content" style="display:none;">
-  <!-- Top bar (matches party dashboard layout) -->
-  <div class="top-bar-row1">
-    <div class="top-bar-left">
-      <div class="corp-badge">
-        <div class="corp-logo" id="corp-logo"></div>
-        <span class="corp-name-bar" id="corp-name-bar">Loading...</span>
-      </div>
-      <div class="top-bar-sep"></div>
-      <div class="tick-info">
-        <div class="tick-item">
-          <div class="tick-label">Game Date</div>
-          <div class="tick-value" id="game-date">--</div>
-        </div>
-        <div class="tick-item">
-          <div class="tick-label">Tick</div>
-          <div class="tick-value" id="tick-number">--</div>
-        </div>
-        <div class="tick-item">
-          <div class="tick-label">Next Tick</div>
-          <div class="tick-value" id="tick-countdown">--</div>
-        </div>
-      </div>
-    </div>
-    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.1.3.7</div>
-    <div class="top-bar-right">
-      <span class="topbar-cash" id="topbar-cash" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;color:var(--gold);padding:3px 8px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);">CASH: --</span>
-      <div class="faction-switcher" id="faction-switcher" style="position:relative;">
-        <span class="corp-name-badge" id="corp-name-badge" onclick="toggleCorpDropdown()" style="cursor:pointer;">--</span>
-        <div class="corp-faction-dropdown" id="corp-faction-dropdown"></div>
-      </div>
-      <span class="topbar-ap" id="topbar-ap"></span>
-      <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle">Light</button>
-      <button class="logout-btn" onclick="doLogout()">Logout</button>
-    </div>
-  </div>
-
-  <!-- Nav tabs -->
-  <button class="corp-hamburger" onclick="document.querySelector('.corp-nav').classList.toggle('nav-open')">&#9776;</button>
-  <nav class="corp-nav" id="corp-nav">
-    <a href="corp-dashboard.html" class="corp-nav__tab active" data-tab="home">Home</a>
-    <a href="corp-operations.html" class="corp-nav__tab" data-tab="operations" id="nav-operations">Operations</a>
-    <a href="corp-operations.html?tab=expansion" class="corp-nav__tab" data-tab="expansion" id="nav-expansion">Expansion</a>
-    <a href="#" class="corp-nav__tab" data-tab="industries" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Industries</a>
-    <a href="#" class="corp-nav__tab" data-tab="innovation" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Innovation</a>
-    <a href="#" class="corp-nav__tab" data-tab="lobbying" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Lobbying</a>
-    <a href="news.html" class="corp-nav__tab" data-tab="news">News</a>
-    <a href="wiki.html" class="corp-nav__tab" data-tab="wiki">Wiki</a>
-  </nav>
+  <!-- Shared top bar + nav (rendered by corp-topbar.js) -->
+  <div id="corp-topbar-container"></div>
 
   <div class="content">
     <div class="id-card">
@@ -929,6 +885,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
         <div class="id-card__slogan" id="id-slogan">"--"</div>
         <div class="id-card__divider"></div>
         <div class="id-card__rows" id="id-rows"></div>
+        <div id="corp-logo-upload"></div>
         <div id="slogan-editor"></div>
       </div>
     </div>
@@ -943,13 +900,6 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
         <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);" id="fin-tick">--</span>
       </div>
       <div class="fin-card__scroll" id="fin-body"></div>
-    </div>
-
-    <!-- Loan Request Modal -->
-    <div id="lr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
-      <div style="width:520px;max-height:94vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
-        <div id="lr-modal-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
-      </div>
     </div>
 
     <!-- Stats card -->
@@ -1043,6 +993,133 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
 <div id="prop-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;justify-content:center;align-items:center;">
     <div id="prop-modal-content" style="background:var(--bg-2, #1a1a17);border:1px solid var(--border-hair, rgba(200,196,184,0.08));padding:16px;max-width:360px;width:90%;"></div>
 </div>
-
+
+
+<!-- HOW TO GUIDE OVERLAY -->
+<div id="corp-howto-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;justify-content:center;align-items:flex-start;overflow-y:auto;padding:40px 20px;">
+<div style="max-width:700px;width:100%;background:var(--bg-2);border:1px solid var(--border-0);padding:24px;position:relative;">
+    <span onclick="document.getElementById('corp-howto-overlay').style.display='none'" style="position:absolute;top:12px;right:16px;font-size:18px;color:var(--text-dim);cursor:pointer;font-family:var(--font-mono);">×</span>
+    <div style="text-align:center;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border-0);">
+        <div style="font-family:var(--font-mono);font-size:1.2rem;font-weight:800;color:var(--teal);letter-spacing:0.08em;text-transform:uppercase;">Corporate Guide</div>
+        <div style="font-family:var(--font-ui);font-size:0.85rem;color:var(--text-muted);margin-top:6px;">How to run a corporation in Nationhood</div>
+    </div>
+
+    <style>
+    .cg-section { margin-bottom:16px; }
+    .cg-section summary { font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-bright);letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;padding:8px 0;border-bottom:1px solid var(--border-hair);list-style:none; }
+    .cg-section summary::before { content:'▸ '; color:var(--teal); }
+    .cg-section[open] summary::before { content:'▾ '; }
+    .cg-section div { padding:10px 0;font-family:var(--font-ui);font-size:12px;color:var(--text-muted);line-height:1.7; }
+    .cg-section strong { color:var(--text-primary); }
+    .cg-section table { width:100%;border-collapse:collapse;margin:8px 0;font-size:11px; }
+    .cg-section th { text-align:left;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase;padding:4px 8px;border-bottom:1px solid var(--border-0); }
+    .cg-section td { padding:4px 8px;border-bottom:1px solid var(--border-hair);color:var(--text-muted); }
+    .cg-section ul, .cg-section ol { padding-left:18px;margin:6px 0; }
+    .cg-section li { margin-bottom:4px; }
+    </style>
+
+    <details class="cg-section" open><summary>Getting Started</summary><div>
+    <p>You run a <strong>corporation</strong> — a business entity that operates within a nation's economy. Unlike political parties, corporations make money through contracts, properties, and financial operations.</p>
+    <ol>
+    <li><strong>Check your Dashboard</strong> — the Home tab shows your identity card, finances, properties, workforce, and market stats.</li>
+    <li><strong>Visit Operations</strong> — bid on construction contracts, manage projects, buy equipment, and handle materials.</li>
+    <li><strong>Buy Property</strong> — purchase office buildings or regional HQs from the property marketplace to house your workforce.</li>
+    <li><strong>Bid on Contracts</strong> — government and private construction contracts appear in the Open Contracts pool. Submit competitive bids to win work.</li>
+    </ol>
+    <p><em>Tip: Your corporation earns market revenue each tick based on your nation's economic health. Keep an eye on GDP growth, urbanization, and inflation.</em></p>
+    </div></details>
+
+    <details class="cg-section"><summary>How Corp Ticks Work</summary><div>
+    <p>The <strong>corp tick</strong> runs at the midpoint of each game tick. During a corp tick:</p>
+    <ul>
+    <li>Contract bidding windows close and winners are awarded</li>
+    <li>Active projects progress (if properly staffed and supplied)</li>
+    <li>Market revenue is calculated and credited</li>
+    <li>Expenses are deducted (wages, materials, maintenance, debt service)</li>
+    <li>Construction events may fire on in-progress projects</li>
+    <li>Loan payments are processed (both as borrower and lender)</li>
+    <li>Insurance premiums are collected</li>
+    <li>Property condition degrades slightly each tick</li>
+    </ul>
+    </div></details>
+
+    <details class="cg-section"><summary>Your Corporation</summary><div>
+    <table>
+    <tr><th>Attribute</th><th>What It Means</th></tr>
+    <tr><td><strong>Cash Reserves</strong></td><td>Your liquid capital. Used for bids, purchases, wages, and operations.</td></tr>
+    <tr><td><strong>Debt</strong></td><td>Outstanding loans. Monthly payments deducted automatically.</td></tr>
+    <tr><td><strong>Reputation</strong></td><td>0-100 score. Higher reputation wins better contracts and attracts clients.</td></tr>
+    <tr><td><strong>Market Share</strong></td><td>Your share of the national market. Grows with workforce and property.</td></tr>
+    <tr><td><strong>Workforce</strong></td><td>General, Skilled, and Innovative workers. Must be housed in properties.</td></tr>
+    <tr><td><strong>Operational Efficiency</strong></td><td>How well your company runs. Affects costs and project quality.</td></tr>
+    </table>
+    </div></details>
+
+    <details class="cg-section"><summary>Construction Contracts</summary><div>
+    <p>The core gameplay loop for <strong>Construction</strong> corporations:</p>
+    <ol>
+    <li><strong>Browse Open Contracts</strong> — government and private projects appear in the contracts pool</li>
+    <li><strong>Submit a Bid</strong> — set your price, choose material quality, and allocate labor</li>
+    <li><strong>Win the Contract</strong> — lowest qualified bidder wins (reputation matters for ties)</li>
+    <li><strong>Supply Materials</strong> — allocate concrete, steel, glass, and other materials from your warehouse</li>
+    <li><strong>Staff the Project</strong> — assign workers. Understaffed projects stall.</li>
+    <li><strong>Complete &amp; Get Paid</strong> — payment is the bid price minus penalties for late delivery or low quality</li>
+    </ol>
+    <p><strong>Construction Events:</strong> In-progress projects may encounter disruptions (labor strikes, equipment failures, weather damage). These cost money and delay the project. Insurance can cover these costs.</p>
+    </div></details>
+
+    <details class="cg-section"><summary>Properties &amp; Buildings</summary><div>
+    <p>Properties house your workforce and generate passive revenue:</p>
+    <ul>
+    <li><strong>Buy from Marketplace</strong> — existing buildings at market prices. Lower condition but immediate revenue. +1 market share per 100 employees.</li>
+    <li><strong>Build Custom</strong> — commission a new building via Construction Project. Higher quality, better reputation (+2 per 200 employees), but takes time and costs more.</li>
+    <li><strong>Refurbish</strong> — restore condition on aging properties to maintain value.</li>
+    <li><strong>Sell</strong> — liquidate properties you no longer need.</li>
+    </ul>
+    <p><strong>Specialty Buildings (Finance sector):</strong></p>
+    <table>
+    <tr><th>Building</th><th>Subsector</th><th>Benefit</th></tr>
+    <tr><td>Branch Office</td><td>Banking</td><td>Increases lending capacity, enables cross-nation lending</td></tr>
+    <tr><td>Trading Floor</td><td>Investment</td><td>Enables secondary bond market, portfolio management</td></tr>
+    <tr><td>Claims Office</td><td>Insurance</td><td>Faster claim processing, local presence reduces premiums</td></tr>
+    </table>
+    <p>Convert existing offices to specialty buildings via the <strong>CONVERT</strong> button (15% cost + 4-9 ticks).</p>
+    </div></details>
+
+    <details class="cg-section"><summary>Finance Corporations</summary><div>
+    <p>Finance corps operate in three subsectors:</p>
+    <h4 style="font-family:var(--font-mono);font-size:10px;color:var(--teal);margin:10px 0 4px;">Banking (Loans)</h4>
+    <p>Lend money to other corporations. Borrowers request loans → you review in <strong>Deal Flow</strong> → set an interest rate → click <strong>Offer Loan</strong>. Borrower accepts or rejects. Monthly payments come in automatically. Default risk if borrower can't pay.</p>
+    <h4 style="font-family:var(--font-mono);font-size:10px;color:#8a6aaa;margin:10px 0 4px;">Investment (Bonds)</h4>
+    <p>Buy government bonds issued by the Minister of Finance. Browse bond offerings in <strong>Deal Flow</strong> → choose how much to buy → collect monthly coupon payments from the national treasury. Higher coupon = riskier nation. Sovereign default = you lose your principal.</p>
+    <h4 style="font-family:var(--font-mono);font-size:10px;color:#aa7a5a;margin:10px 0 4px;">Insurance</h4>
+    <p>Insure construction projects against disruption events. Construction corps click <strong>INSURE</strong> on their projects → you review in <strong>Deal Flow</strong> → set premium rate, coverage, and deductible → click <strong>Write Policy</strong>. Collect premiums monthly. Pay out when disruption events fire.</p>
+    </div></details>
+
+    <details class="cg-section"><summary>Purchasing Power</summary><div>
+    <p>Your cash is worth more or less depending on your nation's economy:</p>
+    <ul>
+    <li><strong>Currency Strength</strong> — higher = your money buys more. Baseline is 50.</li>
+    <li><strong>Inflation</strong> — higher = your money buys less. Erodes purchasing power over time.</li>
+    </ul>
+    <p>The <strong>Purchasing Power</strong> indicator below your Cash/Debt display shows the real value of your reserves. A weak currency with high inflation means your $200M might only be worth $120M in real terms.</p>
+    </div></details>
+
+    <details class="cg-section"><summary>Tips for New Players</summary><div>
+    <ul>
+    <li><strong>Buy property first</strong> — you need buildings to house workers. No workers = no projects.</li>
+    <li><strong>Start with small contracts</strong> — civil engineering contracts are cheaper and less risky than mega projects.</li>
+    <li><strong>Watch your cash flow</strong> — wages and maintenance are deducted every tick. Don't overextend.</li>
+    <li><strong>Refurbish aging properties</strong> — condition degrades. Below 50% your property loses value fast.</li>
+    <li><strong>Insure big projects</strong> — disruption events can cost millions. Insurance is cheaper than eating the loss.</li>
+    <li><strong>Finance corps: diversify</strong> — don't put all your capital into one nation's bonds or one borrower's loans.</li>
+    <li><strong>Check the News tab</strong> — see what's happening across the world. Political instability = opportunity for some, risk for others.</li>
+    </ul>
+    </div></details>
+
+</div>
+</div>
+<!-- END HOW TO GUIDE -->
+
 </body>
 </html>

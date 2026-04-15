@@ -6,21 +6,21 @@
     <title>Bills | Nationhood Alpha</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/laws-RfpwwJMI.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-BvxJk5Cq.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/laws-Czho2TiO.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-Dw7LFAqK.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CU9qpvmC.js">
   <link rel="modulepreload" crossorigin href="/assets/config-fKhFNVuq.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-types-BwzErBjP.js">
-  <link rel="modulepreload" crossorigin href="/assets/ideology-Dqw3ro_Z.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-structure-ZDj3uFqp.js">
-  <link rel="modulepreload" crossorigin href="/assets/stats-DqgGwtpW.js">
-  <link rel="modulepreload" crossorigin href="/assets/elections-BIp8ALon.js">
-  <link rel="modulepreload" crossorigin href="/assets/budget-CgvBcS_d.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-types-BkFNm8Vo.js">
+  <link rel="modulepreload" crossorigin href="/assets/ideology-BIAflN4K.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-Bk9cRChq.js">
+  <link rel="modulepreload" crossorigin href="/assets/elections-DdqkBKAd.js">
+  <link rel="modulepreload" crossorigin href="/assets/budget-zX3yQesw.js">
   <link rel="modulepreload" crossorigin href="/assets/sovereign-default-DRjRiSGP.js">
-  <link rel="stylesheet" crossorigin href="/assets/laws-BKp02-14.css">
-  <link rel="stylesheet" crossorigin href="/assets/dashboard-Bk9Ly0o-.css">
+  <link rel="stylesheet" crossorigin href="/assets/laws-CVAQDzSK.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
 </head>
 <body>
 <div id="top-bar"></div>
@@ -55,6 +55,45 @@
         <div class="add-text-article-section" id="add-permit-section" onclick="showPermitForm()">
             <span class="add-text-article-btn-text">+ Add Permit</span>
         </div>
+        <div class="add-text-article-section" id="add-tariff-section" onclick="showTariffForm()">
+            <span class="add-text-article-btn-text">+ Tariff Article</span>
+        </div>
+        <div id="add-tariff-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label" style="color:var(--amber);">Select Sector or Good</label>
+                <select class="form-select" id="tariff-sector-select" onchange="onTariffSectorChange()">
+                    <option value="">-- Choose a sector --</option>
+                    <option value="fuel_energy">Fuel & Energy</option>
+                    <option value="minerals">Minerals & Raw Materials</option>
+                    <option value="grains_staples">Grains & Staples</option>
+                    <option value="livestock_dairy">Livestock & Dairy</option>
+                    <option value="fruits_vegetables">Fruits & Vegetables</option>
+                    <option value="cash_crops">Cash Crops & Plantation</option>
+                    <option value="manufactured_goods">Manufactured Goods</option>
+                    <option value="technology">Technology & Electronics</option>
+                    <option value="arms">Arms & Military Equipment</option>
+                </select>
+            </div>
+            <div id="tariff-controls" style="display:none;">
+                <div class="form-group">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <label class="form-label" style="margin:0;">Tariff Rate</label>
+                        <span id="tariff-rate-display" style="font-family:var(--font-mono);font-size:1.2rem;font-weight:700;color:var(--amber);">0%</span>
+                    </div>
+                    <input type="range" id="tariff-rate-slider" class="form-select" min="0" max="100" step="1" value="0" oninput="onTariffRateChange()" style="width:100%;accent-color:var(--amber);height:6px;padding:0;border:none;background:transparent;" />
+                    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-top:2px;">
+                        <span>0% (Free Trade)</span>
+                        <span>50% (Protectionist)</span>
+                        <span>100% (Embargo)</span>
+                    </div>
+                </div>
+                <div id="tariff-preview" style="margin:8px 0;padding:10px;background:var(--bg-card);border:1px solid var(--border-main);border-radius:4px;font-size:0.75rem;color:var(--text-muted);line-height:1.6;"></div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button class="btn-cancel" onclick="hideTariffForm()">Cancel</button>
+                    <button class="btn-add" id="add-tariff-btn" disabled onclick="addTariffArticle()">Add to Bill</button>
+                </div>
+            </div>
+        </div>
         <div id="add-permit-form" style="display:none;">
             <div class="form-group">
                 <label class="form-label" style="color:var(--amber);">Select Permit Policy</label>
@@ -69,10 +108,20 @@
             </div>
         </div>
         <div id="add-article-form" style="display:none;">
-            <div class="form-group">
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <div onclick="setSearchMode('sector')" id="search-mode-sector" class="form-toggle active" style="flex:1;text-align:center;padding:6px 0;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border-mid);color:var(--text-bright);background:rgba(255,255,255,0.04);">Search by Sector</div>
+                <div onclick="setSearchMode('stat')" id="search-mode-stat" class="form-toggle" style="flex:1;text-align:center;padding:6px 0;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border-mid);color:var(--text-dim);background:transparent;">Search by Stat</div>
+            </div>
+            <div class="form-group" id="sector-search-group">
                 <label class="form-label">Select Sector</label>
                 <select class="form-select" id="sector-select" onchange="onSectorChange()">
                     <option value="">-- Choose a sector --</option>
+                </select>
+            </div>
+            <div class="form-group" id="global-stat-search-group" style="display:none;">
+                <label class="form-label">Select Stat</label>
+                <select class="form-select" id="global-stat-select" onchange="onGlobalStatSearch()">
+                    <option value="">-- Choose a stat --</option>
                 </select>
             </div>
             <div class="form-group" id="stat-filter-group" style="display:none;">
@@ -171,7 +220,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-            <button class="btn-submit" id="submit-bill-btn" disabled onclick="submitToCommittee()">Submit to Committee — 2 AP</button>
+            <button class="btn-submit" id="submit-bill-btn" disabled onclick="submitToCommittee()">Submit to Committee — $50k</button>
         </div>
     </div>
 </div>
@@ -251,6 +300,6 @@
         </div>
     </div>
 </div>
-
+
 </body>
 </html>

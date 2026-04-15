@@ -10199,6 +10199,7 @@ function getSubsidiaryData(hqProp) {
         established: hqProp.created_at ? new Date(hqProp.created_at).getFullYear().toString() : '—',
         trend: gdpGrowth >= 40 && subCash > 0 ? 'up' : gdpGrowth >= SUB_RATES.GDP_NEUTRAL && subCash > 0 ? 'flat' : 'down',
         profitable: revenue > 0,
+        hqProp,
     };
 }
 
@@ -10265,16 +10266,25 @@ function renderManageSubsidiariesCard() {
 
         const canDissolve = sub.projects === 0;
 
+        const subLogoHtml = sub.hqProp?.logo_url
+            ? `<img src="${escapeHtml(sub.hqProp.logo_url)}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;">`
+            : `<label style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:${C.card};border:1px dashed ${C.border};border-radius:4px;cursor:pointer;font-size:14px;color:${C.dim};" title="Upload subsidiary logo">+<input type="file" accept="image/*" id="sub-logo-upload" data-prop-id="${sub.hqProp?.id || ''}" style="display:none;"></label>`;
+
         detailHtml = `
             <div style="padding:8px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-                    <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.gold}">${sub.abbr}</span>
-                    <span style="font-size:12px;font-weight:700;color:${C.text}">${sub.name}</span>
-                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+                    ${subLogoHtml}
+                    <div>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.gold}">${sub.abbr}</span>
+                            <span style="font-size:12px;font-weight:700;color:${C.text}">${sub.name}</span>
+                        </div>
                 <div style="display:flex;gap:6px;align-items:center;">
                     <span style="font-family:${mono};font-size:7px;letter-spacing:0.5px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${sub.nation.toUpperCase()}</span>
                     <span style="font-family:${mono};font-size:8px;color:${C.dim}">Est. ${sub.established}</span>
                     <span style="font-family:${mono};font-size:8px;color:${trendColor}">${trendChar} ${trendLabel}</span>
+                </div>
+                    </div>
                 </div>
             </div>
             ${stats.map(r => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 14px;border-bottom:1px solid ${C.border};">
@@ -10342,6 +10352,28 @@ function renderManageSubsidiariesCard() {
             </div>
         </div>
     </div>`;
+
+    // Subsidiary logo upload handler
+    document.getElementById('sub-logo-upload')?.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        const propId = e.target.dataset.propId;
+        if (!file || !propId) return;
+        if (file.size > 2 * 1024 * 1024) { alert('Logo must be under 2MB.'); return; }
+        try {
+            const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+            const path = `party-logos/${faction.id}/sub_${propId}_${Date.now()}.${ext}`;
+            const { error: upErr } = await _supabase.storage.from('public-assets').upload(path, file, { contentType: file.type, upsert: true });
+            if (upErr) throw upErr;
+            const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(path);
+            const logoUrl = urlData?.publicUrl;
+            if (logoUrl) {
+                await _supabase.from('corp_properties').update({ logo_url: logoUrl }).eq('id', propId);
+                const prop = _ownedProperties.find(p => p.id === propId);
+                if (prop) prop.logo_url = logoUrl;
+                renderManageSubsidiariesCard();
+            }
+        } catch (err) { alert('Upload failed: ' + (err.message || 'Error')); }
+    });
 
     // Init service dashboard for Insurance/Banking subsidiaries after DOM update
     if (sub && (sub.subsector === 'Insurance' || sub.subsector === 'Banking')) {

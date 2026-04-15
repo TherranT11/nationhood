@@ -3,38 +3,64 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Politics | Nationhood Alpha</title>
+<title>Party | Nationhood Alpha</title>
 
-<!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
-<!-- Shared Styles -->
-  <script type="module" crossorigin src="/assets/politics-mXv4b5E7.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-BvxJk5Cq.js">
-  <link rel="modulepreload" crossorigin href="/assets/party-icons-CJ7uQoDE.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-types-BwzErBjP.js">
-  <link rel="modulepreload" crossorigin href="/assets/ideology-Dqw3ro_Z.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-structure-ZDj3uFqp.js">
+
+  <script type="module" crossorigin src="/assets/politics-hu06jC2j.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-Dw7LFAqK.js">
   <link rel="modulepreload" crossorigin href="/assets/config-fKhFNVuq.js">
-  <link rel="modulepreload" crossorigin href="/assets/stats-DqgGwtpW.js">
-  <link rel="modulepreload" crossorigin href="/assets/elections-BIp8ALon.js">
-  <link rel="modulepreload" crossorigin href="/assets/protest-C9hW7vty.js">
-  <link rel="stylesheet" crossorigin href="/assets/politics-BBMrHkc4.css">
-  <link rel="stylesheet" crossorigin href="/assets/dashboard-Bk9Ly0o-.css">
+  <link rel="modulepreload" crossorigin href="/assets/government-types-BkFNm8Vo.js">
+  <link rel="modulepreload" crossorigin href="/assets/ideology-BIAflN4K.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-Bk9cRChq.js">
+  <link rel="modulepreload" crossorigin href="/assets/elections-DdqkBKAd.js">
+  <link rel="stylesheet" crossorigin href="/assets/politics-29jyrtIg.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
 </head>
 <body>
 
-<!-- ===== TOP BAR ===== -->
+<!-- Top bar -->
 <div id="top-bar"></div>
 
-<!-- ===== CONTENT AREA ===== -->
-<div id="content-area">
-    <div class="pol-loading">Loading...</div>
+<!-- Subtabs: Actions | Parties | Election | Past Elections -->
+<div class="pa-subtabs" id="pa-subtabs">
+    <button class="pa-subtab active" data-panel="actions">Actions</button>
+    <button class="pa-subtab" data-panel="parties">Parties</button>
+    <button class="pa-subtab" data-panel="election">Election</button>
+    <button class="pa-subtab" data-panel="past-elections">Past Elections</button>
 </div>
 
-<!-- Page Script -->
+<!-- ACTIONS panel -->
+<div class="pa-panel active" id="panel-actions">
+    <div id="pa-actions-root">
+        <div style="display:flex;align-items:center;justify-content:center;min-height:300px;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Loading...</div>
+    </div>
+</div>
+
+<!-- PARTIES panel -->
+<div class="pa-panel" id="panel-parties">
+    <div id="pa-parties-root">
+        <div style="display:flex;align-items:center;justify-content:center;min-height:300px;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Loading...</div>
+    </div>
+</div>
+
+<!-- ELECTION panel — coalition formation -->
+<div class="pa-panel" id="panel-election">
+    <div id="pa-election-root">
+        <div style="display:flex;align-items:center;justify-content:center;min-height:300px;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Loading...</div>
+    </div>
+</div>
+
+<!-- PAST ELECTIONS panel -->
+<div class="pa-panel" id="panel-past-elections">
+    <div id="pa-past-elections-root">
+        <div style="display:flex;align-items:center;justify-content:center;min-height:300px;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">Loading...</div>
+    </div>
+</div>
+
 </body>
 </html>
