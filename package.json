@@ -13,10 +13,12 @@
     "lint:inline-scripts": "node scripts/check-inline-script-globals.js",
     "sync:edge-function": "node scripts/sync-edge-function.js",
     "test:repeal-helper": "node scripts/test-repeal-helper.mjs",
-    "test:endorsement-window": "node scripts/test-endorsement-window.mjs"
+    "test:endorsement-window": "node scripts/test-endorsement-window.mjs",
+    "migrate:shipping": "node scripts/apply-shipping-migrations.js"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.100.0",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "pg": "^8.16.3"
   }
 }
