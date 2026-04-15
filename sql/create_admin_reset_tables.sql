@@ -187,6 +187,9 @@ DECLARE
         'faction_agitators',
         'agitator_pool',
 
+        -- ══ Deputies ══
+        'faction_deputies',
+
         -- ══ Subsidiary services ══
         'subsidiary_auto_policies',
         'subsidiary_auto_rates',
