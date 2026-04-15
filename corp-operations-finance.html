@@ -1379,6 +1379,7 @@ function renderReservesRisk() {
     }
 
     // Portfolio health score
+    const lateCount = apPortfolio.filter(p => p.status === 'LATE' || p.status === 'DELINQUENT').length;
     const healthFactors = [];
     if (reserveRatio >= 30) healthFactors.push('reserves'); // +1
     if (topNationPct <= 40) healthFactors.push('diversified'); // +1
