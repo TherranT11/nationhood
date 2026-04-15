@@ -1918,10 +1918,16 @@ let _lawsLoaded = false;
 async function loadLawsData() {
     if (!currentNation) return;
     try {
-        const { data } = await _supabase.from('active_laws')
-            .select('*, policies(policy_name, description, major_sector, minor_sector, law_category, ideology, ideologies, stat_effects, target_stat, stat_direction)')
-            .eq('nation_id', currentNation.id);
-        _lawsData = data || [];
+        // Load ALL policies (not just active laws) so players can browse everything
+        const [policiesRes, activeLawsRes] = await Promise.all([
+            _supabase.from('policies').select('id, policy_name, description, major_sector, minor_sector, law_category, ideology, ideologies, stat_effects, target_stat, stat_direction').eq('is_active', true),
+            _supabase.from('active_laws').select('policy_id').eq('nation_id', currentNation.id),
+        ]);
+        const activeIds = new Set((activeLawsRes.data || []).map(l => l.policy_id));
+        _lawsData = (policiesRes.data || []).map(p => ({
+            policies: p,
+            _isEnacted: activeIds.has(p.id),
+        }));
     } catch (err) {
         console.error('[Laws] Load failed:', err);
         _lawsData = [];
@@ -2024,55 +2030,78 @@ function renderLawsTab(container) {
                 return `<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 4px;color:${color};background:${color}12;border:1px solid ${color}30;">${escapeHtml(i).toUpperCase()}</span>`;
             }).join('');
 
-            lawsHtml += `<div style="padding:8px 14px;border-bottom:1px solid var(--border-main);">
+            const isEnacted = law._isEnacted;
+            lawsHtml += `<div style="padding:8px 14px;border-bottom:1px solid var(--border-main);${isEnacted ? 'background:rgba(92,204,92,0.02);' : ''}">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                     <div style="flex:1;min-width:0;">
-                        <div style="font-size:11px;font-weight:700;color:var(--text-bright);margin-bottom:2px;">${escapeHtml(policy.policy_name || 'Unknown')}</div>
+                        <div style="font-size:11px;font-weight:700;color:var(--text-bright);margin-bottom:2px;">${escapeHtml(policy.policy_name || 'Unknown')}${isEnacted ? ' <span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;color:var(--green);background:rgba(92,204,92,0.08);border:1px solid rgba(92,204,92,0.2);vertical-align:middle;">ENACTED</span>' : ''}</div>
                         <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:3px;">
                             ${minor ? `<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(minor)}</span>` : ''}
                             ${ideoBadges}
                         </div>
                         ${policy.description ? `<div style="font-size:8px;color:var(--text-dim);line-height:1.4;max-height:28px;overflow:hidden;">${escapeHtml(policy.description)}</div>` : ''}
                     </div>
-                    <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);white-space:nowrap;">Tick ${law.passed_tick || '?'}</div>
+                    <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);white-space:nowrap;">${policy.minor_sector || policy.major_sector || ''}</div>
                 </div>
                 ${effectTags ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${effectTags}</div>` : ''}
             </div>`;
         }
     }
 
-    container.innerHTML = `
-        <div style="display:flex;flex-direction:column;height:100%;">
-            <div class="ga-panel" style="margin-bottom:0;">
-                <div class="ga-panel-header">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span class="ga-panel-title">ACTIVE LAWS</span>
-                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${_lawsData.length} total</span>
+    // Only do full render on first load; subsequent calls just update the list
+    const existingList = document.getElementById('laws-list');
+    if (!existingList) {
+        const enactedCount = _lawsData.filter(l => l._isEnacted).length;
+        container.innerHTML = `
+            <div style="display:flex;flex-direction:column;height:100%;">
+                <div class="ga-panel" style="margin-bottom:0;">
+                    <div class="ga-panel-header">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span class="ga-panel-title">ALL LAWS</span>
+                            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${_lawsData.length} total &middot; ${enactedCount} enacted</span>
+                        </div>
+                        <input type="text" id="laws-search-input" placeholder="Search laws..." value="${escapeHtml(_lawsSearch)}" style="padding:3px 8px;font-family:var(--font-mono);font-size:9px;color:var(--text-bright);background:var(--bg-card);border:1px solid var(--border-main);outline:none;width:180px;">
                     </div>
-                    <input type="text" id="laws-search-input" placeholder="Search laws..." value="${escapeHtml(_lawsSearch)}" style="padding:3px 8px;font-family:var(--font-mono);font-size:9px;color:var(--text-bright);background:var(--bg-card);border:1px solid var(--border-main);outline:none;width:180px;">
+                    <div style="padding:4px 14px;border-bottom:1px solid var(--border-main);display:flex;gap:3px;flex-wrap:wrap;" id="laws-pills">
+                        ${pillsHtml}
+                    </div>
                 </div>
-                <div style="padding:4px 14px;border-bottom:1px solid var(--border-main);display:flex;gap:3px;flex-wrap:wrap;">
-                    ${pillsHtml}
+                <div style="flex:1;overflow-y:auto;" id="laws-list">
+                    ${lawsHtml}
                 </div>
             </div>
-            <div style="flex:1;overflow-y:auto;" id="laws-list">
-                ${lawsHtml}
-            </div>
-        </div>
-    `;
+        `;
 
-    // Event handlers
-    container.onclick = (e) => {
-        const filterBtn = e.target.closest('.laws-filter-btn');
-        if (filterBtn) {
-            _lawsFilter = filterBtn.dataset.lawsFilter;
-            renderLawsTab(container);
+        // Event handlers — bound once, never destroyed
+        container.onclick = (e) => {
+            const filterBtn = e.target.closest('.laws-filter-btn');
+            if (filterBtn) {
+                _lawsFilter = filterBtn.dataset.lawsFilter;
+                _updateLawsList();
+            }
+        };
+        document.getElementById('laws-search-input')?.addEventListener('input', (e) => {
+            _lawsSearch = e.target.value;
+            _updateLawsList();
+        });
+    } else {
+        // Just update the list content without touching the header/search
+        existingList.innerHTML = lawsHtml;
+    }
+
+    function _updateLawsList() {
+        // Re-render pills
+        const pillsEl = document.getElementById('laws-pills');
+        if (pillsEl) {
+            const updatedSectors = [...new Set(_lawsData.map(l => l.policies?.major_sector || l.policies?.law_category).filter(Boolean))].sort();
+            pillsEl.innerHTML = `
+                <span class="leg-filter-btn laws-filter-btn ${_lawsFilter === 'ALL' ? 'active' : ''}" data-laws-filter="ALL">ALL</span>
+                ${updatedSectors.map(s => `<span class="leg-filter-btn laws-filter-btn ${_lawsFilter === s ? 'active' : ''}" data-laws-filter="${escapeHtml(s)}">${escapeHtml(s)}</span>`).join('')}
+            `;
         }
-    };
-    document.getElementById('laws-search-input')?.addEventListener('input', (e) => {
-        _lawsSearch = e.target.value;
+        // Re-filter and render just the list
         renderLawsTab(container);
-    });
+    }
 }
 
 // ==================== ROYAL ASSENT (Absolute Monarchy) ====================
