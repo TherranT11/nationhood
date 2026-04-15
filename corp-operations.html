@@ -3270,7 +3270,34 @@ const PM_SEV_COLORS = {
     LOW: 'var(--green)', MODERATE: 'var(--amber)', HIGH: 'var(--orange)', CRITICAL: 'var(--red)',
 };
 
-let pmState = null; // { project, bid, tab, expandedEvent, selectedResponse, events }
+let pmState = null; // { project, bid, tab, expandedEvent, selectedResponse, events, permitRequirements }
+
+const PM_PERMIT_REQUIREMENTS_RPC = 'get_contract_permit_requirements';
+
+async function loadProjectPermitRequirements(projectId, factionId) {
+    if (!_supabase || !projectId || !factionId) return [];
+
+    try {
+        const { data, error } = await _supabase.rpc(PM_PERMIT_REQUIREMENTS_RPC, {
+            p_contract_id: projectId,
+            p_faction_id: factionId,
+        });
+        if (error) {
+            console.warn('[pm permits] failed to load permit requirements:', error.message);
+            return [];
+        }
+        if (!Array.isArray(data)) return [];
+        return data
+            .filter(row => row && row.name)
+            .map(row => ({
+                name: String(row.name),
+                has_permit: row.has_permit === true,
+            }));
+    } catch (err) {
+        console.warn('[pm permits] unexpected error loading permit requirements:', err);
+        return [];
+    }
+}
 
 async function openProjectModal(projectId) {
     const project = activeProjects.find(p => p.id === projectId);
@@ -3371,6 +3398,8 @@ async function openProjectModal(projectId) {
     const corpSkilled = Number(faction?.corp_skilled_workforce ?? 0);
     const corpInnovative = Number(faction?.corp_innovative_workforce ?? 0);
 
+    const permitRequirements = await loadProjectPermitRequirements(project.id, faction?.id);
+
     pmState = {
         project,
         bid,
@@ -3386,6 +3415,7 @@ async function openProjectModal(projectId) {
         phaseProgress,
         materials,
         equipment,
+        permitRequirements,
         budget,
         estCost,
         spent,
@@ -3770,27 +3800,21 @@ function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemainin
         html += '</div></div></div>';
     }
 
-    // Permits (from contract if available)
-    const permits = [];
-    // Show sector-appropriate permits based on project type
-    if (p.sector === 'civil_engineering' || p.sector === 'industrial' || p.sector === 'mega_project') {
-        permits.push({ name: 'Municipal Zoning Approval', status: 'ACTIVE' });
-        permits.push({ name: 'Structural Engineering Cert.', status: 'ACTIVE' });
-        if (p.sector !== 'civil_engineering') {
-            permits.push({ name: 'Environmental Impact Assessment', status: 'ACTIVE' });
-        }
-    }
+    // Permits (backend-driven requirement rows)
+    const permits = Array.isArray(s.permitRequirements) ? s.permitRequirements : [];
 
     if (permits.length > 0) {
         html += `<div style="padding:0 16px"><div class="pm-section">
             <div class="pm-section__title">Permits</div>`;
         for (const permit of permits) {
+            const hasPermit = permit.has_permit === true;
+            const statusText = hasPermit ? 'HAS PERMIT' : 'NEEDS TO GET';
             html += `<div class="pm-permit">
                 <div class="pm-permit__left">
-                    <span class="pm-permit__check" style="color:var(--green)">✓</span>
+                    <span class="pm-permit__check" style="color:${hasPermit ? 'var(--green)' : 'var(--amber)'}">${hasPermit ? '✓' : '!'}</span>
                     <span class="pm-permit__name">${escapeHtml(permit.name)}</span>
                 </div>
-                <span class="pm-permit__exp" style="color:var(--green)">ACTIVE</span>
+                <span class="pm-permit__exp" style="color:${hasPermit ? 'var(--green)' : 'var(--amber)'}">${statusText}</span>
             </div>`;
         }
         html += '</div></div>';
