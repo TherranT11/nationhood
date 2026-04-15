@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Operations | Nationhood Alpha</title>
+<title>Shipping Operations | Nationhood Alpha</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/corp-topbar.css">
 <style>
@@ -2386,277 +2386,108 @@ body.light-mode .av-empty__text { color: #1a1a17; }
     <!-- Operations content (default visible) -->
     <div id="operations-content" style="display:flex;justify-content:center;gap:12px;align-items:flex-start;flex-wrap:wrap;width:100%;">
 
-    <!-- Open Contracts card -->
-    <div class="oc-card">
-      <div class="oc-card__header">
-        <div class="oc-card__header-left">
-          <div class="oc-card__dot"></div>
-          <span class="oc-card__label">Open Contracts</span>
+
+    <!-- Available Routes card (Shipping corps only) -->
+    <div class="ar-card" id="ar-container">
+      <div class="ar-card__header">
+        <div class="ar-card__header-left">
+          <div class="ar-card__dot"></div>
+          <span class="ar-card__label">Available Routes</span>
         </div>
-        <span class="oc-card__count" id="oc-count">0 AVAILABLE</span>
+        <span class="ar-card__count" id="ar-count">0 ROUTES</span>
       </div>
 
-      <!-- Filter bar -->
-      <div class="oc-filters">
-        <div class="oc-filters__row">
-          <span class="oc-filters__label">Type</span>
-          <span class="filter-pill active" data-filter="type" data-value="ALL" onclick="setFilter('type','ALL')">All</span>
-          <span class="filter-pill" data-filter="type" data-value="GOVERNMENT" onclick="setFilter('type','GOVERNMENT')">Gov</span>
-          <span class="filter-pill" data-filter="type" data-value="PRIVATE" onclick="setFilter('type','PRIVATE')">Private</span>
-          <div style="flex:1"></div>
-          <span class="oc-filters__label" style="width:auto;">Nation</span>
-          <span class="filter-pill active" id="nation-pill">--</span>
-        </div>
-        <div class="oc-filters__row">
-          <span class="oc-filters__label">Sort</span>
-          <span class="filter-pill active" data-filter="sort" data-value="TIMELINE" onclick="setFilter('sort','TIMELINE')">Timeline</span>
-          <span class="filter-pill" data-filter="sort" data-value="BUDGET" onclick="setFilter('sort','BUDGET')">Budget</span>
+      <div class="ar-filters">
+        <span class="ar-pill active-all" data-ar-filter="ALL" onclick="arSetFilter('ALL')">All</span>
+        <span class="ar-pill" data-ar-filter="COASTAL" onclick="arSetFilter('COASTAL')">Coastal</span>
+        <span class="ar-pill" data-ar-filter="INTERNATIONAL" onclick="arSetFilter('INTERNATIONAL')">Intl</span>
+        <span class="ar-pill" data-ar-filter="GOVERNMENT" onclick="arSetFilter('GOVERNMENT')">Gov Contract</span>
+      </div>
+
+      <div class="ar-list" id="ar-list">
+        <div class="ar-empty">
+          <div class="ar-empty__text">No routes available.<br>Routes are generated from bilateral<br>trade each tick. Check back after<br>the next corp tick fires.</div>
         </div>
       </div>
 
-      <!-- Contract list (populated by JS) -->
-      <div class="oc-list" id="oc-list">
-        <div class="oc-empty">
-          <div class="oc-empty__text">No open contracts available.<br>Contracts appear when governments allocate<br>infrastructure budgets or corporations<br>request construction services.</div>
-        </div>
-      </div>
-
-      <!-- Footer -->
-      <div class="oc-card__footer">
-        <span class="oc-card__footer-hint">Select a contract to view full details</span>
+      <div class="ar-card__footer">
+        <div class="ar-footer__counts" id="ar-footer-counts"></div>
+        <div class="ar-claim-btn" id="ar-claim-btn" onclick="arApplyToService()">APPLY TO SERVICE — $50k</div>
       </div>
     </div>
 
-    <!-- Active Projects card -->
-    <div class="ap-card">
-      <div class="ap-card__header">
-        <div class="ap-card__header-left">
-          <div class="ap-card__dot"></div>
-          <span class="ap-card__label">Active Projects</span>
+    <!-- Active Voyages card (Shipping corps only) -->
+    <div class="av-card" id="av-container">
+      <div class="av-card__header">
+        <div class="av-card__header-left">
+          <div class="av-card__dot"></div>
+          <span class="av-card__label">Active Voyages</span>
         </div>
-        <span class="ap-card__count" id="ap-count">0 ACTIVE</span>
+        <span class="av-card__count" id="av-count">0 ACTIVE</span>
       </div>
-
-      <div class="ap-list" id="ap-list">
-        <div class="ap-empty">
-          <div class="ap-empty__text">No active projects.<br>Win a contract bid to start<br>your first construction project.</div>
-        </div>
-      </div>
-
-      <div class="ap-card__footer" id="ap-footer" style="display:none;">
-        <div class="ap-footer-stats">
-          <div>
-            <div class="ap-footer-stat__label">PROJECTS</div>
-            <div class="ap-footer-stat__value" id="ap-total-crew">0</div>
-          </div>
-          <div>
-            <div class="ap-footer-stat__label">TOTAL VALUE</div>
-            <div class="ap-footer-stat__value" id="ap-total-budget">$0</div>
-          </div>
-          <div>
-            <div class="ap-footer-stat__label">YOUR BIDS</div>
-            <div class="ap-footer-stat__value" id="ap-total-spent" style="color:var(--gold);">$0</div>
-          </div>
-        </div>
-        <div id="ap-late-badge"></div>
-      </div>
-    </div>
-
-    <!-- Warehouse card -->
-    <div class="wh-card">
-      <div class="wh-card__header">
-        <div class="wh-card__header-left">
-          <div class="wh-card__dot"></div>
-          <span class="wh-card__label">Warehouse</span>
-        </div>
-        <span class="wh-card__count" id="wh-count">0 UNITS</span>
-      </div>
-
-      <div class="wh-list" id="wh-list">
-        <div class="wh-empty">
-          <div class="wh-empty__text">No materials in warehouse.<br>Purchase materials from the<br>Procurement panel to stock up.</div>
+      <div class="av-summary" id="av-summary"></div>
+      <div class="av-list" id="av-list">
+        <div class="av-empty">
+          <div class="av-empty__text">No active voyages.<br>Claim a shipping route to<br>deploy your fleet.</div>
         </div>
       </div>
-
-      <div class="wh-card__footer">
+      <div class="av-card__footer" id="av-footer">
         <div>
-          <div class="wh-footer__total-label">TOTAL INVENTORY VALUE</div>
-          <div class="wh-footer__total-value" id="wh-total-value">$0</div>
+          <div class="av-footer__label">TOTAL REVENUE</div>
+          <div class="av-footer__value" id="av-total-revenue" style="color:var(--text-dim);">$0</div>
         </div>
-        <div class="wh-footer__right">
-          <div class="wh-footer__stat">
-            <div class="wh-footer__stat-label">CAPACITY</div>
-            <div class="wh-footer__stat-value" id="wh-capacity" style="color:var(--text-dim);">0%</div>
+        <div style="display:flex;gap:12px;">
+          <div style="text-align:center;">
+            <div class="av-footer__label">FLEET</div>
+            <div class="av-footer__value" id="av-fleet-status" style="font-size:11px;color:var(--text-bright);">0/0</div>
           </div>
-          <div class="wh-legend">
-            <div class="wh-legend__item">
-              <div class="wh-dot wh-dot--low" style="width:5px;height:5px;"></div>
-              <span class="wh-legend__label">LOW</span>
-            </div>
-            <div class="wh-legend__item">
-              <div class="wh-dot wh-dot--std" style="width:5px;height:5px;"></div>
-              <span class="wh-legend__label">STD</span>
-            </div>
-            <div class="wh-legend__item">
-              <div class="wh-dot wh-dot--high" style="width:5px;height:5px;"></div>
-              <span class="wh-legend__label">HIGH</span>
-            </div>
+          <div style="text-align:center;">
+            <div class="av-footer__label">SUBSECTOR</div>
+            <div class="av-footer__value" id="av-subsector" style="font-size:9px;color:#5a8aaa;">--</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Procurement card -->
-    <div class="pr-card">
-      <div class="pr-card__header">
-        <div class="pr-card__header-left">
-          <div class="pr-card__dot"></div>
-          <span class="pr-card__label">Procurement</span>
+    <!-- Active Fleet card (Shipping corps only) -->
+    <div class="fl-card" id="fl-container">
+      <div class="fl-card__header">
+        <div class="fl-card__header-left">
+          <div class="fl-card__dot"></div>
+          <span class="fl-card__label">Active Fleet</span>
         </div>
-        <span class="pr-card__nation-badge" id="pr-nation-badge">LOCAL — --</span>
+        <span class="fl-card__count" id="fl-count">0 VESSELS</span>
       </div>
-
-      <!-- Material selector grid -->
-      <div class="pr-mat-grid" id="pr-mat-grid"></div>
-
-      <!-- Quality tier selector -->
-      <div class="pr-tier-bar" id="pr-tier-bar"></div>
-
-      <!-- Scrollable content: market info + purchase order OR locked panel -->
-      <div style="flex:1;overflow-y:auto;" id="pr-content"></div>
-
-      <!-- Footer -->
-      <div class="pr-card__footer">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span class="pr-footer__label">CASH AVAILABLE</span>
-          <span class="pr-footer__value" id="pr-cash" style="color:var(--text-bright);">--</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span class="pr-footer__label">WAREHOUSE</span>
-          <span class="pr-footer__value" id="pr-wh-capacity" style="color:var(--text-dim);">--%</span>
-        </div>
-      </div>
+      <div id="fl-summary" style="display:flex;border-bottom:1px solid var(--border-0);background:var(--bg-3);flex-shrink:0;"></div>
+      <div class="fl-card__list" id="fl-list"></div>
+      <div class="fl-card__footer" id="fl-footer"></div>
     </div>
 
-    <!-- Equipment Inventory card -->
-    <div class="eq-card">
-      <div class="eq-card__header">
-        <div class="eq-card__header-left">
-          <div class="eq-card__dot"></div>
-          <span class="eq-card__label">Equipment</span>
+    <!-- Port Facilities (Shipping corps only — Fuel Depots & Dry Docks) -->
+    <div class="sm-card" id="port-facilities-container">
+      <div class="sm-card__header">
+        <div class="sm-card__header-left">
+          <div class="sm-card__dot" style="background:#c86a4a;"></div>
+          <span class="sm-card__label">Port Facilities</span>
         </div>
-        <span class="eq-card__count" id="eq-count">0 UNITS</span>
+        <span class="sm-card__count" id="pf-count">0 FACILITIES</span>
       </div>
-      <div class="eq-summary" id="eq-summary"></div>
-      <div class="eq-list" id="eq-list"></div>
-      <div class="eq-card__footer" id="eq-footer"></div>
+      <div id="pf-list" style="max-height:300px;overflow:auto;"></div>
+      <div id="pf-footer" style="padding:6px 12px;border-top:1px solid var(--border-0);background:var(--bg-3);display:flex;gap:6px;justify-content:space-between;"></div>
     </div>
 
-    <!-- Equipment Market card -->
-    <div class="em-card">
-      <div class="em-card__header">
-        <div class="em-card__header-left">
-          <div class="em-card__dot"></div>
-          <span class="em-card__label">Equipment Market</span>
+    <!-- Ship Market card (Shipping corps only) -->
+    <div class="sm-card" id="sm-container">
+      <div class="sm-card__header">
+        <div class="sm-card__header-left">
+          <div class="sm-card__dot"></div>
+          <span class="sm-card__label">Ship Market</span>
         </div>
-        <span class="em-tier-badge" id="em-tier-badge">TIER 1</span>
+        <span class="sm-card__count" id="sm-count">0 AVAILABLE</span>
       </div>
-      <div class="em-nation-bar">
-        <span class="em-nation-label">MARKET</span>
-        <select class="em-nation-select" id="em-nation-select" onchange="switchEmNation(this.value)"></select>
-        <span class="em-import-tag" id="em-import-tag" style="display:none;">IMPORT</span>
-      </div>
-      <div id="em-selector"></div>
-      <div style="flex:1;overflow-y:auto;" id="em-content"></div>
-      <div class="em-card__footer">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span class="em-footer__label">CASH</span>
-          <span class="em-footer__value" id="em-cash" style="color:var(--text-bright);">--</span>
-        </div>
-        <div class="em-legend">
-          <div class="em-legend__item"><div class="em-legend__dot" style="background:var(--teal);"></div><span class="em-legend__label">LOCAL</span></div>
-          <div class="em-legend__item"><div class="em-legend__dot" style="background:#5a8aaa;"></div><span class="em-legend__label">CORP</span></div>
-        </div>
-      </div>
+      <div class="sm-card__list" id="sm-list"></div>
+      <div class="sm-card__footer" id="sm-footer"></div>
     </div>
-
-    <!-- Permits card -->
-    <div class="pm-card">
-      <div class="pm-card__header">
-        <div class="pm-card__header-left">
-          <div class="pm-card__dot"></div>
-          <span class="pm-card__label">Permits</span>
-        </div>
-        <div class="pm-card__badges" id="pm-badges"></div>
-      </div>
-
-      <!-- Tab bar -->
-      <div class="pm-tabs">
-        <button class="pm-tab active" data-pm-tab="active" onclick="setPmTab('active')">
-          <span class="pm-tab__label">Active</span>
-          <span class="pm-tab__count" id="pm-active-count">(0)</span>
-        </button>
-        <button class="pm-tab" data-pm-tab="pending" onclick="setPmTab('pending')">
-          <span class="pm-tab__label">Pending</span>
-          <span class="pm-tab__count" id="pm-pending-count">(0)</span>
-        </button>
-        <button class="pm-tab" data-pm-tab="available" onclick="setPmTab('available')">
-          <span class="pm-tab__label">Apply</span>
-          <span class="pm-tab__count" id="pm-apply-count">(0)</span>
-        </button>
-      </div>
-
-      <!-- Permit list -->
-      <div class="pm-list" id="pm-list">
-        <div class="pm-empty">
-          <div class="pm-empty__text">No active permits.<br>Permits are required by government<br>policy before starting certain projects.<br>Check the Apply tab for available permits.</div>
-        </div>
-      </div>
-
-      <!-- Footer -->
-      <div class="pm-card__footer">
-        <div>
-          <div class="pm-footer__total-label">TOTAL PERMIT COSTS / YEAR</div>
-          <div class="pm-footer__total-value" id="pm-total-cost">$0</div>
-        </div>
-        <div class="pm-footer__stats">
-          <div class="pm-footer__stat">
-            <div class="pm-footer__stat-label">ACTIVE</div>
-            <div class="pm-footer__stat-value" id="pm-footer-active" style="color:var(--green);">0</div>
-          </div>
-          <div class="pm-footer__stat">
-            <div class="pm-footer__stat-label">PENDING</div>
-            <div class="pm-footer__stat-value" id="pm-footer-pending" style="color:var(--gold);">0</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Deliveries card -->
-    <div class="dl-card">
-      <div class="dl-card__header">
-        <div class="dl-card__header-left">
-          <div class="dl-card__dot"></div>
-          <span class="dl-card__label">Deliveries</span>
-        </div>
-        <span class="dl-card__count" id="dl-count">0 COMPLETED</span>
-      </div>
-
-      <div class="dl-list" id="dl-list">
-        <div class="dl-empty">
-          <div class="dl-empty__text">No completed deliveries.<br>Finish a construction project to<br>receive an inspection report and<br>collect payment.</div>
-        </div>
-      </div>
-
-      <div class="dl-card__footer">
-        <div>
-          <div class="dl-footer__profit-label">LIFETIME PROFIT</div>
-          <div class="dl-footer__profit-value" id="dl-lifetime-profit" style="color:var(--text-dim);">$0</div>
-        </div>
-        <div class="dl-footer__results" id="dl-footer-results"></div>
-      </div>
-    </div>
-
 
     <!-- Auto Insurance & Credit from Finance Subsidiaries -->
     <div id="auto-services-container"></div>
@@ -6017,7 +5848,7 @@ function arGetFiltered() {
 }
 
 async function loadAvailableRoutes() {
-    if (!faction || faction.corp_sector !== 'Shipping') return;
+    if (!faction) return;
 
     const subsectorMap = {
         'Bulk Cargo': 'bulk_cargo',
@@ -6452,7 +6283,7 @@ let avClaims = [];
 let avSelected = -1;
 
 async function loadActiveVoyages() {
-    if (!faction || faction.corp_sector !== 'Shipping') return;
+    if (!faction) return;
 
     const { data, error } = await _supabase
         .from('shipping_claims')
@@ -6951,11 +6782,11 @@ async function init() {
     }
 
     // Redirect non-Construction corps to their sector-specific operations page
-    // Redirect non-Construction corps to their correct operations page
+    // Redirect non-Shipping corps to their correct operations page
     const urlTab = new URLSearchParams(window.location.search).get('tab');
     const isSharedTab = urlTab === 'expansion' || urlTab === 'actions';
-    if (faction.corp_sector !== 'Construction' && !isSharedTab) {
-        const SECTOR_OPS = { Finance: 'corp-operations-finance.html', Shipping: 'corp-operations-shipping.html' };
+    if (faction.corp_sector !== 'Shipping' && !isSharedTab) {
+        const SECTOR_OPS = { Finance: 'corp-operations-finance.html', Construction: 'corp-operations.html' };
         const targetPage = SECTOR_OPS[faction.corp_sector];
         if (targetPage) { window.location.href = targetPage; return; }
     }
@@ -7046,22 +6877,8 @@ async function init() {
         dd.innerHTML = ddHtml;
     }
 
-    // Load construction operations data
-    try {
-        const { data: modDefs } = await _supabase.from('building_modifiers').select('*');
-        modifierDefs = {};
-        for (const m of (modDefs || [])) modifierDefs[m.modifier_key] = m;
-    } catch (_) { /* table may not exist yet */ }
-
-    await Promise.all([loadContracts(), loadActiveProjects(), loadWarehouse(), loadEquipment(), loadPermits(), loadDeliveries(), loadOwnedProperties()]);
-
-    try {
-        const { data: nations } = await _supabase.from('nations').select('*').order('name');
-        emAllNations = nations || [];
-    } catch (_) { emAllNations = []; }
-
-    renderProcurement();
-    renderEquipmentMarket();
+    // Load shipping operations data
+    await Promise.all([loadAvailableRoutes(), loadActiveVoyages(), loadFleet(), loadShipMarket(), loadPortFacilities()]);
 
     // Messaging bubble
     initMessaging(faction, nationStats, shard);
@@ -12407,7 +12224,7 @@ function flCondColor(v) { return v >= 75 ? '#5c5' : v >= 50 ? '#ca5' : v >= 25 ?
 function flFuelColor(v) { return v >= 60 ? '#5c5' : v >= 30 ? '#ca5' : v >= 15 ? '#c84' : '#c55'; }
 
 async function loadFleet() {
-    if (!faction || faction.corp_sector !== 'Shipping') return;
+    if (!faction) return;
     const { data, error } = await _supabase.from('corp_vessels')
         .select('*')
         .eq('faction_id', faction.id)
@@ -12994,7 +12811,7 @@ const PF_CATALOG = [
 let _portFacilities = [];
 
 async function loadPortFacilities() {
-    if (!faction || faction.corp_sector !== 'Shipping') return;
+    if (!faction) return;
     const { data } = await _supabase.from('corp_properties')
         .select('*')
         .eq('faction_id', faction.id)
@@ -13227,7 +13044,7 @@ const SM_SUBSECTOR_CLASSES = {
 };
 
 async function loadShipMarket() {
-    if (!faction || faction.corp_sector !== 'Shipping') return;
+    if (!faction) return;
     const { data, error } = await _supabase.from('ship_market_listings')
         .select('*, nation:nation_id(id, name)')
         .eq('status', 'available')
