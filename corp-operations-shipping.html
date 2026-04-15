@@ -3371,7 +3371,7 @@ async function pmDeployEquipment(equipmentKey, units) {
         const { error } = await _supabase.from('corp_equipment')
             .update({ deployed: newDeployed, assigned_projects: assignments })
             .eq('faction_id', faction.id)
-            .eq('equipment_key', equipmentKey);
+            .eq('equipment_key', eqRow.equipment_key);
         if (error) { alert('Deploy failed: ' + error.message); return; }
 
         await loadEquipment();
@@ -3401,7 +3401,7 @@ async function pmUndeployEquipment(equipmentKey) {
         const { error } = await _supabase.from('corp_equipment')
             .update({ deployed: newDeployed, assigned_projects: assignments })
             .eq('faction_id', faction.id)
-            .eq('equipment_key', equipmentKey);
+            .eq('equipment_key', eqRow.equipment_key);
         if (error) { alert('Undeploy failed: ' + error.message); return; }
 
         await loadEquipment();
