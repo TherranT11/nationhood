@@ -2327,7 +2327,30 @@ async function loadCollections() {
     renderCollections();
 }
 
+function routeToSharedOperationsTab(tab) {
+    const nextUrl = new URL('corp-operations.html', window.location.href);
+    nextUrl.search = window.location.search;
+    const params = nextUrl.searchParams;
+    params.set('tab', tab);
+    nextUrl.search = params.toString() ? `?${params.toString()}` : '';
+    window.location.href = nextUrl.toString();
+}
+
+function switchToExpansion(e) {
+    if (e?.preventDefault) e.preventDefault();
+    routeToSharedOperationsTab('expansion');
+}
+
+function switchToActions(e) {
+    if (e?.preventDefault) e.preventDefault();
+    routeToSharedOperationsTab('actions');
+}
+
 async function init() {
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    const isSharedTab = urlTab === 'expansion' || urlTab === 'actions';
+    const activeTab = isSharedTab ? urlTab : 'operations';
+
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
@@ -2361,6 +2384,12 @@ async function init() {
         return;
     }
 
+    // Expansion/actions are implemented in shared operations views, not Finance.
+    if (isSharedTab) {
+        routeToSharedOperationsTab(urlTab);
+        return;
+    }
+
     sessionStorage.setItem('active_faction_id', faction.id);
 
     // Load nation + shard
@@ -2378,7 +2407,7 @@ async function init() {
     const _topBarContainer = document.getElementById('corp-topbar-container');
     if (_topBarContainer) {
         const { renderCorpTopBar } = await import('./js/corp-topbar.js');
-        renderCorpTopBar(_topBarContainer, { faction, shard, activeTab: 'operations', allUserFactions });
+        renderCorpTopBar(_topBarContainer, { faction, shard, activeTab, allUserFactions });
     }
 
     // Faction switcher
@@ -2479,6 +2508,8 @@ window.toggleCorpDropdown = toggleCorpDropdown;
 window.switchFaction = switchFaction;
 window.toggleTheme = toggleTheme;
 window.doLogout = doLogout;
+window.switchToExpansion = switchToExpansion;
+window.switchToActions = switchToActions;
 
 init();
 </script>
