@@ -2505,15 +2505,17 @@ async function openGrantSeatsModal(root) {
                 faction.seats = newMonarchSeats;
                 nation.legitimacy = newLeg;
 
-                // Log event
-                const target = otherFactions.find(f => f.id === selectedFactionId);
-                await _supabase.from('event_log').insert({
-                    nation_id: nation.id,
-                    event_name: `${nation.monarch_title || 'King'} grants ${actualGrant} seats to ${target?.faction_name || 'unknown'}`,
-                    category: 'government',
-                    description_chosen: `The ${nation.monarch_title || 'King'} has granted ${actualGrant} parliamentary seat${actualGrant !== 1 ? 's' : ''} to ${target?.faction_name}. Legitimacy +${legGain.toFixed(1)}.`,
-                    fired_at_tick: _state.shard?.current_tick || 0,
-                }).catch(() => {});
+                // Log event (non-blocking)
+                try {
+                    const target = otherFactions.find(f => f.id === selectedFactionId);
+                    await _supabase.from('event_log').insert({
+                        nation_id: nation.id,
+                        event_name: `${nation.monarch_title || 'King'} grants ${actualGrant} seats to ${target?.faction_name || 'unknown'}`,
+                        category: 'government',
+                        description_chosen: `The ${nation.monarch_title || 'King'} has granted ${actualGrant} parliamentary seat${actualGrant !== 1 ? 's' : ''} to ${target?.faction_name}. Legitimacy +${legGain.toFixed(1)}.`,
+                        fired_at_tick: _state.shard?.current_tick || 0,
+                    });
+                } catch (_) { /* non-blocking */ }
 
                 close();
                 renderPage(root);
@@ -2651,13 +2653,15 @@ async function openRevokeSeatsModal(root) {
                 nation.legitimacy = newLeg;
                 sessionStorage.removeItem('nationhood_state');
 
-                await _supabase.from('event_log').insert({
-                    nation_id: nation.id,
-                    event_name: `${nation.monarch_title || 'King'} revokes ${revokeAmount} seats from ${target?.faction_name || 'unknown'}`,
-                    category: 'political',
-                    description_chosen: `The ${nation.monarch_title || 'King'} has revoked ${revokeAmount} seat${revokeAmount !== 1 ? 's' : ''} from ${target?.faction_name}. Legitimacy -${legCost}.`,
-                    fired_at_tick: _state.shard?.current_tick || 0,
-                }).catch(() => {});
+                try {
+                    await _supabase.from('event_log').insert({
+                        nation_id: nation.id,
+                        event_name: `${nation.monarch_title || 'King'} revokes ${revokeAmount} seats from ${target?.faction_name || 'unknown'}`,
+                        category: 'political',
+                        description_chosen: `The ${nation.monarch_title || 'King'} has revoked ${revokeAmount} seat${revokeAmount !== 1 ? 's' : ''} from ${target?.faction_name}. Legitimacy -${legCost}.`,
+                        fired_at_tick: _state.shard?.current_tick || 0,
+                    });
+                } catch (_) { /* non-blocking */ }
 
                 close();
                 renderPage(root);
