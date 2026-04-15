@@ -114,6 +114,25 @@ DECLARE
         'diplomatic_action_log',
         'ambassadors',
 
+        -- ══ Bilateral Issues (children before parents) ══
+        'issue_card_plays',
+        'bilateral_issue_actions_taken',
+        'bilateral_issue_history',
+        'bilateral_issue_modifiers',
+        'bilateral_issues',
+        -- issue_card_definitions excluded — config/template data survives reset
+
+        -- ══ Incidents (children before parents) ══
+        'incident_cooldowns',
+        'incident_escalation_log',
+        'incident_chat_messages',
+        'incident_mediation',
+        'incident_actions_taken',
+        'incident_actions_available',
+        'incident_events',
+        'incidents',
+        -- incident_event_pool excluded — config/template data survives reset
+
         -- ══ Events & crises ══
         'active_crises',
         'crisis_effects',
@@ -167,6 +186,9 @@ DECLARE
         'lawsuits',
         'faction_agitators',
         'agitator_pool',
+
+        -- ══ Deputies ══
+        'faction_deputies',
 
         -- ══ Subsidiary services ══
         'subsidiary_auto_policies',
