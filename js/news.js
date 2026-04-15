@@ -478,6 +478,9 @@ export async function initNewspaper(supabase, state) {
     // === LOAD & DISPLAY ARTICLES ===
     await loadAndDisplayArticles();
 
+    // === POPULATE BREAKING TICKER WITH CORPORATE EVENTS ===
+    loadTickerEvents();
+
     // === VOLBAL LIGUE NATIONALE ===
     loadAndRenderVLN();
 }
@@ -2046,5 +2049,39 @@ async function loadAndRenderVLN() {
         widget.innerHTML = bodyHtml;
     } catch (e) {
         console.error('[VLN] Widget render failed:', e);
+    }
+}
+
+// ==================== BREAKING TICKER — CORPORATE EVENTS ====================
+
+async function loadTickerEvents() {
+    if (!_supabase || !_state) return;
+    try {
+        const nationIds = await getShardNationIds();
+        const currentTick = _state.shard?.current_tick || 0;
+
+        // Fetch recent corporate events (last 12 ticks)
+        const { data: events } = await _supabase
+            .from('event_log')
+            .select('description_chosen, fired_at_tick')
+            .in('nation_id', nationIds)
+            .eq('category', 'corporate')
+            .gte('fired_at_tick', Math.max(0, currentTick - 12))
+            .order('fired_at_tick', { ascending: false })
+            .limit(20);
+
+        const tickerEl = document.querySelector('.nws-ticker-scroll');
+        if (!tickerEl) return;
+
+        const sep = ' \u00a0<span class="nws-ticker-sep">\u25C6</span>\u00a0 ';
+
+        if (events && events.length > 0) {
+            const headlines = events.map(e => e.description_chosen);
+            // Duplicate for seamless scroll loop
+            tickerEl.innerHTML = headlines.join(sep) + sep + headlines.join(sep);
+        }
+        // If no corporate events, leave the static placeholder ticker as-is
+    } catch (err) {
+        console.error('[Ticker] Failed to load corporate events:', err);
     }
 }

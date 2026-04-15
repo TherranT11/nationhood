@@ -1382,6 +1382,19 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
 
         results.push({ contract: contract.name, result: 'awarded', winner: winner.faction_id, price: winner.bid_price, method });
 
+        // Log corporate event for news ticker
+        try {
+            const { data: winnerFaction } = await supabase.from('factions').select('faction_name').eq('id', winner.faction_id).single();
+            const { data: contractNation } = await supabase.from('nations').select('name').eq('id', nationId).single();
+            await supabase.from('event_log').insert({
+                nation_id: nationId,
+                event_name: 'Construction Contract Awarded',
+                category: 'corporate',
+                description_chosen: `${winnerFaction?.faction_name || 'A corporation'} has just won a contract to build ${contract.name} in the nation of ${contractNation?.name || 'Unknown'}.`,
+                fired_at_tick: currentTick,
+            });
+        } catch (_) { /* non-blocking */ }
+
         // GDP growth nudge: +0.01 per $100M contracted (fire-and-forget)
         try {
             const gdpNudge = (winner.bid_price / 100_000_000) * 0.01;
@@ -1697,13 +1710,14 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance + permitQualityBonus + materialQualityPenalty + missingPermitPenalty + modifierPermitPenalty));
 
             let deliveryResult = 'PASS';
-            let repChange = 2;
+            // Reputation: +3 per $100M spent, rounded up
+            let repChange = Math.ceil((payment / 100_000_000) * 3);
             let qualityBonus = 0;
             let penalties = 0;
-            if (qualityScore >= 85) { deliveryResult = 'DISTINCTION'; repChange = 5; qualityBonus = Math.round(payment * 0.15); }
-            else if (qualityScore >= 60) { deliveryResult = 'PASS'; repChange = 2; }
+            if (qualityScore >= 85) { deliveryResult = 'DISTINCTION'; qualityBonus = Math.round(payment * 0.15); }
+            else if (qualityScore >= 60) { deliveryResult = 'PASS'; }
             else if (qualityScore >= 40) { deliveryResult = 'CONDITIONAL'; repChange = 0; penalties = Math.round(payment * 0.20); }
-            else { deliveryResult = 'FAIL'; repChange = -3; penalties = Math.round(payment * 0.40); }
+            else { deliveryResult = 'FAIL'; repChange = -repChange; penalties = Math.round(payment * 0.40); }
 
             // Apply building modifier reputation bonuses/penalties at delivery
             let modifierRepBonus = 0;
