@@ -33,7 +33,8 @@ function escHtml(str) {
  * @param {Object} opts.supabase - Supabase client
  */
 export function renderCorpTopBar(container, opts = {}) {
-    const { faction, shard, activeTab, allUserFactions } = opts;
+    const { faction, shard, activeTab, allUserFactions, badges } = opts;
+    const tabBadges = badges || {}; // { tabId: { count, color } }
     const ticker = faction?.corp_ticker || faction?.abbreviation || '';
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(2) + 'B'
@@ -61,7 +62,9 @@ export function renderCorpTopBar(container, opts = {}) {
         if (t.samePageAction && isOnOperations) {
             return `<a href="#" class="corp-nav-tab${isActive ? ' active' : ''}" data-tab-action="${t.samePageAction}" style="text-decoration:none;">${t.label}</a>`;
         }
-        return `<a href="${t.href}" class="corp-nav-tab${isActive ? ' active' : ''}" style="text-decoration:none;">${t.label}</a>`;
+        const badge = tabBadges[t.id];
+        const badgeHtml = badge ? `<span style="position:relative;top:-4px;margin-left:2px;display:inline-block;min-width:8px;height:8px;line-height:8px;border-radius:50%;font-size:0;background:${badge.color || '#c8a832'};" title="${badge.title || ''}"></span>` : '';
+        return `<a href="${t.href}" class="corp-nav-tab${isActive ? ' active' : ''}" style="text-decoration:none;">${t.label}${badgeHtml}</a>`;
     }).join('');
 
     // Faction dropdown items

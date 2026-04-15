@@ -7087,12 +7087,29 @@ async function init() {
     if (shardRes.error) console.warn('Shard load failed:', shardRes.error.message);
     shard = shardRes.data;
 
+    // Check for pending bids on commissioned projects (for Home tab badge)
+    let _pendingBidCount = 0;
+    if (faction?.id) {
+        const { data: _myContracts } = await _supabase
+            .from('construction_contracts')
+            .select('id, contract_bids!inner(id)')
+            .eq('issuer_faction_id', faction.id)
+            .in('status', ['open', 'bidding']);
+        if (_myContracts) {
+            for (const c of _myContracts) _pendingBidCount += (c.contract_bids || []).length;
+        }
+    }
+
     // Render shared top bar
     const _topBarContainer = document.getElementById('corp-topbar-container');
     if (_topBarContainer) {
         const { renderCorpTopBar } = await import('./js/corp-topbar.js');
         const activeTab = new URLSearchParams(window.location.search).get('tab') || 'operations';
-        renderCorpTopBar(_topBarContainer, { faction, shard, activeTab, allUserFactions });
+        const _badges = {};
+        if (_pendingBidCount > 0) {
+            _badges.home = { color: '#c8a832', title: _pendingBidCount + ' pending bid' + (_pendingBidCount !== 1 ? 's' : '') + ' on your projects' };
+        }
+        renderCorpTopBar(_topBarContainer, { faction, shard, activeTab, allUserFactions, badges: _badges });
     }
 
     // Tick info — corp tick fires at midpoint of political tick interval
