@@ -174,21 +174,39 @@ DECLARE
         'subsidiary_bids',
         'subsidiary_sales',
 
+        -- ══ Insurance (must come before corp_vessels and finance_active_loans) ══
+        'insurance_claims',
+
+        -- ══ Shipping (children before parents — claims/apps before routes) ══
+        'shipping_claims',
+        'shipping_applications',
+        'ship_market_listings',
+        'vessel_orders',
+        'shipping_routes',
+
+        -- ══ Construction (children before parents — deliveries/events before contracts) ══
+        'construction_deliveries',
+        'construction_events',
+        'project_material_allocations',
+        'mega_project_cooldowns',
+        'available_properties',
+        'corp_permits',
+
         -- ══ Corp properties & executives ══
         'corp_properties',
         'corp_executives',
         'executive_pool',
         'corp_material_inventory',
 
-        -- ══ Corp vessels ══
+        -- ══ Corp vessels (after insurance_claims and shipping_claims) ══
         'corp_vessels',
 
-        -- ══ Finance system ══
+        -- ══ Finance system (after insurance_claims) ══
         'finance_active_loans',
         'finance_loan_offers',
         'finance_loan_requests',
 
-        -- ══ Construction contracts ══
+        -- ══ Construction contracts (after deliveries, events, material_allocations) ══
         'contract_bids',
         'construction_contracts',
 
@@ -203,24 +221,6 @@ DECLARE
         'food_stockpiles',
         'food_land_allocation',
 
-        -- ══ Shipping ══
-        'shipping_routes',
-        'shipping_applications',
-        'shipping_claims',
-        'ship_market_listings',
-        'vessel_orders',
-
-        -- ══ Construction (extended) ══
-        'construction_deliveries',
-        'construction_events',
-        'project_material_allocations',
-        'mega_project_cooldowns',
-        'available_properties',
-        'corp_permits',
-
-        -- ══ Finance (extended) ══
-        'insurance_claims',
-
         -- ══ Party (extended) ══
         'faction_deputies',
         'faction_pillar_state',
@@ -233,9 +233,14 @@ DECLARE
         'pending_actions'
     ];
 BEGIN
-    -- First: null out FKs on nations so factions can be deleted
+    -- First: null out FKs on nations and construction_contracts so dependent tables can be deleted
     UPDATE nations SET ruling_faction_id = NULL WHERE ruling_faction_id IS NOT NULL;
-    result := result || '{"nations.ruling_faction_id": "nulled"}'::JSONB;
+    UPDATE nations SET monarch_faction_id = NULL WHERE monarch_faction_id IS NOT NULL;
+    BEGIN
+        UPDATE construction_contracts SET bond_id = NULL WHERE bond_id IS NOT NULL;
+    EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;
+    END;
+    result := result || '{"nations.ruling_faction_id": "nulled", "nations.monarch_faction_id": "nulled", "construction_contracts.bond_id": "nulled"}'::JSONB;
 
     -- Null out diplomatic_relations FKs
     BEGIN
