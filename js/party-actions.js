@@ -361,6 +361,8 @@ function renderPage(root) {
         <div class="pa-modal-overlay" id="pa-hire-modal"></div>
         <!-- File Lawsuit Modal -->
         <div class="pa-modal-overlay" id="pa-lawsuit-modal"></div>
+        <!-- Modernize Modal -->
+        <div class="pa-modal-overlay" id="pa-modernize-modal"></div>
         <!-- Rebrand Modal -->
         <div class="pa-modal-overlay" id="pa-rebrand-modal"></div>
         <!-- Hire Deputy Modal -->
@@ -401,6 +403,8 @@ function renderPage(root) {
             openPlatformModal(root);
         } else if (actionId === 'file_lawsuit') {
             openLawsuitModal(root);
+        } else if (actionId === 'modernize') {
+            openModernizeModal(root);
         } else if (actionId === 'rebrand') {
             openRebrandModal(root);
         }
@@ -1087,6 +1091,16 @@ function openRallyModal(root) {
 
 const CAMPAIGN_MANAGER_ACTIONS = [
     {
+        id: 'modernize',
+        name: 'Modernize Image',
+        desc: 'Upload a custom logo to refresh your party\'s brand. Grants +1 Momentum/tick while a custom logo is active. Quick and affordable.',
+        cost: '$50k',
+        costColor: '#5a8aaa',
+        moneyCost: 50000,
+        tags: ['CAMPAIGN', 'BRANDING'],
+        locked: false,
+    },
+    {
         id: 'rebrand',
         name: 'Rebrand Party',
         desc: 'Change your party name, abbreviation, color, logo, and description. Costly but grants a "Fresh Start" modifier. Nuclear option after scandal or major defeat.',
@@ -1168,6 +1182,113 @@ function renderCampaignManagerPanel(role, faction) {
             <strong style="color:var(--text-secondary);">CAMPAIGN MANAGER</strong> actions shape your party's public identity and electoral strategy.
         </div>
     `;
+}
+
+function openModernizeModal(root) {
+    const overlay = document.getElementById('pa-modernize-modal');
+    if (!overlay) return;
+
+    const faction = _state.faction;
+    let logoFile = null;
+    let previewUrl = faction.custom_logo_url || null;
+    let submitting = false;
+
+    function render() {
+        const hasLogo = !!previewUrl;
+        const funds = Number(faction.party_funds ?? 0);
+        const canAfford = funds >= 50000;
+        const canSubmit = !!logoFile && canAfford && !submitting;
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:440px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#5a8aaa;"></div>
+                        <span class="pa-modal-title">Modernize Image</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:#5a8aaa;background:rgba(90,138,170,0.06);border:1px solid rgba(90,138,170,0.15);">$50k</span>
+                    </div>
+                    <button class="pa-modal-close" id="mod-close">&times;</button>
+                </div>
+                <div style="padding:12px 20px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                    Upload a custom logo to modernize your party's image. Grants <span style="color:#5cc55c;font-weight:700;">+1 Momentum/tick</span> while active.
+                </div>
+                <div class="pa-modal-body" style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:24px 20px;">
+                    <div style="width:80px;height:80px;border:2px dashed ${hasLogo ? 'var(--accent)' : 'var(--border-mid)'};border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg-card);">
+                        ${previewUrl ? `<img src="${esc(previewUrl)}" style="width:100%;height:100%;object-fit:cover;">` : '<span style="font-size:24px;color:var(--text-dim);">+</span>'}
+                    </div>
+                    <div style="text-align:center;">
+                        <label style="display:inline-block;padding:6px 16px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-bright);background:var(--bg-card);border:1px solid var(--border-mid);cursor:pointer;letter-spacing:0.06em;">
+                            ${hasLogo ? 'CHANGE LOGO' : 'UPLOAD LOGO'}
+                            <input type="file" accept="image/*" id="mod-file-input" style="display:none;">
+                        </label>
+                        ${faction.custom_logo_url && !logoFile ? '<div style="font-family:var(--font-mono);font-size:8px;color:var(--green);margin-top:6px;">Current logo active — +1 Momentum/tick</div>' : ''}
+                        ${logoFile ? '<div style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-top:6px;">New logo ready to upload</div>' : ''}
+                    </div>
+                    ${!canAfford ? '<div style="font-family:var(--font-mono);font-size:9px;color:var(--red);">Insufficient funds. Need $50k.</div>' : ''}
+                </div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="mod-cancel">Cancel</button>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="mod-submit" ${!canSubmit ? 'disabled' : ''} style="background:#5a8aaa;">Modernize — $50k</button>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('mod-close')?.addEventListener('click', () => overlay.classList.remove('active'));
+        document.getElementById('mod-cancel')?.addEventListener('click', () => overlay.classList.remove('active'));
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove('active'); };
+
+        document.getElementById('mod-file-input')?.addEventListener('change', (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            if (file.size > 2 * 1024 * 1024) { alert('Logo must be under 2MB.'); return; }
+            logoFile = file;
+            previewUrl = URL.createObjectURL(file);
+            render();
+        });
+
+        document.getElementById('mod-submit')?.addEventListener('click', async () => {
+            if (submitting || !logoFile) return;
+            submitting = true;
+            const btn = document.getElementById('mod-submit');
+            if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
+
+            try {
+                // Upload logo
+                const ext = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
+                const storagePath = `${faction.id}/logo_${Date.now()}.${ext}`;
+                const { error: uploadErr } = await _supabase.storage
+                    .from('party-logos')
+                    .upload(storagePath, logoFile, { cacheControl: '3600', upsert: true, contentType: logoFile.type });
+                if (uploadErr) throw new Error('Upload failed: ' + uploadErr.message);
+
+                const { data: urlData } = _supabase.storage.from('party-logos').getPublicUrl(storagePath);
+                const logoUrl = urlData?.publicUrl;
+                if (!logoUrl) throw new Error('Failed to get logo URL');
+
+                // Deduct funds and save logo
+                const newFunds = Math.max(0, Number(faction.party_funds ?? 0) - 50000);
+                const { error: updateErr } = await _supabase.from('factions').update({
+                    custom_logo_url: logoUrl,
+                    party_funds: newFunds,
+                }).eq('id', faction.id);
+                if (updateErr) throw updateErr;
+
+                faction.custom_logo_url = logoUrl;
+                faction.party_funds = newFunds;
+
+                overlay.classList.remove('active');
+                alert('Logo updated! Your party now earns +1 Momentum/tick from the modernized image.');
+                renderPage(root);
+            } catch (err) {
+                alert('Modernize failed: ' + (err.message || 'Error'));
+                submitting = false;
+                if (btn) { btn.disabled = false; btn.textContent = 'Modernize — $50k'; }
+            }
+        });
+    }
+
+    overlay.classList.add('active');
+    render();
 }
 
 function openRebrandModal(root) {
