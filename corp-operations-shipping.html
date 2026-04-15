@@ -2569,6 +2569,7 @@ import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, condition
 import { EXEC_ROLES, EXEC_ROLE_META, generateExecutivePool } from './js/game/corp-executives.js';
 import { initAutoServices } from './js/corp-auto-services.js';
 import { initSubDashboard } from './js/corp-sub-dashboard.js';
+import { loadShippingRoutesSafe, loadActiveVoyagesSafe, loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -5832,6 +5833,8 @@ const DEMAND_COLORS = {
 // ── Available Routes (Shipping corps) ──
 let arRoutes = [];
 let _myShippingApps = []; // current corp's pending/approved applications
+let _arLoadState = 'ready';
+let _arLoadError = null;
 let arFilter = 'ALL';
 let arSelected = -1;
 let _shippingMarketplaceUnavailable = false;
@@ -5883,32 +5886,17 @@ function arGetFiltered() {
 }
 
 async function loadAvailableRoutes() {
-    if (!faction) return;
+    if (!faction || faction.corp_sector !== 'Shipping') return;
 
-    const subsectorMap = {
-        'Bulk Cargo': 'bulk_cargo',
-        'Container Freight': 'container_freight',
-        'Specialized Transport': 'specialized_transport'
-    };
-    const dbSubsector = subsectorMap[faction.corp_subsector] || '';
+    const result = await loadShippingRoutesSafe(_supabase, faction.id, faction.corp_subsector);
+    arRoutes = result.routes;
+    _myShippingApps = result.applications;
+    _arLoadState = result.state;
+    _arLoadError = result.error;
 
-    const [routeResult, appResult] = await Promise.all([
-        runShippingMarketplaceQuery(
-            _supabase.from('shipping_routes').select('*')
-            .eq('status', 'active').eq('shipping_subsector', dbSubsector)
-            .order('estimated_revenue', { ascending: false }),
-            'shipping routes'
-        ),
-        runShippingMarketplaceQuery(
-            _supabase.from('shipping_applications').select('*')
-            .eq('faction_id', faction.id).in('status', ['pending', 'approved']),
-            'shipping applications'
-        ),
-    ]);
-
-    _shippingMarketplaceUnavailable = !!(routeResult.unavailable || appResult.unavailable);
-    arRoutes = _shippingMarketplaceUnavailable ? [] : (routeResult.data || []);
-    _myShippingApps = _shippingMarketplaceUnavailable ? [] : (appResult.data || []);
+    if (_arLoadError) {
+        console.warn('Failed to load available routes:', _arLoadError.message);
+    }
 
     arSelected = -1;
     renderAvailableRoutes();
@@ -5968,6 +5956,13 @@ function renderAvailableRoutes() {
 
     // List
     const listEl = document.getElementById('ar-list');
+    if (_arLoadState === 'error') {
+        listEl.innerHTML = '<div class="ar-empty"><div class="ar-empty__text">'
+            + escapeHtml((_arLoadError && _arLoadError.message) || 'Shipping routes are temporarily unavailable.')
+            + '</div></div>';
+        return;
+    }
+
     if (filtered.length === 0) {
         listEl.innerHTML = '<div class="ar-empty"><div class="ar-empty__text">'
             + (_shippingMarketplaceUnavailable
@@ -6324,22 +6319,21 @@ async function arClaimRoute() {
 
 // ── Active Voyages (Shipping corps) ──
 let avClaims = [];
+let _avLoadState = 'ready';
+let _avLoadError = null;
 let avSelected = -1;
 
 async function loadActiveVoyages() {
     if (!faction) return;
 
-    const result = await runShippingMarketplaceQuery(
-        _supabase
-        .from('shipping_claims')
-        .select('*, shipping_routes(*)')
-        .eq('faction_id', faction.id)
-        .eq('status', 'active')
-        .order('claimed_at_tick', { ascending: false }),
-        'active voyages'
-    );
-    _shippingMarketplaceUnavailable = _shippingMarketplaceUnavailable || result.unavailable;
-    avClaims = result.data || [];
+    const result = await loadActiveVoyagesSafe(_supabase, faction.id);
+    avClaims = result.claims;
+    _avLoadState = result.state;
+    _avLoadError = result.error;
+
+    if (_avLoadError) {
+        console.warn('Failed to load active voyages:', _avLoadError.message);
+    }
 
     renderActiveVoyages();
 }
@@ -6416,6 +6410,11 @@ function renderActiveVoyages() {
 
     // List
     const listEl = document.getElementById('av-list');
+    if (_avLoadState === 'error') {
+        listEl.innerHTML = '<div class="av-empty"><div class="av-empty__text">' + escapeHtml((_avLoadError && _avLoadError.message) || 'Active voyage data is temporarily unavailable.') + '</div></div>';
+        return;
+    }
+
     if (avClaims.length === 0) {
         listEl.innerHTML = '<div class="av-empty"><div class="av-empty__text">'
             + (_shippingMarketplaceUnavailable
@@ -10290,15 +10289,18 @@ async function subPutForSale(propId) {
 // ─── SUBSIDIARY MARKETPLACE: show listings + bids ───
 let _marketplaceListings = [];
 
-async function loadMarketplaceListings() {
-    const { data, error } = await _supabase
-        .from('subsidiary_sales')
-        .select('*, subsidiary_bids(*)')
-        .eq('status', 'listed')
-        .order('listed_at_tick', { ascending: false });
+let _subMarketLoadState = 'ready';
+let _subMarketLoadError = null;
 
-    if (error) { console.error('[SubMarket] Load failed:', error.message); return; }
-    _marketplaceListings = data || [];
+async function loadMarketplaceListings() {
+    const result = await loadSubsidiaryMarketSafe(_supabase);
+    _marketplaceListings = result.listings;
+    _subMarketLoadState = result.state;
+    _subMarketLoadError = result.error;
+
+    if (_subMarketLoadError) {
+        console.error('[SubMarket] Load failed:', _subMarketLoadError.message);
+    }
 }
 
 function renderSubsidiaryMarketplaceCard() {
@@ -10345,7 +10347,9 @@ function renderSubsidiaryMarketplaceCard() {
     }
 
     // Available listings (buyer view)
-    if (listings.length === 0) {
+    if (_subMarketLoadState === 'error') {
+        html += `<div style="padding:24px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.red};font-style:italic;">${escapeHtml((_subMarketLoadError && _subMarketLoadError.message) || 'Subsidiary marketplace is temporarily unavailable.')}</div>`;
+    } else if (listings.length === 0) {
         html += `<div style="padding:24px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim};font-style:italic;">No subsidiaries for sale right now.</div>`;
     } else {
         for (const l of listings) {
