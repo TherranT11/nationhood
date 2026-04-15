@@ -7044,9 +7044,11 @@ async function init() {
     const apEl = document.getElementById('topbar-ap');
     if (apEl) apEl.style.display = 'none';
 
-    // Nation pill
-    document.getElementById('nation-pill').textContent =
-        (nationStats?.name || faction.nation || '—').toUpperCase();
+    // Nation pill (legacy element; guard for shared top bar variants)
+    const nationPillEl = document.getElementById('nation-pill');
+    if (nationPillEl) {
+        nationPillEl.textContent = (nationStats?.name || faction.nation || '—').toUpperCase();
+    }
 
     // Faction dropdown
     const dd = document.getElementById('corp-faction-dropdown');
