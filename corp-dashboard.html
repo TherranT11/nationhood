@@ -1952,7 +1952,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
     if (factionData?.id) {
         const { data: cpData } = await _supabase
             .from('construction_contracts')
-            .select('*, contract_bids(id, faction_id, bid_price, estimated_quality, labor_count, status, factions!faction_id(faction_name, abbreviation))')
+            .select('*, contract_bids(id, faction_id, bid_price, estimated_quality, estimated_cost, labor_count, markup_pct, material_grades, submitted_at_tick, status, factions!faction_id(faction_name, abbreviation, corp_reputation))')
             .eq('issuer_faction_id', factionData.id)
             .in('status', ['open', 'bidding', 'awarded', 'in_progress'])
             .order('generated_at_tick', { ascending: false });
@@ -2051,16 +2051,69 @@ async function renderProperty(nation, nationName, factionData, shard) {
                     }
                 }
 
-                // Pending bids — show accept/reject
+                // Pending bids — clickable with expandable detail
                 if ((cp.status === 'open' || cp.status === 'bidding') && bids.length > 0) {
-                    for (const bid of bids) {
-                        cpHtml += `<div class="cp-bid">
-                            <span style="flex:1;font-size:8px;font-family:var(--font-mono);color:var(--text-muted);">
-                                ${escapeHtml(bid.factions?.faction_name || 'Unknown')}
-                                · <span style="color:var(--gold);">${fmtMoney(bid.bid_price)}</span>
-                                · Q: <span style="color:${bid.estimated_quality >= 75 ? '#5c5' : bid.estimated_quality >= 50 ? '#ca5' : '#c55'};">${bid.estimated_quality}</span>
-                            </span>
-                            <span class="cp-bid__btn" style="color:#5c5;border-color:#5c540;background:#5c508;" onclick="cpAcceptBid('${cp.id}','${bid.id}','${escapeHtml((bid.factions?.faction_name || '').replace(/'/g, ''))}',${bid.bid_price},${bid.estimated_quality},${bid.labor_count},'${bid.faction_id}')">ACCEPT</span>
+                    for (let bi = 0; bi < bids.length; bi++) {
+                        const bid = bids[bi];
+                        const bidUid = cp.id.slice(0,8) + '-' + bi;
+                        const rep = Number(bid.factions?.corp_reputation ?? 50);
+                        const repColor = rep >= 70 ? '#5c5' : rep >= 40 ? '#ca5' : '#c55';
+                        const qColor = bid.estimated_quality >= 75 ? '#5c5' : bid.estimated_quality >= 50 ? '#ca5' : '#c55';
+                        const markupColor = bid.markup_pct <= 10 ? '#5c5' : bid.markup_pct <= 20 ? '#ca5' : '#c55';
+                        const matGrades = bid.material_grades || {};
+                        const gradeEntries = Object.entries(matGrades);
+                        const fmtGradeKey = (k) => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                        const gradeColor = (g) => g === 'HIGH' ? '#5c5' : g === 'LOW' ? '#c55' : 'var(--text-muted)';
+
+                        cpHtml += `<div class="cp-bid" style="flex-direction:column;gap:0;padding:0;cursor:pointer;" onclick="cpToggleBid('${bidUid}')">
+                            <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;">
+                                <span style="flex:1;font-size:8px;font-family:var(--font-mono);color:var(--text-muted);">
+                                    ${escapeHtml(bid.factions?.faction_name || 'Unknown')}
+                                    · <span style="color:var(--gold);">${fmtMoney(bid.bid_price)}</span>
+                                    · Q: <span style="color:${qColor};">${bid.estimated_quality}</span>
+                                </span>
+                                <span class="cp-bid__btn" style="color:#5c5;border-color:#5c540;background:#5c508;" onclick="event.stopPropagation();cpAcceptBid('${cp.id}','${bid.id}','${escapeHtml((bid.factions?.faction_name || '').replace(/'/g, ''))}',${bid.bid_price},${bid.estimated_quality},${bid.labor_count},'${bid.faction_id}')">ACCEPT</span>
+                            </div>
+                            <div id="cp-bid-${bidUid}" style="display:none;padding:4px 8px 6px;border-top:1px solid var(--border-hair);background:rgba(255,255,255,0.01);">
+                                <div style="display:flex;gap:0;margin-bottom:4px;">
+                                    <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">BID PRICE</div>
+                                        <div style="font-size:9px;font-weight:700;color:var(--gold);font-family:var(--font-mono);">${fmtMoney(bid.bid_price)}</div>
+                                    </div>
+                                    <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">EST. COST</div>
+                                        <div style="font-size:9px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">${fmtMoney(bid.estimated_cost || 0)}</div>
+                                    </div>
+                                    <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">MARKUP</div>
+                                        <div style="font-size:9px;font-weight:700;color:${markupColor};font-family:var(--font-mono);">${bid.markup_pct}%</div>
+                                    </div>
+                                    <div style="flex:1;padding:2px 4px;">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">QUALITY</div>
+                                        <div style="font-size:9px;font-weight:700;color:${qColor};font-family:var(--font-mono);">${bid.estimated_quality}/100</div>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:0;margin-bottom:4px;">
+                                    <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">WORKERS</div>
+                                        <div style="font-size:9px;font-weight:700;color:var(--blue);font-family:var(--font-mono);">${bid.labor_count}</div>
+                                    </div>
+                                    <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">REPUTATION</div>
+                                        <div style="font-size:9px;font-weight:700;color:${repColor};font-family:var(--font-mono);">${rep}/100</div>
+                                    </div>
+                                    <div style="flex:2;padding:2px 4px;">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">BIDDER</div>
+                                        <div style="font-size:9px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">${escapeHtml(bid.factions?.faction_name || 'Unknown')}</div>
+                                    </div>
+                                </div>
+                                ${gradeEntries.length > 0 ? `<div style="padding:2px 4px;">
+                                    <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;margin-bottom:2px;">MATERIAL GRADES</div>
+                                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                        ${gradeEntries.map(([k, g]) => `<span style="font-size:7px;font-family:var(--font-mono);color:${gradeColor(g)};">${fmtGradeKey(k)}: ${g}</span>`).join('')}
+                                    </div>
+                                </div>` : ''}
+                            </div>
                         </div>`;
                     }
                 }
@@ -2736,6 +2789,13 @@ async function cpAcceptBid(contractId, bidId, corpName, bidPrice, quality, labor
     }
 }
 window.cpAcceptBid = cpAcceptBid;
+
+function cpToggleBid(bidUid) {
+    const el = document.getElementById('cp-bid-' + bidUid);
+    if (!el) return;
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+window.cpToggleBid = cpToggleBid;
 
 let _convertTargetType = 'branch_office';
 
