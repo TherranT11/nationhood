@@ -2580,6 +2580,8 @@ let playerBids = {}; // { contractId: bidData }
 let activeProjects = [];
 let warehouseData = {};  // { materialKey: { LOW: {qty,value}, STD: {qty,value}, HIGH: {qty,value} } }
 let whExpandedRow = -1;  // index of expanded material row, -1 = none
+const MATERIAL_KEY_ALIASES = { em: 'em_systems', glass: 'glass_facades', heavy: 'heavy_parts' };
+const canonicalMaterialKey = (key) => MATERIAL_KEY_ALIASES[key] || key;
 
 // Procurement state
 let prSelectedMat = 'concrete';
@@ -4468,17 +4470,39 @@ async function loadWarehouse() {
         .eq('faction_id', faction.id);
 
     warehouseData = {};
+    const legacyRowsToMigrate = [];
     if (error) {
         console.warn('Failed to load warehouse:', error.message);
     } else if (data) {
         for (const row of data) {
-            if (!warehouseData[row.material_key]) {
-                warehouseData[row.material_key] = {};
+            const canonicalKey = canonicalMaterialKey(row.material_key);
+            if (!warehouseData[canonicalKey]) {
+                warehouseData[canonicalKey] = {};
             }
-            warehouseData[row.material_key][row.quality_tier] = {
+            warehouseData[canonicalKey][row.quality_tier] = {
                 qty: row.quantity || 0,
                 value: Number(row.total_value) || 0,
             };
+            if (canonicalKey !== row.material_key) legacyRowsToMigrate.push(row);
+        }
+        if (legacyRowsToMigrate.length > 0) {
+            const migratedRows = legacyRowsToMigrate.map(row => ({
+                faction_id: faction.id,
+                nation_id: faction.nation_id,
+                material_key: canonicalMaterialKey(row.material_key),
+                quality_tier: row.quality_tier,
+                quantity: row.quantity || 0,
+                total_value: Number(row.total_value) || 0,
+                updated_at: new Date().toISOString(),
+            }));
+            await _supabase.from('corp_warehouse').upsert(migratedRows, { onConflict: 'faction_id,material_key,quality_tier' });
+            for (const row of legacyRowsToMigrate) {
+                await _supabase.from('corp_warehouse')
+                    .delete()
+                    .eq('faction_id', faction.id)
+                    .eq('material_key', row.material_key)
+                    .eq('quality_tier', row.quality_tier);
+            }
         }
     }
 
@@ -4754,7 +4778,8 @@ async function purchaseMaterial() {
         if (cashErr) throw cashErr;
 
         // Upsert warehouse row
-        const existing = warehouseData[prSelectedMat]?.[prSelectedTier];
+        const materialKey = canonicalMaterialKey(prSelectedMat);
+        const existing = warehouseData[materialKey]?.[prSelectedTier];
         const newQty = (existing?.qty || 0) + prPurchaseQty;
         const newValue = (existing?.value || 0) + totalCost;
 
@@ -4763,7 +4788,7 @@ async function purchaseMaterial() {
             .upsert({
                 faction_id: faction.id,
                 nation_id: faction.nation_id,
-                material_key: prSelectedMat,
+                material_key: materialKey,
                 quality_tier: prSelectedTier,
                 quantity: newQty,
                 total_value: newValue,
@@ -4780,8 +4805,8 @@ async function purchaseMaterial() {
 
         // Update local state
         faction.corp_cash_reserves = newCash;
-        if (!warehouseData[prSelectedMat]) warehouseData[prSelectedMat] = {};
-        warehouseData[prSelectedMat][prSelectedTier] = { qty: newQty, value: newValue };
+        if (!warehouseData[materialKey]) warehouseData[materialKey] = {};
+        warehouseData[materialKey][prSelectedTier] = { qty: newQty, value: newValue };
 
         // Re-render both cards
         renderWarehouse();
@@ -11417,7 +11442,7 @@ async function openBidAssembly() {
             .select('material_key, quantity')
             .eq('faction_id', faction.id);
         for (const r of (invRows || [])) {
-            _bidWarehouse[r.material_key] = Number(r.quantity || 0);
+            _bidWarehouse[canonicalMaterialKey(r.material_key)] = Number(r.quantity || 0);
         }
     } catch (_) {
         // Table may not exist yet — warehouse inventory is Phase 5
