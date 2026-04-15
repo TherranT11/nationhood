@@ -276,14 +276,8 @@ body {
     <div id="opt-corp" onclick="selectFactionOption('corporation')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">Corporation</span>
-        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);padding:1px 6px;letter-spacing:0.06em;">ALPHA</span>
       </div>
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Control wealth, trade, and economic power to influence the nation.</div>
-    </div>
-    <div id="corp-code-group" style="display:none;background:var(--bg-2);border:1px solid var(--border-0);padding:16px;margin-bottom:8px;">
-      <label style="font-family:var(--font-mono);font-size:9px;font-weight:600;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;display:block;margin-bottom:6px;">Alpha Access Code</label>
-      <input type="text" id="corp-code-input" placeholder="Enter access code" maxlength="10" autocomplete="off" spellcheck="false" style="width:100%;padding:8px 10px;background:var(--bg-0);border:1px solid var(--border-1);color:var(--text-bright);font-family:var(--font-mono);font-size:12px;letter-spacing:0.06em;outline:none;">
-      <div id="corp-code-error" style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:6px;display:none;"></div>
     </div>
     <div style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;opacity:0.3;cursor:not-allowed;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -507,8 +501,6 @@ function selectFactionOption(type) {
   selectedFaction = type;
   const optParty = document.getElementById('opt-party');
   const optCorp = document.getElementById('opt-corp');
-  const corpCodeGroup = document.getElementById('corp-code-group');
-  const corpCodeError = document.getElementById('corp-code-error');
   const confirmBtn = document.getElementById('btn-confirm-faction');
 
   // Reset both
@@ -516,16 +508,13 @@ function selectFactionOption(type) {
   optParty.style.borderColor = 'var(--border-0)';
   optCorp.classList.remove('fs-selected');
   optCorp.style.borderColor = 'var(--border-0)';
-  corpCodeError.style.display = 'none';
 
   if (type === 'party') {
     optParty.classList.add('fs-selected');
     optParty.style.borderColor = 'var(--blue-border)';
-    corpCodeGroup.style.display = 'none';
   } else if (type === 'corporation') {
     optCorp.classList.add('fs-selected');
     optCorp.style.borderColor = 'var(--green-border)';
-    corpCodeGroup.style.display = 'block';
   }
 
   // Enable confirm button
@@ -538,18 +527,6 @@ function selectFactionOption(type) {
 
 function confirmFactionChoice() {
   if (!selectedFaction) return;
-
-  if (selectedFaction === 'corporation') {
-    const codeInput = document.getElementById('corp-code-input');
-    const corpCodeError = document.getElementById('corp-code-error');
-    if (codeInput.value.trim().toUpperCase() !== 'CORPO22') {
-      corpCodeError.textContent = 'Invalid access code.';
-      corpCodeError.style.display = 'block';
-      return;
-    }
-    corpCodeError.style.display = 'none';
-  }
-
   chooseFactionType(selectedFaction);
 }
 
