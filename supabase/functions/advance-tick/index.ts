@@ -32558,6 +32558,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Momentum decay failed for ${nation.name} (non-fatal):`, momDecayErr);
         }
 
+        // Custom logo momentum bonus: +1/tick for parties with a custom logo uploaded
+        try {
+            const { data: logoFactions } = await supabase
+                .from('factions')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party')
+                .not('custom_logo_url', 'is', null);
+            if (logoFactions && logoFactions.length > 0) {
+                await Promise.all(logoFactions.map(f =>
+                    supabase.rpc('adjust_momentum', { p_faction_id: f.id, p_delta: 1, p_label: 'Modernized image (+1)', p_tick: newTick })
+                ));
+            }
+        } catch (logoMomErr) {
+            console.error(`[advanceTick] Logo momentum bonus failed for ${nation.name} (non-fatal):`, logoMomErr);
+        }
+
         // Passive income: $1k per seat per tick for all parties
         try {
             const { data: incomeFactions } = await supabase
