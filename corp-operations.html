@@ -9716,8 +9716,9 @@ const CP_STYLE_META = {
 };
 
 let _cpModal = false;
-let _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', timeline: 36, budgetMod: 0 };
+let _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', timeline: 36, budgetMod: 0, nationId: null, nationName: null };
 let _cpSubmitting = false;
+let _cpNations = []; // nations where corp has presence (for Regional HQ)
 
 function cpCalcBudget() {
     const inflation = Number(nationStats?.inflation ?? 50);
@@ -9731,9 +9732,16 @@ function cpCalcBudget() {
     return { baseBudget, adjusted, maint, inflMod, styleMod };
 }
 
-function npOpenConstructionModal() {
+async function npOpenConstructionModal() {
     _cpModal = true;
-    _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', timeline: 36, budgetMod: 0 };
+    _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', timeline: 36, budgetMod: 0, nationId: null, nationName: null };
+
+    // Load all nations for Regional HQ placement (exclude home nation — already have HQ there)
+    try {
+        const { data } = await _supabase.from('nations').select('id, name').order('name');
+        _cpNations = (data || []).filter(n => n.id !== faction?.nation_id);
+    } catch (_) { _cpNations = []; }
+
     renderConstructionModal();
 }
 
@@ -9749,11 +9757,13 @@ function cpSetField(field, value) {
 
 async function cpSubmit() {
     if (_cpSubmitting || !_cpData.name.trim()) return;
+    if (_cpData.type === 'Regional HQ' && !_cpData.nationId) { alert('Select a target nation for the Regional HQ.'); return; }
     _cpSubmitting = true;
 
     try {
         const budget = cpCalcBudget();
-        const nationName = nationStats?.name || faction?.nation || 'Unknown';
+        const targetNationId = _cpData.type === 'Regional HQ' ? _cpData.nationId : faction.nation_id;
+        const nationName = _cpData.type === 'Regional HQ' ? (_cpData.nationName || 'Unknown') : (nationStats?.name || faction?.nation || 'Unknown');
         const repGain = CP_STYLE_META[_cpData.style]?.repGain || 1;
 
         // Generate project code: PVT-C1-2015
@@ -9764,14 +9774,14 @@ async function cpSubmit() {
         // Count existing private contracts to generate sequence
         const { count: existingCount } = await _supabase.from('construction_contracts')
             .select('id', { count: 'exact', head: true })
-            .eq('nation_id', faction.nation_id)
+            .eq('nation_id', targetNationId)
             .eq('issuer_type', 'PRIVATE');
         const seq = (existingCount || 0) + 1;
         const projectCode = `PVT-C${seq}-${gameYear}`;
 
         // Insert into construction_contracts
         const { error } = await _supabase.from('construction_contracts').insert({
-            nation_id: faction.nation_id,
+            nation_id: targetNationId,
             template_key: 'custom_building',
             sector: 'civil_engineering',
             name: _cpData.name.trim(),
@@ -9897,6 +9907,15 @@ function renderConstructionModal() {
                         return `<span onclick="cpSetField('type','${t}')" style="flex:1;min-width:100px;text-align:center;padding:6px 0;font-family:${mono};font-size:12px;font-weight:700;cursor:pointer;color:${_cpData.type === t ? '#000' : C.dim};background:${_cpData.type === t ? activeColor : 'transparent'};border:1px solid ${_cpData.type === t ? activeColor : C.border}">${t}</span>`;
                     }).join('')}
                 </div>
+                ${_cpData.type === 'Regional HQ' ? `<div style="margin-top:8px;">
+                    <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Target Nation</div>
+                    <select id="cp-nation-select" onchange="cpSetField('nationId', this.value); cpSetField('nationName', this.options[this.selectedIndex].text)"
+                        style="width:100%;padding:8px 12px;font-family:${mono};font-size:12px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;">
+                        <option value="">-- Select a nation --</option>
+                        ${_cpNations.map(n => `<option value="${n.id}" ${_cpData.nationId === n.id ? 'selected' : ''}>${n.name}</option>`).join('')}
+                    </select>
+                    <div style="font-family:${mono};font-size:9px;color:${C.accent};margin-top:5px;">Regional HQ: Establishes corporate presence in another nation. Construction corps in that nation will bid on building it.</div>
+                </div>` : ''}
                 ${_cpData.type === 'Warehouse' ? `<div style="font-family:${mono};font-size:9px;color:${C.orange};margin-top:5px;">Warehouse: 75% construction cost, stores up to $20M in materials</div>` : ''}
                 ${_cpData.type === 'Branch Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Branch Office: Increases lending capacity. +1 reputation per 200 employees. Enables cross-nation lending.</div>` : ''}
                 ${_cpData.type === 'Trading Floor' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Trading Floor: Enables secondary bond market. +1 reputation per 200 employees. Portfolio management bonuses.</div>` : ''}
