@@ -3,16 +3,25 @@
 
 const CORP_VERSION = 'Alpha 2.1.5.3';
 
-const CORP_NAV_TABS = [
-    { id: 'home', label: 'HOME', href: 'corp-dashboard.html' },
-    { id: 'operations', label: 'OPERATIONS', href: 'corp-operations.html' },
-    { id: 'expansion', label: 'EXPANSION', href: 'corp-operations.html?tab=expansion', samePageAction: 'expansion' },
-    { id: 'actions', label: 'ACTIONS', href: 'corp-operations.html?tab=actions', samePageAction: 'actions' },
-    { id: 'innovation', label: 'INNOVATION', disabled: true },
-    { id: 'nations', label: 'NATIONS', href: 'corp-nations.html' },
-    { id: 'news', label: 'NEWS', href: 'news.html' },
-    { id: 'wiki', label: 'WIKI', href: 'wiki.html' },
-];
+const SECTOR_OPS_PAGE = {
+    Construction: 'corp-operations.html',
+    Shipping: 'corp-operations-shipping.html',
+    Finance: 'corp-operations-finance.html',
+};
+
+function buildNavTabs(corpSector) {
+    const opsPage = SECTOR_OPS_PAGE[corpSector] || 'corp-operations.html';
+    return [
+        { id: 'home', label: 'HOME', href: 'corp-dashboard.html' },
+        { id: 'operations', label: 'OPERATIONS', href: opsPage },
+        { id: 'expansion', label: 'EXPANSION', href: opsPage + '?tab=expansion', samePageAction: 'expansion' },
+        { id: 'actions', label: 'ACTIONS', href: opsPage + '?tab=actions', samePageAction: 'actions' },
+        { id: 'innovation', label: 'INNOVATION', disabled: true },
+        { id: 'nations', label: 'NATIONS', href: 'corp-nations.html' },
+        { id: 'news', label: 'NEWS', href: 'news.html' },
+        { id: 'wiki', label: 'WIKI', href: 'wiki.html' },
+    ];
+}
 
 function escHtml(str) {
     if (!str) return '';
@@ -51,8 +60,11 @@ export function renderCorpTopBar(container, opts = {}) {
 
     // Nav tabs — same-page tabs use onclick, cross-page tabs use href
     const currentPage = window.location.pathname.split('/').pop().split('?')[0];
-    const isOnOperations = currentPage === 'corp-operations.html';
+    const corpSector = faction?.corp_sector || 'Construction';
+    const opsPage = SECTOR_OPS_PAGE[corpSector] || 'corp-operations.html';
+    const isOnOperations = currentPage === opsPage || currentPage === 'corp-operations.html' || currentPage === 'corp-operations-shipping.html' || currentPage === 'corp-operations-finance.html';
 
+    const CORP_NAV_TABS = buildNavTabs(corpSector);
     const tabsHtml = CORP_NAV_TABS.map(t => {
         const isActive = t.id === activeTab;
         if (t.disabled) {
