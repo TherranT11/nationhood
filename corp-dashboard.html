@@ -2862,16 +2862,36 @@ async function loadCorpEvents() {
     if (!nationId) { container.innerHTML = '<div class="subs-card__empty">No nation linked.</div>'; return; }
     container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.7rem;text-align:center;">Loading\u2026</div>';
     try {
-        const { data: corps, error } = await _supabase.from('factions')
-            .select('faction_name, abbreviation, corp_sector, corp_subsector, corp_ticker, leader_first_name, leader_last_name, nation_id, nation, created_at, founded_tick')
-            .eq('faction_type', 'corporation').eq('nation_id', nationId).is('abandoned_at', null)
-            .order('created_at', { ascending: false }).limit(30);
-        if (error) throw error;
-        if (!corps || corps.length === 0) {
+        const [corpsRes, evRes] = await Promise.all([
+            _supabase.from('factions')
+                .select('faction_name, abbreviation, corp_sector, corp_subsector, corp_ticker, leader_first_name, leader_last_name, nation_id, nation, created_at, founded_tick')
+                .eq('faction_type', 'corporation').eq('nation_id', nationId).is('abandoned_at', null)
+                .order('created_at', { ascending: false }).limit(30),
+            _supabase.from('event_log').select('*')
+                .eq('nation_id', nationId)
+                .eq('category', 'corporate')
+                .order('fired_at_tick', { ascending: false }).limit(30),
+        ]);
+        const corps = corpsRes.data || [];
+        const corpEvents = evRes.data || [];
+
+        // Convert founded corps to event format for unified rendering
+        const foundedEvents = corps.map(c => ({
+            event_name: 'Corporation Founded',
+            category: 'corporate',
+            description_chosen: `${c.faction_name} [${c.corp_ticker || c.abbreviation || '??'}] was founded with a specialty in ${c.corp_subsector || c.corp_sector || 'General'}. Led by CEO ${[c.leader_first_name, c.leader_last_name].filter(Boolean).join(' ') || 'Unknown'}.`,
+            fired_at_tick: c.founded_tick || 0,
+        }));
+
+        const merged = [...corpEvents, ...foundedEvents]
+            .sort((a, b) => (b.fired_at_tick || 0) - (a.fired_at_tick || 0))
+            .slice(0, 40);
+
+        if (merged.length === 0) {
             container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events in this nation yet.</div>';
             return;
         }
-        container.innerHTML = _renderCorpFoundedList(corps, false);
+        container.innerHTML = renderCorpEventRows(merged);
     } catch (e) {
         console.error('Corp local events error:', e);
         container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
@@ -2885,6 +2905,45 @@ async function loadCorpEventsWorld() {
     const { nationId } = _corpEventsCtx;
     if (!nationId) { container.innerHTML = '<div class="subs-card__empty">No nation linked.</div>'; return; }
     container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.7rem;text-align:center;">Loading\u2026</div>';
+    try {
+        const [corpsRes, evRes] = await Promise.all([
+            _supabase.from('factions')
+                .select('faction_name, abbreviation, corp_sector, corp_subsector, corp_ticker, leader_first_name, leader_last_name, nation_id, nation, created_at, founded_tick')
+                .eq('faction_type', 'corporation').neq('nation_id', nationId).is('abandoned_at', null)
+                .order('created_at', { ascending: false }).limit(30),
+            _supabase.from('event_log').select('*, nations(name, nation_profiles(flag_url))')
+                .neq('nation_id', nationId)
+                .eq('category', 'corporate')
+                .order('fired_at_tick', { ascending: false }).limit(30),
+        ]);
+        const corps = corpsRes.data || [];
+        const corpEvents = evRes.data || [];
+
+        // Convert founded corps to world-event format
+        const foundedEvents = corps.map(c => ({
+            event_name: 'Corporation Founded',
+            category: 'corporate',
+            description_chosen: `${c.faction_name} [${c.corp_ticker || c.abbreviation || '??'}] was founded in ${c.nation || 'Unknown'} with a specialty in ${c.corp_subsector || c.corp_sector || 'General'}. Led by CEO ${[c.leader_first_name, c.leader_last_name].filter(Boolean).join(' ') || 'Unknown'}.`,
+            fired_at_tick: c.founded_tick || 0,
+            nations: { name: c.nation || 'Unknown' },
+        }));
+
+        const merged = [...corpEvents, ...foundedEvents]
+            .sort((a, b) => (b.fired_at_tick || 0) - (a.fired_at_tick || 0))
+            .slice(0, 40);
+
+        if (merged.length === 0) {
+            container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events from other nations yet.</div>';
+            return;
+        }
+        container.innerHTML = renderWorldEventRows(merged);
+        return;
+    } catch (e) {
+        console.error('Corp world events error:', e);
+        container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
+        return;
+    }
+    // Legacy fallback (unreachable — kept for safety)
     try {
         const { data: corps, error } = await _supabase.from('factions')
             .select('faction_name, abbreviation, corp_sector, corp_subsector, corp_ticker, leader_first_name, leader_last_name, nation_id, nation, created_at, founded_tick')
@@ -2938,7 +2997,7 @@ async function loadPoliticalEvents() {
         const [evRes, billRes, facRes, proRes] = await Promise.all([
             _supabase.from('event_log').select('*')
                 .eq('nation_id', nationId)
-                .in('category', ['political', 'bill', 'new_party', 'protest'])
+                .in('category', ['political', 'bill', 'new_party', 'protest', 'corporate'])
                 .order('fired_at_tick', { ascending: false }).limit(40),
             _supabase.from('bills')
                 .select('bill_name, proposed_tick, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id)')
