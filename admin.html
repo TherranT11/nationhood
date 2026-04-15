@@ -1193,6 +1193,9 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
                 // Clear references that point to deleted factions/state
                 update.ruling_faction_id = null;
                 update.gov_approval = 50; // reset to neutral
+                update.debt = nation.seed_stats.debt ?? 0; // reset debt (default 0)
+                update.monarch_faction_id = null; // clear monarchy references
+                update.failed_formation_attempts = 0;
                 // Reset foundational law terms to defaults
                 update.parliamentary_term_ticks = nation.seed_stats.parliamentary_term_ticks || 48;
                 update.presidential_term_ticks = nation.seed_stats.presidential_term_ticks || null;
@@ -1209,8 +1212,7 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
             logMsg('✓ All factions deleted — players will be sent to faction-select on next login', '#5cb85c');
 
             // 6. Re-seed initial elections for each nation
-            // Uses first_election_tick from seed_stats if set, otherwise half the term length.
-            // Schedules both parliamentary and presidential elections where applicable.
+            // Each nation gets a random 1d6+1 (2-7 ticks) before first election.
             logMsg('Scheduling initial elections...');
             let electionsSch = 0;
             for (const nation of (nations || [])) {
@@ -1218,7 +1220,6 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
                 const govType = (seed.government_type || '').toLowerCase();
                 const parlTerm = seed.parliamentary_term_ticks;
                 const presTerm = seed.presidential_term_ticks;
-                const customTick = seed.first_election_tick;
 
                 if (!parlTerm && !presTerm) {
                     logMsg(`  — ${nation.name}: no term length in seed, skipping`, '#888');
@@ -1242,7 +1243,7 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
 
                 // Presidential election (presidential/semi-presidential nations)
                 if (presTerm && govType.includes('presidential')) {
-                    const presTick = customTick || Math.max(6, Math.round(presTerm / 2));
+                    const presTick = Math.floor(Math.random() * 6) + 2; // 1d6+1
                     const { error: elErr } = await _supabase.from('elections').insert({
                         nation_id: nation.id,
                         election_tick: presTick,

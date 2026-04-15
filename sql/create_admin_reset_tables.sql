@@ -132,7 +132,7 @@ DECLARE
         'op_eds',
         'valdorian_articles',
         'player_articles',
-        'wiki_pages',
+        -- 'wiki_pages' intentionally excluded — wiki survives reset
         'nation_profiles',
 
         -- ══ Forum & chat ══
@@ -201,9 +201,33 @@ DECLARE
 
         -- ══ Food system ══
         'food_stockpiles',
+        'food_land_allocation',
 
         -- ══ Shipping ══
         'shipping_routes',
+        'shipping_applications',
+        'shipping_claims',
+        'ship_market_listings',
+        'vessel_orders',
+
+        -- ══ Construction (extended) ══
+        'construction_deliveries',
+        'construction_events',
+        'project_material_allocations',
+        'mega_project_cooldowns',
+        'available_properties',
+        'corp_permits',
+
+        -- ══ Finance (extended) ══
+        'insurance_claims',
+
+        -- ══ Party (extended) ══
+        'faction_deputies',
+        'faction_pillar_state',
+
+        -- ══ Government (extended) ══
+        'executive_orders',
+        'admin_timeline_events',
 
         -- ══ Misc (extended) ══
         'pending_actions'
