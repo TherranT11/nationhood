@@ -335,9 +335,14 @@ async function init() {
         console.warn('Failed to load presence data:', presErr.message);
     }
 
-    // Populate top bar
+    // Populate top bar (logo image or ticker text)
     const ticker = faction.corp_ticker || faction.abbreviation || '';
-    document.getElementById('corp-logo').textContent = ticker.slice(0, 2) || '—';
+    const topLogoEl = document.getElementById('corp-logo');
+    if (faction.custom_logo_url) {
+        topLogoEl.innerHTML = `<img src="${escapeHtml(faction.custom_logo_url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:5px;">`;
+    } else {
+        topLogoEl.textContent = ticker.slice(0, 2) || '—';
+    }
     document.getElementById('corp-name-bar').textContent = faction.faction_name || 'Corporation';
     document.getElementById('corp-name-badge').textContent = ticker.toUpperCase() || '--';
     document.getElementById('topbar-cash').textContent = 'CASH: ' + fmtMoney(Number(faction.corp_cash_reserves) || 0);
