@@ -2081,28 +2081,33 @@ function renderParliamentPanel() {
     const oppSeats = oppParties.reduce((s, p) => s + (p.seats || 0), 0);
     const aboveMajority = govSeats - majority;
 
-    // Build seat color array: left side = governing, right side = opposition
-    // The semicircle fills left-to-right by index, so we interleave gov/opp
-    // across rows to get a proper hemicycle look
-    const govColors = [];
+    // Build seat color array: parties form contiguous wedge-shaped blocks
+    // Gov parties on the left, opposition on the right — each party is a solid wedge
+    const partyColorList = [];
     for (const p of govParties) {
-        for (let i = 0; i < (p.seats || 0); i++) govColors.push(p.party_color || '#888');
+        for (let i = 0; i < (p.seats || 0); i++) partyColorList.push(p.party_color || '#888');
     }
-    const oppColors = [];
     for (const p of oppParties) {
-        for (let i = 0; i < (p.seats || 0); i++) oppColors.push(p.party_color || '#888');
+        for (let i = 0; i < (p.seats || 0); i++) partyColorList.push(p.party_color || '#888');
     }
-    // Assign colors: gov fills from left (low idx), opp fills from right (high idx)
-    const seatColors = new Array(totalSeats).fill('var(--text-dim)');
-    for (let i = 0; i < govColors.length && i < totalSeats; i++) {
-        seatColors[i] = govColors[i];
-    }
-    for (let i = 0; i < oppColors.length; i++) {
-        const pos = totalSeats - 1 - i;
-        if (pos >= 0) seatColors[pos] = oppColors[i];
-    }
+    while (partyColorList.length < totalSeats) partyColorList.push('var(--text-dim)');
 
     const seatPositions = generateSemiCircleSeats(totalSeats);
+
+    // Sort all seats by angle (left-to-right across the semicircle)
+    // so party colors form contiguous wedges instead of scattering by row
+    const sortedByAngle = [...seatPositions].sort((a, b) => {
+        const angleA = Math.atan2(165 - a.y, a.x - 250);
+        const angleB = Math.atan2(165 - b.y, b.x - 250);
+        return angleB - angleA; // descending = left to right (π → 0)
+    });
+
+    // Map: sorted position index → party color
+    const seatColorMap = {};
+    for (let i = 0; i < sortedByAngle.length; i++) {
+        seatColorMap[sortedByAngle[i].idx] = partyColorList[i] || 'var(--text-dim)';
+    }
+
     // Scale dot radius: larger dots for small parliaments, smaller for large
     const dotR = totalSeats <= 30 ? 7 : totalSeats <= 60 ? 5.5 : totalSeats <= 120 ? 4.5 : 3.5;
 
@@ -2117,7 +2122,7 @@ function renderParliamentPanel() {
                 <text x="250" y="7" text-anchor="middle" fill="var(--text-dim)" font-family="var(--font-mono)" font-size="7">${majority}</text>`;
 
     for (const s of seatPositions) {
-        const color = seatColors[s.idx] || 'var(--text-dim)';
+        const color = seatColorMap[s.idx] || 'var(--text-dim)';
         html += `<circle cx="${s.x.toFixed(1)}" cy="${s.y.toFixed(1)}" r="${dotR}" fill="${color}" opacity="0.9" stroke="var(--bg-body)" stroke-width="0.8"/>`;
     }
 
@@ -8599,7 +8604,11 @@ function renderCabinet(ministries, coalition) {
     const isCaretaker = coalition && coalition.status === 'caretaker';
     const pmMinistry = ministries?.find(m => m.ministry_key === 'prime_minister');
     const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
-    const isPMPartyLocal = currentFaction && coalition && currentFaction.id === coalition.lead_party_id;
+    const isPMPartyLocal = currentFaction && (
+        (coalition && currentFaction.id === coalition.lead_party_id) ||
+        (coalition && coalition.ministry_allocations?.prime_minister === currentFaction.id) ||
+        (pmMinistry && pmMinistry.party_id === currentFaction.id)
+    );
     const canAppoint = isPMPartyLocal && pmFilled && !isCaretaker;
 
     let govType = 'parliamentary';
