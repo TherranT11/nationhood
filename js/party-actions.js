@@ -2170,28 +2170,71 @@ async function openGrantSeatsModal(root) {
             if (btn) { btn.disabled = true; btn.textContent = 'Granting...'; }
 
             try {
-                const target = otherFactions.find(f => f.id === selectedFactionId);
-                const newMonarchSeats = monarchSeats - grantAmount;
-                const newTargetSeats = (target?.seats || 0) + grantAmount;
-                const legGain = grantAmount * 0.5;
+                // Re-fetch all factions to get fresh seat counts
+                const { data: freshFactions } = await _supabase.from('factions')
+                    .select('id, faction_name, seats')
+                    .eq('nation_id', nation.id).eq('faction_type', 'party').is('abandoned_at', null);
+                const freshMonarch = (freshFactions || []).find(f => f.id === faction.id);
+                const freshTarget = (freshFactions || []).find(f => f.id === selectedFactionId);
+                if (!freshMonarch || !freshTarget) { alert('Faction not found.'); return; }
+
+                // Seat-conserving grant: total must stay at nation.total_seats
+                const currentTotal = (freshFactions || []).reduce((s, f) => s + Math.max(0, f.seats || 0), 0);
+                const cap = nation?.total_seats || 100;
+
+                // Build new seat map: give target the granted seats
+                const updates = [];
+                let remaining = grantAmount;
+
+                // Take from monarch first
+                const monarchTake = Math.min(remaining, Math.max(0, freshMonarch.seats || 0) - 1);
+                if (monarchTake > 0) remaining -= monarchTake;
+
+                // If monarch didn't have enough, take proportionally from other parties
+                if (remaining > 0) {
+                    const donors = (freshFactions || []).filter(f => f.id !== faction.id && f.id !== selectedFactionId && (f.seats || 0) > 0);
+                    const donorTotal = donors.reduce((s, f) => s + (f.seats || 0), 0);
+                    if (donorTotal > 0) {
+                        for (const d of donors) {
+                            const share = Math.round(remaining * (d.seats || 0) / donorTotal);
+                            const take = Math.min(share, d.seats || 0);
+                            if (take > 0) {
+                                updates.push({ id: d.id, seats: (d.seats || 0) - take });
+                                remaining -= take;
+                            }
+                        }
+                    }
+                }
+
+                const actualGrant = grantAmount - remaining;
+                if (actualGrant <= 0) { alert('No seats available to grant.'); return; }
+
+                const newMonarchSeats = Math.max(1, (freshMonarch.seats || 0) - Math.min(grantAmount - remaining, grantAmount));
+                const newTargetSeats = (freshTarget.seats || 0) + actualGrant;
+                const legGain = actualGrant * 0.5;
                 const newLeg = Math.min(100, (Number(nation.legitimacy) || 50) + legGain);
 
-                // Update both factions' seats
-                const { error: e1 } = await _supabase.from('factions').update({ seats: newMonarchSeats }).eq('id', faction.id);
-                const { error: e2 } = await _supabase.from('factions').update({ seats: newTargetSeats }).eq('id', selectedFactionId);
-                const { error: e3 } = await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
+                // Write all seat updates atomically
+                updates.push({ id: faction.id, seats: newMonarchSeats });
+                updates.push({ id: selectedFactionId, seats: newTargetSeats });
 
-                if (e1 || e2 || e3) { alert('Failed to grant seats.'); return; }
+                for (const u of updates) {
+                    const { error } = await _supabase.from('factions').update({ seats: u.seats }).eq('id', u.id);
+                    if (error) { alert('Failed to grant seats.'); return; }
+                }
+                const { error: e3 } = await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
+                if (e3) { alert('Failed to update legitimacy.'); return; }
 
                 faction.seats = newMonarchSeats;
                 nation.legitimacy = newLeg;
 
                 // Log event
+                const target = otherFactions.find(f => f.id === selectedFactionId);
                 await _supabase.from('event_log').insert({
                     nation_id: nation.id,
-                    event_name: `${nation.monarch_title || 'King'} grants ${grantAmount} seats to ${target?.faction_name || 'unknown'}`,
+                    event_name: `${nation.monarch_title || 'King'} grants ${actualGrant} seats to ${target?.faction_name || 'unknown'}`,
                     category: 'government',
-                    description_chosen: `The ${nation.monarch_title || 'King'} has granted ${grantAmount} parliamentary seat${grantAmount !== 1 ? 's' : ''} to ${target?.faction_name}. Legitimacy +${legGain.toFixed(1)}.`,
+                    description_chosen: `The ${nation.monarch_title || 'King'} has granted ${actualGrant} parliamentary seat${actualGrant !== 1 ? 's' : ''} to ${target?.faction_name}. Legitimacy +${legGain.toFixed(1)}.`,
                     fired_at_tick: _state.shard?.current_tick || 0,
                 }).catch(() => {});
 
