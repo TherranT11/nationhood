@@ -5592,7 +5592,7 @@ async function renderNationCardBody(nationId) {
                 </div>
                 <div class="info-row">
                     <span class="info-label">Stability</span>
-                    <span class="info-value" style="color:${getStatColor(targetNation.stability)}">${targetNation.stability ?? '—'}%</span>
+                    <span class="info-value" style="color:${getStatColor(targetNation.stability)}">${targetNation.stability != null ? Number(targetNation.stability).toFixed(1) : '—'}%</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Civil Unrest</span>
@@ -11988,7 +11988,7 @@ async function renderRelationDetail(nationId) {
         html += '<div><div class="detail-label">Our Ambassador' + ambTermStr(ambassador) + '</div><div class="detail-value">' + (ambName ? escapeHtml(ambName) + escapeHtml(ambParty) : 'None') + '</div></div>';
         html += '<div><div class="detail-label">Their Ambassador' + ambTermStr(theirAmbassador) + '</div><div class="detail-value">' + (theirAmbName ? escapeHtml(theirAmbName) + escapeHtml(theirAmbParty) : 'None') + '</div></div>';
         html += '<div><div class="detail-label">Population</div><div class="detail-value">' + formatNumber(targetNation.population) + '</div></div>';
-        html += '<div><div class="detail-label">Stability</div><div class="detail-value">' + (targetNation.stability ?? '—') + '%</div></div>';
+        html += '<div><div class="detail-label">Stability</div><div class="detail-value">' + (targetNation.stability != null ? Number(targetNation.stability).toFixed(1) : '—') + '%</div></div>';
         html += '</div>';
 
         // Relation bar

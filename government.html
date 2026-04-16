@@ -1962,18 +1962,30 @@ function renderAdminActions() {
 
     let html = `<div class="ga-panel" style="text-align:center;padding:12px;">`;
 
-    // Call Early Elections (PM only, not caretaker)
-    if (isPM && !isCaretaker) {
-        const tierHint = approval > 50 ? 'Calling from strength — your party gains +3 momentum'
-            : approval < 35 ? 'Opposition gains +5 momentum each — orderly transition'
-            : 'Neutral call — no momentum changes';
+    // Call Early Elections — hidden for presidential, greyed for monarchy, active for parliamentary PM
+    const isMonarchyForElections = (nation.government_type || '').toLowerCase().includes('monarchy');
+    const isPresidentialForElections = isPresidential;
 
-        html += `<div class="ga-early-election-btn" onclick="callEarlyElections()">
-            <span style="font-size:12px;">&#9889;</span> CALL EARLY ELECTIONS
-        </div>
-        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">
-            PM only — dissolve the legislature · ${escapeHtml(tierHint)}
-        </div>`;
+    if (!isPresidentialForElections && isPM && !isCaretaker) {
+        if (isMonarchyForElections) {
+            html += `<div class="ga-early-election-btn" style="opacity:0.3;cursor:not-allowed;pointer-events:none;">
+                <span style="font-size:12px;">&#9889;</span> CALL EARLY ELECTIONS
+            </div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">
+                The monarch does not permit early elections.
+            </div>`;
+        } else {
+            const tierHint = approval > 50 ? 'Calling from strength — your party gains +3 momentum'
+                : approval < 35 ? 'Opposition gains +5 momentum each — orderly transition'
+                : 'Neutral call — no momentum changes';
+
+            html += `<div class="ga-early-election-btn" onclick="callEarlyElections()">
+                <span style="font-size:12px;">&#9889;</span> CALL EARLY ELECTIONS
+            </div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">
+                PM only — dissolve the legislature · ${escapeHtml(tierHint)}
+            </div>`;
+        }
     }
 
     // Caretaker notice
@@ -1989,8 +2001,8 @@ function renderAdminActions() {
         </div>`;
     }
 
-    // PM Resign (PM only, not caretaker)
-    if (isPM && !isCaretaker) {
+    // PM Resign (PM only, not caretaker, not presidential)
+    if (isPM && !isCaretaker && !isPresidentialForElections) {
         html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-main);">
             <span class="ga-resign-btn" onclick="resignPMAction()">RESIGN AS PRIME MINISTER</span>
             <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:3px;">
