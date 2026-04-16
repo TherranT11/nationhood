@@ -1231,6 +1231,26 @@ function renderTradePartners() {
 
             html += `</div></div>`;
 
+            // Active trade agreements with this partner
+            const partnerAgreements = (_tradeAgreementsList || []).filter(ag =>
+                ag.status === 'active' && (ag.nation_a_id === n.id || ag.nation_b_id === n.id));
+            if (partnerAgreements.length > 0) {
+                html += `<div style="padding:10px 18px;border-top:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--green);letter-spacing:1px;margin-bottom:6px;">ACTIVE TRADE AGREEMENTS</div>`;
+                for (const ag of partnerAgreements) {
+                    const typeLabel = AGREE_TYPE_LABELS[ag.agreement_type] || ag.agreement_type;
+                    const durLabel = ag.duration_type === 'permanent' ? 'Permanent' : (ag.expires_at_tick ? (ag.expires_at_tick - (_worldState?.shard?.current_tick || 0)) + ' ticks left' : '');
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.1);">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:11px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</span>
+                            <span class="tr-badge" style="font-size:7px;color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);">ACTIVE</span>
+                        </div>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${durLabel}</span>
+                    </div>`;
+                }
+                html += '</div>';
+            }
+
             // Action buttons — check for ongoing negotiation with this partner
             const hasOngoingNeg = _tradeNegotiationsList.some(neg =>
                 (neg.nation_a_id === n.id || neg.nation_b_id === n.id));
@@ -22066,7 +22086,7 @@ function negFlowUpdatePrice() {
     const UNIT_PRICES = {
         fuel_energy:        { price: 85,    unit: 'barrel' },
         minerals:           { price: 120,   unit: 'tonne' },
-        grains_staples:     { price: 320,   unit: 'tonne' },
+        grains_staples:     { price: 235,   unit: 'tonne' },
         livestock_dairy:    { price: 2800,  unit: 'tonne' },
         fruits_vegetables:  { price: 900,   unit: 'tonne' },
         cash_crops:         { price: 1400,  unit: 'tonne' },
