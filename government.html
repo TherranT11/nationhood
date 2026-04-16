@@ -9428,9 +9428,14 @@ function openAppointModal(ministryKey) {
     document.getElementById('assign-modal-title').textContent = 'Appoint — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
 
     const coalitionPartyIds = coalitionData?.party_ids || [];
-    const coalitionParties = allParties.filter(p => coalitionPartyIds.includes(p.id));
+    const hasCoalitionList = coalitionPartyIds.length > 0;
+    const govType = (currentNation?.government_type || '').toLowerCase();
+    const isAbsoluteMonarchy = govType.includes('absolute monarchy') || currentNation?.hos_election_method === 'hereditary';
+    const eligibleParties = (hasCoalitionList && !isAbsoluteMonarchy)
+        ? allParties.filter(p => coalitionPartyIds.includes(p.id))
+        : allParties;
 
-    generatedCandidates = coalitionParties.map(party => ({
+    generatedCandidates = eligibleParties.map(party => ({
         partyId: party.id,
         partyName: party.faction_name,
         firstName: FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)],
@@ -9438,15 +9443,17 @@ function openAppointModal(ministryKey) {
         age: 30 + Math.floor(Math.random() * 36)
     }));
 
-    document.getElementById('assign-candidates').innerHTML = generatedCandidates.map((c, i) => {
-        const candColor = getPartyColorById(c.partyId);
-        const candLogo = getPartyLogoById(c.partyId);
-        const candCustomLogo = getPartyCustomLogoById(c.partyId);
-        const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
-        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};">` +
-        `<div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div>` +
-        `<div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag other">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div></div>`;
-    }).join('');
+    document.getElementById('assign-candidates').innerHTML = generatedCandidates.length
+        ? generatedCandidates.map((c, i) => {
+            const candColor = getPartyColorById(c.partyId);
+            const candLogo = getPartyLogoById(c.partyId);
+            const candCustomLogo = getPartyCustomLogoById(c.partyId);
+            const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
+            return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};">` +
+            `<div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div>` +
+            `<div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag other">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div></div>`;
+        }).join('')
+        : `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;padding:8px 0;">No eligible parties found.</div>`;
 
     document.getElementById('assign-modal').classList.add('active');
 }
