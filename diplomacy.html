@@ -21872,9 +21872,33 @@ function negArticlesRender() {
             ? `<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;padding:1px 5px;color:var(--accent);background:rgba(90,175,165,0.08);border:1px solid rgba(90,175,165,0.15);margin-left:6px;vertical-align:middle;">${escapeHtml(art.article_type.replace('_',' ').toUpperCase())}</span>`
             : '';
 
+        // Demand context for trade_flow articles
+        let demandCtxHtml = '';
+        if (art.article_type === 'trade_flow' && art.data) {
+            const d = art.data;
+            const buyerNationId = d.direction === 'a_buys_b' ? _activeNegModal.myNationId : _activeNegModal.partnerNationId;
+            const buyerName = d.direction === 'a_buys_b' ? _activeNegModal.myNationName : _activeNegModal.partnerNationName;
+            const isBuyerMe = buyerNationId === _activeNegModal.myNationId;
+
+            if (isBuyerMe && _tradeFlows[d.commodity]) {
+                const flow = _tradeFlows[d.commodity];
+                const domesticDemand = Number(flow.import_demand || 0);
+                const alreadyImporting = Number(flow.import_volume || 0);
+                const remaining = Math.max(0, domesticDemand - alreadyImporting);
+                const tradeVol = Number(d.volume || 0);
+                const overshoot = tradeVol > remaining;
+                const color = overshoot ? 'var(--amber)' : 'var(--green)';
+                demandCtxHtml = `<div style="font-family:var(--font-mono);font-size:9px;color:${color};margin-top:4px;">
+                    ${escapeHtml(buyerName)}'s remaining demand: ${formatNegMoney(remaining)}/tick
+                    ${remaining > 0 ? '(after domestic production and existing trade)' : '(fully supplied)'}
+                </div>`;
+            }
+        }
+
         html += `<div class="trade-neg-article">
             <div class="trade-neg-article__num">Article ${num}.${typeTag}</div>
             <div class="trade-neg-article__text">${artContent}</div>
+            ${demandCtxHtml}
             <div class="trade-neg-article__meta">
                 <span>Added by ${escapeHtml(art.author_nation_name || 'Unknown')}</span>
                 ${isMine
