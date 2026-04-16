@@ -2735,7 +2735,7 @@ function renderBillCard(bill, stageColor) {
     if (effectChips) {
         html += `<div style="margin-bottom:6px;">${effectChips}</div>`;
     }
-    html += `<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:${inlineVotes ? '6px' : '0'};">
+    html += `<div style="font-family:var(--font-mono);font-size:calc(8px * var(--leg-scale, 1.755));color:var(--text-dim);margin-bottom:${inlineVotes ? '6px' : '0'};">
         UPFRONT COST: ${formatCostCompact(totals.upfront)} | ONGOING COST: ${formatCostCompact(totals.ongoingYearly)} / YEAR (${formatCostCompact(ongoingMonthly)} / MONTH)
     </div>`;
     if (inlineVotes) {
@@ -2781,10 +2781,10 @@ function renderBillCard(bill, stageColor) {
             const articleOrdinal = toRoman(art.article_number);
             html += `<div style="padding:5px 10px;margin-bottom:2px;border-left:2px solid var(--border-main);">
                 <div style="display:flex;align-items:center;gap:6px;">
-                    <span style="font-size:10px;font-weight:700;color:var(--text-bright);">Article ${articleOrdinal}.: ${escapeHtml(policyName)}${ideologyLabels}</span>
+                    <span style="font-size:calc(10px * var(--leg-scale, 1.755));font-weight:700;color:var(--text-bright);">Article ${articleOrdinal}.: ${escapeHtml(policyName)}${ideologyLabels}</span>
                     <span class="leg-article-badge" style="color:${badgeColor};background:${badgeColor}10;border-color:${badgeColor}33;">${badge}</span>
                 </div>
-                ${descriptionText ? `<p style="font-size:9px;color:var(--text-dim);margin:2px 0 0;">${escapeHtml(descriptionText)}</p>` : ''}
+                ${descriptionText ? `<p style="font-size:calc(9px * var(--leg-scale, 1.755));color:var(--text-dim);margin:2px 0 0;">${escapeHtml(descriptionText)}</p>` : ''}
             </div>`;
         }
         html += `</div>`;
@@ -2797,7 +2797,7 @@ function renderBillCard(bill, stageColor) {
 
     // Expand hint for floor bills (articles hidden by default)
     if (!isExp && (bill.status === 'floor' || bill.status === 'voting') && articles.length > 0) {
-        html += `<div style="padding:0 14px 8px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">&#9656; ${articles.length} article${articles.length !== 1 ? 's' : ''} \u00B7 click to expand details</div>`;
+        html += `<div style="padding:0 14px 8px;font-family:var(--font-mono);font-size:calc(7px * var(--leg-scale, 1.755));color:var(--text-dim);">&#9656; ${articles.length} article${articles.length !== 1 ? 's' : ''} \u00B7 click to expand details</div>`;
     }
 
     html += `</div>`;
