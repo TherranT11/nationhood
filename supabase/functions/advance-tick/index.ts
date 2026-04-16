@@ -1997,7 +1997,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
     // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT, ES, Embargo) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
-        .select('id, nation_a_id, nation_b_id, agreement_type, articles')
+        .select('id, nation_a_id, nation_b_id, agreement_type, articles, efficiency')
         .eq('status', 'active')
         .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff', 'export_subsidy', 'impose_embargo']);
 
@@ -2011,12 +2011,61 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     var exportSubsidyMap = {};
     var embargoMap = {};
     var activeRSCs = [];
+    var tradeEfficiencyMap = {}; // pairKey → efficiency (0-1), default 0.85
 
     // Helper: expand a sector key to account for food sub-sectors.
     // If an agreement references 'food_agriculture', it applies to all 4 sub-sectors.
     function expandSectorKey(sectorKey) {
         if (sectorKey === 'food_agriculture') return FOOD_SUBSECTOR_KEYS;
         return [sectorKey];
+    }
+
+    // Update efficiency for agreements that have active shipping claims
+    // Each active shipping claim on a route tied to an agreement adds 0.03 efficiency (cap at 1.0)
+    if (activeTradeAgreements && activeTradeAgreements.length > 0) {
+        try {
+            var agreementIds = activeTradeAgreements.map(function(a) { return a.id; });
+            var { data: shippedRoutes } = await supabase.from('shipping_routes')
+                .select('trade_agreement_id')
+                .in('trade_agreement_id', agreementIds)
+                .eq('status', 'active');
+
+            if (shippedRoutes && shippedRoutes.length > 0) {
+                // Count active routes per agreement
+                var routeCountByAg = {};
+                for (var ri = 0; ri < shippedRoutes.length; ri++) {
+                    var agId = shippedRoutes[ri].trade_agreement_id;
+                    routeCountByAg[agId] = (routeCountByAg[agId] || 0) + 1;
+                }
+
+                // Check for active shipping claims on those routes
+                var { data: activeClaimsOnRoutes } = await supabase.from('shipping_claims')
+                    .select('route_id, shipping_routes!inner(trade_agreement_id)')
+                    .eq('status', 'active');
+
+                var claimedAgreements = new Set();
+                if (activeClaimsOnRoutes) {
+                    for (var ci = 0; ci < activeClaimsOnRoutes.length; ci++) {
+                        var claimAgId = activeClaimsOnRoutes[ci].shipping_routes?.trade_agreement_id;
+                        if (claimAgId) claimedAgreements.add(claimAgId);
+                    }
+                }
+
+                // Bump efficiency for agreements with active shipping service
+                for (var ai = 0; ai < activeTradeAgreements.length; ai++) {
+                    var ag = activeTradeAgreements[ai];
+                    if (claimedAgreements.has(ag.id)) {
+                        var newEff = Math.min(1.0, 0.85 + 0.03);
+                        if (Number(ag.efficiency) < newEff) {
+                            ag.efficiency = newEff;
+                            await supabase.from('trade_agreements').update({ efficiency: newEff }).eq('id', ag.id);
+                        }
+                    }
+                }
+            }
+        } catch (shippingEffErr) {
+            console.warn('[Trade] Shipping efficiency update failed (non-fatal):', shippingEffErr.message);
+        }
     }
 
     if (activeTradeAgreements) {
@@ -2026,6 +2075,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var k2 = ta.nation_b_id + '|' + ta.nation_a_id;
             if (!flagsMap[k1]) flagsMap[k1] = {};
             if (!flagsMap[k2]) flagsMap[k2] = {};
+
+            // Store efficiency for this bilateral pair (highest agreement wins)
+            var eff = Number(ta.efficiency ?? 0.85);
+            if (!tradeEfficiencyMap[k1] || eff > tradeEfficiencyMap[k1]) tradeEfficiencyMap[k1] = eff;
+            if (!tradeEfficiencyMap[k2] || eff > tradeEfficiencyMap[k2]) tradeEfficiencyMap[k2] = eff;
 
             if (ta.agreement_type === 'fta') {
                 flagsMap[k1].has_fta = true;
@@ -2390,8 +2444,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 }
                 if (aff <= 0) continue;
 
-                // Gravity-model weight: supply × demand × affinity
-                var w = adjustedCap * remainingDem * aff;
+                // Apply trade agreement efficiency (default 1.0 if no agreement, else 0.85+)
+                var pairEfficiency = tradeEfficiencyMap[exporter.id + '|' + importer.id] || 1.0;
+
+                // Gravity-model weight: supply × demand × affinity × efficiency
+                var w = adjustedCap * remainingDem * aff * pairEfficiency;
                 pairs.push({
                     expId: exporter.id,
                     impId: importer.id,

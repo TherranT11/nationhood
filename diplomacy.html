@@ -900,6 +900,10 @@ function renderTradeAgreements() {
                 ${ag.auto_renew ? `<div style="padding:4px 6px;background:var(--bg-card);border:1px solid var(--border-main);">
                     <div style="font-family:var(--font-mono);font-size:7px;color:var(--green);">AUTO-RENEW</div>
                 </div>` : ''}
+                <div style="padding:4px 6px;background:var(--bg-card);border:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">EFFICIENCY</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${(ag.efficiency || 0.85) >= 0.88 ? 'var(--green)' : 'var(--amber)'};">${Math.round((ag.efficiency || 0.85) * 100)}%</div>
+                </div>
             </div>`;
 
             // Logistics / shipping corporations
