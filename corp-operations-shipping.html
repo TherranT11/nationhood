@@ -7310,6 +7310,17 @@ function skillCostMod(skill) {
     return 1.5 - (skill / 100);
 }
 
+const EXEC_SKILL_CAP = 90;
+const TICKS_PER_YEAR = 12;
+
+function calcExecContractTotalFromSkill(skill) {
+    const boundedSkill = Math.max(25, Math.min(EXEC_SKILL_CAP, Number(skill) || 25));
+    const t = (boundedSkill - 25) / 65;
+    const curved = t * t * 0.4 + t * 0.6;
+    const total = 12000000 + curved * 88000000;
+    return Math.round(total / 500000) * 500000;
+}
+
 // ─── Cooldown tracking: actions limited to once per tick ──
 let _actionCooldowns = {}; // { actionId: lastTickUsed }
 
@@ -7326,9 +7337,11 @@ function markActionUsed(actionId) {
 function renderActionsRightPanel() {
     const panel = document.getElementById('actions-right-panel');
     if (!panel) return;
+    const currentTick = shard?.current_tick || 0;
     const role = EXEC_ROLES[_selectedExecIdx];
     const meta = EXEC_ROLE_META[role];
     const exec = getExecForRole(role);
+    const isExpired = !!exec && currentTick >= Number(exec.contract_end_tick || 0);
     const actions = EXEC_ACTIONS[role] || [];
 
     // ── Vacant state ──
@@ -7380,8 +7393,16 @@ function renderActionsRightPanel() {
         </div>
     </div>`;
 
+    if (isExpired) {
+        html += `<div style="padding:14px 20px;background:rgba(217,83,79,0.12);border:1px solid rgba(217,83,79,0.35);border-bottom:none;text-align:center;">
+            <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;letter-spacing:0.8px;color:#f3c3bf;">[Offer New Contract?]</div>
+            <div style="font-family:var(--font-mono);font-size:11px;color:#d9a39f;margin-top:6px;">${escapeHtml(exec.first_name)} ${escapeHtml(exec.last_name)} can no longer execute actions until renewed.</div>
+            <div onclick="openExecRenewModal('${escapeHtml(role)}')" style="display:inline-block;margin-top:10px;padding:7px 22px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#2b201f;background:#f3c3bf;cursor:pointer;">RENEW CONTRACT</div>
+        </div>`;
+    }
+
     // ── Actions list ──
-    html += `<div style="background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-top:1px solid var(--border-0,rgba(255,255,255,0.06));flex:1;">`;
+    html += `<div style="background:var(--bg-2,#1a1a17);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-top:1px solid var(--border-0,rgba(255,255,255,0.06));flex:1;opacity:${isExpired ? '0.4' : '1'};pointer-events:${isExpired ? 'none' : 'auto'};">`;
 
     for (let ai = 0; ai < actions.length; ai++) {
         const action = actions[ai];
@@ -7421,7 +7442,7 @@ function renderActionsRightPanel() {
         }
 
         // Execute button (shown on hover via JS)
-        if (!isLocked) {
+        if (!isLocked && !isExpired) {
             html += `<div class="act-exec-btn" style="display:none;margin-top:10px;text-align:right;">
                 <span onclick="event.stopPropagation();actExecute('${action.id}','${role}')" style="display:inline-block;padding:6px 24px;font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:1px;color:#000;background:${meta.color};cursor:pointer;">EXECUTE</span>
             </div>`;
@@ -7522,7 +7543,107 @@ async function executeFireExec(execId, role, payout) {
     }
 }
 
+let _renewModalOpen = false;
+
+function openExecRenewModal(role) {
+    if (_renewModalOpen) return;
+    const exec = getExecForRole(role);
+    if (!exec) return;
+
+    _renewModalOpen = true;
+    const currentTick = shard?.current_tick || 0;
+    const defaultYears = Math.max(1, Math.min(7, Number(exec.contract_years) || 3));
+    const suggestedSalary = Math.max(1000000, Number(exec.salary_per_year) || Math.round(calcExecContractTotalFromSkill(exec.skill) / defaultYears));
+
+    const overlay = document.createElement('div');
+    overlay.id = 'exec-renew-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:650;display:flex;align-items:center;justify-content:center;';
+    overlay.onclick = function(e) { if (e.target === overlay) closeExecRenewModal(); };
+    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:460px;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;">
+        <div style="padding:12px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:1.4px;color:#e8e4dc;">RENEW ${escapeHtml(role)} CONTRACT</span>
+            <span onclick="closeExecRenewModal()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
+        </div>
+        <div style="padding:14px 16px;">
+            <div style="font-size:13px;color:#a7a39a;line-height:1.5;margin-bottom:10px;">Renew <span style="color:#e8e4dc;">${escapeHtml(exec.first_name)} ${escapeHtml(exec.last_name)}</span>. On signing, a <span style="color:#e8e4dc;">1d6</span> development roll boosts skill (capped at ${EXEC_SKILL_CAP}).</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <label style="display:flex;flex-direction:column;gap:4px;">
+                    <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">YEARS [X]</span>
+                    <input id="exec-renew-years" type="number" min="1" max="7" value="${defaultYears}" style="padding:8px 10px;font-family:var(--font-mono);font-size:13px;color:#e8e4dc;background:#1c1c18;border:1px solid #2a2a24;outline:none;">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:4px;">
+                    <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">PAY [Y] / YR</span>
+                    <input id="exec-renew-pay" type="number" min="1000000" step="50000" value="${Math.round(suggestedSalary)}" style="padding:8px 10px;font-family:var(--font-mono);font-size:13px;color:#e8e4dc;background:#1c1c18;border:1px solid #2a2a24;outline:none;">
+                </label>
+            </div>
+            <div style="margin-top:12px;font-family:var(--font-mono);font-size:10px;color:#8e8a82;">Current tick: ${currentTick} · Contract end tick: ${Number(exec.contract_end_tick || 0)}</div>
+            <div id="exec-renew-error" style="margin-top:10px;font-family:var(--font-mono);font-size:10px;color:#c55;display:none;"></div>
+        </div>
+        <div style="padding:10px 16px;border-top:1px solid #2a2a24;display:flex;justify-content:flex-end;gap:8px;">
+            <div onclick="closeExecRenewModal()" style="padding:6px 16px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+            <div onclick="confirmExecRenew('${exec.id}','${escapeHtml(role)}')" style="padding:6px 16px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#1f1717;background:#f3c3bf;cursor:pointer;">CONFIRM</div>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+}
+
+function closeExecRenewModal() {
+    _renewModalOpen = false;
+    const overlay = document.getElementById('exec-renew-overlay');
+    if (overlay) overlay.remove();
+}
+
+async function confirmExecRenew(execId, role) {
+    const errEl = document.getElementById('exec-renew-error');
+    const yearsVal = Number(document.getElementById('exec-renew-years')?.value || 0);
+    const payVal = Number(document.getElementById('exec-renew-pay')?.value || 0);
+    const contractYears = Math.max(1, Math.min(7, Math.floor(yearsVal)));
+    if (!Number.isFinite(contractYears) || contractYears < 1 || contractYears > 7) {
+        if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Enter a valid contract length (1-7 years).'; }
+        return;
+    }
+    if (!Number.isFinite(payVal) || payVal <= 0) {
+        if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Enter a valid annual pay offer.'; }
+        return;
+    }
+
+    const exec = getExecForRole(role);
+    if (!exec || exec.id !== execId) return;
+
+    const roll = 1 + Math.floor(Math.random() * 6);
+    const newSkill = Math.min(EXEC_SKILL_CAP, Math.max(0, Number(exec.skill || 0) + roll));
+    const modelSalary = Math.round(calcExecContractTotalFromSkill(newSkill) / contractYears);
+    const salaryPerYear = Math.max(Math.round(payVal), modelSalary);
+    const currentTick = shard?.current_tick || 0;
+    const patch = {
+        skill: newSkill,
+        salary_per_year: salaryPerYear,
+        contract_years: contractYears,
+        contract_start_tick: currentTick,
+        contract_end_tick: currentTick + (contractYears * TICKS_PER_YEAR),
+        status: 'active',
+    };
+
+    const { error } = await _supabase.from('corp_executives').update(patch).eq('id', execId);
+    if (error) {
+        if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Failed to renew contract. Please try again.'; }
+        return;
+    }
+
+    Object.assign(exec, patch);
+    closeExecRenewModal();
+    renderActionsRightPanel();
+    alert(`${role} renewed. Skill increased by ${roll} (now ${newSkill}).`);
+}
+
 function actExecute(actionId, role) {
+    const exec = getExecForRole(role);
+    const currentTick = shard?.current_tick || 0;
+    if (!exec) return;
+    if (currentTick >= Number(exec.contract_end_tick || 0)) {
+        alert(`${role} contract expired. Renew contract before executing actions.`);
+        return;
+    }
     // Check once-per-tick cooldown
     const actionDef = (EXEC_ACTIONS[role] || []).find(a => a.id === actionId);
     if (actionDef?.cooldown === 'once/tick' && isActionOnCooldown(actionId)) {

@@ -2573,6 +2573,30 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
     console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, tax rate=${ns('corporate_tax')}%`);
 }
 
+async function enforceExecutiveContractLifecycle(supabase, corpFactions, currentTick) {
+    if (!corpFactions || corpFactions.length === 0) return 0;
+    let totalExpired = 0;
+
+    for (const corp of corpFactions) {
+        const { data: expiredRows, error } = await supabase
+            .from('corp_executives')
+            .update({ status: 'expired', updated_at: new Date().toISOString() })
+            .eq('faction_id', corp.id)
+            .eq('status', 'active')
+            .not('contract_end_tick', 'is', null)
+            .lte('contract_end_tick', currentTick)
+            .select('id');
+        if (error) {
+            console.warn(`[advance-corp-tick] Exec contract expiry update failed for ${corp.faction_name}:`, error.message);
+            continue;
+        }
+        if (expiredRows && expiredRows.length > 0) {
+            totalExpired += expiredRows.length;
+        }
+    }
+    return totalExpired;
+}
+
 // ════════════════════════════════════════════════════════════════════════════════
 //  SHIP MARKET — Generate NPC listings + process vessel order deliveries
 // ════════════════════════════════════════════════════════════════════════════════
@@ -3071,6 +3095,16 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
             summary.corpsProcessed += corps.length;
             console.log(`[advance-corp-tick] ${nation.name}: ${corps.length} corporation(s)`);
+
+            // ── Executive Contract Lifecycle ─────────────────────────────
+            try {
+                const expiredExecs = await enforceExecutiveContractLifecycle(supabase, corps, currentTick);
+                if (expiredExecs > 0) {
+                    console.log(`[advance-corp-tick] ${nation.name}: ${expiredExecs} executive contract(s) expired`);
+                }
+            } catch (execLifecycleErr) {
+                console.error(`[advance-corp-tick] Executive lifecycle failed for ${nation.name} (non-fatal):`, execLifecycleErr);
+            }
 
             // ── Construction Sector ──────────────────────────────────────
             try {
