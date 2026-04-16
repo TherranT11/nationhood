@@ -18,6 +18,30 @@ import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
 import { calculateCaucusDispositions, calculateCaucusVoteAdjustment, updateCaucusRelationships } from './caucus.js';
 
+const _BILL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+function _billTickToDate(tick) {
+    if (tick == null) return null;
+    return `${_BILL_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
+}
+
+async function _logAdministrationIntegrityIssue(supabase, nationId, contextLabel) {
+    const [{ data: openRows }, { data: missingEndedTickRows }] = await Promise.all([
+        supabase.from('administrations').select('id').eq('nation_id', nationId).is('ended_at_tick', null),
+        supabase.from('administrations').select('id').eq('nation_id', nationId).not('ended_at_date', 'is', null).is('ended_at_tick', null)
+    ]);
+
+    if ((openRows || []).length !== 1 || (missingEndedTickRows || []).length > 0) {
+        console.warn('[enactFoundationalBill] administration integrity check warning', {
+            context: contextLabel,
+            nation_id: nationId,
+            open_count: (openRows || []).length,
+            open_admin_ids: (openRows || []).map(r => r.id),
+            ended_missing_tick_ids: (missingEndedTickRows || []).map(r => r.id)
+        });
+    }
+}
+
 // ==================== BILL SUPPORT ====================
 
 export function calculateBillSupport(billSupport, sponsorPartyId, allPartySeats) {
@@ -3686,12 +3710,13 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
             // Close administration
             const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-            const dateStr = shardData?.current_date || '';
+            const dateStr = shardData?.current_date || _billTickToDate(currentTick);
             const { error: adminErr } = await supabase.from('administrations')
                 .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
                 .eq('nation_id', bill.nation_id)
                 .is('ended_at_tick', null);
             if (adminErr) console.error('[enactFoundationalBill] Failed to close administration:', adminErr.message);
+            else await _logAdministrationIntegrityIssue(supabase, bill.nation_id, 'foundational_transition_no_president');
 
             // Fail bills on president's desk (orphaned without a president)
             const { error: deskErr } = await supabase.from('bills')
@@ -4062,11 +4087,13 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
                 // Close administration for transition
                 const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-                const dateStr = shardData?.current_date || '';
-                await supabase.from('administrations')
+                const dateStr = shardData?.current_date || _billTickToDate(currentTick);
+                const { error: closeAdminErr } = await supabase.from('administrations')
                     .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
                     .eq('nation_id', bill.nation_id)
                     .is('ended_at_tick', null);
+                if (closeAdminErr) console.error('[enactFoundationalBill] Failed to close administration on PM removal transition:', closeAdminErr.message);
+                else await _logAdministrationIntegrityIssue(supabase, bill.nation_id, 'foundational_transition_no_pm');
 
                 console.log(`[enactFoundationalBill] Presidential → Parliamentary Democracy, election at tick ${currentTick + 3}`);
             }

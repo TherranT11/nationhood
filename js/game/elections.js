@@ -253,7 +253,7 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
                     stats_at_end: statsAtEnd,
                     approval_at_end: governmentApproval,
                     ended_at_tick: currentTick,
-                    ended_at_date: currentDate,
+                    ended_at_date: _normalizeAdminEndDate(currentDate, currentTick),
                     end_reason: endReason,
                     bills_passed: billsPassed,
                     bills_failed: billsFailed,
@@ -307,7 +307,7 @@ export async function createAdministration(supabase, nationId, nation, coalition
             console.warn(`createAdministration: closing ${orphaned.length} orphaned open administration(s) for nation ${nationId}`);
             await supabase
                 .from('administrations')
-                .update({ ended_at_tick: currentTick, ended_at_date: currentDate, end_reason: 'new_coalition' })
+                .update({ ended_at_tick: currentTick, ended_at_date: _normalizeAdminEndDate(currentDate, currentTick), end_reason: 'new_coalition' })
                 .eq('nation_id', nationId)
                 .is('ended_at_tick', null);
         }
@@ -366,7 +366,7 @@ export async function createAdministration(supabase, nationId, nation, coalition
                 total_seats: totalSeats,
                 government_type: getCanonicalGovernmentType(nation),
                 started_at_tick: currentTick,
-                started_at_date: currentDate,
+                started_at_date: _normalizeAdminEndDate(currentDate, currentTick),
                 stats_at_start: statsAtStart,
                 approval_at_start: 50
             });
@@ -414,6 +414,7 @@ export async function createAdministration(supabase, nationId, nation, coalition
         } catch (e) { /* non-blocking */ }
 
         console.log(`Administration created: "${adminName}" at tick ${currentTick}`);
+        await _verifyAdministrationIntegrity(supabase, nationId, 'createAdministration');
     } catch (err) {
         console.error('createAdministration error:', err);
         throw err;
@@ -425,6 +426,32 @@ const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
 function _gameDate(tick) {
     if (tick == null) return null;
     return `${_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
+}
+
+function _normalizeAdminEndDate(currentDate, currentTick) {
+    return (typeof currentDate === 'string' && currentDate.trim()) ? currentDate : (_gameDate(currentTick) || 'Unknown Date');
+}
+
+async function _verifyAdministrationIntegrity(supabase, nationId, contextLabel) {
+    const [{ data: openRows, error: openErr }, { data: missingEndedTickRows, error: endedErr }] = await Promise.all([
+        supabase.from('administrations').select('id, started_at_tick, created_at').eq('nation_id', nationId).is('ended_at_tick', null).order('started_at_tick', { ascending: false }).order('created_at', { ascending: false }),
+        supabase.from('administrations').select('id').eq('nation_id', nationId).not('ended_at_date', 'is', null).is('ended_at_tick', null)
+    ]);
+
+    if (openErr || endedErr) {
+        console.warn('administration_integrity_check_failed', { nation_id: nationId, context: contextLabel, open_error: openErr?.message || null, ended_error: endedErr?.message || null });
+        return;
+    }
+
+    if ((openRows || []).length !== 1 || (missingEndedTickRows || []).length > 0) {
+        console.warn('administration_integrity_violation', {
+            nation_id: nationId,
+            context: contextLabel,
+            open_count: (openRows || []).length,
+            open_admin_ids: (openRows || []).map(r => r.id),
+            ended_rows_missing_ended_at_tick: (missingEndedTickRows || []).map(r => r.id)
+        });
+    }
 }
 
 /**
@@ -649,7 +676,7 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
         total_seats: totalSeats,
         government_type: getCanonicalGovernmentType(nation),
         started_at_tick: currentTick,
-        started_at_date: currentDate,
+        started_at_date: _normalizeAdminEndDate(currentDate, currentTick),
         stats_at_start: statsAtStart,
         approval_at_start: 50
     };
@@ -658,7 +685,7 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
         p_nation_id: nationId,
         p_end_reason: endReason,
         p_end_tick: currentTick,
-        p_end_date: currentDate,
+        p_end_date: _normalizeAdminEndDate(currentDate, currentTick),
         p_end_approval: governmentApproval,
         p_new_administration: payload
     });
@@ -670,6 +697,7 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
             .eq('id', nationId);
         if (approvalResetErr) console.error('rolloverAdministration: failed to reset gov_approval:', approvalResetErr.message);
         console.log(`Administration rolled over atomically: "${adminName}" at tick ${currentTick}`);
+        await _verifyAdministrationIntegrity(supabase, nationId, 'rolloverAdministration_rpc');
         return;
     }
 
@@ -678,8 +706,10 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
     if (!rpcUnavailable) throw rpcErr;
 
     console.warn('rolloverAdministration RPC unavailable; falling back to sequential close + create');
-    await closeAdministration(supabase, nationId, nation, endReason, currentTick, currentDate, governmentApproval);
-    await createAdministration(supabase, nationId, nation, coalition, allParties, currentTick, currentDate, governmentApproval);
+    const normalizedDate = _normalizeAdminEndDate(currentDate, currentTick);
+    await closeAdministration(supabase, nationId, nation, endReason, currentTick, normalizedDate, governmentApproval);
+    await createAdministration(supabase, nationId, nation, coalition, allParties, currentTick, normalizedDate, governmentApproval);
+    await _verifyAdministrationIntegrity(supabase, nationId, 'rolloverAdministration_fallback');
 }
 
 
@@ -839,7 +869,7 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
                 const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
                 const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
                 if (fullNation) {
-                    await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || '', null);
+                    await closeAdministration(supabase, nationId, fullNation, 'coalition_collapse', currentTick, shard?.current_date || _gameDate(currentTick), null);
                 }
             } catch (adminErr) { console.warn('Could not close administration on no-confidence:', adminErr); }
 
@@ -1882,7 +1912,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
                 const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
                 const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
                 if (fullNation) {
-                    await closeAdministration(supabase, nation.id, fullNation, 'dissolved', currentTick, shardData?.current_date || '', null);
+                    await closeAdministration(supabase, nation.id, fullNation, 'dissolved', currentTick, shardData?.current_date || _gameDate(currentTick), null);
                 }
             } catch (adminErr) { console.warn('Could not close administration on manual election:', adminErr); }
 
@@ -2226,7 +2256,7 @@ export async function processElections(supabase, nation, currentTick) {
                     const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nation.id).single();
                     const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
                     if (fullNation) {
-                        await closeAdministration(supabase, nation.id, fullNation, 'dissolved', currentTick, shardData?.current_date || '', null);
+                        await closeAdministration(supabase, nation.id, fullNation, 'dissolved', currentTick, shardData?.current_date || _gameDate(currentTick), null);
                     }
                 } catch (adminErr) { console.warn('Could not close administration on election:', adminErr); }
 
@@ -2839,7 +2869,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     }
 
     // Parse year safely from current_date (handles formats like "Month Day, Year" or just "Year")
-    const dateStr = shardData?.current_date || '';
+    const dateStr = shardData?.current_date || _gameDate(currentTick);
     const yearMatch = dateStr.match(/\d{4}/);
     const year = yearMatch ? yearMatch[0] : '';
 
@@ -2849,7 +2879,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         .from('administrations')
         .update({
             ended_at_tick: currentTick,
-            ended_at_date: dateStr,
+            ended_at_date: _normalizeAdminEndDate(dateStr, currentTick),
             end_reason: endReason,
             approval_at_end: faction?.approval_rating ?? null,
             stats_at_end: fullNation ? snapshotNationStats(fullNation) : {},
@@ -2875,13 +2905,15 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         total_seats: presidentPartySeats,
         government_type: 'Presidential',
         started_at_tick: currentTick,
-        started_at_date: dateStr,
+        started_at_date: _normalizeAdminEndDate(dateStr, currentTick),
         stats_at_start: fullNation ? snapshotNationStats(fullNation) : {},
         approval_at_start: 50,
         head_of_state_title: fullNation?.head_of_state_title || null
     });
     if (adminErr) {
         console.error(`[inauguratePresident] Failed to create new administration for ${nationId}:`, adminErr.message);
+    } else {
+        await _verifyAdministrationIntegrity(supabase, nationId, 'inauguratePresident');
     }
 
     return candidate;
