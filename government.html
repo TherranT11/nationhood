@@ -3137,17 +3137,7 @@ async function loadGovData() {
         const loadedParties = partiesRes.data || [];
 
         // Detect PM party (robust: HOG → coalition lead → PM ministry → allocations)
-        const _pmMinistry = (ministriesRes.data || []).find(m => m.ministry_key === 'prime_minister');
-        const coalitionAllocations = getCoalitionAllocations(coalition);
-        if (hog?.faction_id) {
-            pmFactionId = hog.faction_id;
-        } else if (coalition?.lead_party_id) {
-            pmFactionId = coalition.lead_party_id;
-        } else if (_pmMinistry?.party_id) {
-            pmFactionId = _pmMinistry.party_id;
-        } else if (coalitionAllocations?.prime_minister) {
-            pmFactionId = coalitionAllocations.prime_minister;
-        }
+        pmFactionId = getPMFactionIdFromContext(coalition, ministriesRes.data || [], hog);
         isPMParty = !!(currentFaction && pmFactionId && currentFaction.id === pmFactionId);
 
         // Load ministry action logs for active action detection + use counts
@@ -9162,6 +9152,16 @@ function getCoalitionAllocations(coalition) {
     return coalition.ministry_allocations || coalition.ministry_assignments || {};
 }
 
+function getPMFactionIdFromContext(coalition, ministries, hog) {
+    const pmMinistry = (ministries || []).find(m => m.ministry_key === 'prime_minister');
+    const allocations = getCoalitionAllocations(coalition);
+    return hog?.faction_id
+        || coalition?.lead_party_id
+        || pmMinistry?.party_id
+        || allocations?.prime_minister
+        || null;
+}
+
 // --- Vacant ministry alert (PM/President only) ---
 function renderVacantMinistryAlert(ministries, coalition) {
     // Determine if current player is PM or President
@@ -9197,11 +9197,8 @@ function renderCabinet(ministries, coalition) {
     const pmMinistry = ministries?.find(m => m.ministry_key === 'prime_minister');
     const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
     const allocations = getCoalitionAllocations(coalition);
-    const isPMPartyLocal = currentFaction && (
-        (coalition && currentFaction.id === coalition.lead_party_id) ||
-        allocations.prime_minister === currentFaction.id ||
-        (pmMinistry && pmMinistry.party_id === currentFaction.id)
-    );
+    const pmFactionIdLocal = getPMFactionIdFromContext(coalition, ministries, _govData?.hog);
+    const isPMPartyLocal = !!(currentFaction && pmFactionIdLocal && currentFaction.id === pmFactionIdLocal);
     const canAppoint = isPMPartyLocal && pmFilled && !isCaretaker;
 
     let govType = 'parliamentary';
@@ -9246,7 +9243,7 @@ function renderCabinet(ministries, coalition) {
             isRuling: isRulingFaction,
             isMyMinistry,
             canAppoint: isPMPartyLocal && pmFilled && !isCaretaker,
-            isPMParty: isPMPartyLocal || isPMParty || (currentFaction && coalitionData && currentFaction.id === coalitionData.lead_party_id),
+            isPMParty: isPMPartyLocal || isPMParty,
             isPresidentParty: typeof isPresidentParty !== 'undefined' ? isPresidentParty : false,
             isCaretaker,
             requests,
@@ -11415,7 +11412,8 @@ async function refreshGovernmentUI() {
     if (ministryKey === 'prime_minister') { alert('Cannot dismiss the Prime Minister this way.'); return; }
 
     // Permission check: PM party (parliamentary) or President party (presidential)
-    const canFire = isPresidential ? isPresidentParty : (currentFaction.id === coalitionData?.lead_party_id);
+    const pmFactionIdLocal = getPMFactionIdFromContext(coalitionData, ministryData, _govData?.hog);
+    const canFire = isPresidential ? isPresidentParty : (currentFaction.id === pmFactionIdLocal);
     if (!canFire) { alert('Only the head of government can dismiss ministers.'); return; }
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
