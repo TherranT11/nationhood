@@ -133,12 +133,13 @@
 </div>
 
 <!-- ═══ Trade Negotiation Modal (must be outside page container for position:fixed) ═══ -->
-<div class="modal-overlay" id="trade-neg-modal">
-    <div class="trade-neg-modal-content">
+<div class="modal-overlay" id="trade-neg-modal" onclick="/* do not close on outside click */">
+    <div class="trade-neg-modal-content" onclick="event.stopPropagation();">
         <div class="trade-neg-modal-header" id="trade-neg-header"></div>
         <div class="trade-neg-modal-body">
             <div class="trade-neg-main" id="trade-neg-main">
-                <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:var(--font-mono);font-size:11px;">Trade articles will appear here in a future update.</div>
+                <div id="trade-neg-articles"></div>
+                <div id="trade-neg-add-article-form" style="display:none;"></div>
             </div>
             <div class="trade-neg-chat" id="trade-neg-chat-panel">
                 <div class="trade-neg-chat__header">Trade Negotiations Discuss</div>
@@ -150,7 +151,13 @@
             </div>
         </div>
         <div class="trade-neg-modal-footer">
-            <button class="trade-neg-withdraw-btn" id="trade-neg-withdraw-btn" onclick="withdrawFromNegotiations()">Withdraw from Negotiations</button>
+            <div style="display:flex;gap:8px;">
+                <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-article-btn" onclick="negArticleShowForm()">Add Text Article</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-left:auto;">
+                <button id="trade-neg-agreement-btn" onclick="negAgreementToggle()" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:8px 16px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:pointer;transition:all 0.15s;">Not in Agreement [0/2]</button>
+                <button class="trade-neg-withdraw-btn" id="trade-neg-withdraw-btn" onclick="withdrawFromNegotiations()">Withdraw from Negotiations</button>
+            </div>
         </div>
     </div>
 </div>
@@ -730,17 +737,26 @@ window.rejectShippingApp = async function(appId) {
 // ═══════════════════════════════════════════════════
 
 let _tradeAgreementsList = [];
+let _tradeNegotiationsList = [];
 let _tradeExpandedAgreement = null;
 
 async function loadTradeAgreements() {
     const nationId = _worldState?.nation?.id;
     if (!nationId) return;
 
-    const { data } = await _supabase.from('trade_agreements')
-        .select('*')
-        .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
-        .order('enacted_at_tick', { ascending: false });
-    _tradeAgreementsList = data || [];
+    const [agResult, negResult] = await Promise.all([
+        _supabase.from('trade_agreements')
+            .select('*')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .order('enacted_at_tick', { ascending: false }),
+        _supabase.from('trade_negotiations')
+            .select('id, nation_a_id, nation_b_id, status, agreement_type, opened_at_tick')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .in('status', ['open', 'active'])
+            .order('opened_at_tick', { ascending: false }),
+    ]);
+    _tradeAgreementsList = agResult.data || [];
+    _tradeNegotiationsList = negResult.data || [];
 }
 
 function renderTradeAgreements() {
@@ -759,7 +775,32 @@ function renderTradeAgreements() {
             <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${active.length} active${expired.length > 0 ? ' \u00B7 ' + expired.length + ' expired' : ''}</span>
         </div>`;
 
-    if (agreements.length === 0) {
+    // Ongoing trade negotiations (shown before agreements)
+    const ongoingNegs = _tradeNegotiationsList || [];
+    for (const neg of ongoingNegs) {
+        const partnerId = neg.nation_a_id === nationId ? neg.nation_b_id : neg.nation_a_id;
+        const partner = (_worldAllNations || []).find(n => n.id === partnerId);
+        const partnerName = partner?.name || 'Unknown';
+        const myName = _worldState?.nation?.name || 'Your Nation';
+        const myFlag = _worldState?.nation?.flag_url || `assets/flags/${myName}.png`;
+        const partnerFlag = partner?.flag_url || `assets/flags/${partnerName}.png`;
+
+        html += `<div style="padding:12px 18px;border-bottom:1px solid var(--border-main);cursor:pointer;border-left:3px solid var(--amber);"
+            onclick="openTradeNegModal('${partnerId}')">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <img src="${escapeHtml(myFlag)}" alt="" style="width:24px;height:16px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'">
+                    <span style="font-size:13px;font-weight:600;color:var(--text-bright);">${escapeHtml(myName)}</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Trade Discussions</span>
+                    <span style="font-size:13px;font-weight:600;color:var(--text-bright);">${escapeHtml(partnerName)}</span>
+                    <img src="${escapeHtml(partnerFlag)}" alt="" style="width:24px;height:16px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'">
+                </div>
+                <span class="tr-badge" style="font-size:10px;padding:3px 10px;color:var(--amber);background:rgba(184,134,11,0.08);border-color:rgba(184,134,11,0.2);">ONGOING</span>
+            </div>
+        </div>`;
+    }
+
+    if (agreements.length === 0 && ongoingNegs.length === 0) {
         html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);font-style:italic;">No trade agreements.</div>`;
     }
 
@@ -1189,10 +1230,15 @@ function renderTradePartners() {
 
             html += `</div></div>`;
 
-            // Action buttons
+            // Action buttons — check for ongoing negotiation with this partner
+            const hasOngoingNeg = _tradeNegotiationsList.some(neg =>
+                (neg.nation_a_id === n.id || neg.nation_b_id === n.id));
+            const tradeBtn = hasOngoingNeg
+                ? `<div class="tr-action-btn tr-action-btn--primary" onclick="event.stopPropagation();openTradeNegModal('${n.id}');">TRADE DISCUSSIONS</div>`
+                : `<div class="tr-action-btn tr-action-btn--primary" onclick="event.stopPropagation();openTradeNegModal('${n.id}');">DRAFT TRADE AGREEMENT</div>`;
             html += `<div style="padding:10px 18px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;gap:6px;">
                 <div class="tr-action-btn" onclick="event.stopPropagation();selectWorldNation('${n.id}');_diploActiveSubtab='world';renderDiploSubtabs();showDiploSubtab();">NATION INFO</div>
-                <div class="tr-action-btn tr-action-btn--primary" onclick="event.stopPropagation();openTradeNegModal('${n.id}');">DRAFT TRADE AGREEMENT</div>
+                ${tradeBtn}
             </div>`;
 
             html += `</div>`;
@@ -21470,12 +21516,11 @@ async function resolveNegotiationChatRole(partnerNationId) {
 let _negModalOpening = false;
 
 async function openTradeNegModal(partnerNationId) {
-    if (_negModalOpening) { console.log('[TradeNeg] blocked by _negModalOpening'); return; }
+    if (_negModalOpening) return;
     if (_activeNegModal) closeTradeNegModal();
     _negModalOpening = true;
 
     try {
-    console.log('[TradeNeg] Step 1: checking nation data');
     const myNation = _worldState?.nation;
     if (!myNation) { alert('Nation data not loaded.'); return; }
     const partner = (_worldAllNations || []).find(n => n.id === partnerNationId);
@@ -21485,20 +21530,17 @@ async function openTradeNegModal(partnerNationId) {
     const a = myNation.id < partnerNationId ? myNation.id : partnerNationId;
     const b = myNation.id < partnerNationId ? partnerNationId : myNation.id;
 
-    console.log('[TradeNeg] Step 2: querying trade_negotiations', a, b);
     let { data: neg, error: negErr } = await _supabase.from('trade_negotiations')
-        .select('id, status')
+        .select('id, status, draft_articles, approved_by_a, approved_by_b, nation_a_id, nation_b_id, agreement_type, agreement_name')
         .eq('nation_a_id', a).eq('nation_b_id', b)
         .in('status', ['open', 'active'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-    console.log('[TradeNeg] Step 2 result:', { neg, negErr });
     if (negErr) { alert('Failed to load negotiations: ' + negErr.message); return; }
 
     if (!neg) {
-        console.log('[TradeNeg] Step 3: creating new negotiation');
         const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shardData?.current_tick || 0;
         const { data: created, error: createErr } = await _supabase.from('trade_negotiations').insert({
@@ -21509,18 +21551,17 @@ async function openTradeNegModal(partnerNationId) {
             opened_at_tick: tick,
             expires_at_tick: tick + 48,
         }).select('id, status').single();
-        console.log('[TradeNeg] Step 3 result:', { created, createErr });
         if (createErr) { alert('Failed to start negotiation: ' + createErr.message); return; }
         neg = created;
     }
 
     // Resolve chat role
-    console.log('[TradeNeg] Step 4: resolving chat role');
     const chatRole = await resolveNegotiationChatRole(partnerNationId);
-    console.log('[TradeNeg] Step 4 result:', chatRole);
 
     const myFlag = myNation.flag_url || `assets/flags/${myNation.name}.png`;
     const partnerFlag = partner.flag_url || `assets/flags/${partner.name}.png`;
+
+    const weAreA = neg.nation_a_id === myNation.id;
 
     _activeNegModal = {
         negotiationId: neg.id,
@@ -21532,6 +21573,12 @@ async function openTradeNegModal(partnerNationId) {
         partnerFlag,
         status: neg.status,
         chatRole,
+        articles: neg.draft_articles || [],
+        weAreA,
+        agreementType: neg.agreement_type,
+        agreementName: neg.agreement_name,
+        approvedByA: neg.approved_by_a,
+        approvedByB: neg.approved_by_b,
     };
 
     // Render header
@@ -21551,8 +21598,6 @@ async function openTradeNegModal(partnerNationId) {
         <span class="trade-neg-header__close" onclick="closeTradeNegModal()">&times;</span>
     `;
 
-    // Show modal
-    console.log('[TradeNeg] Step 5: showing modal');
     document.getElementById('trade-neg-modal').classList.add('active');
 
     // Configure chat input based on role
@@ -21579,6 +21624,10 @@ async function openTradeNegModal(partnerNationId) {
     } else {
         inputBar.style.display = 'none';
     }
+
+    // Render articles in left panel + agreement button
+    negArticlesRender();
+    negAgreementRender();
 
     // Load existing messages + start realtime
     await negChatLoad(neg.id);
@@ -21743,6 +21792,334 @@ function negChatSubscribe(negotiationId) {
         .subscribe();
 }
 
+// ── Articles: Render ──
+
+function negArticlesRender() {
+    const container = document.getElementById('trade-neg-articles');
+    if (!container || !_activeNegModal) return;
+
+    const articles = _activeNegModal.articles || [];
+    const myNationId = _activeNegModal.myNationId;
+
+    if (articles.length === 0) {
+        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:200px;color:var(--text-dim);font-family:var(--font-mono);font-size:11px;">No articles yet. Click "Add Text Article" to begin drafting.</div>';
+        return;
+    }
+
+    const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
+
+    let html = '';
+    for (let i = 0; i < articles.length; i++) {
+        const art = articles[i];
+        const num = ROMAN[i] || (i + 1);
+        const isMine = art.author_nation_id === myNationId;
+
+        const hasStrike = !!art.strike_requested_by;
+        const strikeIsMine = art.strike_requested_by === myNationId;
+
+        html += `<div class="trade-neg-article">
+            <div class="trade-neg-article__num">Article ${num}.</div>
+            <div class="trade-neg-article__text">${escapeHtml(art.text)}</div>
+            <div class="trade-neg-article__meta">
+                <span>Added by ${escapeHtml(art.author_nation_name || 'Unknown')}</span>
+                ${isMine
+                    ? `<span class="trade-neg-article__action" onclick="negArticleDelete('${art.id}')">Delete</span>`
+                    : (hasStrike && strikeIsMine
+                        ? `<span style="font-family:var(--font-mono);font-size:8px;color:var(--amber);opacity:0.7;">Strike Requested</span>`
+                        : (!hasStrike
+                            ? `<span class="trade-neg-article__action" style="color:var(--amber);border-color:rgba(184,134,11,0.2);background:rgba(184,134,11,0.04);" onclick="negArticleRequestStrike('${art.id}')">Request to Strike</span>`
+                            : ''))
+                }
+            </div>`;
+
+        if (hasStrike && !strikeIsMine) {
+            const requesterName = art.strike_requested_by_name || 'The other party';
+            html += `<div class="trade-neg-article__strike">${escapeHtml(requesterName)} is requesting this article be removed.</div>`;
+        }
+
+        html += '</div>';
+    }
+    container.innerHTML = html;
+}
+
+// ── Articles: Show add form ──
+
+function negArticleShowForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+    form.style.display = 'block';
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">New Article</div>
+        <textarea id="trade-neg-article-text" maxlength="300" rows="3" placeholder="Enter article text..."></textarea>
+        <div class="trade-neg-add-form__counter"><span id="trade-neg-article-counter">0</span>/300</div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button id="trade-neg-article-add-btn" onclick="negArticleAdd()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;" disabled>Add Article</button>
+        </div>
+    </div>`;
+    const textarea = document.getElementById('trade-neg-article-text');
+    const counter = document.getElementById('trade-neg-article-counter');
+    const addBtn = document.getElementById('trade-neg-article-add-btn');
+    textarea.focus();
+    textarea.addEventListener('input', () => {
+        counter.textContent = textarea.value.length;
+        addBtn.disabled = !textarea.value.trim();
+    });
+}
+
+function negArticleCancelForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (form) { form.style.display = 'none'; form.innerHTML = ''; }
+}
+
+// ── Articles: Add ──
+
+let _negArticleAdding = false;
+
+async function negArticleAdd() {
+    if (_negArticleAdding || !_activeNegModal) return;
+    const textarea = document.getElementById('trade-neg-article-text');
+    if (!textarea) return;
+    const text = textarea.value.trim();
+    if (!text) return;
+
+    _negArticleAdding = true;
+
+    const newArticle = {
+        id: crypto.randomUUID(),
+        text: text,
+        author_nation_id: _activeNegModal.myNationId,
+        author_nation_name: _activeNegModal.myNationName,
+        added_at_tick: 0,
+        strike_requested_by: null,
+        strike_requested_by_name: null,
+    };
+
+    // Get current tick
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    newArticle.added_at_tick = shardData?.current_tick || 0;
+
+    // Fetch current articles from DB (avoid stale state)
+    const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
+        .select('draft_articles')
+        .eq('id', _activeNegModal.negotiationId)
+        .single();
+
+    if (fetchErr) { alert('Failed to load articles: ' + fetchErr.message); _negArticleAdding = false; return; }
+
+    const current = negRow?.draft_articles || [];
+    const updated = [...current, newArticle];
+
+    const { error: updateErr } = await _supabase.from('trade_negotiations')
+        .update({ draft_articles: updated })
+        .eq('id', _activeNegModal.negotiationId);
+
+    if (updateErr) { alert('Failed to add article: ' + updateErr.message); _negArticleAdding = false; return; }
+
+    _activeNegModal.articles = updated;
+    negArticleCancelForm();
+    negArticlesRender();
+    _negArticleAdding = false;
+}
+
+// ── Articles: Delete (author only) ──
+
+let _negArticleDeleting = false;
+async function negArticleDelete(articleId) {
+    if (!_activeNegModal || _negArticleDeleting) return;
+    if (!confirm('Delete this article?')) return;
+    _negArticleDeleting = true;
+
+    const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
+        .select('draft_articles')
+        .eq('id', _activeNegModal.negotiationId)
+        .single();
+    if (fetchErr || !negRow) { alert('Failed to load articles.'); return; }
+
+    const current = negRow.draft_articles || [];
+    const updated = current.filter(a => a.id !== articleId);
+
+    const { error } = await _supabase.from('trade_negotiations')
+        .update({ draft_articles: updated })
+        .eq('id', _activeNegModal.negotiationId);
+
+    if (error) { alert('Failed to delete article: ' + error.message); _negArticleDeleting = false; return; }
+
+    _activeNegModal.articles = updated;
+    negArticlesRender();
+    _negArticleDeleting = false;
+}
+
+// ── Articles: Request to Strike (other party's articles) ──
+
+let _negArticleStriking = false;
+async function negArticleRequestStrike(articleId) {
+    if (!_activeNegModal || _negArticleStriking) return;
+    _negArticleStriking = true;
+
+    const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
+        .select('draft_articles')
+        .eq('id', _activeNegModal.negotiationId)
+        .single();
+    if (fetchErr || !negRow) { alert('Failed to load articles.'); return; }
+
+    const current = negRow.draft_articles || [];
+    const updated = current.map(a => {
+        if (a.id !== articleId) return a;
+        return {
+            ...a,
+            strike_requested_by: _activeNegModal.myNationId,
+            strike_requested_by_name: _activeNegModal.myNationName,
+        };
+    });
+
+    const { error } = await _supabase.from('trade_negotiations')
+        .update({ draft_articles: updated })
+        .eq('id', _activeNegModal.negotiationId);
+
+    if (error) { alert('Failed to request strike: ' + error.message); _negArticleStriking = false; return; }
+
+    _activeNegModal.articles = updated;
+    negArticlesRender();
+    _negArticleStriking = false;
+}
+
+// ── Agreement voting [0/2] → [1/2] → [2/2] → ratification bills ──
+
+function negAgreementRender() {
+    const btn = document.getElementById('trade-neg-agreement-btn');
+    if (!btn || !_activeNegModal) return;
+
+    const myApproved = _activeNegModal.weAreA ? _activeNegModal.approvedByA : _activeNegModal.approvedByB;
+    const theirApproved = _activeNegModal.weAreA ? _activeNegModal.approvedByB : _activeNegModal.approvedByA;
+    const count = (myApproved ? 1 : 0) + (theirApproved ? 1 : 0);
+
+    if (count === 2) {
+        btn.textContent = 'Agreement [2/2]';
+        btn.style.color = '#4ade80';
+        btn.style.borderColor = 'rgba(74,222,128,0.3)';
+        btn.disabled = true;
+    } else if (myApproved) {
+        btn.textContent = 'Agreement [' + count + '/2]';
+        btn.style.color = '#5aafa5';
+        btn.style.borderColor = 'rgba(90,175,165,0.3)';
+        btn.disabled = false;
+    } else {
+        btn.textContent = 'Not in Agreement [' + count + '/2]';
+        btn.style.color = 'var(--text-dim)';
+        btn.style.borderColor = 'var(--border-main)';
+        btn.disabled = false;
+    }
+}
+
+let _negAgreementToggling = false;
+
+async function negAgreementToggle() {
+    if (_negAgreementToggling || !_activeNegModal) return;
+    if (!_activeNegModal.chatRole?.canChat) {
+        alert('You need a diplomatic role to vote on the agreement.');
+        return;
+    }
+    if (_activeNegModal.status === 'cancelled' || _activeNegModal.status === 'ratification') {
+        return;
+    }
+    const m = _activeNegModal;
+    const myApproved = m.weAreA ? m.approvedByA : m.approvedByB;
+    const approveCol = m.weAreA ? 'approved_by_a' : 'approved_by_b';
+    const approveRoleCol = m.weAreA ? 'approved_by_a_role' : 'approved_by_b_role';
+    const approveTickCol = m.weAreA ? 'approved_at_a_tick' : 'approved_at_b_tick';
+
+    _negAgreementToggling = true;
+
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shardData?.current_tick || 0;
+
+    if (myApproved) {
+        // Revoke approval
+        const updateData = { [approveCol]: null, [approveRoleCol]: null, [approveTickCol]: null };
+        const { error } = await _supabase.from('trade_negotiations').update(updateData).eq('id', m.negotiationId);
+        if (error) { alert('Failed to revoke agreement: ' + error.message); _negAgreementToggling = false; return; }
+        if (m.weAreA) { m.approvedByA = null; } else { m.approvedByB = null; }
+    } else {
+        // Grant approval
+        const factionId = _worldState?.faction?.id;
+        const role = m.chatRole?.role || 'trade_minister';
+        const updateData = { [approveCol]: factionId, [approveRoleCol]: role, [approveTickCol]: tick };
+
+        // Check if other side already approved — if so, generate ratification bills
+        const theirApproved = m.weAreA ? m.approvedByB : m.approvedByA;
+        if (theirApproved) {
+            updateData.status = 'ratification';
+
+            // Fetch nation names
+            const [{ data: nationARow }, { data: nationBRow }] = await Promise.all([
+                _supabase.from('nations').select('name').eq('id', m.weAreA ? m.myNationId : m.partnerNationId).single(),
+                _supabase.from('nations').select('name').eq('id', m.weAreA ? m.partnerNationId : m.myNationId).single(),
+            ]);
+            const nameA = nationARow?.name || 'Unknown';
+            const nameB = nationBRow?.name || 'Unknown';
+            const agreementName = m.agreementName || 'Trade Agreement';
+            const billTitle = 'Ratify: ' + agreementName;
+            const billPreamble = 'Ratification of the trade agreement "' + agreementName + '" between ' +
+                nameA + ' and ' + nameB + '. A YES vote enacts the agreement; a NO vote rejects it.';
+
+            const VOTING_WINDOW = 3;
+            const billBase = {
+                bill_type: 'ratification', bill_name: billTitle, preamble: billPreamble,
+                trade_negotiation_id: m.negotiationId, status: 'floor',
+                proposed_tick: tick, floor_tick: tick,
+                voting_ends_tick: tick + VOTING_WINDOW,
+            };
+
+            const nationAId = m.weAreA ? m.myNationId : m.partnerNationId;
+            const nationBId = m.weAreA ? m.partnerNationId : m.myNationId;
+            const approverA = m.weAreA ? factionId : m.approvedByA;
+            const approverB = m.weAreA ? m.approvedByB : factionId;
+
+            const billA = { ...billBase, nation_id: nationAId, proposed_by: approverA };
+            const billB = { ...billBase, nation_id: nationBId, proposed_by: approverB };
+
+            const [resultA, resultB] = await Promise.all([
+                _supabase.from('bills').insert(billA).select('id').single(),
+                _supabase.from('bills').insert(billB).select('id').single(),
+            ]);
+
+            if (resultA.error) { alert('Error creating ratification bill: ' + resultA.error.message); _negAgreementToggling = false; return; }
+            if (resultB.error) { alert('Error creating ratification bill: ' + resultB.error.message); _negAgreementToggling = false; return; }
+
+            updateData.bill_a_id = resultA.data?.id || null;
+            updateData.bill_b_id = resultB.data?.id || null;
+
+            // Fire events
+            const eventDesc = 'The trade agreement "' + agreementName + '" between ' + nameA + ' and ' + nameB + ' has been sent to both parliaments for ratification.';
+            _supabase.from('event_log').insert([nationAId, nationBId].map(nid => ({
+                nation_id: nid,
+                event_name: agreementName + ' — Ratification',
+                category: 'trade', description_chosen: eventDesc, fired_at_tick: tick,
+            }))).then(() => {});
+        }
+
+        const { error } = await _supabase.from('trade_negotiations').update(updateData).eq('id', m.negotiationId);
+        if (error) { alert('Failed to approve: ' + error.message); _negAgreementToggling = false; return; }
+        if (m.weAreA) { m.approvedByA = factionId; } else { m.approvedByB = factionId; }
+
+        if (theirApproved) {
+            m.status = 'ratification';
+            alert('Both sides have approved! Ratification bills have been submitted to both parliaments.');
+        }
+    }
+
+    negAgreementRender();
+    _negAgreementToggling = false;
+}
+
+window.negArticleShowForm = negArticleShowForm;
+window.negArticleCancelForm = negArticleCancelForm;
+window.negArticleAdd = negArticleAdd;
+window.negArticleDelete = negArticleDelete;
+window.negArticleRequestStrike = negArticleRequestStrike;
+window.negAgreementToggle = negAgreementToggle;
+
 // ── Modal close ──
 
 function closeTradeNegModal() {
@@ -21755,6 +22132,10 @@ function closeTradeNegModal() {
     _negChatSending = false;
     _negWithdrawing = false;
     _negModalOpening = false;
+    _negArticleAdding = false;
+    _negArticleDeleting = false;
+    _negArticleStriking = false;
+    _negAgreementToggling = false;
 }
 
 let _negWithdrawing = false;
@@ -21862,7 +22243,6 @@ async function withdrawFromNegotiations() {
 window.openTradeNegModal = openTradeNegModal;
 window.closeTradeNegModal = closeTradeNegModal;
 window.withdrawFromNegotiations = withdrawFromNegotiations;
-window._debugTradePartners = () => (_worldAllNations || []).filter(n => n.id !== _worldState?.nation?.id).map(n => ({ id: n.id, name: n.name }));
 </script>
 
 </body>
