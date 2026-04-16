@@ -21853,6 +21853,7 @@ async function withdrawFromNegotiations() {
 window.openTradeNegModal = openTradeNegModal;
 window.closeTradeNegModal = closeTradeNegModal;
 window.withdrawFromNegotiations = withdrawFromNegotiations;
+window._debugTradePartners = () => (_worldAllNations || []).filter(n => n.id !== _worldState?.nation?.id).map(n => ({ id: n.id, name: n.name }));
 </script>
 
 </body>
