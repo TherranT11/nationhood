@@ -29,7 +29,7 @@
             <div class="modal-title" id="assign-modal-title">Assign Minister</div>
             <button class="modal-close" onclick="closeAssignModal()">&times;</button>
         </div>
-        <div class="modal-subtitle">Select a candidate to appoint to this ministry.</div>
+        <div class="modal-subtitle" id="assign-modal-subtitle">Select a candidate to appoint to this ministry.</div>
         <div id="assign-candidates"></div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeAssignModal()">Cancel</button>
@@ -957,6 +957,23 @@ let _proposalSubmitting = false;
 let _formingInProgress = false;
 let _govActionLock = false;
 
+function isAbsoluteMonarchyNation() {
+    return currentNation?.hos_election_method === 'hereditary';
+}
+
+function getActivePMFactionId(coalition = coalitionData, ministries = ministryData) {
+    if (isAbsoluteMonarchyNation() && _govData?.hog?.faction_id) return _govData.hog.faction_id;
+    if (isAbsoluteMonarchyNation()) {
+        const pmSeat = (ministries || []).find(m => m.ministry_key === 'prime_minister');
+        if (pmSeat?.party_id) return pmSeat.party_id;
+    }
+    if (coalition?.ministry_assignments?.prime_minister) return coalition.ministry_assignments.prime_minister;
+    if (coalition?.ministry_allocations?.prime_minister) return coalition.ministry_allocations.prime_minister;
+    if (coalition?.lead_party_id) return coalition.lead_party_id;
+    const pmSeat = (ministries || []).find(m => m.ministry_key === 'prime_minister');
+    return pmSeat?.party_id || null;
+}
+
 const FORMATION_MINISTRIES = [
     { key: 'prime_minister', name: 'Prime Minister', description: 'Head of government, sets national agenda and policy priorities.', locked: true },
     { key: 'interior', name: 'Ministry of the Interior', description: 'Oversees domestic affairs, local governments, and civil administration.' },
@@ -1616,6 +1633,10 @@ function renderMinistryExpandedContent(ministry, partyColor) {
     const key = ministry.ministry_key;
     const isMyMinistry = currentFaction && ministry.party_id === currentFaction.id;
     const isFilled = ministry.minister_first_name && ministry.minister_last_name;
+    const isPMAuthority = !!(currentFaction && currentFaction.id === getActivePMFactionId());
+    const monarchyAppointTitle = isAbsoluteMonarchyNation()
+        ? ' title="Absolute monarchy: PM can appoint from any party."'
+        : '';
 
     let html = `<div class="ga-ministry-expanded">`;
 
@@ -1697,7 +1718,7 @@ function renderMinistryExpandedContent(ministry, partyColor) {
     }
 
     // Dismiss: PM can dismiss other parties' ministers (costs 1 AP)
-    if (isFilled && isPMParty && !isMyMinistry && !isCaretaker) {
+    if (isFilled && isPMAuthority && !isMyMinistry && !isCaretaker) {
         const ap = currentFaction?.action_points || 0;
         if (ap >= 1) {
             mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--red);border-color:var(--red)44;"
@@ -1708,9 +1729,9 @@ function renderMinistryExpandedContent(ministry, partyColor) {
     }
 
     // Appoint: PM can fill vacant ministries
-    if (!isFilled && isPMParty && !isCaretaker) {
+    if (!isFilled && isPMAuthority && !isCaretaker) {
         mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--accent);border-color:var(--accent)44;"
-            onclick="event.stopPropagation();openAssignModal('${escapeHtml(key)}')">APPOINT</div>`;
+            ${monarchyAppointTitle} onclick="event.stopPropagation();openAssignModal('${escapeHtml(key)}')">APPOINT</div>`;
     }
 
     if (mgmtBtns) {
@@ -1857,7 +1878,7 @@ function renderAdminActions() {
     if (!coalition || !nation) { el.innerHTML = ''; return; }
 
     const isCaretaker = coalition.status === 'caretaker';
-    const isPM = isPMParty;
+    const isPM = !!(currentFaction && currentFaction.id === getActivePMFactionId(coalition, _govData?.ministries || ministryData));
     const approval = Number(nation.gov_approval ?? 50);
 
     let html = `<div class="ga-panel" style="text-align:center;padding:12px;">`;
@@ -3932,6 +3953,8 @@ function openNominatePMModal() {
     const modal = document.getElementById('assign-modal');
     if (!modal) return;
     document.getElementById('assign-modal-title').textContent = 'Nominate Prime Minister';
+    const subtitleEl = document.getElementById('assign-modal-subtitle');
+    if (subtitleEl) subtitleEl.textContent = 'Select a party leader for parliamentary confirmation as Prime Minister.';
 
     // Use party leaders as candidates (only parties with seats)
     const candidates = allParties
@@ -5550,6 +5573,9 @@ function buildMgmtButtons(key, ministry, govContext) {
     const noAP = ap < 1;
     const disabledStyle = 'style="opacity:0.4;cursor:not-allowed;"';
     let btns = '';
+    const monarchyAppointTitle = isAbsoluteMonarchyNation()
+        ? ' title="Absolute monarchy: PM can appoint from any party."'
+        : '';
 
     if (govContext.type === 'parliamentary') {
         if (govContext.isMyMinistry && !govContext.isCaretaker) {
@@ -5563,7 +5589,7 @@ function buildMgmtButtons(key, ministry, govContext) {
             }
         }
         if (!isFilled && govContext.canAppoint) {
-            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--appoint" onclick="event.stopPropagation();openAssignModal('${key}')">APPOINT</div>`;
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--appoint"${monarchyAppointTitle} onclick="event.stopPropagation();openAssignModal('${key}')">APPOINT</div>`;
         }
     } else if (govContext.type === 'semi-presidential') {
         if (govContext.isMyMinistry && !govContext.isPMParty) {
@@ -8831,9 +8857,10 @@ window.submitBondIssuance = submitBondIssuance;
 // --- Vacant ministry alert (PM/President only) ---
 function renderVacantMinistryAlert(ministries, coalition) {
     // Determine if current player is PM or President
+    const activePMFactionId = getActivePMFactionId(coalition, ministries);
     const isPlayerPMorPresident = isPresidential
         ? isPresidentParty
-        : !!(coalition && currentFaction && (coalition.ministry_assignments?.prime_minister === currentFaction.id || coalition.lead_party_id === currentFaction.id));
+        : !!(currentFaction && activePMFactionId && activePMFactionId === currentFaction.id);
     if (!isPlayerPMorPresident) return '';
 
     // Count vacant ministries (have a row but no party_id assigned)
@@ -8848,6 +8875,7 @@ function renderVacantMinistryAlert(ministries, coalition) {
         <div>
             <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#d4a017;text-transform:uppercase;letter-spacing:0.08em;">MINISTRY VACANT. FILL IMMEDIATELY.</div>
             <div style="font-family:var(--font-sans);font-size:11px;color:var(--text-secondary);margin-top:2px;">${escapeHtml(names)}</div>
+            ${isAbsoluteMonarchyNation() ? `<div style="font-family:var(--font-sans);font-size:10px;color:var(--text-dim);margin-top:4px;">As PM under absolute monarchy, you may appoint ministers from any party.</div>` : ''}
         </div>
     </div>`;
 }
@@ -8861,11 +8889,8 @@ function renderCabinet(ministries, coalition) {
     const isCaretaker = coalition && coalition.status === 'caretaker';
     const pmMinistry = ministries?.find(m => m.ministry_key === 'prime_minister');
     const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
-    const isPMPartyLocal = currentFaction && (
-        (coalition && currentFaction.id === coalition.lead_party_id) ||
-        (coalition && coalition.ministry_allocations?.prime_minister === currentFaction.id) ||
-        (pmMinistry && pmMinistry.party_id === currentFaction.id)
-    );
+    const activePMFactionId = getActivePMFactionId(coalition, ministries);
+    const isPMPartyLocal = !!(currentFaction && activePMFactionId && currentFaction.id === activePMFactionId);
     const canAppoint = isPMPartyLocal && pmFilled && !isCaretaker;
 
     let govType = 'parliamentary';
@@ -8910,7 +8935,7 @@ function renderCabinet(ministries, coalition) {
             isRuling: isRulingFaction,
             isMyMinistry,
             canAppoint: isPMPartyLocal && pmFilled && !isCaretaker,
-            isPMParty: isPMPartyLocal || isPMParty || (currentFaction && coalitionData && currentFaction.id === coalitionData.lead_party_id),
+            isPMParty: isPMPartyLocal || (currentFaction && currentFaction.id === getActivePMFactionId(coalitionData, ministries)),
             isPresidentParty: typeof isPresidentParty !== 'undefined' ? isPresidentParty : false,
             isCaretaker,
             requests,
@@ -8992,6 +9017,8 @@ function openNominateModal(ministryKey) {
     document.getElementById('assign-confirm-btn').disabled = true;
     document.getElementById('assign-confirm-btn').textContent = 'Nominate for Confirmation';
     document.getElementById('assign-modal-title').textContent = 'Nominate — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
+    const subtitleEl = document.getElementById('assign-modal-subtitle');
+    if (subtitleEl) subtitleEl.textContent = 'Select a candidate to nominate for confirmation.';
 
     // Semi-Presidential domain constraint: presidential-domain ministries must be from president's party
     const isSemiPres = isSemiPresidential(currentNation);
@@ -9047,14 +9074,25 @@ function handleConfirmMinister() {
 // ==================== ASSIGN MINISTER (Modal) ====================
 
 function openAssignModal(ministryKey) {
+    if (!isPresidential && coalitionData?.status === 'caretaker') {
+        alert('Cannot appoint ministers during a caretaker government.');
+        return;
+    }
     assignMinistryKey = ministryKey;
     selectedCandidate = null;
     document.getElementById('assign-confirm-btn').disabled = true;
     document.getElementById('assign-confirm-btn').textContent = 'Appoint Minister';
     document.getElementById('assign-modal-title').textContent = 'Assign — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
+    const subtitleEl = document.getElementById('assign-modal-subtitle');
 
-    // For parliamentary democracies, only show coalition parties
-    const eligibleParties = (!isPresidential && coalitionData?.party_ids)
+    // Parliamentary default: coalition parties only; absolute monarchy: PM may appoint from any party.
+    const isAbsoluteMonarchy = isAbsoluteMonarchyNation();
+    if (subtitleEl) {
+        subtitleEl.textContent = isAbsoluteMonarchy
+            ? 'Absolute monarchy: the Prime Minister may appoint from any party.'
+            : 'Select a candidate to appoint to this ministry.';
+    }
+    const eligibleParties = (!isPresidential && coalitionData?.party_ids && !isAbsoluteMonarchy)
         ? allParties.filter(p => coalitionData.party_ids.includes(p.id))
         : allParties;
 
@@ -9090,6 +9128,8 @@ function openAppointModal(ministryKey) {
     document.getElementById('assign-confirm-btn').disabled = true;
     document.getElementById('assign-confirm-btn').textContent = 'Appoint Minister';
     document.getElementById('assign-modal-title').textContent = 'Appoint — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
+    const subtitleEl = document.getElementById('assign-modal-subtitle');
+    if (subtitleEl) subtitleEl.textContent = 'Select a coalition candidate to appoint to this ministry.';
 
     const coalitionPartyIds = coalitionData?.party_ids || [];
     const coalitionParties = allParties.filter(p => coalitionPartyIds.includes(p.id));
@@ -10722,7 +10762,7 @@ function renderEarlyElectionsButton(coalition) {
     if (!currentFaction || isPresidential) return '';
 
     // Only the PM's party can call early elections
-    const isPMParty = currentFaction.id === coalition.lead_party_id;
+    const isPMParty = currentFaction.id === getActivePMFactionId(coalition, ministryData);
     if (!isPMParty) return '';
 
     // Cooldown: can't call within 6 ticks of the last election
@@ -10796,7 +10836,7 @@ async function callEarlyElections() {
     if (!currentFaction || !currentNation || !coalitionData) return;
 
     // Validate: must be PM party
-    if (currentFaction.id !== coalitionData.lead_party_id) {
+    if (currentFaction.id !== getActivePMFactionId(coalitionData, ministryData)) {
         alert('Only the Prime Minister\'s party can call early elections.');
         return;
     }
@@ -11070,9 +11110,15 @@ async function refreshGovernmentUI() {
     const ministry = ministryData.find(m => m.ministry_key === ministryKey);
     if (!ministry || !ministry.minister_first_name) { alert('No minister to dismiss.'); return; }
     if (ministryKey === 'prime_minister') { alert('Cannot dismiss the Prime Minister this way.'); return; }
+    if (!isPresidential && coalitionData?.status === 'caretaker') {
+        alert('Cannot dismiss ministers during a caretaker government.');
+        return;
+    }
 
     // Permission check: PM party (parliamentary) or President party (presidential)
-    const canFire = isPresidential ? isPresidentParty : (currentFaction.id === coalitionData?.lead_party_id);
+    const canFire = isPresidential
+        ? isPresidentParty
+        : (currentFaction.id === getActivePMFactionId(coalitionData, ministryData));
     if (!canFire) { alert('Only the head of government can dismiss ministers.'); return; }
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
