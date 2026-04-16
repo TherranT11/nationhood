@@ -9107,13 +9107,16 @@ async function resolveExpiredVotes(supabase, nationId) {
                     if (otherPassed) {
                         // Both parliaments ratified — activate the trade agreement
                         // Extract duration info from draft articles
+                        // Supports both old-style { type: 'duration' } and new-style { article_type: 'exit_terms' }
                         const articles = neg.draft_articles || [];
                         const durationArt = articles.find(a => a.type === 'duration');
+                        const exitTermsArt = articles.find(a => a.article_type === 'exit_terms');
                         const durData = durationArt?.data || {};
+                        const exitData = exitTermsArt?.data || {};
                         const isPermanent = durData.duration_type === 'permanent';
-                        const durationTicks = durData.duration_ticks || null;
+                        const durationTicks = durData.duration_ticks || exitData.min_duration || null;
                         const autoRenew = durData.auto_renew || false;
-                        const withdrawalNotice = durData.withdrawal_notice_ticks || 3;
+                        const withdrawalNotice = durData.withdrawal_notice_ticks || exitData.exit_notice || 3;
 
                         // Ensure canonical nation order (nation_a_id < nation_b_id)
                         const nA = neg.nation_a_id < neg.nation_b_id ? neg.nation_a_id : neg.nation_b_id;
