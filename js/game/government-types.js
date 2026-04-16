@@ -48,7 +48,7 @@ export function isAbsoluteMonarchy(input) { return getCanonicalGovernmentType(in
 /** Capability helpers — use these instead of type checks where possible.
  *  Semi-presidential has BOTH an elected president AND a parliamentary PM. */
 export function hasElectedPresident(input) { return isPresidentialRepublic(input) || isSemiPresidential(input); }
-export function hasParliamentaryPM(input) { return isParliamentaryDemocracy(input) || isSemiPresidential(input); }
+export function hasParliamentaryPM(input) { return isParliamentaryDemocracy(input) || isSemiPresidential(input) || isAbsoluteMonarchy(input); }
 export function hasMonarch(input) { return isAbsoluteMonarchy(input); }
 
 /** Get the head of state title for display */
