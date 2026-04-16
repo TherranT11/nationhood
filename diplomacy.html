@@ -176,7 +176,7 @@ import { fetchActiveCoalition, detectHeadFaction, loadSeats } from './js/game/go
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement } from './js/game/diplomacy-constants.js';
 import { syncVoteTallies } from './js/game/bills.js';
-import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne } from './js/game/trade-constants.js';
+import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, SECTOR_DISPLAY_UNITS } from './js/game/trade-constants.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
 import { getNationNames } from './js/game/political-actions.js';
 /**
@@ -22007,9 +22007,10 @@ function negStructuredTradeFlowForm() {
         <div style="display:flex;flex-direction:column;gap:8px;">
             <div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">COMMODITY</div>
-                <select id="neg-flow-commodity" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                <select id="neg-flow-commodity" onchange="negFlowUpdatePrice()" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
                     ${sectorOpts}
                 </select>
+                <div id="neg-flow-global-price" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:3px;"></div>
             </div>
             <div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">DIRECTION</div>
@@ -22025,9 +22026,10 @@ function negStructuredTradeFlowForm() {
             <div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">PRICE (% vs MARKET)</div>
                 <div style="display:flex;align-items:center;gap:6px;">
-                    <input id="neg-flow-price" type="range" min="-25" max="25" value="0" style="flex:1;" oninput="document.getElementById('neg-flow-price-label').textContent=(this.value>0?'+':'')+this.value+'%'">
+                    <input id="neg-flow-price" type="range" min="-25" max="25" value="0" style="flex:1;" oninput="negFlowUpdatePrice()">
                     <span id="neg-flow-price-label" style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-bright);width:45px;text-align:right;">0%</span>
                 </div>
+                <div id="neg-flow-adjusted-price" style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-top:2px;"></div>
                 <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">Negative = discount, Positive = premium</div>
             </div>
             <div>
@@ -22046,7 +22048,36 @@ function negStructuredTradeFlowForm() {
             <button onclick="negStructuredArticleConfirm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;">Confirm</button>
         </div>
     </div>`;
+
+    // Initialize the price display for the default commodity
+    setTimeout(() => negFlowUpdatePrice(), 0);
 }
+
+function negFlowUpdatePrice() {
+    const commodity = document.getElementById('neg-flow-commodity')?.value || 'fuel_energy';
+    const priceMod = Number(document.getElementById('neg-flow-price')?.value || 0);
+    const priceLabel = document.getElementById('neg-flow-price-label');
+    const globalEl = document.getElementById('neg-flow-global-price');
+    const adjustedEl = document.getElementById('neg-flow-adjusted-price');
+
+    if (priceLabel) priceLabel.textContent = (priceMod > 0 ? '+' : '') + priceMod + '%';
+
+    const units = SECTOR_DISPLAY_UNITS[commodity];
+    if (!units) {
+        if (globalEl) globalEl.textContent = '';
+        if (adjustedEl) adjustedEl.textContent = '';
+        return;
+    }
+
+    const unitName = units.baseUnit.split('/')[0].split(' per ')[0];
+    const pricePerUnit = Math.round(1 / units.factor);
+    const adjustedPrice = Math.round(pricePerUnit * (1 + priceMod / 100));
+
+    if (globalEl) globalEl.textContent = 'Global price: $' + pricePerUnit.toLocaleString() + ' per ' + unitName;
+    if (adjustedEl) adjustedEl.textContent = 'Your price: $' + adjustedPrice.toLocaleString() + ' per ' + unitName + ' (' + (priceMod >= 0 ? '+' : '') + priceMod + '%)';
+}
+
+window.negFlowUpdatePrice = negFlowUpdatePrice;
 
 // ── Structured Articles: TARIFF REDUCTION form ──
 
