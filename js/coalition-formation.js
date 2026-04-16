@@ -651,7 +651,11 @@ async function loadFormations() {
 
 // ════════════════════════ EVENTS ════════════════════════
 
+let _formationEventsBound = false;
 function bindFormationEvents(root) {
+    // Only bind once — delegation from root survives innerHTML rebuilds
+    if (_formationEventsBound) return;
+    _formationEventsBound = true;
     root.addEventListener('click', async (e) => {
         // Party checkbox toggle
         const checkItem = e.target.closest('.cf-party-check:not(.disabled)');
