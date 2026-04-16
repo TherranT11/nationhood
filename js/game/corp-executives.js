@@ -205,3 +205,175 @@ export function createCEORecord(factionId, firstName, lastName, age, nationName,
         status: 'active',
     };
 }
+
+// ═══════════════════════════════════════════════════
+// INITIAL ROSTER SEEDING
+// ═══════════════════════════════════════════════════
+
+var INITIAL_NON_LOBBYIST_ROLES = ['CEO', 'CFO', 'COO', 'CTO', 'CMO', 'CLO'];
+
+function hashString(input) {
+    var hash = 0;
+    var str = String(input || '');
+    for (var i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+}
+
+function deterministicInt(seed, min, max) {
+    if (max <= min) return min;
+    return min + (hashString(seed) % (max - min + 1));
+}
+
+function buildNameCatalog() {
+    var first = [];
+    var last = [];
+    for (var i = 0; i < NAME_POOLS.length; i++) {
+        var pool = NAME_POOLS[i];
+        first = first.concat(pool.firstNames || []);
+        last = last.concat(pool.lastNames || []);
+    }
+    return { first: first, last: last };
+}
+
+function selectPoolCandidateForRole(role, factionId, poolCandidates, usedNames) {
+    if (!Array.isArray(poolCandidates) || !poolCandidates.length) return null;
+    var eligible = poolCandidates.filter(function(candidate) {
+        var specs = candidate.specializations || [];
+        var fullName = (candidate.first_name || '') + ' ' + (candidate.last_name || '');
+        return specs.indexOf(role) >= 0 && !usedNames.has(fullName.trim());
+    });
+    if (!eligible.length) return null;
+    eligible.sort(function(a, b) {
+        if ((b.skill || 0) !== (a.skill || 0)) return (b.skill || 0) - (a.skill || 0);
+        var an = ((a.first_name || '') + ' ' + (a.last_name || '')).trim();
+        var bn = ((b.first_name || '') + ' ' + (b.last_name || '')).trim();
+        return an.localeCompare(bn);
+    });
+    var idx = deterministicInt(factionId + '|' + role + '|pool', 0, eligible.length - 1);
+    return eligible[idx];
+}
+
+function generateDeterministicName(role, factionId, usedNames, catalog) {
+    var attempts = 0;
+    var firstName = '';
+    var lastName = '';
+    do {
+        firstName = catalog.first[deterministicInt(factionId + '|' + role + '|first|' + attempts, 0, catalog.first.length - 1)];
+        lastName = catalog.last[deterministicInt(factionId + '|' + role + '|last|' + attempts, 0, catalog.last.length - 1)];
+        attempts++;
+    } while (usedNames.has((firstName + ' ' + lastName).trim()) && attempts < 20);
+    return { first_name: firstName, last_name: lastName };
+}
+
+/**
+ * Ensure first-load executives include all core non-lobbyist roles.
+ * Missing roles are deterministically seeded in one batch insert.
+ *
+ * @param {Object} params
+ * @param {Object} params.supabase - Supabase client instance
+ * @param {Object} params.faction - current corporation/faction row
+ * @param {number} params.currentTick - current world tick
+ * @param {Array} [params.poolCandidates] - optional executive_pool rows for role-aware names
+ * @returns {Promise<{seeded:boolean, executives:Array, error?:Object}>}
+ */
+export async function createInitialExecutiveRoster(params) {
+    var supabase = params && params.supabase;
+    var faction = params && params.faction;
+    var currentTick = (params && params.currentTick) || 0;
+    var poolCandidates = (params && params.poolCandidates) || [];
+
+    if (!supabase || !faction || !faction.id) {
+        return { seeded: false, executives: [], error: new Error('Missing required seeding params') };
+    }
+
+    var existingRes = await supabase.from('corp_executives')
+        .select('*')
+        .eq('faction_id', faction.id)
+        .eq('status', 'active');
+    if (existingRes.error) {
+        return { seeded: false, executives: [], error: existingRes.error };
+    }
+
+    var existing = existingRes.data || [];
+    var existingRoles = new Set(existing.map(function(exec) { return exec.role; }));
+    var missingRoles = INITIAL_NON_LOBBYIST_ROLES.filter(function(role) { return !existingRoles.has(role); });
+
+    if (!missingRoles.length) {
+        return { seeded: false, executives: existing };
+    }
+
+    var usedNames = new Set(existing.map(function(exec) {
+        return ((exec.first_name || '') + ' ' + (exec.last_name || '')).trim();
+    }));
+    var rows = [];
+    var catalog = buildNameCatalog();
+
+    for (var i = 0; i < missingRoles.length; i++) {
+        var role = missingRoles[i];
+        var seedPrefix = faction.id + '|' + role;
+        var contractYears = deterministicInt(seedPrefix + '|years', 2, 5);
+        var skill = (role === 'CEO')
+            ? deterministicInt(seedPrefix + '|skill', 25, 45)
+            : deterministicInt(seedPrefix + '|skill', 25, 40);
+        var annualSalary = Math.round(calculateCompensation(skill) / contractYears);
+
+        var firstName;
+        var lastName;
+        var age;
+        var originNation = faction.nation || null;
+
+        if (role === 'CEO' && faction.leader_first_name && faction.leader_last_name) {
+            firstName = faction.leader_first_name;
+            lastName = faction.leader_last_name;
+            age = faction.leader_age || deterministicInt(seedPrefix + '|age', 42, 58);
+        } else {
+            var candidate = selectPoolCandidateForRole(role, faction.id, poolCandidates, usedNames);
+            if (candidate) {
+                firstName = candidate.first_name;
+                lastName = candidate.last_name;
+                age = candidate.age || deterministicInt(seedPrefix + '|age', 33, 57);
+                originNation = candidate.origin_nation || originNation;
+            } else {
+                var generatedName = generateDeterministicName(role, faction.id, usedNames, catalog);
+                firstName = generatedName.first_name;
+                lastName = generatedName.last_name;
+                age = deterministicInt(seedPrefix + '|age', 33, 57);
+            }
+        }
+
+        usedNames.add((firstName + ' ' + lastName).trim());
+
+        rows.push({
+            faction_id: faction.id,
+            role: role,
+            first_name: firstName,
+            last_name: lastName,
+            age: age,
+            origin_nation: originNation,
+            skill: skill,
+            salary_per_year: annualSalary,
+            contract_years: contractYears,
+            contract_start_tick: currentTick,
+            contract_end_tick: currentTick + (contractYears * 12),
+            status: 'active',
+        });
+    }
+
+    var insertRes = await supabase.from('corp_executives').insert(rows);
+    if (insertRes.error) {
+        return { seeded: false, executives: existing, error: insertRes.error };
+    }
+
+    var refreshedRes = await supabase.from('corp_executives')
+        .select('*')
+        .eq('faction_id', faction.id)
+        .eq('status', 'active');
+    if (refreshedRes.error) {
+        return { seeded: true, executives: existing.concat(rows), error: refreshedRes.error };
+    }
+
+    return { seeded: true, executives: refreshedRes.data || [] };
+}
