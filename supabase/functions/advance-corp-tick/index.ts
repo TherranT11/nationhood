@@ -2569,6 +2569,15 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
             .update(updateFields)
             .eq('id', corp.id);
         if (updateErr) console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
+
+        // Credit corporate tax to the nation's debt reduction
+        if (taxAmount > 0) {
+            const { data: nationRow } = await supabase.from('nations').select('debt').eq('id', nation.id).single();
+            if (nationRow) {
+                const newDebt = Math.max(0, Number(nationRow.debt || 0) - taxAmount);
+                await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
+            }
+        }
     }
     console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, tax rate=${ns('corporate_tax')}%`);
 }

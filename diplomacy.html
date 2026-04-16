@@ -21644,6 +21644,17 @@ async function openTradeNegModal(partnerNationId) {
         }).select('id, status, draft_articles, approved_by_a, approved_by_b, nation_a_id, nation_b_id, agreement_type, agreement_name').single();
         if (createErr) { alert('Failed to start negotiation: ' + createErr.message); return; }
         neg = created;
+
+        // Fire event: trade negotiations begun
+        const eventText = 'Trade Minister of ' + myNation.name + ' has begun trade negotiations with the nation of ' + partner.name + '.';
+        _supabase.from('event_log').insert([myNation.id, partnerNationId].map(nid => ({
+            nation_id: nid,
+            event_name: 'Trade Negotiations Opened',
+            trigger_key: 'trade_negotiation_opened',
+            category: 'trade',
+            description_chosen: eventText,
+            fired_at_tick: tick,
+        }))).then(() => {});
     }
 
     // Resolve chat role
