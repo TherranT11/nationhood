@@ -197,12 +197,17 @@ const DIPLO_SUBTABS = [
 let _diploActiveSubtab = 'world';
 let _tradeInitialized = false;
 
+let _tradeTabNeedsAttention = false;
+
 function renderDiploSubtabs() {
     const container = document.getElementById('diplo-subtabs');
     if (!container) return;
-    container.innerHTML = DIPLO_SUBTABS.map(tab =>
-        `<div class="diplo-subtab${_diploActiveSubtab === tab.id ? ' active' : ''}" data-tab="${tab.id}">${tab.label}</div>`
-    ).join('');
+    container.innerHTML = DIPLO_SUBTABS.map(tab => {
+        const dot = ((tab.id === 'trade' || tab.id === 'world') && _tradeTabNeedsAttention)
+            ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-left:5px;vertical-align:middle;"></span>'
+            : '';
+        return `<div class="diplo-subtab${_diploActiveSubtab === tab.id ? ' active' : ''}" data-tab="${tab.id}">${tab.label}${dot}</div>`;
+    }).join('');
     container.onclick = (e) => {
         const el = e.target.closest('.diplo-subtab');
         if (!el || el.dataset.tab === _diploActiveSubtab) return;
@@ -210,6 +215,47 @@ function renderDiploSubtabs() {
         renderDiploSubtabs();
         showDiploSubtab();
     };
+}
+
+async function checkTradeNotifications() {
+    const nationId = _worldState?.nation?.id;
+    const factionId = _worldState?.faction?.id;
+    if (!nationId || !factionId) { _tradeTabNeedsAttention = false; return; }
+
+    try {
+        // Load active/open negotiations for this nation
+        const { data: negs } = await _supabase.from('trade_negotiations')
+            .select('id, nation_a_id, nation_b_id, approved_by_a, approved_by_b')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .in('status', ['open', 'active']);
+
+        if (!negs || negs.length === 0) { _tradeTabNeedsAttention = false; return; }
+
+        // Check 1: other party agreed but we haven't
+        const weNeedToAgree = negs.some(neg => {
+            const weAreA = neg.nation_a_id === nationId;
+            const myApproved = weAreA ? neg.approved_by_a : neg.approved_by_b;
+            const theirApproved = weAreA ? neg.approved_by_b : neg.approved_by_a;
+            return theirApproved && !myApproved;
+        });
+
+        if (weNeedToAgree) { _tradeTabNeedsAttention = true; return; }
+
+        // Check 2: recent messages from the other side (last 2 ticks)
+        const currentTick = _worldState?.shard?.current_tick || 0;
+        const negIds = negs.map(n => n.id);
+        const { data: recentMsgs } = await _supabase.from('negotiation_messages')
+            .select('id, negotiation_id, sender_nation_id')
+            .in('negotiation_id', negIds)
+            .neq('sender_nation_id', nationId)
+            .eq('is_system', false)
+            .gte('sent_at_tick', currentTick - 2)
+            .limit(1);
+
+        _tradeTabNeedsAttention = (recentMsgs && recentMsgs.length > 0);
+    } catch (_) {
+        _tradeTabNeedsAttention = false;
+    }
 }
 
 function showDiploSubtab() {
@@ -2218,6 +2264,9 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
 initPage('diplomacy', async (state) => {
     // ── Subtab navigation ──
     renderDiploSubtabs();
+
+    // Check for trade notifications (non-blocking)
+    checkTradeNotifications().then(() => renderDiploSubtabs()).catch(() => {});
 
     // ── World Map: Pan + Zoom ──
     initWorldMap();
@@ -22803,6 +22852,9 @@ function closeTradeNegModal() {
     _negStructuredAdding = false;
     _negStructuredType = null;
     _negNaming = false;
+
+    // Refresh trade notification badge (user may have read messages or agreed)
+    checkTradeNotifications().then(() => renderDiploSubtabs()).catch(() => {});
 }
 
 let _negWithdrawing = false;

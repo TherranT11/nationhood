@@ -14818,49 +14818,101 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
  * Always schedules parliamentary. Presidential systems also get presidential elections.
  */
 async function ensureElectionsScheduled(supabase, nation, currentTick) {
-    // Always ensure a parliamentary election is scheduled
-    const { data: futureParl } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'scheduled')
-        .eq('election_type', 'parliamentary')
-        .gt('election_tick', currentTick)
-        .limit(1)
-        .maybeSingle();
+    const isPresidentialNation = hasElectedPresident(nation);
+    const isMonarchy = (nation.government_type || '').toLowerCase().includes('monarchy');
 
-    if (!futureParl) {
-        const { error: parlErr } = await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: currentTick + getParliamentaryTermTicks(nation),
-            election_type: 'parliamentary',
-            status: 'scheduled'
-        });
-        if (parlErr) console.error(`Failed to schedule parliamentary election for ${nation.name}:`, parlErr.message);
-        else console.log(`Scheduled next parliamentary election for ${nation.name}`);
-    }
+    // Absolute monarchies don't have elections
+    if (isMonarchy) return;
 
-    // Presidential systems also need presidential elections
-    if (hasElectedPresident(nation)) {
-        const { data: futurePres } = await supabase
+    if (isPresidentialNation) {
+        // Presidential/Semi-Presidential: General Elections + Midterms
+        // General = presidential + parliamentary on the same tick (every presidential_term_ticks)
+        // Midterm = parliamentary only at the halfway point
+
+        const presTerm = getPresidentialTermTicks(nation);
+        const midtermOffset = Math.floor(presTerm / 2);
+
+        // Check for any future scheduled elections
+        const { data: futureElections } = await supabase
+            .from('elections')
+            .select('id, election_type, election_tick')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .gt('election_tick', currentTick);
+
+        const futureParl = (futureElections || []).find(e => e.election_type === 'parliamentary');
+        const futurePres = (futureElections || []).find(e => e.election_type === 'presidential');
+
+        if (!futurePres) {
+            // Schedule next general election (presidential)
+            const generalTick = currentTick + presTerm;
+            const { error: presErr } = await supabase.from('elections').insert({
+                nation_id: nation.id,
+                election_tick: generalTick,
+                election_type: 'presidential',
+                status: 'scheduled'
+            });
+            if (presErr) console.error(`Failed to schedule presidential (general) election for ${nation.name}:`, presErr.message);
+            else console.log(`[Elections] ${nation.name}: General election (presidential) scheduled at tick ${generalTick}`);
+
+            // Also schedule the parliamentary component of the general election at the same tick
+            if (!futureParl) {
+                const { error: parlGenErr } = await supabase.from('elections').insert({
+                    nation_id: nation.id,
+                    election_tick: generalTick,
+                    election_type: 'parliamentary',
+                    status: 'scheduled'
+                });
+                if (parlGenErr) console.error(`Failed to schedule parliamentary (general) election for ${nation.name}:`, parlGenErr.message);
+                else console.log(`[Elections] ${nation.name}: General election (parliamentary) scheduled at tick ${generalTick}`);
+            }
+        } else if (!futureParl) {
+            // Presidential is scheduled but no parliamentary — schedule midterm
+            // Midterm goes at the halfway point of the presidential term
+            const midtermTick = currentTick + midtermOffset;
+            // Only schedule if midterm comes before the next general
+            if (midtermTick < futurePres.election_tick) {
+                const { error: midErr } = await supabase.from('elections').insert({
+                    nation_id: nation.id,
+                    election_tick: midtermTick,
+                    election_type: 'parliamentary',
+                    status: 'scheduled'
+                });
+                if (midErr) console.error(`Failed to schedule midterm election for ${nation.name}:`, midErr.message);
+                else console.log(`[Elections] ${nation.name}: Midterm election scheduled at tick ${midtermTick}`);
+            } else {
+                // Next general is sooner — schedule parliamentary at the same tick as presidential
+                const { error: parlGenErr } = await supabase.from('elections').insert({
+                    nation_id: nation.id,
+                    election_tick: futurePres.election_tick,
+                    election_type: 'parliamentary',
+                    status: 'scheduled'
+                });
+                if (parlGenErr) console.error(`Failed to schedule parliamentary (general) for ${nation.name}:`, parlGenErr.message);
+                else console.log(`[Elections] ${nation.name}: Parliamentary (general) scheduled at tick ${futurePres.election_tick}`);
+            }
+        }
+    } else {
+        // Parliamentary-only nations: schedule parliamentary elections on their own cycle
+        const { data: futureParl } = await supabase
             .from('elections')
             .select('id')
             .eq('nation_id', nation.id)
             .eq('status', 'scheduled')
-            .eq('election_type', 'presidential')
+            .eq('election_type', 'parliamentary')
             .gt('election_tick', currentTick)
             .limit(1)
             .maybeSingle();
 
-        if (!futurePres) {
-            const { error: presErr } = await supabase.from('elections').insert({
+        if (!futureParl) {
+            const { error: parlErr } = await supabase.from('elections').insert({
                 nation_id: nation.id,
-                election_tick: currentTick + getPresidentialTermTicks(nation),
-                election_type: 'presidential',
+                election_tick: currentTick + getParliamentaryTermTicks(nation),
+                election_type: 'parliamentary',
                 status: 'scheduled'
             });
-            if (presErr) console.error(`Failed to schedule presidential election for ${nation.name}:`, presErr.message);
-            else console.log(`Scheduled next presidential election for ${nation.name}`);
+            if (parlErr) console.error(`Failed to schedule parliamentary election for ${nation.name}:`, parlErr.message);
+            else console.log(`[Elections] ${nation.name}: Parliamentary election scheduled`);
         }
     }
 }
