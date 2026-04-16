@@ -2567,6 +2567,7 @@ import { initMessaging } from './js/messaging.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
 import { EXEC_ROLES, EXEC_ROLE_META, generateExecutivePool, createCEORecord, normalizeSkillTier, skillTierToMultiplier } from './js/game/corp-executives.js';
+import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
 import { initAutoServices } from './js/corp-auto-services.js';
 import { initSubDashboard } from './js/corp-sub-dashboard.js';
 import { loadShippingRoutesSafe, loadActiveVoyagesSafe, loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
@@ -7143,6 +7144,17 @@ async function loadExecutives() {
         );
         const { data: inserted, error: ceoErr } = await _supabase.from('corp_executives').insert(ceoRow).select();
         if (!ceoErr && inserted) _executives.push(inserted[0]);
+    const seedResult = await createInitialExecutiveRoster({
+        supabase: _supabase,
+        faction: faction,
+        currentTick: shard?.current_tick || 0,
+        poolCandidates: _execPool,
+    });
+    if (seedResult?.error) {
+        console.warn('Failed to seed initial executive roster:', seedResult.error.message || seedResult.error);
+    }
+    if (seedResult?.executives) {
+        _executives = seedResult.executives;
     }
 }
 
