@@ -21778,15 +21778,14 @@ function negChatSubscribe(negotiationId) {
             container.insertAdjacentHTML('beforeend', negChatRenderMsg(msg));
             container.scrollTop = container.scrollHeight;
 
-            // If it's a withdrawal system message from the other side, grey out
+            // If the other side withdrew, close the modal
             if (msg.is_system && msg.message_text?.includes('withdrawn')) {
-                const chatPanel = document.getElementById('trade-neg-chat-panel');
-                const inputBar = document.getElementById('trade-neg-chat-input-bar');
-                const withdrawBtn = document.getElementById('trade-neg-withdraw-btn');
-                if (chatPanel) chatPanel.classList.add('trade-neg-chat--ended');
-                if (inputBar) inputBar.style.display = 'none';
-                if (withdrawBtn) { withdrawBtn.disabled = true; withdrawBtn.textContent = 'Negotiations Ended'; }
                 if (_activeNegModal) _activeNegModal.status = 'cancelled';
+                setTimeout(() => {
+                    closeTradeNegModal();
+                    alert('The other party has withdrawn from negotiations.');
+                    loadTradeAgreements().then(() => { renderTradeAgreements(); renderTradePartners(); }).catch(() => {});
+                }, 500);
             }
         })
         .subscribe();
@@ -22210,34 +22209,15 @@ async function withdrawFromNegotiations() {
         },
     ]);
 
-    // 5. Grey out the chat and disable controls
-    const chatPanel = document.getElementById('trade-neg-chat-panel');
-    const inputBar = document.getElementById('trade-neg-chat-input-bar');
-    const withdrawBtn = document.getElementById('trade-neg-withdraw-btn');
-
-    if (chatPanel) chatPanel.classList.add('trade-neg-chat--ended');
-    if (inputBar) inputBar.style.display = 'none';
-    if (withdrawBtn) {
-        withdrawBtn.disabled = true;
-        withdrawBtn.textContent = 'Negotiations Ended';
-    }
-
-    // Append the system message locally
-    const container = document.getElementById('trade-neg-chat-messages');
-    if (container) {
-        container.insertAdjacentHTML('beforeend', negChatRenderMsg({
-            sender_faction_id: null,
-            sender_display_name: 'System',
-            message_text: chatRole.displayName + ' has withdrawn from negotiations.',
-            is_system: true,
-            created_at: new Date().toISOString(),
-        }));
-        container.scrollTop = container.scrollHeight;
-    }
-
-    // Update local state
+    // 5. Close modal and refresh agreements list
     _activeNegModal.status = 'cancelled';
     _negWithdrawing = false;
+    closeTradeNegModal();
+
+    // Refresh the trade data so the ongoing negotiation disappears
+    try { await loadTradeAgreements(); } catch (_) {}
+    renderTradeAgreements();
+    renderTradePartners();
 }
 
 window.openTradeNegModal = openTradeNegModal;
