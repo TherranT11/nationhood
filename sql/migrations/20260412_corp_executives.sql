@@ -28,8 +28,9 @@ CREATE TABLE IF NOT EXISTS corp_executives (
     age                 INT NOT NULL CHECK (age >= 25 AND age <= 80),
     origin_nation       TEXT,            -- display label: 'Calveth', 'Flandis', etc.
 
-    -- Stats
-    skill               INT NOT NULL CHECK (skill >= 0 AND skill <= 100),
+    -- Stats (tiered model, 1..5)
+    -- Compatibility note: legacy 0..100 rows should be bucketed during upgrade.
+    skill               INT NOT NULL CHECK (skill >= 1 AND skill <= 5),
 
     -- Compensation
     salary_per_year     BIGINT NOT NULL DEFAULT 0,      -- annual salary
@@ -74,8 +75,9 @@ CREATE TABLE IF NOT EXISTS executive_pool (
     age                 INT NOT NULL CHECK (age >= 28 AND age <= 65),
     origin_nation       TEXT NOT NULL,   -- where they're from: 'Calveth', 'Flandis', etc.
 
-    -- Qualifications
-    skill               INT NOT NULL CHECK (skill >= 25 AND skill <= 90),
+    -- Qualifications (tiered model, 1..5)
+    -- Compatibility note: legacy 25..90 rows should be bucketed during upgrade.
+    skill               INT NOT NULL CHECK (skill >= 1 AND skill <= 5),
     specializations     TEXT[] NOT NULL DEFAULT '{}',  -- roles they can fill: '{CFO,COO}'
 
     -- Compensation demands
@@ -98,5 +100,27 @@ CREATE POLICY executive_pool_read ON executive_pool
     FOR SELECT TO authenticated USING (true);
 -- Hiring is done through RPCs, not direct writes
 -- Service role handles status updates
+
+-- ───────────────────────────────────────────────────────────────────────────────
+-- Compatibility migration (safe on existing DBs that already have these tables)
+-- Converts historical 0..100 style values to tiered 1..5 buckets and tightens
+-- constraints to the new range.
+-- ───────────────────────────────────────────────────────────────────────────────
+
+UPDATE corp_executives
+SET skill = LEAST(5, GREATEST(1, CEIL(skill::numeric / 20.0)::INT))
+WHERE skill IS NOT NULL AND (skill < 1 OR skill > 5);
+
+UPDATE executive_pool
+SET skill = LEAST(5, GREATEST(1, CEIL(skill::numeric / 20.0)::INT))
+WHERE skill IS NOT NULL AND (skill < 1 OR skill > 5);
+
+ALTER TABLE corp_executives DROP CONSTRAINT IF EXISTS corp_executives_skill_check;
+ALTER TABLE corp_executives
+    ADD CONSTRAINT corp_executives_skill_check CHECK (skill >= 1 AND skill <= 5);
+
+ALTER TABLE executive_pool DROP CONSTRAINT IF EXISTS executive_pool_skill_check;
+ALTER TABLE executive_pool
+    ADD CONSTRAINT executive_pool_skill_check CHECK (skill >= 1 AND skill <= 5);
 
 COMMIT;

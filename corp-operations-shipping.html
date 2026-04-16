@@ -2566,7 +2566,7 @@ import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
-import { EXEC_ROLES, EXEC_ROLE_META, generateExecutivePool } from './js/game/corp-executives.js';
+import { EXEC_ROLES, EXEC_ROLE_META, generateExecutivePool, createCEORecord, normalizeSkillTier, skillTierToMultiplier } from './js/game/corp-executives.js';
 import { initAutoServices } from './js/corp-auto-services.js';
 import { initSubDashboard } from './js/corp-sub-dashboard.js';
 import { loadShippingRoutesSafe, loadActiveVoyagesSafe, loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
@@ -7132,25 +7132,15 @@ async function loadExecutives() {
     // Auto-seed CEO from faction leader data if no CEO row exists
     const hasCEO = _executives.some(e => e.role === 'CEO');
     if (!hasCEO && faction.leader_first_name && faction.leader_last_name) {
-        const skill = 25 + Math.floor(Math.random() * 21); // 25-45
-        const contractYears = 2 + Math.floor(Math.random() * 4); // 2-5
-        const totalComp = 25000000 + (skill - 25) * 1500000;
-        const annualSalary = Math.round(totalComp / contractYears);
         const currentTick = shard?.current_tick || 0;
-        const ceoRow = {
-            faction_id: faction.id,
-            role: 'CEO',
-            first_name: faction.leader_first_name,
-            last_name: faction.leader_last_name,
-            age: faction.leader_age || 50,
-            origin_nation: faction.nation || null,
-            skill: skill,
-            salary_per_year: annualSalary,
-            contract_years: contractYears,
-            contract_start_tick: currentTick,
-            contract_end_tick: currentTick + (contractYears * 12),
-            status: 'active',
-        };
+        const ceoRow = createCEORecord(
+            faction.id,
+            faction.leader_first_name,
+            faction.leader_last_name,
+            faction.leader_age || 50,
+            faction.nation || null,
+            currentTick
+        );
         const { data: inserted, error: ceoErr } = await _supabase.from('corp_executives').insert(ceoRow).select();
         if (!ceoErr && inserted) _executives.push(inserted[0]);
     }
@@ -7175,9 +7165,19 @@ function getInitials(first, last) {
 }
 
 function skillColor(s) {
-    if (s >= 70) return '#5cb85c';
-    if (s >= 50) return '#ca5';
+    const tier = normalizeSkillTier(s);
+    if (tier >= 5) return '#5cb85c';
+    if (tier >= 3) return '#ca5';
     return '#c84';
+}
+
+function skillTierBarPct(s) {
+    const tier = normalizeSkillTier(s);
+    return Math.round((tier / 5) * 100);
+}
+
+function skillTierLabel(s) {
+    return 'T' + normalizeSkillTier(s);
 }
 
 function renderActionsTab() {
@@ -7251,9 +7251,9 @@ function renderActionsTab() {
                     <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
                         <div style="display:flex;align-items:center;gap:3px;flex:1;">
                             <div style="flex:1;height:3px;background:var(--border-0,rgba(255,255,255,0.06));">
-                                <div style="width:${sk}%;height:100%;background:${skillColor(sk)};"></div>
+                                <div style="width:${skillTierBarPct(sk)}%;height:100%;background:${skillColor(sk)};"></div>
                             </div>
-                            <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);width:18px;text-align:right;">${sk}</span>
+                            <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);width:22px;text-align:right;">${skillTierLabel(sk)}</span>
                         </div>
                         <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${actFmtSalary(sal)}/yr</span>
                     </div>
@@ -7304,10 +7304,10 @@ const EXEC_ACTIONS = {
     ],
 };
 
-// ─── Skill modifier: >50 = cheaper/less damage, <50 = more expensive/more damage ──
-// Returns a multiplier: skill 0 → 1.5, skill 50 → 1.0, skill 100 → 0.5
+// ─── Skill modifier by tier (1..5) ──
+// Lower multiplier is better for cost and downside effects.
 function skillCostMod(skill) {
-    return 1.5 - (skill / 100);
+    return skillTierToMultiplier(skill);
 }
 
 // ─── Cooldown tracking: actions limited to once per tick ──
@@ -7361,9 +7361,9 @@ function renderActionsRightPanel() {
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.8px;">SKILL</div>
                 <div style="display:flex;align-items:center;gap:5px;margin-top:2px;">
                     <div style="width:50px;height:4px;background:var(--border-0,rgba(255,255,255,0.06));">
-                        <div style="width:${exec.skill}%;height:100%;background:${skillColor(exec.skill)};"></div>
+                        <div style="width:${skillTierBarPct(exec.skill)}%;height:100%;background:${skillColor(exec.skill)};"></div>
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${skillColor(exec.skill)};">${exec.skill}</span>
+                    <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${skillColor(exec.skill)};">${skillTierLabel(exec.skill)}</span>
                 </div>
             </div>
             <div style="text-align:right;">
@@ -7435,12 +7435,12 @@ function renderActionsRightPanel() {
     // ── Skill effect note ──
     html += `<div style="padding:8px 20px;background:var(--bg-3,#252525);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-top:none;">
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">
-            <span style="color:${meta.color};font-weight:700;">${escapeHtml(role)}</span> skill (${exec.skill}/100) affects action outcomes.
-            ${exec.skill >= 70
-                ? ' High skill increases success probability and reduces costs.'
-                : exec.skill >= 50
-                    ? ' Moderate skill — outcomes are average. Consider recruiting a stronger executive.'
-                    : ' Low skill — actions are less effective and more expensive. Replacement recommended.'
+            <span style="color:${meta.color};font-weight:700;">${escapeHtml(role)}</span> skill (${skillTierLabel(exec.skill)} of 5) affects action outcomes.
+            ${normalizeSkillTier(exec.skill) >= 5
+                ? ' Elite tier increases success probability and reduces costs.'
+                : normalizeSkillTier(exec.skill) >= 3
+                    ? ' Mid tier — outcomes are average. Consider recruiting top-tier talent.'
+                    : ' Entry tier — actions are less effective and more expensive. Replacement recommended.'
             }
         </div>
     </div>`;
@@ -8002,7 +8002,7 @@ function actOpenRestructure() {
     // Skill-scaled effects: high COO skill → less rep damage, more debt cut
     const coo = getExecForRole('COO');
     const cooSkill = coo ? coo.skill : 50;
-    const cooMod = skillCostMod(cooSkill); // >50 = <1.0, <50 = >1.0
+    const cooMod = skillCostMod(cooSkill); // Tier mapping: T1 highest penalty, T5 strongest discount
 
     // Calculate layoff range (10-20%)
     const layoffPct = 10 + Math.floor(Math.random() * 11); // 10-20
@@ -8710,9 +8710,9 @@ function renderExecSearchModal() {
                     <div style="display:flex;align-items:center;gap:8px;margin-top:3px;">
                         <div style="display:flex;align-items:center;gap:4px;flex:1;">
                             <div style="flex:1;height:3px;background:#2a2a24;">
-                                <div style="width:${c.skill}%;height:100%;background:${skC};"></div>
+                                <div style="width:${skillTierBarPct(c.skill)}%;height:100%;background:${skC};"></div>
                             </div>
-                            <span style="font-family:var(--font-mono);font-size:9px;color:${skC};width:18px;text-align:right;">${c.skill}</span>
+                            <span style="font-family:var(--font-mono);font-size:9px;color:${skC};width:22px;text-align:right;">${skillTierLabel(c.skill)}</span>
                         </div>
                         <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">${actFmtSalary(c.required_salary)}/yr</span>
                     </div>
@@ -8752,9 +8752,9 @@ function renderExecSearchModal() {
                 <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.5px;">SKILL</div>
                 <div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:5px;">
                     <div style="width:60px;height:4px;background:#2a2a24;">
-                        <div style="width:${sel.skill}%;height:100%;background:${skC};"></div>
+                        <div style="width:${skillTierBarPct(sel.skill)}%;height:100%;background:${skC};"></div>
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${skC};">${sel.skill}</span>
+                    <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${skC};">${skillTierLabel(sel.skill)}</span>
                 </div>
             </div>
             <div style="flex:1;padding:12px 14px;text-align:center;border-right:1px solid #2a2a24;">
@@ -8799,8 +8799,9 @@ function renderExecSearchModal() {
         </div>`;
 
         // Skill assessment
-        const skillLabel = sel.skill >= 80 ? 'EXCEPTIONAL' : sel.skill >= 65 ? 'STRONG' : sel.skill >= 50 ? 'COMPETENT' : sel.skill >= 35 ? 'DEVELOPING' : 'WEAK';
-        const skillDescr = sel.skill >= 80 ? 'Elite talent. Actions have high success rate and reduced costs.' : sel.skill >= 65 ? 'Strong performer. Reliable outcomes across most actions.' : sel.skill >= 50 ? 'Adequate for the role. Outcomes are average.' : sel.skill >= 35 ? 'Below average. Actions may fail or cost more. Consider alternatives.' : 'Poor fit. High failure rates. Replacement recommended.';
+        const tier = normalizeSkillTier(sel.skill);
+        const skillLabel = tier >= 5 ? 'ELITE' : tier >= 4 ? 'STRONG' : tier >= 3 ? 'SOLID' : tier >= 2 ? 'DEVELOPING' : 'ENTRY';
+        const skillDescr = tier >= 5 ? 'Elite talent. Actions have high success rate and reduced costs.' : tier >= 4 ? 'Strong performer. Reliable outcomes across most actions.' : tier >= 3 ? 'Adequate for the role. Outcomes are average.' : tier >= 2 ? 'Below average. Actions may fail or cost more. Consider alternatives.' : 'Poor fit. High failure rates. Replacement recommended.';
         html += `<div style="padding:12px 20px;">
             <div style="padding:8px 12px;background:${skC}08;border:1px solid ${skC}18;">
                 <div style="font-family:var(--font-mono);font-size:10px;color:${skC};letter-spacing:0.8px;margin-bottom:3px;">${skillLabel}</div>
@@ -8817,7 +8818,7 @@ function renderExecSearchModal() {
         <div style="display:flex;gap:14px;">`;
     if (sel) {
         html += `<div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">CANDIDATE</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(sel.first_name)} ${escapeHtml(sel.last_name)}</div></div>
-            <div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">SKILL</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${skillColor(sel.skill)};">${sel.skill}</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">SKILL TIER</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${skillColor(sel.skill)};">${skillTierLabel(sel.skill)}</div></div>
             <div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">SALARY</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:#c84;">${actFmtSalary(sel.required_salary)}/yr</div></div>`;
     } else {
         html += `<div style="font-family:var(--font-mono);font-size:11px;color:#6a6660;">Select a candidate to hire</div>`;
