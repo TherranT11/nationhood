@@ -21516,12 +21516,11 @@ async function resolveNegotiationChatRole(partnerNationId) {
 let _negModalOpening = false;
 
 async function openTradeNegModal(partnerNationId) {
-    if (_negModalOpening) { console.log('[TradeNeg] blocked by _negModalOpening'); return; }
+    if (_negModalOpening) return;
     if (_activeNegModal) closeTradeNegModal();
     _negModalOpening = true;
 
     try {
-    console.log('[TradeNeg] Step 1: checking nation data');
     const myNation = _worldState?.nation;
     if (!myNation) { alert('Nation data not loaded.'); return; }
     const partner = (_worldAllNations || []).find(n => n.id === partnerNationId);
@@ -21531,7 +21530,6 @@ async function openTradeNegModal(partnerNationId) {
     const a = myNation.id < partnerNationId ? myNation.id : partnerNationId;
     const b = myNation.id < partnerNationId ? partnerNationId : myNation.id;
 
-    console.log('[TradeNeg] Step 2: querying trade_negotiations', a, b);
     let { data: neg, error: negErr } = await _supabase.from('trade_negotiations')
         .select('id, status, draft_articles, approved_by_a, approved_by_b, nation_a_id, nation_b_id, agreement_type, agreement_name')
         .eq('nation_a_id', a).eq('nation_b_id', b)
@@ -21540,11 +21538,9 @@ async function openTradeNegModal(partnerNationId) {
         .limit(1)
         .maybeSingle();
 
-    console.log('[TradeNeg] Step 2 result:', { neg, negErr });
     if (negErr) { alert('Failed to load negotiations: ' + negErr.message); return; }
 
     if (!neg) {
-        console.log('[TradeNeg] Step 3: creating new negotiation');
         const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shardData?.current_tick || 0;
         const { data: created, error: createErr } = await _supabase.from('trade_negotiations').insert({
@@ -21555,15 +21551,12 @@ async function openTradeNegModal(partnerNationId) {
             opened_at_tick: tick,
             expires_at_tick: tick + 48,
         }).select('id, status').single();
-        console.log('[TradeNeg] Step 3 result:', { created, createErr });
         if (createErr) { alert('Failed to start negotiation: ' + createErr.message); return; }
         neg = created;
     }
 
     // Resolve chat role
-    console.log('[TradeNeg] Step 4: resolving chat role');
     const chatRole = await resolveNegotiationChatRole(partnerNationId);
-    console.log('[TradeNeg] Step 4 result:', chatRole);
 
     const myFlag = myNation.flag_url || `assets/flags/${myNation.name}.png`;
     const partnerFlag = partner.flag_url || `assets/flags/${partner.name}.png`;
@@ -21605,8 +21598,6 @@ async function openTradeNegModal(partnerNationId) {
         <span class="trade-neg-header__close" onclick="closeTradeNegModal()">&times;</span>
     `;
 
-    // Show modal
-    console.log('[TradeNeg] Step 5: showing modal');
     document.getElementById('trade-neg-modal').classList.add('active');
 
     // Configure chat input based on role
@@ -21933,39 +21924,46 @@ async function negArticleAdd() {
 
 // ── Articles: Delete (author only) ──
 
+let _negArticleDeleting = false;
 async function negArticleDelete(articleId) {
-    if (!_activeNegModal) return;
+    if (!_activeNegModal || _negArticleDeleting) return;
     if (!confirm('Delete this article?')) return;
+    _negArticleDeleting = true;
 
-    const { data: negRow } = await _supabase.from('trade_negotiations')
+    const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
         .select('draft_articles')
         .eq('id', _activeNegModal.negotiationId)
         .single();
+    if (fetchErr || !negRow) { alert('Failed to load articles.'); return; }
 
-    const current = negRow?.draft_articles || [];
+    const current = negRow.draft_articles || [];
     const updated = current.filter(a => a.id !== articleId);
 
     const { error } = await _supabase.from('trade_negotiations')
         .update({ draft_articles: updated })
         .eq('id', _activeNegModal.negotiationId);
 
-    if (error) { alert('Failed to delete article: ' + error.message); return; }
+    if (error) { alert('Failed to delete article: ' + error.message); _negArticleDeleting = false; return; }
 
     _activeNegModal.articles = updated;
     negArticlesRender();
+    _negArticleDeleting = false;
 }
 
 // ── Articles: Request to Strike (other party's articles) ──
 
+let _negArticleStriking = false;
 async function negArticleRequestStrike(articleId) {
-    if (!_activeNegModal) return;
+    if (!_activeNegModal || _negArticleStriking) return;
+    _negArticleStriking = true;
 
-    const { data: negRow } = await _supabase.from('trade_negotiations')
+    const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
         .select('draft_articles')
         .eq('id', _activeNegModal.negotiationId)
         .single();
+    if (fetchErr || !negRow) { alert('Failed to load articles.'); return; }
 
-    const current = negRow?.draft_articles || [];
+    const current = negRow.draft_articles || [];
     const updated = current.map(a => {
         if (a.id !== articleId) return a;
         return {
@@ -21979,10 +21977,11 @@ async function negArticleRequestStrike(articleId) {
         .update({ draft_articles: updated })
         .eq('id', _activeNegModal.negotiationId);
 
-    if (error) { alert('Failed to request strike: ' + error.message); return; }
+    if (error) { alert('Failed to request strike: ' + error.message); _negArticleStriking = false; return; }
 
     _activeNegModal.articles = updated;
     negArticlesRender();
+    _negArticleStriking = false;
 }
 
 // ── Agreement voting [0/2] → [1/2] → [2/2] → ratification bills ──
@@ -22017,6 +22016,13 @@ let _negAgreementToggling = false;
 
 async function negAgreementToggle() {
     if (_negAgreementToggling || !_activeNegModal) return;
+    if (!_activeNegModal.chatRole?.canChat) {
+        alert('You need a diplomatic role to vote on the agreement.');
+        return;
+    }
+    if (_activeNegModal.status === 'cancelled' || _activeNegModal.status === 'ratification') {
+        return;
+    }
     const m = _activeNegModal;
     const myApproved = m.weAreA ? m.approvedByA : m.approvedByB;
     const approveCol = m.weAreA ? 'approved_by_a' : 'approved_by_b';
@@ -22126,6 +22132,10 @@ function closeTradeNegModal() {
     _negChatSending = false;
     _negWithdrawing = false;
     _negModalOpening = false;
+    _negArticleAdding = false;
+    _negArticleDeleting = false;
+    _negArticleStriking = false;
+    _negAgreementToggling = false;
 }
 
 let _negWithdrawing = false;
@@ -22233,7 +22243,6 @@ async function withdrawFromNegotiations() {
 window.openTradeNegModal = openTradeNegModal;
 window.closeTradeNegModal = closeTradeNegModal;
 window.withdrawFromNegotiations = withdrawFromNegotiations;
-window._debugTradePartners = () => (_worldAllNations || []).filter(n => n.id !== _worldState?.nation?.id).map(n => ({ id: n.id, name: n.name }));
 </script>
 
 </body>
