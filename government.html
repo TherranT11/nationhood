@@ -1180,8 +1180,9 @@ function renderAdminBanner() {
         </div>`;
     }
 
-    // Prime Minister section (not shown in presidential systems)
-    if (hog && !isPresidential) {
+    // Prime Minister section (shown for parliamentary + semi-presidential, hidden for pure presidential)
+    const isPurePresForPM = isPresidential && !isSemiPresidential(nation);
+    if (hog && !isPurePresForPM) {
         const pmName = `${hog.first_name} ${hog.last_name}`;
         const pmAge = hog.age || '';
         const pmPartyName = hog.factions?.faction_name || '';
@@ -1199,10 +1200,12 @@ function renderAdminBanner() {
                 </div>
             </div>
         </div>`;
-    } else if (!isPresidential) {
+    } else if (!isPurePresForPM) {
+        const isPresidentParty = president?.faction_id === currentFaction?.id;
         html += `<div class="ga-banner-leader">
             <div class="ga-banner-leader-label">PRIME MINISTER</div>
-            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;">Vacant — awaiting formation</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;">Vacant — awaiting nomination</div>
+            ${isPresidentParty ? '<div style="margin-top:8px;"><button class="action-btn" style="font-size:0.7rem;padding:5px 14px;" onclick="openNominatePMModal()">Nominate PM</button></div>' : ''}
         </div>`;
     }
 
