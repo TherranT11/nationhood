@@ -2755,7 +2755,7 @@ import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
-import { EXEC_ROLES, EXEC_ROLE_META, generateExecutivePool } from './js/game/corp-executives.js';
+import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
 import { initAutoServices } from './js/corp-auto-services.js';
 import { initSubDashboard } from './js/corp-sub-dashboard.js';
 import { loadShippingRoutesSafe, loadActiveVoyagesSafe, loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
@@ -7405,31 +7405,17 @@ async function loadExecutives() {
     if (poolRes.error) console.warn('Failed to load executive pool:', poolRes.error.message);
     _executives = execRes.data || [];
     _execPool = poolRes.data || [];
-
-    // Auto-seed CEO from faction leader data if no CEO row exists
-    const hasCEO = _executives.some(e => e.role === 'CEO');
-    if (!hasCEO && faction.leader_first_name && faction.leader_last_name) {
-        const skill = 25 + Math.floor(Math.random() * 21); // 25-45
-        const contractYears = 2 + Math.floor(Math.random() * 4); // 2-5
-        const totalComp = 25000000 + (skill - 25) * 1500000;
-        const annualSalary = Math.round(totalComp / contractYears);
-        const currentTick = shard?.current_tick || 0;
-        const ceoRow = {
-            faction_id: faction.id,
-            role: 'CEO',
-            first_name: faction.leader_first_name,
-            last_name: faction.leader_last_name,
-            age: faction.leader_age || 50,
-            origin_nation: faction.nation || null,
-            skill: skill,
-            salary_per_year: annualSalary,
-            contract_years: contractYears,
-            contract_start_tick: currentTick,
-            contract_end_tick: currentTick + (contractYears * 12),
-            status: 'active',
-        };
-        const { data: inserted, error: ceoErr } = await _supabase.from('corp_executives').insert(ceoRow).select();
-        if (!ceoErr && inserted) _executives.push(inserted[0]);
+    const seedResult = await createInitialExecutiveRoster({
+        supabase: _supabase,
+        faction: faction,
+        currentTick: shard?.current_tick || 0,
+        poolCandidates: _execPool,
+    });
+    if (seedResult?.error) {
+        console.warn('Failed to seed initial executive roster:', seedResult.error.message || seedResult.error);
+    }
+    if (seedResult?.executives) {
+        _executives = seedResult.executives;
     }
 }
 
