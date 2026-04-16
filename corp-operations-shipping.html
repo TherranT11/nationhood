@@ -7118,6 +7118,40 @@ function getOperationsTabEl() {
     }) || null;
 }
 
+async function ensureCEOExecutive(options = {}) {
+    const { silent = true } = options;
+    const existingCEO = _executives.find(e => e.role === 'CEO');
+    if (existingCEO) return existingCEO;
+    if (!faction?.leader_first_name || !faction?.leader_last_name) return null;
+
+    const skill = 25 + Math.floor(Math.random() * 21); // 25-45
+    const contractYears = 2 + Math.floor(Math.random() * 4); // 2-5
+    const totalComp = 25000000 + (skill - 25) * 1500000;
+    const annualSalary = Math.round(totalComp / contractYears);
+    const currentTick = shard?.current_tick || 0;
+    const ceoRow = {
+        faction_id: faction.id,
+        role: 'CEO',
+        first_name: faction.leader_first_name,
+        last_name: faction.leader_last_name,
+        age: faction.leader_age || 50,
+        origin_nation: faction.nation || null,
+        skill: skill,
+        salary_per_year: annualSalary,
+        contract_years: contractYears,
+        contract_start_tick: currentTick,
+        contract_end_tick: currentTick + (contractYears * 12),
+        status: 'active',
+    };
+    const { data: inserted, error: ceoErr } = await _supabase.from('corp_executives').insert(ceoRow).select();
+    if (ceoErr || !inserted?.[0]) {
+        if (!silent) alert('CEO was fired, but auto-appointment failed: ' + (ceoErr?.message || 'Unknown error.'));
+        return null;
+    }
+    _executives.push(inserted[0]);
+    return inserted[0];
+}
+
 async function loadExecutives() {
     if (!faction) return;
     const [execRes, poolRes] = await Promise.all([
@@ -7130,30 +7164,7 @@ async function loadExecutives() {
     _execPool = poolRes.data || [];
 
     // Auto-seed CEO from faction leader data if no CEO row exists
-    const hasCEO = _executives.some(e => e.role === 'CEO');
-    if (!hasCEO && faction.leader_first_name && faction.leader_last_name) {
-        const skill = 25 + Math.floor(Math.random() * 21); // 25-45
-        const contractYears = 2 + Math.floor(Math.random() * 4); // 2-5
-        const totalComp = 25000000 + (skill - 25) * 1500000;
-        const annualSalary = Math.round(totalComp / contractYears);
-        const currentTick = shard?.current_tick || 0;
-        const ceoRow = {
-            faction_id: faction.id,
-            role: 'CEO',
-            first_name: faction.leader_first_name,
-            last_name: faction.leader_last_name,
-            age: faction.leader_age || 50,
-            origin_nation: faction.nation || null,
-            skill: skill,
-            salary_per_year: annualSalary,
-            contract_years: contractYears,
-            contract_start_tick: currentTick,
-            contract_end_tick: currentTick + (contractYears * 12),
-            status: 'active',
-        };
-        const { data: inserted, error: ceoErr } = await _supabase.from('corp_executives').insert(ceoRow).select();
-        if (!ceoErr && inserted) _executives.push(inserted[0]);
-    }
+    await ensureCEOExecutive();
 }
 
 // ═══════════════════════════════════════════════════
@@ -7374,9 +7385,9 @@ function renderActionsRightPanel() {
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.8px;">CONTRACT</div>
                 <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-muted);margin-top:2px;">${exec.contract_years}yr</div>
             </div>
-            ${role !== 'CEO' ? `<div style="text-align:right;">
+            <div style="text-align:right;">
                 <span onclick="event.stopPropagation();confirmFireExec('${exec.id}','${escapeHtml(role)}','${escapeHtml(exec.first_name + ' ' + exec.last_name)}',${exec.salary_per_year},${exec.contract_end_tick || 0})" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;padding:5px 12px;color:#d9534f;border:1px solid rgba(217,83,79,0.25);background:rgba(217,83,79,0.06);cursor:pointer;">FIRE</span>
-            </div>` : ''}
+            </div>
         </div>
     </div>`;
 
@@ -7466,10 +7477,14 @@ function confirmFireExec(execId, role, name, salaryPerYear, contractEndTick) {
     const ticksRemaining = Math.max(0, contractEndTick - currentTick);
     const proratedPayout = Math.round(salaryPerYear * (ticksRemaining / 12));
 
+    const ceoVacancyNote = role === 'CEO'
+        ? 'A replacement CEO based on your faction leader will be auto-appointed immediately after termination.\n\n'
+        : '';
     const msg = `FIRE ${role}: ${name}\n\n` +
         `Contract remaining: ${ticksRemaining} ticks\n` +
         `Payout (prorated): $${(proratedPayout / 1e6).toFixed(2)}M\n\n` +
         `This amount will be deducted from your cash reserves immediately.\n\n` +
+        ceoVacancyNote +
         `Are you sure?`;
 
     if (!confirm(msg)) return;
@@ -7513,6 +7528,9 @@ async function executeFireExec(execId, role, payout) {
         // Update local state
         faction.corp_cash_reserves = newCash;
         _executives = _executives.filter(e => e.id !== execId);
+
+        // CEO is auto-filled from faction leader data immediately after termination
+        if (role === 'CEO') await ensureCEOExecutive({ silent: false });
 
         // Re-render
         renderActionsTab();
