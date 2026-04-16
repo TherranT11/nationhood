@@ -8440,6 +8440,7 @@ async function actSubmitDonation() {
     if (!faction || !shard || _donateSelected < 0 || _donateSubmitting) return;
     const party = _donateParties[_donateSelected];
     if (!party) return;
+    const currentTick = Number(shard?.current_tick || 0);
 
     // Guard: cannot donate to own party (same linked_user_id)
     const ownFactionIds = new Set(allUserFactions.map(f => f.id));
@@ -8453,6 +8454,27 @@ async function actSubmitDonation() {
     const lobbySkill = lobbyist ? lobbyist.skill : 50;
     const donateCost = Math.round(1000000 * skillCostMod(lobbySkill));
     const partyReceives = 100000; // $100k to party coffers
+    const repLoss = 2;
+
+    // Server-side cooldown guard (persists across refresh): once per tick
+    const { data: existingDonation, error: existingDonationErr } = await _supabase
+        .from('event_log')
+        .select('id')
+        .eq('faction_id', faction.id)
+        .eq('trigger_key', 'corp_donation')
+        .eq('fired_at_tick', currentTick)
+        .limit(1);
+    if (existingDonationErr) {
+        const errEl = document.getElementById('donate-error');
+        if (errEl) { errEl.textContent = 'Failed to verify cooldown: ' + existingDonationErr.message; errEl.style.display = 'block'; }
+        return;
+    }
+    if ((existingDonation || []).length > 0) {
+        const errEl = document.getElementById('donate-error');
+        if (errEl) { errEl.textContent = 'Political Donation is on cooldown until next tick.'; errEl.style.display = 'block'; }
+        markActionUsed('donate');
+        return;
+    }
 
     // Fresh cash check
     const { data: freshCash } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
@@ -8468,8 +8490,11 @@ async function actSubmitDonation() {
     if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
 
     // Deduct $1M from corp
+    const currentRep = Number(faction.corp_reputation ?? 50);
+    const nextRep = Math.max(0, currentRep - repLoss);
     const { error: cashErr } = await _supabase.from('factions').update({
         corp_cash_reserves: cash - donateCost,
+        corp_reputation: nextRep,
     }).eq('id', faction.id);
 
     if (cashErr) {
@@ -8499,18 +8524,18 @@ async function actSubmitDonation() {
 
     // Update local state
     faction.corp_cash_reserves = cash - donateCost;
+    faction.corp_reputation = nextRep;
 
     // Log event
-    const currentTick = shard.current_tick || 0;
     const corpName = faction.faction_name || 'Corporation';
     const { error: donateLogErr } = await _supabase.from('event_log').insert({
         nation_id: party.nation_id || faction.nation_id,
         faction_id: faction.id,
         event_name: corpName + ' — Political Donation',
-        description_chosen: corpName + ' has donated ' + hfFmtBig(donateCost) + ' to ' + (party.faction_name || 'a political party') + '. The party receives ' + hfFmtBig(partyReceives) + ' in campaign funds.',
+        description_chosen: corpName + ' has donated ' + hfFmtBig(donateCost) + ' to ' + (party.faction_name || 'a political party') + '. The party receives ' + hfFmtBig(partyReceives) + ' in campaign funds. Corporate reputation decreases by ' + repLoss + '.',
         category: 'business',
         trigger_key: 'corp_donation',
-        effects_applied: { cost: donateCost, recipient_faction_id: party.id, recipient_name: party.faction_name, funds_granted: partyReceives, skill: lobbySkill },
+        effects_applied: { cost: donateCost, recipient_faction_id: party.id, recipient_name: party.faction_name, funds_granted: partyReceives, reputation_loss: repLoss, skill: lobbySkill },
         fired_at_tick: currentTick,
     });
     if (donateLogErr) console.warn('Failed to log donation event:', donateLogErr.message);
