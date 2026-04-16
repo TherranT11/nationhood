@@ -621,11 +621,11 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
 
     const gdp = Number(nation.gdp_growth ?? 50);
 
-    // Determine how many contracts this GDP tier generates
-    let targetContracts = 2;
-    if (gdp >= 75) targetContracts = 5;
-    else if (gdp >= 51) targetContracts = 4;
-    else if (gdp >= 26) targetContracts = 3;
+    // Determine how many contracts this GDP tier generates (+1 across all tiers)
+    let targetContracts = 3;
+    if (gdp >= 75) targetContracts = 6;
+    else if (gdp >= 51) targetContracts = 5;
+    else if (gdp >= 26) targetContracts = 4;
 
     // Count active corporations in this nation (exclude dissolved)
     const { count: corpCount } = await supabase
@@ -661,16 +661,20 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         }
     }
 
-    // Build the slot allocation: civil engineering gets at least 1
+    // Build slot allocation:
+    // - Civil engineering always gets at least 1
+    // - If more than one contract is generated, guarantee one industrial slot
+    // - Remaining slots are weighted toward industrial (higher than before)
     const slots = [];
     slots.push('civil_engineering'); // guaranteed first slot
+    if (toGenerate > 1) slots.push('industrial'); // guaranteed second slot
 
-    for (let i = 1; i < toGenerate; i++) {
+    for (let i = slots.length; i < toGenerate; i++) {
         if (megaAllowed && Math.random() < 0.15) {
             slots.push('mega_project');
             megaAllowed = false; // only one mega per cycle
-        } else if (gdp >= 25 && Math.random() < 0.35) {
-            // Industrial available even in struggling economies (was gdp>=51)
+        } else if (Math.random() < 0.55) {
+            // Industrial weighted higher than before (was 35%)
             slots.push('industrial');
         } else {
             slots.push('civil_engineering');
@@ -1041,8 +1045,10 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
 
     // 6. Price modifiers from nation stats
     const inflation = Number(nation.inflation ?? 50);
+    const currencyStrength = Number(nation.currency_strength ?? 50);
     const inflMod = 1 + ((inflation - 50) / 100 * 0.3);
     const solMod = 1 + ((sol - 50) / 100 * 0.2);
+    const currencyMod = 1 + ((currencyStrength - 50) / 100 * 0.25);
 
     // City names from nation capital
     const capital = nation.capital || 'Capital';
@@ -1064,9 +1070,9 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
         }
         if (!template) template = weightedPool[Math.floor(Math.random() * weightedPool.length)];
 
-        const adjustedPrice = Math.round(template.base_cost * inflMod * solMod);
-        const adjustedMaint = Math.round(template.base_maintenance * inflMod * 0.9);
-        const condition = 55 + Math.floor(Math.random() * 40); // 55-95%
+        const adjustedPrice = Math.round(template.base_cost * inflMod * solMod * currencyMod);
+        const adjustedMaint = Math.round(template.base_maintenance * inflMod * currencyMod * 0.9);
+        const condition = 20 + Math.floor(Math.random() * 46); // 20-65%
         const city = cityMap[template.city_template] || capital;
 
         inserts.push({
@@ -1554,7 +1560,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 2. Process in_progress contracts
     const { data: activeContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned, modifiers')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned, modifiers, issuer_faction_id, project_type')
         .eq('nation_id', nationId)
         .eq('status', 'in_progress');
 
@@ -1931,6 +1937,25 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             if (completeErr) {
                 console.error(`[Projects] Failed to mark ${contract.name} completed — delivery record exists but contract stays in_progress. Manual fix needed:`, completeErr.message);
                 continue;
+            }
+
+            // If this was a commissioned Regional HQ build, activate its pending property stub.
+            if (contract.project_type === 'Regional HQ' && contract.issuer_faction_id) {
+                try {
+                    const finalCondition = Math.max(20, Math.min(100, Math.round((qualityScore || 60) * 0.9)));
+                    await supabase.from('corp_properties')
+                        .update({
+                            is_active: true,
+                            condition: finalCondition,
+                            purchased_at_tick: currentTick,
+                        })
+                        .eq('faction_id', contract.issuer_faction_id)
+                        .eq('built_via_contract_id', contract.id)
+                        .eq('type', 'regional_hq')
+                        .eq('is_active', false);
+                } catch (hqActivateErr) {
+                    console.warn(`[Projects] Failed to activate Regional HQ stub for ${contract.name}:`, hqActivateErr.message);
+                }
             }
 
             // Close any active insurance policies for this completed project

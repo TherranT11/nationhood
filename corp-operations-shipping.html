@@ -9064,7 +9064,8 @@ function renderWorkforceSummary() {
         accent: '#8b9a6b', gold: '#c8a832', orange: '#c84', blue: '#5a9abf',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660', red: '#c55' };
 
-    const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
+    const selectedNation = (_npNationOptions || []).find(n => n.id === _npNationId);
+    const nationName = (selectedNation?.name || nationStats?.name || faction?.nation || 'Nation').toUpperCase();
     const minWage = Number(nationStats?.minimum_wage ?? 50);
     const inflation = Number(nationStats?.inflation ?? 50);
     const sol = Number(nationStats?.standard_of_living ?? 50);
@@ -9175,7 +9176,8 @@ function renderPropertyCard() {
         accent: '#8b9a6b', green: '#4a8', red: '#c55', gold: '#c8a832', orange: '#c84',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
 
-    const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
+    const selectedNation = (_npNationOptions || []).find(n => n.id === _npNationId);
+    const nationName = (selectedNation?.name || nationStats?.name || faction?.nation || 'Nation').toUpperCase();
     const _inflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
 
     let propsHtml = '';
@@ -9250,6 +9252,12 @@ function renderPropertyCard() {
                 <div onclick="propRefurbish('${prop.id}')" style="flex:1;padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:${C.accent};border:1px solid ${C.accent}33;cursor:pointer;">REFURBISH (${hfFmtBig(Math.round((prop.purchase_price || 0) * 0.1 * _inflMod))})</div>
                 <div onclick="propSell('${prop.id}')" style="flex:1;padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:${C.red};border:1px solid ${C.red}33;cursor:pointer;">SELL</div>
             </div>
+            ${String(prop.type || '').toLowerCase() === 'office'
+                ? `<div style="margin-top:4px;">
+                    <div onclick="propConvertToRegionalHQ('${prop.id}')" style="padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:${C.gold};border:1px solid ${C.gold}33;cursor:pointer;">CONVERT TO REGIONAL HQ</div>
+                </div>`
+                : ''
+            }
         </div>`;
     }
 
@@ -9282,6 +9290,8 @@ function renderPropertyCard() {
 
 let _npAvailable = [];
 let _npSelected = null;
+let _npNationId = null;
+let _npNationOptions = [];
 
 const NP_STYLE_META = {
     Basic:       { color: '#6a6660', label: 'BASIC' },
@@ -9295,10 +9305,19 @@ const NP_STYLE_META = {
 async function loadAvailableProperties() {
     if (!faction?.nation_id) return;
 
+    const nationIds = new Set([faction.nation_id]);
+    for (const p of (_ownedProperties || [])) {
+        if (p.is_active && p.nation_id) nationIds.add(p.nation_id);
+    }
+    const nationIdList = Array.from(nationIds);
+    const { data: nationRows } = await _supabase.from('nations').select('id, name').in('id', nationIdList);
+    _npNationOptions = (nationRows || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    if (!_npNationId || !nationIds.has(_npNationId)) _npNationId = faction.nation_id;
+
     const { data, error } = await _supabase
         .from('available_properties')
         .select('*')
-        .eq('nation_id', faction.nation_id)
+        .eq('nation_id', _npNationId)
         .eq('status', 'available')
         .order('price', { ascending: true });
 
@@ -9383,7 +9402,12 @@ function renderNewPropertyCard() {
                 <span style="font-size:8px;color:${C.accent}">●</span>
                 <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">New Property</span>
             </div>
-            <span style="font-family:${mono};font-size:9px;color:${C.dim}">${_npAvailable.length} AVAILABLE</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <select onchange="npSetNation(this.value)" style="background:${C.card};border:1px solid ${C.border};color:${C.text};font-family:${mono};font-size:8px;padding:2px 6px;">
+                    ${(_npNationOptions || []).map(n => `<option value="${n.id}" ${n.id === _npNationId ? 'selected' : ''}>${escapeHtml((n.name || '').toUpperCase())}</option>`).join('')}
+                </select>
+                <span style="font-family:${mono};font-size:9px;color:${C.dim}">${_npAvailable.length} AVAILABLE</span>
+            </div>
         </div>
         <div style="padding:4px 14px;border-bottom:1px solid ${C.border};display:flex;gap:12px;flex-shrink:0;">
             <div style="display:flex;align-items:center;gap:4px;">
@@ -9416,6 +9440,14 @@ function npSelect(idx) {
     renderNewPropertyCard();
 }
 
+async function npSetNation(nationId) {
+    if (!nationId || nationId === _npNationId) return;
+    _npNationId = nationId;
+    _npSelected = null;
+    await loadAvailableProperties();
+    renderNewPropertyCard();
+}
+
 let _npBuying = false;
 async function npBuyProperty() {
     if (_npSelected === null || _npBuying) return;
@@ -9435,7 +9467,7 @@ async function npBuyProperty() {
         // 1. Insert into corp_properties
         const { error: insertErr } = await _supabase.from('corp_properties').insert({
             faction_id: faction.id,
-            nation_id: faction.nation_id,
+            nation_id: _npNationId || faction.nation_id,
             catalog_id: prop.catalog_id || null,
             name: prop.name,
             type: prop.type,
@@ -9811,6 +9843,7 @@ window.cpSetField = cpSetField;
 window.cpSubmitFromModal = cpSubmitFromModal;
 
 window.npSelect = npSelect;
+window.npSetNation = npSetNation;
 window.npBuyProperty = npBuyProperty;
 window.npOpenConstructionModal = npOpenConstructionModal;
 
@@ -9857,6 +9890,43 @@ async function propRefurbish(propId) {
         alert('Refurbishment failed: ' + err.message);
     } finally {
         _propActing = false;
+    }
+}
+
+async function propConvertToRegionalHQ(propId) {
+    const prop = (_ownedProperties || []).find(p => p.id === propId);
+    if (!prop) return;
+    if (String(prop.type || '').toLowerCase() === 'regional_hq') {
+        alert('This property is already a Regional HQ.');
+        return;
+    }
+    const hasExisting = (_ownedProperties || []).some(p =>
+        p.id !== propId &&
+        p.nation_id === prop.nation_id &&
+        String(p.type || '').toLowerCase() === 'regional_hq' &&
+        p.is_active
+    );
+    if (hasExisting) {
+        alert('This nation already has an active Regional HQ.');
+        return;
+    }
+
+    if (!confirm('Convert "' + prop.name + '" to a Regional HQ?\n\nNo reputation is awarded for this conversion.')) return;
+
+    try {
+        const updates = {
+            type: 'regional_hq',
+            subsector: prop.subsector || faction?.corp_subsector || null,
+        };
+        const { error } = await _supabase.from('corp_properties').update(updates).eq('id', propId);
+        if (error) throw error;
+        await loadOwnedProperties();
+        await loadAvailableProperties();
+        renderPropertyCard();
+        renderNewPropertyCard();
+        alert('Property converted to Regional HQ.\n\nNo reputation awarded.');
+    } catch (err) {
+        alert('Conversion failed: ' + err.message);
     }
 }
 
@@ -9920,6 +9990,7 @@ async function propSell(propId) {
 }
 
 window.propRefurbish = propRefurbish;
+window.propConvertToRegionalHQ = propConvertToRegionalHQ;
 window.propSell = propSell;
 
 // ==================== SUBSIDIARY SHARED HELPERS ====================
@@ -10878,16 +10949,48 @@ async function subCreate() {
         return;
     }
 
-    if (!confirm('Establish subsidiary in ' + nation.name + '?\n\nName: ' + subName + ' (' + subAbbr + ')\nSubsector: ' + (_subSelectedSubsector || 'General') + '\nEntry cost: ' + hfFmtBig(cost) + '\nCreates a Regional HQ (500 capacity)\nUnlocks ' + nation.name + ' for operations\n\nDeducted from cash reserves.')) return;
+    if (!confirm('Establish subsidiary in ' + nation.name + '?\n\nName: ' + subName + ' (' + subAbbr + ')\nSubsector: ' + (_subSelectedSubsector || 'General') + '\nEntry cost: ' + hfFmtBig(cost) + '\nCommissions a Regional HQ construction project\nUnlocks after construction is completed\n\nDeducted from cash reserves.')) return;
 
     _subCreating = true;
     try {
-        const shardRes = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const shardRes = await _supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
         const currentTick = shardRes.data?.current_tick || 0;
+        const gameYear = (shardRes.data?.current_date || '').match(/\d{4}/)?.[0] || '2015';
         const condition = 85 + Math.floor(Math.random() * 16); // 85-100% new build
         const maint = Math.round(cost * 0.005);
 
-        // Create regional HQ property
+        // Create a construction contract for the Regional HQ build.
+        const { count: existingPrivateContracts } = await _supabase.from('construction_contracts')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', nation.id)
+            .eq('issuer_type', 'PRIVATE');
+        const seq = (existingPrivateContracts || 0) + 1;
+        const projectCode = `PVT-R${seq}-${gameYear}`;
+
+        const { data: hqContract, error: contractErr } = await _supabase.from('construction_contracts').insert({
+            nation_id: nation.id,
+            template_key: 'regional_hq_build',
+            sector: 'civil_engineering',
+            name: `${subName} Regional HQ`,
+            project_type: 'Regional HQ',
+            project_subtype: 'Modern',
+            description: `Regional HQ for ${faction.faction_name} in ${nation.name}.`,
+            project_code: projectCode,
+            budget_ceiling: cost,
+            timeline_ticks: 8,
+            required_materials: { concrete: 6, steel: 5, glass_facades: 2, em_systems: 3, aggregate: 3 },
+            required_equipment: { trucks: 2, mixers: 2, excavators: 1, cranes: 1 },
+            required_workforce: { general: 45, skilled: 15 },
+            status: 'open',
+            generated_at_tick: currentTick,
+            bidding_ends_tick: currentTick + 3,
+            issuer_type: 'PRIVATE',
+            issuer_name: faction.faction_name,
+            issuer_faction_id: faction.id,
+        }).select('id').single();
+        if (contractErr || !hqContract?.id) throw contractErr || new Error('Failed to create Regional HQ contract.');
+
+        // Create a pending regional HQ stub (inactive until the contract completes).
         const { error: propErr } = await _supabase.from('corp_properties').insert({
             faction_id: faction.id,
             nation_id: nation.id,
@@ -10900,8 +11003,9 @@ async function subCreate() {
             condition: condition,
             city: nation.capital || nation.name,
             purchased_at_tick: currentTick,
-            is_active: true,
+            is_active: false,
             subsector: _subSelectedSubsector || faction?.corp_subsector || null,
+            built_via_contract_id: hqContract.id,
         });
         if (propErr) throw propErr;
 
@@ -10938,7 +11042,7 @@ async function subCreate() {
         _subCustomName = '';
         _subCustomAbbr = '';
         await subReloadCards();
-        alert('Subsidiary "' + subName + '" established in ' + nation.name + '!\n\nCost: ' + hfFmtBig(cost) + '\nRegional HQ created with ' + condition + '% condition.');
+        alert('Subsidiary build commissioned in ' + nation.name + '!\n\nCost reserved: ' + hfFmtBig(cost) + '\nContract: ' + projectCode + '\nRegional HQ will activate after construction is completed.');
     } catch (err) {
         alert('Failed: ' + err.message);
     } finally {
