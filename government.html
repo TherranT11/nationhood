@@ -1221,8 +1221,11 @@ function renderAdminBanner() {
         hosLast = nation?.head_of_state_last_name;
         hosAge = nation?.head_of_state_age;
     }
-    const hosTitle = isMonarchyGov ? (nation?.monarch_title || 'King') : (isPresidential ? 'Vice President' : 'Head of State');
-    if (hosFirst && hosLast) {
+    const isSemiPres = isSemiPresidential(nation);
+    const isPurePresidential = isPresidential && !isSemiPres;
+    const hosTitle = isMonarchyGov ? (nation?.monarch_title || 'King') : (isPurePresidential ? 'Vice President' : 'Head of State');
+    // Semi-Presidential: President already shown above, don't duplicate as "Head of State"
+    if (hosFirst && hosLast && !isSemiPres) {
         const hosName = `${hosFirst} ${hosLast}`;
         const hosInitials = hosName.split(' ').map(n => n[0] || '').join('');
         const hosColor = isMonarchyGov ? '#c8a832' : 'var(--text-dim)';
