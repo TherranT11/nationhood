@@ -3067,12 +3067,11 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             }
 
             const corps = corpFactions || [];
-            if (corps.length === 0) continue;
 
-            summary.corpsProcessed += corps.length;
-            console.log(`[advance-corp-tick] ${nation.name}: ${corps.length} corporation(s)`);
-
-            // ── Construction Sector ──────────────────────────────────────
+            // ── Construction Sector (runs for ALL nations) ───────────────
+            // Contract generation, bid resolution, and project advancement
+            // are not gated behind local corp presence — corps from any
+            // nation can bid on contracts.
             try {
                 // Bid resolution FIRST: expired bidding windows → award winners
                 const bidResults = await resolveExpiredBids(supabase, nation.id, currentTick);
@@ -3278,6 +3277,11 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Construction failed for ${nation.name} (non-fatal):`, constructionErr);
                 summary.errors.push({ nation: nation.name, sector: 'construction', error: String(constructionErr) });
             }
+
+            // ── Corp-specific processing (requires local corporations) ──
+            if (corps.length === 0) continue;
+            summary.corpsProcessed += corps.length;
+            console.log(`[advance-corp-tick] ${nation.name}: ${corps.length} corporation(s)`);
 
             // ── Property Effects (maintenance, condition degradation) ──
             try {

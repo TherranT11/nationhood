@@ -896,6 +896,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
         <div class="id-card__rows" id="id-rows"></div>
         <div id="corp-logo-upload"></div>
         <div id="slogan-editor"></div>
+        <div id="bankruptcy-action"></div>
       </div>
     </div>
 
@@ -986,16 +987,6 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
     </div>
   </div>
 
-  <!-- Dissolve Corporation -->
-  <div style="display:flex;justify-content:center;padding:40px 14px 60px;">
-    <div id="dissolve-box" style="border:1px solid #3a2020;background:rgba(204,85,85,0.03);padding:20px 32px;text-align:center;max-width:400px;width:100%;">
-      <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:2px;color:#a44;margin-bottom:8px;text-transform:uppercase;">Irreversible Action</div>
-      <button id="dissolve-btn" onclick="dissolveCorporation()" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#c55;background:transparent;border:1px solid #c55;padding:8px 28px;cursor:pointer;transition:all 0.15s;">Dissolve Corporation</button>
-      <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:8px;line-height:1.5;">
-        Permanently removes this corporation, all properties,<br>equipment, and inventory. Debts and active projects remain.
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- Property Sell/Refurbish Modal Overlay -->
@@ -1050,7 +1041,7 @@ async function init() {
         return;
     }
 
-    // Persist the active faction so dissolve and other actions can find it
+    // Persist the active faction so bankruptcy and other actions can find it
     sessionStorage.setItem('active_faction_id', faction.id);
 
     // If active faction isn't a corporation, redirect to party dashboard
@@ -1194,6 +1185,9 @@ async function init() {
     window._currentTick = currentTick;
     window._nationStats = nationStats;
     window._factionData = faction;
+
+    // ── Render bankruptcy action under CEO ──
+    await renderBankruptcyAction(user, faction, currentTick);
 
     // ── Render all dashboard cards ──
     const wfData = renderWorkforce(nationStats, nationName, faction);
@@ -2427,19 +2421,68 @@ window.saveSlogan = saveSlogan;
 window.toggleCorpDropdown = toggleCorpDropdown;
 window.switchToFaction = switchToFaction;
 
-// ==================== DISSOLVE CORPORATION ====================
+// ==================== DECLARE BANKRUPTCY ====================
 
-let _dissolving = false;
+const BANKRUPTCY_COOLDOWN_TICKS = 24;
+const LOAN_PAYBACK_CEILING = 0.50; // 50% of market valuation
 
-async function dissolveCorporation() {
-    if (_dissolving) { console.warn('Dissolve already in progress'); return; }
+// Shared cooldown check — returns { onCooldown, ticksLeft }
+async function checkBankruptcyCooldown(userId, currentTick) {
+    const cooldownTick = currentTick - BANKRUPTCY_COOLDOWN_TICKS;
+    const { data: recentBankruptcy } = await _supabase
+        .from('event_log')
+        .select('fired_at_tick, effects_applied')
+        .eq('trigger_key', 'corp_bankruptcy')
+        .gte('fired_at_tick', cooldownTick)
+        .order('fired_at_tick', { ascending: false })
+        .limit(20);
+
+    const myRecent = (recentBankruptcy || []).find(e => e.effects_applied?.user_id === userId);
+    const ticksLeft = myRecent
+        ? Math.max(0, (myRecent.fired_at_tick + BANKRUPTCY_COOLDOWN_TICKS) - currentTick)
+        : 0;
+    return { onCooldown: ticksLeft > 0, ticksLeft };
+}
+
+async function renderBankruptcyAction(user, faction, currentTick) {
+    const container = document.getElementById('bankruptcy-action');
+    if (!container) return;
+
+    const { onCooldown, ticksLeft } = await checkBankruptcyCooldown(user.id, currentTick);
+
+    container.innerHTML = `
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-0);">
+            <div class="id-row" style="border-bottom:none;flex-direction:column;align-items:flex-start;gap:6px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+                    <span class="id-row__label" style="color:#a44;">CEO Action</span>
+                </div>
+                <div style="width:100%;">
+                    <button id="bankruptcy-btn" onclick="declareBankruptcy()" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#c55;background:transparent;border:1px solid #c55;padding:6px 16px;cursor:pointer;transition:all 0.15s;width:100%;" ${onCooldown ? 'disabled' : ''}>
+                        ${onCooldown ? 'Bankruptcy Cooldown (' + ticksLeft + ' ticks)' : 'Declare Bankruptcy'}
+                    </button>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);line-height:1.5;">
+                    The CEO officially files for bankruptcy, ceasing all operations. Outstanding loans will be repaid up to 50% of the corporation's market valuation.
+                </div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:#c55;line-height:1.5;">
+                    This will dissolve your corporation. Loans will be paid back, and you will need to found a new corporation. There is a 24 tick cooldown on declaring bankruptcy.
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+let _declaring = false;
+
+async function declareBankruptcy() {
+    if (_declaring) { console.warn('Bankruptcy already in progress'); return; }
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { alert('Not logged in.'); return; }
 
     const factionId = sessionStorage.getItem('active_faction_id');
     if (!factionId) { alert('No active faction selected.'); return; }
 
-    // Find the active corp faction — fetch fresh from DB to avoid stale cache
+    // Fetch fresh corp data
     const { data: freshCorp, error: corpErr } = await _supabase
         .from('factions')
         .select('*')
@@ -2450,42 +2493,118 @@ async function dissolveCorporation() {
 
     if (corpErr || !freshCorp) {
         alert('No active corporation found. It may have already been dissolved.');
-        console.error('Dissolve lookup failed:', corpErr?.message, 'factionId:', factionId);
+        console.error('Bankruptcy lookup failed:', corpErr?.message, 'factionId:', factionId);
         return;
     }
     const corp = freshCorp;
-
     const corpName = corp.faction_name || 'this corporation';
+
+    // Get current tick
+    const { data: shardData, error: shardErr } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    if (shardErr || !shardData) {
+        alert('Failed to read game tick. Please try again.');
+        return;
+    }
+    const currentTick = shardData.current_tick || 0;
+
+    // Check cooldown
+    const { onCooldown, ticksLeft } = await checkBankruptcyCooldown(user.id, currentTick);
+    if (onCooldown) {
+        alert('Bankruptcy is on cooldown. You must wait ' + ticksLeft + ' more tick' + (ticksLeft !== 1 ? 's' : '') + ' before declaring bankruptcy again.');
+        return;
+    }
 
     // Two-step confirmation
     if (!confirm(
-        'DISSOLVE ' + corpName.toUpperCase() + '?\n\n' +
+        'DECLARE BANKRUPTCY — ' + corpName.toUpperCase() + '?\n\n' +
         'This will permanently:\n' +
-        '• Remove the corporation from the game\n' +
+        '• Dissolve the corporation\n' +
         '• Delete all properties, equipment, and inventory\n' +
-        '• Remove all cash reserves\n' +
-        '• Outstanding debts and active projects will remain\n\n' +
+        '• Pay back outstanding loans (up to 50% of market valuation)\n' +
+        '• Remove all remaining cash reserves\n\n' +
+        'You will need to found a new corporation.\n' +
+        'There is a 24 tick cooldown on declaring bankruptcy.\n\n' +
         'This action CANNOT be undone.'
     )) return;
 
-    const typed = prompt('Type "DISSOLVE" to confirm permanent dissolution of ' + corpName + ':');
-    if (typed !== 'DISSOLVE') { alert('Dissolution cancelled.'); return; }
+    const typed = prompt('Type "BANKRUPT" to confirm bankruptcy of ' + corpName + ':');
+    if (typed !== 'BANKRUPT') { alert('Bankruptcy cancelled.'); return; }
 
-    _dissolving = true;
-    const btn = document.getElementById('dissolve-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'DISSOLVING...'; btn.style.opacity = '0.5'; }
+    _declaring = true;
+    const btn = document.getElementById('bankruptcy-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'DECLARING BANKRUPTCY...'; btn.style.opacity = '0.5'; }
 
     try {
-        // Helper: run a Supabase mutation and throw on error
         async function run(op) {
             const { error } = await op;
             if (error) throw error;
         }
 
+        // ── Calculate market valuation for loan payback ceiling ──
+        const cashReserves = Number(corp.corp_cash_reserves) || 0;
+
+        // Sum property values
+        const { data: props } = await _supabase
+            .from('corp_properties')
+            .select('purchase_price, condition')
+            .eq('faction_id', factionId);
+        let propertyValue = 0;
+        for (const p of (props || [])) {
+            const cond = Number(p.condition || 0) / 100;
+            propertyValue += Math.round(Number(p.purchase_price || 0) * cond);
+        }
+
+        const totalAssets = cashReserves + propertyValue;
+        const outstandingLoans = Number(corp.corp_loans) || 0;
+        const netWorth = totalAssets - outstandingLoans;
+        const demandBonus = 0.30;
+        const valuation = Math.round(netWorth * (1 + demandBonus));
+        const loanPaybackCap = Math.max(0, Math.round(valuation * LOAN_PAYBACK_CEILING));
+
+        // ── Pay back active loans up to 50% of valuation ──
+        const { data: activeLoans } = await _supabase
+            .from('finance_active_loans')
+            .select('*')
+            .eq('borrower_faction_id', factionId)
+            .in('status', ['current', 'late', 'delinquent'])
+            .order('started_tick', { ascending: true });
+
+        let totalPayback = 0;
+        for (const loan of (activeLoans || [])) {
+            const remaining = loan.principal - loan.total_paid;
+            if (remaining <= 0) continue;
+            const canPay = Math.min(remaining, loanPaybackCap - totalPayback);
+            if (canPay <= 0) break;
+
+            // Credit the lender — read current balance then add payback
+            const { data: lender } = await _supabase
+                .from('factions')
+                .select('corp_cash_reserves')
+                .eq('id', loan.lender_faction_id)
+                .single();
+            if (lender) {
+                await run(_supabase.from('factions')
+                    .update({ corp_cash_reserves: (Number(lender.corp_cash_reserves) || 0) + canPay })
+                    .eq('id', loan.lender_faction_id));
+            }
+
+            // Mark loan as repaid
+            await run(_supabase.from('finance_active_loans')
+                .update({
+                    status: 'repaid',
+                    total_paid: loan.total_paid + canPay,
+                    completed_tick: currentTick,
+                })
+                .eq('id', loan.id));
+
+            totalPayback += canPay;
+        }
+
+        // ── Clean up corporation data (same as old dissolve) ──
         // 1. Delete all bids this corp has submitted
         await run(_supabase.from('contract_bids').delete().eq('faction_id', factionId));
 
-        // 2. Expire any open contracts this corp issued (not in-progress — those stay)
+        // 2. Expire any open contracts this corp issued
         await run(_supabase.from('construction_contracts')
             .update({ status: 'expired' })
             .eq('issuer_faction_id', factionId)
@@ -2498,36 +2617,42 @@ async function dissolveCorporation() {
         // 4. Delete properties
         await run(_supabase.from('corp_properties').delete().eq('faction_id', factionId));
 
-        // 5. Delete warehouse / material inventory (tables may not exist yet)
+        // 5. Delete warehouse / material inventory
         await _supabase.from('corp_material_inventory').delete().eq('faction_id', factionId);
         await _supabase.from('corp_warehouse').delete().eq('faction_id', factionId);
 
-        // 6. Delete executives and agitator pool entries for this corp
+        // 6. Delete executives and agitator pool entries
         await _supabase.from('corp_executives').delete().eq('faction_id', factionId);
         await _supabase.from('faction_agitators').delete().eq('faction_id', factionId);
 
-        // 7. Delete the corporation row entirely — dissolved corps should not persist
+        // 7. Delete the corporation row
         await run(_supabase.from('factions').delete().eq('id', factionId));
 
-        // 8. Log bankruptcy event
-        const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const dissolveTick = shardData?.current_tick || 0;
-        await _supabase.from('event_log').insert({
+        // 8. Log bankruptcy event with user_id for cooldown tracking
+        const paybackNote = totalPayback > 0
+            ? ' $' + totalPayback.toLocaleString() + ' was repaid to creditors.'
+            : '';
+        await run(_supabase.from('event_log').insert({
             nation_id: corp.nation_id,
             faction_id: factionId,
             event_name: corpName + ' — Bankruptcy',
-            description_used: corpName + ' has officially filed for bankruptcy. It has laid off its executive staff and ceased operations.',
+            description_used: corpName + ' has officially filed for bankruptcy. It has laid off its executive staff and ceased operations.' + paybackNote,
             category: 'business',
             trigger_key: 'corp_bankruptcy',
-            effects_applied: { corp_name: corpName, sector: corp.corp_sector },
-            fired_at_tick: dissolveTick,
-        });
+            effects_applied: {
+                corp_name: corpName,
+                sector: corp.corp_sector,
+                user_id: user.id,
+                loan_payback: totalPayback,
+                valuation: valuation,
+            },
+            fired_at_tick: currentTick,
+        }));
 
         // 9. Clear session and redirect
         sessionStorage.removeItem('active_faction_id');
         sessionStorage.removeItem('nationhood_state');
 
-        // Check if user still has other active factions
         const { data: remaining, error: remainErr } = await _supabase
             .from('factions')
             .select('id, faction_type')
@@ -2539,25 +2664,25 @@ async function dissolveCorporation() {
 
         if (party) {
             sessionStorage.setItem('active_faction_id', party.id);
-            alert(corpName + ' has been dissolved.\n\nRedirecting to your political party.');
+            alert(corpName + ' has declared bankruptcy.' + (totalPayback > 0 ? '\n$' + totalPayback.toLocaleString() + ' repaid to creditors.' : '') + '\n\nRedirecting to your political party.');
             window.location.href = 'dashboard.html';
         } else if (otherCorp) {
             sessionStorage.setItem('active_faction_id', otherCorp.id);
-            alert(corpName + ' has been dissolved.\n\nRedirecting to your other corporation.');
+            alert(corpName + ' has declared bankruptcy.' + (totalPayback > 0 ? '\n$' + totalPayback.toLocaleString() + ' repaid to creditors.' : '') + '\n\nRedirecting to your other corporation.');
             window.location.href = 'corp-dashboard.html';
         } else {
-            alert(corpName + ' has been dissolved.\n\nYou have no remaining factions.');
+            alert(corpName + ' has declared bankruptcy.' + (totalPayback > 0 ? '\n$' + totalPayback.toLocaleString() + ' repaid to creditors.' : '') + '\n\nYou have no remaining factions.');
             window.location.href = 'faction-select.html';
         }
     } catch (err) {
-        alert('Dissolution failed: ' + (err.message || err) + '\n\nPlease try again or contact support.');
-        if (btn) { btn.disabled = false; btn.textContent = 'Dissolve Corporation'; btn.style.opacity = '1'; }
+        alert('Bankruptcy failed: ' + (err.message || err) + '\n\nPlease try again or contact support.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Declare Bankruptcy'; btn.style.opacity = '1'; }
     } finally {
-        _dissolving = false;
+        _declaring = false;
     }
 }
 
-window.dissolveCorporation = dissolveCorporation;
+window.declareBankruptcy = declareBankruptcy;
 
 // ==================== SELL PROPERTY ====================
 
