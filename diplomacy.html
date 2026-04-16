@@ -154,6 +154,7 @@
             <div style="display:flex;gap:8px;">
                 <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-structured-btn" onclick="negStructuredArticleOpen()">Add Article</button>
                 <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-article-btn" onclick="negArticleShowForm()">Add Text Article</button>
+                <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-name-btn" onclick="negNameAgreementOpen()" style="border-color:var(--amber);color:var(--amber);">Name Agreement</button>
             </div>
             <div style="display:flex;gap:8px;margin-left:auto;">
                 <button id="trade-neg-agreement-btn" onclick="negAgreementToggle()" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:8px 16px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:pointer;transition:all 0.15s;">Not in Agreement [0/2]</button>
@@ -21638,7 +21639,7 @@ async function openTradeNegModal(partnerNationId) {
                 <img src="${escapeHtml(myFlag)}" alt="" class="trade-neg-header__flag" onerror="this.style.display='none'">
                 <span class="trade-neg-header__name">${escapeHtml(myNation.name)}</span>
             </div>
-            <div class="trade-neg-header__title">${escapeHtml(myNation.name)}-${escapeHtml(partner.name)} Trade Agreement</div>
+            <div class="trade-neg-header__title" id="trade-neg-title-text">${escapeHtml(neg.agreement_name || (myNation.name + '-' + partner.name + ' Trade Agreement'))}</div>
             <div class="trade-neg-header__nation">
                 <span class="trade-neg-header__name">${escapeHtml(partner.name)}</span>
                 <img src="${escapeHtml(partnerFlag)}" alt="" class="trade-neg-header__flag" onerror="this.style.display='none'">
@@ -21677,6 +21678,14 @@ async function openTradeNegModal(partnerNationId) {
     // Render articles in left panel + agreement button
     negArticlesRender();
     negAgreementRender();
+
+    // Update Name Agreement button state
+    const nameBtn = document.getElementById('trade-neg-name-btn');
+    if (nameBtn && _activeNegModal.agreementName && _activeNegModal.agreementName.trim()) {
+        nameBtn.style.borderColor = 'var(--green)';
+        nameBtn.style.color = 'var(--green)';
+        nameBtn.textContent = 'Rename Agreement';
+    }
 
     // Load existing messages + start realtime
     await negChatLoad(neg.id);
@@ -21872,9 +21881,33 @@ function negArticlesRender() {
             ? `<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;padding:1px 5px;color:var(--accent);background:rgba(90,175,165,0.08);border:1px solid rgba(90,175,165,0.15);margin-left:6px;vertical-align:middle;">${escapeHtml(art.article_type.replace('_',' ').toUpperCase())}</span>`
             : '';
 
+        // Demand context for trade_flow articles
+        let demandCtxHtml = '';
+        if (art.article_type === 'trade_flow' && art.data) {
+            const d = art.data;
+            const buyerNationId = d.direction === 'a_buys_b' ? _activeNegModal.myNationId : _activeNegModal.partnerNationId;
+            const buyerName = d.direction === 'a_buys_b' ? _activeNegModal.myNationName : _activeNegModal.partnerNationName;
+            const isBuyerMe = buyerNationId === _activeNegModal.myNationId;
+
+            if (isBuyerMe && _tradeFlows[d.commodity]) {
+                const flow = _tradeFlows[d.commodity];
+                const domesticDemand = Number(flow.import_demand || 0);
+                const alreadyImporting = Number(flow.import_volume || 0);
+                const remaining = Math.max(0, domesticDemand - alreadyImporting);
+                const tradeVol = Number(d.volume || 0);
+                const overshoot = tradeVol > remaining;
+                const color = overshoot ? 'var(--amber)' : 'var(--green)';
+                demandCtxHtml = `<div style="font-family:var(--font-mono);font-size:9px;color:${color};margin-top:4px;">
+                    ${escapeHtml(buyerName)}'s remaining demand: ${formatNegMoney(remaining)}/tick
+                    ${remaining > 0 ? '(after domestic production and existing trade)' : '(fully supplied)'}
+                </div>`;
+            }
+        }
+
         html += `<div class="trade-neg-article">
             <div class="trade-neg-article__num">Article ${num}.${typeTag}</div>
             <div class="trade-neg-article__text">${artContent}</div>
+            ${demandCtxHtml}
             <div class="trade-neg-article__meta">
                 <span>Added by ${escapeHtml(art.author_nation_name || 'Unknown')}</span>
                 ${isMine
@@ -21896,6 +21929,61 @@ function negArticlesRender() {
     }
     container.innerHTML = html;
 }
+
+// ── Name Agreement ──
+
+function negNameAgreementOpen() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form || !_activeNegModal) return;
+    const currentName = _activeNegModal.agreementName || '';
+    form.style.display = 'block';
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">Name This Agreement</div>
+        <input id="neg-name-input" type="text" maxlength="120" value="${escapeHtml(currentName)}" placeholder="e.g. Melizea-Hajjara Fuel & Dairy Accord" style="
+            width:100%;padding:8px 10px;background:var(--bg-1);border:1px solid var(--border-main);
+            color:var(--text-bright);font-family:var(--font-sans);font-size:13px;outline:none;box-sizing:border-box;
+        ">
+        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:3px;">120 characters max. Required before both parties can agree.</div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button onclick="negNameAgreementSave()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--amber,#b8860b);border:none;cursor:pointer;">Save Name</button>
+        </div>
+    </div>`;
+    document.getElementById('neg-name-input')?.focus();
+}
+
+let _negNaming = false;
+async function negNameAgreementSave() {
+    if (_negNaming || !_activeNegModal) return;
+    const input = document.getElementById('neg-name-input');
+    const name = (input?.value || '').trim();
+    if (!name) { alert('Enter a name for the agreement.'); return; }
+
+    _negNaming = true;
+    const { error } = await _supabase.from('trade_negotiations')
+        .update({ agreement_name: name })
+        .eq('id', _activeNegModal.negotiationId);
+
+    if (error) { alert('Failed to save name: ' + error.message); _negNaming = false; return; }
+
+    _activeNegModal.agreementName = name;
+    const titleEl = document.getElementById('trade-neg-title-text');
+    if (titleEl) titleEl.textContent = name;
+
+    // Update the Name Agreement button to show it's been set
+    const nameBtn = document.getElementById('trade-neg-name-btn');
+    if (nameBtn) {
+        nameBtn.style.borderColor = 'var(--green)';
+        nameBtn.style.color = 'var(--green)';
+        nameBtn.textContent = 'Rename Agreement';
+    }
+
+    negArticleCancelForm();
+    _negNaming = false;
+}
+
+window.negNameAgreementOpen = negNameAgreementOpen;
+window.negNameAgreementSave = negNameAgreementSave;
 
 // ── Structured Articles: Summary renderer ──
 
@@ -22568,6 +22656,10 @@ async function negAgreementToggle() {
     if (_activeNegModal.status === 'cancelled' || _activeNegModal.status === 'ratification') {
         return;
     }
+    if (!_activeNegModal.agreementName || !_activeNegModal.agreementName.trim()) {
+        alert('The agreement must be named before both parties can agree. Click "Name Agreement" first.');
+        return;
+    }
     const m = _activeNegModal;
     const myApproved = m.weAreA ? m.approvedByA : m.approvedByB;
     const approveCol = m.weAreA ? 'approved_by_a' : 'approved_by_b';
@@ -22635,13 +22727,31 @@ async function negAgreementToggle() {
             updateData.bill_a_id = resultA.data?.id || null;
             updateData.bill_b_id = resultB.data?.id || null;
 
-            // Fire events
-            const eventDesc = 'The trade agreement "' + agreementName + '" between ' + nameA + ' and ' + nameB + ' has been sent to both parliaments for ratification.';
-            _supabase.from('event_log').insert([nationAId, nationBId].map(nid => ({
-                nation_id: nid,
-                event_name: agreementName + ' — Ratification',
-                category: 'trade', description_chosen: eventDesc, fired_at_tick: tick,
-            }))).then(() => {});
+            // Build trade goods list from articles for the event description
+            const tradeGoods = (m.articles || [])
+                .filter(a => a.article_type === 'trade_flow' && a.data?.commodity)
+                .map(a => TRADE_SECTOR_LABELS[a.data.commodity] || a.data.commodity);
+            const uniqueGoods = [...new Set(tradeGoods)];
+            const goodsText = uniqueGoods.length > 0
+                ? ' which involved trade of ' + uniqueGoods.join(', ') + (uniqueGoods.length < (m.articles || []).length ? ' and other goods' : '')
+                : '';
+
+            // Fire signing event
+            const signingDesc = nameA + ' and ' + nameB + ' came together and signed the ' + agreementName + goodsText + '.';
+            const ratifyDesc = 'The ' + agreementName + ' has been sent to both parliaments for ratification.';
+            _supabase.from('event_log').insert([nationAId, nationBId].flatMap(nid => [
+                {
+                    nation_id: nid,
+                    event_name: agreementName + ' — Signed',
+                    trigger_key: 'trade_agreement_signed',
+                    category: 'trade', description_chosen: signingDesc, fired_at_tick: tick,
+                },
+                {
+                    nation_id: nid,
+                    event_name: agreementName + ' — Ratification',
+                    category: 'trade', description_chosen: ratifyDesc, fired_at_tick: tick,
+                },
+            ])).then(() => {});
         }
 
         const { error } = await _supabase.from('trade_negotiations').update(updateData).eq('id', m.negotiationId);
@@ -22683,6 +22793,7 @@ function closeTradeNegModal() {
     _negAgreementToggling = false;
     _negStructuredAdding = false;
     _negStructuredType = null;
+    _negNaming = false;
 }
 
 let _negWithdrawing = false;
