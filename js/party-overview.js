@@ -164,7 +164,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             supabase.from('faction_electoral_standing').select('*').eq('nation_id', nationId),
             supabase.from('campaign_actions').select('*').eq('party_id', factionId).order('tick_performed', { ascending: false }).limit(20),
             supabase.from('caucus_factions').select('*').eq('party_id', factionId).eq('is_active', true),
-            supabase.from('elections').select('*').eq('nation_id', nationId).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(1),
+            supabase.from('elections').select('*').eq('nation_id', nationId).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(5),
         ]);
 
         // Log errors but don't fail
@@ -190,9 +190,21 @@ export async function initPartyOverview(supabase, state, containerId) {
             govResult = computeGovernanceScore(nation, admin.stats_at_start, admin.started_at_tick, currentTick);
         }
 
-        // Next election
-        const nextElection = (electionResult.data || [])[0] || null;
+        // Next election — determine if it's a General (pres+parl same tick) or Midterm (parl only)
+        const upcomingElections = electionResult.data || [];
+        const nextElection = upcomingElections[0] || null;
         const nextElectionTicks = nextElection ? Math.max(0, nextElection.election_tick - currentTick) : null;
+        let nextElectionLabel = null;
+        if (nextElection && nation) {
+            const isPresNation = nation.government_type?.toLowerCase().includes('presidential') ||
+                nation.hos_election_method === 'direct_vote';
+            if (isPresNation) {
+                // Check if there's a presidential election at the same tick
+                const hasPresAtSameTick = upcomingElections.some(e =>
+                    e.election_type === 'presidential' && e.election_tick === nextElection.election_tick);
+                nextElectionLabel = hasPresAtSameTick ? 'General' : 'Midterm';
+            }
+        }
 
         // Process ideology axes
         const ideologyAxes = processIdeologyAxes(factionId, ideoMap, allParties);
@@ -215,6 +227,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             caucuses: caucusResult.data || [],
             nextElection: nextElection,
             nextElectionTicks: nextElectionTicks,
+            nextElectionLabel: nextElectionLabel,
             ideologyAxes: ideologyAxes,
         };
 
@@ -294,6 +307,7 @@ function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
     const isMonarchy = (_state.nation?.government_type || '').toLowerCase().includes('monarchy');
     const elTicks = isMonarchy ? 'No elections' : (o.nextElectionTicks != null ? o.nextElectionTicks : '—');
     const elColor = isMonarchy ? 'var(--text-dim)' : ((typeof elTicks === 'number' && elTicks <= 3) ? 'var(--red)' : 'var(--text-bright)');
+    const elLabel = isMonarchy ? 'NEXT ELECTION' : (o.nextElectionLabel ? 'NEXT ' + o.nextElectionLabel.toUpperCase() : 'NEXT ELECTION');
 
     return `<div class="po-summary">
         <div class="po-summary-cell" style="display:flex;flex-direction:row;align-items:center;gap:8px;">
@@ -322,7 +336,7 @@ function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
             </div>
         </div>
         <div class="po-summary-cell" style="text-align:center;">
-            <div class="po-summary-label">NEXT ELECTION</div>
+            <div class="po-summary-label">${elLabel}</div>
             <div class="po-summary-value" style="color:${elColor};">${elTicks}${typeof elTicks === 'number' ? ' ticks' : ''}</div>
         </div>
     </div>`;
