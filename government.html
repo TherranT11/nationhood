@@ -116,6 +116,13 @@ const MINISTRY_KEYS_CABINET = [
 const USE_COUNT_SCALE = [1.0, 0.70, 0.40, 0.15];
 function getUseCountScale(useCount) { return USE_COUNT_SCALE[Math.min(useCount, 3)]; }
 
+function isImplementedMinistryAction(action) {
+    if (!action) return false;
+    const hasApConfig = Array.isArray(action.apCosts) && action.apCosts.length > 0;
+    const hasCustomHandlerMarker = !!(action.customFlow || action.directions || action.isSpecialAction || action.isResolution);
+    return hasApConfig || hasCustomHandlerMarker;
+}
+
 const MINISTRY_ACTIONS = {
     interior: {
         actions: [
@@ -521,7 +528,6 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_expand_infrastructure',
                 name: 'Expand Infrastructure',
                 desc: 'Fund construction and expansion of major transport infrastructure including highways, rail, and ports.',
-                comingSoon: true, // Disabled — future phase
                 apCosts: [3, 4, 6, 8],
                 oneTimeCostPerMillion: 15_000_000,
                 delay: 3,
@@ -1600,7 +1606,7 @@ function renderAdminCabinet() {
 
         // Count available actions for this ministry
         const actionConfig = MINISTRY_ACTIONS[m.ministry_key];
-        const actionCount = actionConfig?.actions?.filter(a => !a.comingSoon)?.length || 0;
+        const actionCount = actionConfig?.actions?.filter(isImplementedMinistryAction)?.length || 0;
 
         // Scandal detection (from campaign_actions — simplified: check if ministry has a scandal note)
         const hasScandalBadge = false; // Phase 5 timeline will surface these
@@ -1683,7 +1689,7 @@ function renderMinistryExpandedContent(ministry, partyColor) {
     } else {
         // Ministry actions from config
         const actionConfig = MINISTRY_ACTIONS[key];
-        const actions = actionConfig?.actions?.filter(a => !a.comingSoon) || [];
+        const actions = actionConfig?.actions?.filter(isImplementedMinistryAction) || [];
 
         if (actions.length > 0) {
             html += `<div class="ga-stat-label" style="margin-bottom:4px;">MINISTRY ACTIONS</div>`;
