@@ -92,6 +92,8 @@ export async function initCoalitionFormation(supabase, state) {
                 const presPartyId = activePresident?.faction_id || (_allParties[0]?.id);
 
                 if (presPartyId) {
+                    const isSemiPres = (nation.government_type || '').toLowerCase().includes('semi');
+
                     // Create government formation
                     await supabase.from('government_formations').insert({
                         nation_id: nation.id,
@@ -102,8 +104,14 @@ export async function initCoalitionFormation(supabase, state) {
                         formed_at: new Date().toISOString(),
                     });
 
-                    // Seed ministries assigned to president's party (no PM)
-                    const PRES_MINISTRIES = [
+                    // Delete existing ministries to avoid duplicates
+                    await supabase.from('ministries').delete()
+                        .eq('nation_id', nation.id).eq('is_active', true);
+
+                    // Semi-Presidential: ALL slots vacant (including PM) — President nominates PM,
+                    // then PM appoints cabinet after parliamentary confirmation
+                    // Pure Presidential: slots assigned to president's party (no PM)
+                    const CABINET_MINISTRIES = [
                         ['interior', 'Minister of the Interior'], ['foreign', 'Minister of Foreign Affairs'],
                         ['defense', 'Minister of Defense'], ['finance', 'Minister of Finance'],
                         ['education', 'Minister of Education'], ['healthcare', 'Minister of Health'],
@@ -111,14 +119,20 @@ export async function initCoalitionFormation(supabase, state) {
                         ['trade', 'Minister of Trade'], ['energy', 'Minister of Energy'],
                         ['transportation', 'Minister of Transportation'],
                     ];
-                    const rows = PRES_MINISTRIES.map(([key, name]) => ({
+                    if (isSemiPres) {
+                        CABINET_MINISTRIES.unshift(['prime_minister', 'Prime Minister']);
+                    }
+                    const rows = CABINET_MINISTRIES.map(([key, name]) => ({
                         nation_id: nation.id, ministry_key: key, ministry_name: name,
-                        party_id: presPartyId, is_active: true,
+                        party_id: isSemiPres ? null : presPartyId,
+                        is_active: true,
                     }));
-                    // Delete existing ministries first to avoid duplicates, then insert fresh
-                    await supabase.from('ministries').delete()
-                        .eq('nation_id', nation.id).eq('is_active', true);
                     await supabase.from('ministries').insert(rows);
+
+                    // Semi-Presidential: ensure no HOG row exists (PM is vacant)
+                    if (isSemiPres) {
+                        await supabase.from('head_of_government').delete().eq('nation_id', nation.id);
+                    }
                 }
             } catch (presGovErr) {
                 console.warn('[Coalition] Presidential auto-gov failed:', presGovErr.message);
@@ -213,11 +227,15 @@ export async function renderFormationTab(root) {
     const isPresidentialRender = (_state.nation?.government_type || '').toLowerCase().includes('presidential')
         || _state.nation?.hos_election_method === 'direct_vote';
     if (isPresidentialRender) {
+        const isSemiPresRender = (_state.nation?.government_type || '').toLowerCase().includes('semi');
         root.innerHTML = `<div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">&#127979;</div>
-                <div class="cf-no-title">Presidential System</div>
-                <div class="cf-no-desc">The President governs directly and nominates cabinet ministers. No coalition formation is required.</div>
+                <div class="cf-no-title">${isSemiPresRender ? 'Semi-Presidential System' : 'Presidential System'}</div>
+                <div class="cf-no-desc">${isSemiPresRender
+                    ? 'The President nominates a Prime Minister for parliamentary confirmation. The PM then appoints cabinet ministers. No coalition formation is required.'
+                    : 'The President governs directly and nominates cabinet ministers. No coalition formation is required.'
+                }</div>
             </div>
         </div>`;
         return;
