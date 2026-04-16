@@ -1397,8 +1397,49 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const propertyRevBonus = propData?.propertyRevBonus || 0;
     const marketRev = Math.round(Math.round(annualMarketRev / 12) * workforceUtil) + propertyRevBonus;
 
-    const govContracts = 0;
-    const pvtContracts = 0;
+    // Private Contracts: sector-specific revenue from active deals
+    let govContracts = 0;
+    let pvtContracts = 0;
+    if (faction?.id) {
+        const sector = faction.corp_sector || '';
+        if (sector === 'Finance') {
+            // Finance: interest + premiums earned from active loans/policies
+            const { data: finLoans } = await _supabase.from('finance_active_loans')
+                .select('monthly_payment, interest_rate, principal, total_paid, finance_loan_requests!inner(request_type)')
+                .eq('lender_faction_id', faction.id)
+                .in('status', ['current', 'late', 'delinquent']);
+            for (const loan of (finLoans || [])) {
+                const reqType = loan.finance_loan_requests?.request_type || 'loan';
+                if (reqType === 'insurance') {
+                    pvtContracts += Number(loan.monthly_payment || 0);
+                } else if (reqType === 'loan') {
+                    const remaining = loan.principal - (loan.total_paid || 0);
+                    const monthlyRate = (loan.interest_rate / 100) / 12;
+                    pvtContracts += Math.round(remaining * monthlyRate);
+                } else if (reqType === 'bond') {
+                    pvtContracts += Number(loan.monthly_payment || 0);
+                }
+            }
+        } else if (sector === 'Construction') {
+            // Construction: revenue from in-progress contracts this corp is building
+            const { data: activeContracts } = await _supabase.from('construction_contracts')
+                .select('budget_ceiling, timeline_ticks')
+                .eq('awarded_to_faction', faction.id)
+                .eq('status', 'in_progress');
+            for (const c of (activeContracts || [])) {
+                pvtContracts += Math.round((c.budget_ceiling || 0) / (c.timeline_ticks || 1));
+            }
+        } else if (sector === 'Shipping') {
+            // Shipping: revenue from active shipping claims
+            const { data: activeClaims } = await _supabase.from('shipping_claims')
+                .select('revenue_per_transit')
+                .eq('faction_id', faction.id)
+                .eq('status', 'active');
+            for (const c of (activeClaims || [])) {
+                pvtContracts += Number(c.revenue_per_transit || 0);
+            }
+        }
+    }
     const totalRevenue = govContracts + pvtContracts + marketRev;
 
     // Expenses — workforce wages from wfData, divided by 12 (monthly)
