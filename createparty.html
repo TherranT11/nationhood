@@ -830,11 +830,20 @@ async function proceed() {
       age: 35 + Math.floor(Math.random() * 20)
     };
 
-    // Create faction record
-    const { error: upsertError } = await _supabase
+    // Check if user already has a primary faction (e.g. a corporation)
+    // If so, create the party as a linked faction to avoid overwriting the corp
+    const { data: existingPrimary } = await _supabase
       .from('factions')
-      .upsert({
-        id: currentUser.id,
+      .select('id, faction_type')
+      .eq('id', currentUser.id)
+      .is('abandoned_at', null)
+      .maybeSingle();
+
+    const isLinkedParty = !!existingPrimary;
+    const partyId = isLinkedParty ? crypto.randomUUID() : currentUser.id;
+
+    const partyRow = {
+        id: partyId,
         faction_type: 'party',
         faction_name: name,
         nation_id: nationData.id,
@@ -859,10 +868,17 @@ async function proceed() {
         momentum_log: [],
         last_action_tick: 0,
         last_seen_tick: currentTick,
-        abandoned_at: null
-      });
+        abandoned_at: null,
+    };
 
-    if (upsertError) throw upsertError;
+    if (isLinkedParty) {
+        partyRow.linked_user_id = currentUser.id;
+        const { error: insertError } = await _supabase.from('factions').insert(partyRow);
+        if (insertError) throw insertError;
+    } else {
+        const { error: upsertError } = await _supabase.from('factions').upsert(partyRow);
+        if (upsertError) throw upsertError;
+    }
 
     // Initialize ideology spectrum
     const m1 = IDEOLOGY_AXIS_MAP[ideology1];
@@ -870,14 +886,14 @@ async function proceed() {
 
     if (m1 && m2) {
       const { error: rpcError } = await _supabase.rpc('initialize_faction_ideology', {
-        p_faction_id: currentUser.id,
+        p_faction_id: partyId,
         p_ideology_1: ideology1,
         p_ideology_2: ideology2
       });
 
       if (rpcError) {
         const row = {
-          faction_id: currentUser.id,
+          faction_id: partyId,
           liberty_equality: 0,
           tradition_progress: 0,
           security_freedom: 0,
@@ -899,7 +915,7 @@ async function proceed() {
     // Reset electoral standing for fresh party — momentum, credibility, governance all start at zero
     try {
       await _supabase.from('faction_electoral_standing').upsert({
-        faction_id: currentUser.id,
+        faction_id: partyId,
         nation_id: nationData.id,
         party_approval: 10,
         momentum: 0,
@@ -913,7 +929,7 @@ async function proceed() {
     if (m1 && m2) {
       try {
         const ideoReset = {
-          faction_id: currentUser.id,
+          faction_id: partyId,
           liberty_equality: 0,
           tradition_progress: 0,
           security_freedom: 0,
@@ -928,16 +944,16 @@ async function proceed() {
 
     // Clean slate: remove any leftover IPO memberships from a previous party
     try {
-      await _supabase.from('ipo_members').delete().eq('faction_id', currentUser.id);
-      await _supabase.from('ipo_ballots').delete().eq('faction_id', currentUser.id);
-      await _supabase.from('ipo_invitations').delete().eq('target_faction_id', currentUser.id);
+      await _supabase.from('ipo_members').delete().eq('faction_id', partyId);
+      await _supabase.from('ipo_ballots').delete().eq('faction_id', partyId);
+      await _supabase.from('ipo_invitations').delete().eq('target_faction_id', partyId);
     } catch (e) { /* non-fatal — tables may not exist */ }
 
     // Pre-cache state so dashboard loads instantly without a re-query
     // (avoids race where the faction isn't found on a fresh DB read)
     try {
       const { data: freshFaction } = await _supabase
-        .from('factions').select('*').eq('id', currentUser.id).single();
+        .from('factions').select('*').eq('id', partyId).single();
       const { data: freshShard } = await _supabase
         .from('shard').select('*').eq('name', 'Alpha Shard').single();
       if (freshFaction && nationData) {
