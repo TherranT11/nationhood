@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { isPresidentialRepublic, hasElectedPresident } from './government-types.js';
+import { isAbsoluteMonarchy, isPresidentialRepublic, hasElectedPresident } from './government-types.js';
 import { IDEOLOGY_OPPOSITES } from './ideology.js';
 
 // ==================== SEAT LOADING ====================
@@ -70,7 +70,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
     // === PRESIDENTIAL SYSTEMS: return virtual coalition from active president ===
     const { data: nationRow } = await supabase
         .from('nations')
-        .select('government_type')
+        .select('government_type, hos_election_method, monarch_faction_id, ruling_faction_id')
         .eq('id', nationId)
         .single();
 
@@ -195,8 +195,46 @@ export async function fetchActiveCoalition(supabase, nationId) {
     if (data) {
         await inferCaretakerStatus(data);
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 15 * 1000);
+        return data;
     }
-    return data;
+
+    // === ABSOLUTE MONARCHY FALLBACK: synthesize virtual coalition for UI context ===
+    const isMonarchyNation = isAbsoluteMonarchy(nationRow) || nationRow?.hos_election_method === 'hereditary';
+    if (!isMonarchyNation) return data;
+
+    const { data: ministries } = await supabase
+        .from('ministries')
+        .select('ministry_key, party_id')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+
+    const ministryAllocations = {};
+    let pmPartyId = null;
+    const partyIds = new Set();
+    for (const m of (ministries || [])) {
+        if (!m.party_id) continue;
+        ministryAllocations[m.ministry_key] = m.party_id;
+        partyIds.add(m.party_id);
+        if (m.ministry_key === 'prime_minister') pmPartyId = m.party_id;
+    }
+
+    const fallbackLeadPartyId = pmPartyId || nationRow?.monarch_faction_id || nationRow?.ruling_faction_id || null;
+    if (!fallbackLeadPartyId) return null;
+
+    partyIds.add(fallbackLeadPartyId);
+    const monarchyFallback = {
+        id: `virtual-monarchy-${nationId}`,
+        nation_id: nationId,
+        party_ids: Array.from(partyIds),
+        lead_party_id: fallbackLeadPartyId,
+        ministry_allocations: ministryAllocations,
+        formed_at: null,
+        status: 'formed',
+        _source: 'absolute_monarchy_virtual'
+    };
+
+    if (typeof qCacheSet === 'function') qCacheSet(cacheKey, monarchyFallback, 15 * 1000);
+    return monarchyFallback;
 }
 
 
