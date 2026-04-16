@@ -70,6 +70,7 @@
 <div id="subtab-trade" class="diplo-subtab-content" style="display:none;">
     <div id="trade-page" style="padding:0 12px 12px;">
         <div id="trade-header-stats"></div>
+        <div id="trade-agreements-row" style="margin-top:8px;"></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
             <div id="trade-left" style="width:480px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;"></div>
             <div id="trade-right" style="flex:1;display:flex;flex-direction:column;gap:8px;"></div>
@@ -777,7 +778,7 @@ async function loadTradeAgreements() {
 }
 
 function renderTradeAgreements() {
-    const left = document.getElementById('trade-left');
+    const left = document.getElementById('trade-agreements-row');
     if (!left) return;
     const nationId = _worldState?.nation?.id;
     const currentTk = _worldState?.shard?.current_tick || 0;
@@ -1015,25 +1016,16 @@ function renderTradeAgreements() {
 
     html += `</div>`;
 
-    // Append after existing economy panel (don't replace it)
-    const existingAgreements = left.querySelector('.tr-agreements-wrapper');
-    if (existingAgreements) {
-        existingAgreements.innerHTML = html;
-    } else {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'tr-agreements-wrapper';
-        wrapper.innerHTML = html;
-        left.appendChild(wrapper);
+    left.innerHTML = html;
 
-        // Click handler for expand/collapse
-        wrapper.onclick = (e) => {
-            const row = e.target.closest('.tr-agreement-row');
-            if (!row) return;
-            const agId = row.dataset.agId;
-            _tradeExpandedAgreement = _tradeExpandedAgreement === agId ? null : agId;
-            renderTradeAgreements();
-        };
-    }
+    // Click handler for expand/collapse
+    left.onclick = (e) => {
+        const row = e.target.closest('.tr-agreement-row');
+        if (!row) return;
+        const agId = row.dataset.agId;
+        _tradeExpandedAgreement = _tradeExpandedAgreement === agId ? null : agId;
+        renderTradeAgreements();
+    };
 }
 
 // ── All-nations trade flow data for partner analysis ──
@@ -21933,6 +21925,7 @@ function negArticlesRender() {
 // ── Name Agreement ──
 
 function negNameAgreementOpen() {
+    if (_activeNegModal?.approvedByA && _activeNegModal?.approvedByB) { return; }
     const form = document.getElementById('trade-neg-add-article-form');
     if (!form || !_activeNegModal) return;
     const currentName = _activeNegModal.agreementName || '';
@@ -22052,6 +22045,7 @@ const NEG_ARTICLE_TYPES = [
 let _negStructuredType = null;
 
 function negStructuredArticleOpen() {
+    if (_activeNegModal?.approvedByA && _activeNegModal?.approvedByB) { return; }
     _negStructuredType = null;
     const form = document.getElementById('trade-neg-add-article-form');
     if (!form) return;
@@ -22478,6 +22472,7 @@ window.negStructuredArticleConfirm = negStructuredArticleConfirm;
 // ── Articles: Show add form ──
 
 function negArticleShowForm() {
+    if (_activeNegModal?.approvedByA && _activeNegModal?.approvedByB) { return; }
     const form = document.getElementById('trade-neg-add-article-form');
     if (!form) return;
     form.style.display = 'block';
@@ -22626,6 +22621,20 @@ function negAgreementRender() {
     const myApproved = _activeNegModal.weAreA ? _activeNegModal.approvedByA : _activeNegModal.approvedByB;
     const theirApproved = _activeNegModal.weAreA ? _activeNegModal.approvedByB : _activeNegModal.approvedByA;
     const count = (myApproved ? 1 : 0) + (theirApproved ? 1 : 0);
+
+    // Disable article buttons at 2/2
+    const addStructBtn = document.getElementById('trade-neg-add-structured-btn');
+    const addTextBtn = document.getElementById('trade-neg-add-article-btn');
+    const nameAgreementBtn = document.getElementById('trade-neg-name-btn');
+    if (count === 2) {
+        if (addStructBtn) { addStructBtn.disabled = true; addStructBtn.style.opacity = '0.3'; }
+        if (addTextBtn) { addTextBtn.disabled = true; addTextBtn.style.opacity = '0.3'; }
+        if (nameAgreementBtn) { nameAgreementBtn.disabled = true; nameAgreementBtn.style.opacity = '0.3'; }
+    } else {
+        if (addStructBtn) { addStructBtn.disabled = false; addStructBtn.style.opacity = '1'; }
+        if (addTextBtn) { addTextBtn.disabled = false; addTextBtn.style.opacity = '1'; }
+        if (nameAgreementBtn) { nameAgreementBtn.disabled = false; nameAgreementBtn.style.opacity = '1'; }
+    }
 
     if (count === 2) {
         btn.textContent = 'Agreement [2/2]';
