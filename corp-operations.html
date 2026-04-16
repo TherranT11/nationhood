@@ -7564,7 +7564,7 @@ const EXEC_ACTIONS = {
         { id: 'sue_corp', name: 'Sue Corporation', desc: 'File a lawsuit against another corporation for patent infringement, contract breach, or predatory practices.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['LEGAL'], locked: true, lockReason: 'Coming soon' },
     ],
     Lobbyist: [
-        { id: 'donate', name: 'Political Donation', desc: 'Donate $1M to a political party in any nation where you have a presence. The target party receives $100k in party funds. You cannot donate to your own party.', cost: '$1M', costColor: '#ca5', tags: ['POLITICAL'], cooldown: 'once/tick' },
+        { id: 'donate', name: 'Political Donation', desc: 'Donate $1M to a political party in the nation where your National HQ is located. The target party receives $100k in party funds. You cannot donate to your own party.', cost: '$1M', costColor: '#ca5', tags: ['POLITICAL'], cooldown: 'once/tick' },
     ],
 };
 
@@ -8711,17 +8711,14 @@ let _donateSelected = -1;
 async function actOpenDonation() {
     const cash = Number(faction?.corp_cash_reserves ?? 0);
 
-    // Get all nation IDs where corp has presence (home nation + regional HQs)
-    const presenceNationIds = new Set([faction.nation_id]);
-    for (const prop of (_ownedProperties || [])) {
-        if (prop.is_active && prop.nation_id) presenceNationIds.add(prop.nation_id);
-    }
-    const nationIds = [...presenceNationIds];
+    // Only parties in the nation where the National HQ is located.
+    // Subsidiaries / regional HQs in other nations do not unlock donations there.
+    const nationIds = [faction.nation_id];
 
     // Get user's own faction IDs (to block self-donation)
     const ownFactionIds = new Set(allUserFactions.map(f => f.id));
 
-    // Load all political parties in nations where corp has presence
+    // Load all political parties in the corp's home nation
     const { data: parties } = await _supabase.from('factions')
         .select('id, faction_name, abbreviation, party_color, party_funds, seats, momentum, nation, nation_id, leader_ideology, linked_user_id, ideology_value_1, ideology_value_2')
         .eq('faction_type', 'party')
@@ -8785,7 +8782,7 @@ function renderDonationModal() {
             <span style="font-family:var(--font-mono);font-size:11px;color:#6a6660;">&rarr; Target party receives</span>
             <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:#5cb85c;">+${hfFmtBig(partyReceives)}</span>
         </div>
-        <div style="font-family:var(--font-mono);font-size:10px;color:#6a6660;margin-top:4px;">Parties in all nations where you have a presence. You cannot donate to your own party.</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:#6a6660;margin-top:4px;">Parties in the nation where your National HQ is located. You cannot donate to your own party.</div>
     </div>`;
 
     // Party list
@@ -8873,29 +8870,27 @@ async function actSubmitDonation() {
     const partyReceives = 100000; // $100k to party coffers
     const repLoss = 2;
 
-    // Server-side cooldown guard (persists across refresh): once per tick
-    const { data: existingDonation, error: existingDonationErr } = await _supabase
-        .from('event_log')
-        .select('id')
-        .eq('faction_id', faction.id)
-        .eq('trigger_key', 'corp_donation')
-        .eq('fired_at_tick', currentTick)
-        .limit(1);
-    if (existingDonationErr) {
+    // Read current faction state + cooldown atomically
+    const { data: freshFaction, error: freshFactionErr } = await _supabase
+        .from('factions')
+        .select('corp_cash_reserves, last_donation_tick')
+        .eq('id', faction.id)
+        .single();
+    if (freshFactionErr || !freshFaction) {
         const errEl = document.getElementById('donate-error');
-        if (errEl) { errEl.textContent = 'Failed to verify cooldown: ' + existingDonationErr.message; errEl.style.display = 'block'; }
+        if (errEl) { errEl.textContent = 'Failed to verify cooldown: ' + (freshFactionErr?.message || 'unknown'); errEl.style.display = 'block'; }
         return;
     }
-    if ((existingDonation || []).length > 0) {
+
+    const prevDonationTick = Number(freshFaction.last_donation_tick ?? 0);
+    if (prevDonationTick === currentTick) {
         const errEl = document.getElementById('donate-error');
         if (errEl) { errEl.textContent = 'Political Donation is on cooldown until next tick.'; errEl.style.display = 'block'; }
         markActionUsed('donate');
         return;
     }
 
-    // Fresh cash check
-    const { data: freshCash } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
-    const cash = Number(freshCash?.corp_cash_reserves ?? 0);
+    const cash = Number(freshFaction.corp_cash_reserves ?? 0);
     if (cash < donateCost) {
         const errEl = document.getElementById('donate-error');
         if (errEl) { errEl.textContent = 'Insufficient cash. Need ' + hfFmtBig(donateCost) + ', have ' + hfFmtBig(cash) + '.'; errEl.style.display = 'block'; }
@@ -8906,19 +8901,32 @@ async function actSubmitDonation() {
     const btn = document.getElementById('donate-btn');
     if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
 
-    // Deduct $1M from corp
+    // Deduct cash + stamp cooldown atomically. Optimistic lock on last_donation_tick:
+    // if another request already updated it this tick, this UPDATE matches 0 rows.
     const currentRep = Number(faction.corp_reputation ?? 50);
     const nextRep = Math.max(0, currentRep - repLoss);
-    const { error: cashErr } = await _supabase.from('factions').update({
+    const { data: updated, error: cashErr } = await _supabase.from('factions').update({
         corp_cash_reserves: cash - donateCost,
         corp_reputation: nextRep,
-    }).eq('id', faction.id);
+        last_donation_tick: currentTick,
+    }).eq('id', faction.id)
+      .eq('last_donation_tick', prevDonationTick)
+      .select('id');
 
     if (cashErr) {
         const errEl = document.getElementById('donate-error');
         _donateSubmitting = false;
         if (errEl) { errEl.textContent = 'Failed: ' + cashErr.message; errEl.style.display = 'block'; }
         if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        return;
+    }
+    if (!updated || updated.length === 0) {
+        // Another request already claimed this tick — race lost, no cash deducted
+        const errEl = document.getElementById('donate-error');
+        _donateSubmitting = false;
+        if (errEl) { errEl.textContent = 'Political Donation is on cooldown until next tick.'; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        markActionUsed('donate');
         return;
     }
 
