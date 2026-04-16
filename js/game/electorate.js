@@ -1427,7 +1427,6 @@ function computeRealizedVoteShares(updates, profile, nation) {
         u.turnout_rate = baseTurnout;
         u.realized_vote_share = u.contested_vote_share;
     }
-    }
 }
 
 function round4(v) { return Math.round(v * 10000) / 10000; }
