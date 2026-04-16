@@ -2031,17 +2031,14 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 .eq('status', 'active');
 
             if (shippedRoutes && shippedRoutes.length > 0) {
-                // Count active routes per agreement
-                var routeCountByAg = {};
-                for (var ri = 0; ri < shippedRoutes.length; ri++) {
-                    var agId = shippedRoutes[ri].trade_agreement_id;
-                    routeCountByAg[agId] = (routeCountByAg[agId] || 0) + 1;
-                }
+                // Collect agreement IDs that have active shipping routes
+                var agreedRouteAgIds = [...new Set(shippedRoutes.map(function(r) { return r.trade_agreement_id; }))];
 
-                // Check for active shipping claims on those routes
+                // Check for active shipping claims on routes tied to these agreements
                 var { data: activeClaimsOnRoutes } = await supabase.from('shipping_claims')
                     .select('route_id, shipping_routes!inner(trade_agreement_id)')
-                    .eq('status', 'active');
+                    .eq('status', 'active')
+                    .in('shipping_routes.trade_agreement_id', agreedRouteAgIds);
 
                 var claimedAgreements = new Set();
                 if (activeClaimsOnRoutes) {
