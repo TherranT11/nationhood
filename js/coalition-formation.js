@@ -115,7 +115,10 @@ export async function initCoalitionFormation(supabase, state) {
                         nation_id: nation.id, ministry_key: key, ministry_name: name,
                         party_id: presPartyId, is_active: true,
                     }));
-                    await supabase.from('ministries').upsert(rows, { onConflict: 'nation_id,ministry_key' });
+                    // Delete existing ministries first to avoid duplicates, then insert fresh
+                    await supabase.from('ministries').delete()
+                        .eq('nation_id', nation.id).eq('is_active', true);
+                    await supabase.from('ministries').insert(rows);
                 }
             } catch (presGovErr) {
                 console.warn('[Coalition] Presidential auto-gov failed:', presGovErr.message);
