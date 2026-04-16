@@ -730,17 +730,26 @@ window.rejectShippingApp = async function(appId) {
 // ═══════════════════════════════════════════════════
 
 let _tradeAgreementsList = [];
+let _tradeNegotiationsList = [];
 let _tradeExpandedAgreement = null;
 
 async function loadTradeAgreements() {
     const nationId = _worldState?.nation?.id;
     if (!nationId) return;
 
-    const { data } = await _supabase.from('trade_agreements')
-        .select('*')
-        .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
-        .order('enacted_at_tick', { ascending: false });
-    _tradeAgreementsList = data || [];
+    const [agResult, negResult] = await Promise.all([
+        _supabase.from('trade_agreements')
+            .select('*')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .order('enacted_at_tick', { ascending: false }),
+        _supabase.from('trade_negotiations')
+            .select('id, nation_a_id, nation_b_id, status, agreement_type, opened_at_tick')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .in('status', ['open', 'active'])
+            .order('opened_at_tick', { ascending: false }),
+    ]);
+    _tradeAgreementsList = agResult.data || [];
+    _tradeNegotiationsList = negResult.data || [];
 }
 
 function renderTradeAgreements() {
@@ -759,7 +768,32 @@ function renderTradeAgreements() {
             <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${active.length} active${expired.length > 0 ? ' \u00B7 ' + expired.length + ' expired' : ''}</span>
         </div>`;
 
-    if (agreements.length === 0) {
+    // Ongoing trade negotiations (shown before agreements)
+    const ongoingNegs = _tradeNegotiationsList || [];
+    for (const neg of ongoingNegs) {
+        const partnerId = neg.nation_a_id === nationId ? neg.nation_b_id : neg.nation_a_id;
+        const partner = (_worldAllNations || []).find(n => n.id === partnerId);
+        const partnerName = partner?.name || 'Unknown';
+        const myName = _worldState?.nation?.name || 'Your Nation';
+        const myFlag = _worldState?.nation?.flag_url || `assets/flags/${myName}.png`;
+        const partnerFlag = partner?.flag_url || `assets/flags/${partnerName}.png`;
+
+        html += `<div style="padding:12px 18px;border-bottom:1px solid var(--border-main);cursor:pointer;border-left:3px solid var(--amber);"
+            onclick="openTradeNegModal('${partnerId}')">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <img src="${escapeHtml(myFlag)}" alt="" style="width:24px;height:16px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'">
+                    <span style="font-size:13px;font-weight:600;color:var(--text-bright);">${escapeHtml(myName)}</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Trade Discussions</span>
+                    <span style="font-size:13px;font-weight:600;color:var(--text-bright);">${escapeHtml(partnerName)}</span>
+                    <img src="${escapeHtml(partnerFlag)}" alt="" style="width:24px;height:16px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'">
+                </div>
+                <span class="tr-badge" style="font-size:10px;padding:3px 10px;color:var(--amber);background:rgba(184,134,11,0.08);border-color:rgba(184,134,11,0.2);">ONGOING</span>
+            </div>
+        </div>`;
+    }
+
+    if (agreements.length === 0 && ongoingNegs.length === 0) {
         html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);font-style:italic;">No trade agreements.</div>`;
     }
 
@@ -1189,10 +1223,15 @@ function renderTradePartners() {
 
             html += `</div></div>`;
 
-            // Action buttons
+            // Action buttons — check for ongoing negotiation with this partner
+            const hasOngoingNeg = _tradeNegotiationsList.some(neg =>
+                (neg.nation_a_id === n.id || neg.nation_b_id === n.id));
+            const tradeBtn = hasOngoingNeg
+                ? `<div class="tr-action-btn tr-action-btn--primary" onclick="event.stopPropagation();openTradeNegModal('${n.id}');">TRADE DISCUSSIONS</div>`
+                : `<div class="tr-action-btn tr-action-btn--primary" onclick="event.stopPropagation();openTradeNegModal('${n.id}');">DRAFT TRADE AGREEMENT</div>`;
             html += `<div style="padding:10px 18px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;gap:6px;">
                 <div class="tr-action-btn" onclick="event.stopPropagation();selectWorldNation('${n.id}');_diploActiveSubtab='world';renderDiploSubtabs();showDiploSubtab();">NATION INFO</div>
-                <div class="tr-action-btn tr-action-btn--primary" onclick="event.stopPropagation();openTradeNegModal('${n.id}');">DRAFT TRADE AGREEMENT</div>
+                ${tradeBtn}
             </div>`;
 
             html += `</div>`;
