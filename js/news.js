@@ -408,7 +408,7 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-modal">
                 <div class="nws-modal-header">
                     <h3>Write Article</h3>
-                    <span class="nws-ap-badge" id="nws-reward-badge">+3 Momentum (1st) / +1 subsequent</span>
+                    <span class="nws-ap-badge" id="nws-reward-badge" style="margin-right:24px;"></span>
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
@@ -492,10 +492,11 @@ export async function initNewspaper(supabase, state) {
         });
     }
 
-    // Update reward badge text
+    // Update reward badge text based on faction type
     const rewardBadge = document.getElementById('nws-reward-badge');
     if (rewardBadge) {
-        rewardBadge.textContent = '+3 Momentum (1st) / +1 subsequent';
+        const isCorp = state.faction?.faction_type === 'corporation';
+        rewardBadge.textContent = isCorp ? '+1 Reputation (1st Article)' : '+2 Momentum (1st Article)';
     }
 
     // === LOAD & DISPLAY ARTICLES ===
