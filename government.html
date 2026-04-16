@@ -3163,8 +3163,35 @@ async function loadGovData() {
             }
         } catch (_) { /* non-fatal — actions just won't show active state */ }
 
+        // Auto-seed ministries if none exist (prevents empty cabinet after SQL-seeded governments)
+        let ministries = ministriesRes.data || [];
+        if (ministries.length === 0 && coalition) {
+            try {
+                const leadPartyId = coalition.lead_party_id || (coalition.party_ids || [])[0];
+                if (leadPartyId) {
+                    const SEED_KEYS = [
+                        ['interior', 'Minister of the Interior'], ['foreign', 'Minister of Foreign Affairs'],
+                        ['defense', 'Minister of Defense'], ['finance', 'Minister of Finance'],
+                        ['education', 'Minister of Education'], ['healthcare', 'Minister of Health'],
+                        ['labor', 'Minister of Labor'], ['justice', 'Minister of Justice'],
+                        ['trade', 'Minister of Trade'], ['energy', 'Minister of Energy'],
+                        ['transportation', 'Minister of Transportation'],
+                    ];
+                    if (!isPresidential) {
+                        SEED_KEYS.unshift(['prime_minister', 'Prime Minister']);
+                    }
+                    const rows = SEED_KEYS.map(([key, name]) => ({
+                        nation_id: currentNation.id, ministry_key: key, ministry_name: name,
+                        party_id: leadPartyId, is_active: true,
+                    }));
+                    const { data: seeded } = await _supabase.from('ministries').insert(rows).select();
+                    if (seeded) ministries = seeded;
+                }
+            } catch (seedErr) { console.warn('[Gov] Ministry auto-seed failed:', seedErr.message); }
+        }
+
         // Set legacy globals so existing window.fireMinister etc. still work
-        ministryData = ministriesRes.data || [];
+        ministryData = ministries;
         coalitionData = coalition;
         allParties = loadedParties;
 
