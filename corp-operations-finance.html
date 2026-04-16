@@ -2043,6 +2043,10 @@ function renderReviewDeal() {
     const footerRiskColor = rdType === 'LOAN' ? defaultColor : rdType === 'INSURE' ? claimColor : bondDefaultColor;
     const actionLabel = rdType === 'LOAN' ? 'OFFER LOAN' : rdType === 'INSURE' ? 'WRITE POLICY' : 'BUY BONDS';
     const actionClass = rdType.toLowerCase();
+    const alreadyOffered = !!d.alreadyOffered;
+    const actionDisabled = alreadyOffered ? 'disabled' : '';
+    const actionTitle = alreadyOffered ? ' title="You already have an offer on this request."' : '';
+    const actionButtonLabel = alreadyOffered ? 'ALREADY OFFERED' : actionLabel;
 
     html += `<div class="rd-footer">
         <div style="display:flex;gap:12px;">
@@ -2052,7 +2056,7 @@ function renderReviewDeal() {
         </div>
         <div style="display:flex;gap:6px;">
             <button class="rd-btn-decline" onclick="rdClose()">DECLINE</button>
-            <button class="rd-btn-action ${actionClass}" onclick="rdSubmitOffer()">${actionLabel}</button>
+            <button class="rd-btn-action ${actionClass}" onclick="rdSubmitOffer()" ${actionDisabled}${actionTitle}>${actionButtonLabel}</button>
         </div>
     </div>`;
 
@@ -2072,6 +2076,10 @@ window.rdSetBondAmount = rdSetBondAmount;
 let _submittingOffer = false;
 async function rdSubmitOffer() {
     if (!rdDeal || !faction || !shard || _submittingOffer) return;
+    if (rdDeal.alreadyOffered) {
+        alert('You already submitted an offer for this request.');
+        return;
+    }
     _submittingOffer = true;
 
     const currentTick = shard.current_tick || 0;
@@ -2195,7 +2203,15 @@ async function rdSubmitOffer() {
             status: 'accepted',
             created_tick: currentTick,
         });
-        if (offerErr) { alert('Failed to write policy: ' + offerErr.message); _submittingOffer = false; return; }
+        if (offerErr) {
+            _submittingOffer = false;
+            if (offerErr.message.includes('unique') || offerErr.message.includes('duplicate')) {
+                alert('You have already submitted a policy offer for this request.');
+            } else {
+                alert('Failed to write policy: ' + offerErr.message);
+            }
+            return;
+        }
 
         // Mark request as funded and get the requesting faction
         const { data: fundedReq } = await _supabase.from('finance_loan_requests').update({
