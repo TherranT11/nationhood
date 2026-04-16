@@ -21406,9 +21406,7 @@ window.submitIPOExpel = submitIPOExpel;
 let _activeNegModal = null;
 let _negChatChannel = null;
 
-// ── Phase 3: Role Resolution ──
 // Priority: Minister of Trade > PM > Ambassador
-// Returns { canChat, role, displayName } or { canChat: false }
 
 async function resolveNegotiationChatRole(partnerNationId) {
     const faction = _worldState?.faction;
@@ -21464,13 +21462,18 @@ async function resolveNegotiationChatRole(partnerNationId) {
     return { canChat: false, role: null, displayName: null };
 }
 
-// ── Modal Open / Close ──
+let _negModalOpening = false;
 
 async function openTradeNegModal(partnerNationId) {
+    if (_negModalOpening) return;
+    // Close any existing modal first
+    if (_activeNegModal) closeTradeNegModal();
+
+    _negModalOpening = true;
     const myNation = _worldState?.nation;
-    if (!myNation) { alert('Nation data not loaded.'); return; }
+    if (!myNation) { alert('Nation data not loaded.'); _negModalOpening = false; return; }
     const partner = (_worldAllNations || []).find(n => n.id === partnerNationId);
-    if (!partner) { alert('Partner nation not found.'); return; }
+    if (!partner) { alert('Partner nation not found.'); _negModalOpening = false; return; }
 
     // Check or create a trade_negotiations row
     const a = myNation.id < partnerNationId ? myNation.id : partnerNationId;
@@ -21495,7 +21498,7 @@ async function openTradeNegModal(partnerNationId) {
             opened_at_tick: tick,
             expires_at_tick: tick + 48,
         }).select('id, status').single();
-        if (createErr) { alert('Failed to start negotiation: ' + createErr.message); return; }
+        if (createErr) { alert('Failed to start negotiation: ' + createErr.message); _negModalOpening = false; return; }
         neg = created;
     }
 
@@ -21565,6 +21568,7 @@ async function openTradeNegModal(partnerNationId) {
     // Load existing messages + start realtime
     await negChatLoad(neg.id);
     negChatSubscribe(neg.id);
+    _negModalOpening = false;
 }
 
 // ── Chat: Render a single message ──
@@ -21729,10 +21733,18 @@ function closeTradeNegModal() {
     }
     _activeNegModal = null;
     _negChatSending = false;
+    _negWithdrawing = false;
+    _negModalOpening = false;
 }
 
+let _negWithdrawing = false;
+
 async function withdrawFromNegotiations() {
-    if (!_activeNegModal) return;
+    if (!_activeNegModal || _negWithdrawing) return;
+    if (_activeNegModal.status === 'cancelled') {
+        alert('This negotiation has already been ended.');
+        return;
+    }
     const chatRole = _activeNegModal.chatRole;
     if (!chatRole?.canChat) {
         alert('You need a diplomatic role to withdraw from negotiations.');
@@ -21741,6 +21753,8 @@ async function withdrawFromNegotiations() {
 
     const partnerName = _activeNegModal.partnerNationName || 'Unknown';
     if (!confirm('Withdraw from trade negotiations with ' + partnerName + '?\n\nThis will end the negotiation and cannot be undone.')) return;
+
+    _negWithdrawing = true;
 
     const negId = _activeNegModal.negotiationId;
     const myNationId = _activeNegModal.myNationId;
@@ -21754,7 +21768,7 @@ async function withdrawFromNegotiations() {
     const { error: statusErr } = await _supabase.from('trade_negotiations')
         .update({ status: 'cancelled', concluded_at_tick: tick })
         .eq('id', negId);
-    if (statusErr) { alert('Failed to withdraw: ' + statusErr.message); return; }
+    if (statusErr) { alert('Failed to withdraw: ' + statusErr.message); _negWithdrawing = false; return; }
 
     // 2. Insert system message into chat
     await _supabase.from('negotiation_messages').insert({
@@ -21822,6 +21836,7 @@ async function withdrawFromNegotiations() {
 
     // Update local state
     _activeNegModal.status = 'cancelled';
+    _negWithdrawing = false;
 }
 
 window.openTradeNegModal = openTradeNegModal;
