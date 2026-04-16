@@ -6085,6 +6085,74 @@ function buildDefenseActionRows(isMyMinistry) {
 
 // ==================== EDUCATION MINISTRY — CUSTOM ACTION ROWS ====================
 
+function buildExpandInfrastructureActionRow({ ministryKey, action, canUse, ap, pop, discretionaryBalance }) {
+    if (!action) return '';
+    const actionId = `${ministryKey}-expandInfrastructure`;
+    const isActive = activeMinistryActions[actionId] || false;
+    const countKey = `${ministryKey}:expandInfrastructure`;
+    const useCount = ministryActionUseCounts[countKey] || 0;
+    const apCosts = Array.isArray(action.apCosts) && action.apCosts.length ? action.apCosts : [3, 4, 6, 8];
+    const apCost = apCosts[Math.min(useCount, apCosts.length - 1)];
+    const tagsHtml = (action.tags || []).map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+
+    const oneTimeCost = action.oneTimeCostPerMillion && !action.budgetPerCapita
+        ? calculateOneTimeCost(action, pop)
+        : 0;
+    const hasPerTickCost = Number(action.budgetPerCapita || 0) > 0;
+    const hasOneTimeCost = oneTimeCost > 0;
+    const canCoverPerTick = !hasPerTickCost || discretionaryBalance > 0;
+    const canCoverOneTime = !hasOneTimeCost || discretionaryBalance >= oneTimeCost;
+    const isBudgetBlocked = !canCoverPerTick || !canCoverOneTime;
+    const isDisabled = !isActive && (!canUse || ap < apCost || isBudgetBlocked);
+
+    let budgetTagHtml = '';
+    if (hasOneTimeCost) {
+        budgetTagHtml = `<span class="tag tag--budget">${formatUpfrontCost(oneTimeCost)} UPFRONT</span>`;
+    } else if (hasPerTickCost) {
+        budgetTagHtml = `<span class="tag tag--budget">${formatBudgetDraw(action.budgetPerCapita, pop)}/TICK</span>`;
+    } else if (action.budgetSavesPerCapita) {
+        budgetTagHtml = `<span class="tag tag--positive">SAVES ${formatBudgetDraw(action.budgetSavesPerCapita, pop)}/TICK</span>`;
+    } else {
+        budgetTagHtml = `<span class="tag tag--neutral">NO TICK COST</span>`;
+    }
+
+    let extraInfoHtml = '';
+    if (!isActive && !canCoverPerTick) {
+        extraInfoHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">No discretionary funds available.</div>`;
+    } else if (!isActive && !canCoverOneTime) {
+        extraInfoHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">Insufficient discretionary funds.</div>`;
+    }
+
+    let stateClass = '';
+    let btnHtml = '';
+    if (isActive) {
+        stateClass = ' active';
+        btnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+    } else if (!canUse) {
+        stateClass = ' disabled';
+    } else if (isBudgetBlocked) {
+        stateClass = ' disabled';
+        btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Insufficient discretionary funds">🔒</div>`;
+    } else if (ap < apCost) {
+        stateClass = ' disabled';
+        btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${apCost} AP">▶ ${apCost} AP</div>`;
+    } else {
+        btnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+    }
+
+    return `<div class="ministry-action${stateClass}" id="${actionId}" ${!isDisabled ? `onclick="ministryActionSelect('${actionId}')"` : ''}>
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">${escapeHtml(action.name)}</span>
+            <span class="ministry-action__ap-cost">${apCost} AP${useCount > 0 ? ' (use ' + (useCount + 1) + ')' : ''}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(action.desc)}${extraInfoHtml}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${tagsHtml}${budgetTagHtml}</div>
+            <div id="${actionId}-btns">${btnHtml}</div>
+        </div>
+    </div>`;
+}
+
 const CURRICULUM_AXES = [
     { id: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism',
       tip: 'The degree to which citizens believe in personal agency and private responsibility versus shared social obligation and collective action.' },
@@ -6108,7 +6176,6 @@ function buildEducationActionRows(isMyMinistry) {
     const pop = currentNation?.population || 20000000;
     const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
-    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
 
     // Discretionary balance
     const ministry = ministryData.find(m => m.ministry_key === 'education');
@@ -6125,18 +6192,16 @@ function buildEducationActionRows(isMyMinistry) {
         <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
     </div>`;
 
-    // Action 1 — Expand Infrastructure (Coming Soon)
-    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
-        <div class="ministry-action__top">
-            <span class="ministry-action__name">Expand Infrastructure</span>
-            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
-        </div>
-        <div class="ministry-action__desc">Fund construction and expansion of schools and educational facilities nationally.</div>
-        <div class="ministry-action__bottom">
-            <div class="ministry-action__tags"></div>
-            <div>${comingSoonBtn}</div>
-        </div>
-    </div>`;
+    // Action 1 — Expand Infrastructure (shared execute flow)
+    const expandAction = config.actions.find(a => a.id === 'expandInfrastructure');
+    html += buildExpandInfrastructureActionRow({
+        ministryKey: 'education',
+        action: expandAction,
+        canUse,
+        ap,
+        pop,
+        discretionaryBalance
+    });
 
     // Action 2 — Standardised Curriculum
     const currAction = config.actions.find(a => a.id === 'standardisedCurriculum');
@@ -6240,7 +6305,6 @@ function buildHealthcareActionRows(isMyMinistry) {
     const pop = currentNation?.population || 20000000;
     const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
-    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
 
     // Discretionary balance
     const ministry = ministryData.find(m => m.ministry_key === 'healthcare');
@@ -6251,18 +6315,16 @@ function buildHealthcareActionRows(isMyMinistry) {
         <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
     </div>`;
 
-    // Action 1 — Expand Infrastructure (Coming Soon)
-    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
-        <div class="ministry-action__top">
-            <span class="ministry-action__name">Expand Infrastructure</span>
-            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
-        </div>
-        <div class="ministry-action__desc">Fund construction and modernisation of hospitals, clinics, and medical facilities nationally.</div>
-        <div class="ministry-action__bottom">
-            <div class="ministry-action__tags"></div>
-            <div>${comingSoonBtn}</div>
-        </div>
-    </div>`;
+    // Action 1 — Expand Infrastructure (shared execute flow)
+    const expandAction = config.actions.find(a => a.id === 'expandInfrastructure');
+    html += buildExpandInfrastructureActionRow({
+        ministryKey: 'healthcare',
+        action: expandAction,
+        canUse,
+        ap,
+        pop,
+        discretionaryBalance
+    });
 
     // Action 2 — Preventative Care Programme
     const prevAction = config.actions.find(a => a.id === 'preventativeCare');
@@ -6739,7 +6801,6 @@ function buildLaborActionRows(isMyMinistry) {
     const pop = currentNation?.population || 20000000;
     const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
-    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
 
     // Discretionary balance
     const ministry = ministryData.find(m => m.ministry_key === 'labor');
@@ -6750,18 +6811,16 @@ function buildLaborActionRows(isMyMinistry) {
         <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
     </div>`;
 
-    // Action 1 — Expand Infrastructure (Coming Soon)
-    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
-        <div class="ministry-action__top">
-            <span class="ministry-action__name">Expand Infrastructure</span>
-            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
-        </div>
-        <div class="ministry-action__desc">Fund construction and expansion of training facilities, employment centres, and labor institutions nationally.</div>
-        <div class="ministry-action__bottom">
-            <div class="ministry-action__tags"></div>
-            <div>${comingSoonBtn}</div>
-        </div>
-    </div>`;
+    // Action 1 — Expand Infrastructure (shared execute flow)
+    const expandAction = config.actions.find(a => a.id === 'expandInfrastructure');
+    html += buildExpandInfrastructureActionRow({
+        ministryKey: 'labor',
+        action: expandAction,
+        canUse,
+        ap,
+        pop,
+        discretionaryBalance
+    });
 
     // Action 2 — Labor Policy (with direction selector)
     const laborAction = config.actions.find(a => a.id === 'laborPolicy');
@@ -7232,35 +7291,35 @@ async function confirmLaborWorkforceAction(actionId) {
 // ==================== ENERGY MINISTRY — CUSTOM ACTION ROWS ====================
 
 function buildEnergyActionRows(isMyMinistry) {
-    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
+    const config = MINISTRY_ACTIONS.energy;
     const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     const pop = currentNation?.population ?? 20000000;
     const reserveCap = Math.round((pop / 1000000) * 20);
+    const ap = currentFaction?.action_points ?? 0;
+    const canUse = isMyMinistry === true;
+    const ministry = ministryData.find(m => m.ministry_key === 'energy');
+    const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
 
     let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
         <span>ACTIONS</span>
         <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--text-muted);letter-spacing:0.03em;">Strategic Oil Reserve: <span style="color:${reserveMb > 0 ? '#c8a64e' : 'var(--text-dim)'}">${reserveMb} Mb</span> / ${reserveCap} Mb</span>
     </div>`;
 
-    // Action 1: Expand Infrastructure — COMING SOON
-    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
-        <div class="ministry-action__top">
-            <span class="ministry-action__name">Expand Infrastructure</span>
-            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
-        </div>
-        <div class="ministry-action__desc">Fund construction and modernisation of energy generation and distribution infrastructure.</div>
-        <div class="ministry-action__bottom">
-            <div class="ministry-action__tags"></div>
-            <div>${comingSoonBtn}</div>
-        </div>
-    </div>`;
+    // Action 1: Expand Infrastructure (shared execute flow)
+    const expandAction = config?.actions?.find(a => a.id === 'expandInfrastructure');
+    html += buildExpandInfrastructureActionRow({
+        ministryKey: 'energy',
+        action: expandAction,
+        canUse,
+        ap,
+        pop,
+        discretionaryBalance
+    });
 
     // Action 2: Build Oil Reserves
     const buildApCosts = [2, 3, 5, 7];
     const buildUseCount = _energyBuildUseCount ?? 0;
     const buildApCost = buildApCosts[Math.min(buildUseCount, 3)];
-    const ap = currentFaction?.action_points ?? 0;
-    const canUse = isMyMinistry === true;
     const activeCycles = _energyBuildCycles.length;
 
     // Calculate accumulation rate from oil_and_gas + manufacturing_output
