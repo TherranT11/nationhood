@@ -782,6 +782,24 @@ async function confirmNation() {
             .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const currentTick = shardData?.current_tick || 0;
 
+        // Check bankruptcy cooldown (24 ticks)
+        const bankruptcyCooldownTick = currentTick - 24;
+        const { data: recentBankruptcy } = await _supabase
+            .from('event_log')
+            .select('fired_at_tick, effects_applied')
+            .eq('trigger_key', 'corp_bankruptcy')
+            .gte('fired_at_tick', bankruptcyCooldownTick)
+            .order('fired_at_tick', { ascending: false })
+            .limit(20);
+        const myBankruptcy = (recentBankruptcy || []).find(e => e.effects_applied?.user_id === currentUser.id);
+        if (myBankruptcy) {
+            const ticksLeft = Math.max(0, (myBankruptcy.fired_at_tick + 24) - currentTick);
+            errEl.textContent = 'You recently declared bankruptcy. You must wait ' + ticksLeft + ' more tick' + (ticksLeft !== 1 ? 's' : '') + ' before founding a new corporation.';
+            btn.disabled = false;
+            btn.textContent = 'Confirm \u25B6';
+            return;
+        }
+
         // Generate CEO name from nation name pool
         const { firstNames, lastNames } = getNationNames(nation.name);
         const ceoFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
