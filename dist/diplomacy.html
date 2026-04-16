@@ -13,10 +13,10 @@
     <!-- Supabase SDK -->
 
     <!-- Shared Styles -->
-  <script type="module" crossorigin src="/assets/diplomacy-BC4ECa3i.js"></script>
+  <script type="module" crossorigin src="/assets/diplomacy-BdXe9hWZ.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-DtfiRwOl.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-DzbV_OEs.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-CY90Gazr.js">
   <link rel="modulepreload" crossorigin href="/assets/government-types-CONVKpUN.js">
   <link rel="modulepreload" crossorigin href="/assets/config-fKhFNVuq.js">
@@ -80,6 +80,7 @@
 <div id="subtab-trade" class="diplo-subtab-content" style="display:none;">
     <div id="trade-page" style="padding:0 12px 12px;">
         <div id="trade-header-stats"></div>
+        <div id="trade-agreements-row" style="margin-top:8px;"></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
             <div id="trade-left" style="width:480px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;"></div>
             <div id="trade-right" style="flex:1;display:flex;flex-direction:column;gap:8px;"></div>
@@ -164,6 +165,7 @@
             <div style="display:flex;gap:8px;">
                 <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-structured-btn" onclick="negStructuredArticleOpen()">Add Article</button>
                 <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-article-btn" onclick="negArticleShowForm()">Add Text Article</button>
+                <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-name-btn" onclick="negNameAgreementOpen()" style="border-color:var(--amber);color:var(--amber);">Name Agreement</button>
             </div>
             <div style="display:flex;gap:8px;margin-left:auto;">
                 <button id="trade-neg-agreement-btn" onclick="negAgreementToggle()" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:8px 16px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:pointer;transition:all 0.15s;">Not in Agreement [0/2]</button>
