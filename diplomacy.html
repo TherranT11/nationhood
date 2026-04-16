@@ -22048,11 +22048,151 @@ function negStructuredTradeFlowForm() {
     </div>`;
 }
 
-// ── Structured Articles: Placeholder forms for Phase 2 types ──
+// ── Structured Articles: TARIFF REDUCTION form ──
 
-function negStructuredTariffForm() { alert('Tariff Reduction form — Phase 2'); negArticleCancelForm(); }
-function negStructuredMarketAccessForm() { alert('Market Access form — Phase 2'); negArticleCancelForm(); }
-function negStructuredExitTermsForm() { alert('Exit Terms form — Phase 2'); negArticleCancelForm(); }
+function negStructuredTariffForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+    const nameA = _activeNegModal?.myNationName || 'Nation A';
+    const nameB = _activeNegModal?.partnerNationName || 'Nation B';
+
+    const sectorOpts = TRADEABLE_SECTORS.map(s =>
+        `<option value="${s.key}">${escapeHtml(s.label)}</option>`
+    ).join('');
+
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">Tariff Reduction</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">SECTOR</div>
+                <select id="neg-tariff-sector" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    ${sectorOpts}
+                </select>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">${escapeHtml(nameA)} TARIFF → ${escapeHtml(nameB)}</div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <input id="neg-tariff-a-from" type="number" min="0" max="100" placeholder="From %" style="width:48%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+                    <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">→</span>
+                    <input id="neg-tariff-a-to" type="number" min="0" max="100" placeholder="To %" style="width:48%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+                </div>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">${escapeHtml(nameB)} TARIFF → ${escapeHtml(nameA)}</div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <input id="neg-tariff-b-from" type="number" min="0" max="100" placeholder="From %" style="width:48%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+                    <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">→</span>
+                    <input id="neg-tariff-b-to" type="number" min="0" max="100" placeholder="To %" style="width:48%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+                </div>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">MODE</div>
+                <select id="neg-tariff-mode" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="reciprocal">Reciprocal</option>
+                    <option value="one_sided">One-sided</option>
+                </select>
+            </div>
+        </div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button onclick="negStructuredArticleConfirm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;">Confirm</button>
+        </div>
+    </div>`;
+}
+
+// ── Structured Articles: MARKET ACCESS form ──
+
+function negStructuredMarketAccessForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+
+    const sectorOpts = TRADEABLE_SECTORS.map(s =>
+        `<option value="${s.key}">${escapeHtml(s.label)}</option>`
+    ).join('');
+
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">Market Access</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">SCOPE</div>
+                <select id="neg-market-scope" onchange="document.getElementById('neg-market-sector-row').style.display=this.value==='sector'?'block':'none'" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="all_goods">All Goods</option>
+                    <option value="sector">Specific Sector</option>
+                </select>
+            </div>
+            <div id="neg-market-sector-row" style="display:none;">
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">SECTOR</div>
+                <select id="neg-market-sector" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    ${sectorOpts}
+                </select>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">ACCESS LEVEL</div>
+                <select id="neg-market-level" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="restricted">Restricted</option>
+                    <option value="preferential">Preferential (Reduced Tariffs)</option>
+                    <option value="free_trade">Free Trade (0%)</option>
+                </select>
+            </div>
+            <div style="display:flex;gap:16px;">
+                <label style="display:flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);cursor:pointer;">
+                    <input type="checkbox" id="neg-market-volume-priority"> Volume Priority
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);cursor:pointer;">
+                    <input type="checkbox" id="neg-market-price-priority"> Price Priority
+                </label>
+            </div>
+        </div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button onclick="negStructuredArticleConfirm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;">Confirm</button>
+        </div>
+    </div>`;
+}
+
+// ── Structured Articles: EXIT TERMS form ──
+
+function negStructuredExitTermsForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">Exit Terms</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">MINIMUM DURATION (TICKS)</div>
+                <input id="neg-exit-min-duration" type="number" min="0" max="100" value="12" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">EXIT NOTICE (TICKS)</div>
+                <input id="neg-exit-notice" type="number" min="0" max="24" value="3" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">PENALTY</div>
+                <select id="neg-exit-penalty-type" onchange="
+                    document.getElementById('neg-exit-penalty-fixed-row').style.display=this.value==='fixed'?'block':'none';
+                    document.getElementById('neg-exit-penalty-pct-row').style.display=this.value==='percentage'?'block':'none';
+                " style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="none">None</option>
+                    <option value="fixed">Fixed Amount ($)</option>
+                    <option value="percentage">% of Remaining Value</option>
+                </select>
+            </div>
+            <div id="neg-exit-penalty-fixed-row" style="display:none;">
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">PENALTY AMOUNT ($)</div>
+                <input id="neg-exit-penalty-amount" type="number" min="0" placeholder="e.g. 10000000" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+            </div>
+            <div id="neg-exit-penalty-pct-row" style="display:none;">
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">PENALTY (%)</div>
+                <input id="neg-exit-penalty-pct" type="number" min="0" max="100" placeholder="e.g. 15" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+            </div>
+        </div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button onclick="negStructuredArticleConfirm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;">Confirm</button>
+        </div>
+    </div>`;
+}
 
 // ── Structured Articles: Confirm and insert ──
 
@@ -22081,6 +22221,38 @@ async function negStructuredArticleConfirm() {
             volume: volume,
             price_modifier: Number(document.getElementById('neg-flow-price')?.value || 0),
             duration: Number(document.getElementById('neg-flow-duration')?.value || 0),
+        };
+    } else if (_negStructuredType === 'tariff_reduction') {
+        const aFrom = Number(document.getElementById('neg-tariff-a-from')?.value);
+        const aTo = Number(document.getElementById('neg-tariff-a-to')?.value);
+        const bFrom = Number(document.getElementById('neg-tariff-b-from')?.value);
+        const bTo = Number(document.getElementById('neg-tariff-b-to')?.value);
+        if (isNaN(aFrom) || isNaN(aTo) || isNaN(bFrom) || isNaN(bTo)) { alert('Fill in all tariff values.'); return; }
+        data = {
+            sector: document.getElementById('neg-tariff-sector')?.value || 'fuel_energy',
+            a_tariff_from: aFrom,
+            a_tariff_to: aTo,
+            b_tariff_from: bFrom,
+            b_tariff_to: bTo,
+            mode: document.getElementById('neg-tariff-mode')?.value || 'reciprocal',
+        };
+    } else if (_negStructuredType === 'market_access') {
+        const scope = document.getElementById('neg-market-scope')?.value || 'all_goods';
+        data = {
+            scope: scope,
+            scope_sector: scope === 'sector' ? (document.getElementById('neg-market-sector')?.value || 'fuel_energy') : null,
+            level: document.getElementById('neg-market-level')?.value || 'preferential',
+            volume_priority: document.getElementById('neg-market-volume-priority')?.checked || false,
+            price_priority: document.getElementById('neg-market-price-priority')?.checked || false,
+        };
+    } else if (_negStructuredType === 'exit_terms') {
+        const penaltyType = document.getElementById('neg-exit-penalty-type')?.value || 'none';
+        data = {
+            min_duration: Number(document.getElementById('neg-exit-min-duration')?.value || 12),
+            exit_notice: Number(document.getElementById('neg-exit-notice')?.value || 3),
+            penalty_type: penaltyType,
+            penalty_amount: penaltyType === 'fixed' ? Number(document.getElementById('neg-exit-penalty-amount')?.value || 0) : 0,
+            penalty_pct: penaltyType === 'percentage' ? Number(document.getElementById('neg-exit-penalty-pct')?.value || 0) : 0,
         };
     }
 
