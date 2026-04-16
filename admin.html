@@ -1032,7 +1032,7 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
             const statsHTML = hasNation
                 ? (isCorp
                     ? `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Sector: <strong style="color:#5aafa5;">${escHtml(player.corp_sector||'—')}</strong></span><span>Subsector: <strong style="color:#5aafa5;">${escHtml(player.corp_subsector||'—')}</strong></span></div>`
-                    : `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Seats: <strong style="color:#ffcc00;">${player.seats||0}</strong></span><span>Approval: <strong style="color:#ffcc00;">${Math.round(player.party_approval||0)}%</strong></span><span>AP: <strong style="color:#ffcc00;">${player.action_points||0}</strong></span>${player.last_seen_tick != null ? '<span>Last seen: <strong style="color:#ffcc00;">tick ' + player.last_seen_tick + '</strong></span>' : ''}</div>`)
+                    : `<div style="display:flex; gap:12px; margin-top:6px; font-size:0.75rem; color:#888;"><span>Seats: <strong style="color:#ffcc00;">${player.seats||0}</strong></span><span>Approval: <strong style="color:#ffcc00;">${Math.round(player.party_approval||0)}%</strong></span>${player.last_seen_tick != null ? '<span>Last seen: <strong style="color:#ffcc00;">tick ' + player.last_seen_tick + '</strong></span>' : ''}</div>`)
                 : `<div style="margin-top:6px; font-size:0.75rem; color:#d9534f; font-style:italic;">Not assigned to any nation</div>`;
             const playerEmail = player._email ? `<div style="font-size:0.7rem; color:#8a8a6a; margin-top:2px;">&#9993; ${escHtml(player._email)}${player._displayName ? ' &middot; ' + escHtml(player._displayName) : ''}</div>` : '';
             const cashLabel = isCorp
@@ -1052,7 +1052,7 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
                 <div style="display:flex; gap:6px; flex-direction:column; align-items:flex-end;">
                     ${hasNation ? `<button class="btn-remove" style="font-size:0.75rem; padding:6px 12px;" onclick="removePlayer('${player.id}', '${player.nation_id}', '${escapedName}')">KICK</button>` : ''}
                     <button class="btn-remove" style="background:#aa0000; font-size:0.75rem; padding:6px 12px;" onclick="deleteParty('${player.id}', '${escapedName}')">DELETE</button>
-                    <button class="btn-remove" style="background:#8a6a00; font-size:0.75rem; padding:6px 12px;" onclick="adminRemoveAP('${player.id}', '${escapedName}')">REMOVE AP</button>
+                    <button class="btn-remove" style="background:#6a1a1a; font-size:0.75rem; padding:6px 12px;" onclick="adminRemoveCash('${player.id}', '${escapedName}', '${player.faction_type}')">REMOVE CASH</button>
                     <button class="btn-remove" style="background:#1a6a3a; font-size:0.75rem; padding:6px 12px;" onclick="adminAddCash('${player.id}', '${escapedName}', '${player.faction_type}')">ADD CASH</button>
                 </div>
             </div>`;
@@ -1086,29 +1086,27 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
         } catch (error) { alert('❌ Error: ' + error.message); }
     }
 
-    // ==================== ADMIN: REMOVE AP ====================
+    // ==================== ADMIN: REMOVE CASH ====================
 
-    async function adminRemoveAP(factionId, factionName) {
+    async function adminRemoveCash(factionId, factionName, factionType) {
         if (!isAuthenticated) return;
-        const input = prompt(`Remove AP from "${factionName}".\n\nEnter amount to remove (or "all" to set AP to 0):`);
+        const isCorp = factionType === 'corporation';
+        const label = isCorp ? 'corp cash reserves' : 'party funds';
+        const column = isCorp ? 'corp_cash_reserves' : 'party_funds';
+
+        const input = prompt(`Remove ${label} from "${factionName}".\n\nEnter amount in dollars (e.g. 5000000 for $5M), or "all" to zero out:`);
         if (input === null) return;
         const removeAll = input.trim().toLowerCase() === 'all';
-        const amount = removeAll ? 0 : parseInt(input, 10);
-        if (!removeAll && (isNaN(amount) || amount <= 0)) { alert('Invalid amount.'); return; }
+        const amount = removeAll ? 0 : parseInt(input.replace(/[,\s]/g, ''), 10);
+        if (!removeAll && (isNaN(amount) || amount <= 0)) { alert('Invalid amount. Enter a positive number.'); return; }
 
         try {
-            if (removeAll) {
-                const { error } = await _supabase.from('factions').update({ action_points: 0 }).eq('id', factionId);
-                if (error) throw error;
-                alert(`AP set to 0 for "${factionName}".`);
-            } else {
-                const { data: f } = await _supabase.from('factions').select('action_points').eq('id', factionId).single();
-                const current = Number(f?.action_points ?? 0);
-                const newAP = Math.max(0, current - amount);
-                const { error } = await _supabase.from('factions').update({ action_points: newAP }).eq('id', factionId);
-                if (error) throw error;
-                alert(`Removed ${amount} AP from "${factionName}". ${current} → ${newAP}`);
-            }
+            const { data: f } = await _supabase.from('factions').select(column).eq('id', factionId).single();
+            const current = Number(f?.[column] ?? 0);
+            const updated = removeAll ? 0 : Math.max(0, current - amount);
+            const { error } = await _supabase.from('factions').update({ [column]: updated }).eq('id', factionId);
+            if (error) throw error;
+            alert(`${removeAll ? 'Zeroed' : 'Removed $' + (amount/1e6).toFixed(2) + 'M from'} "${factionName}" ${label}.\n$${(current/1e6).toFixed(2)}M → $${(updated/1e6).toFixed(2)}M`);
             await loadAllPlayers(document.getElementById('player-filter')?.value || 'all');
         } catch (error) { alert('Error: ' + error.message); }
     }
