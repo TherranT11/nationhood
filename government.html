@@ -9372,7 +9372,7 @@ async function purgeMinister(ministryKey) {
             const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
             if (fullNation) {
                 try {
-                    await closeAdministration(_supabase, currentNation.id, fullNation, 'pm_replaced', tick, '', null);
+                    await closeAdministration(_supabase, currentNation.id, fullNation, 'pm_replaced', tick, tickToDate(tick), null);
                 } catch (adminErr) {
                     throw new Error(`Administration lifecycle failed on PM purge: ${adminErr.message || adminErr}`);
                 }
@@ -11180,10 +11180,13 @@ async function refreshGovernmentUI() {
 const END_REASON_LABELS = {
     election_loss: 'Election Loss',
     new_coalition: 'New Coalition',
-    coalition_collapse: 'Collapsed',
+    coalition_collapse: 'Coalition Collapsed',
+    collapsed: 'Government Collapsed',
     coup: 'Coup',
     dissolved: 'Dissolved',
     pm_replaced: 'PM Replaced',
+    pm_resignation: 'PM Resignation',
+    constitutional_transition: 'Constitutional Transition',
     regime_collapse: 'Regime Collapsed',
     revolution: 'Revolution',
     power_vacuum: 'Power Vacuum',
@@ -11365,6 +11368,20 @@ async function loadPastAdministrations() {
 
         if (error) throw error;
         if (!admins || admins.length === 0) {
+            const { data: transitionEvents, error: transitionErr } = await _supabase
+                .from('event_log')
+                .select('event_id, event_name, category, fired_at_tick')
+                .eq('nation_id', currentNation.id)
+                .or('event_name.ilike.%transition%,event_name.ilike.%collapsed%,event_name.ilike.%resignation%,event_name.ilike.%dissolved%')
+                .order('fired_at_tick', { ascending: false })
+                .limit(5);
+            if (!transitionErr && (transitionEvents || []).length > 0) {
+                console.warn('[GovernmentUI] transition events detected but no administrations found', {
+                    nation_id: currentNation.id,
+                    transition_events: transitionEvents
+                });
+            }
+
             container.innerHTML = `
                 <div class="past-admins-toggle" style="cursor: default;">
                     <span class="past-admins-toggle-text">Past Administrations (0)</span>
