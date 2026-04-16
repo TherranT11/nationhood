@@ -2874,14 +2874,15 @@ async function loadGovData() {
 
         // Detect PM party (robust: HOG → coalition lead → PM ministry → allocations)
         const _pmMinistry = (ministriesRes.data || []).find(m => m.ministry_key === 'prime_minister');
+        const coalitionAllocations = getCoalitionAllocations(coalition);
         if (hog?.faction_id) {
             pmFactionId = hog.faction_id;
         } else if (coalition?.lead_party_id) {
             pmFactionId = coalition.lead_party_id;
         } else if (_pmMinistry?.party_id) {
             pmFactionId = _pmMinistry.party_id;
-        } else if (coalition?.ministry_allocations?.prime_minister) {
-            pmFactionId = coalition.ministry_allocations.prime_minister;
+        } else if (coalitionAllocations?.prime_minister) {
+            pmFactionId = coalitionAllocations.prime_minister;
         }
         isPMParty = !!(currentFaction && pmFactionId && currentFaction.id === pmFactionId);
 
@@ -3352,7 +3353,8 @@ async function renderGovernmentPage() {
 
         // Auto-recover orphaned PM state: coalition exists, no HOG, current faction is PM party
         if (!isPresidential && coalition && !activeHOG) {
-            const pmPartyId = coalition.ministry_assignments?.prime_minister || coalition.lead_party_id;
+            const coalitionAllocations = getCoalitionAllocations(coalition);
+            const pmPartyId = coalitionAllocations.prime_minister || coalition.lead_party_id;
             if (pmPartyId && currentFaction?.id === pmPartyId) {
                 try {
                     const { data: shard } = await _supabase.from('shard')
@@ -8828,12 +8830,19 @@ window.setBondTerm = setBondTerm;
 window.closeBondModal = closeBondModal;
 window.submitBondIssuance = submitBondIssuance;
 
+
+function getCoalitionAllocations(coalition) {
+    if (!coalition) return {};
+    return coalition.ministry_allocations || coalition.ministry_assignments || {};
+}
+
 // --- Vacant ministry alert (PM/President only) ---
 function renderVacantMinistryAlert(ministries, coalition) {
     // Determine if current player is PM or President
+    const allocations = getCoalitionAllocations(coalition);
     const isPlayerPMorPresident = isPresidential
         ? isPresidentParty
-        : !!(coalition && currentFaction && (coalition.ministry_assignments?.prime_minister === currentFaction.id || coalition.lead_party_id === currentFaction.id));
+        : !!(coalition && currentFaction && (allocations.prime_minister === currentFaction.id || coalition.lead_party_id === currentFaction.id));
     if (!isPlayerPMorPresident) return '';
 
     // Count vacant ministries (have a row but no party_id assigned)
@@ -8861,9 +8870,10 @@ function renderCabinet(ministries, coalition) {
     const isCaretaker = coalition && coalition.status === 'caretaker';
     const pmMinistry = ministries?.find(m => m.ministry_key === 'prime_minister');
     const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
+    const allocations = getCoalitionAllocations(coalition);
     const isPMPartyLocal = currentFaction && (
         (coalition && currentFaction.id === coalition.lead_party_id) ||
-        (coalition && coalition.ministry_allocations?.prime_minister === currentFaction.id) ||
+        allocations.prime_minister === currentFaction.id ||
         (pmMinistry && pmMinistry.party_id === currentFaction.id)
     );
     const canAppoint = isPMPartyLocal && pmFilled && !isCaretaker;
@@ -8877,8 +8887,8 @@ function renderCabinet(ministries, coalition) {
 
     if ((!ministries || ministries.length === 0) && !isPresidential) {
         // Parliamentary with coalition allocations but no ministers yet
-        if (coalition && coalition.ministry_allocations) {
-            const cards = Object.entries(coalition.ministry_allocations)
+        if (coalition && Object.keys(allocations).length > 0) {
+            const cards = Object.entries(allocations)
                 .filter(([key]) => key !== 'prime_minister')
                 .map(([key, partyId]) => {
                     const party = partyData.find(p => p.party_id === partyId);
