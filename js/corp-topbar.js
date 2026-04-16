@@ -1,7 +1,7 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, cash, faction switcher, nav tabs
 
-const CORP_VERSION = 'Alpha 2.1.5.4';
+const CORP_VERSION = 'Alpha 2.1.5.5';
 
 const SECTOR_OPS_PAGE = {
     Construction: 'corp-operations.html',
