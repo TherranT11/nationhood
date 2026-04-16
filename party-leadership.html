@@ -480,6 +480,12 @@ window._selectCandidate = function(index) {
 window._appointLeader = async function() {
     if (isAppointing) return;
 
+    // Block leadership changes for the monarch faction — the King cannot be replaced via party leadership
+    if (currentNation?.government_type === 'Absolute Monarchy' && currentNation?.monarch_faction_id === currentFaction?.id) {
+        alert('The monarch cannot be replaced through party leadership. The King rules until death or abdication.');
+        return;
+    }
+
     const sel = selectedIndex.leader;
     if (sel === null) return;
 
