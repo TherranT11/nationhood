@@ -1180,8 +1180,8 @@ function renderAdminBanner() {
         </div>`;
     }
 
-    // Prime Minister section
-    if (hog) {
+    // Prime Minister section (not shown in presidential systems)
+    if (hog && !isPresidential) {
         const pmName = `${hog.first_name} ${hog.last_name}`;
         const pmAge = hog.age || '';
         const pmPartyName = hog.factions?.faction_name || '';

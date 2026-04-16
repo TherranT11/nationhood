@@ -76,7 +76,59 @@ export async function initCoalitionFormation(supabase, state) {
     const election = electionResult.data;
     const hasFormedGov = !!coalitionResult.data;
 
-    // Formation is needed if: a completed election exists and no government has been formed
+    // Presidential systems don't use coalition formation — the president governs directly
+    const isPresidentialSystem = (nation.government_type || '').toLowerCase().includes('presidential')
+        || nation.hos_election_method === 'direct_vote';
+    if (isPresidentialSystem) {
+        _formationNeeded = false;
+
+        // If an election just happened and no government exists, auto-create one for the president's party
+        if (election && !hasFormedGov) {
+            try {
+                const currentTick = shardResult.data?.current_tick ?? 0;
+                // Find the president's party (active president row or largest party)
+                const { data: activePresident } = await supabase.from('presidents')
+                    .select('faction_id').eq('nation_id', nation.id).eq('is_active', true).maybeSingle();
+                const presPartyId = activePresident?.faction_id || (_allParties[0]?.id);
+
+                if (presPartyId) {
+                    // Create government formation
+                    await supabase.from('government_formations').insert({
+                        nation_id: nation.id,
+                        proposed_by: presPartyId,
+                        status: 'formed',
+                        party_ids: [presPartyId],
+                        formation_type: 'coalition',
+                        formed_at: new Date().toISOString(),
+                    });
+
+                    // Seed ministries assigned to president's party (no PM)
+                    const PRES_MINISTRIES = [
+                        ['interior', 'Minister of the Interior'], ['foreign', 'Minister of Foreign Affairs'],
+                        ['defense', 'Minister of Defense'], ['finance', 'Minister of Finance'],
+                        ['education', 'Minister of Education'], ['healthcare', 'Minister of Health'],
+                        ['labor', 'Minister of Labor'], ['justice', 'Minister of Justice'],
+                        ['trade', 'Minister of Trade'], ['energy', 'Minister of Energy'],
+                        ['transportation', 'Minister of Transportation'],
+                    ];
+                    const rows = PRES_MINISTRIES.map(([key, name]) => ({
+                        nation_id: nation.id, ministry_key: key, ministry_name: name,
+                        party_id: presPartyId, is_active: true,
+                    }));
+                    // Delete existing ministries first to avoid duplicates, then insert fresh
+                    await supabase.from('ministries').delete()
+                        .eq('nation_id', nation.id).eq('is_active', true);
+                    await supabase.from('ministries').insert(rows);
+                }
+            } catch (presGovErr) {
+                console.warn('[Coalition] Presidential auto-gov failed:', presGovErr.message);
+            }
+        }
+
+        return { needed: false };
+    }
+
+    // Parliamentary systems use coalition formation
     if (election && !hasFormedGov) {
         _formationNeeded = true;
         _electionId = election.id;
@@ -155,6 +207,20 @@ export async function renderFormationTab(root) {
                 return;
             }
         }
+    }
+
+    // Presidential systems — no coalition formation
+    const isPresidentialRender = (_state.nation?.government_type || '').toLowerCase().includes('presidential')
+        || _state.nation?.hos_election_method === 'direct_vote';
+    if (isPresidentialRender) {
+        root.innerHTML = `<div class="cf-page">
+            <div class="cf-no-formation">
+                <div class="cf-no-icon">&#127979;</div>
+                <div class="cf-no-title">Presidential System</div>
+                <div class="cf-no-desc">The President governs directly and nominates cabinet ministers. No coalition formation is required.</div>
+            </div>
+        </div>`;
+        return;
     }
 
     // Absolute monarchies don't hold elections

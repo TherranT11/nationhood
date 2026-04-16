@@ -822,7 +822,7 @@ function renderActivePortfolio() {
         const tm = DF_TYPE_META[d.type];
         const sm = AP_STATUS_META[d.status] || AP_STATUS_META.CURRENT;
         const hasAlert = !!d.alert;
-        const elapsed = d.elapsed || 0;
+        const elapsed = d.paymentsMade || 0;
         const term = d.term || 1;
         const pctComplete = Math.round((elapsed / term) * 100);
 
