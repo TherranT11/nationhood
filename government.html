@@ -2544,6 +2544,147 @@ function getBillSupportPercent(bill) {
     return support.percent;
 }
 
+function getBillEffects(bill) {
+    const articles = (bill.bill_articles || []).sort((a, b) => (a.article_number || 0) - (b.article_number || 0));
+    const effects = [];
+    const seen = new Set();
+    for (const art of articles) {
+        if (!art.policies) continue;
+        const p = art.policies;
+        if (Array.isArray(p.stat_effects)) {
+            for (const e of p.stat_effects) {
+                const stat = e?.stat_key;
+                const dir = (e?.direction || '').toLowerCase();
+                if (!stat || (dir !== 'up' && dir !== 'down')) continue;
+                const key = `${stat}:${dir}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                effects.push({ stat, dir });
+            }
+        } else if (p.target_stat) {
+            const stat = p.target_stat;
+            const dir = (p.stat_direction || 'UP').toLowerCase() === 'down' ? 'down' : 'up';
+            const key = `${stat}:${dir}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            effects.push({ stat, dir });
+        }
+    }
+    return effects;
+}
+
+function renderBillEffectChips(bill, withLabel = true) {
+    const effects = getBillEffects(bill);
+    if (effects.length === 0) return '';
+    let html = '';
+    if (withLabel) {
+        html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.8px;margin-bottom:4px;">PROJECTED EFFECTS IF PASSED</div>`;
+    }
+    html += `<div style="display:flex;flex-wrap:wrap;gap:4px;">`;
+    for (const e of effects) {
+        const isGood = (e.dir === 'up' && !STATS_LOWER_IS_BETTER.includes(e.stat))
+            || (e.dir === 'down' && STATS_LOWER_IS_BETTER.includes(e.stat));
+        const arrow = e.dir === 'up' ? '\u25B2' : '\u25BC';
+        const color = isGood ? 'var(--green)' : 'var(--red)';
+        html += `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(e.stat)} ${arrow}</span>`;
+    }
+    html += `</div>`;
+    return html;
+}
+
+function readCostNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+        const parsed = Number(value.replace(/[^0-9.-]/g, ''));
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+}
+
+function sumCostKeysDeep(node, keys) {
+    if (!node) return 0;
+    if (Array.isArray(node)) return node.reduce((sum, v) => sum + sumCostKeysDeep(v, keys), 0);
+    if (typeof node !== 'object') return 0;
+    let total = 0;
+    for (const [k, v] of Object.entries(node)) {
+        if (keys.includes(k)) total += readCostNumber(v);
+        if (v && typeof v === 'object') total += sumCostKeysDeep(v, keys);
+    }
+    return total;
+}
+
+function computeBillCostTotals(bill) {
+    const articles = bill.bill_articles || [];
+    let upfront = 0;
+    let ongoingYearly = 0;
+    const upfrontKeys = ['upfront_cost', 'one_time_cost', 'one_time', 'initial_cost', 'startup_cost', 'capex_cost', 'fund_draw'];
+    const annualKeys = ['ongoing_cost', 'annual_cost', 'yearly_cost', 'recurring_cost', 'per_year', 'cost_per_year'];
+    const monthlyKeys = ['monthly_cost', 'cost_per_month', 'per_month'];
+
+    for (const art of articles) {
+        const sources = [art.funding_data, art.effect_data?.funding_data, art.effect_data, art.policies];
+        for (const src of sources) {
+            upfront += sumCostKeysDeep(src, upfrontKeys);
+            ongoingYearly += sumCostKeysDeep(src, annualKeys);
+            ongoingYearly += sumCostKeysDeep(src, monthlyKeys) * 12;
+        }
+    }
+
+    return {
+        upfront: Math.max(0, upfront),
+        ongoingYearly: Math.max(0, ongoingYearly)
+    };
+}
+
+function formatCostCompact(n) {
+    if (!n || n <= 0) return '$0';
+    if (n >= 1_000_000_000) return '$' + (n / 1_000_000_000).toFixed(1) + 'B';
+    if (n >= 1_000_000) return '$' + Math.round(n / 1_000_000).toLocaleString() + 'M';
+    return '$' + Math.round(n).toLocaleString();
+}
+
+function renderBillVoteButtons(bill) {
+    const isFloor = bill.status === 'floor' || bill.status === 'voting';
+    const isCommittee = bill.status === 'committee';
+    if (!isFloor && !isCommittee) return '';
+
+    const myVote = (bill.bill_support || []).find(s => s.faction_id === currentFaction?.id);
+    const myStance = myVote?.stance;
+    let html = `<div style="display:flex;gap:4px;flex-wrap:wrap;">`;
+
+    if (isFloor) {
+        if (myStance === 'yes' || myStance === 'accept') {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes leg-vote-btn--active">VOTED YES</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes" onclick="event.stopPropagation();legCastVote('${bill.id}','yes')">VOTE YES</div>`;
+        }
+        if (myStance === 'no' || myStance === 'reject') {
+            html += `<div class="leg-vote-btn leg-vote-btn--no leg-vote-btn--active">VOTED NO</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--no" onclick="event.stopPropagation();legCastVote('${bill.id}','no')">VOTE NO</div>`;
+        }
+        if (myStance === 'abstain') {
+            html += `<div class="leg-vote-btn leg-vote-btn--abstain leg-vote-btn--active">ABSTAINED</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--abstain" onclick="event.stopPropagation();legCastVote('${bill.id}','abstain')">ABSTAIN</div>`;
+        }
+    } else if (isCommittee) {
+        if (myStance === 'accept') {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes leg-vote-btn--active">SUPPORTING</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes" onclick="event.stopPropagation();legCastVote('${bill.id}','accept')">SUPPORT</div>`;
+        }
+        if (myStance === 'reject') {
+            html += `<div class="leg-vote-btn leg-vote-btn--no leg-vote-btn--active">OPPOSING</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--no" onclick="event.stopPropagation();legCastVote('${bill.id}','reject')">OPPOSE</div>`;
+        }
+    }
+
+    html += `</div>`;
+    return html;
+}
+
 function renderBillCard(bill, stageColor) {
     const { totalSeats, majority } = _legData;
     const isExp = _legExpandedBill === bill.id;
@@ -2585,6 +2726,23 @@ function renderBillCard(bill, stageColor) {
         <div style="position:absolute;top:-3px;left:${majorityPct}%;width:1px;height:10px;background:var(--text-bright);"></div>
     </div>`;
 
+    // Always-visible effect chips, cost summary, and vote actions
+    const totals = computeBillCostTotals(bill);
+    const ongoingMonthly = totals.ongoingYearly / 12;
+    const effectChips = renderBillEffectChips(bill, false);
+    const inlineVotes = renderBillVoteButtons(bill);
+    html += `<div style="padding:0 14px 8px;">`;
+    if (effectChips) {
+        html += `<div style="margin-bottom:6px;">${effectChips}</div>`;
+    }
+    html += `<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:${inlineVotes ? '6px' : '0'};">
+        UPFRONT COST: ${formatCostCompact(totals.upfront)} | ONGOING COST: ${formatCostCompact(totals.ongoingYearly)} / YEAR (${formatCostCompact(ongoingMonthly)} / MONTH)
+    </div>`;
+    if (inlineVotes) {
+        html += inlineVotes;
+    }
+    html += `</div>`;
+
     // Articles (always visible for committee, on expand for floor)
     if (bill.status === 'committee' || isExp) {
         html += `<div style="padding:0 14px 8px;">`;
@@ -2611,7 +2769,7 @@ function renderBillCard(bill, stageColor) {
 
     // Expand hint for floor bills (articles hidden by default)
     if (!isExp && (bill.status === 'floor' || bill.status === 'voting') && articles.length > 0) {
-        html += `<div style="padding:0 14px 8px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">&#9656; ${articles.length} article${articles.length !== 1 ? 's' : ''} \u00B7 click to expand &amp; vote</div>`;
+        html += `<div style="padding:0 14px 8px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">&#9656; ${articles.length} article${articles.length !== 1 ? 's' : ''} \u00B7 click to expand details</div>`;
     }
 
     html += `</div>`;
@@ -2623,34 +2781,12 @@ function renderBillExpandedContent(bill) {
     const isFloor = bill.status === 'floor' || bill.status === 'voting';
     const isCommittee = bill.status === 'committee';
 
-    // Collect stat effects from all articles' policies
-    const effects = [];
-    for (const art of articles) {
-        if (!art.policies) continue;
-        const p = art.policies;
-        if (p.stat_effects && Array.isArray(p.stat_effects)) {
-            for (const e of p.stat_effects) {
-                effects.push({ stat: e.stat_key, dir: e.direction });
-            }
-        } else if (p.target_stat) {
-            effects.push({ stat: p.target_stat, dir: (p.stat_direction || 'UP').toLowerCase() });
-        }
-    }
-
     let html = `<div class="leg-bill-expanded">`;
 
     // Effects
-    if (effects.length > 0) {
-        html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.8px;margin-bottom:4px;">PROJECTED EFFECTS IF PASSED</div>
-            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">`;
-        for (const e of effects) {
-            const isGood = (e.dir === 'up' && !STATS_LOWER_IS_BETTER.includes(e.stat))
-                || (e.dir === 'down' && STATS_LOWER_IS_BETTER.includes(e.stat));
-            const arrow = e.dir === 'up' ? '\u25B2' : '\u25BC';
-            const color = isGood ? 'var(--green)' : 'var(--red)';
-            html += `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(e.stat)} ${arrow}</span>`;
-        }
-        html += `</div>`;
+    const chips = renderBillEffectChips(bill, true);
+    if (chips) {
+        html += `<div style="margin-bottom:10px;">${chips}</div>`;
     }
 
     // Vote actions (floor bills only)
