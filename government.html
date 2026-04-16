@@ -702,6 +702,42 @@ async function fetchMinisterInfo(ministryKey) {
     }
 }
 
+function getCachedMinisterInfo(ministryKey) {
+    const ministry = Array.isArray(ministryData)
+        ? ministryData.find(m => m.ministry_key === ministryKey)
+        : null;
+    if (!ministry) return { ministerName: '', partyName: '' };
+    return {
+        ministerName: ministry.minister_first_name
+            ? `${ministry.minister_first_name} ${ministry.minister_last_name || ''}`.trim()
+            : '',
+        partyName: ministry?.factions?.faction_name || ''
+    };
+}
+
+async function insertMinisterActionTimelineEvent(ministryKey, actionName, tickOverride) {
+    if (!currentNation?.id || !ministryKey || !actionName) return;
+    try {
+        const cached = getCachedMinisterInfo(ministryKey);
+        const fetched = (!cached.ministerName || !cached.partyName)
+            ? await fetchMinisterInfo(ministryKey)
+            : { ministerName: '', partyName: '' };
+        const ministerName = cached.ministerName || fetched.ministerName || 'Unknown Minister';
+        const ministryName = MINISTRY_NAMES[ministryKey] || ministryKey;
+        const firedAtTick = Number.isFinite(tickOverride) ? tickOverride : currentTick;
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: 'Minister Action',
+            category: 'POLITICS',
+            fired_at_tick: firedAtTick,
+            trigger_key: 'minister_action_used',
+            description_chosen: `${ministerName} (${ministryName}) used ${actionName}.`
+        });
+    } catch (timelineErr) {
+        console.warn('[Timeline] minister action event insert failed:', timelineErr);
+    }
+}
+
 // Format discretionary balance for display (shared across ministry card renderers)
 function formatDiscretionaryBalance(rawBalance) {
     const balance = Number(rawBalance || 0);
@@ -6536,6 +6572,10 @@ async function confirmPharmaceuticalAction(direction) {
                 }
             });
         } catch (_) { /* best-effort */ }
+        await insertMinisterActionTimelineEvent(
+            'healthcare',
+            `${config.name} (${direction === 'increase' ? 'Increase Regulations' : 'Decrease Regulations'})`
+        );
 
     } catch (e) {
         // Revert optimistic UI — only reached if RPC itself failed
@@ -7030,6 +7070,10 @@ async function confirmLaborPolicyAction(direction) {
                 }
             });
         } catch (_) { /* best-effort */ }
+        await insertMinisterActionTimelineEvent(
+            'labor',
+            `${config.name} (${direction === 'strengthen' ? 'Strengthen Unions' : 'Deregulate Labor'})`
+        );
 
     } catch (e) {
         // Revert optimistic UI — only reached if RPC itself failed
@@ -8708,16 +8752,7 @@ async function ministryActionConfirm(actionId) {
         // Fire CIVIC event (non-blocking)
         try {
             const effectiveTriggerKey = action.triggerKey || 'ministry_ability_used';
-            const { data: ministry } = await _supabase
-                .from('ministries')
-                .select('minister_first_name, minister_last_name, factions(faction_name)')
-                .eq('nation_id', currentNation.id)
-                .eq('ministry_key', ministryKey)
-                .single();
-            const ministerName = ministry
-                ? (ministry.minister_first_name + ' ' + (ministry.minister_last_name || '')).trim()
-                : 'Unknown';
-            const partyName = ministry?.factions?.faction_name || currentFaction?.faction_name || 'Unknown';
+            const { ministerName, partyName } = await fetchMinisterInfo(ministryKey);
             const placeholders = {
                     minister_name: ministerName,
                     party: partyName,
@@ -8734,6 +8769,7 @@ async function ministryActionConfirm(actionId) {
                 p_placeholders: placeholders
             });
         } catch (evtErr) { /* non-blocking — event display is best-effort */ }
+        await insertMinisterActionTimelineEvent(ministryKey, action.name);
 
     } catch (e) {
         // Revert optimistic UI
@@ -8899,8 +8935,10 @@ async function protestCrisisAction(actionType) {
 // ==================== ISSUE GOVERNMENT BONDS ====================
 let _bondCouponRate = 5;
 let _bondTermMonths = 60;
+let _bondMinistryKey = 'finance';
 
 function openBondIssuanceModal(ministryKey, apCost) {
+    _bondMinistryKey = ministryKey || 'finance';
     _bondCouponRate = 5;
     _bondTermMonths = 60;
 
@@ -9031,6 +9069,7 @@ async function submitBondIssuance(apCost) {
             description_chosen: `${currentNation.name} has issued government bonds at ${_bondCouponRate}% coupon for ${_bondTermMonths} months. Investment banks may now purchase positions.`,
             fired_at_tick: currentTick,
         });
+        await insertMinisterActionTimelineEvent(_bondMinistryKey, 'Issue Government Bonds', currentTick);
 
         // Update AP display
         const apEl = document.getElementById('faction-ap');
