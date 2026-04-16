@@ -21491,8 +21491,9 @@ async function openTradeNegModal(partnerNationId) {
             nation_a_id: a,
             nation_b_id: b,
             status: 'open',
-            initiated_by_nation_id: myNation.id,
-            started_at_tick: tick,
+            agreement_type: 'fta',
+            opened_at_tick: tick,
+            expires_at_tick: tick + 48,
         }).select('id, status').single();
         if (createErr) { alert('Failed to start negotiation: ' + createErr.message); return; }
         neg = created;
@@ -21703,6 +21704,17 @@ function negChatSubscribe(negotiationId) {
             if (empty && !container.querySelector('.trade-neg-msg')) empty.remove();
             container.insertAdjacentHTML('beforeend', negChatRenderMsg(msg));
             container.scrollTop = container.scrollHeight;
+
+            // If it's a withdrawal system message from the other side, grey out
+            if (msg.is_system && msg.message_text?.includes('withdrawn')) {
+                const chatPanel = document.getElementById('trade-neg-chat-panel');
+                const inputBar = document.getElementById('trade-neg-chat-input-bar');
+                const withdrawBtn = document.getElementById('trade-neg-withdraw-btn');
+                if (chatPanel) chatPanel.classList.add('trade-neg-chat--ended');
+                if (inputBar) inputBar.style.display = 'none';
+                if (withdrawBtn) { withdrawBtn.disabled = true; withdrawBtn.textContent = 'Negotiations Ended'; }
+                if (_activeNegModal) _activeNegModal.status = 'cancelled';
+            }
         })
         .subscribe();
 }
@@ -21720,8 +21732,96 @@ function closeTradeNegModal() {
 }
 
 async function withdrawFromNegotiations() {
-    // Phase 5 placeholder
-    alert('Withdraw flow will be implemented in Phase 5.');
+    if (!_activeNegModal) return;
+    const chatRole = _activeNegModal.chatRole;
+    if (!chatRole?.canChat) {
+        alert('You need a diplomatic role to withdraw from negotiations.');
+        return;
+    }
+
+    const partnerName = _activeNegModal.partnerNationName || 'Unknown';
+    if (!confirm('Withdraw from trade negotiations with ' + partnerName + '?\n\nThis will end the negotiation and cannot be undone.')) return;
+
+    const negId = _activeNegModal.negotiationId;
+    const myNationId = _activeNegModal.myNationId;
+    const partnerNationId = _activeNegModal.partnerNationId;
+
+    // Get current tick
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shardData?.current_tick || 0;
+
+    // 1. Update negotiation status to cancelled
+    const { error: statusErr } = await _supabase.from('trade_negotiations')
+        .update({ status: 'cancelled', concluded_at_tick: tick })
+        .eq('id', negId);
+    if (statusErr) { alert('Failed to withdraw: ' + statusErr.message); return; }
+
+    // 2. Insert system message into chat
+    await _supabase.from('negotiation_messages').insert({
+        negotiation_id: negId,
+        sender_nation_id: myNationId,
+        sender_faction_id: _worldState.faction.id,
+        sender_role: chatRole.role,
+        sender_display_name: 'System',
+        message_text: chatRole.displayName + ' has withdrawn from negotiations.',
+        is_system: true,
+        sent_at_tick: tick,
+    });
+
+    // 3. Build event text — always attribute to Minister of Trade in the event
+    const withdrawerName = chatRole.displayName.split(' (')[0];
+    const roleSuffix = chatRole.role === 'trade_minister' ? 'Minister of Trade '
+        : chatRole.role === 'prime_minister' ? 'Prime Minister '
+        : 'Ambassador ';
+    const eventText = roleSuffix + withdrawerName + ' has decided to end trade negotiations with ' + partnerName + '.';
+
+    // 4. Log events for BOTH nations (visible on Nation Local, Nation World, Executive Timeline)
+    await _supabase.from('event_log').insert([
+        {
+            nation_id: myNationId,
+            event_name: 'Trade Negotiations Withdrawn',
+            trigger_key: 'trade_negotiation_withdrawn',
+            category: 'trade',
+            description_chosen: eventText,
+            fired_at_tick: tick,
+        },
+        {
+            nation_id: partnerNationId,
+            event_name: 'Trade Negotiations Withdrawn',
+            trigger_key: 'trade_negotiation_withdrawn',
+            category: 'trade',
+            description_chosen: eventText,
+            fired_at_tick: tick,
+        },
+    ]);
+
+    // 5. Grey out the chat and disable controls
+    const chatPanel = document.getElementById('trade-neg-chat-panel');
+    const inputBar = document.getElementById('trade-neg-chat-input-bar');
+    const withdrawBtn = document.getElementById('trade-neg-withdraw-btn');
+
+    if (chatPanel) chatPanel.classList.add('trade-neg-chat--ended');
+    if (inputBar) inputBar.style.display = 'none';
+    if (withdrawBtn) {
+        withdrawBtn.disabled = true;
+        withdrawBtn.textContent = 'Negotiations Ended';
+    }
+
+    // Append the system message locally
+    const container = document.getElementById('trade-neg-chat-messages');
+    if (container) {
+        container.insertAdjacentHTML('beforeend', negChatRenderMsg({
+            sender_faction_id: null,
+            sender_display_name: 'System',
+            message_text: chatRole.displayName + ' has withdrawn from negotiations.',
+            is_system: true,
+            created_at: new Date().toISOString(),
+        }));
+        container.scrollTop = container.scrollHeight;
+    }
+
+    // Update local state
+    _activeNegModal.status = 'cancelled';
 }
 
 window.openTradeNegModal = openTradeNegModal;
