@@ -13,10 +13,10 @@
     <!-- Supabase SDK -->
 
     <!-- Shared Styles -->
-  <script type="module" crossorigin src="/assets/diplomacy-Bmhj-mW7.js"></script>
+  <script type="module" crossorigin src="/assets/diplomacy-BdfD0Sh4.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-DqCYC8Fq.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-DtfiRwOl.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-CY90Gazr.js">
   <link rel="modulepreload" crossorigin href="/assets/government-types-CONVKpUN.js">
   <link rel="modulepreload" crossorigin href="/assets/config-fKhFNVuq.js">
@@ -26,7 +26,7 @@
   <link rel="modulepreload" crossorigin href="/assets/trade-constants-CfG5_BU2.js">
   <link rel="stylesheet" crossorigin href="/assets/diplomacy-BKI3L5jY.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
-  <link rel="stylesheet" crossorigin href="/assets/diplomacy-CFvZNfLC.css">
+  <link rel="stylesheet" crossorigin href="/assets/diplomacy-DwVC1ALR.css">
 </head>
 <body>
 
@@ -138,6 +138,29 @@
     <!-- ═══ IPO Creation Modal ═══ -->
     <div class="modal-overlay" id="ipo-create-modal">
         <div class="ipo-modal-content" id="ipo-create-modal-inner"></div>
+    </div>
+
+    <!-- ═══ Trade Negotiation Modal ═══ -->
+    <div class="modal-overlay" id="trade-neg-modal">
+        <div class="trade-neg-modal-content">
+            <div class="trade-neg-modal-header" id="trade-neg-header"></div>
+            <div class="trade-neg-modal-body">
+                <div class="trade-neg-main" id="trade-neg-main">
+                    <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:var(--font-mono);font-size:11px;">Trade articles will appear here in a future update.</div>
+                </div>
+                <div class="trade-neg-chat" id="trade-neg-chat-panel">
+                    <div class="trade-neg-chat__header">Trade Negotiations Discuss</div>
+                    <div class="trade-neg-chat__messages" id="trade-neg-chat-messages"></div>
+                    <div class="trade-neg-chat__input" id="trade-neg-chat-input-bar">
+                        <input type="text" id="trade-neg-chat-input" placeholder="Type a message..." maxlength="2000">
+                        <button id="trade-neg-chat-send" disabled>Send</button>
+                    </div>
+                </div>
+            </div>
+            <div class="trade-neg-modal-footer">
+                <button class="trade-neg-withdraw-btn" id="trade-neg-withdraw-btn" onclick="withdrawFromNegotiations()">Withdraw from Negotiations</button>
+            </div>
+        </div>
     </div>
 </div>
 
