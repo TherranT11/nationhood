@@ -291,8 +291,9 @@ function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
     const govScore = o.governanceScore;
     const govColor = govScore >= 0 ? 'var(--green)' : 'var(--red)';
     const adminName = o.isOpposition ? 'Opposition' : (o.administration?.admin_name || 'Government');
-    const elTicks = o.nextElectionTicks != null ? o.nextElectionTicks : '—';
-    const elColor = (typeof elTicks === 'number' && elTicks <= 3) ? 'var(--red)' : 'var(--text-bright)';
+    const isMonarchy = (_state.nation?.government_type || '').toLowerCase().includes('monarchy');
+    const elTicks = isMonarchy ? 'No elections' : (o.nextElectionTicks != null ? o.nextElectionTicks : '—');
+    const elColor = isMonarchy ? 'var(--text-dim)' : ((typeof elTicks === 'number' && elTicks <= 3) ? 'var(--red)' : 'var(--text-bright)');
 
     return `<div class="po-summary">
         <div class="po-summary-cell" style="display:flex;flex-direction:row;align-items:center;gap:8px;">
