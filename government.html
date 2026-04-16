@@ -2588,17 +2588,45 @@ function renderBillCard(bill, stageColor) {
     // Articles (always visible for committee, on expand for floor)
     if (bill.status === 'committee' || isExp) {
         html += `<div style="padding:0 14px 8px;">`;
+        const toRoman = (n) => {
+            if (!n || n < 1) return '?';
+            const romanMap = [
+                [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
+                [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
+                [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+            ];
+            let num = n;
+            let out = '';
+            for (const [value, numeral] of romanMap) {
+                while (num >= value) {
+                    out += numeral;
+                    num -= value;
+                }
+            }
+            return out || '?';
+        };
+
         for (const art of articles) {
-            const policyName = art.policies?.name || art.article_title || 'Article ' + (art.article_number || '?');
+            const policy = art.policies || {};
+            const policyName = policy.name || policy.policy_name || art.article_title || 'Article ' + (art.article_number || '?');
+            const ideologyList = Array.isArray(policy.ideologies)
+                ? policy.ideologies
+                : (policy.ideology ? [policy.ideology] : []);
+            const ideologyLabels = ideologyList
+                .filter(Boolean)
+                .map((ideology) => ` (${escapeHtml(String(ideology))})`)
+                .join('');
+            const descriptionText = policy.description || art.article_text;
             const hasBudget = art.funding_data || art.effect_data?.funding_data;
             const badge = hasBudget ? 'BUDGET' : 'TEXT';
             const badgeColor = hasBudget ? 'var(--gold, #c8a832)' : 'var(--blue)';
+            const articleOrdinal = toRoman(art.article_number);
             html += `<div style="padding:5px 10px;margin-bottom:2px;border-left:2px solid var(--border-main);">
                 <div style="display:flex;align-items:center;gap:6px;">
-                    <span style="font-size:10px;font-weight:700;color:var(--text-bright);">Art. ${art.article_number || '?'}. ${escapeHtml(policyName)}</span>
+                    <span style="font-size:10px;font-weight:700;color:var(--text-bright);">Article ${articleOrdinal}.: ${escapeHtml(policyName)}${ideologyLabels}</span>
                     <span class="leg-article-badge" style="color:${badgeColor};background:${badgeColor}10;border-color:${badgeColor}33;">${badge}</span>
                 </div>
-                ${art.article_text ? `<div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${escapeHtml(art.article_text)}</div>` : ''}
+                ${descriptionText ? `<p style="font-size:9px;color:var(--text-dim);margin:2px 0 0;">${escapeHtml(descriptionText)}</p>` : ''}
             </div>`;
         }
         html += `</div>`;
