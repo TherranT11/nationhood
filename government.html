@@ -1221,7 +1221,7 @@ function renderAdminBanner() {
         hosLast = nation?.head_of_state_last_name;
         hosAge = nation?.head_of_state_age;
     }
-    const hosTitle = isMonarchyGov ? (nation?.monarch_title || 'King') : 'Head of State';
+    const hosTitle = isMonarchyGov ? (nation?.monarch_title || 'King') : (isPresidential ? 'Vice President' : 'Head of State');
     if (hosFirst && hosLast) {
         const hosName = `${hosFirst} ${hosLast}`;
         const hosInitials = hosName.split(' ').map(n => n[0] || '').join('');
