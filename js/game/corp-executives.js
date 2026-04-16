@@ -3,7 +3,7 @@
  *
  * Generates a persistent pool of 15-20 hireable executives per nation,
  * with names drawn from all nation name pools. Each candidate has a
- * skill rating, required compensation, and contract length.
+ * skill tier (1..5), required compensation, and contract length.
  *
  * CEO is auto-seeded from existing faction leader data at corp creation.
  */
@@ -67,25 +67,81 @@ var ROLE_GROUPS = [
 ];
 
 // ═══════════════════════════════════════════════════
-// COMPENSATION FORMULA
+// SKILL TIERS + COMPENSATION TABLES
 // ═══════════════════════════════════════════════════
 
 /**
- * Calculate total contract value based on skill.
- * Skill 25 → ~$12M total, Skill 90 → ~$100M total.
- * Scaled exponentially so elite executives cost significantly more.
+ * Normalize any historical skill representation to tier 1..5.
+ * - New model: values 1..5 are preserved.
+ * - Legacy 0..100 values are bucketed into 1..5 for compatibility.
  *
- * @param {number} skill - 25 to 90
- * @returns {number} total contract value in dollars
+ * @param {number} rawSkill
+ * @returns {number} tier 1..5
  */
-export function calculateCompensation(skill) {
-    // Linear interpolation from $12M (skill 25) to $100M (skill 90)
-    // with slight exponential curve for top talent
-    var t = (skill - 25) / 65; // 0 to 1
-    var curved = t * t * 0.4 + t * 0.6; // slight exponential bias
-    var total = 12000000 + curved * 88000000;
-    // Round to nearest $500k
-    return Math.round(total / 500000) * 500000;
+export function normalizeSkillTier(rawSkill) {
+    var n = Number(rawSkill);
+    if (!Number.isFinite(n)) return 1;
+    if (n >= 1 && n <= 5) return Math.round(n);
+    // Legacy 0..100 skill → 5 buckets
+    var clamped = Math.max(0, Math.min(100, n));
+    return Math.min(5, Math.max(1, Math.ceil(clamped / 20)));
+}
+
+var SKILL_TIER_MULTIPLIER = {
+    1: 1.35,
+    2: 1.15,
+    3: 1.00,
+    4: 0.85,
+    5: 0.72,
+};
+
+var COMPENSATION_BY_TIER = {
+    initial: {
+        1: { annualSalary: 1600000, contractYears: [2, 3] },
+        2: { annualSalary: 2600000, contractYears: [2, 4] },
+        3: { annualSalary: 4300000, contractYears: [3, 5] },
+        4: { annualSalary: 6800000, contractYears: [4, 6] },
+        5: { annualSalary: 10200000, contractYears: [5, 7] },
+    },
+    renewal: {
+        1: { annualSalary: 1900000, contractYears: [1, 2] },
+        2: { annualSalary: 3100000, contractYears: [2, 3] },
+        3: { annualSalary: 5000000, contractYears: [2, 4] },
+        4: { annualSalary: 7900000, contractYears: [3, 5] },
+        5: { annualSalary: 11800000, contractYears: [3, 6] },
+    },
+};
+
+/**
+ * Converts skill tier to action cost/effect multiplier.
+ * Lower is better (reduced cost / reduced downside).
+ *
+ * @param {number} skillTier - 1..5
+ * @returns {number}
+ */
+export function skillTierToMultiplier(skillTier) {
+    var tier = normalizeSkillTier(skillTier);
+    return SKILL_TIER_MULTIPLIER[tier] || 1;
+}
+
+/**
+ * Contract terms keyed by tier and market type (initial/renewal).
+ *
+ * @param {number} skillTier - 1..5
+ * @param {'initial'|'renewal'} kind
+ * @returns {{annualSalary:number, contractYears:number, totalCompensation:number}}
+ */
+export function calculateCompensation(skillTier, kind) {
+    var tier = normalizeSkillTier(skillTier);
+    var mode = kind === 'renewal' ? 'renewal' : 'initial';
+    var def = COMPENSATION_BY_TIER[mode][tier] || COMPENSATION_BY_TIER.initial[3];
+    var years = randInt(def.contractYears[0], def.contractYears[1]);
+    var salary = def.annualSalary;
+    return {
+        annualSalary: salary,
+        contractYears: years,
+        totalCompensation: salary * years,
+    };
 }
 
 // ═══════════════════════════════════════════════════
@@ -119,7 +175,7 @@ function randInt(min, max) {
 
 /**
  * Generate the executive pool for a nation.
- * Creates 18 candidates with diverse origins, skills, and roles.
+ * Creates 18 candidates with diverse origins, tiered skills, and roles.
  *
  * @param {string} nationId - UUID of the nation
  * @param {string} nationName - name of the nation (for weighting local candidates)
@@ -144,11 +200,9 @@ export function generateExecutivePool(nationId, nationName) {
         } while (usedNames.has(fullName) && attempts < 20);
         usedNames.add(fullName);
 
-        var skill = randInt(25, 90);
+        var skill = randInt(1, 5);
         var age = randInt(28, 62);
-        var contractYears = randInt(2, 7);
-        var totalComp = calculateCompensation(skill);
-        var annualSalary = Math.round(totalComp / contractYears);
+        var comp = calculateCompensation(skill, 'initial');
         var specializations = pickRandom(ROLE_GROUPS);
 
         pool.push({
@@ -159,8 +213,8 @@ export function generateExecutivePool(nationId, nationName) {
             origin_nation: origin.origin,
             skill: skill,
             specializations: specializations,
-            required_salary: annualSalary,
-            required_years: contractYears,
+            required_salary: comp.annualSalary,
+            required_years: comp.contractYears,
             status: 'available',
         });
     }
@@ -185,10 +239,8 @@ export function generateExecutivePool(nationId, nationName) {
  * @returns {Object} row ready for Supabase insert into corp_executives
  */
 export function createCEORecord(factionId, firstName, lastName, age, nationName, currentTick) {
-    var skill = randInt(25, 45);
-    var contractYears = randInt(2, 5);
-    var totalComp = 25000000 + (skill - 25) * 1500000; // $25M to $55M range
-    var annualSalary = Math.round(totalComp / contractYears);
+    var skill = randInt(2, 3); // conservative founder profile by default
+    var comp = calculateCompensation(skill, 'initial');
 
     return {
         faction_id: factionId,
@@ -198,10 +250,10 @@ export function createCEORecord(factionId, firstName, lastName, age, nationName,
         age: age,
         origin_nation: nationName,
         skill: skill,
-        salary_per_year: annualSalary,
-        contract_years: contractYears,
+        salary_per_year: comp.annualSalary,
+        contract_years: comp.contractYears,
         contract_start_tick: currentTick,
-        contract_end_tick: currentTick + (contractYears * 12), // ~12 ticks per year
+        contract_end_tick: currentTick + (comp.contractYears * 12), // ~12 ticks per year
         status: 'active',
     };
 }
