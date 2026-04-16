@@ -155,6 +155,7 @@
                 <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-article-btn" onclick="negArticleShowForm()">Add Text Article</button>
             </div>
             <div style="display:flex;gap:8px;margin-left:auto;">
+                <button id="trade-neg-agreement-btn" onclick="negAgreementToggle()" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:8px 16px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:pointer;transition:all 0.15s;">Not in Agreement [0/2]</button>
                 <button class="trade-neg-withdraw-btn" id="trade-neg-withdraw-btn" onclick="withdrawFromNegotiations()">Withdraw from Negotiations</button>
             </div>
         </div>
@@ -21532,7 +21533,7 @@ async function openTradeNegModal(partnerNationId) {
 
     console.log('[TradeNeg] Step 2: querying trade_negotiations', a, b);
     let { data: neg, error: negErr } = await _supabase.from('trade_negotiations')
-        .select('id, status, draft_articles')
+        .select('id, status, draft_articles, approved_by_a, approved_by_b, nation_a_id, nation_b_id, agreement_type, agreement_name')
         .eq('nation_a_id', a).eq('nation_b_id', b)
         .in('status', ['open', 'active'])
         .order('created_at', { ascending: false })
@@ -21567,6 +21568,8 @@ async function openTradeNegModal(partnerNationId) {
     const myFlag = myNation.flag_url || `assets/flags/${myNation.name}.png`;
     const partnerFlag = partner.flag_url || `assets/flags/${partner.name}.png`;
 
+    const weAreA = neg.nation_a_id === myNation.id;
+
     _activeNegModal = {
         negotiationId: neg.id,
         myNationId: myNation.id,
@@ -21578,6 +21581,11 @@ async function openTradeNegModal(partnerNationId) {
         status: neg.status,
         chatRole,
         articles: neg.draft_articles || [],
+        weAreA,
+        agreementType: neg.agreement_type,
+        agreementName: neg.agreement_name,
+        approvedByA: neg.approved_by_a,
+        approvedByB: neg.approved_by_b,
     };
 
     // Render header
@@ -21626,8 +21634,9 @@ async function openTradeNegModal(partnerNationId) {
         inputBar.style.display = 'none';
     }
 
-    // Render articles in left panel
+    // Render articles in left panel + agreement button
     negArticlesRender();
+    negAgreementRender();
 
     // Load existing messages + start realtime
     await negChatLoad(neg.id);
@@ -21976,11 +21985,134 @@ async function negArticleRequestStrike(articleId) {
     negArticlesRender();
 }
 
+// ── Agreement voting [0/2] → [1/2] → [2/2] → ratification bills ──
+
+function negAgreementRender() {
+    const btn = document.getElementById('trade-neg-agreement-btn');
+    if (!btn || !_activeNegModal) return;
+
+    const myApproved = _activeNegModal.weAreA ? _activeNegModal.approvedByA : _activeNegModal.approvedByB;
+    const theirApproved = _activeNegModal.weAreA ? _activeNegModal.approvedByB : _activeNegModal.approvedByA;
+    const count = (myApproved ? 1 : 0) + (theirApproved ? 1 : 0);
+
+    if (count === 2) {
+        btn.textContent = 'Agreement [2/2]';
+        btn.style.color = '#4ade80';
+        btn.style.borderColor = 'rgba(74,222,128,0.3)';
+        btn.disabled = true;
+    } else if (myApproved) {
+        btn.textContent = 'Agreement [' + count + '/2]';
+        btn.style.color = '#5aafa5';
+        btn.style.borderColor = 'rgba(90,175,165,0.3)';
+        btn.disabled = false;
+    } else {
+        btn.textContent = 'Not in Agreement [' + count + '/2]';
+        btn.style.color = 'var(--text-dim)';
+        btn.style.borderColor = 'var(--border-main)';
+        btn.disabled = false;
+    }
+}
+
+let _negAgreementToggling = false;
+
+async function negAgreementToggle() {
+    if (_negAgreementToggling || !_activeNegModal) return;
+    const m = _activeNegModal;
+    const myApproved = m.weAreA ? m.approvedByA : m.approvedByB;
+    const approveCol = m.weAreA ? 'approved_by_a' : 'approved_by_b';
+    const approveRoleCol = m.weAreA ? 'approved_by_a_role' : 'approved_by_b_role';
+    const approveTickCol = m.weAreA ? 'approved_at_a_tick' : 'approved_at_b_tick';
+
+    _negAgreementToggling = true;
+
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shardData?.current_tick || 0;
+
+    if (myApproved) {
+        // Revoke approval
+        const updateData = { [approveCol]: null, [approveRoleCol]: null, [approveTickCol]: null };
+        const { error } = await _supabase.from('trade_negotiations').update(updateData).eq('id', m.negotiationId);
+        if (error) { alert('Failed to revoke agreement: ' + error.message); _negAgreementToggling = false; return; }
+        if (m.weAreA) { m.approvedByA = null; } else { m.approvedByB = null; }
+    } else {
+        // Grant approval
+        const factionId = _worldState?.faction?.id;
+        const role = m.chatRole?.role || 'trade_minister';
+        const updateData = { [approveCol]: factionId, [approveRoleCol]: role, [approveTickCol]: tick };
+
+        // Check if other side already approved — if so, generate ratification bills
+        const theirApproved = m.weAreA ? m.approvedByB : m.approvedByA;
+        if (theirApproved) {
+            updateData.status = 'ratification';
+
+            // Fetch nation names
+            const [{ data: nationARow }, { data: nationBRow }] = await Promise.all([
+                _supabase.from('nations').select('name').eq('id', m.weAreA ? m.myNationId : m.partnerNationId).single(),
+                _supabase.from('nations').select('name').eq('id', m.weAreA ? m.partnerNationId : m.myNationId).single(),
+            ]);
+            const nameA = nationARow?.name || 'Unknown';
+            const nameB = nationBRow?.name || 'Unknown';
+            const agreementName = m.agreementName || 'Trade Agreement';
+            const billTitle = 'Ratify: ' + agreementName;
+            const billPreamble = 'Ratification of the trade agreement "' + agreementName + '" between ' +
+                nameA + ' and ' + nameB + '. A YES vote enacts the agreement; a NO vote rejects it.';
+
+            const VOTING_WINDOW = 3;
+            const billBase = {
+                bill_type: 'ratification', bill_name: billTitle, preamble: billPreamble,
+                trade_negotiation_id: m.negotiationId, status: 'floor',
+                proposed_tick: tick, floor_tick: tick,
+                voting_ends_tick: tick + VOTING_WINDOW,
+            };
+
+            const nationAId = m.weAreA ? m.myNationId : m.partnerNationId;
+            const nationBId = m.weAreA ? m.partnerNationId : m.myNationId;
+            const approverA = m.weAreA ? factionId : m.approvedByA;
+            const approverB = m.weAreA ? m.approvedByB : factionId;
+
+            const billA = { ...billBase, nation_id: nationAId, proposed_by: approverA };
+            const billB = { ...billBase, nation_id: nationBId, proposed_by: approverB };
+
+            const [resultA, resultB] = await Promise.all([
+                _supabase.from('bills').insert(billA).select('id').single(),
+                _supabase.from('bills').insert(billB).select('id').single(),
+            ]);
+
+            if (resultA.error) { alert('Error creating ratification bill: ' + resultA.error.message); _negAgreementToggling = false; return; }
+            if (resultB.error) { alert('Error creating ratification bill: ' + resultB.error.message); _negAgreementToggling = false; return; }
+
+            updateData.bill_a_id = resultA.data?.id || null;
+            updateData.bill_b_id = resultB.data?.id || null;
+
+            // Fire events
+            const eventDesc = 'The trade agreement "' + agreementName + '" between ' + nameA + ' and ' + nameB + ' has been sent to both parliaments for ratification.';
+            _supabase.from('event_log').insert([nationAId, nationBId].map(nid => ({
+                nation_id: nid,
+                event_name: agreementName + ' — Ratification',
+                category: 'trade', description_chosen: eventDesc, fired_at_tick: tick,
+            }))).then(() => {});
+        }
+
+        const { error } = await _supabase.from('trade_negotiations').update(updateData).eq('id', m.negotiationId);
+        if (error) { alert('Failed to approve: ' + error.message); _negAgreementToggling = false; return; }
+        if (m.weAreA) { m.approvedByA = factionId; } else { m.approvedByB = factionId; }
+
+        if (theirApproved) {
+            m.status = 'ratification';
+            alert('Both sides have approved! Ratification bills have been submitted to both parliaments.');
+        }
+    }
+
+    negAgreementRender();
+    _negAgreementToggling = false;
+}
+
 window.negArticleShowForm = negArticleShowForm;
 window.negArticleCancelForm = negArticleCancelForm;
 window.negArticleAdd = negArticleAdd;
 window.negArticleDelete = negArticleDelete;
 window.negArticleRequestStrike = negArticleRequestStrike;
+window.negAgreementToggle = negAgreementToggle;
 
 // ── Modal close ──
 
