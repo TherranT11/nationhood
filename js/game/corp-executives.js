@@ -71,21 +71,20 @@ var ROLE_GROUPS = [
 // ═══════════════════════════════════════════════════
 
 /**
- * Calculate total contract value based on skill.
- * Skill 25 → ~$12M total, Skill 90 → ~$100M total.
- * Scaled exponentially so elite executives cost significantly more.
+ * Calculate annual salary based on skill.
+ * Uses a 2000-bubble calibration curve:
+ *   Pay (in $M) = 0.5 + 21.5 × (Skill / 95)^1.7
  *
- * @param {number} skill - 25 to 90
- * @returns {number} total contract value in dollars
+ * Skill  5 → ~$0.6M    Skill 50 → ~$7.7M    Skill 90 → ~$20.1M
+ * Skill 30 → ~$3.6M    Skill 70 → ~$12.8M   Skill 95 → ~$22.0M
+ *
+ * @param {number} skill - executive skill rating (typically 5–95)
+ * @returns {number} annual salary in dollars
  */
 export function calculateCompensation(skill) {
-    // Linear interpolation from $12M (skill 25) to $100M (skill 90)
-    // with slight exponential curve for top talent
-    var t = (skill - 25) / 65; // 0 to 1
-    var curved = t * t * 0.4 + t * 0.6; // slight exponential bias
-    var total = 12000000 + curved * 88000000;
-    // Round to nearest $500k
-    return Math.round(total / 500000) * 500000;
+    var payMillions = 0.5 + 21.5 * Math.pow(skill / 95, 1.7);
+    // Round to nearest $10k
+    return Math.round(payMillions * 1000000 / 10000) * 10000;
 }
 
 // ═══════════════════════════════════════════════════
@@ -147,8 +146,7 @@ export function generateExecutivePool(nationId, nationName) {
         var skill = randInt(25, 90);
         var age = randInt(28, 62);
         var contractYears = randInt(2, 7);
-        var totalComp = calculateCompensation(skill);
-        var annualSalary = Math.round(totalComp / contractYears);
+        var annualSalary = calculateCompensation(skill);
         var specializations = pickRandom(ROLE_GROUPS);
 
         pool.push({
@@ -187,8 +185,7 @@ export function generateExecutivePool(nationId, nationName) {
 export function createCEORecord(factionId, firstName, lastName, age, nationName, currentTick) {
     var skill = randInt(25, 45);
     var contractYears = randInt(2, 5);
-    var totalComp = 25000000 + (skill - 25) * 1500000; // $25M to $55M range
-    var annualSalary = Math.round(totalComp / contractYears);
+    var annualSalary = calculateCompensation(skill);
 
     return {
         faction_id: factionId,
@@ -318,7 +315,7 @@ export async function createInitialExecutiveRoster(params) {
         var skill = (role === 'CEO')
             ? deterministicInt(seedPrefix + '|skill', 25, 45)
             : deterministicInt(seedPrefix + '|skill', 25, 40);
-        var annualSalary = Math.round(calculateCompensation(skill) / contractYears);
+        var annualSalary = calculateCompensation(skill);
 
         var firstName;
         var lastName;

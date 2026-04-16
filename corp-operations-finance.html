@@ -488,6 +488,7 @@ async function loadDealFlow() {
                 insuredVesselId: req.insured_vessel_id,
                 isVesselInsurance: !!req.insured_vessel_id,
                 alreadyOffered: offeredSet.has(req.id),
+                requestingFactionId: req.requesting_faction?.id,
             };
         }
         return {
@@ -498,6 +499,7 @@ async function loadDealFlow() {
             entity: 'CORP',
             nation: borrowerNations[req.requesting_faction?.nation_id]?.name || 'N/A',
             nation_id: req.requesting_faction?.nation_id,
+            requestingFactionId: req.requesting_faction?.id,
             amount: req.amount,
             term: req.term_months,
             purpose: req.purpose || '',
@@ -2222,7 +2224,7 @@ async function rdSubmitOffer() {
         const policyRow = {
             request_id: rdDeal.requestId,
             offer_id: null,
-            borrower_faction_id: fundedReq?.requesting_faction_id || rdDeal.requestId,
+            borrower_faction_id: fundedReq?.requesting_faction_id || rdDeal.requestingFactionId,
             lender_faction_id: faction.id,
             nation_id: faction.nation_id,
             principal: coverage,
