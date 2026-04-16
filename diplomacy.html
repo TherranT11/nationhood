@@ -568,11 +568,14 @@ async function loadShippingData() {
     const nationId = _worldState?.nation?.id;
     if (!nationId) return;
 
+    try {
     // Routes involving our nation
-    const { data: routes } = await _supabase.from('shipping_routes')
+    const { data: routes, error: routeErr } = await _supabase.from('shipping_routes')
         .select('id, origin_nation_id, destination_nation_id, trade_sector, cargo_category, goods_name, trade_volume, estimated_revenue, transit_ticks, demand_level, trade_agreement_id, trade_agreement_name, status, competition_count')
         .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`)
         .eq('status', 'active');
+
+    if (routeErr) return;
 
     _shippingRoutesByAgreement = {};
     const routeIds = [];
@@ -613,6 +616,7 @@ async function loadShippingData() {
             }
         }
     }
+    } catch (_) { /* shipping_routes table may not exist yet */ }
 }
 
 function getAgreementShippingInfo(agreementId) {
