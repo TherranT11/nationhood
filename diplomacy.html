@@ -129,6 +129,29 @@
     <div class="modal-overlay" id="ipo-create-modal">
         <div class="ipo-modal-content" id="ipo-create-modal-inner"></div>
     </div>
+
+    <!-- ═══ Trade Negotiation Modal ═══ -->
+    <div class="modal-overlay" id="trade-neg-modal">
+        <div class="trade-neg-modal-content">
+            <div class="trade-neg-modal-header" id="trade-neg-header"></div>
+            <div class="trade-neg-modal-body">
+                <div class="trade-neg-main" id="trade-neg-main">
+                    <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:var(--font-mono);font-size:11px;">Trade articles will appear here in a future update.</div>
+                </div>
+                <div class="trade-neg-chat" id="trade-neg-chat-panel">
+                    <div class="trade-neg-chat__header">Trade Negotiations Discuss</div>
+                    <div class="trade-neg-chat__messages" id="trade-neg-chat-messages"></div>
+                    <div class="trade-neg-chat__input" id="trade-neg-chat-input-bar">
+                        <input type="text" id="trade-neg-chat-input" placeholder="Type a message..." maxlength="2000">
+                        <button id="trade-neg-chat-send" disabled>Send</button>
+                    </div>
+                </div>
+            </div>
+            <div class="trade-neg-modal-footer">
+                <button class="trade-neg-withdraw-btn" id="trade-neg-withdraw-btn" onclick="withdrawFromNegotiations()">Withdraw from Negotiations</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Shared Scripts -->
@@ -1164,7 +1187,7 @@ function renderTradePartners() {
             // Action buttons
             html += `<div style="padding:10px 18px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;gap:6px;">
                 <div class="tr-action-btn" onclick="event.stopPropagation();selectWorldNation('${n.id}');_diploActiveSubtab='world';renderDiploSubtabs();showDiploSubtab();">NATION INFO</div>
-                <div class="tr-action-btn tr-action-btn--primary">DRAFT TRADE AGREEMENT</div>
+                <div class="tr-action-btn tr-action-btn--primary" onclick="event.stopPropagation();openTradeNegModal('${n.id}');">DRAFT TRADE AGREEMENT</div>
             </div>`;
 
             html += `</div>`;
@@ -21375,6 +21398,450 @@ window.previewExistingOrg = previewExistingOrg;
 window.requestToJoinOrg = requestToJoinOrg;
 window.openIPOExpelModal = openIPOExpelModal;
 window.submitIPOExpel = submitIPOExpel;
+
+// ═══════════════════════════════════════════════════
+// TRADE NEGOTIATION MODAL
+// ═══════════════════════════════════════════════════
+
+let _activeNegModal = null;
+let _negChatChannel = null;
+
+// Priority: Minister of Trade > PM > Ambassador
+
+async function resolveNegotiationChatRole(partnerNationId) {
+    const faction = _worldState?.faction;
+    const nation = _worldState?.nation;
+    if (!faction || !nation) return { canChat: false, role: null, displayName: null };
+
+    // Check Minister of Trade
+    const { data: motEntry } = await _supabase.from('ministries')
+        .select('minister_first_name, minister_last_name')
+        .eq('nation_id', nation.id)
+        .eq('ministry_key', 'trade')
+        .eq('party_id', faction.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (motEntry) {
+        const name = ((motEntry.minister_first_name || '') + ' ' + (motEntry.minister_last_name || '')).trim() || 'Minister';
+        return { canChat: true, role: 'trade_minister', displayName: name + ' (Minister of Trade)' };
+    }
+
+    // Check PM / Head of Government
+    const coalition = await fetchActiveCoalition(_supabase, nation.id);
+    let isPM = false;
+    if (isGovernmentPresidential(nation)) {
+        isPM = coalition?.lead_party_id === faction.id;
+    } else {
+        const alloc = coalition?.ministry_allocations || {};
+        isPM = alloc.prime_minister === faction.id;
+    }
+
+    if (isPM) {
+        const name = ((nation.head_of_state_first_name || '') + ' ' + (nation.head_of_state_last_name || '')).trim() || 'PM';
+        return { canChat: true, role: 'prime_minister', displayName: name + ' (PM)' };
+    }
+
+    // Check Ambassador to the partner nation
+    const { data: ambEntries } = await _supabase.from('ambassadors')
+        .select('ambassador_first_name, ambassador_last_name, target_nation_id')
+        .eq('nation_id', nation.id)
+        .eq('faction_id', faction.id)
+        .eq('target_nation_id', partnerNationId)
+        .eq('is_active', true)
+        .eq('status', 'active')
+        .limit(1);
+
+    if (ambEntries && ambEntries.length > 0) {
+        const amb = ambEntries[0];
+        const name = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim() || 'Ambassador';
+        const partnerName = (_worldAllNations || []).find(n => n.id === partnerNationId)?.name || 'Unknown';
+        return { canChat: true, role: 'ambassador', displayName: name + ' (Ambassador to ' + partnerName + ')' };
+    }
+
+    return { canChat: false, role: null, displayName: null };
+}
+
+let _negModalOpening = false;
+
+async function openTradeNegModal(partnerNationId) {
+    if (_negModalOpening) return;
+    // Close any existing modal first
+    if (_activeNegModal) closeTradeNegModal();
+
+    _negModalOpening = true;
+    const myNation = _worldState?.nation;
+    if (!myNation) { alert('Nation data not loaded.'); _negModalOpening = false; return; }
+    const partner = (_worldAllNations || []).find(n => n.id === partnerNationId);
+    if (!partner) { alert('Partner nation not found.'); _negModalOpening = false; return; }
+
+    // Check or create a trade_negotiations row
+    const a = myNation.id < partnerNationId ? myNation.id : partnerNationId;
+    const b = myNation.id < partnerNationId ? partnerNationId : myNation.id;
+
+    let { data: neg } = await _supabase.from('trade_negotiations')
+        .select('id, status')
+        .eq('nation_a_id', a).eq('nation_b_id', b)
+        .in('status', ['open', 'active'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (!neg) {
+        const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shardData?.current_tick || 0;
+        const { data: created, error: createErr } = await _supabase.from('trade_negotiations').insert({
+            nation_a_id: a,
+            nation_b_id: b,
+            status: 'open',
+            agreement_type: 'fta',
+            opened_at_tick: tick,
+            expires_at_tick: tick + 48,
+        }).select('id, status').single();
+        if (createErr) { alert('Failed to start negotiation: ' + createErr.message); _negModalOpening = false; return; }
+        neg = created;
+    }
+
+    // Resolve chat role
+    const chatRole = await resolveNegotiationChatRole(partnerNationId);
+
+    const myFlag = myNation.flag_url || `assets/flags/${myNation.name}.png`;
+    const partnerFlag = partner.flag_url || `assets/flags/${partner.name}.png`;
+
+    _activeNegModal = {
+        negotiationId: neg.id,
+        myNationId: myNation.id,
+        partnerNationId: partnerNationId,
+        myNationName: myNation.name,
+        partnerNationName: partner.name,
+        myFlag,
+        partnerFlag,
+        status: neg.status,
+        chatRole,
+    };
+
+    // Render header
+    const header = document.getElementById('trade-neg-header');
+    header.innerHTML = `
+        <div class="trade-neg-header__nations">
+            <div class="trade-neg-header__nation">
+                <img src="${escapeHtml(myFlag)}" alt="" class="trade-neg-header__flag" onerror="this.style.display='none'">
+                <span class="trade-neg-header__name">${escapeHtml(myNation.name)}</span>
+            </div>
+            <div class="trade-neg-header__title">${escapeHtml(myNation.name)}-${escapeHtml(partner.name)} Trade Agreement</div>
+            <div class="trade-neg-header__nation">
+                <span class="trade-neg-header__name">${escapeHtml(partner.name)}</span>
+                <img src="${escapeHtml(partnerFlag)}" alt="" class="trade-neg-header__flag" onerror="this.style.display='none'">
+            </div>
+        </div>
+        <span class="trade-neg-header__close" onclick="closeTradeNegModal()">&times;</span>
+    `;
+
+    // Show modal
+    document.getElementById('trade-neg-modal').classList.add('active');
+
+    // Configure chat input based on role
+    const inputBar = document.getElementById('trade-neg-chat-input-bar');
+    const chatMessages = document.getElementById('trade-neg-chat-messages');
+
+    if (chatRole.canChat) {
+        inputBar.style.display = 'flex';
+        inputBar.innerHTML = `
+            <input type="text" id="trade-neg-chat-input" placeholder="Chatting as ${escapeHtml(chatRole.displayName)}..." maxlength="2000">
+            <button id="trade-neg-chat-send" disabled>Send</button>
+        `;
+        // Wire input events
+        const input = document.getElementById('trade-neg-chat-input');
+        const sendBtn = document.getElementById('trade-neg-chat-send');
+        input.addEventListener('input', () => { sendBtn.disabled = !input.value.trim(); });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && input.value.trim()) {
+                e.preventDefault();
+                negChatSend();
+            }
+        });
+        sendBtn.addEventListener('click', () => negChatSend());
+    } else {
+        inputBar.style.display = 'none';
+    }
+
+    // Load existing messages + start realtime
+    await negChatLoad(neg.id);
+    negChatSubscribe(neg.id);
+    _negModalOpening = false;
+}
+
+// ── Chat: Render a single message ──
+
+function negChatRenderMsg(msg) {
+    const factionId = _worldState?.faction?.id;
+    if (msg.is_system) {
+        return `<div class="trade-neg-msg trade-neg-msg--system">${escapeHtml(msg.message_text)}</div>`;
+    }
+    const isMine = msg.sender_faction_id === factionId;
+    const cls = isMine ? 'trade-neg-msg trade-neg-msg--sent' : 'trade-neg-msg trade-neg-msg--received';
+    const senderHtml = !isMine
+        ? `<div class="trade-neg-msg__sender">${escapeHtml(msg.sender_display_name)}</div>`
+        : '';
+    const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    return `<div class="${cls}">
+        ${senderHtml}
+        <div>${escapeHtml(msg.message_text)}</div>
+        <div class="trade-neg-msg__time">${time}</div>
+    </div>`;
+}
+
+// ── Chat: Load existing messages ──
+
+async function negChatLoad(negotiationId) {
+    const container = document.getElementById('trade-neg-chat-messages');
+    if (!container) return;
+
+    const { data: messages, error } = await _supabase
+        .from('negotiation_messages')
+        .select('*')
+        .eq('negotiation_id', negotiationId)
+        .order('created_at', { ascending: true })
+        .limit(200);
+
+    if (error) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:#c55;font-family:var(--font-mono);font-size:10px;">Failed to load messages.</div>';
+        return;
+    }
+
+    if (!messages || messages.length === 0) {
+        const canChat = _activeNegModal?.chatRole?.canChat;
+        const partnerName = _activeNegModal?.partnerNationName || 'the partner nation';
+        container.innerHTML = canChat
+            ? '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">No messages yet. Start the conversation.</div>'
+            : `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;padding:20px;">
+                <div style="color:var(--text-dim);font-family:var(--font-mono);font-size:10px;text-align:center;">No messages yet.</div>
+                <div style="color:var(--text-ghost);font-family:var(--font-mono);font-size:9px;text-align:center;line-height:1.5;max-width:220px;">
+                    You need to hold the position of PM, Minister of Trade, or Ambassador to ${escapeHtml(partnerName)} to participate in this chat.
+                </div>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = messages.map(m => negChatRenderMsg(m)).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+// ── Chat: Send a message ──
+
+let _negChatSending = false;
+
+async function negChatSend() {
+    if (_negChatSending || !_activeNegModal?.chatRole?.canChat) return;
+    const input = document.getElementById('trade-neg-chat-input');
+    const sendBtn = document.getElementById('trade-neg-chat-send');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    _negChatSending = true;
+    if (sendBtn) sendBtn.disabled = true;
+    input.value = '';
+
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shardData?.current_tick || 0;
+
+    const msgRow = {
+        negotiation_id: _activeNegModal.negotiationId,
+        sender_nation_id: _activeNegModal.myNationId,
+        sender_faction_id: _worldState.faction.id,
+        sender_role: _activeNegModal.chatRole.role,
+        sender_display_name: _activeNegModal.chatRole.displayName,
+        message_text: text,
+        is_system: false,
+        sent_at_tick: tick,
+    };
+
+    const { error } = await _supabase.from('negotiation_messages').insert(msgRow);
+
+    if (error) {
+        input.value = text;
+        alert('Failed to send: ' + error.message);
+    } else {
+        // Optimistic render
+        const container = document.getElementById('trade-neg-chat-messages');
+        if (container) {
+            const empty = container.querySelector('[style*="justify-content:center"]');
+            if (empty && !container.querySelector('.trade-neg-msg')) empty.remove();
+            container.insertAdjacentHTML('beforeend', negChatRenderMsg({
+                ...msgRow,
+                created_at: new Date().toISOString(),
+            }));
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    _negChatSending = false;
+    if (sendBtn) sendBtn.disabled = !input.value.trim();
+    input.focus();
+}
+
+// ── Chat: Realtime subscription ──
+
+function negChatSubscribe(negotiationId) {
+    if (_negChatChannel) {
+        _supabase.removeChannel(_negChatChannel);
+        _negChatChannel = null;
+    }
+
+    _negChatChannel = _supabase
+        .channel('neg-chat-' + negotiationId)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'negotiation_messages',
+            filter: `negotiation_id=eq.${negotiationId}`,
+        }, (payload) => {
+            const msg = payload.new;
+            if (!msg) return;
+            // Skip own messages (already optimistically rendered)
+            if (msg.sender_faction_id === _worldState?.faction?.id) return;
+
+            const container = document.getElementById('trade-neg-chat-messages');
+            if (!container) return;
+            const empty = container.querySelector('[style*="justify-content:center"]');
+            if (empty && !container.querySelector('.trade-neg-msg')) empty.remove();
+            container.insertAdjacentHTML('beforeend', negChatRenderMsg(msg));
+            container.scrollTop = container.scrollHeight;
+
+            // If it's a withdrawal system message from the other side, grey out
+            if (msg.is_system && msg.message_text?.includes('withdrawn')) {
+                const chatPanel = document.getElementById('trade-neg-chat-panel');
+                const inputBar = document.getElementById('trade-neg-chat-input-bar');
+                const withdrawBtn = document.getElementById('trade-neg-withdraw-btn');
+                if (chatPanel) chatPanel.classList.add('trade-neg-chat--ended');
+                if (inputBar) inputBar.style.display = 'none';
+                if (withdrawBtn) { withdrawBtn.disabled = true; withdrawBtn.textContent = 'Negotiations Ended'; }
+                if (_activeNegModal) _activeNegModal.status = 'cancelled';
+            }
+        })
+        .subscribe();
+}
+
+// ── Modal close ──
+
+function closeTradeNegModal() {
+    document.getElementById('trade-neg-modal').classList.remove('active');
+    if (_negChatChannel) {
+        _supabase.removeChannel(_negChatChannel);
+        _negChatChannel = null;
+    }
+    _activeNegModal = null;
+    _negChatSending = false;
+    _negWithdrawing = false;
+    _negModalOpening = false;
+}
+
+let _negWithdrawing = false;
+
+async function withdrawFromNegotiations() {
+    if (!_activeNegModal || _negWithdrawing) return;
+    if (_activeNegModal.status === 'cancelled') {
+        alert('This negotiation has already been ended.');
+        return;
+    }
+    const chatRole = _activeNegModal.chatRole;
+    if (!chatRole?.canChat) {
+        alert('You need a diplomatic role to withdraw from negotiations.');
+        return;
+    }
+
+    const partnerName = _activeNegModal.partnerNationName || 'Unknown';
+    if (!confirm('Withdraw from trade negotiations with ' + partnerName + '?\n\nThis will end the negotiation and cannot be undone.')) return;
+
+    _negWithdrawing = true;
+
+    const negId = _activeNegModal.negotiationId;
+    const myNationId = _activeNegModal.myNationId;
+    const partnerNationId = _activeNegModal.partnerNationId;
+
+    // Get current tick
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shardData?.current_tick || 0;
+
+    // 1. Update negotiation status to cancelled
+    const { error: statusErr } = await _supabase.from('trade_negotiations')
+        .update({ status: 'cancelled', concluded_at_tick: tick })
+        .eq('id', negId);
+    if (statusErr) { alert('Failed to withdraw: ' + statusErr.message); _negWithdrawing = false; return; }
+
+    // 2. Insert system message into chat
+    await _supabase.from('negotiation_messages').insert({
+        negotiation_id: negId,
+        sender_nation_id: myNationId,
+        sender_faction_id: _worldState.faction.id,
+        sender_role: chatRole.role,
+        sender_display_name: 'System',
+        message_text: chatRole.displayName + ' has withdrawn from negotiations.',
+        is_system: true,
+        sent_at_tick: tick,
+    });
+
+    // 3. Build event text — always attribute to Minister of Trade in the event
+    const withdrawerName = chatRole.displayName.split(' (')[0];
+    const roleSuffix = chatRole.role === 'trade_minister' ? 'Minister of Trade '
+        : chatRole.role === 'prime_minister' ? 'Prime Minister '
+        : 'Ambassador ';
+    const eventText = roleSuffix + withdrawerName + ' has decided to end trade negotiations with ' + partnerName + '.';
+
+    // 4. Log events for BOTH nations (visible on Nation Local, Nation World, Executive Timeline)
+    await _supabase.from('event_log').insert([
+        {
+            nation_id: myNationId,
+            event_name: 'Trade Negotiations Withdrawn',
+            trigger_key: 'trade_negotiation_withdrawn',
+            category: 'trade',
+            description_chosen: eventText,
+            fired_at_tick: tick,
+        },
+        {
+            nation_id: partnerNationId,
+            event_name: 'Trade Negotiations Withdrawn',
+            trigger_key: 'trade_negotiation_withdrawn',
+            category: 'trade',
+            description_chosen: eventText,
+            fired_at_tick: tick,
+        },
+    ]);
+
+    // 5. Grey out the chat and disable controls
+    const chatPanel = document.getElementById('trade-neg-chat-panel');
+    const inputBar = document.getElementById('trade-neg-chat-input-bar');
+    const withdrawBtn = document.getElementById('trade-neg-withdraw-btn');
+
+    if (chatPanel) chatPanel.classList.add('trade-neg-chat--ended');
+    if (inputBar) inputBar.style.display = 'none';
+    if (withdrawBtn) {
+        withdrawBtn.disabled = true;
+        withdrawBtn.textContent = 'Negotiations Ended';
+    }
+
+    // Append the system message locally
+    const container = document.getElementById('trade-neg-chat-messages');
+    if (container) {
+        container.insertAdjacentHTML('beforeend', negChatRenderMsg({
+            sender_faction_id: null,
+            sender_display_name: 'System',
+            message_text: chatRole.displayName + ' has withdrawn from negotiations.',
+            is_system: true,
+            created_at: new Date().toISOString(),
+        }));
+        container.scrollTop = container.scrollHeight;
+    }
+
+    // Update local state
+    _activeNegModal.status = 'cancelled';
+    _negWithdrawing = false;
+}
+
+window.openTradeNegModal = openTradeNegModal;
+window.closeTradeNegModal = closeTradeNegModal;
+window.withdrawFromNegotiations = withdrawFromNegotiations;
 </script>
 
 </body>

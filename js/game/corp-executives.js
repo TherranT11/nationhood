@@ -183,7 +183,7 @@ export function generateExecutivePool(nationId, nationName) {
  * @returns {Object} row ready for Supabase insert into corp_executives
  */
 export function createCEORecord(factionId, firstName, lastName, age, nationName, currentTick) {
-    var skill = randInt(25, 45);
+    var skill = randInt(1, 5);
     var contractYears = randInt(2, 5);
     var annualSalary = calculateCompensation(skill);
 
@@ -312,9 +312,7 @@ export async function createInitialExecutiveRoster(params) {
         var role = missingRoles[i];
         var seedPrefix = faction.id + '|' + role;
         var contractYears = deterministicInt(seedPrefix + '|years', 2, 5);
-        var skill = (role === 'CEO')
-            ? deterministicInt(seedPrefix + '|skill', 25, 45)
-            : deterministicInt(seedPrefix + '|skill', 25, 40);
+        var skill = deterministicInt(seedPrefix + '|skill', 1, 5);
         var annualSalary = calculateCompensation(skill);
 
         var firstName;
