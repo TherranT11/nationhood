@@ -21814,15 +21814,25 @@ function negArticlesRender() {
         const num = ROMAN[i] || (i + 1);
         const isMine = art.author_nation_id === myNationId;
 
+        const hasStrike = !!art.strike_requested_by;
+        const strikeIsMine = art.strike_requested_by === myNationId;
+
         html += `<div class="trade-neg-article">
             <div class="trade-neg-article__num">Article ${num}.</div>
             <div class="trade-neg-article__text">${escapeHtml(art.text)}</div>
             <div class="trade-neg-article__meta">
                 <span>Added by ${escapeHtml(art.author_nation_name || 'Unknown')}</span>
-                ${isMine ? `<span class="trade-neg-article__action" onclick="negArticleDelete('${art.id}')">Delete</span>` : ''}
+                ${isMine
+                    ? `<span class="trade-neg-article__action" onclick="negArticleDelete('${art.id}')">Delete</span>`
+                    : (hasStrike && strikeIsMine
+                        ? `<span style="font-family:var(--font-mono);font-size:8px;color:var(--amber);opacity:0.7;">Strike Requested</span>`
+                        : (!hasStrike
+                            ? `<span class="trade-neg-article__action" style="color:var(--amber);border-color:rgba(184,134,11,0.2);background:rgba(184,134,11,0.04);" onclick="negArticleRequestStrike('${art.id}')">Request to Strike</span>`
+                            : ''))
+                }
             </div>`;
 
-        if (art.strike_requested_by && art.strike_requested_by !== myNationId) {
+        if (hasStrike && !strikeIsMine) {
             const requesterName = art.strike_requested_by_name || 'The other party';
             html += `<div class="trade-neg-article__strike">${escapeHtml(requesterName)} is requesting this article be removed.</div>`;
         }
@@ -21936,10 +21946,41 @@ async function negArticleDelete(articleId) {
     negArticlesRender();
 }
 
+// ── Articles: Request to Strike (other party's articles) ──
+
+async function negArticleRequestStrike(articleId) {
+    if (!_activeNegModal) return;
+
+    const { data: negRow } = await _supabase.from('trade_negotiations')
+        .select('draft_articles')
+        .eq('id', _activeNegModal.negotiationId)
+        .single();
+
+    const current = negRow?.draft_articles || [];
+    const updated = current.map(a => {
+        if (a.id !== articleId) return a;
+        return {
+            ...a,
+            strike_requested_by: _activeNegModal.myNationId,
+            strike_requested_by_name: _activeNegModal.myNationName,
+        };
+    });
+
+    const { error } = await _supabase.from('trade_negotiations')
+        .update({ draft_articles: updated })
+        .eq('id', _activeNegModal.negotiationId);
+
+    if (error) { alert('Failed to request strike: ' + error.message); return; }
+
+    _activeNegModal.articles = updated;
+    negArticlesRender();
+}
+
 window.negArticleShowForm = negArticleShowForm;
 window.negArticleCancelForm = negArticleCancelForm;
 window.negArticleAdd = negArticleAdd;
 window.negArticleDelete = negArticleDelete;
+window.negArticleRequestStrike = negArticleRequestStrike;
 
 // ── Modal close ──
 
