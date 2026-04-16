@@ -21469,11 +21469,12 @@ async function resolveNegotiationChatRole(partnerNationId) {
 let _negModalOpening = false;
 
 async function openTradeNegModal(partnerNationId) {
-    if (_negModalOpening) return;
+    if (_negModalOpening) { console.log('[TradeNeg] blocked by _negModalOpening'); return; }
     if (_activeNegModal) closeTradeNegModal();
     _negModalOpening = true;
 
     try {
+    console.log('[TradeNeg] Step 1: checking nation data');
     const myNation = _worldState?.nation;
     if (!myNation) { alert('Nation data not loaded.'); return; }
     const partner = (_worldAllNations || []).find(n => n.id === partnerNationId);
@@ -21483,6 +21484,7 @@ async function openTradeNegModal(partnerNationId) {
     const a = myNation.id < partnerNationId ? myNation.id : partnerNationId;
     const b = myNation.id < partnerNationId ? partnerNationId : myNation.id;
 
+    console.log('[TradeNeg] Step 2: querying trade_negotiations', a, b);
     let { data: neg, error: negErr } = await _supabase.from('trade_negotiations')
         .select('id, status')
         .eq('nation_a_id', a).eq('nation_b_id', b)
@@ -21491,9 +21493,11 @@ async function openTradeNegModal(partnerNationId) {
         .limit(1)
         .maybeSingle();
 
+    console.log('[TradeNeg] Step 2 result:', { neg, negErr });
     if (negErr) { alert('Failed to load negotiations: ' + negErr.message); return; }
 
     if (!neg) {
+        console.log('[TradeNeg] Step 3: creating new negotiation');
         const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shardData?.current_tick || 0;
         const { data: created, error: createErr } = await _supabase.from('trade_negotiations').insert({
@@ -21504,12 +21508,15 @@ async function openTradeNegModal(partnerNationId) {
             opened_at_tick: tick,
             expires_at_tick: tick + 48,
         }).select('id, status').single();
+        console.log('[TradeNeg] Step 3 result:', { created, createErr });
         if (createErr) { alert('Failed to start negotiation: ' + createErr.message); return; }
         neg = created;
     }
 
     // Resolve chat role
+    console.log('[TradeNeg] Step 4: resolving chat role');
     const chatRole = await resolveNegotiationChatRole(partnerNationId);
+    console.log('[TradeNeg] Step 4 result:', chatRole);
 
     const myFlag = myNation.flag_url || `assets/flags/${myNation.name}.png`;
     const partnerFlag = partner.flag_url || `assets/flags/${partner.name}.png`;
@@ -21544,6 +21551,7 @@ async function openTradeNegModal(partnerNationId) {
     `;
 
     // Show modal
+    console.log('[TradeNeg] Step 5: showing modal');
     document.getElementById('trade-neg-modal').classList.add('active');
 
     // Configure chat input based on role
