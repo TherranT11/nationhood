@@ -21466,26 +21466,28 @@ let _negModalOpening = false;
 
 async function openTradeNegModal(partnerNationId) {
     if (_negModalOpening) return;
-    // Close any existing modal first
     if (_activeNegModal) closeTradeNegModal();
-
     _negModalOpening = true;
+
+    try {
     const myNation = _worldState?.nation;
-    if (!myNation) { alert('Nation data not loaded.'); _negModalOpening = false; return; }
+    if (!myNation) { alert('Nation data not loaded.'); return; }
     const partner = (_worldAllNations || []).find(n => n.id === partnerNationId);
-    if (!partner) { alert('Partner nation not found.'); _negModalOpening = false; return; }
+    if (!partner) { alert('Partner nation not found.'); return; }
 
     // Check or create a trade_negotiations row
     const a = myNation.id < partnerNationId ? myNation.id : partnerNationId;
     const b = myNation.id < partnerNationId ? partnerNationId : myNation.id;
 
-    let { data: neg } = await _supabase.from('trade_negotiations')
+    let { data: neg, error: negErr } = await _supabase.from('trade_negotiations')
         .select('id, status')
         .eq('nation_a_id', a).eq('nation_b_id', b)
         .in('status', ['open', 'active'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+    if (negErr) { alert('Failed to load negotiations: ' + negErr.message); return; }
 
     if (!neg) {
         const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -21498,7 +21500,7 @@ async function openTradeNegModal(partnerNationId) {
             opened_at_tick: tick,
             expires_at_tick: tick + 48,
         }).select('id, status').single();
-        if (createErr) { alert('Failed to start negotiation: ' + createErr.message); _negModalOpening = false; return; }
+        if (createErr) { alert('Failed to start negotiation: ' + createErr.message); return; }
         neg = created;
     }
 
@@ -21568,7 +21570,12 @@ async function openTradeNegModal(partnerNationId) {
     // Load existing messages + start realtime
     await negChatLoad(neg.id);
     negChatSubscribe(neg.id);
-    _negModalOpening = false;
+
+    } catch (err) {
+        alert('Trade negotiation error: ' + (err.message || err));
+    } finally {
+        _negModalOpening = false;
+    }
 }
 
 // ── Chat: Render a single message ──
