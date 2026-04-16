@@ -13,7 +13,7 @@
     <!-- Supabase SDK -->
 
     <!-- Shared Styles -->
-  <script type="module" crossorigin src="/assets/diplomacy-an6odc5z.js"></script>
+  <script type="module" crossorigin src="/assets/diplomacy-BC4ECa3i.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
   <link rel="modulepreload" crossorigin href="/assets/common-DtfiRwOl.js">
@@ -26,7 +26,7 @@
   <link rel="modulepreload" crossorigin href="/assets/trade-constants-CfG5_BU2.js">
   <link rel="stylesheet" crossorigin href="/assets/diplomacy-BKI3L5jY.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
-  <link rel="stylesheet" crossorigin href="/assets/diplomacy-DwVC1ALR.css">
+  <link rel="stylesheet" crossorigin href="/assets/diplomacy-ji4H5mdt.css">
 </head>
 <body>
 
@@ -140,24 +140,33 @@
         <div class="ipo-modal-content" id="ipo-create-modal-inner"></div>
     </div>
 
-    <!-- ═══ Trade Negotiation Modal ═══ -->
-    <div class="modal-overlay" id="trade-neg-modal">
-        <div class="trade-neg-modal-content">
-            <div class="trade-neg-modal-header" id="trade-neg-header"></div>
-            <div class="trade-neg-modal-body">
-                <div class="trade-neg-main" id="trade-neg-main">
-                    <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:var(--font-mono);font-size:11px;">Trade articles will appear here in a future update.</div>
-                </div>
-                <div class="trade-neg-chat" id="trade-neg-chat-panel">
-                    <div class="trade-neg-chat__header">Trade Negotiations Discuss</div>
-                    <div class="trade-neg-chat__messages" id="trade-neg-chat-messages"></div>
-                    <div class="trade-neg-chat__input" id="trade-neg-chat-input-bar">
-                        <input type="text" id="trade-neg-chat-input" placeholder="Type a message..." maxlength="2000">
-                        <button id="trade-neg-chat-send" disabled>Send</button>
-                    </div>
+</div>
+
+<!-- ═══ Trade Negotiation Modal (must be outside page container for position:fixed) ═══ -->
+<div class="modal-overlay" id="trade-neg-modal" onclick="/* do not close on outside click */">
+    <div class="trade-neg-modal-content" onclick="event.stopPropagation();">
+        <div class="trade-neg-modal-header" id="trade-neg-header"></div>
+        <div class="trade-neg-modal-body">
+            <div class="trade-neg-main" id="trade-neg-main">
+                <div id="trade-neg-articles"></div>
+                <div id="trade-neg-add-article-form" style="display:none;"></div>
+            </div>
+            <div class="trade-neg-chat" id="trade-neg-chat-panel">
+                <div class="trade-neg-chat__header">Trade Negotiations Discuss</div>
+                <div class="trade-neg-chat__messages" id="trade-neg-chat-messages"></div>
+                <div class="trade-neg-chat__input" id="trade-neg-chat-input-bar">
+                    <input type="text" id="trade-neg-chat-input" placeholder="Type a message..." maxlength="2000">
+                    <button id="trade-neg-chat-send" disabled>Send</button>
                 </div>
             </div>
-            <div class="trade-neg-modal-footer">
+        </div>
+        <div class="trade-neg-modal-footer">
+            <div style="display:flex;gap:8px;">
+                <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-structured-btn" onclick="negStructuredArticleOpen()">Add Article</button>
+                <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-article-btn" onclick="negArticleShowForm()">Add Text Article</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-left:auto;">
+                <button id="trade-neg-agreement-btn" onclick="negAgreementToggle()" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:8px 16px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:pointer;transition:all 0.15s;">Not in Agreement [0/2]</button>
                 <button class="trade-neg-withdraw-btn" id="trade-neg-withdraw-btn" onclick="withdrawFromNegotiations()">Withdraw from Negotiations</button>
             </div>
         </div>
