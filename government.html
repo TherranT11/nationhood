@@ -1026,6 +1026,20 @@ function renderAdministrationTab(container) {
         container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading government data...</div>';
         return;
     }
+    const contextKey = getTimelineContextKey();
+    if (_timelineContextKey !== contextKey) {
+        _timelineContextKey = contextKey;
+        _timelineFilter = 'all';
+        _timelineEvents = [];
+        if (!contextKey) {
+            _timelineEmptyReason = 'No active administration record — timeline unavailable.';
+        } else if (_timelineCache.has(contextKey)) {
+            _timelineEvents = _timelineCache.get(contextKey)?.events || [];
+            _timelineEmptyReason = _timelineEvents.length === 0 ? 'No events recorded yet.' : '';
+        } else {
+            _timelineEmptyReason = '';
+        }
+    }
     // Phase 2+ will populate this
     container.innerHTML = `<div id="gov-admin-banner"></div>
         <div style="display:flex;gap:8px;margin-top:8px;">
@@ -1040,8 +1054,8 @@ function renderAdministrationTab(container) {
     renderAdminTimeline(); // renders with cached data or empty state
     renderAdminCabinet();
 
-    // Load timeline data async, then re-render
-    if (_timelineEvents.length === 0) {
+    // Load timeline data async by context key, then re-render
+    if (contextKey && !_timelineCache.has(contextKey)) {
         loadTimelineData().then(() => renderAdminTimeline());
     }
     renderAdminChat();
@@ -1229,9 +1243,45 @@ function renderAdminBanner() {
 
 let _timelineFilter = 'all';
 let _timelineEvents = [];
+let _timelineContextKey = null;
+const _timelineCache = new Map();
+const TIMELINE_CACHE_MAX = 4;
+let _timelineEmptyReason = '';
+
+function setTimelineCache(contextKey, events) {
+    if (!contextKey) return;
+    if (_timelineCache.has(contextKey)) _timelineCache.delete(contextKey);
+    _timelineCache.set(contextKey, { events: Array.isArray(events) ? events : [] });
+    while (_timelineCache.size > TIMELINE_CACHE_MAX) {
+        const oldestKey = _timelineCache.keys().next().value;
+        _timelineCache.delete(oldestKey);
+    }
+}
+
+function getTimelineContextKey() {
+    const nationId = currentNation?.id;
+    const admin = _govData?.admin;
+    if (!nationId || !admin?.id) return null;
+    return `${nationId}:${admin.id}:${admin.started_at_tick || 0}`;
+}
 
 async function loadTimelineData() {
-    if (!_govData?.admin || !currentNation) return;
+    const contextKey = getTimelineContextKey();
+    if (!contextKey || !_govData?.admin || !currentNation) {
+        _timelineEvents = [];
+        _timelineEmptyReason = _govData?.admin
+            ? 'Timeline unavailable for current context.'
+            : 'No active administration record — timeline unavailable.';
+        return;
+    }
+    const cacheHit = _timelineCache.get(contextKey);
+    if (cacheHit) {
+        _timelineEvents = cacheHit.events || [];
+        _timelineEmptyReason = _timelineEvents.length === 0
+            ? 'No events recorded yet.'
+            : '';
+        return;
+    }
     const startTick = _govData.admin.started_at_tick || 0;
     const nationId = currentNation.id;
 
@@ -1345,10 +1395,17 @@ async function loadTimelineData() {
 
         // Sort by tick descending (most recent first)
         merged.sort((a, b) => (b.tick || 0) - (a.tick || 0));
+        if (_timelineContextKey !== contextKey) return;
         _timelineEvents = merged;
+        setTimelineCache(contextKey, merged);
+        _timelineEmptyReason = _timelineEvents.length === 0
+            ? 'No events recorded yet.'
+            : '';
     } catch (err) {
         console.error('[Timeline] Load failed:', err);
+        if (_timelineContextKey !== contextKey) return;
         _timelineEvents = [];
+        _timelineEmptyReason = 'Timeline data failed to load.';
     }
 }
 
@@ -1422,7 +1479,8 @@ function renderAdminTimeline() {
         <div class="ga-tl-scroll">`;
 
     if (filtered.length === 0) {
-        html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No events recorded yet.</div>`;
+        const emptyReason = _timelineEmptyReason || 'No events recorded yet.';
+        html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">${escapeHtml(emptyReason)}</div>`;
     } else {
         for (let i = 0; i < filtered.length; i++) {
             const ev = filtered[i];
