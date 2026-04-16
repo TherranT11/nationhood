@@ -176,7 +176,7 @@ import { fetchActiveCoalition, detectHeadFaction, loadSeats } from './js/game/go
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement } from './js/game/diplomacy-constants.js';
 import { syncVoteTallies } from './js/game/bills.js';
-import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne } from './js/game/trade-constants.js';
+import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, SECTOR_DISPLAY_UNITS } from './js/game/trade-constants.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
 import { getNationNames } from './js/game/political-actions.js';
 /**
@@ -753,7 +753,7 @@ async function loadTradeAgreements() {
         _supabase.from('trade_negotiations')
             .select('id, nation_a_id, nation_b_id, status, agreement_type, opened_at_tick')
             .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
-            .in('status', ['open', 'active'])
+            .in('status', ['open', 'active', 'ratification'])
             .order('opened_at_tick', { ascending: false }),
     ]);
     _tradeAgreementsList = agResult.data || [];
@@ -786,17 +786,24 @@ function renderTradeAgreements() {
         const myFlag = _worldState?.nation?.flag_url || `assets/flags/${myName}.png`;
         const partnerFlag = partner?.flag_url || `assets/flags/${partnerName}.png`;
 
-        html += `<div style="padding:12px 18px;border-bottom:1px solid var(--border-main);cursor:pointer;border-left:3px solid var(--amber);"
+        const isRatifying = neg.status === 'ratification';
+        const negBadgeColor = isRatifying ? 'var(--green)' : 'var(--amber)';
+        const negBadgeLabel = isRatifying ? 'RATIFYING' : 'ONGOING';
+        const negBadgeBg = isRatifying ? 'rgba(92,204,92,0.08)' : 'rgba(184,134,11,0.08)';
+        const negBadgeBorder = isRatifying ? 'rgba(92,204,92,0.2)' : 'rgba(184,134,11,0.2)';
+        const negBorderColor = isRatifying ? 'var(--green)' : 'var(--amber)';
+
+        html += `<div style="padding:12px 18px;border-bottom:1px solid var(--border-main);cursor:pointer;border-left:3px solid ${negBorderColor};"
             onclick="openTradeNegModal('${partnerId}')">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div style="display:flex;align-items:center;gap:8px;">
                     <img src="${escapeHtml(myFlag)}" alt="" style="width:24px;height:16px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'">
                     <span style="font-size:13px;font-weight:600;color:var(--text-bright);">${escapeHtml(myName)}</span>
-                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Trade Discussions</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">${isRatifying ? 'Ratification' : 'Trade Discussions'}</span>
                     <span style="font-size:13px;font-weight:600;color:var(--text-bright);">${escapeHtml(partnerName)}</span>
                     <img src="${escapeHtml(partnerFlag)}" alt="" style="width:24px;height:16px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'">
                 </div>
-                <span class="tr-badge" style="font-size:10px;padding:3px 10px;color:var(--amber);background:rgba(184,134,11,0.08);border-color:rgba(184,134,11,0.2);">ONGOING</span>
+                <span class="tr-badge" style="font-size:10px;padding:3px 10px;color:${negBadgeColor};background:${negBadgeBg};border-color:${negBadgeBorder};">${negBadgeLabel}</span>
             </div>
         </div>`;
     }
@@ -852,29 +859,30 @@ function renderTradeAgreements() {
             const articles = ag.articles || [];
             html += `<div style="padding:0 18px 14px;">`;
 
-            // Render articles
+            // Render articles (supports both old-style { type, data } and new-style { article_type, data } + { text })
             if (articles.length > 0) {
                 html += `<div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;margin:8px 0 6px;">ARTICLES</div>`;
+                const ROMAN_AG = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
                 for (let ai = 0; ai < articles.length; ai++) {
                     const art = articles[ai];
                     if (art._struck) continue;
-                    const artLabel = TRADE_ARTICLE_TYPES?.[art.type]?.label || art.type || 'Article';
-                    let summary = '';
+                    const num = ROMAN_AG[ai] || (ai + 1);
 
-                    // Build summary from article data
-                    if (art.data) {
-                        if (art.data.sectors && art.data.sectors.length > 0) {
-                            summary = art.data.sectors.map(s => TRADE_SECTOR_LABELS[s] || s).join(', ');
-                        }
-                        if (art.data.percentage) summary += (summary ? ' \u00B7 ' : '') + art.data.percentage + '%';
-                        if (art.data.duration_ticks) summary += (summary ? ' \u00B7 ' : '') + art.data.duration_ticks + ' ticks';
-                        if (art.data.sector) summary += (summary ? '' : '') + (TRADE_SECTOR_LABELS[art.data.sector] || art.data.sector);
-                        if (art.data.volume_pct) summary += (summary ? ' \u00B7 ' : '') + art.data.volume_pct + '% volume';
+                    let artLabel, summary;
+                    if (art.article_type) {
+                        artLabel = art.article_type.replace(/_/g, ' ').toUpperCase();
+                        summary = negStructuredArticleSummary(art);
+                    } else if (art.text) {
+                        artLabel = 'TEXT';
+                        summary = art.text;
+                    } else {
+                        artLabel = TRADE_ARTICLE_TYPES?.[art.type]?.label || art.type || 'Article';
+                        summary = renderTradeArticleSummary(art, nationId);
                     }
 
                     html += `<div style="padding:3px 6px;margin-bottom:2px;background:var(--bg-card);border:1px solid var(--border-main);">
-                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-secondary);">Art. ${ai + 1} \u2014 ${escapeHtml(artLabel)}</div>
-                        ${summary ? `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(summary)}</div>` : ''}
+                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-secondary);">Art. ${num} \u2014 ${escapeHtml(artLabel)}</div>
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(summary || '')}</div>
                     </div>`;
                 }
             }
@@ -892,6 +900,10 @@ function renderTradeAgreements() {
                 ${ag.auto_renew ? `<div style="padding:4px 6px;background:var(--bg-card);border:1px solid var(--border-main);">
                     <div style="font-family:var(--font-mono);font-size:7px;color:var(--green);">AUTO-RENEW</div>
                 </div>` : ''}
+                <div style="padding:4px 6px;background:var(--bg-card);border:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">EFFICIENCY</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${(ag.efficiency || 0.85) >= 0.88 ? 'var(--green)' : 'var(--amber)'};">${Math.round((ag.efficiency || 0.85) * 100)}%</div>
+                </div>
             </div>`;
 
             // Logistics / shipping corporations
@@ -1230,6 +1242,26 @@ function renderTradePartners() {
             if (deficits.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No deficits</div>`;
 
             html += `</div></div>`;
+
+            // Active trade agreements with this partner
+            const partnerAgreements = (_tradeAgreementsList || []).filter(ag =>
+                ag.status === 'active' && (ag.nation_a_id === n.id || ag.nation_b_id === n.id));
+            if (partnerAgreements.length > 0) {
+                html += `<div style="padding:10px 18px;border-top:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--green);letter-spacing:1px;margin-bottom:6px;">ACTIVE TRADE AGREEMENTS</div>`;
+                for (const ag of partnerAgreements) {
+                    const typeLabel = AGREE_TYPE_LABELS[ag.agreement_type] || ag.agreement_type;
+                    const durLabel = ag.duration_type === 'permanent' ? 'Permanent' : (ag.expires_at_tick ? (ag.expires_at_tick - (_worldState?.shard?.current_tick || 0)) + ' ticks left' : '');
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.1);">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:11px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</span>
+                            <span class="tr-badge" style="font-size:7px;color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);">ACTIVE</span>
+                        </div>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${durLabel}</span>
+                    </div>`;
+                }
+                html += '</div>';
+            }
 
             // Action buttons — check for ongoing negotiation with this partner
             const hasOngoingNeg = _tradeNegotiationsList.some(neg =>
@@ -21549,9 +21581,10 @@ async function openTradeNegModal(partnerNationId) {
             nation_b_id: b,
             status: 'open',
             agreement_type: 'fta',
+            agreement_name: myNation.name + '-' + partner.name + ' Trade Agreement',
             opened_at_tick: tick,
             expires_at_tick: tick + 48,
-        }).select('id, status').single();
+        }).select('id, status, draft_articles, approved_by_a, approved_by_b, nation_a_id, nation_b_id, agreement_type, agreement_name').single();
         if (createErr) { alert('Failed to start negotiation: ' + createErr.message); return; }
         neg = created;
     }
@@ -22007,9 +22040,10 @@ function negStructuredTradeFlowForm() {
         <div style="display:flex;flex-direction:column;gap:8px;">
             <div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">COMMODITY</div>
-                <select id="neg-flow-commodity" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                <select id="neg-flow-commodity" onchange="negFlowUpdatePrice()" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
                     ${sectorOpts}
                 </select>
+                <div id="neg-flow-global-price" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:3px;"></div>
             </div>
             <div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">DIRECTION</div>
@@ -22025,9 +22059,10 @@ function negStructuredTradeFlowForm() {
             <div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">PRICE (% vs MARKET)</div>
                 <div style="display:flex;align-items:center;gap:6px;">
-                    <input id="neg-flow-price" type="range" min="-25" max="25" value="0" style="flex:1;" oninput="document.getElementById('neg-flow-price-label').textContent=(this.value>0?'+':'')+this.value+'%'">
+                    <input id="neg-flow-price" type="range" min="-25" max="25" value="0" style="flex:1;" oninput="negFlowUpdatePrice()">
                     <span id="neg-flow-price-label" style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-bright);width:45px;text-align:right;">0%</span>
                 </div>
+                <div id="neg-flow-adjusted-price" style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-top:2px;"></div>
                 <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">Negative = discount, Positive = premium</div>
             </div>
             <div>
@@ -22046,7 +22081,47 @@ function negStructuredTradeFlowForm() {
             <button onclick="negStructuredArticleConfirm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;">Confirm</button>
         </div>
     </div>`;
+
+    // Initialize the price display for the default commodity
+    setTimeout(() => negFlowUpdatePrice(), 0);
 }
+
+function negFlowUpdatePrice() {
+    const commodity = document.getElementById('neg-flow-commodity')?.value || 'fuel_energy';
+    const priceMod = Number(document.getElementById('neg-flow-price')?.value || 0);
+    const priceLabel = document.getElementById('neg-flow-price-label');
+    const globalEl = document.getElementById('neg-flow-global-price');
+    const adjustedEl = document.getElementById('neg-flow-adjusted-price');
+
+    if (priceLabel) priceLabel.textContent = (priceMod > 0 ? '+' : '') + priceMod + '%';
+
+    // Real-world reference prices per physical unit at 1:1 supply/demand
+    const UNIT_PRICES = {
+        fuel_energy:        { price: 85,    unit: 'barrel' },
+        minerals:           { price: 120,   unit: 'tonne' },
+        grains_staples:     { price: 235,   unit: 'tonne' },
+        livestock_dairy:    { price: 2800,  unit: 'tonne' },
+        fruits_vegetables:  { price: 900,   unit: 'tonne' },
+        cash_crops:         { price: 1400,  unit: 'tonne' },
+        manufactured_goods: { price: 2200,  unit: 'TEU' },
+        arms:               { price: 45000, unit: 'unit' },
+    };
+
+    const info = UNIT_PRICES[commodity];
+    if (!info) {
+        if (globalEl) globalEl.textContent = '';
+        if (adjustedEl) adjustedEl.textContent = '';
+        return;
+    }
+
+    const basePrice = info.price;
+    const adjustedPrice = Math.round(basePrice * (1 + priceMod / 100));
+
+    if (globalEl) globalEl.textContent = 'Global price: $' + basePrice.toLocaleString() + ' per ' + info.unit;
+    if (adjustedEl) adjustedEl.textContent = 'Your price: $' + adjustedPrice.toLocaleString() + ' per ' + info.unit + ' (' + (priceMod >= 0 ? '+' : '') + priceMod + '%)';
+}
+
+window.negFlowUpdatePrice = negFlowUpdatePrice;
 
 // ── Structured Articles: TARIFF REDUCTION form ──
 
