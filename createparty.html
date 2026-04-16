@@ -864,9 +864,6 @@ async function proceed() {
         leader_negative_traits: [],
         founded_tick: currentTick,
         action_points: 5,
-        momentum: 0,
-        momentum_log: [],
-        last_action_tick: 0,
         last_seen_tick: currentTick,
         abandoned_at: null,
     };
@@ -968,10 +965,11 @@ async function proceed() {
       }
     } catch (e) { console.warn('Pre-cache failed (non-blocking):', e); }
 
-    // Clean up and redirect
+    // Clean up and redirect to the new party's dashboard
     sessionStorage.removeItem('nationhood_pending_nation');
     sessionStorage.removeItem('nationhood_pending_party');
     sessionStorage.removeItem('pending_faction_type');
+    sessionStorage.setItem('active_faction_id', partyId);
     window.location.href = 'dashboard.html';
 
   } catch (error) {
