@@ -22202,7 +22202,6 @@ async function negStructuredArticleConfirm() {
     if (_negStructuredAdding || !_activeNegModal || !_negStructuredType) return;
 
     let data = {};
-    let valid = true;
 
     if (_negStructuredType === 'transfer') {
         const amount = Number(document.getElementById('neg-transfer-amount')?.value || 0);
@@ -22592,6 +22591,8 @@ function closeTradeNegModal() {
     _negArticleDeleting = false;
     _negArticleStriking = false;
     _negAgreementToggling = false;
+    _negStructuredAdding = false;
+    _negStructuredType = null;
 }
 
 let _negWithdrawing = false;
