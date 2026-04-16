@@ -22062,19 +22062,30 @@ function negFlowUpdatePrice() {
 
     if (priceLabel) priceLabel.textContent = (priceMod > 0 ? '+' : '') + priceMod + '%';
 
-    const units = SECTOR_DISPLAY_UNITS[commodity];
-    if (!units) {
+    // Real-world reference prices per physical unit at 1:1 supply/demand
+    const UNIT_PRICES = {
+        fuel_energy:        { price: 85,    unit: 'barrel' },
+        minerals:           { price: 120,   unit: 'tonne' },
+        grains_staples:     { price: 320,   unit: 'tonne' },
+        livestock_dairy:    { price: 2800,  unit: 'tonne' },
+        fruits_vegetables:  { price: 900,   unit: 'tonne' },
+        cash_crops:         { price: 1400,  unit: 'tonne' },
+        manufactured_goods: { price: 2200,  unit: 'TEU' },
+        arms:               { price: 45000, unit: 'unit' },
+    };
+
+    const info = UNIT_PRICES[commodity];
+    if (!info) {
         if (globalEl) globalEl.textContent = '';
         if (adjustedEl) adjustedEl.textContent = '';
         return;
     }
 
-    const unitName = units.baseUnit.split('/')[0].split(' per ')[0];
-    const pricePerUnit = Math.round(1 / units.factor);
-    const adjustedPrice = Math.round(pricePerUnit * (1 + priceMod / 100));
+    const basePrice = info.price;
+    const adjustedPrice = Math.round(basePrice * (1 + priceMod / 100));
 
-    if (globalEl) globalEl.textContent = 'Global price: $' + pricePerUnit.toLocaleString() + ' per ' + unitName;
-    if (adjustedEl) adjustedEl.textContent = 'Your price: $' + adjustedPrice.toLocaleString() + ' per ' + unitName + ' (' + (priceMod >= 0 ? '+' : '') + priceMod + '%)';
+    if (globalEl) globalEl.textContent = 'Global price: $' + basePrice.toLocaleString() + ' per ' + info.unit;
+    if (adjustedEl) adjustedEl.textContent = 'Your price: $' + adjustedPrice.toLocaleString() + ' per ' + info.unit + ' (' + (priceMod >= 0 ? '+' : '') + priceMod + '%)';
 }
 
 window.negFlowUpdatePrice = negFlowUpdatePrice;
