@@ -2031,35 +2031,37 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 .eq('status', 'active');
 
             if (shippedRoutes && shippedRoutes.length > 0) {
-                // Count active routes per agreement
-                var routeCountByAg = {};
-                for (var ri = 0; ri < shippedRoutes.length; ri++) {
-                    var agId = shippedRoutes[ri].trade_agreement_id;
-                    routeCountByAg[agId] = (routeCountByAg[agId] || 0) + 1;
-                }
+                // Collect agreement IDs that have active shipping routes
+                var agreedRouteAgIds = [...new Set(shippedRoutes.map(function(r) { return r.trade_agreement_id; }))];
 
-                // Check for active shipping claims on those routes
+                // Check for active shipping claims on routes tied to these agreements
                 var { data: activeClaimsOnRoutes } = await supabase.from('shipping_claims')
                     .select('route_id, shipping_routes!inner(trade_agreement_id)')
-                    .eq('status', 'active');
+                    .eq('status', 'active')
+                    .in('shipping_routes.trade_agreement_id', agreedRouteAgIds);
 
-                var claimedAgreements = new Set();
+                // Count active shipping claims per agreement
+                var claimCountByAg = {};
                 if (activeClaimsOnRoutes) {
                     for (var ci = 0; ci < activeClaimsOnRoutes.length; ci++) {
                         var claimAgId = activeClaimsOnRoutes[ci].shipping_routes?.trade_agreement_id;
-                        if (claimAgId) claimedAgreements.add(claimAgId);
+                        if (claimAgId) claimCountByAg[claimAgId] = (claimCountByAg[claimAgId] || 0) + 1;
                     }
                 }
 
-                // Bump efficiency for agreements with active shipping service
+                // Each active ship adds +3% efficiency (base 85%, cap 100%)
                 for (var ai = 0; ai < activeTradeAgreements.length; ai++) {
                     var ag = activeTradeAgreements[ai];
-                    if (claimedAgreements.has(ag.id)) {
-                        var newEff = Math.min(1.0, 0.85 + 0.03);
-                        if (Number(ag.efficiency) < newEff) {
+                    var shipCount = claimCountByAg[ag.id] || 0;
+                    if (shipCount > 0) {
+                        var newEff = Math.min(1.0, 0.85 + (shipCount * 0.03));
+                        if (Math.abs(Number(ag.efficiency) - newEff) > 0.001) {
                             ag.efficiency = newEff;
                             await supabase.from('trade_agreements').update({ efficiency: newEff }).eq('id', ag.id);
                         }
+                    } else if (Number(ag.efficiency) > 0.85) {
+                        ag.efficiency = 0.85;
+                        await supabase.from('trade_agreements').update({ efficiency: 0.85 }).eq('id', ag.id);
                     }
                 }
             }
