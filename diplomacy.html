@@ -455,6 +455,21 @@ function renderTradeEconomy() {
 
             html += `<div style="padding:10px 18px 14px;background:var(--bg-card);border-bottom:2px solid var(--border-main);">`;
 
+            // Global price per unit
+            const ECON_UNIT_PRICES = {
+                fuel_energy: { price: 85, unit: 'barrel' }, minerals: { price: 120, unit: 'tonne' },
+                grains_staples: { price: 235, unit: 'tonne' }, livestock_dairy: { price: 2800, unit: 'tonne' },
+                fruits_vegetables: { price: 900, unit: 'tonne' }, cash_crops: { price: 1400, unit: 'tonne' },
+                manufactured_goods: { price: 2200, unit: 'TEU' }, arms: { price: 45000, unit: 'unit' },
+            };
+            const globalUnitInfo = ECON_UNIT_PRICES[c.key];
+            if (globalUnitInfo) {
+                html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">GLOBAL PRICE</span>
+                    <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--amber);">$${globalUnitInfo.price.toLocaleString()} <span style="font-weight:400;color:var(--text-dim);font-size:10px;">per ${globalUnitInfo.unit}</span></span>
+                </div>`;
+            }
+
             // Domestic Production
             html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
                 <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">DOMESTIC PRODUCTION</span>
