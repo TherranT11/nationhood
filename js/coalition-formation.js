@@ -167,10 +167,10 @@ export async function renderFormationTab(root) {
     if (!root) return;
 
     // Auto-repair: check if any formation has ministry_assignments but cabinet is empty
-    // This handles the case where Form Government "succeeded" (status may be 'active' or 'formed')
-    // but ministry rows were never populated
+    // Skip for semi-presidential — vacant ministries are intentional (PM nominates)
     const nationId = _state.nation?.id;
-    if (nationId) {
+    const isSemiPresRepair = (_state.nation?.government_type || '').toLowerCase().includes('semi');
+    if (nationId && !isSemiPresRepair) {
         const { count: vacantCount } = await _supabase.from('ministries')
             .select('id', { count: 'exact', head: true })
             .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
