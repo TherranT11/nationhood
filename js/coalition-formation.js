@@ -454,6 +454,21 @@ const MINISTRY_FULL_NAMES = {
 const MINISTRY_KEYS = ['prime_minister', 'interior', 'foreign', 'defense', 'finance',
     'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
 
+function getExpectedCabinetMinistryKeys(nation) {
+    const governmentType = (nation?.government_type || '').toLowerCase();
+    const isPresidential = governmentType.includes('presidential')
+        || nation?.hos_election_method === 'direct_vote';
+    const isSemiPresidential = governmentType.includes('semi');
+
+    const parliamentaryKeys = ['prime_minister', 'interior', 'foreign', 'defense', 'finance',
+        'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
+    const presidentialKeys = ['interior', 'foreign', 'defense', 'finance',
+        'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
+
+    if (isSemiPresidential) return parliamentaryKeys;
+    return isPresidential ? presidentialKeys : parliamentaryKeys;
+}
+
 function renderMinistryAssignment(formation) {
     const coalitionParties = (formation.party_ids || [])
         .map(pid => _allParties.find(p => p.id === pid))
@@ -560,13 +575,20 @@ async function handleFormGovernment(formation, root) {
         }).eq('id', formation.id);
 
         // Ensure ministries are populated regardless of RPC path
-        // Check for VACANT ministries (party_id is null) — rows exist but are empty
+        // Validate both active row count and vacant row count.
+        const expectedCabinetKeys = getExpectedCabinetMinistryKeys(nation);
+        const expectedCabinetSize = expectedCabinetKeys.length;
+        const { count: totalActiveCount } = await _supabase.from('ministries')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', nationId).eq('is_active', true);
         const { count: vacantCount } = await _supabase.from('ministries')
             .select('id', { count: 'exact', head: true })
             .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
 
-        if (vacantCount && vacantCount >= 5) {
-            console.warn(`[Coalition] ${vacantCount} vacant ministries — populating from assignments`);
+        if (!totalActiveCount || totalActiveCount < expectedCabinetSize || (vacantCount && vacantCount > 0)) {
+            console.warn(
+                `[Coalition] Ministry invariant check failed (expected=${expectedCabinetSize}, active=${totalActiveCount || 0}, vacant=${vacantCount || 0}) — populating from assignments`
+            );
             await createMinistriesFromAssignments(nationId);
         }
 
