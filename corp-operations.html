@@ -4258,15 +4258,17 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
         const eventNationIds = new Set([contract.nation_id]);
         if (faction.nation_id && faction.nation_id !== contract.nation_id) eventNationIds.add(faction.nation_id);
 
-        await _supabase.from('event_log').insert(
-            [...eventNationIds].map(nid => ({
-                nation_id: nid,
-                event_name: contractName + ' — Project Completed',
-                category: 'corporate',
-                description_chosen: eventDesc,
-                fired_at_tick: currentTick,
-            }))
-        ).catch(err => console.warn('[Deliver] Event log failed:', err.message));
+        try {
+            await _supabase.from('event_log').insert(
+                [...eventNationIds].map(nid => ({
+                    nation_id: nid,
+                    event_name: contractName + ' — Project Completed',
+                    category: 'corporate',
+                    description_chosen: eventDesc,
+                    fired_at_tick: currentTick,
+                }))
+            );
+        } catch (evErr) { console.warn('[Deliver] Event log failed:', evErr.message); }
 
         alert('Project delivered!\n\n' +
             'Result: ' + result + '\n' +
