@@ -592,6 +592,33 @@ async function handleFormGovernment(formation, root) {
             await createMinistriesFromAssignments(nationId);
         }
 
+        // RPC success alone is insufficient unless active-administration invariants are satisfied.
+        const { data: activeAdministration, error: activeAdminErr } = await _supabase.from('administrations')
+            .select('id')
+            .eq('nation_id', nationId)
+            .is('ended_at_tick', null)
+            .limit(1)
+            .maybeSingle();
+        if (activeAdminErr) {
+            console.warn('[Coalition] Failed to verify active administration:', activeAdminErr.message);
+        } else if (!activeAdministration) {
+            try {
+                const coalition = {
+                    id: formation.id,
+                    party_ids: formation.party_ids || [],
+                    lead_party_id: _ministryAssignments.prime_minister,
+                };
+                await rolloverAdministration(
+                    _supabase, nationId, _state.nation,
+                    'election', coalition, _allParties,
+                    _currentTick, _state.shard?.current_date || '',
+                    Number(_state.nation?.gov_approval ?? 50)
+                );
+            } catch (adminErr) {
+                console.warn('[Coalition] Post-finalization administration rollover failed (non-fatal):', adminErr.message);
+            }
+        }
+
         // Auto-appoint PM's party leader (skip coalition check — we just formed it)
         await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick, { skipCoalitionCheck: true });
 
