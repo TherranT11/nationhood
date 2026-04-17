@@ -13,7 +13,7 @@
     <!-- Supabase SDK -->
 
     <!-- Shared Styles -->
-  <script type="module" crossorigin src="/assets/diplomacy-CFyfc5m8.js"></script>
+  <script type="module" crossorigin src="/assets/diplomacy-BB8SnED8.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
   <link rel="modulepreload" crossorigin href="/assets/common-DzbV_OEs.js">
@@ -26,7 +26,7 @@
   <link rel="modulepreload" crossorigin href="/assets/trade-constants-CND7uuwi.js">
   <link rel="stylesheet" crossorigin href="/assets/diplomacy-BKI3L5jY.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
-  <link rel="stylesheet" crossorigin href="/assets/diplomacy-Bl3slIl8.css">
+  <link rel="stylesheet" crossorigin href="/assets/diplomacy-BCjPmsyg.css">
 </head>
 <body>
 
@@ -95,6 +95,7 @@
     <div class="trade-neg-modal-content" onclick="event.stopPropagation();">
         <div class="trade-neg-modal-header" id="trade-neg-header"></div>
         <div class="trade-neg-modal-body">
+            <div class="trade-neg-econ trade-neg-econ--mine" id="trade-neg-my-econ"></div>
             <div class="trade-neg-main" id="trade-neg-main">
                 <div id="trade-neg-articles"></div>
                 <div id="trade-neg-add-article-form" style="display:none;"></div>
@@ -107,6 +108,7 @@
                     <button id="trade-neg-chat-send" disabled>Send</button>
                 </div>
             </div>
+            <div class="trade-neg-econ trade-neg-econ--theirs" id="trade-neg-their-econ"></div>
         </div>
         <div class="trade-neg-modal-footer">
             <div style="display:flex;gap:8px;">
