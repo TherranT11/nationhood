@@ -43,8 +43,13 @@ export async function initCoalitionFormation(supabase, state) {
     const faction = state.faction;
     if (!nation || !faction) return { needed: false };
 
-    // Fetch latest election, current tick, active coalition, and all parties in parallel
-    const [electionResult, shardResult, coalitionResult, partiesResult] = await Promise.all([
+    // Fetch latest election, current tick, active coalition, all parties, and
+    // the canonical "is there a sitting PM" check (head_of_government). The
+    // Administrative tab treats an active head_of_government row + populated
+    // ministries as "government exists", so the Election tab must agree —
+    // otherwise we'd flash "No Government — Snap Election Imminent" while a
+    // full cabinet is live one tab over.
+    const [electionResult, shardResult, coalitionResult, partiesResult, hogResult] = await Promise.all([
         supabase.from('elections')
             .select('id, election_type, election_tick, status')
             .eq('nation_id', nation.id)
@@ -54,10 +59,10 @@ export async function initCoalitionFormation(supabase, state) {
             .maybeSingle(),
         supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
         supabase.from('government_formations')
-            .select('id, election_id, formed_at, formed_tick, created_at, created_tick')
+            .select('id, status, election_id, formed_at, formed_tick, created_at, created_tick')
             .eq('nation_id', nation.id)
-            .eq('status', 'formed')
-            .order('formed_at', { ascending: false })
+            .in('status', ['formed', 'active'])
+            .order('formed_at', { ascending: false, nullsFirst: false })
             .limit(1)
             .maybeSingle(),
         supabase.from('factions')
@@ -66,6 +71,12 @@ export async function initCoalitionFormation(supabase, state) {
             .eq('faction_type', 'party')
             .is('abandoned_at', null)
             .order('seats', { ascending: false }),
+        supabase.from('head_of_government')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('active', true)
+            .limit(1)
+            .maybeSingle(),
     ]);
 
     _currentTick = shardResult.data?.current_tick ?? 0;
@@ -75,7 +86,11 @@ export async function initCoalitionFormation(supabase, state) {
 
     const election = electionResult.data;
     const formedGov = coalitionResult.data || null;
-    const hasFormedGov = !!formedGov;
+    const hasActiveHoG = !!hogResult.data;
+
+    // Cycle-anchored check: is the formation row tied to the LATEST election?
+    // This stops a stale 1995 formation from masking the need for a new
+    // government after a 2000 election.
     const hasCurrentCycleFormedGov = (() => {
         if (!formedGov) return false;
         if (!election) return true; // no completed election to anchor against
@@ -95,6 +110,15 @@ export async function initCoalitionFormation(supabase, state) {
 
         return false;
     })();
+
+    // A government effectively exists if either:
+    //   1. A formation row is current-cycle and in formed/active status, OR
+    //   2. An active head_of_government row exists (canonical "PM is sitting"
+    //      signal — used by the Administrative tab; covers fallback paths
+    //      that never wrote a formation row).
+    // Without (2), the Election tab would falsely claim "No Government" while
+    // a full cabinet renders one tab over.
+    const hasFormedGov = hasCurrentCycleFormedGov || hasActiveHoG;
 
     // Presidential systems don't use coalition formation — the president governs directly
     const isPresidentialSystem = (nation.government_type || '').toLowerCase().includes('presidential')
@@ -162,8 +186,11 @@ export async function initCoalitionFormation(supabase, state) {
         return { needed: false };
     }
 
-    // Parliamentary systems use coalition formation
-    if (election && !hasCurrentCycleFormedGov) {
+    // Parliamentary systems use coalition formation. Use the combined gate
+    // (hasFormedGov) so an active PM in head_of_government short-circuits
+    // the "needs formation" branch even if the current-cycle formation row
+    // is missing (fallback paths, repaired data, legacy nations).
+    if (election && !hasFormedGov) {
         _formationNeeded = true;
         _electionId = election.id;
         _lastElectionTick = election.election_tick;
