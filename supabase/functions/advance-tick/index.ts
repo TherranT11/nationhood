@@ -26584,9 +26584,9 @@ var SHIPPING_ROUTE_THRESHOLD = 50000000; // $50M
  * Bulk cargo: lower margin. Container freight: medium. Specialized: highest.
  */
 var SHIPPING_REVENUE_RATES = {
-    bulk_cargo: 0.06,            // 6% of trade value
-    container_freight: 0.08,     // 8% of trade value
-    specialized_transport: 0.12, // 12% of trade value
+    bulk_cargo: 0.00004,           // 0.004% of trade value — ~$250k–$750k/trip on top lanes
+    container_freight: 0.00005,    // 0.005% of trade value
+    specialized_transport: 0.00008,// 0.008% of trade value
 };
 
 /**

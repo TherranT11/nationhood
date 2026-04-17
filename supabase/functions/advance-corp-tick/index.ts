@@ -3084,9 +3084,9 @@ const SHIPPING_SECTOR_MAP = {
 };
 
 const SHIPPING_ROUTE_THRESHOLD = 50000000;
-const SHIPPING_REVENUE_RATES = { bulk_cargo: 0.06, container_freight: 0.08, specialized_transport: 0.12 };
+const SHIPPING_REVENUE_RATES = { bulk_cargo: 0.00004, container_freight: 0.00005, specialized_transport: 0.00008 };
 
-function _shipTransitTicks(prox) { return Math.max(1, Math.min(6, 1 + Math.floor((Number(prox) || 0) / 20))); }
+function _shipTransitTicks(prox) { return (Number(prox) || 0) >= 71 ? 1 : 0; }
 function _shipDemand(vol) { return vol >= 500000000 ? 'CRITICAL' : vol >= 200000000 ? 'HIGH' : vol >= 100000000 ? 'MODERATE' : 'LOW'; }
 function _shipScope(prox, isGov) { return isGov ? 'GOVERNMENT' : (prox <= 15 ? 'COASTAL' : 'INTERNATIONAL'); }
 
