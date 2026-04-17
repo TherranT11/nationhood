@@ -589,12 +589,36 @@ const VOSTIA_LAST = [
   'Marić','Mihajlović','Tasić','Pavlović','Kuzmanović','Milanović'
 ];
 
+// Hajjara / Al-Makir names (Arabic). Mirrors the ALMAKIR_* pools in
+// js/game/political-actions.js so client-side party creation and
+// server-side candidate generation draw from the same list.
+const HAJJARA_FIRST = [
+  'Ahmad','Muhammad','Ali','Omar','Hassan','Hussein','Khalid','Abdullah','Ibrahim','Yusuf',
+  'Ismail','Hamza','Tariq','Zayd','Saeed','Faisal','Nasser','Salman','Rashid','Kareem',
+  'Mahmoud','Farid','Jamal','Samir','Hadi','Anwar','Imran','Bilal','Qasim','Majid',
+  'Walid','Fadi','Rami','Zahir','Adnan','Amin','Haris','Yasin','Tamer','Nabil',
+  'Bashir','Dawood','Zakaria','Munir','Latif','Jaber','Mazen','Kamil','Rauf','Shadi'
+];
+const HAJJARA_LAST = [
+  'Al-Farouq','Al-Hakim','Al-Masri','Al-Sabah','Al-Najjar','Al-Haddad','Al-Saleh','Al-Sharif',
+  'Al-Khalifa','Al-Qahtani','Al-Harbi','Al-Otaibi','Al-Anzi','Al-Zahrani','Al-Ghamdi','Al-Dosari',
+  'Al-Rashidi','Al-Suwaidi','Al-Mansouri','Al-Mutairi','Al-Ahmadi','Al-Saeed','Al-Jabari','Al-Khatib',
+  'Al-Basri','Al-Tamimi','Al-Hashimi','Al-Kurdi','Al-Husseini','Al-Yamani','Al-Shammari','Al-Farsi',
+  'Al-Hamadi','Al-Siddiqi','Al-Qureshi','Al-Azmi','Al-Salem','Al-Din','Al-Rahman','Al-Majid',
+  'Al-Bakri','Al-Saadi','Al-Hilali','Al-Makki','Al-Madani','Al-Baghdadi','Al-Dimashqi','Al-Andalusi',
+  'Al-Maghribi','Al-Samarrai','Al-Tikriti','Al-Nasiri','Al-Fahd','Al-Karim','Al-Nouri','Al-Sayegh',
+  'Al-Rifai','Al-Qadri','Al-Ayoubi','Al-Barghouti','Al-Khatri','Al-Shihabi','Al-Awadi','Al-Sarraf',
+  'Al-Zubaidi','Al-Hussein','Al-Attar','Al-Safadi','Al-Hourani','Al-Kassab','Al-Taleb','Al-Hamdan',
+  'Al-Rantisi','Al-Banna','Al-Khatour'
+];
+
 // Nation-aware name selection
 const NATION_NAMES = {
   'Calveth': { first: CALVETH_FIRST, last: CALVETH_LAST },
-  'Avelia': { first: AVELIA_FIRST, last: AVELIA_LAST },
+  'Avelia':  { first: AVELIA_FIRST,  last: AVELIA_LAST  },
   'Flandis': { first: FLANDIS_FIRST, last: FLANDIS_LAST },
-  'Vostia': { first: VOSTIA_FIRST, last: VOSTIA_LAST }
+  'Vostia':  { first: VOSTIA_FIRST,  last: VOSTIA_LAST  },
+  'Hajjara': { first: HAJJARA_FIRST, last: HAJJARA_LAST }
 };
 function getNamePool(nationName) {
   const pool = NATION_NAMES[nationName];
