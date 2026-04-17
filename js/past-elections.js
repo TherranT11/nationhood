@@ -160,11 +160,11 @@ function render(root, partyMap) {
             background:var(--bg-panel);border:1px solid var(--border-main);
             ${isExp ? 'border-bottom:none;' : ''}
         ">
-            <div style="padding:12px 20px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
-                <div style="display:flex;align-items:center;gap:12px;">
-                    <div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-secondary);width:130px;">${date}</div>
+            <div class="pe-row-head" style="padding:12px 20px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div class="pe-row-head-left" style="display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap;">
+                    <div class="pe-date" style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-secondary);width:130px;">${date}</div>
                     <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:3px 10px;color:${typeInfo.color};background:${typeInfo.color}0a;border:1px solid ${typeInfo.color}25;">${typeInfo.label.toUpperCase()}</span>
-                    <div style="display:flex;gap:8px;margin-left:10px;">
+                    <div class="pe-top-chips" style="display:flex;gap:8px;margin-left:10px;flex-wrap:wrap;">
                         ${topParties.map(p => `<div style="display:flex;align-items:center;gap:4px;">
                             <div style="width:8px;height:8px;background:${p.color};"></div>
                             <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">${esc(p.abbreviation)}</span>
@@ -172,8 +172,8 @@ function render(root, partyMap) {
                         </div>`).join('')}
                     </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">
+                <div class="pe-row-head-right" style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+                    <div class="pe-leader-meta" style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">
                         ${leaderTitle}: <span style="color:${pmColor};font-weight:700;">${esc(pmName)}</span>
                     </div>
                     <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">${isExp ? '\u25B2' : '\u25BC'}</span>
@@ -196,20 +196,20 @@ function render(root, partyMap) {
                 const seatPct = (p.seats / totalSeats) * 100;
                 const seatVoteDiff = seatPct - (p.vote_percentage || 0);
 
-                return `<div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid rgba(200,196,184,0.03);${isPlayer ? `background:${p.color}08;` : ''}">
-                    <div style="width:30px;height:30px;background:${p.color}15;border:1px solid ${p.color}33;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;margin-right:8px;">${p.abbreviation?.slice(0, 2) || '?'}</div>
-                    <div style="flex:1;min-width:0;">
+                return `<div class="pe-tbl-row" style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid rgba(200,196,184,0.03);${isPlayer ? `background:${p.color}08;` : ''}">
+                    <div class="pe-col-logo" style="width:30px;height:30px;background:${p.color}15;border:1px solid ${p.color}33;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;margin-right:8px;">${p.abbreviation?.slice(0, 2) || '?'}</div>
+                    <div class="pe-col-party" style="flex:1;min-width:0;">
                         <div style="display:flex;align-items:center;gap:5px;">
                             <span style="font-size:13px;font-weight:700;color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.party_name)}</span>
                             ${isPlayer ? '<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:#5c5;padding:0 3px;background:rgba(92,204,92,0.06);border:1px solid rgba(92,204,92,0.15);">YOU</span>' : ''}
                         </div>
                         <div style="font-family:var(--font-mono);font-size:9px;color:${p.color};">${esc(p.abbreviation)}</div>
                     </div>
-                    <span style="width:60px;text-align:right;font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-bright);">${p.seats}</span>
-                    <span style="width:60px;text-align:right;font-family:var(--font-mono);font-size:12px;font-weight:700;color:${seatChange != null ? (seatChange > 0 ? '#5c5' : seatChange < 0 ? '#c55' : 'var(--text-dim)') : 'var(--text-dim)'};">${seatChange != null ? (seatChange > 0 ? '\u25B2 ' + seatChange : seatChange < 0 ? '\u25BC ' + Math.abs(seatChange) : '\u2014') : 'NEW'}</span>
-                    <span style="width:70px;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--text-bright);">${fmtVotes(p.votes || 0)}</span>
-                    <span style="width:55px;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);">${(p.vote_percentage || 0).toFixed(1)}%</span>
-                    <span style="width:80px;text-align:right;font-family:var(--font-mono);font-size:10px;font-weight:700;color:${Math.abs(seatVoteDiff) < 2 ? 'var(--text-dim)' : seatVoteDiff > 0 ? '#5c5' : '#c84'};">${seatVoteDiff > 0 ? '+' : ''}${seatVoteDiff.toFixed(1)}% <span style="font-size:8px;color:var(--text-dim);">${Math.abs(seatVoteDiff) < 2 ? 'proportional' : seatVoteDiff > 0 ? 'overrep.' : 'underrep.'}</span></span>
+                    <span class="pe-col-seats" style="width:60px;text-align:right;font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-bright);">${p.seats}</span>
+                    <span class="pe-col-change" style="width:60px;text-align:right;font-family:var(--font-mono);font-size:12px;font-weight:700;color:${seatChange != null ? (seatChange > 0 ? '#5c5' : seatChange < 0 ? '#c55' : 'var(--text-dim)') : 'var(--text-dim)'};">${seatChange != null ? (seatChange > 0 ? '\u25B2 ' + seatChange : seatChange < 0 ? '\u25BC ' + Math.abs(seatChange) : '\u2014') : 'NEW'}</span>
+                    <span class="pe-col-votes" style="width:70px;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--text-bright);">${fmtVotes(p.votes || 0)}</span>
+                    <span class="pe-col-pct" style="width:55px;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);">${(p.vote_percentage || 0).toFixed(1)}%</span>
+                    <span class="pe-col-rep" style="width:80px;text-align:right;font-family:var(--font-mono);font-size:10px;font-weight:700;color:${Math.abs(seatVoteDiff) < 2 ? 'var(--text-dim)' : seatVoteDiff > 0 ? '#5c5' : '#c84'};">${seatVoteDiff > 0 ? '+' : ''}${seatVoteDiff.toFixed(1)}% <span style="font-size:8px;color:var(--text-dim);">${Math.abs(seatVoteDiff) < 2 ? 'proportional' : seatVoteDiff > 0 ? 'overrep.' : 'underrep.'}</span></span>
                 </div>`;
             }).join('');
 
@@ -295,14 +295,14 @@ function render(root, partyMap) {
 
                 <!-- Results table header -->
                 <div style="padding:0 20px;">
-                    <div style="display:flex;padding:8px 0;border-bottom:1px solid var(--border-main);font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;">
-                        <span style="width:30px;"></span>
-                        <span style="flex:1;">PARTY</span>
-                        <span style="width:60px;text-align:right;">SEATS</span>
-                        <span style="width:60px;text-align:right;">CHANGE</span>
-                        <span style="width:70px;text-align:right;">VOTES</span>
-                        <span style="width:55px;text-align:right;">VOTE %</span>
-                        <span style="width:80px;text-align:right;">SEAT vs VOTE</span>
+                    <div class="pe-tbl-head" style="display:flex;padding:8px 0;border-bottom:1px solid var(--border-main);font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;">
+                        <span class="pe-col-logo" style="width:30px;"></span>
+                        <span class="pe-col-party" style="flex:1;">PARTY</span>
+                        <span class="pe-col-seats" style="width:60px;text-align:right;">SEATS</span>
+                        <span class="pe-col-change" style="width:60px;text-align:right;">CHANGE</span>
+                        <span class="pe-col-votes" style="width:70px;text-align:right;">VOTES</span>
+                        <span class="pe-col-pct" style="width:55px;text-align:right;">VOTE %</span>
+                        <span class="pe-col-rep" style="width:80px;text-align:right;">SEAT vs VOTE</span>
                     </div>
                     ${resultsHtml}
                 </div>
