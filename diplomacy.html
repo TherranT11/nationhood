@@ -106,6 +106,7 @@
             </div>
             <div style="display:flex;gap:8px;margin-left:auto;">
                 <button id="trade-neg-agreement-btn" onclick="negAgreementToggle()" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:8px 16px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:pointer;transition:all 0.15s;">Not in Agreement [0/2]</button>
+                <button id="trade-neg-send-parliament-btn" onclick="sendTradeToParliamentFromModal()" style="display:none;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:8px 16px;color:#000;background:var(--green);border:1px solid var(--green);cursor:pointer;transition:all 0.15s;">Send to Parliament</button>
                 <button class="trade-neg-withdraw-btn" id="trade-neg-withdraw-btn" onclick="withdrawFromNegotiations()">Withdraw from Negotiations</button>
             </div>
         </div>
@@ -20183,7 +20184,33 @@ function negAgreementRender() {
         btn.style.borderColor = 'var(--border-main)';
         btn.disabled = false;
     }
+
+    // Send to Parliament — appears only once both sides have approved and the
+    // negotiation hasn't already been sent. Ratification status hides it entirely.
+    const sendBtn = document.getElementById('trade-neg-send-parliament-btn');
+    if (sendBtn) {
+        const alreadyRatifying = _activeNegModal.status === 'ratification';
+        sendBtn.style.display = (count === 2 && !alreadyRatifying) ? '' : 'none';
+    }
 }
+
+async function sendTradeToParliamentFromModal() {
+    if (!_activeNegModal || !_activeNegModal.negotiationId) return;
+    if (!_activeNegModal.chatRole?.canChat) {
+        alert('You need a diplomatic role to send the agreement to parliament.');
+        return;
+    }
+    const sendBtn = document.getElementById('trade-neg-send-parliament-btn');
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
+    try {
+        await sendTradeToParliament(_activeNegModal.negotiationId);
+        _activeNegModal.status = 'ratification';
+        updateAgreementToggleButton();
+    } finally {
+        if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send to Parliament'; }
+    }
+}
+window.sendTradeToParliamentFromModal = sendTradeToParliamentFromModal;
 
 let _negAgreementToggling = false;
 
