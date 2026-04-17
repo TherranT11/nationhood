@@ -1177,6 +1177,58 @@ window.selectShippingBid = function(appId) {
     _renderShippingBidModalOverlay();
 };
 
+// Reject every bid on the currently-open route. Used when the MoT wants to
+// re-list the route for fresh bidding (which today happens automatically —
+// generate_shipping_routes will keep the route active as long as trade volume
+// stays above threshold; new applications can land immediately).
+window.rejectAllShippingBids = async function() {
+    if (!_shippingBidModal || _shippingBidModal.awardPending || _shippingApprovalPending) return;
+
+    await refreshTradeMinisterFlag();
+    if (!_isTradeMinister) { alert('Only the Minister of Trade can reject bids.'); return; }
+
+    const apps = _shippingBidModal.apps || [];
+    if (apps.length === 0) return;
+    if (!confirm(`Reject all ${apps.length} bid${apps.length !== 1 ? 's' : ''} on this route?`)) return;
+
+    _shippingBidModal.awardPending = true;
+    _shippingApprovalPending = true;
+    _renderShippingBidModalOverlay();
+
+    try {
+        const results = await Promise.all(apps.map(a =>
+            _doRejectShippingApp(a.id, 'Minister of Trade rejected all bids.')
+        ));
+        const failed = results.filter(r => !r.ok);
+        if (failed.length > 0) {
+            console.warn('[ShippingRejectAll] failures:', failed.map(f => f.error));
+            alert(`Rejected ${apps.length - failed.length} of ${apps.length} bids; ${failed.length} failed. Check the console for details.`);
+        }
+        window.closeShippingBidModal();
+        await loadShippingData();
+        renderTradeAgreements();
+    } catch (e) {
+        console.error('[ShippingRejectAll] Error:', e);
+        alert('Reject all failed: ' + (e?.message || 'unknown error'));
+    } finally {
+        if (_shippingBidModal) {
+            _shippingBidModal.awardPending = false;
+            _renderShippingBidModalOverlay();
+        }
+        _shippingApprovalPending = false;
+    }
+};
+
+// REQUEST MORE BIDS is a placeholder stub. The meaningful implementation
+// needs a route-level bidding_extends_at_tick column (or similar) because
+// the current countdown derives from min(applied_at_tick) + 3 per bid, so
+// there's no single "deadline" to bump without schema support. Left as a
+// button surfaced but inert so the UI matches the design mock; wire it up
+// once the spec for extension length + cost lands.
+window.requestMoreShippingBids = function() {
+    alert('Request More Bids is not yet implemented. Needs a route-level bidding-extension spec (duration, cost, cap).');
+};
+
 // Award the selected bid and bulk-reject the remaining ones on the same route.
 // Winner first — if the claim RPC fails, losers are NOT rejected so the MoT
 // can retry or pick a different bid.
@@ -1214,8 +1266,13 @@ window.awardShippingContract = async function() {
             const rejectResults = await Promise.all(losers.map(l =>
                 _doRejectShippingApp(l.id, 'Another bid was awarded for this route.')
             ));
-            const failed = rejectResults.filter(r => !r.ok).length;
-            if (failed > 0) console.warn(`[ShippingAward] ${failed}/${losers.length} loser rejections failed`);
+            const failures = rejectResults.filter(r => !r.ok);
+            if (failures.length > 0) {
+                console.warn('[ShippingAward] loser rejection failures:', failures.map(f => f.error));
+                // Surface to the MoT — the award succeeded but some rejections didn't, so
+                // those losing bids are still status='pending' and will reappear on refresh.
+                alert(`Contract awarded, but ${failures.length} of ${losers.length} losing bid${losers.length !== 1 ? 's' : ''} could not be auto-rejected. They'll remain in the list — reject them individually on the next open.`);
+            }
         }
 
         window.closeShippingBidModal();
@@ -1537,8 +1594,19 @@ function _renderShippingBidModalOverlay() {
                     <span><span style="color:var(--text-muted);letter-spacing:1px;">TERM</span> <span style="color:var(--text-bright);font-weight:600;">${contractTermTicks} TICKS</span></span>
                 </div>
                 <div style="display:flex;gap:8px;">
-                    <button disabled title="Phase 5" style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:not-allowed;opacity:0.5;">REQUEST MORE BIDS</button>
-                    <button disabled title="Phase 5" style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:not-allowed;opacity:0.5;">REJECT ALL</button>
+                    <button
+                        ${(!canAct || awardPending) ? 'disabled' : ''}
+                        onclick="window.requestMoreShippingBids()"
+                        title="Placeholder — needs a route-level bidding-extension spec"
+                        style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:${(!canAct || awardPending) ? 'not-allowed' : 'pointer'};opacity:${(!canAct || awardPending) ? 0.5 : 1};">
+                        REQUEST MORE BIDS
+                    </button>
+                    <button
+                        ${(!canAct || awardPending || apps.length === 0) ? 'disabled' : ''}
+                        onclick="window.rejectAllShippingBids()"
+                        style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:${(!canAct || awardPending || apps.length === 0) ? 'not-allowed' : 'pointer'};opacity:${(!canAct || awardPending || apps.length === 0) ? 0.5 : 1};">
+                        REJECT ALL
+                    </button>
                     <button
                         ${(!canAct || !selectedApp || awardPending) ? 'disabled' : ''}
                         onclick="window.awardShippingContract()"
