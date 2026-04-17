@@ -746,7 +746,6 @@ export async function rejectOwnNomination(supabase, billId, nomineePartyId) {
  * @returns {{ bill, nominee, attemptsUsed }}
  */
 export async function nominatePMCandidate(supabase, nationId, presidentFactionId, nominee) {
-    // Validate: must be Semi-Presidential system
     const { data: nation } = await supabase.from('nations')
         .select('name, government_type, total_seats, pm_nomination_attempts')
         .eq('id', nationId).single();
@@ -755,12 +754,18 @@ export async function nominatePMCandidate(supabase, nationId, presidentFactionId
     const attempts = nation.pm_nomination_attempts || 0;
     if (attempts >= 3) throw new Error('Maximum PM nomination attempts reached — parliament will auto-select a PM');
 
-    // Verify no active PM exists
     const { data: existingHOG } = await supabase.from('head_of_government')
         .select('id').eq('nation_id', nationId).eq('active', true).maybeSingle();
     if (existingHOG) throw new Error('A Prime Minister is already in office');
 
-    // Delegate to the existing minister nomination flow
+    // Prevent nominating from the President's own party (PM must be different in Semi-Presidential)
+    const { data: president } = await supabase.from('presidents')
+        .select('faction_id, first_name, last_name')
+        .eq('nation_id', nationId).eq('is_active', true).limit(1).maybeSingle();
+    if (president && nominee.partyId === president.faction_id) {
+        throw new Error('The PM cannot be from the President\'s party in a Semi-Presidential system — nominate from another party');
+    }
+
     const result = await nominateMinister(supabase, nationId, presidentFactionId, 'prime_minister', nominee);
     return { ...result, attemptsUsed: attempts + 1 };
 }
