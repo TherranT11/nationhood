@@ -1450,52 +1450,6 @@ function nationInfoUrl(nationName) {
 
 // ==================== UNSEEN PROPOSAL TRACKING ====================
 
-function renderWorldEvents() {
-    const scroll = document.getElementById('world-events-scroll');
-    const filterLabel = document.getElementById('world-events-filter-label');
-    if (!scroll) return;
-
-    let events = _worldEvents;
-
-    if (_worldEventTab === 'nation' && _worldEventNationFilter) {
-        events = events.filter(e => e.nation_id === _worldEventNationFilter);
-        const nation = (_worldAllNations || []).find(n => n.id === _worldEventNationFilter);
-        if (filterLabel) filterLabel.textContent = nation?.name?.toUpperCase() || '';
-    } else {
-        // World tab — show all
-        if (filterLabel) filterLabel.textContent = '';
-    }
-
-    // Sync active tab button state
-    const tabContainer = document.getElementById('world-events-tabs');
-    if (tabContainer) {
-        tabContainer.querySelectorAll('.world-events-tab').forEach(b => {
-            b.classList.toggle('active', b.dataset.tab === _worldEventTab);
-        });
-    }
-
-    if (events.length === 0) {
-        scroll.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No recent events.</div>';
-        return;
-    }
-
-    scroll.innerHTML = events.map(ev => {
-        const cat = ev.category || 'government';
-        const catStyle = EVENT_CAT_COLORS[cat] || EVENT_CAT_COLORS.government;
-        const nation = (_worldAllNations || []).find(n => n.id === ev.nation_id);
-        const nationName = nation?.name || 'Unknown';
-        const desc = ev.description_chosen || ev.event_name || '';
-        const truncDesc = desc.length > 120 ? desc.slice(0, 117) + '...' : desc;
-
-        return `<div class="world-event-row">
-            <span class="world-event-tick">${ev.fired_at_tick}</span>
-            <span class="world-event-cat" style="color:${catStyle.color};border-color:${catStyle.border};background:${catStyle.bg};">${escapeHtml(cat)}</span>
-            <span class="world-event-text" title="${escapeHtml(desc)}">${escapeHtml(truncDesc)}</span>
-            <span class="world-event-nation">${escapeHtml(nationName)}</span>
-        </div>`;
-    }).join('');
-}
-
 // ═══════════════════════════════════════════════════
 // WORLD MAP — Pan + Zoom
 // ═══════════════════════════════════════════════════
@@ -1697,11 +1651,6 @@ async function selectWorldNation(nationId) {
     const govData = await fetchNationGovernmentData(nation.id);
     const extraData = { gov: govData, tradeData: null };
     renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors, extraData);
-
-    // Auto-switch to NATION tab filtered to the selected nation
-    _worldEventNationFilter = nation.id;
-    _worldEventTab = 'nation';
-    renderWorldEvents();
 
     // Fetch bilateral trade data async, then patch just the trade section
     if (!isYou && myNationId) {
@@ -2105,9 +2054,6 @@ initPage('diplomacy', async (state) => {
 
     // ── World Map: Pan + Zoom ──
     initWorldMap();
-
-    // ── Event tab toggle (bind once) ──
-    initWorldEventTabs();
 
     // ── Nation highlight: load all nations for the panel ──
     try {
