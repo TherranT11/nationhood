@@ -2196,15 +2196,31 @@ async function rdSubmitOffer() {
         });
         if (offerErr) { alert('Failed to buy bonds: ' + offerErr.message); _submittingOffer = false; return; }
 
-        // Create active loan record (bond position)
+        // Create active loan record (bond position).
+        // borrower_faction_id has a FK to factions — previously this was set
+        // to rdDeal.requestId (a request UUID, NOT a faction UUID), which
+        // violated the FK on every bond purchase. Resolve the issuing
+        // faction from the bond request row itself — that's the PM's party
+        // that issued the bond.
         const r = (rdDeal.couponRate / 100) / 12;
         const n = rdDeal.term;
         const monthlyPayment = Math.round(rdBondAmount * r); // coupon only, no amortization
 
+        const { data: bondReq, error: reqErr } = await _supabase
+            .from('finance_loan_requests')
+            .select('requesting_faction_id')
+            .eq('id', rdDeal.requestId)
+            .single();
+        if (reqErr || !bondReq?.requesting_faction_id) {
+            alert('Failed to create bond position: could not resolve issuer faction.');
+            _submittingOffer = false;
+            return;
+        }
+
         const { error: loanErr } = await _supabase.from('finance_active_loans').insert({
             request_id: rdDeal.requestId,
             offer_id: null,
-            borrower_faction_id: rdDeal.requestId, // placeholder — gov is the borrower
+            borrower_faction_id: bondReq.requesting_faction_id,
             lender_faction_id: faction.id,
             nation_id: rdDeal.nation_id || faction.nation_id,
             principal: rdBondAmount,
