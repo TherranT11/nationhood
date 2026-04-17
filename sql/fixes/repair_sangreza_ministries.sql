@@ -70,7 +70,7 @@ BEGIN
     v_minister_names := COALESCE(v_formation.minister_names,       '{}'::jsonb);
 
     RAISE NOTICE 'Sangreza formation: id=%, assignments=%',
-        v_formation.id, jsonb_object_keys(v_assignments);
+        v_formation.id, (SELECT array_agg(k) FROM jsonb_object_keys(v_assignments) AS k);
 
     -- 3. Walk every assignment except prime_minister and upsert the ministry row.
     FOR v_key, v_party_id_text IN
