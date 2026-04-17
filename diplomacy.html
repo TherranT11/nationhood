@@ -587,8 +587,8 @@ async function loadShippingData() {
         // simpler and more reliable than pushing an or() filter onto the
         // embedded table, which has historically been flaky in postgrest.
         const routeColumns = 'id, origin_nation_id, destination_nation_id, origin_port, destination_port, trade_sector, cargo_category, goods_name, trade_volume, estimated_revenue, transit_ticks, demand_level, trade_agreement_id, trade_agreement_name, status, competition_count';
-        const corpAppColumns = 'id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, shipping_fleet_capacity, shipping_fleet_deployed';
-        const corpClaimColumns = 'id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url';
+        const corpAppColumns = 'id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, shipping_fleet_capacity, shipping_fleet_deployed, corp_reputation, corp_cash_reserves';
+        const corpClaimColumns = 'id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, corp_reputation, corp_cash_reserves';
 
         const [routesRes, appsRes, claimsRes] = await Promise.all([
             _supabase.from('shipping_routes')
@@ -795,10 +795,10 @@ function renderShippingContractsBlock() {
     const routeMap = new Map();
     for (const r of (_allShippingRoutes || [])) routeMap.set(r.id, r);
 
-    // Only the Minister of Trade or the Prime Minister (Head of Government)
-    // can accept/reject applications. All other party members in the nation
-    // can see the row but the action buttons are hidden.
-    const canAct = !!(diplomaticRoles?.isMoT || diplomaticRoles?.isHoG);
+    // Only the Minister of Trade can accept/reject shipping applications.
+    // Everyone else in the nation sees the row and terms but gets an
+    // "awaiting decision" notice instead of action buttons.
+    const canAct = !!diplomaticRoles?.isMoT;
 
     // Flatten pending applications + active claims with their routes attached.
     const pendingApps = [];
@@ -872,12 +872,26 @@ function renderShippingContractsBlock() {
                 </div>
                 <span class="tr-badge" style="font-size:10px;padding:3px 10px;color:#c8a832;background:rgba(200,168,50,0.08);border-color:rgba(200,168,50,0.2);">PENDING</span>
             </div>
-            ${isExp ? `<div style="padding:0 18px 14px 34px;">
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:4px 0 12px;font-family:var(--font-mono);font-size:10px;">
+            ${isExp ? (() => {
+                const corpRep  = Number(corp.corp_reputation ?? 50);
+                const corpCash = Number(corp.corp_cash_reserves ?? 0);
+                const repColor = corpRep >= 70 ? 'var(--green)' : corpRep >= 40 ? 'var(--accent)' : 'var(--amber)';
+                return `<div style="padding:0 18px 14px 34px;">
+                <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:4px 0 12px;font-family:var(--font-mono);font-size:10px;">
                     <div>
                         <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">FLEET ON OFFER</div>
                         <div style="color:var(--text-bright);font-size:14px;font-weight:700;">${available} <span style="color:var(--text-dim);font-weight:400;font-size:10px;">of ${fleetCap}</span></div>
                         <div style="color:var(--text-dim);font-size:8px;">vessels available</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">REPUTATION</div>
+                        <div style="color:${repColor};font-size:14px;font-weight:700;">${corpRep}<span style="color:var(--text-dim);font-weight:400;font-size:10px;">/100</span></div>
+                        <div style="color:var(--text-dim);font-size:8px;">corp standing</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">CASH RESERVES</div>
+                        <div style="color:var(--text-bright);font-size:14px;font-weight:700;">${fmt(corpCash)}</div>
+                        <div style="color:var(--text-dim);font-size:8px;">balance sheet</div>
                     </div>
                     <div>
                         <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">PRICE PER TRIP</div>
@@ -896,9 +910,10 @@ function renderShippingContractsBlock() {
                     <button onclick="event.stopPropagation();rejectShippingApp('${app.id}')"
                         style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:pointer;letter-spacing:1px;">REJECT</button>
                 </div>` : `<div style="padding:8px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);background:var(--bg-card);border:1px dashed var(--border-main);">
-                    Awaiting decision from the Minister of Trade or Prime Minister
+                    Awaiting decision from the Minister of Trade
                 </div>`}
-            </div>` : ''}
+            </div>`;
+            })() : ''}
         </div>`;
     }
 
