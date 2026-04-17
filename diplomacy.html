@@ -17468,10 +17468,13 @@ async function openTradeNegModal(partnerNationId) {
     const a = myNation.id < partnerNationId ? myNation.id : partnerNationId;
     const b = myNation.id < partnerNationId ? partnerNationId : myNation.id;
 
+    // Include 'ratification' so re-opening the modal after Send to Parliament
+    // surfaces the existing articles in read-only mode instead of spawning a
+    // fresh empty negotiation row.
     let { data: neg, error: negErr } = await _supabase.from('trade_negotiations')
         .select('id, status, draft_articles, approved_by_a, approved_by_b, nation_a_id, nation_b_id, agreement_type, agreement_name')
         .eq('nation_a_id', a).eq('nation_b_id', b)
-        .in('status', ['open', 'active'])
+        .in('status', ['open', 'active', 'ratification'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();

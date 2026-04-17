@@ -1652,14 +1652,30 @@ function renderTradeArticleDescription(art, rd) {
     const nationAName = rd.nationA?.name || 'Nation A';
     const nationBName = rd.nationB?.name || 'Nation B';
 
-    // Direction fields (we_buy/we_sell, your_exports/their_exports) are stored from
-    // the drafter's perspective. Resolve to absolute nation names using the drafter identity.
-    const author = d.author_nation_id || rd.authorNationId;
+    // Modern trade-neg modal stores the category on `article_type`; the legacy
+    // trade-draft page stored it on `type`. Accept either so a ratification bill
+    // renders both vocabularies.
+    const artType = art.article_type || art.type || 'unknown';
+
+    // Direction fields (we_buy/we_sell, your_exports/their_exports, a_buys_b)
+    // are stored from the drafter's perspective. Resolve to absolute nation names
+    // using the drafter identity. For the modern modal A = drafter by convention.
+    const author = art.author_nation_id || d.author_nation_id || rd.authorNationId;
     const drafterIsA = author ? (author === rd.nationA?.id) : rd.isNationA;
     const drafterName = drafterIsA ? nationAName : nationBName;
     const counterpartyName = drafterIsA ? nationBName : nationAName;
 
-    switch (art.type) {
+    // Short helper used by the modern-modal cases — same formatting used in the
+    // live negotiation summary so the two surfaces read identically.
+    const fmtMoney = (v) => {
+        const n = Number(v) || 0;
+        if (n >= 1e9) return '$' + (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+        if (n >= 1e6) return '$' + (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+        if (n >= 1e3) return '$' + Math.round(n / 1e3) + 'k';
+        return '$' + n.toLocaleString();
+    };
+
+    switch (artType) {
         case 'duration': {
             const isPerm = d.duration_type === 'permanent';
             const ticks = d.duration_ticks || 0;
@@ -1722,8 +1738,55 @@ function renderTradeArticleDescription(art, rd) {
         }
         case 'text_article':
             return (d.title ? '<strong>' + escapeHtml(d.title) + ':</strong> ' : '') + escapeHtml(d.body || '');
+
+        // ── Modern trade-neg modal vocabulary ──
+        case 'trade_flow': {
+            // direction: 'a_buys_b' (drafter buys from counterparty) | 'b_buys_a' (counterparty buys from drafter)
+            const buyer = d.direction === 'a_buys_b' ? drafterName : counterpartyName;
+            const seller = d.direction === 'a_buys_b' ? counterpartyName : drafterName;
+            const commodity = escapeHtml(sectorLabel(d.commodity));
+            const vol = fmtMoney(d.volume) + '/tick';
+            const price = d.price_modifier == null || d.price_modifier === 0
+                ? 'market rate'
+                : (d.price_modifier > 0 ? 'market +' + d.price_modifier + '%' : 'market ' + d.price_modifier + '%');
+            const dur = !d.duration || d.duration === 0 ? 'continuously' : 'for <strong>' + d.duration + ' month(s)</strong>';
+            return '<strong>' + buyer + '</strong> purchases <strong>' + commodity + '</strong> from <strong>' + seller +
+                   '</strong> at a rate of <strong>' + vol + '</strong> priced at ' + price + ', ' + dur + '.';
+        }
+        case 'transfer': {
+            // direction: 'a_to_b' (drafter → counterparty) | 'b_to_a' (counterparty → drafter)
+            const from = d.direction === 'a_to_b' ? drafterName : counterpartyName;
+            const to   = d.direction === 'a_to_b' ? counterpartyName : drafterName;
+            const kind = d.transfer_type === 'recurring' ? 'shall transfer' : 'shall make a one-time transfer of';
+            const cadence = d.transfer_type === 'recurring' ? ' each tick' : '';
+            return '<strong>' + from + '</strong> ' + kind + ' <strong>' + fmtMoney(d.amount) + '</strong>' + cadence + ' to <strong>' + to + '</strong>.';
+        }
+        case 'market_access': {
+            const scope = d.scope === 'all_goods' ? 'all goods' : escapeHtml(sectorLabel(d.scope_sector));
+            const levels = {
+                restricted:  '<strong>restricted</strong> market access',
+                preferential: '<strong>preferential</strong> market access (reduced tariffs)',
+                free_trade:  '<strong>free trade</strong> (0% tariffs)'
+            };
+            const extras = [];
+            if (d.volume_priority) extras.push('volume priority');
+            if (d.price_priority)  extras.push('price priority');
+            const extrasText = extras.length ? ' Includes ' + extras.join(' and ') + '.' : '';
+            return 'Both nations grant ' + (levels[d.level] || escapeHtml(d.level || 'unspecified access')) +
+                   ' for <strong>' + scope + '</strong>.' + extrasText;
+        }
+        case 'exit_terms': {
+            const parts = [];
+            if (d.min_duration) parts.push('minimum duration of <strong>' + d.min_duration + ' month(s)</strong>');
+            if (d.exit_notice)  parts.push('<strong>' + d.exit_notice + ' month(s)</strong> notice required to withdraw');
+            if (d.penalty_type === 'fixed' && d.penalty_amount)      parts.push('fixed withdrawal penalty of <strong>' + fmtMoney(d.penalty_amount) + '</strong>');
+            else if (d.penalty_type === 'percentage' && d.penalty_pct) parts.push('<strong>' + d.penalty_pct + '%</strong> of remaining value as withdrawal penalty');
+            else                                                      parts.push('no withdrawal penalty');
+            return 'Exit terms: ' + parts.join(', ') + '.';
+        }
+
         default:
-            return 'Agreement provision (' + escapeHtml(art.type || 'unknown') + ').';
+            return 'Agreement provision (' + escapeHtml(artType) + ').';
     }
 }
 
@@ -1855,8 +1918,11 @@ function renderRatificationBill() {
         const ourName = rd.isNationA ? nationAName : nationBName;
         const theirName = rd.isNationA ? nationBName : nationAName;
 
-        // Extract duration from articles
-        const durationArt = articles.find(a => a.type === 'duration');
+        // Extract duration from articles — check both legacy `type` and modern `article_type`.
+        // Modern trade-neg modal doesn't emit a 'duration' article; fall through to trade_flow's
+        // per-article duration where relevant.
+        const getArtType = (a) => a.article_type || a.type;
+        const durationArt = articles.find(a => getArtType(a) === 'duration');
         const durData = durationArt?.data || {};
         const isPerm = durData.duration_type === 'permanent';
         const durTicks = durData.duration_ticks || 0;
@@ -1876,7 +1942,15 @@ function renderRatificationBill() {
         '</div>';
 
         // Section 2: Terms & Provisions
-        const nonDurationArticles = articles.filter(a => a.type !== 'duration');
+        const nonDurationArticles = articles.filter(a => getArtType(a) !== 'duration');
+        // Human labels for the modern trade-neg modal types that aren't in TRADE_ARTICLE_TYPES.
+        const MODERN_LABELS = {
+            trade_flow: 'Trade Flow',
+            transfer: 'Transfer',
+            market_access: 'Market Access',
+            exit_terms: 'Exit Terms',
+            tariff_reduction: 'Tariff Reduction'
+        };
         if (nonDurationArticles.length > 0 || articles.length > 0) {
             html += '<div class="ratification-section">' +
                 '<div class="ratification-section-header">Terms &amp; Provisions</div>';
@@ -1890,11 +1964,12 @@ function renderRatificationBill() {
             // Render remaining articles
             nonDurationArticles.forEach((art, i) => {
                 const numeral = ROMAN[(durationArt ? 1 : 0) + i] || ((durationArt ? 2 : 1) + i);
-                const artTypeInfo = TRADE_ARTICLE_TYPES[art.type] || {};
-                const typeLabel = artTypeInfo.label || art.type || 'Provision';
-                const borderColor = art.type === 'text_article' ? 'var(--blue)' :
-                    art.type === 'breach_penalty' ? 'var(--red)' :
-                    art.type === 'sector_exemption' ? 'var(--orange)' : 'var(--blue)';
+                const artType = getArtType(art) || '';
+                const artTypeInfo = TRADE_ARTICLE_TYPES[artType] || {};
+                const typeLabel = artTypeInfo.label || MODERN_LABELS[artType] || artType || 'Provision';
+                const borderColor = artType === 'text_article' ? 'var(--blue)' :
+                    artType === 'breach_penalty' ? 'var(--red)' :
+                    artType === 'sector_exemption' ? 'var(--orange)' : 'var(--blue)';
                 html += '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + numeral + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span></div>' +
                     '<div class="article-description">' + renderTradeArticleDescription(art, rd) + '</div>' +
