@@ -3167,8 +3167,7 @@ function openContractDetail(contract) {
     const equipMet = [];
     const equipShort = [];
     for (const e of equipment) {
-        const EQUIP_ALIASES = { work_trucks: 'trucks', concrete_mixers: 'mixers', tower_cranes: 'cranes', heavy_haulers: 'haulers', pile_drivers: 'piledrivers', asphalt_plants: 'asphalt' };
-        const canonKey = EQUIP_ALIASES[e.key] || e.key;
+        const canonKey = EQUIP_KEY_ALIASES[e.key] || e.key;
         const corpEquip = equipmentData.find(ce => ce.equipment_key === canonKey || ce.equipment_key === e.key);
         if (corpEquip && corpEquip.owned >= e.qty) {
             equipMet.push(e);
@@ -3262,6 +3261,8 @@ const BID_MATERIALS = [
     { key: 'asphalt', name: 'Asphalt', unit: 'units' },
     { key: 'heavy_parts', name: 'Heavy Machinery Parts', unit: 'units' },
 ];
+
+const EQUIP_KEY_ALIASES = { work_trucks: 'trucks', concrete_mixers: 'mixers', tower_cranes: 'cranes', heavy_haulers: 'haulers', pile_drivers: 'piledrivers', asphalt_plants: 'asphalt' };
 
 const BID_EQUIPMENT = [
     { key: 'trucks', name: 'Work Trucks', tier: 1 },
@@ -3388,7 +3389,6 @@ async function openProjectModal(projectId) {
         ? rawReqEquip.map(k => [k, 1])
         : Object.entries(rawReqEquip);
     // Map legacy contract equipment keys to canonical corp_equipment keys
-    const EQUIP_KEY_ALIASES = { work_trucks: 'trucks', concrete_mixers: 'mixers', tower_cranes: 'cranes', heavy_haulers: 'haulers', pile_drivers: 'piledrivers', asphalt_plants: 'asphalt' };
     const equipment = equipEntries.map(([eqKey, reqQty]) => {
         const canonKey = EQUIP_KEY_ALIASES[eqKey] || eqKey;
         const owned = equipmentData.find(e => e.equipment_key === canonKey || e.equipment_key === eqKey);
@@ -3584,8 +3584,7 @@ async function pmDeployEquipment(equipmentKey, units) {
     if (_pmAllocLock || !pmState || !faction) return;
     _pmAllocLock = true;
     try {
-        const _EA = { work_trucks: 'trucks', concrete_mixers: 'mixers', tower_cranes: 'cranes', heavy_haulers: 'haulers', pile_drivers: 'piledrivers', asphalt_plants: 'asphalt' };
-        const canonKey = _EA[equipmentKey] || equipmentKey;
+        const canonKey = EQUIP_KEY_ALIASES[equipmentKey] || equipmentKey;
         const eqRow = equipmentData.find(e => e.equipment_key === canonKey || e.equipment_key === equipmentKey);
         if (!eqRow) { alert('Equipment not found in inventory.'); return; }
         const available = Math.max(0, (eqRow.owned || 0) - (eqRow.deployed || 0));
@@ -3621,8 +3620,7 @@ async function pmUndeployEquipment(equipmentKey) {
     if (_pmAllocLock || !pmState || !faction) return;
     _pmAllocLock = true;
     try {
-        const _EA = { work_trucks: 'trucks', concrete_mixers: 'mixers', tower_cranes: 'cranes', heavy_haulers: 'haulers', pile_drivers: 'piledrivers', asphalt_plants: 'asphalt' };
-        const canonKey = _EA[equipmentKey] || equipmentKey;
+        const canonKey = EQUIP_KEY_ALIASES[equipmentKey] || equipmentKey;
         const eqRow = equipmentData.find(e => e.equipment_key === canonKey || e.equipment_key === equipmentKey);
         if (!eqRow) { alert('Equipment not found.'); return; }
 
@@ -9943,31 +9941,39 @@ const CP_STYLE_META = {
 };
 
 let _cpModal = false;
-let _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', timeline: 36, budgetMod: 0, nationId: null, nationName: null };
+let _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', nationId: null, nationName: null };
 let _cpSubmitting = false;
-let _cpNations = []; // nations where corp has presence (for Regional HQ)
+let _cpNations = []; // nations where corp has HQ or Regional HQ
 
 function cpCalcBudget() {
     const inflation = Number(nationStats?.inflation ?? 50);
     const inflMod = 1 + ((inflation - 50) / 100 * 0.3);
     const styleMod = CP_STYLE_META[_cpData.style]?.costMod || 1.0;
     const typeMod = _cpData.type === 'Warehouse' ? 0.75 : 1.0;
-    // $100K per employee base, scaled by inflation, style, and type
-    const baseBudget = Math.round(_cpData.size * 100000 * inflMod * styleMod * typeMod);
-    const adjusted = Math.round(baseBudget * (1 + _cpData.budgetMod / 100));
-    const maint = Math.round(adjusted * 0.007 * (CP_STYLE_META[_cpData.style]?.maintMod || 1.0));
-    return { baseBudget, adjusted, maint, inflMod, styleMod };
+    const total = Math.round(_cpData.size * 100000 * inflMod * styleMod * typeMod);
+    const maint = Math.round(total * 0.007 * (CP_STYLE_META[_cpData.style]?.maintMod || 1.0));
+    return { total, maint, inflMod, styleMod };
 }
 
 async function npOpenConstructionModal() {
     _cpModal = true;
-    _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', timeline: 36, budgetMod: 0, nationId: null, nationName: null };
+    const homeNationId = faction?.nation_id;
+    const homeName = nationStats?.name || faction?.nation || 'Home Nation';
+    _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', nationId: homeNationId, nationName: homeName };
 
-    // Load all nations for Regional HQ placement (exclude home nation — already have HQ there)
+    // Build list of nations where corp has presence (National HQ + Regional HQs)
+    _cpNations = [{ id: homeNationId, name: homeName, label: 'National HQ' }];
     try {
-        const { data } = await _supabase.from('nations').select('id, name').order('name');
-        _cpNations = (data || []).filter(n => n.id !== faction?.nation_id);
-    } catch (_) { _cpNations = []; }
+        const { data: hqProps } = await _supabase.from('corp_properties')
+            .select('nation_id, name, nations!nation_id(name)')
+            .eq('faction_id', faction.id)
+            .eq('type', 'regional_hq')
+            .eq('is_active', true);
+        for (const hq of (hqProps || [])) {
+            if (hq.nation_id === homeNationId) continue;
+            _cpNations.push({ id: hq.nation_id, name: hq.nations?.name || 'Unknown', label: hq.name || 'Regional HQ' });
+        }
+    } catch (_) {}
 
     renderConstructionModal();
 }
@@ -9984,13 +9990,13 @@ function cpSetField(field, value) {
 
 async function cpSubmit() {
     if (_cpSubmitting || !_cpData.name.trim()) return;
-    if (_cpData.type === 'Regional HQ' && !_cpData.nationId) { alert('Select a target nation for the Regional HQ.'); return; }
+    if (!_cpData.nationId) { alert('Select a location.'); return; }
     _cpSubmitting = true;
 
     try {
         const budget = cpCalcBudget();
-        const targetNationId = _cpData.type === 'Regional HQ' ? _cpData.nationId : faction.nation_id;
-        const nationName = _cpData.type === 'Regional HQ' ? (_cpData.nationName || 'Unknown') : (nationStats?.name || faction?.nation || 'Unknown');
+        const targetNationId = _cpData.nationId;
+        const nationName = _cpData.nationName || 'Unknown';
         const repGain = CP_STYLE_META[_cpData.style]?.repGain || 1;
 
         // Generate project code: PVT-C1-2015
@@ -10016,8 +10022,8 @@ async function cpSubmit() {
             project_subtype: _cpData.style,
             description: `${_cpData.type} (${_cpData.style}) — ${_cpData.size.toLocaleString()} employees, commissioned by ${faction.faction_name}`,
             project_code: projectCode,
-            budget_ceiling: budget.adjusted,
-            timeline_ticks: _cpData.timeline,
+            budget_ceiling: budget.total,
+            timeline_ticks: Math.max(4, Math.ceil(_cpData.size / 2000) + 2),
             required_materials: (() => {
                 const k = _cpData.size / 1000; // units per 1,000 employees
                 const s = _cpData.style;
@@ -10063,7 +10069,7 @@ async function cpSubmit() {
         alert('Construction project submitted!\n\n' +
             'Project: ' + _cpData.name.trim() + '\n' +
             'Code: ' + projectCode + '\n' +
-            'Budget: ' + hfFmtBig(budget.adjusted) + '\n' +
+            'Budget: ' + hfFmtBig(budget.total) + '\n' +
             'Expected Reputation: +' + Math.ceil((budget.adjusted / 100_000_000) * 3) + ' (+3 per $100M)\n\n' +
             'All construction corporations in ' + nationName + ' can now bid on this project.');
     } catch (err) {
@@ -10085,8 +10091,7 @@ function renderConstructionModal() {
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
 
     const budget = cpCalcBudget();
-    const nationName = nationStats?.name || faction?.nation || 'Nation';
-    const repGain = Math.ceil((budget.adjusted / 100_000_000) * 3); // +3 per $100M, rounded up
+    const repGain = Math.ceil((budget.total / 100_000_000) * 3);
     const repColor = repGain >= 4 ? C.gold : repGain >= 3 ? C.greenBright : repGain >= 2 ? C.accent : C.dim;
 
     // Style grid
@@ -10134,19 +10139,19 @@ function renderConstructionModal() {
                         return `<span onclick="cpSetField('type','${t}')" style="flex:1;min-width:100px;text-align:center;padding:6px 0;font-family:${mono};font-size:12px;font-weight:700;cursor:pointer;color:${_cpData.type === t ? '#000' : C.dim};background:${_cpData.type === t ? activeColor : 'transparent'};border:1px solid ${_cpData.type === t ? activeColor : C.border}">${t}</span>`;
                     }).join('')}
                 </div>
-                ${_cpData.type === 'Regional HQ' ? `<div style="margin-top:8px;">
-                    <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Target Nation</div>
-                    <select id="cp-nation-select" onchange="cpSetField('nationId', this.value); cpSetField('nationName', this.options[this.selectedIndex].text)"
-                        style="width:100%;padding:8px 12px;font-family:${mono};font-size:12px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;">
-                        <option value="">-- Select a nation --</option>
-                        ${_cpNations.map(n => `<option value="${n.id}" ${_cpData.nationId === n.id ? 'selected' : ''}>${n.name}</option>`).join('')}
-                    </select>
-                    <div style="font-family:${mono};font-size:9px;color:${C.accent};margin-top:5px;">Regional HQ: Establishes corporate presence in another nation. Construction corps in that nation will bid on building it.</div>
-                </div>` : ''}
                 ${_cpData.type === 'Warehouse' ? `<div style="font-family:${mono};font-size:9px;color:${C.orange};margin-top:5px;">Warehouse: 75% construction cost, stores up to $20M in materials</div>` : ''}
                 ${_cpData.type === 'Branch Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Branch Office: Increases lending capacity. +1 reputation per 200 employees. Enables cross-nation lending.</div>` : ''}
                 ${_cpData.type === 'Trading Floor' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Trading Floor: Enables secondary bond market. +1 reputation per 200 employees. Portfolio management bonuses.</div>` : ''}
                 ${_cpData.type === 'Claims Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Claims Office: Faster claim processing. +1 reputation per 200 employees. Local presence reduces premiums.</div>` : ''}
+                ${_cpData.type === 'Regional HQ' ? `<div style="font-family:${mono};font-size:9px;color:${C.accent};margin-top:5px;">Regional HQ: Establishes corporate presence in another nation.</div>` : ''}
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Location</div>
+                <select onchange="cpSetField('nationId', this.value); cpSetField('nationName', this.options[this.selectedIndex].text)"
+                    style="width:100%;padding:8px 12px;font-family:${mono};font-size:12px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;">
+                    ${_cpNations.map(n => `<option value="${n.id}" ${_cpData.nationId === n.id ? 'selected' : ''}>${n.name} (${n.label})</option>`).join('')}
+                </select>
             </div>
 
             <div style="margin-bottom:14px;">
@@ -10168,40 +10173,13 @@ function renderConstructionModal() {
             </div>
 
             <div style="margin-bottom:14px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-                    <span style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Timeline</span>
-                    <span style="font-family:${mono};font-size:16px;font-weight:700;color:${C.text}">${_cpData.timeline} months</span>
-                </div>
-                <input type="range" min="24" max="60" step="6" value="${_cpData.timeline}" oninput="cpSetField('timeline',+this.value)"
-                    style="width:100%;accent-color:${C.gold};height:5px;" />
-                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">
-                    <span>24 months</span><span>60 months</span>
-                </div>
-            </div>
-
-            <div style="margin-bottom:14px;">
-                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Budget</div>
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Estimated Cost</div>
                 <div style="background:${C.card};border:1px solid ${C.border};padding:10px 12px;">
-                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border}">
-                        <span style="font-family:${mono};font-size:10px;color:${C.dim}">BASE (${_cpData.size.toLocaleString()} × $100k × ${budget.inflMod.toFixed(2)} × ${budget.styleMod.toFixed(1)})</span>
-                        <span style="font-family:${mono};font-size:12px;color:${C.muted}">${hfFmtBig(budget.baseBudget)}</span>
-                    </div>
-                    <div style="padding:8px 0">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                            <span style="font-family:${mono};font-size:10px;color:${C.dim}">ADJUSTMENT</span>
-                            <span style="font-family:${mono};font-size:13px;font-weight:700;color:${_cpData.budgetMod > 0 ? C.greenBright : _cpData.budgetMod < 0 ? C.red : C.dim}">${_cpData.budgetMod > 0 ? '+' : ''}${_cpData.budgetMod}%</span>
-                        </div>
-                        <input type="range" min="-15" max="15" step="1" value="${_cpData.budgetMod}" oninput="cpSetField('budgetMod',+this.value)"
-                            style="width:100%;accent-color:${C.accent};height:5px;" />
-                        <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">
-                            <span>-15% (budget cut)</span><span>+15% (quality invest)</span>
-                        </div>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid ${C.border}">
+                    <div style="display:flex;justify-content:space-between;padding:5px 0;">
                         <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.text}">TOTAL BUDGET</span>
-                        <span style="font-family:${mono};font-size:18px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</span>
+                        <span style="font-family:${mono};font-size:18px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.total)}</span>
                     </div>
-                    <div style="display:flex;justify-content:space-between;padding:3px 0">
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid ${C.border}">
                         <span style="font-family:${mono};font-size:10px;color:${C.dim}">EST. MONTHLY MAINTENANCE</span>
                         <span style="font-family:${mono};font-size:12px;color:${C.redDim}">${hfFmtBig(budget.maint)}/mo</span>
                     </div>
@@ -10211,7 +10189,7 @@ function renderConstructionModal() {
             <div style="padding:8px 10px;background:rgba(200,168,50,0.04);border:1px solid rgba(200,168,50,0.12);margin-bottom:10px;">
                 <div style="font-family:${mono};font-size:10px;color:${C.gold};margin-bottom:3px">WHAT HAPPENS NEXT</div>
                 <div style="font-size:12px;color:${C.dim};line-height:1.5">
-                    This project will appear as a Civil Engineering bid in the Open Contracts pool for all construction corporations with an HQ or Regional HQ in ${nationName}. The lowest qualified bidder wins the contract and begins construction.
+                    This project will appear as a Civil Engineering bid in the Open Contracts pool for all construction corporations with an HQ or Regional HQ in ${_cpData.nationName || 'the selected nation'}. The lowest qualified bidder wins the contract and begins construction.
                 </div>
             </div>
 
@@ -10227,7 +10205,7 @@ function renderConstructionModal() {
         <div style="padding:12px 20px;border-top:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
             <div>
                 <div style="font-family:${mono};font-size:9px;color:${C.dim}">TOTAL PROJECT</div>
-                <div style="font-family:${mono};font-size:18px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.adjusted)}</div>
+                <div style="font-family:${mono};font-size:18px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.total)}</div>
             </div>
             <div style="display:flex;gap:8px;">
                 <div onclick="cpClose()" style="padding:7px 20px;font-family:${mono};font-size:12px;font-weight:700;letter-spacing:1px;color:${C.dim};border:1px solid ${C.border};cursor:pointer">CANCEL</div>

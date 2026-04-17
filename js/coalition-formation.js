@@ -713,10 +713,11 @@ async function createMinistriesFromAssignments(nationId) {
 
         // Also update cabinet_members if the table has rows for this nation
         const position = displayName;
-        await _supabase.from('cabinet_members').update({
+        const { error: cabErr } = await _supabase.from('cabinet_members').update({
             party_id: partyId,
             person_name: firstName + ' ' + lastName,
         }).eq('nation_id', nationId).eq('position', position).eq('is_active', true);
+        if (cabErr) console.warn(`[Coalition] cabinet_members update failed for ${position}:`, cabErr.message);
     }
     console.log(`[Coalition] Updated ${updated} ministries for nation ${nationId}`);
 }

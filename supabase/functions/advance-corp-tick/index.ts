@@ -2993,6 +2993,178 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+//  SHIPPING ROUTE GENERATION
+// ════════════════════════════════════════════════════════════════════════════════
+
+const SHIPPING_SECTOR_MAP = {
+    fuel_energy:        { subsector: 'bulk_cargo',           category: 'FUEL',     goods: 'Fuel & Energy Products',   goodsSub: 'Petroleum, LNG, coal, refined fuels',        vessel: 'Tanker',          vesselNote: 'Double-hull required.', unit: 'tons' },
+    minerals:           { subsector: 'bulk_cargo',           category: 'MINERALS', goods: 'Minerals & Raw Materials', goodsSub: 'Iron ore, copper, bauxite, rare earths',      vessel: 'Bulk Carrier',    vesselNote: 'Heavy-load bulk.',      unit: 'tons' },
+    grains_staples:     { subsector: 'bulk_cargo',           category: 'FOOD',     goods: 'Grains & Staples',         goodsSub: 'Wheat, rice, corn, soybeans',                 vessel: 'Bulk Carrier',    vesselNote: 'Dry bulk holds.',       unit: 'tons' },
+    livestock_dairy:    { subsector: 'bulk_cargo',           category: 'FOOD',     goods: 'Livestock & Dairy',        goodsSub: 'Feed crops, processed dairy, frozen meat',    vessel: 'Bulk Carrier',    vesselNote: 'Temperature-controlled.', unit: 'tons' },
+    cash_crops:         { subsector: 'bulk_cargo',           category: 'FOOD',     goods: 'Cash Crops',               goodsSub: 'Coffee, cocoa, tobacco, cotton, rubber',      vessel: 'Bulk Carrier',    vesselNote: 'Standard dry bulk.',    unit: 'tons' },
+    manufactured_goods: { subsector: 'container_freight',    category: 'MFG',      goods: 'Manufactured Goods',       goodsSub: 'Consumer goods, vehicles, industrial parts',  vessel: 'Container Ship',  vesselNote: 'Standard container.',   unit: 'TEU' },
+    technology:         { subsector: 'container_freight',    category: 'TECH',     goods: 'Technology & Electronics',  goodsSub: 'Semiconductors, electronics, equipment',      vessel: 'Container Ship',  vesselNote: 'Climate-controlled.',   unit: 'TEU' },
+    fruits_vegetables:  { subsector: 'container_freight',    category: 'FOOD',     goods: 'Perishable Produce',       goodsSub: 'Fresh fruit, vegetables, seafood',            vessel: 'Reefer Ship',     vesselNote: 'Refrigerated holds.',   unit: 'tons' },
+    arms:               { subsector: 'specialized_transport', category: 'ARMS',    goods: 'Arms & Military Equipment', goodsSub: 'Vehicles, munitions, defense systems',       vessel: 'Military Transport', vesselNote: 'Security clearance required.', unit: 'tons' },
+};
+
+const SHIPPING_ROUTE_THRESHOLD = 50000000;
+const SHIPPING_REVENUE_RATES = { bulk_cargo: 0.06, container_freight: 0.08, specialized_transport: 0.12 };
+
+function _shipTransitTicks(prox) { return Math.max(1, Math.min(6, 1 + Math.floor((Number(prox) || 0) / 20))); }
+function _shipDemand(vol) { return vol >= 500000000 ? 'CRITICAL' : vol >= 200000000 ? 'HIGH' : vol >= 100000000 ? 'MODERATE' : 'LOW'; }
+function _shipScope(prox, isGov) { return isGov ? 'GOVERNMENT' : (prox <= 15 ? 'COASTAL' : 'INTERNATIONAL'); }
+
+async function generateShippingRoutes(supabase, currentTick) {
+    const { data: tradePartners } = await supabase.from('trade_partners')
+        .select('exporter_nation_id, importer_nation_id, sector, trade_volume')
+        .eq('tick', currentTick).gte('trade_volume', SHIPPING_ROUTE_THRESHOLD);
+    if (!tradePartners || tradePartners.length === 0) return { generated: 0, expired: 0, total: 0 };
+
+    const { data: ports } = await supabase.from('nation_ports').select('nation_id, port_name');
+    const portMap = {};
+    for (const p of (ports || [])) portMap[p.nation_id] = p.port_name;
+
+    const { data: relations } = await supabase.from('diplomatic_relations').select('nation_a_id, nation_b_id, proximity');
+    const proxMap = {};
+    for (const r of (relations || [])) { proxMap[r.nation_a_id + '|' + r.nation_b_id] = r.proximity; proxMap[r.nation_b_id + '|' + r.nation_a_id] = r.proximity; }
+
+    const { data: agreements } = await supabase.from('trade_agreements').select('id, nation_a_id, nation_b_id, agreement_name').eq('status', 'active');
+    const agMap = {};
+    for (const a of (agreements || [])) { agMap[a.nation_a_id + '|' + a.nation_b_id] = a; agMap[a.nation_b_id + '|' + a.nation_a_id] = a; }
+
+    const { data: nations } = await supabase.from('nations').select('id, tariffs');
+    const tariffMap = {};
+    for (const n of (nations || [])) tariffMap[n.id] = Number(n.tariffs) || 0;
+
+    const routeRows = [];
+    for (const tp of tradePartners) {
+        const sm = SHIPPING_SECTOR_MAP[tp.sector];
+        if (!sm) continue;
+        const oPort = portMap[tp.exporter_nation_id], dPort = portMap[tp.importer_nation_id];
+        if (!oPort || !dPort) continue;
+        const prox = proxMap[tp.exporter_nation_id + '|' + tp.importer_nation_id] ?? 50;
+        const ag = agMap[tp.exporter_nation_id + '|' + tp.importer_nation_id] || null;
+        routeRows.push({
+            origin_nation_id: tp.exporter_nation_id, destination_nation_id: tp.importer_nation_id,
+            origin_port: oPort, destination_port: dPort,
+            trade_sector: tp.sector, cargo_category: sm.category, shipping_subsector: sm.subsector,
+            scope: _shipScope(prox, tp.sector === 'arms'),
+            goods_name: sm.goods, goods_description: sm.goodsSub, vessel_class: sm.vessel, vessel_note: sm.vesselNote,
+            trade_volume: Math.round(tp.trade_volume), estimated_revenue: Math.round(tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || 0.06)),
+            volume_physical: Math.round(tp.trade_volume / 100), volume_unit: sm.unit,
+            transit_ticks: _shipTransitTicks(prox), proximity: prox, tariff_rate: tariffMap[tp.importer_nation_id] || 0,
+            demand_level: _shipDemand(tp.trade_volume),
+            trade_agreement_id: ag?.id || null, trade_agreement_name: ag?.agreement_name || null,
+            status: 'active', generated_at_tick: currentTick, last_refreshed_tick: currentTick,
+        });
+    }
+
+    if (routeRows.length > 0) {
+        for (let i = 0; i < routeRows.length; i += 50) {
+            const { error } = await supabase.from('shipping_routes').upsert(routeRows.slice(i, i + 50), { onConflict: 'origin_nation_id,destination_nation_id,trade_sector,status' });
+            if (error) console.error('[Shipping] Route upsert error:', error.message);
+        }
+    }
+
+    const { data: expired } = await supabase.from('shipping_routes').update({ status: 'expired' })
+        .eq('status', 'active').lt('last_refreshed_tick', currentTick).not('trade_agreement_id', 'is', null).select('id');
+    // Note: organic routes (trade_agreement_id IS null) are expired separately by generateOrganicRoutes
+
+    return { generated: routeRows.length, expired: expired?.length || 0, total: routeRows.length };
+}
+
+const ORGANIC_REVENUE_MULT = 0.35;
+const ORGANIC_MAX_PROX = 70;
+const ORGANIC_LIFETIME = 8;
+const ORGANIC_SECTORS = ['fuel_energy','minerals','grains_staples','livestock_dairy','cash_crops','manufactured_goods','technology','fruits_vegetables'];
+
+async function generateOrganicRoutes(supabase, currentTick) {
+    const { data: nations } = await supabase.from('nations').select('id, name, population, gdp_growth, manufacturing_output, tariffs');
+    if (!nations || nations.length < 2) return { generated: 0, expired: 0 };
+    const nationMap = {}; for (const n of nations) nationMap[n.id] = n;
+
+    const { data: ports } = await supabase.from('nation_ports').select('nation_id, port_name');
+    const portMap = {}; for (const p of (ports || [])) portMap[p.nation_id] = p.port_name;
+
+    const { data: rels } = await supabase.from('diplomatic_relations').select('nation_a_id, nation_b_id, proximity');
+    const proxMap = {}; for (const r of (rels || [])) { proxMap[r.nation_a_id + '|' + r.nation_b_id] = r.proximity; proxMap[r.nation_b_id + '|' + r.nation_a_id] = r.proximity; }
+
+    const { data: existing } = await supabase.from('shipping_routes').select('origin_nation_id, destination_nation_id, trade_sector')
+        .eq('status', 'active').is('trade_agreement_id', null).gte('last_refreshed_tick', currentTick - ORGANIC_LIFETIME);
+    const existSet = new Set(); for (const e of (existing || [])) existSet.add(e.origin_nation_id + '|' + e.destination_nation_id + '|' + e.trade_sector);
+
+    function sRand(seed) { const x = Math.sin(seed) * 10000; return x - Math.floor(x); }
+
+    const rows = [];
+    for (let i = 0; i < nations.length; i++) {
+        for (let j = i + 1; j < nations.length; j++) {
+            const nA = nations[i], nB = nations[j];
+            if (!portMap[nA.id] || !portMap[nB.id]) continue;
+            const prox = proxMap[nA.id + '|' + nB.id];
+            if (prox === undefined || prox === null || prox > ORGANIC_MAX_PROX) continue;
+
+            const popF = Math.sqrt((nA.population || 1e6) * (nB.population || 1e6)) / 1e7;
+            const gdpF = ((Number(nA.gdp_growth) || 50) + (Number(nB.gdp_growth) || 50)) / 100;
+            const close = 1 - (prox / 100);
+            const routeCount = close > 0.7 ? 2 : 1;
+
+            const mfg = ((Number(nA.manufacturing_output) || 50) + (Number(nB.manufacturing_output) || 50)) / 100;
+            const weights = ORGANIC_SECTORS.map(s => {
+                let w = 1;
+                if (s === 'manufactured_goods' || s === 'technology') w = mfg;
+                if (s === 'fuel_energy' || s === 'minerals') w = 1.2 - mfg * 0.3;
+                if (s === 'grains_staples' || s === 'fruits_vegetables') w = 0.8 + popF * 0.2;
+                return w;
+            });
+            const totalW = weights.reduce((a, b) => a + b, 0);
+
+            for (let rc = 0; rc < routeCount; rc++) {
+                const seed = currentTick * 1000 + i * 100 + j * 10 + rc;
+                let pick = sRand(seed) * totalW, cum = 0, chosen = ORGANIC_SECTORS[0];
+                for (let wi = 0; wi < weights.length; wi++) { cum += weights[wi]; if (pick <= cum) { chosen = ORGANIC_SECTORS[wi]; break; } }
+
+                const originId = (Number(nA.gdp_growth) || 50) >= (Number(nB.gdp_growth) || 50) ? nA.id : nB.id;
+                const destId = originId === nA.id ? nB.id : nA.id;
+                const key = originId + '|' + destId + '|' + chosen;
+                if (existSet.has(key)) continue;
+                existSet.add(key);
+
+                const sm = SHIPPING_SECTOR_MAP[chosen];
+                if (!sm) continue;
+                const vol = Math.round(Math.max(5e6, popF * gdpF * close * 3e7 * (0.7 + sRand(seed + 999) * 0.6)));
+                const rev = Math.round(vol * (SHIPPING_REVENUE_RATES[sm.subsector] || 0.06) * ORGANIC_REVENUE_MULT);
+
+                rows.push({
+                    origin_nation_id: originId, destination_nation_id: destId,
+                    origin_port: portMap[originId], destination_port: portMap[destId],
+                    trade_sector: chosen, cargo_category: sm.category, shipping_subsector: sm.subsector,
+                    scope: _shipScope(prox, false), goods_name: sm.goods, goods_description: 'Open market — ' + sm.goodsSub,
+                    vessel_class: sm.vessel, vessel_note: sm.vesselNote,
+                    trade_volume: vol, estimated_revenue: rev, volume_physical: Math.round(vol / 100), volume_unit: sm.unit,
+                    transit_ticks: _shipTransitTicks(prox), proximity: prox, tariff_rate: Number(nationMap[destId]?.tariffs) || 0,
+                    demand_level: vol >= 2e7 ? 'MODERATE' : 'LOW',
+                    trade_agreement_id: null, trade_agreement_name: null,
+                    status: 'active', generated_at_tick: currentTick, last_refreshed_tick: currentTick,
+                });
+            }
+        }
+    }
+
+    if (rows.length > 0) {
+        for (let i = 0; i < rows.length; i += 50) {
+            const { error } = await supabase.from('shipping_routes').upsert(rows.slice(i, i + 50), { onConflict: 'origin_nation_id,destination_nation_id,trade_sector,status' });
+            if (error) console.error('[Shipping] Organic route upsert error:', error.message);
+        }
+    }
+
+    const { data: expOrganic } = await supabase.from('shipping_routes').update({ status: 'expired' })
+        .eq('status', 'active').is('trade_agreement_id', null).lt('last_refreshed_tick', currentTick - ORGANIC_LIFETIME).select('id');
+
+    return { generated: rows.length, expired: expOrganic?.length || 0 };
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 //  MAIN ORCHESTRATOR
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -3362,7 +3534,12 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         summary.shipping = routeResult;
                         console.log(`[advance-corp-tick] Shipping routes: ${routeResult.generated} generated, ${routeResult.expired} expired`);
                     }
-                    summary._shippingRoutesGenerated = true; // Only run once across all nations
+                    const organicResult = await generateOrganicRoutes(supabase, currentTick);
+                    if (organicResult.generated > 0 || organicResult.expired > 0) {
+                        summary.organicShipping = organicResult;
+                        console.log(`[advance-corp-tick] Organic routes: ${organicResult.generated} generated, ${organicResult.expired} expired`);
+                    }
+                    summary._shippingRoutesGenerated = true;
                 }
             } catch (shipErr) {
                 console.error(`[advance-corp-tick] Shipping route generation failed (non-fatal):`, shipErr);

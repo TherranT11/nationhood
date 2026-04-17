@@ -6042,6 +6042,10 @@ function renderAvailableRoutes() {
             html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
                 + 'color:#5c5;background:rgba(92,204,92,0.06);border:1px solid rgba(92,204,92,0.15)">NO COMPETITION</span>';
         }
+        if (!route.trade_agreement_id && !isGov) {
+            html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
+                + 'color:#9e9a92;background:rgba(158,154,146,0.06);border:1px solid rgba(158,154,146,0.15)">OPEN MARKET</span>';
+        }
         // Show application status for this route
         var myApp = _myShippingApps.find(function(a) { return a.route_id === route.id; });
         if (myApp) {
@@ -6186,77 +6190,240 @@ function arSelectRoute(idx) {
     renderAvailableRoutes();
 }
 
-async function arApplyToService() {
-    if (_arClaimPending || arSelected < 0 || !faction || !shard) return;
+// ==================== ROUTE APPLICATION MODAL ====================
+
+let _raRoute = null;
+let _raVesselId = null;
+let _raProposedRate = 0;
+let _raSubmitting = false;
+
+function arApplyToService() {
+    if (arSelected < 0 || !faction || !shard) return;
     var filtered = arGetFiltered();
     var route = filtered[arSelected];
     if (!route) return;
 
-    // Check if already applied
     var existingApp = _myShippingApps.find(function(a) { return a.route_id === route.id; });
-    if (existingApp) {
-        alert('You have already applied for this route. Status: ' + existingApp.status);
-        return;
-    }
+    if (existingApp) { alert('You have already applied for this route. Status: ' + existingApp.status); return; }
 
-    // Subsector gating — corp must match route's shipping subsector
-    var corpSubsectorMap = {
-        'Bulk Cargo': 'bulk_cargo',
-        'Container Freight': 'container_freight',
-        'Specialized Transport': 'specialized_transport'
-    };
+    var corpSubsectorMap = { 'Bulk Cargo': 'bulk_cargo', 'Container Freight': 'container_freight', 'Specialized Transport': 'specialized_transport' };
     var corpDbSubsector = corpSubsectorMap[faction.corp_subsector] || '';
     if (route.shipping_subsector && corpDbSubsector !== route.shipping_subsector) {
         var routeSubLabel = route.shipping_subsector.replace(/_/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
-        alert('Your fleet specializes in ' + (faction.corp_subsector || '?') + ' but this route requires ' + routeSubLabel + '. You cannot service this route.');
-        return;
+        alert('Your fleet specializes in ' + (faction.corp_subsector || '?') + ' but this route requires ' + routeSubLabel + '.'); return;
     }
 
-    // Check funds — $50k application fee
-    var appFee = 50000;
-    var { data: freshFac } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
-    var currentCash = Number(freshFac?.corp_cash_reserves ?? 0);
-    if (currentCash < appFee) {
-        alert('Not enough funds. Application fee: $50k. You have $' + Math.round(currentCash / 1000) + 'k.');
-        return;
+    _raRoute = route;
+    _raProposedRate = Number(route.estimated_revenue || 0);
+    _raVesselId = null;
+    renderRouteApplicationModal();
+}
+
+function raClose() { _raRoute = null; document.getElementById('ra-modal-overlay')?.remove(); }
+
+function raSelectVessel(vesselId) { _raVesselId = vesselId; renderRouteApplicationModal(); }
+function raSetRate(val) { _raProposedRate = Number(val); renderRouteApplicationModal(); }
+
+function renderRouteApplicationModal() {
+    document.getElementById('ra-modal-overlay')?.remove();
+    if (!_raRoute) return;
+
+    const M = "'JetBrains Mono', monospace";
+    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+        accent: '#5a8aaa', green: '#5c5', gold: '#c8a832', orange: '#c84', red: '#c55',
+        text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
+
+    const r = _raRoute;
+    const sm = AR_SCOPE_META[r.scope] || AR_SCOPE_META.INTERNATIONAL;
+    const baseRev = Number(r.estimated_revenue || 0);
+    const appFee = 50000;
+    const fuelCostEst = Math.round(baseRev * 0.15);
+    const maintCostEst = Math.round(baseRev * 0.08);
+    const netProfit = _raProposedRate - fuelCostEst - maintCostEst;
+    const profitColor = netProfit > 0 ? C.green : netProfit < 0 ? C.red : C.dim;
+    const ratePct = baseRev > 0 ? Math.round((_raProposedRate / baseRev) * 100) : 100;
+
+    // Available vessels (in_port, matching class, not assigned)
+    const availableVessels = _fleetVessels.filter(v =>
+        v.status === 'in_port' && !v.active_claim_id && v.condition >= 20);
+    const selectedVessel = availableVessels.find(v => v.id === _raVesselId);
+    const canSubmit = !!selectedVessel && _raProposedRate > 0;
+
+    let html = `
+    <div style="width:520px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;max-height:90vh;">
+        <div style="padding:12px 20px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:10px;color:${sm.color}">●</span>
+                <span style="font-family:${M};font-size:13px;font-weight:700;letter-spacing:2px;color:${C.muted};">ROUTE APPLICATION</span>
+            </div>
+            <span onclick="raClose()" style="font-family:${M};font-size:18px;color:${C.dim};cursor:pointer">×</span>
+        </div>
+        <div style="padding:14px 20px;overflow:auto;flex:1;">
+
+            <div style="display:flex;align-items:center;gap:0;margin-bottom:12px;">
+                <span style="font-size:14px;font-weight:700;color:${C.text}">${escapeHtml(r.origin_port || '?')}</span>
+                <div style="flex:1;display:flex;align-items:center;margin:0 10px;">
+                    <div style="flex:1;height:1px;background:${sm.color}44"></div>
+                    <span style="font-family:${M};font-size:8px;color:${sm.color};padding:0 8px">⚓ ${r.transit_ticks || '?'} tick${(r.transit_ticks||0)!==1?'s':''}</span>
+                    <div style="flex:1;height:1px;background:${sm.color}44"></div>
+                </div>
+                <span style="font-size:14px;font-weight:700;color:${C.text}">${escapeHtml(r.destination_port || '?')}</span>
+            </div>
+
+            <div style="display:flex;gap:0;background:${C.card};border:1px solid ${C.border};margin-bottom:14px;">
+                <div style="flex:1;padding:4px 8px;border-right:1px solid ${C.border};">
+                    <div style="font-family:${M};font-size:6px;color:${C.dim};letter-spacing:0.5px;">CARGO</div>
+                    <div style="font-family:${M};font-size:9px;font-weight:700;color:${C.text};margin-top:1px;">${escapeHtml(r.goods_name || '?')}</div>
+                </div>
+                <div style="flex:1;padding:4px 8px;border-right:1px solid ${C.border};">
+                    <div style="font-family:${M};font-size:6px;color:${C.dim};letter-spacing:0.5px;">VESSEL REQ.</div>
+                    <div style="font-family:${M};font-size:9px;font-weight:700;color:${C.text};margin-top:1px;">${escapeHtml(r.vessel_class || '?')}</div>
+                </div>
+                <div style="flex:1;padding:4px 8px;border-right:1px solid ${C.border};">
+                    <div style="font-family:${M};font-size:6px;color:${C.dim};letter-spacing:0.5px;">VOLUME</div>
+                    <div style="font-family:${M};font-size:9px;font-weight:700;color:${C.text};margin-top:1px;">${fmtBig(Number(r.trade_volume || 0))}</div>
+                </div>
+                <div style="flex:1;padding:4px 8px;">
+                    <div style="font-family:${M};font-size:6px;color:${C.dim};letter-spacing:0.5px;">COMPETITION</div>
+                    <div style="font-family:${M};font-size:9px;font-weight:700;color:${Number(r.competition_count||0)===0?C.green:C.orange};margin-top:1px;">${r.competition_count || 0}</div>
+                </div>
+            </div>
+
+            <div style="font-family:${M};font-size:10px;color:${C.dim};letter-spacing:1px;margin-bottom:6px;">SELECT VESSEL</div>`;
+
+    if (availableVessels.length === 0) {
+        html += `<div style="padding:14px;text-align:center;background:${C.card};border:1px solid ${C.border};margin-bottom:14px;">
+            <div style="font-family:${M};font-size:10px;color:${C.red};">No available vessels</div>
+            <div style="font-family:${M};font-size:8px;color:${C.dim};margin-top:4px;">You need a vessel in port, not assigned to another route, with condition ≥ 20%.</div>
+        </div>`;
+    } else {
+        html += `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;">`;
+        for (const v of availableVessels) {
+            const isSel = _raVesselId === v.id;
+            const cc = v.condition >= 75 ? C.green : v.condition >= 50 ? C.gold : C.orange;
+            const fc = v.fuel >= 60 ? C.green : v.fuel >= 30 ? C.gold : C.red;
+            html += `<div onclick="raSelectVessel('${v.id}')" style="padding:8px 10px;background:${isSel ? C.accent+'12' : C.card};border:1px solid ${isSel ? C.accent+'44' : C.border};cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-size:11px;font-weight:600;color:${C.text};">${escapeHtml(v.vessel_name)}</span>
+                    <span style="font-family:${M};font-size:7px;font-weight:700;padding:1px 5px;color:${sm.color};background:${sm.color}12;border:1px solid ${sm.color}25;">${v.vessel_class.toUpperCase()}</span>
+                </div>
+                <div style="display:flex;gap:12px;font-family:${M};font-size:8px;">
+                    <span style="color:${C.dim};">Condition: <span style="color:${cc};font-weight:700;">${v.condition}%</span></span>
+                    <span style="color:${C.dim};">Fuel: <span style="color:${fc};font-weight:700;">${v.fuel}%</span></span>
+                    <span style="color:${C.dim};">Capacity: <span style="color:${C.text};font-weight:700;">${(v.capacity_dwt||0).toLocaleString()} ${v.capacity_unit||'DWT'}</span></span>
+                </div>
+            </div>`;
+        }
+        html += `</div>`;
     }
 
-    _arClaimPending = true;
-    var btn = document.getElementById('ar-claim-btn');
-    btn.textContent = 'APPLYING...';
+    // Proposed rate slider
+    const minRate = Math.round(baseRev * 0.5);
+    const maxRate = Math.round(baseRev * 1.5);
+    const rateSlidePct = maxRate > minRate ? Math.round((_raProposedRate - minRate) / (maxRate - minRate) * 100) : 50;
+    html += `
+            <div style="margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                    <span style="font-family:${M};font-size:10px;color:${C.dim};letter-spacing:1px;">PROPOSED SERVICE RATE</span>
+                    <span style="font-family:${M};font-size:16px;font-weight:700;color:${C.gold};">${fmtBig(_raProposedRate)}/trip</span>
+                </div>
+                <input type="range" min="${minRate}" max="${maxRate}" step="${Math.max(1000,Math.round(baseRev*0.02))}" value="${_raProposedRate}"
+                    oninput="raSetRate(this.value)"
+                    style="width:100%;accent-color:${C.gold};height:5px;" />
+                <div style="display:flex;justify-content:space-between;font-family:${M};font-size:8px;color:${C.dim};margin-top:3px;">
+                    <span>50% market (${fmtBig(minRate)})</span>
+                    <span style="color:${C.muted};">Market: ${fmtBig(baseRev)}</span>
+                    <span>150% premium (${fmtBig(maxRate)})</span>
+                </div>
+            </div>`;
+
+    // Profit estimation
+    html += `
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${M};font-size:10px;color:${C.dim};letter-spacing:1px;margin-bottom:6px;">ESTIMATED ECONOMICS (PER TRIP)</div>
+                <div style="background:${C.card};border:1px solid ${C.border};padding:8px 10px;">
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Revenue</span>
+                        <span style="font-family:${M};font-size:10px;font-weight:700;color:${C.green};">${fmtBig(_raProposedRate)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;">
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Est. Fuel Cost (~15%)</span>
+                        <span style="font-family:${M};font-size:10px;color:${C.red};">-${fmtBig(fuelCostEst)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Est. Maintenance (~8%)</span>
+                        <span style="font-family:${M};font-size:10px;color:${C.red};">-${fmtBig(maintCostEst)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:5px 0;">
+                        <span style="font-family:${M};font-size:10px;font-weight:700;color:${C.text};">NET PROFIT</span>
+                        <span style="font-family:${M};font-size:14px;font-weight:700;color:${profitColor};">${netProfit >= 0 ? '+' : ''}${fmtBig(netProfit)}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="padding:6px 10px;background:rgba(90,138,170,0.04);border:1px solid rgba(90,138,170,0.12);font-family:${M};font-size:8px;color:${C.dim};line-height:1.5;">
+                Application fee: <span style="color:${C.gold};">$50k</span> (non-refundable). The government reviews applications and may approve or reject based on your rate, fleet readiness, and competition.
+            </div>
+
+        </div>
+        <div style="padding:12px 20px;border-top:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div>
+                <div style="font-family:${M};font-size:8px;color:${C.dim};">APPLICATION FEE</div>
+                <div style="font-family:${M};font-size:14px;font-weight:700;color:${C.gold};">$50k</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <div onclick="raClose()" style="padding:7px 16px;font-family:${M};font-size:11px;font-weight:700;letter-spacing:1px;color:${C.dim};border:1px solid ${C.border};cursor:pointer;">CANCEL</div>
+                <div onclick="${canSubmit ? 'raSubmitApplication()' : ''}" style="padding:7px 16px;font-family:${M};font-size:11px;font-weight:700;letter-spacing:1px;color:${canSubmit ? '#000' : C.dim};background:${canSubmit ? C.accent : 'transparent'};border:1px solid ${canSubmit ? C.accent : C.border};cursor:${canSubmit ? 'pointer' : 'not-allowed'};opacity:${canSubmit ? 1 : 0.4};">SUBMIT APPLICATION</div>
+            </div>
+        </div>
+    </div>`;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'ra-modal-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    overlay.innerHTML = html;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) raClose(); });
+    document.body.appendChild(overlay);
+}
+
+async function raSubmitApplication() {
+    if (_raSubmitting || !_raRoute || !_raVesselId || !faction || !shard) return;
+    _raSubmitting = true;
+
+    const route = _raRoute;
+    const appFee = 50000;
+    const { data: freshFac } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
+    const currentCash = Number(freshFac?.corp_cash_reserves ?? 0);
+    if (currentCash < appFee) { alert('Not enough funds. Application fee: $50k. You have $' + Math.round(currentCash / 1000) + 'k.'); _raSubmitting = false; return; }
 
     try {
-        // Deduct application fee
-        var newCash = currentCash - appFee;
-        var { error: feeErr } = await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        const newCash = currentCash - appFee;
+        const { error: feeErr } = await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
         if (feeErr) { alert('Failed to deduct fee.'); return; }
 
-        // Create application
-        var { data: app, error: appErr } = await _supabase.from('shipping_applications').insert({
+        const { error: appErr } = await _supabase.from('shipping_applications').insert({
             route_id: route.id,
             faction_id: faction.id,
-            proposed_rate: Number(route.estimated_revenue || 0),
+            proposed_rate: _raProposedRate,
             application_fee: appFee,
             status: 'pending',
             applied_at_tick: shard.current_tick,
-        }).select('*').single();
+        });
 
         if (appErr) {
-            alert('Application failed: ' + appErr.message);
-            // Refund fee on failure
             await _supabase.from('factions').update({ corp_cash_reserves: currentCash }).eq('id', faction.id);
-            return;
+            alert('Application failed: ' + appErr.message); return;
         }
 
-        // Log event
         await _supabase.from('event_log').insert({
             nation_id: route.origin_nation_id,
-            event_name: faction.faction_name + ' applied to service ' + (route.origin_port || '?') + ' → ' + (route.destination_port || '?') + ' route',
+            event_name: faction.faction_name + ' applied to service ' + (route.origin_port || '?') + ' → ' + (route.destination_port || '?'),
             category: 'corporate',
-            description_chosen: faction.faction_name + ' has submitted a shipping application for the ' + (route.goods_name || 'trade') + ' route between ' + (route.origin_port || '?') + ' and ' + (route.destination_port || '?') + '. Awaiting government approval.',
+            description_chosen: faction.faction_name + ' submitted a shipping application for the ' + (route.goods_name || 'trade') + ' route at a proposed rate of ' + fmtBig(_raProposedRate) + '/trip. Vessel: ' + (_fleetVessels.find(v => v.id === _raVesselId)?.vessel_name || 'Unknown'),
             fired_at_tick: shard.current_tick,
-        }).catch(function() {});
+        }).catch(function(err) { console.warn('[Shipping] Event log failed:', err.message); });
 
+        raClose();
         await refreshFactionAndCash();
         arSelected = -1;
         await loadAvailableRoutes();
@@ -6264,9 +6431,7 @@ async function arApplyToService() {
     } catch (e) {
         alert('Application failed: ' + (e.message || 'Network error'));
     } finally {
-        _arClaimPending = false;
-        btn.textContent = 'APPLY TO SERVICE — $50k';
-        btn.className = 'ar-claim-btn' + (arSelected >= 0 ? ' active' : '');
+        _raSubmitting = false;
     }
 }
 
@@ -7016,6 +7181,10 @@ window.arSetFilter = arSetFilter;
 window.arSelectRoute = arSelectRoute;
 window.arClaimRoute = arClaimRoute;
 window.arApplyToService = arApplyToService;
+window.raClose = raClose;
+window.raSelectVessel = raSelectVessel;
+window.raSetRate = raSetRate;
+window.raSubmitApplication = raSubmitApplication;
 window.avToggle = avToggle;
 window.avRelease = avRelease;
 window.openContractDetail = openContractDetail;
