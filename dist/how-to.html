@@ -66,10 +66,9 @@
 <li><strong>Check your Dashboard</strong> &mdash; the Home tab shows your nation's government, elections, and recent events at a glance.</li>
 <li><strong>Visit the Government page</strong> &mdash; see who holds power, which ministries exist, and whether a government needs to be formed.</li>
 <li><strong>Check the Bills page</strong> &mdash; vote on any bills currently on the floor. Your vote matters even if you have few seats.</li>
-<li><strong>Draft your first bill</strong> &mdash; propose a policy that aligns with your ideology. It costs 2 AP.</li>
+<li><strong>Draft your first bill</strong> &mdash; propose a policy that aligns with your ideology from the Bills page.</li>
 <li><strong>Manage your economy</strong> &mdash; visit the Economy tab to understand revenue, spending, trade, and debt.</li>
 </ol>
-<p><em>Tip: AP (Action Points) regenerate every tick (+5 base, +2 if you're in the governing coalition). Don't hoard them &mdash; spend them to shape your nation.</em></p>
 </div></details>
 
 <details><summary>How Ticks Work</summary><div>
@@ -81,21 +80,54 @@
 <li>Policy effects apply (stat changes from enacted laws)</li>
 <li>Ministry actions progress through their delay and duration</li>
 <li>Crises evolve (effects apply, protests fizzle or escalate)</li>
-<li>AP is granted to all parties</li>
 </ul>
 <p>You don't need to be online when the tick fires &mdash; everything processes automatically. But plan your actions so they're submitted before the tick you want them to take effect.</p>
 </div></details>
 
-<details><summary>Your Party</summary><div>
-<p>You control a <strong>political party</strong> with:</p>
+<details open><summary>Your Party</summary><div>
+
+<p>You lead a <strong>political party</strong> in one of the nations on the map. Everything you do in the game flows through that party &mdash; winning seats, forming governments, proposing laws, campaigning, fundraising, coalition deals.</p>
+
+<p>Your party's profile lives on the <strong>Politics &rarr; Parties</strong> tab. That's the single page where you can see your standing and compare it to every rival party in the nation.</p>
+
+<h3>What the card shows you</h3>
+
+<p>Every party card is broken down the same way, whether it's yours or a rival's. Here's what each field means:</p>
+
 <table>
-<tr><th>Attribute</th><th>What It Means</th></tr>
-<tr><td><strong>Seats</strong></td><td>Your share of the legislature, won through elections</td></tr>
-<tr><td><strong>Approval</strong></td><td>How popular your party is with voters (affects next election)</td></tr>
-<tr><td><strong>Ideology</strong></td><td>Your position on 5 axes (Liberty/Equality, Tradition/Progress, etc.) &mdash; affects voter alignment</td></tr>
-<tr><td><strong>AP</strong></td><td>Action Points &mdash; spent to draft bills, use ministry actions, conduct diplomacy</td></tr>
-<tr><td><strong>Leader</strong></td><td>Your party leader with traits that provide bonuses or penalties</td></tr>
+<tr><th>Field</th><th>What it means</th></tr>
+<tr><td><strong>Name &amp; Abbreviation</strong></td><td>Your party's full name and short form (e.g. "Social Democratic Front" &rarr; SDF). Shown with your party color everywhere in the game.</td></tr>
+<tr><td><strong>Party Color</strong></td><td>The color wash behind your card and the dot next to your name in bills, votes, seat charts, and the parliament hemisphere. Pick something distinctive &mdash; it's how people identify you at a glance.</td></tr>
+<tr><td><strong>Leader</strong></td><td>The face of your party. Shows name, age, and party tag. Leaders have <strong>traits</strong> that buff or debuff specific actions. Leaders age and eventually retire; you'll pick a successor when that happens.</td></tr>
+<tr><td><strong>Seats</strong></td><td>Your share of the legislature. Won through elections. Seats determine how much your votes are worth on bills, whether you can form a majority, and how much fundraising you pull.</td></tr>
+<tr><td><strong>Approval</strong></td><td>How popular your party is with voters right now, 0&ndash;100%. Drives your next election result more than any other stat. Rises from good actions, fulfilled promises, rallies. Falls from unfulfilled platform promises, failed lawsuits, scandals.</td></tr>
+<tr><td><strong>Momentum</strong></td><td>Short-term political energy, 0&ndash;100. Boosts you get from rallies, statements, and events burn off as momentum each tick. A momentum spike right before an election can flip a result.</td></tr>
+<tr><td><strong>Ideology</strong></td><td>Your position on five axes (Liberty&ndash;Authority, Tradition&ndash;Progress, Equality&ndash;Hierarchy, Nationalism&ndash;Globalism, Individualism&ndash;Collectivism). Voter blocs prefer parties that match their ideology. Some party actions shift these numbers.</td></tr>
+<tr><td><strong>Coalition Status</strong></td><td>One of <em>GOVERNING-LEAD</em> (your party holds the PM), <em>GOVERNING-JUNIOR</em> (you're in the coalition but not the lead), or <em>OPPOSITION</em> (you're outside the government). Different statuses unlock different actions.</td></tr>
+<tr><td><strong>Ticks in Power</strong></td><td>How long your current government has lasted. Long tenure slowly decays your approval (incumbency fatigue). Shown on governing parties only.</td></tr>
+<tr><td><strong>Party Funds</strong></td><td>Cash your party holds for campaigning, legal action, and rallies. Grown through fundraising; drained by lawsuits, platform promises, and expensive actions.</td></tr>
 </table>
+
+<h3>Caucuses &mdash; your party's internal wings</h3>
+
+<p>Large parties aren't monoliths. Your card shows <strong>caucuses</strong> &mdash; sub-groups within your own party, each with their own seat share and <strong>loyalty</strong> score. Think of them as factions inside your faction.</p>
+
+<ul>
+<li><strong>High loyalty</strong> caucuses back every bill and platform you propose.</li>
+<li><strong>Low loyalty</strong> caucuses may defect on specific votes or withhold their seats on bills they ideologically disagree with &mdash; reducing your effective voting power.</li>
+<li>Caucus loyalty moves based on whether your platform promises and ideological positioning match what the caucus wants.</li>
+</ul>
+
+<p>You don't manage caucuses directly. You influence them by keeping your party's ideology and promises aligned with theirs.</p>
+
+<h3>Governance score</h3>
+
+<p>If you're in the governing coalition, you'll also see a <strong>Governance</strong> score &mdash; a single rollup of how the nation's key stats have moved under your administration. Green means things are improving, red means stats are sliding. Voters notice. The Governance panel on the Parties tab shows the top stats by delta since your government formed.</p>
+
+<h3>Nation context</h3>
+
+<p>Your party exists inside a single nation. You can't run candidates in another nation, but you can cooperate with parties in other nations via <strong>International Party Organisations (IPOs)</strong> on the Diplomacy page. If your nation's government type changes (election reform, constitutional reform, etc.), your party's available actions and election mechanics change with it.</p>
+
 </div></details>
 
 <details><summary>Government &amp; Coalitions</summary><div>
@@ -108,9 +140,9 @@
 </ol>
 <p>Being in government gives you:</p>
 <ul>
-<li><strong>+2 AP per tick</strong> (coalition bonus)</li>
 <li>Control of <strong>ministries</strong> (each with unique actions)</li>
 <li>The PM can issue <strong>Public Addresses</strong> during crises</li>
+<li>Governance record and incumbency effects factor into the next election &mdash; good stat trends help, bad ones hurt</li>
 </ul>
 <p>Not in government? You're the <strong>opposition</strong>. You can still vote on bills, organize protests, and run for election.</p>
 </div></details>
@@ -118,7 +150,7 @@
 <details><summary>Bills &amp; Legislation</summary><div>
 <p>Bills are how you change your nation. The lifecycle:</p>
 <ol>
-<li><strong>Draft</strong> (2 AP) &mdash; propose articles with policy effects, tax changes, or funding adjustments</li>
+<li><strong>Draft</strong> &mdash; propose articles with policy effects, tax changes, or funding adjustments</li>
 <li><strong>Committee</strong> &mdash; other parties can co-sponsor or add amendments</li>
 <li><strong>Floor Vote</strong> &mdash; send to the floor; all parties vote for 6 ticks</li>
 <li><strong>Passed/Failed</strong> &mdash; majority wins. Passed bills take effect immediately.</li>
@@ -134,15 +166,81 @@
 </ul>
 </div></details>
 
-<details><summary>Elections</summary><div>
-<p>Elections happen on a regular schedule (visible on the Dashboard). Your result depends on:</p>
+<details><summary>Elections &amp; Campaigning</summary><div>
+
+<p>Elections are the single moment that resets the political map. You go into one with a particular seat count, approval, and ideological position; you come out with a new seat count that sets the terms for every policy fight until the next election.</p>
+
+<h3>Election schedule</h3>
+
 <ul>
-<li><strong>Party approval</strong> &mdash; the single biggest factor. Keep it high.</li>
-<li><strong>Ideology alignment</strong> &mdash; how well your positions match what voters want</li>
-<li><strong>Voter bloc preferences</strong> &mdash; different demographics favor different parties</li>
-<li><strong>Government record</strong> &mdash; incumbents are judged on economic performance</li>
+<li><strong>Parliamentary elections</strong> fire on a fixed cadence set by your nation's constitution (typically every 4 game years, 48 ticks). The "Next Election" countdown on the Home / Dashboard tab shows ticks remaining.</li>
+<li><strong>Presidential elections</strong> run separately in presidential and semi-presidential systems, on their own schedule.</li>
+<li><strong>Snap elections</strong> can be triggered by a successful Vote of No Confidence, a failed government-formation deadline, or certain constitutional-reform bills.</li>
+<li>You don't have to do anything for a scheduled election to fire. The game runs it automatically when the tick arrives &mdash; but the political work happens in the ticks leading up to it.</li>
 </ul>
-<p>After an election, the government dissolves and a new formation period begins. If no government forms within the deadline, a snap election is called.</p>
+
+<h3>How seats get allocated</h3>
+
+<p>Seats aren't awarded purely by vote share. Behind the scenes the game scores every party against every voter bloc, then sums to allocate seats. Four factors drive your result:</p>
+
+<table>
+<tr><th>Factor</th><th>Weight</th><th>What it is</th></tr>
+<tr><td><strong>Party Approval</strong></td><td>40%</td><td>Your approval going into the election. The single biggest number.</td></tr>
+<tr><td><strong>Momentum</strong></td><td>30%</td><td>Short-term boost from rallies, statements, and events in the final stretch. Fades fast if you don't keep it topped up.</td></tr>
+<tr><td><strong>Ideology Alignment</strong></td><td>30%</td><td>How closely your positions on the five ideology axes match what voter blocs want.</td></tr>
+<tr><td><strong>Governance Record</strong></td><td>modifier</td><td>Only applies to governing parties. Stats that moved in a good direction during your term add a tailwind; stats that slid punish you.</td></tr>
+</table>
+
+<p>The <strong>Election Formula</strong> card on the Parties tab shows these weights for your nation's current election.</p>
+
+<h3>Voter blocs</h3>
+
+<p>Each nation has a demographic breakdown &mdash; urban professionals, working class, rural traditionalists, religious conservatives, progressive youth, etc. Each bloc weights parties differently based on ideology.</p>
+
+<p>You don't target blocs directly. You position your party's ideology on the five axes, and alignment does the work. Use <strong>Statement</strong> and <strong>Platform Promise</strong> actions to nudge your axes toward the blocs you want to win.</p>
+
+<h3>Campaigning</h3>
+
+<p>Campaigning happens every tick, not just during a campaign window. The sooner you start, the more approval and momentum you'll have banked by election day.</p>
+
+<p>The main campaigning tools live on the <strong>Actions</strong> tab:</p>
+
+<ul>
+<li><strong>Fundraise</strong> &mdash; accumulates party funds, which pay for the expensive actions below. Escalates in size the more ticks you do it in a row, so steady fundraising beats sporadic.</li>
+<li><strong>Rally</strong> &mdash; spends party funds for a targeted approval and momentum spike. Highest impact per fund-unit; best used shortly before an election.</li>
+<li><strong>Statement</strong> &mdash; cheap ideological move that shifts one of your five axes and nudges approval/momentum. Use regularly to keep your positioning sharp.</li>
+<li><strong>Platform Promises</strong> &mdash; commit to stat targets (e.g. "reduce poverty by 5"). Fulfilled promises pay approval dividends; unmet promises punish you. Treat them as binding campaign pledges.</li>
+<li><strong>Lawsuits</strong> &mdash; opposition-only. Target a rival party with a legal action. Wins hurt the target's approval; losses hurt yours. Legally risky, politically loud.</li>
+</ul>
+
+<p>Full mechanics of each action are covered in the <strong>Actions</strong> section. For election week specifically, the pattern most players converge on is: fundraise aggressively for 4&ndash;8 ticks, then spend it all on rallies and platform promises in the final 2&ndash;3 ticks before the vote.</p>
+
+<h3>Incumbency effect</h3>
+
+<p>If you've been in government for a while, expect a steady <strong>approval decay</strong>. Voters get bored with the same administration. The "Ticks in Power" counter on your card tracks this &mdash; every tick above the threshold chips your approval.</p>
+
+<p>Conversely, opposition parties get a small <strong>tailwind</strong> the longer a specific government has been in office. You don't have to do anything to get it &mdash; just exist and stay positioned for the day voters want change.</p>
+
+<h3>After the election</h3>
+
+<p>When the election resolves:</p>
+
+<ol>
+<li>Seats are recalculated for every party.</li>
+<li>The current government dissolves.</li>
+<li>A <strong>government-formation window</strong> opens. Parties propose coalitions, assign ministries, and the lead party clicks <em>Form Government</em>.</li>
+<li>If no coalition forms by the deadline, a snap election is called and the process repeats.</li>
+<li>Once a government forms, your coalition status is set (GOVERNING-LEAD / GOVERNING-JUNIOR / OPPOSITION) and your available actions change accordingly.</li>
+</ol>
+
+<h3>Special elections</h3>
+
+<ul>
+<li><strong>Vote of No Confidence</strong> &mdash; legislators file a motion to dissolve the current government. If it passes with a majority, the government falls and a snap election or formation attempt follows.</li>
+<li><strong>Failed Formation</strong> &mdash; if no coalition forms within the deadline after an election, a snap election fires and seat counts reset.</li>
+<li><strong>Constitutional Reform</strong> &mdash; certain foundational bills (e.g. switching from Parliamentary to Presidential) trigger a reset election so the new system starts fresh.</li>
+</ul>
+
 </div></details>
 
 <details><summary>The Economy</summary><div>
@@ -158,7 +256,7 @@
 </div></details>
 
 <details><summary>Ministries</summary><div>
-<p>Coalition parties are assigned ministries. Each ministry has <strong>unique actions</strong> that cost AP and draw from the ministry's discretionary fund:</p>
+<p>Coalition parties are assigned ministries. Each ministry has <strong>unique actions</strong> that draw from the ministry's discretionary fund:</p>
 <table>
 <tr><th>Ministry</th><th>Key Actions</th></tr>
 <tr><td><strong>Healthcare</strong></td><td>Pharmaceutical Regulation (increase/decrease)</td></tr>
@@ -169,7 +267,7 @@
 <tr><td><strong>Foreign</strong></td><td>Diplomacy actions (on the Diplomacy page)</td></tr>
 <tr><td><strong>Finance</strong></td><td>Debt Restructuring</td></tr>
 </table>
-<p>Ministry actions have <strong>escalating AP costs</strong> on repeated use, and their effects scale down with diminishing returns.</p>
+<p>Ministry actions have <strong>escalating costs</strong> on repeated use, and their effects scale down with diminishing returns.</p>
 </div></details>
 
 <details><summary>Diplomacy</summary><div>
@@ -186,10 +284,10 @@
 <details><summary>International Party Organisations (IPOs)</summary><div>
 <p>IPOs are cross-nation alliances of like-minded parties. Create or join one from the <strong>Diplomacy &rarr; International Orgs</strong> tab.</p>
 <ul>
-<li><strong>Solidarity Fund</strong> &mdash; members contribute AP quarterly for collective actions</li>
+<li><strong>Solidarity Fund</strong> &mdash; members contribute quarterly for collective actions</li>
 <li><strong>Rallies</strong> &mdash; boost approval for member parties</li>
 <li><strong>Symposiums</strong> &mdash; shift a nation's ideology</li>
-<li><strong>Back-channels</strong> &mdash; secretly transfer AP between members</li>
+<li><strong>Back-channels</strong> &mdash; secretly transfer funds between members</li>
 <li><strong>Voting</strong> &mdash; democratic decision-making within the org</li>
 </ul>
 </div></details>
@@ -204,10 +302,20 @@
 <p>The PM can use <strong>Public Address</strong> (40% T6 / 15% T7 chance to resolve), the Interior Minister can <strong>Enforce Public Order</strong> (33% resolve, 66% escalate), or the PM can declare a <strong>National Emergency</strong> (guaranteed resolution, severe stat penalties).</p>
 </div></details>
 
+<details><summary>Playing as a Corporation &mdash; Coming Soon</summary><div>
+<p><em>A full guide to running a corporation &mdash; construction, shipping, finance, insurance &mdash; is on the way.</em></p>
+<p>The corporate layer lets you found and run a company inside a nation: bid on construction contracts, operate shipping routes, extend commercial credit, and build out subsidiaries in other nations. Full mechanics covered here in a future update.</p>
+</div></details>
+
+<details><summary>Playing as a Military Branch &mdash; Coming Soon</summary><div>
+<p><em>Military play is not yet live. This section will cover it once the branch systems ship.</em></p>
+<p>Planned scope: command land, sea, and air forces; deploy to support domestic and allied operations; resolve conflicts through the Defense Ministry. Stay tuned.</p>
+</div></details>
+
 <details><summary>Tips &amp; Strategy</summary><div>
 <h3>For New Players</h3>
 <ul>
-<li>Don't spend all your AP at once &mdash; keep 2-3 in reserve for emergencies</li>
+<li>Fundraise steadily rather than sporadically &mdash; the escalating tier means consecutive ticks compound</li>
 <li>Co-sponsor bills from other parties to build relationships for coalition negotiations</li>
 <li>Check the Economy tab regularly &mdash; a deficit that spirals into a debt crisis is hard to recover from</li>
 <li>Your party's ideology matters for elections &mdash; be consistent with what your voters want</li>
