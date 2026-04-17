@@ -1814,6 +1814,61 @@ body.light-mode .ar-empty__text { color: #1a1a17; }
 }
 body.light-mode .av-empty__text { color: #1a1a17; }
 
+/* ── Vessel Incidents card — claim-eligible events awaiting corp action ── */
+.vi-card {
+  width: 380px; height: 340px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.vi-card__header {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+}
+.vi-card__header-left { display: flex; align-items: center; gap: 6px; }
+.vi-card__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--red); }
+.vi-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+}
+.vi-card__count { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+.vi-list { flex: 1; overflow-y: auto; }
+.vi-list::-webkit-scrollbar { width: 4px; }
+.vi-list::-webkit-scrollbar-track { background: transparent; }
+.vi-list::-webkit-scrollbar-thumb { background: var(--border-1); }
+.vi-item {
+  padding: 10px 14px; border-bottom: 1px solid var(--border-0);
+  border-left: 3px solid var(--red);
+}
+.vi-item__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.vi-item__vessel { font-size: 13px; font-weight: 700; color: var(--text-bright); }
+.vi-item__tick { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+.vi-item__type {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700; letter-spacing: 0.8px;
+  padding: 1px 6px; color: var(--red); background: var(--red-faint); border: 1px solid var(--red-border);
+  display: inline-block; margin-bottom: 6px;
+}
+.vi-item__desc { font-size: 11px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 8px; }
+.vi-item__actions { display: flex; gap: 6px; }
+.vi-action-btn {
+  flex: 1; padding: 7px 0; text-align: center; cursor: pointer;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+  background: transparent; transition: background 0.1s, opacity 0.1s;
+}
+.vi-action-btn--file  { color: #000; background: #5c5; border: 1px solid #5c5; }
+.vi-action-btn--file:hover { filter: brightness(1.1); }
+.vi-action-btn--file:disabled {
+  color: var(--text-dim); background: transparent; border: 1px solid var(--border-0);
+  cursor: not-allowed; opacity: 0.55;
+}
+.vi-action-btn--dismiss { color: var(--text-dim); border: 1px solid var(--border-0); }
+.vi-action-btn--dismiss:hover { background: var(--bg-hover); color: var(--text-secondary); }
+.vi-empty { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 20px; }
+.vi-empty__text {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  letter-spacing: 0.04em; text-align: center; line-height: 1.8;
+}
+body.light-mode .vi-empty__text { color: #1a1a17; }
+
 /* ── Fleet card — 380×450 (Shipping corps) ── */
 .fl-card {
   width: 380px; height: 450px;
@@ -2445,6 +2500,22 @@ body.light-mode .av-empty__text { color: #1a1a17; }
             <div class="av-footer__label">SUBSECTOR</div>
             <div class="av-footer__value" id="av-subsector" style="font-size:9px;color:#5a8aaa;">--</div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vessel Incidents card (Shipping corps only) -->
+    <div class="vi-card" id="vi-container">
+      <div class="vi-card__header">
+        <div class="vi-card__header-left">
+          <div class="vi-card__dot"></div>
+          <span class="vi-card__label">Incidents</span>
+        </div>
+        <span class="vi-card__count" id="vi-count">0 PENDING</span>
+      </div>
+      <div class="vi-list" id="vi-list">
+        <div class="vi-empty">
+          <div class="vi-empty__text">No pending incidents.<br>Claim-eligible events on your fleet appear here.</div>
         </div>
       </div>
     </div>
@@ -6721,6 +6792,166 @@ function renderActiveVoyages() {
     listEl.innerHTML = html;
 }
 
+// ══════════════════════════════════════════════════════════════
+// VESSEL INCIDENTS — claim-eligible events awaiting corp action
+// ══════════════════════════════════════════════════════════════
+// The tick processor writes a vessel_incidents row (+ event_log) when
+// something bad happens to a vessel (today: stranded mid-transit).
+// The corp sees the incident here and chooses to FILE CLAIM (which
+// spawns an insurance_claims row if an active policy covers the vessel)
+// or DISMISS (no claim, incident marked resolved). No auto-file.
+
+let _vesselIncidents = [];
+
+const VI_INCIDENT_META = {
+    stranded: { label: 'STRANDED' },
+};
+
+async function loadVesselIncidents() {
+    if (!faction) { _vesselIncidents = []; renderVesselIncidents(); return; }
+    const { data, error } = await _supabase.from('vessel_incidents')
+        .select('id, vessel_id, nation_id, incident_type, incident_tick, description, status, corp_vessels!vessel_id(id, vessel_name, vessel_class)')
+        .eq('faction_id', faction.id)
+        .eq('status', 'pending')
+        .order('incident_tick', { ascending: false });
+    if (error) {
+        console.warn('[VesselIncidents] load failed:', error.message);
+        _vesselIncidents = [];
+    } else {
+        _vesselIncidents = data || [];
+    }
+    renderVesselIncidents();
+}
+
+function renderVesselIncidents() {
+    const countEl = document.getElementById('vi-count');
+    const listEl  = document.getElementById('vi-list');
+    if (!countEl || !listEl) return;
+
+    const incidents = _vesselIncidents || [];
+    countEl.textContent = incidents.length + ' PENDING';
+
+    if (incidents.length === 0) {
+        listEl.innerHTML = `<div class="vi-empty">
+            <div class="vi-empty__text">No pending incidents.<br>Claim-eligible events on your fleet appear here.</div>
+        </div>`;
+        return;
+    }
+
+    listEl.innerHTML = incidents.map(inc => {
+        const meta = VI_INCIDENT_META[inc.incident_type] || { label: (inc.incident_type || 'INCIDENT').toUpperCase() };
+        const vesselName = inc.corp_vessels?.vessel_name || 'Unknown Vessel';
+        return `<div class="vi-item" data-incident-id="${inc.id}">
+            <div class="vi-item__head">
+                <span class="vi-item__vessel">${escapeHtml(vesselName)}</span>
+                <span class="vi-item__tick">Tick ${inc.incident_tick}</span>
+            </div>
+            <span class="vi-item__type">${escapeHtml(meta.label)}</span>
+            <div class="vi-item__desc">${escapeHtml(inc.description || '')}</div>
+            <div class="vi-item__actions">
+                <button class="vi-action-btn vi-action-btn--dismiss" onclick="viDismissIncident('${inc.id}')">DISMISS</button>
+                <button class="vi-action-btn vi-action-btn--file" onclick="viFileClaim('${inc.id}')">FILE CLAIM</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+let _viActionPending = false;
+
+async function viFileClaim(incidentId) {
+    if (_viActionPending) return;
+    const inc = _vesselIncidents.find(i => i.id === incidentId);
+    if (!inc) return;
+
+    // Find an active policy on the vessel. Check subsidiary_auto_policies
+    // first, then deal-flow policies in finance_active_loans. Same lookup
+    // the tick processor used to do when it auto-filed.
+    _viActionPending = true;
+    try {
+        const { data: autoPolicy } = await _supabase.from('subsidiary_auto_policies')
+            .select('id, principal, deductible_pct, lender_faction_id, policy_terms')
+            .eq('insured_vessel_id', inc.vessel_id).eq('status', 'active')
+            .limit(1).maybeSingle();
+        const { data: dealPolicy } = !autoPolicy ? await _supabase.from('finance_active_loans')
+            .select('id, principal, deductible_pct, lender_faction_id')
+            .eq('insured_vessel_id', inc.vessel_id).eq('status', 'current')
+            .limit(1).maybeSingle() : { data: null };
+
+        const policy = autoPolicy || dealPolicy;
+        if (!policy) {
+            alert('No active insurance policy covers this vessel. Consider purchasing coverage before the next incident.');
+            return;
+        }
+
+        const vesselName = inc.corp_vessels?.vessel_name || 'vessel';
+        const confirmMsg = `File claim on ${vesselName}?\n\nPolicy principal: $${Math.round(Number(policy.principal) || 0).toLocaleString()}\nDeductible: ${policy.deductible_pct || 10}%`;
+        if (!confirm(confirmMsg)) return;
+
+        const policySource = autoPolicy ? 'auto' : 'deal';
+        const claimAmount  = Number(policy.principal) || 0;
+        const currentTick  = shard?.current_tick || 0;
+
+        const { data: claimIns, error: claimErr } = await _supabase.from('insurance_claims').insert({
+            policy_id: policy.id,
+            policy_source: policySource,
+            claimant_faction_id: faction.id,
+            insurer_faction_id: policy.lender_faction_id,
+            insured_vessel_id: inc.vessel_id,
+            claim_amount: claimAmount,
+            claim_reason: inc.description || `${vesselName} — incident ${inc.incident_type}`,
+            policy_terms: policy.policy_terms || null,
+            deductible_pct: Number(policy.deductible_pct) || 10,
+            status: 'filed',
+            filed_at_tick: currentTick,
+        }).select('id').single();
+
+        if (claimErr) { alert('Failed to file claim: ' + claimErr.message); return; }
+
+        const { error: updErr } = await _supabase.from('vessel_incidents').update({
+            status: 'filed',
+            filed_at_tick: currentTick,
+            filed_claim_id: claimIns?.id || null,
+        }).eq('id', inc.id);
+        if (updErr) console.warn('[VesselIncidents] incident update after file failed:', updErr.message);
+
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: inc.nation_id || faction.nation_id,
+                faction_id: faction.id,
+                event_name: `${faction.faction_name || 'A corporation'} filed an insurance claim`,
+                category: 'corporate',
+                description_chosen: `${faction.faction_name || 'Corporation'} filed a claim on ${vesselName} for $${Math.round(claimAmount).toLocaleString()}.`,
+                fired_at_tick: currentTick,
+            });
+        } catch (_) { /* event log failure is non-fatal */ }
+
+        await loadVesselIncidents();
+    } catch (e) {
+        console.error('[VesselIncidents] fileClaim error:', e);
+        alert('File claim failed: ' + (e?.message || 'unknown error'));
+    } finally {
+        _viActionPending = false;
+    }
+}
+window.viFileClaim = viFileClaim;
+
+async function viDismissIncident(incidentId) {
+    if (_viActionPending) return;
+    if (!confirm('Dismiss this incident without filing a claim? The vessel remains in whatever state the tick processor left it.')) return;
+    _viActionPending = true;
+    try {
+        const { error } = await _supabase.from('vessel_incidents').update({
+            status: 'dismissed',
+            filed_at_tick: shard?.current_tick || 0,
+        }).eq('id', incidentId);
+        if (error) { alert('Dismiss failed: ' + error.message); return; }
+        await loadVesselIncidents();
+    } finally {
+        _viActionPending = false;
+    }
+}
+window.viDismissIncident = viDismissIncident;
+
 // ── Manual Vessel Assignment Modal ──
 
 function openAssignVesselModal(claimId, requiredClass) {
@@ -7135,7 +7366,7 @@ async function init() {
     }
 
     // Load shipping operations data
-    await Promise.all([loadAvailableRoutes(), loadActiveVoyages(), loadFleet(), loadShipMarket(), loadPortFacilities()]);
+    await Promise.all([loadAvailableRoutes(), loadActiveVoyages(), loadFleet(), loadShipMarket(), loadPortFacilities(), loadVesselIncidents()]);
 
     // Messaging bubble
     initMessaging(faction, nationStats, shard);

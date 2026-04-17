@@ -3924,40 +3924,39 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                     await supabase.from('factions').update({ shipping_fleet_deployed: fleetNow }).eq('id', corp.id);
                                 }
 
-                                // Auto-file insurance claim if vessel has active coverage
+                                // Record a claim-eligible incident and fire a news-ticker event.
+                                // The corp decides from their Shipping Operations view whether to
+                                // FILE CLAIM (spawns an insurance_claims row) or DISMISS the
+                                // incident. No auto-file.
+                                const strandNationId = claim?.shipping_routes?.destination_nation_id
+                                    || v.current_port_nation_id
+                                    || null;
+                                const strandDescription = `Vessel ${v.vessel_name} stranded at sea — fuel depleted mid-transit.`;
                                 try {
-                                    // Check subsidiary_auto_policies first
-                                    const { data: autoPolicy } = await supabase.from('subsidiary_auto_policies')
-                                        .select('id, principal, deductible_pct, lender_faction_id, policy_terms')
-                                        .eq('insured_vessel_id', v.id).eq('status', 'active')
-                                        .limit(1).maybeSingle();
-                                    // Then check finance_active_loans (deal flow policies)
-                                    const { data: dealPolicy } = !autoPolicy ? await supabase.from('finance_active_loans')
-                                        .select('id, principal, deductible_pct, lender_faction_id')
-                                        .eq('insured_vessel_id', v.id).eq('status', 'current')
-                                        .limit(1).maybeSingle() : { data: null };
-
-                                    const policy = autoPolicy || dealPolicy;
-                                    const policySource = autoPolicy ? 'auto' : 'deal';
-                                    if (policy) {
-                                        const claimAmount = Number(policy.principal) || 0;
-                                        await supabase.from('insurance_claims').insert({
-                                            policy_id: policy.id,
-                                            policy_source: policySource,
-                                            claimant_faction_id: corp.id,
-                                            insurer_faction_id: policy.lender_faction_id,
-                                            insured_vessel_id: v.id,
-                                            claim_amount: claimAmount,
-                                            claim_reason: `Vessel ${v.vessel_name} stranded at sea — fuel depleted mid-transit.`,
-                                            policy_terms: policy.policy_terms || null,
-                                            deductible_pct: Number(policy.deductible_pct) || 10,
-                                            status: 'filed',
-                                            filed_at_tick: currentTick,
-                                        });
-                                        console.log(`[advance-corp-tick] Insurance claim auto-filed for ${v.vessel_name} (${policySource} policy ${policy.id})`);
-                                    }
-                                } catch (claimErr) {
-                                    console.warn(`[advance-corp-tick] Failed to auto-file insurance claim for ${v.vessel_name}:`, claimErr.message);
+                                    const { error: incErr } = await supabase.from('vessel_incidents').insert({
+                                        faction_id:    corp.id,
+                                        vessel_id:     v.id,
+                                        nation_id:     strandNationId,
+                                        incident_type: 'stranded',
+                                        incident_tick: currentTick,
+                                        description:   strandDescription,
+                                        status:        'pending',
+                                    });
+                                    if (incErr) console.warn(`[advance-corp-tick] vessel_incidents insert failed for ${v.vessel_name}:`, incErr.message);
+                                } catch (incThrow) {
+                                    console.warn(`[advance-corp-tick] vessel_incidents insert threw for ${v.vessel_name}:`, incThrow?.message || incThrow);
+                                }
+                                try {
+                                    await supabase.from('event_log').insert({
+                                        nation_id:          strandNationId || corp.nation_id,
+                                        faction_id:         corp.id,
+                                        event_name:         `${corp.faction_name || 'A corporation'} vessel stranded at sea`,
+                                        category:           'corporate',
+                                        description_chosen: strandDescription + ' If the vessel is insured, the owning corporation can file a claim from their Shipping Operations view.',
+                                        fired_at_tick:      currentTick,
+                                    });
+                                } catch (evErr) {
+                                    console.warn(`[advance-corp-tick] event_log insert failed for ${v.vessel_name}:`, evErr?.message || evErr);
                                 }
                             }
                         }
