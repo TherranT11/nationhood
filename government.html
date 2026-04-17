@@ -9193,16 +9193,18 @@ async function submitBondIssuance(apCost) {
 
         // Fire ONE event_log row that drives Political | Local (category) and
         // Political | World (trigger_key NOT NULL) feeds, plus the Executive
-        // Timeline filter on this nation.
-        await _supabase.from('event_log').insert({
-            nation_id: currentNation.id,
-            event_name: 'Government Bonds Issued',
-            category: 'political',
-            trigger_key: 'bond_issued',
-            description_chosen: eventDesc,
-            fired_at_tick: currentTick,
-        });
-        await insertMinisterActionTimelineEvent(_bondMinistryKey, 'Issue Government Bonds', currentTick);
+        // Timeline filter on this nation. A second generic minister-action
+        // insert would double-up on the timeline, so we skip it.
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: currentNation.id,
+                event_name: 'Government Bonds Issued',
+                category: 'political',
+                trigger_key: 'bond_issued',
+                description_chosen: eventDesc,
+                fired_at_tick: currentTick,
+            });
+        } catch (logErr) { console.warn('[Bonds] event_log insert failed:', logErr); }
 
         // Update AP display
         const apEl = document.getElementById('faction-ap');
