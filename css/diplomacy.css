@@ -5044,7 +5044,7 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   border-right: 1px solid var(--border-main, rgba(255,255,255,0.06));
 }
 .trade-neg-chat {
-  width: 300px;
+  width: 240px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -5298,7 +5298,7 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
 
 /* ── Economy side panels (your / theirs) ── */
 .trade-neg-econ {
-  width: 260px;
+  width: 220px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -5448,7 +5448,8 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
 
 /* ── Responsive ── */
 @media (max-width: 1400px) {
-  .trade-neg-econ { width: 220px; }
+  .trade-neg-econ { width: 200px; }
+  .trade-neg-chat { width: 220px; }
 }
 @media (max-width: 1200px) {
   .trade-neg-econ--mine,
