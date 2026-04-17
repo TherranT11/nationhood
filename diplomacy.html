@@ -694,9 +694,11 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
     try {
         const tick = _worldState?.shard?.current_tick || 0;
 
-        // Read the application first so we know which vessel the corp put on offer
-        const { data: appRow } = await _supabase.from('shipping_applications')
+        // Read the application first so we know which vessel the corp put on offer.
+        // A failure here is non-fatal — acceptance still proceeds without vessel auto-assign.
+        const { data: appRow, error: appReadErr } = await _supabase.from('shipping_applications')
             .select('vessel_id').eq('id', appId).maybeSingle();
+        if (appReadErr) console.warn('[ShippingApproval] vessel_id lookup failed:', appReadErr.message);
         const vesselId = appRow?.vessel_id || null;
 
         // Update application status
@@ -711,17 +713,41 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
             p_route_id: routeId,
             p_current_tick: tick,
         });
-        if (claimErr) {
-            console.warn('[ShippingApproval] Auto-claim failed (corp may need to assign vessel):', claimErr.message);
-        } else if (vesselId && claimData?.claim_id) {
+        const claimFailureMsg = claimErr?.message || (claimData && claimData.success === false ? claimData.error : null);
+        if (claimFailureMsg) {
+            // The unique (route, faction) index would block re-acceptance while status='approved',
+            // so revert the application back to pending and surface the reason.
+            await _supabase.from('shipping_applications')
+                .update({ status: 'pending', reviewed_at_tick: null, reviewed_by_faction_id: null })
+                .eq('id', appId);
+            alert('Could not activate the route: ' + claimFailureMsg);
+            await loadShippingData();
+            renderTradeAgreements();
+            renderShippingContracts();
+            return;
+        }
+
+        if (vesselId && claimData?.claim_id) {
             // Assign the vessel the corp put on offer to the new claim so it shows up
-            // as an Active Voyage on the corp's side immediately.
-            const { error: vesselErr } = await _supabase.from('corp_vessels').update({
+            // as an Active Voyage on the corp's side immediately. Filter on the vessel
+            // still being idle so we don't clobber a vessel the corp has since reassigned.
+            const { data: vesselUpd, error: vesselErr } = await _supabase.from('corp_vessels').update({
                 status: 'in_transit',
                 active_claim_id: claimData.claim_id,
                 current_port_nation_id: null,
-            }).eq('id', vesselId).eq('faction_id', corpFactionId);
-            if (vesselErr) console.warn('[ShippingApproval] Vessel assignment failed:', vesselErr.message);
+            })
+                .eq('id', vesselId)
+                .eq('faction_id', corpFactionId)
+                .is('active_claim_id', null)
+                .eq('status', 'in_port')
+                .select('id');
+            if (vesselErr) {
+                console.warn('[ShippingApproval] Vessel assignment failed:', vesselErr.message);
+            } else if (!vesselUpd || vesselUpd.length === 0) {
+                // Vessel is no longer idle — the claim is active but the corp will need to
+                // assign a vessel manually from their Active Voyages view.
+                console.warn('[ShippingApproval] Offered vessel no longer idle; corp must assign manually.');
+            }
         }
 
         // Log event (non-critical — approval already persisted)
@@ -1059,12 +1085,11 @@ function renderShippingContracts() {
         const originPort = route.origin_port || '?';
         const destPort = route.destination_port || '?';
         const pricePerTrip = Number(app.proposed_rate || 0);
-        // Round-trip cycle: one tick out + one tick back (0 transit = instant round trip, 1 tick = 2-tick cycle)
+        // Round-trip cycle: out + back. 0-tick (instant) transits still cost 1 cycle/tick minimum.
         const oneWayTicks = Number(route.transit_ticks ?? 0);
-        const cycleTicks = Math.max(1, oneWayTicks * 2 || 1);
-        // 1 tick = 30 days. Trips per month = days-in-month / days-per-cycle = 30 / (cycleTicks * 30)
-        // For instant (0-tick) transit, we still cap at 1 cycle/tick so trips/mo ≈ 1.
-        const tripsPerMonth = 30 / (cycleTicks * 30 / 1);
+        const cycleTicks = Math.max(1, oneWayTicks * 2);
+        // 1 tick = 30 days = 1 month, so trips per month = 1 / cycleTicks.
+        const tripsPerMonth = 1 / cycleTicks;
         const monthlyCost = Math.round(pricePerTrip * tripsPerMonth);
 
         const cashReserves = Number(corp.corp_cash_reserves ?? 0);
