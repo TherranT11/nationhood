@@ -903,93 +903,19 @@ async function loadTradeAgreements() {
     _tradeNegotiationsList = negResult.data || [];
 }
 
-// Phase-1 helper: renders a single pending bid card for a route's expanded
-// state. Lives as a standalone function so Phase 2 can swap the whole card
-// out for a bidding modal without editing renderShippingContractsBlock.
-function _renderPendingBidCard(app, r, canAct, fmt, TICKS_PER_MONTH) {
-    const corp = app.factions || {};
-    const color = corp.party_color || '#5a8aaa';
-    const ticker = (corp.corp_ticker || corp.abbreviation || '').toUpperCase();
-    const logoHtml = corp.custom_logo_url
-        ? `<img src="${escapeHtml(corp.custom_logo_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:3px;" />`
-        : `<span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${color};">${escapeHtml(ticker.slice(0,2) || '??')}</span>`;
-
-    const rate = Number(app.proposed_rate || 0);
-    const transitTicks = Math.max(1, Number(r.transit_ticks || 1));
-    const transitsPerMonth = TICKS_PER_MONTH / transitTicks;
-    const monthlyCost = rate * transitsPerMonth;
-
-    const fleetCap = corp.shipping_fleet_capacity || 0;
-    const fleetDep = corp.shipping_fleet_deployed || 0;
-    const available = Math.max(0, fleetCap - fleetDep);
-
-    const corpRep  = Number(corp.corp_reputation ?? 50);
-    const corpCash = Number(corp.corp_cash_reserves ?? 0);
-    const repColor = corpRep >= 70 ? 'var(--green)' : corpRep >= 40 ? 'var(--accent)' : 'var(--amber)';
-
-    return `<div style="background:var(--bg-panel);border:1px solid var(--border-main);border-left:3px solid ${color};">
-        <div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
-            <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-                <div style="width:28px;height:28px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;border-radius:4px;overflow:hidden;flex-shrink:0;">${logoHtml}</div>
-                <div style="min-width:0;">
-                    <div style="font-size:13px;font-weight:600;color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(corp.faction_name || 'Unknown Corp')}</div>
-                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">${escapeHtml(corp.corp_subsector || corp.corp_sector || '')} \u00B7 ${fmt(rate)}/trip</div>
-                </div>
-            </div>
-            <span class="tr-badge" style="font-size:9px;padding:2px 8px;color:#c8a832;background:rgba(200,168,50,0.08);border-color:rgba(200,168,50,0.2);flex-shrink:0;">PENDING</span>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:0 14px 10px;font-family:var(--font-mono);font-size:10px;">
-            <div>
-                <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">FLEET ON OFFER</div>
-                <div style="color:var(--text-bright);font-size:14px;font-weight:700;">${available} <span style="color:var(--text-dim);font-weight:400;font-size:10px;">of ${fleetCap}</span></div>
-                <div style="color:var(--text-dim);font-size:8px;">vessels available</div>
-            </div>
-            <div>
-                <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">REPUTATION</div>
-                <div style="color:${repColor};font-size:14px;font-weight:700;">${corpRep}<span style="color:var(--text-dim);font-weight:400;font-size:10px;">/100</span></div>
-                <div style="color:var(--text-dim);font-size:8px;">corp standing</div>
-            </div>
-            <div>
-                <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">CASH RESERVES</div>
-                <div style="color:var(--text-bright);font-size:14px;font-weight:700;">${fmt(corpCash)}</div>
-                <div style="color:var(--text-dim);font-size:8px;">balance sheet</div>
-            </div>
-            <div>
-                <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">PRICE PER TRIP</div>
-                <div style="color:var(--accent);font-size:14px;font-weight:700;">${fmt(rate)}</div>
-                <div style="color:var(--text-dim);font-size:8px;">${transitTicks} tick cycle</div>
-            </div>
-            <div>
-                <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">MONTHLY COST TO NATION</div>
-                <div style="color:#d06a6a;font-size:14px;font-weight:700;">${fmt(monthlyCost)}</div>
-                <div style="color:var(--text-dim);font-size:8px;">~${transitsPerMonth.toFixed(1)} trips/mo</div>
-            </div>
-        </div>
-        <div style="padding:0 14px 12px;">
-            ${canAct ? `<div style="display:flex;gap:8px;justify-content:flex-end;">
-                <button onclick="event.stopPropagation();rejectShippingApp('${app.id}')"
-                    style="padding:7px 22px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:pointer;letter-spacing:1px;">REJECT</button>
-                <button onclick="event.stopPropagation();approveShippingApp('${app.id}', '${app.route_id}', '${app.faction_id}')"
-                    style="padding:7px 22px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#000;background:#5cc55c;border:none;cursor:pointer;letter-spacing:1px;">ACCEPT</button>
-            </div>` : `<div style="padding:8px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);background:var(--bg-card);border:1px dashed var(--border-main);">
-                Awaiting decision from the Minister of Trade
-            </div>`}
-        </div>
-    </div>`;
-}
-
 // ── Shipping Contracts block (pending applications + active claims) ──
 //
 // Rendered at the top of the AGREEMENTS panel so government-side users can
 // accept/reject applications and see live active shipping contracts without
 // having to expand each trade agreement row.
 //
-// Pending-side structure (Phase 1 of the bidding-modal rework):
-//   - One collapsed row per ROUTE with pending bids, showing the route + bid count.
-//   - Expanding the row reveals each pending bid as a sub-card with the existing
-//     5-column detail layout + ACCEPT / REJECT buttons.
-//   - The per-bid detail rendering is isolated in _renderPendingBidCard so Phase 2
-//     can swap it out for a modal without touching the grouping logic above.
+// Pending side uses the bidding-modal rework:
+//   - Each route with pending bids shows a one-line summary row with bid
+//     count + "closes in N ticks" countdown (3-tick window from the earliest
+//     bid's applied_at_tick).
+//   - Clicking the row opens the shipping-bid modal (see
+//     openShippingBidModal) which will carry the full bid comparison UI.
+// Active-claim rows below still use the inline expand via _shippingRowExpanded.
 function renderShippingContractsBlock() {
     const routeMap = new Map();
     for (const r of (_allShippingRoutes || [])) routeMap.set(r.id, r);
@@ -1045,14 +971,25 @@ function renderShippingContractsBlock() {
 
     for (const [routeId, { route: r, apps }] of pendingByRoute) {
         const bidCount = apps.length;
-        const isExp = _shippingRowExpanded === 'route:' + routeId;
         const routeLabel = (r.origin_port && r.destination_port)
             ? `${r.origin_port} → ${r.destination_port}`
             : (r.goods_name || 'route');
 
+        // Bidding deadline: 3 ticks after the earliest bid landed. Deterministic
+        // per-route so the same countdown shows no matter which bid opened it.
+        const earliestBidTick = apps.reduce(
+            (min, a) => Math.min(min, Number(a.applied_at_tick) || 0),
+            Number.POSITIVE_INFINITY
+        );
+        const currentTick = _worldState?.shard?.current_tick || 0;
+        const closesInTicks = Number.isFinite(earliestBidTick) ? Math.max(0, (earliestBidTick + 3) - currentTick) : null;
+        const closesLabel = closesInTicks === null ? '' :
+            closesInTicks === 0 ? 'closing this tick' :
+            `closes in ${closesInTicks} tick${closesInTicks !== 1 ? 's' : ''}`;
+
         html += `<div style="border-bottom:1px solid var(--border-main);border-left:3px solid ${pendingRowColor};">
-            <div onclick="toggleShippingRow('route:${routeId}')"
-                 style="padding:12px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;${isExp ? 'background:var(--bg-card);' : ''}">
+            <div onclick="openShippingBidModal('${routeId}')"
+                 style="padding:12px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <div style="width:28px;height:28px;background:${pendingRowColor}15;border:1px solid ${pendingRowColor}33;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:14px;">\u2693</div>
                     <div>
@@ -1060,15 +997,12 @@ function renderShippingContractsBlock() {
                             ${escapeHtml(routeLabel)}
                         </div>
                         <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px;">
-                            ${escapeHtml(r.goods_name || 'Trade goods')} \u00B7 ${bidCount} bid${bidCount !== 1 ? 's' : ''} pending
+                            ${escapeHtml(r.goods_name || 'Trade goods')} \u00B7 ${bidCount} bid${bidCount !== 1 ? 's' : ''} pending${closesLabel ? ' \u00B7 ' + closesLabel : ''}
                         </div>
                     </div>
                 </div>
                 <span class="tr-badge" style="font-size:10px;padding:3px 10px;color:#c8a832;background:rgba(200,168,50,0.08);border-color:rgba(200,168,50,0.2);">${bidCount} PENDING</span>
             </div>
-            ${isExp ? `<div style="padding:0 18px 14px 34px;display:flex;flex-direction:column;gap:10px;">
-                ${apps.map(app => _renderPendingBidCard(app, r, canAct, fmt, TICKS_PER_MONTH)).join('')}
-            </div>` : ''}
         </div>`;
     }
 
@@ -1144,6 +1078,202 @@ window.toggleShippingRow = function(id) {
     _shippingRowExpanded = (_shippingRowExpanded === id) ? null : id;
     renderTradeAgreements();
 };
+
+// ═══════════════════════════════════════════════════
+// SHIPPING BID MODAL (Phase 2 shell — bids table + actions land in Phase 3/4)
+// ═══════════════════════════════════════════════════
+//
+// Opens on a pending-route click. Shell-only for now: header (route +
+// selling nation + MoT name), stats bar (total bids / bid range / median
+// / trips projected), an empty bids-table scaffold, and the footer with
+// SELECTED / CONTRACT VALUE / TERM and the three action buttons (all
+// stubbed until later phases).
+
+let _shippingBidModal = null; // { routeId, route, apps, mot: {first, last} } | null
+
+window.openShippingBidModal = async function(routeId) {
+    const route = (_allShippingRoutes || []).find(r => r.id === routeId);
+    if (!route) return;
+    const apps = _shippingAppsByRoute[routeId] || [];
+
+    // Fetch the selling nation's Minister of Trade display name (non-blocking —
+    // a failed lookup just shows "Minister of Trade" with no personal name).
+    let mot = { first: '', last: '' };
+    try {
+        const { data: mr, error: motErr } = await _supabase.from('ministries')
+            .select('minister_first_name, minister_last_name')
+            .eq('nation_id', route.origin_nation_id)
+            .eq('ministry_key', 'trade')
+            .eq('is_active', true)
+            .maybeSingle();
+        if (motErr) console.warn('[ShippingBidModal] MoT lookup failed:', motErr.message);
+        if (mr) { mot.first = mr.minister_first_name || ''; mot.last = mr.minister_last_name || ''; }
+    } catch (e) {
+        console.warn('[ShippingBidModal] MoT lookup threw:', e?.message || e);
+    }
+
+    _shippingBidModal = { routeId, route, apps, mot };
+    _renderShippingBidModalOverlay();
+    document.body.style.overflow = 'hidden';
+};
+
+window.closeShippingBidModal = function() {
+    _shippingBidModal = null;
+    _renderShippingBidModalOverlay();
+    document.body.style.overflow = '';
+};
+
+// Bind ESC + overlay click once. The rendered overlay stops propagation on
+// its inner content so clicks inside the modal don't trigger dismissal.
+if (!window._shippingBidModalEscBound) {
+    window._shippingBidModalEscBound = true;
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && _shippingBidModal) window.closeShippingBidModal();
+    });
+}
+
+function _renderShippingBidModalOverlay() {
+    const existing = document.getElementById('shipping-bid-modal-overlay');
+    if (!_shippingBidModal) {
+        if (existing) existing.remove();
+        return;
+    }
+
+    const { route: r, apps, mot } = _shippingBidModal;
+    const currentTick = _worldState?.shard?.current_tick || 0;
+
+    const originNation = (_worldAllNations || []).find(n => n.id === r.origin_nation_id);
+    const destNation   = (_worldAllNations || []).find(n => n.id === r.destination_nation_id);
+    const originName = originNation?.name || 'Unknown';
+    const destName   = destNation?.name || 'Unknown';
+    const sellingFlag = originNation?.flag_url || (originNation?.name ? `assets/flags/${originNation.name}.png` : '');
+
+    // Closing countdown: 3 ticks from the earliest bid.
+    const earliestBidTick = apps.length > 0
+        ? apps.reduce((m, a) => Math.min(m, Number(a.applied_at_tick) || 0), Number.POSITIVE_INFINITY)
+        : null;
+    const closesInTicks = earliestBidTick !== null && Number.isFinite(earliestBidTick)
+        ? Math.max(0, (earliestBidTick + 3) - currentTick)
+        : null;
+    const closesLabel = closesInTicks === null ? 'OPEN BIDDING'
+        : closesInTicks === 0 ? 'CLOSING THIS TICK'
+        : `CLOSES IN ${closesInTicks} TICK${closesInTicks !== 1 ? 'S' : ''}`;
+
+    // Stats: total bids, bid range, median, trips projected for this route.
+    const rates = apps.map(a => Number(a.proposed_rate) || 0).filter(v => v > 0).sort((a, b) => a - b);
+    const bidMin = rates.length ? rates[0] : 0;
+    const bidMax = rates.length ? rates[rates.length - 1] : 0;
+    const bidMedian = rates.length
+        ? (rates.length % 2 === 1
+            ? rates[(rates.length - 1) / 2]
+            : Math.round((rates[rates.length / 2 - 1] + rates[rates.length / 2]) / 2))
+        : 0;
+    // Trips per month per ship = 30 / (transit_ticks × 30 days), or unrestricted
+    // when transit is 0 ticks (instant) — in that case we cap the display at 30.
+    const transitTicks = Number(r.transit_ticks) || 0;
+    const tripsPerMonth = transitTicks <= 0 ? 30 : Math.max(1, Math.round(1 / transitTicks));
+
+    const fmt = (n) => (typeof fmtBudgetCurrency === 'function')
+        ? fmtBudgetCurrency(n)
+        : ('$' + Math.round(Number(n) || 0).toLocaleString());
+
+    const motName = (mot.first || mot.last) ? `${mot.first} ${mot.last}`.trim() : '—';
+
+    // Route permit code: derived from origin nation abbreviation + route-ID tail.
+    const originAbbr = (originNation?.abbreviation || originName.slice(0, 3)).toUpperCase();
+    const permitCode = `${originAbbr}-RT-${(r.id || '').slice(-4).toUpperCase()}`;
+
+    const overlay = existing || (() => {
+        const el = document.createElement('div');
+        el.id = 'shipping-bid-modal-overlay';
+        el.addEventListener('click', (e) => { if (e.target === el) window.closeShippingBidModal(); });
+        document.body.appendChild(el);
+        return el;
+    })();
+
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;';
+
+    overlay.innerHTML = `
+        <div onclick="event.stopPropagation();" style="width:100%;max-width:1280px;background:var(--bg-panel);border:1px solid var(--border-mid);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+
+            <!-- Header: route + selling nation -->
+            <div style="padding:18px 22px;border-bottom:1px solid var(--border-main);display:flex;justify-content:space-between;align-items:flex-start;gap:20px;">
+                <div style="min-width:0;flex:1;">
+                    <div style="display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:6px;">
+                        <span>SHIPPING APPLICATIONS</span>
+                        <span>\u203A</span>
+                        <span style="color:var(--accent);">${escapeHtml(closesLabel)}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+                        <div>
+                            <div style="font-size:22px;font-weight:700;color:var(--text-bright);line-height:1;">${escapeHtml(r.origin_port || 'Origin Port')}</div>
+                            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:1px;margin-top:4px;">${escapeHtml(originName.toUpperCase())}</div>
+                        </div>
+                        <span style="font-size:22px;color:var(--text-dim);">\u2192</span>
+                        <div>
+                            <div style="font-size:22px;font-weight:700;color:var(--text-bright);line-height:1;">${escapeHtml(r.destination_port || 'Destination Port')}</div>
+                            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:1px;margin-top:4px;">${escapeHtml(destName.toUpperCase())}</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:22px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:14px;flex-wrap:wrap;">
+                        <span><span style="color:var(--text-muted);">CARGO</span> <span style="color:var(--text-bright);font-weight:600;">${escapeHtml(r.goods_name || 'Trade goods')}</span></span>
+                        <span><span style="color:var(--text-muted);">TARIFF</span> <span style="color:var(--text-bright);font-weight:600;">${Math.round(Number(r.tariff_rate) || 0)}%</span></span>
+                        <span><span style="color:var(--text-muted);">ROUTE PERMIT</span> <span style="color:var(--text-bright);font-weight:600;">${escapeHtml(permitCode)}</span></span>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;flex-shrink:0;">
+                    ${sellingFlag ? `<img src="${escapeHtml(sellingFlag)}" alt="" style="width:42px;height:28px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'">` : ''}
+                    <div style="text-align:right;">
+                        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;">SELLING NATION</div>
+                        <div style="font-size:14px;font-weight:700;color:var(--text-bright);margin-top:2px;">${escapeHtml(originName)}</div>
+                        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px;">Minister of Trade \u00B7 ${escapeHtml(motName)}</div>
+                    </div>
+                    <button onclick="window.closeShippingBidModal()" style="font-family:var(--font-mono);font-size:16px;color:var(--text-dim);background:transparent;border:none;cursor:pointer;padding:0 4px;">\u00D7</button>
+                </div>
+            </div>
+
+            <!-- Stats bar -->
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--border-main);">
+                <div style="padding:14px 22px;border-right:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;">TOTAL BIDS</div>
+                    <div style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:var(--text-bright);margin-top:3px;">${apps.length}</div>
+                </div>
+                <div style="padding:14px 22px;border-right:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;">BID RANGE</div>
+                    <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-bright);margin-top:3px;">${rates.length ? `${fmt(bidMin)} \u2013 ${fmt(bidMax)}` : '—'}</div>
+                </div>
+                <div style="padding:14px 22px;border-right:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;">MEDIAN</div>
+                    <div style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:var(--accent);margin-top:3px;">${rates.length ? fmt(bidMedian) : '—'}</div>
+                </div>
+                <div style="padding:14px 22px;">
+                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;">TRIPS PROJECTED</div>
+                    <div style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:var(--text-bright);margin-top:3px;">${tripsPerMonth} <span style="font-size:11px;color:var(--text-dim);font-weight:400;">/ mo</span></div>
+                </div>
+            </div>
+
+            <!-- Bids table (Phase 3) -->
+            <div id="shipping-bid-modal-bids" style="padding:18px 22px;min-height:120px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:1px;">
+                ${apps.length === 0
+                    ? 'NO PENDING BIDS'
+                    : `<span>BIDS TABLE \u2014 PHASE 3 (${apps.length} bid${apps.length !== 1 ? 's' : ''} loaded)</span>`}
+            </div>
+
+            <!-- Footer -->
+            <div style="padding:14px 22px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
+                <div style="display:flex;gap:22px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">
+                    <span><span style="color:var(--text-muted);letter-spacing:1px;">SELECTED</span> <span style="color:var(--text-bright);font-weight:600;">NONE</span></span>
+                    <span><span style="color:var(--text-muted);letter-spacing:1px;">CONTRACT VALUE</span> <span style="color:var(--text-bright);font-weight:600;">—</span></span>
+                    <span><span style="color:var(--text-muted);letter-spacing:1px;">TERM</span> <span style="color:var(--text-bright);font-weight:600;">36 TICKS</span></span>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button disabled style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:not-allowed;opacity:0.5;">REQUEST MORE BIDS</button>
+                    <button disabled style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:not-allowed;opacity:0.5;">REJECT ALL</button>
+                    <button disabled style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#000;background:#5cc55c;border:none;cursor:not-allowed;opacity:0.5;">AWARD CONTRACT</button>
+                </div>
+            </div>
+        </div>`;
+}
 
 function renderTradeAgreements() {
     const left = document.getElementById('trade-agreements-row');
