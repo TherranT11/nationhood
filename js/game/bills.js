@@ -4414,7 +4414,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
     if (bill.proposed_monarchy_reform) {
         const reformKey = bill.proposed_monarchy_reform;
         const { data: nation } = await supabase.from('nations')
-            .select('id, name, government_type, monarch_faction_id')
+            .select('id, name, government_type, monarch_faction_id, legitimacy, gov_approval')
             .eq('id', bill.nation_id).single();
 
         if (!nation) { console.error(`[enactFoundationalBill] Nation not found for monarchy reform`); return false; }
@@ -4445,7 +4445,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             },
             civil_liberties_charter: {
                 statChanges: { freedom_index: 5, stability: 2, legitimacy: -3, happiness: 3 },
-                nationFlag: 'monarchy_civil_liberties',
+                nationFlag: 'monarchy_civil_liberties_charter',
                 eventDesc: 'The Civil Liberties Charter has been enacted. Individual rights are now codified and cannot be overridden by royal decree.',
             },
             electoral_reform: {

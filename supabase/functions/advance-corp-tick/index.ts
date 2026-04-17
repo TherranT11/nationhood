@@ -2945,6 +2945,7 @@ async function generateShippingRoutes(supabase, currentTick) {
 
     const { data: expired } = await supabase.from('shipping_routes').update({ status: 'expired' })
         .eq('status', 'active').lt('last_refreshed_tick', currentTick).not('trade_agreement_id', 'is', null).select('id');
+    // Note: organic routes (trade_agreement_id IS null) are expired separately by generateOrganicRoutes
 
     return { generated: routeRows.length, expired: expired?.length || 0, total: routeRows.length };
 }

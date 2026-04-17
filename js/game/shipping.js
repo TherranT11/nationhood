@@ -283,7 +283,7 @@ var ORGANIC_ELIGIBLE_SECTORS = [
 export async function generateOrganicRoutes(supabase, currentTick) {
     // Fetch all nations with GDP and population for volume weighting
     var { data: nations } = await supabase.from('nations')
-        .select('id, name, population, gdp_growth, manufacturing_output, standard_of_living');
+        .select('id, name, population, gdp_growth, manufacturing_output, tariffs');
     if (!nations || nations.length < 2) return { generated: 0, expired: 0 };
 
     var nationMap = {};
