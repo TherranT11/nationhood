@@ -204,7 +204,7 @@
 
 /* ── Cabinet grid ── */
 .ga-cabinet-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px;
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 6px;
 }
 .ga-ministry-card {
     background: var(--bg-panel); border: 1px solid var(--border-main);
@@ -212,6 +212,35 @@
 }
 .ga-ministry-card:hover { border-color: var(--border-bright, #444); }
 .ga-ministry-card.expanded { border-color: var(--accent); cursor: default; }
+
+/* Vacant cards: compact, dashed, inline appoint */
+.ga-ministry-card.vacant {
+    border-style: dashed;
+    opacity: 0.85;
+}
+.ga-ministry-card.vacant .ga-ministry-header {
+    border-bottom: none;
+    padding: 6px 10px;
+}
+.ga-ministry-card.vacant .ga-ministry-body {
+    padding: 4px 10px 6px;
+}
+.ga-vacant-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.ga-vacant-label {
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+    font-style: italic; letter-spacing: 0.5px;
+}
+.ga-vacant-appoint {
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 1px; padding: 3px 8px;
+    background: transparent; color: var(--accent);
+    border: 1px solid rgba(176, 154, 91, 0.35);
+    cursor: pointer; transition: background 0.15s;
+}
+.ga-vacant-appoint:hover { background: rgba(255,255,255,0.04); }
+
 .ga-ministry-header {
     padding: 8px 12px; border-bottom: 1px solid var(--border-main);
     display: flex; justify-content: space-between; align-items: center;
@@ -234,12 +263,17 @@
 }
 
 /* ── Responsive ── */
+@media (max-width: 1279px) {
+    .ga-cabinet-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 1200px) {
     #gov-admin-timeline { width: 100% !important; }
     #gov-admin-right { width: 100% !important; }
     #gov-content > div > div[style*="display:flex"] {
         flex-direction: column !important;
     }
+}
+@media (max-width: 767px) {
     .ga-cabinet-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
