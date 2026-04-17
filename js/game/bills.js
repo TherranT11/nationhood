@@ -3888,7 +3888,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
         const systemLabels = {
             parliamentary: 'Parliamentary Democracy',
-            constitutional_monarchy: 'Absolute Monarchy',
+            constitutional_monarchy: 'Constitutional Monarchy',
             presidential: 'Presidential Republic',
             semi_presidential: 'Semi-Presidential Republic'
         };
@@ -4073,7 +4073,7 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
             // No stat changes for appointed (it's the default low-friction option)
         }
 
-        const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Absolute Monarchy' };
+        const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
         console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS election method set to "${methodLabels[newMethod]}".`);
         return true;
     }
