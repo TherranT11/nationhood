@@ -1,39 +1,43 @@
--- Reprice existing shipping_routes + shipping_claims to the new revenue rates.
+-- Reprice existing shipping_routes + shipping_claims to the service-rate band.
 --
--- Context: SHIPPING_REVENUE_RATES were originally 6% / 8% / 12% of per-tick
--- bilateral trade volume. On top-volume lanes (~$10B/tick) that produced
--- $600M–$850M per trip — about 1500× too high. New rates:
---   bulk_cargo:              0.00004  (0.004%)
---   container_freight:       0.00005  (0.005%)
---   specialized_transport:   0.00008  (0.008%)
--- Target: $250k–$750k/trip for a single corp on a top lane.
+-- Design: every lane pays $250k–$750k per trip per ship, regardless of raw
+-- trade volume. The corp bids inside that band in their application; on
+-- acceptance that bid (clamped) becomes revenue_per_transit. We clamp here
+-- so active routes + claims seeded before the service-rate model lands
+-- inside the band immediately instead of waiting for the next tick.
 --
--- generateShippingRoutes() upserts estimated_revenue every tick, and
--- claim_shipping_route() recalculates revenue_per_transit from it, so once
--- the next tick runs they'd converge on their own. This script does it
--- immediately so active claims don't keep paying the old rates for a tick.
---
--- Idempotent — re-running just writes the same values.
+-- Idempotent — re-running writes the same values.
 
 BEGIN;
 
--- 1. Reprice routes. organic = (trade_agreement_id IS NULL); those routes
---    already had a 0.35 multiplier baked into their stored estimated_revenue
---    at generation time, so we apply the same multiplier here to match.
+-- 1. Reprice routes: candidate revenue from the annual rate ÷ 12, then
+--    clamped to [$250k, $750k]. Organic lanes keep their 0.35 multiplier
+--    but the clamp rules them both in the same band.
 UPDATE shipping_routes
-SET estimated_revenue = ROUND(
-    trade_volume
-    * CASE shipping_subsector
-        WHEN 'bulk_cargo'            THEN 0.00004
-        WHEN 'container_freight'     THEN 0.00005
-        WHEN 'specialized_transport' THEN 0.00008
-        ELSE 0.00004
-      END
-    * CASE WHEN trade_agreement_id IS NULL THEN 0.35 ELSE 1.0 END
+SET estimated_revenue = LEAST(
+    750000,
+    GREATEST(
+        250000,
+        ROUND(
+            trade_volume
+            * CASE shipping_subsector
+                WHEN 'bulk_cargo'            THEN 0.010
+                WHEN 'container_freight'     THEN 0.012
+                WHEN 'specialized_transport' THEN 0.016
+                ELSE 0.010
+              END
+            * CASE WHEN trade_agreement_id IS NULL THEN 0.35 ELSE 1.0 END
+            / 12.0
+        )
+    )
 )
 WHERE status = 'active';
 
--- 2. Reprice active claims against the freshly repriced routes.
+-- 2. Reprice active claims against the freshly repriced routes. Claims
+--    created before corps were offered a bid slider fall back to the
+--    route's clamped estimated_revenue × market_share; once the accept
+--    flow writes the bid directly this will be redundant for new claims
+--    but not harmful.
 UPDATE shipping_claims sc
 SET revenue_per_transit = ROUND(
     r.estimated_revenue * (sc.market_share_pct / 100.0)
@@ -44,7 +48,7 @@ WHERE sc.route_id = r.id
 
 COMMIT;
 
--- Verify top 10 by new revenue_per_transit.
+-- Verify top + bottom of active contracts.
 SELECT
     sc.id                  AS claim_id,
     f.faction_name,

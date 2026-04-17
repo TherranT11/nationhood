@@ -13626,7 +13626,7 @@ let _portFacilities = [];
 async function loadPortFacilities() {
     if (!faction || faction.corp_sector !== 'Shipping') return;
     const { data } = await _supabase.from('corp_properties')
-        .select('*')
+        .select('*, nations!nation_id(name)')
         .eq('faction_id', faction.id)
         .in('type', ['fuel_depot', 'dry_dock'])
         .eq('is_active', true)
@@ -13663,7 +13663,7 @@ function renderPortFacilities() {
                     </div>
                     <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:1px 5px;color:${meta.color};background:${meta.color}12;border:1px solid ${meta.color}25;">${meta.label}</span>
                 </div>
-                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:4px;">${f.city || 'Port'} · ${(f.style || 'Basic').toUpperCase()}</div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:4px;">${escapeHtml(f.nations?.name || 'Unknown Nation')} · ${escapeHtml(f.city || 'Port')} · ${(f.style || 'Basic').toUpperCase()}</div>
                 <div style="display:flex;gap:12px;margin-bottom:4px;">
                     <div style="flex:1;">
                         <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
