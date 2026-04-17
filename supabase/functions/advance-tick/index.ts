@@ -2012,6 +2012,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     var embargoMap = {};
     var activeRSCs = [];
     var tradeEfficiencyMap = {}; // pairKey → efficiency (0-1), default 0.85
+    var shipsPerPair = {};       // pairKey → count of active shipping_claims on routes between the pair
 
     // Helper: expand a sector key to account for food sub-sectors.
     // If an agreement references 'food_agriculture', it applies to all 4 sub-sectors.
@@ -2020,53 +2021,44 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         return [sectorKey];
     }
 
-    // Update efficiency for agreements that have active shipping claims
-    // Each active shipping claim on a route tied to an agreement adds 0.03 efficiency (cap at 1.0)
+    // Count active shipping claims on every bilateral lane (agreement-backed OR
+    // organic). The base efficiency for every trade pair is 0.85; each active
+    // shipping claim on any route between the pair adds +0.03, capped at 1.0.
+    // The agreement.efficiency column is kept in sync so the UI can display it.
+    try {
+        var { data: allActiveClaims } = await supabase.from('shipping_claims')
+            .select('route_id, shipping_routes!inner(origin_nation_id, destination_nation_id, status, trade_agreement_id)')
+            .eq('status', 'active');
+        if (allActiveClaims) {
+            for (var ci = 0; ci < allActiveClaims.length; ci++) {
+                var cr = allActiveClaims[ci].shipping_routes;
+                if (!cr || cr.status !== 'active') continue;
+                var pk1 = cr.origin_nation_id + '|' + cr.destination_nation_id;
+                var pk2 = cr.destination_nation_id + '|' + cr.origin_nation_id;
+                shipsPerPair[pk1] = (shipsPerPair[pk1] || 0) + 1;
+                shipsPerPair[pk2] = (shipsPerPair[pk2] || 0) + 1;
+            }
+        }
+    } catch (effCountErr) {
+        console.warn('[Trade] Ship-count for efficiency failed (non-fatal):', effCountErr.message);
+    }
+
+    // Mirror the per-pair ship count onto each active trade agreement's
+    // stored efficiency so the Agreements UI can read it without re-counting.
     if (activeTradeAgreements && activeTradeAgreements.length > 0) {
         try {
-            var agreementIds = activeTradeAgreements.map(function(a) { return a.id; });
-            var { data: shippedRoutes } = await supabase.from('shipping_routes')
-                .select('trade_agreement_id')
-                .in('trade_agreement_id', agreementIds)
-                .eq('status', 'active');
-
-            if (shippedRoutes && shippedRoutes.length > 0) {
-                // Collect agreement IDs that have active shipping routes
-                var agreedRouteAgIds = [...new Set(shippedRoutes.map(function(r) { return r.trade_agreement_id; }))];
-
-                // Check for active shipping claims on routes tied to these agreements
-                var { data: activeClaimsOnRoutes } = await supabase.from('shipping_claims')
-                    .select('route_id, shipping_routes!inner(trade_agreement_id)')
-                    .eq('status', 'active')
-                    .in('shipping_routes.trade_agreement_id', agreedRouteAgIds);
-
-                // Count active shipping claims per agreement
-                var claimCountByAg = {};
-                if (activeClaimsOnRoutes) {
-                    for (var ci = 0; ci < activeClaimsOnRoutes.length; ci++) {
-                        var claimAgId = activeClaimsOnRoutes[ci].shipping_routes?.trade_agreement_id;
-                        if (claimAgId) claimCountByAg[claimAgId] = (claimCountByAg[claimAgId] || 0) + 1;
-                    }
-                }
-
-                // Each active ship adds +3% efficiency (base 85%, cap 100%)
-                for (var ai = 0; ai < activeTradeAgreements.length; ai++) {
-                    var ag = activeTradeAgreements[ai];
-                    var shipCount = claimCountByAg[ag.id] || 0;
-                    if (shipCount > 0) {
-                        var newEff = Math.min(1.0, 0.85 + (shipCount * 0.03));
-                        if (Math.abs(Number(ag.efficiency) - newEff) > 0.001) {
-                            ag.efficiency = newEff;
-                            await supabase.from('trade_agreements').update({ efficiency: newEff }).eq('id', ag.id);
-                        }
-                    } else if (Number(ag.efficiency) > 0.85) {
-                        ag.efficiency = 0.85;
-                        await supabase.from('trade_agreements').update({ efficiency: 0.85 }).eq('id', ag.id);
-                    }
+            for (var ai = 0; ai < activeTradeAgreements.length; ai++) {
+                var ag = activeTradeAgreements[ai];
+                var pairKey = ag.nation_a_id + '|' + ag.nation_b_id;
+                var pairShips = shipsPerPair[pairKey] || 0;
+                var newEff = Math.min(1.0, 0.85 + (pairShips * 0.03));
+                if (Math.abs(Number(ag.efficiency) - newEff) > 0.001) {
+                    ag.efficiency = newEff;
+                    await supabase.from('trade_agreements').update({ efficiency: newEff }).eq('id', ag.id);
                 }
             }
         } catch (shippingEffErr) {
-            console.warn('[Trade] Shipping efficiency update failed (non-fatal):', shippingEffErr.message);
+            console.warn('[Trade] Agreement efficiency sync failed (non-fatal):', shippingEffErr.message);
         }
     }
 
@@ -2446,8 +2438,13 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 }
                 if (aff <= 0) continue;
 
-                // Apply trade agreement efficiency (default 1.0 if no agreement, else 0.85+)
-                var pairEfficiency = tradeEfficiencyMap[exporter.id + '|' + importer.id] || 1.0;
+                // Every trade lane gets the 85% base efficiency. Agreement-backed
+                // pairs may have higher stored efficiency; organic pairs take the
+                // ship bonus directly from shipsPerPair. +3% per active claim, cap 100%.
+                var _pairKey = exporter.id + '|' + importer.id;
+                var _orgShips = shipsPerPair[_pairKey] || 0;
+                var _orgEff = Math.min(1.0, 0.85 + _orgShips * 0.03);
+                var pairEfficiency = Math.max(tradeEfficiencyMap[_pairKey] || 0.85, _orgEff);
 
                 // Gravity-model weight: supply × demand × affinity × efficiency
                 var w = adjustedCap * remainingDem * aff * pairEfficiency;
@@ -26584,11 +26581,18 @@ var SHIPPING_ROUTE_THRESHOLD = 50000000; // $50M
  * Bulk cargo: lower margin. Container freight: medium. Specialized: highest.
  */
 var SHIPPING_REVENUE_RATES = {
-    bulk_cargo: 0.0006,            // 0.06% of annual trade value
-    container_freight: 0.0008,     // 0.08% of annual trade value
-    specialized_transport: 0.0012, // 0.12% of annual trade value
+    bulk_cargo: 0.010,            // 1.0% of annual trade value
+    container_freight: 0.012,     // 1.2% of annual trade value
+    specialized_transport: 0.016, // 1.6% of annual trade value
 };
 var MONTHS_PER_YEAR = 12;
+var MIN_REVENUE_PER_TRIP = 250000;
+var MAX_REVENUE_PER_TRIP = 750000;
+function clampServiceRate(v) {
+    var n = Number(v) || 0;
+    if (n <= 0) return MIN_REVENUE_PER_TRIP;
+    return Math.round(Math.min(MAX_REVENUE_PER_TRIP, Math.max(MIN_REVENUE_PER_TRIP, n)));
+}
 
 /**
  * Calculate transit time in ticks based on proximity (0-100).
@@ -26723,8 +26727,8 @@ async function generateShippingRoutes(supabase, currentTick) {
         var scope = getRouteScope(proximity, isGov);
         var demandLevel = getDemandLevel(tp.trade_volume);
         var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
-        // Annual rate × monthly volume / 12 months = per-trip payout.
-        var estRevenue = Math.round(tp.trade_volume * revenueRate / MONTHS_PER_YEAR);
+        // Clamp to the $250k–$750k service-rate band so small + huge lanes both land in range.
+        var estRevenue = clampServiceRate(tp.trade_volume * revenueRate / MONTHS_PER_YEAR);
 
         // Physical volume conversion (using same factor as display units)
         var volumePhysical = Math.round(tp.trade_volume / 100); // rough conversion

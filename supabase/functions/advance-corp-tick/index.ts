@@ -3084,8 +3084,15 @@ const SHIPPING_SECTOR_MAP = {
 };
 
 const SHIPPING_ROUTE_THRESHOLD = 50000000;
-const SHIPPING_REVENUE_RATES = { bulk_cargo: 0.0006, container_freight: 0.0008, specialized_transport: 0.0012 };
+const SHIPPING_REVENUE_RATES = { bulk_cargo: 0.010, container_freight: 0.012, specialized_transport: 0.016 };
 const SHIPPING_MONTHS_PER_YEAR = 12;
+const SHIPPING_MIN_PER_TRIP = 250000;
+const SHIPPING_MAX_PER_TRIP = 750000;
+function _clampServiceRate(v) {
+    const n = Number(v) || 0;
+    if (n <= 0) return SHIPPING_MIN_PER_TRIP;
+    return Math.round(Math.min(SHIPPING_MAX_PER_TRIP, Math.max(SHIPPING_MIN_PER_TRIP, n)));
+}
 
 function _shipTransitTicks(prox) { return (Number(prox) || 0) >= 71 ? 1 : 0; }
 function _shipDemand(vol) { return vol >= 500000000 ? 'CRITICAL' : vol >= 200000000 ? 'HIGH' : vol >= 100000000 ? 'MODERATE' : 'LOW'; }
@@ -3127,7 +3134,7 @@ async function generateShippingRoutes(supabase, currentTick) {
             trade_sector: tp.sector, cargo_category: sm.category, shipping_subsector: sm.subsector,
             scope: _shipScope(prox, tp.sector === 'arms'),
             goods_name: sm.goods, goods_description: sm.goodsSub, vessel_class: sm.vessel, vessel_note: sm.vesselNote,
-            trade_volume: Math.round(tp.trade_volume), estimated_revenue: Math.round(tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) / SHIPPING_MONTHS_PER_YEAR),
+            trade_volume: Math.round(tp.trade_volume), estimated_revenue: _clampServiceRate(tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) / SHIPPING_MONTHS_PER_YEAR),
             volume_physical: Math.round(tp.trade_volume / 100), volume_unit: sm.unit,
             transit_ticks: _shipTransitTicks(prox), proximity: prox, tariff_rate: tariffMap[tp.importer_nation_id] || 0,
             demand_level: _shipDemand(tp.trade_volume),

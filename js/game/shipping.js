@@ -34,16 +34,40 @@ export var SHIPPING_ROUTE_THRESHOLD = 50000000; // $50M
  * per completed trip, regardless of how many trips a route can fit per year.
  *
  * Bulk cargo: lower margin. Container freight: medium. Specialized: highest.
- * Target: single corp on a top-volume lane (~$10B/tick) earns $250k–$750k/trip.
+ *
+ * Trade volumes span ~$50M (route threshold) to ~$15B (top lanes). Rates
+ * are tuned so a mid-size $500M lane pays roughly the $250k–$750k target;
+ * MAX_REVENUE_PER_TRIP caps the top end so $10B+ lanes don't balloon, and
+ * MIN_REVENUE_PER_TRIP sets a floor so threshold-size routes still have
+ * enough margin to cover fuel + maintenance.
  */
 export var SHIPPING_REVENUE_RATES = {
-    bulk_cargo: 0.0006,            // 0.06% of annual trade value
-    container_freight: 0.0008,     // 0.08% of annual trade value
-    specialized_transport: 0.0012, // 0.12% of annual trade value
+    bulk_cargo: 0.010,            // 1.0% of annual trade value
+    container_freight: 0.012,     // 1.2% of annual trade value
+    specialized_transport: 0.016, // 1.6% of annual trade value
 };
 
 /** Ticks per year — used to turn the annual rate into a per-trip payout. */
 export var MONTHS_PER_YEAR = 12;
+
+/**
+ * Service-rate band: every route pays $250k–$750k per trip per ship,
+ * regardless of the raw trade volume. The corp proposes a rate inside
+ * this band when they apply; on acceptance that proposed rate becomes
+ * revenue_per_transit (split by market_share if multiple corps service
+ * the same route). The estimated_revenue stored on routes is clamped to
+ * this band so the "route value" the corp sees matches what they can
+ * actually earn.
+ */
+export var MIN_REVENUE_PER_TRIP = 250000;
+export var MAX_REVENUE_PER_TRIP = 750000;
+
+/** Clamp any candidate per-trip revenue to the service-rate band. */
+export function clampServiceRate(value) {
+    var v = Number(value) || 0;
+    if (v <= 0) return MIN_REVENUE_PER_TRIP;
+    return Math.round(Math.min(MAX_REVENUE_PER_TRIP, Math.max(MIN_REVENUE_PER_TRIP, v)));
+}
 
 /**
  * Calculate transit time in ticks based on proximity (0-100).
@@ -178,8 +202,9 @@ export async function generateShippingRoutes(supabase, currentTick) {
         var scope = getRouteScope(proximity, isGov);
         var demandLevel = getDemandLevel(tp.trade_volume);
         var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
-        // Annual rate × trade volume (per-tick/per-month) ÷ 12 months = per-trip payout.
-        var estRevenue = Math.round(tp.trade_volume * revenueRate / MONTHS_PER_YEAR);
+        // Annual rate × monthly volume / 12 months = candidate payout; clamp to
+        // the $250k–$750k service-rate band so small + huge lanes both land in range.
+        var estRevenue = clampServiceRate(tp.trade_volume * revenueRate / MONTHS_PER_YEAR);
 
         // Physical volume conversion (using same factor as display units)
         var volumePhysical = Math.round(tp.trade_volume / 100); // rough conversion
@@ -419,8 +444,8 @@ export async function generateOrganicRoutes(supabase, currentTick) {
                 var baseVolume = popFactor * gdpFactor * closeness * 30000000; // ~$30M base scaled
                 var volume = Math.round(Math.max(5000000, baseVolume * (0.7 + seededRandom(seed + 999) * 0.6)));
                 var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
-                // Annual rate × monthly volume ÷ 12 = per-trip payout; organic lanes pay 35% of that.
-                var estRevenue = Math.round(volume * revenueRate * ORGANIC_REVENUE_MULTIPLIER / MONTHS_PER_YEAR);
+                // Organic lanes still pay 35% of the normal rate before clamping.
+                var estRevenue = clampServiceRate(volume * revenueRate * ORGANIC_REVENUE_MULTIPLIER / MONTHS_PER_YEAR);
 
                 var transitTicks = calculateTransitTicks(proximity);
                 var scope = getRouteScope(proximity, false);

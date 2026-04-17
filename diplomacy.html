@@ -350,6 +350,38 @@ async function loadTradeFlowData() {
     _tradePartnersBilateral = partnerRows || [];
 }
 
+// ── Trade-lane efficiency helpers (shared by commodity detail + agreements) ──
+// Base 85% for every bilateral lane; +3% per active shipping claim on a route
+// between our nation and the partner, capped at 100%. Counts claims across
+// ALL sectors for that pair — one ship helps every commodity on that lane.
+function _laneShipCountFor(partnerId) {
+    const myId = _worldState?.nation?.id;
+    if (!myId || !partnerId) return 0;
+    let count = 0;
+    for (const r of (_allShippingRoutes || [])) {
+        const touchesUs = r.origin_nation_id === myId || r.destination_nation_id === myId;
+        const touchesThem = r.origin_nation_id === partnerId || r.destination_nation_id === partnerId;
+        if (!touchesUs || !touchesThem) continue;
+        const claims = _shippingClaimsByRoute[r.id] || [];
+        count += claims.length;
+    }
+    return count;
+}
+function _laneEfficiencyFor(partnerId) {
+    const ships = _laneShipCountFor(partnerId);
+    const pct = Math.min(100, 85 + ships * 3);
+    return { pct, ships };
+}
+function _efficiencyBadge(eff) {
+    const { pct, ships } = eff;
+    // Red when still at 85% (no shipping), amber while building up, green at max.
+    const color = pct >= 100 ? 'var(--green)' : pct > 85 ? 'var(--amber)' : 'var(--red)';
+    const note = ships === 0
+        ? 'no active shipping'
+        : `+${ships * 3} for ${ships} ship${ships !== 1 ? 's' : ''} on trade route`;
+    return `<span style="font-family:var(--font-mono);font-size:9px;color:${color};white-space:nowrap;">[${pct}% \u2014 ${escapeHtml(note)}]</span>`;
+}
+
 function renderTradeEconomy() {
     const left = document.getElementById('trade-left');
     if (!left) return;
@@ -470,9 +502,13 @@ function renderTradeEconomy() {
                     const partnerNation = (_worldAllNations || []).find(n => n.id === p.exporter_nation_id);
                     const pName = partnerNation?.name || 'Unknown';
                     const pUnit = formatSectorVolume(p.trade_volume, c.key);
-                    html += `<div style="display:flex;justify-content:space-between;padding:2px 0 2px 12px;">
+                    const eff = _laneEfficiencyFor(p.exporter_nation_id);
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 0 2px 12px;">
                         <span style="font-size:12px;color:var(--text-secondary);">\u2022 ${escapeHtml(pName)}</span>
-                        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${fmtBudgetCurrency(p.trade_volume)}${pUnit ? ' <span style="font-size:9px;">(' + pUnit + ')</span>' : ''}</span>
+                        <span style="display:flex;align-items:center;gap:8px;">
+                            ${_efficiencyBadge(eff)}
+                            <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${fmtBudgetCurrency(p.trade_volume)}${pUnit ? ' <span style="font-size:9px;">(' + pUnit + ')</span>' : ''}</span>
+                        </span>
                     </div>`;
                 }
             } else if (impVol > 0) {
@@ -498,9 +534,13 @@ function renderTradeEconomy() {
                     const partnerNation = (_worldAllNations || []).find(n => n.id === p.importer_nation_id);
                     const pName = partnerNation?.name || 'Unknown';
                     const pUnit = formatSectorVolume(p.trade_volume, c.key);
-                    html += `<div style="display:flex;justify-content:space-between;padding:2px 0 2px 12px;">
+                    const eff = _laneEfficiencyFor(p.importer_nation_id);
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 0 2px 12px;">
                         <span style="font-size:12px;color:var(--text-secondary);">\u2022 ${escapeHtml(pName)}</span>
-                        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${fmtBudgetCurrency(p.trade_volume)}${pUnit ? ' <span style="font-size:9px;">(' + pUnit + ')</span>' : ''}</span>
+                        <span style="display:flex;align-items:center;gap:8px;">
+                            ${_efficiencyBadge(eff)}
+                            <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${fmtBudgetCurrency(p.trade_volume)}${pUnit ? ' <span style="font-size:9px;">(' + pUnit + ')</span>' : ''}</span>
+                        </span>
                     </div>`;
                 }
             } else if (expVol > 0) {
@@ -716,12 +756,14 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
     try {
         const tick = _worldState?.shard?.current_tick || 0;
 
-        // Read the application first so we know which vessel the corp put on offer.
-        // A failure here is non-fatal — acceptance still proceeds without vessel auto-assign.
+        // Read the application first so we know which vessel the corp put on offer
+        // AND the service rate they proposed (that's what they actually get paid, not
+        // the route's default estimated_revenue). A read failure is non-fatal.
         const { data: appRow, error: appReadErr } = await _supabase.from('shipping_applications')
-            .select('vessel_id').eq('id', appId).maybeSingle();
-        if (appReadErr) console.warn('[ShippingApproval] vessel_id lookup failed:', appReadErr.message);
+            .select('vessel_id, proposed_rate').eq('id', appId).maybeSingle();
+        if (appReadErr) console.warn('[ShippingApproval] app lookup failed:', appReadErr.message);
         const vesselId = appRow?.vessel_id || null;
+        const proposedRate = Number(appRow?.proposed_rate) || 0;
 
         // Update application status
         const { error: appErr } = await _supabase.from('shipping_applications')
@@ -748,26 +790,43 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
             return;
         }
 
-        if (vesselId && claimData?.claim_id) {
-            // Assign the vessel the corp put on offer to the new claim so it shows up
-            // as an Active Voyage on the corp's side immediately. Filter on the vessel
-            // still being idle so we don't clobber a vessel the corp has since reassigned.
-            const { data: vesselUpd, error: vesselErr } = await _supabase.from('corp_vessels').update({
-                status: 'in_transit',
-                active_claim_id: claimData.claim_id,
-                current_port_nation_id: null,
-            })
-                .eq('id', vesselId)
-                .eq('faction_id', corpFactionId)
-                .is('active_claim_id', null)
-                .eq('status', 'in_port')
-                .select('id');
-            if (vesselErr) {
-                console.warn('[ShippingApproval] Vessel assignment failed:', vesselErr.message);
-            } else if (!vesselUpd || vesselUpd.length === 0) {
-                // Vessel is no longer idle — the claim is active but the corp will need to
-                // assign a vessel manually from their Active Voyages view.
-                console.warn('[ShippingApproval] Offered vessel no longer idle; corp must assign manually.');
+        if (claimData?.claim_id) {
+            // Overwrite the claim's revenue_per_transit with the corp's proposed
+            // service rate, clamped to the $250k–$750k band, split by market share.
+            // The RPC initializes revenue_per_transit from estimated_revenue, which
+            // ignores what the corp actually bid; this makes the bid authoritative.
+            if (proposedRate > 0) {
+                const MIN_RATE = 250000, MAX_RATE = 750000;
+                const clamped  = Math.round(Math.min(MAX_RATE, Math.max(MIN_RATE, proposedRate)));
+                const share    = Number(claimData.market_share) || 100;
+                const revPerT  = Math.round(clamped * (share / 100));
+                const { error: rateErr } = await _supabase.from('shipping_claims')
+                    .update({ revenue_per_transit: revPerT })
+                    .eq('id', claimData.claim_id);
+                if (rateErr) console.warn('[ShippingApproval] Service-rate update failed:', rateErr.message);
+            }
+
+            if (vesselId) {
+                // Assign the vessel the corp put on offer to the new claim so it shows up
+                // as an Active Voyage on the corp's side immediately. Filter on the vessel
+                // still being idle so we don't clobber a vessel the corp has since reassigned.
+                const { data: vesselUpd, error: vesselErr } = await _supabase.from('corp_vessels').update({
+                    status: 'in_transit',
+                    active_claim_id: claimData.claim_id,
+                    current_port_nation_id: null,
+                })
+                    .eq('id', vesselId)
+                    .eq('faction_id', corpFactionId)
+                    .is('active_claim_id', null)
+                    .eq('status', 'in_port')
+                    .select('id');
+                if (vesselErr) {
+                    console.warn('[ShippingApproval] Vessel assignment failed:', vesselErr.message);
+                } else if (!vesselUpd || vesselUpd.length === 0) {
+                    // Vessel is no longer idle — the claim is active but the corp will need to
+                    // assign a vessel manually from their Active Voyages view.
+                    console.warn('[ShippingApproval] Offered vessel no longer idle; corp must assign manually.');
+                }
             }
         }
 
@@ -1214,7 +1273,7 @@ function renderTradeAgreements() {
                 </div>` : ''}
                 <div style="padding:4px 6px;background:var(--bg-card);border:1px solid var(--border-main);">
                     <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">EFFICIENCY</div>
-                    <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${(ag.efficiency || 0.85) >= 0.88 ? 'var(--green)' : 'var(--amber)'};">${Math.round((ag.efficiency || 0.85) * 100)}%</div>
+                    <div style="margin-top:1px;">${_efficiencyBadge(_laneEfficiencyFor(partnerId))}</div>
                 </div>
             </div>`;
 
@@ -1226,12 +1285,9 @@ function renderTradeAgreements() {
                 if (shipInfo && shipInfo.hasLogistics) {
                     html += `<div style="margin-top:6px;background:var(--bg-card);border:1px solid var(--border-main);padding:8px 10px;">
                         <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>`;
-                    // Show efficiency
-                    const shipCount = shipInfo.corps.length;
-                    const efficiency = Math.min(100, 85 + (shipCount * 3));
                     html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                         <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Route Efficiency</span>
-                        <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${efficiency >= 100 ? 'var(--green)' : efficiency >= 91 ? 'var(--accent)' : 'var(--orange)'};">${efficiency}%</span>
+                        ${_efficiencyBadge(_laneEfficiencyFor(partnerId))}
                     </div>`;
                     for (const corp of shipInfo.corps) {
                         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
@@ -1267,9 +1323,9 @@ function renderTradeAgreements() {
                     } else {
                         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                                 <span style="font-size:12px;font-weight:700;color:var(--orange);">No shipping corporation assigned</span>
-                                <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--orange);">85% efficiency</span>
+                                ${_efficiencyBadge(_laneEfficiencyFor(partnerId))}
                             </div>
-                            <div style="font-size:11px;color:var(--text-dim);">Trade operates at 85% capacity. Each approved shipping corporation adds +3% efficiency (max 100%).</div>`;
+                            <div style="font-size:11px;color:var(--text-dim);">Trade operates at 85% base capacity. Each active shipping corporation on any route to this partner adds +3% efficiency (max 100%).</div>`;
                     }
                     html += `</div>`;
                 }
