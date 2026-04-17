@@ -2355,6 +2355,27 @@ async function loadLegislatureData() {
         const activeLaws = lawsRes.data || [];
         const parties = partiesRes.data || [];
 
+        // Recalculate vote tallies live from bill_support. The bills.votes_for /
+        // votes_against / votes_abstain columns are a cache only written by the
+        // tick processor's syncVoteTallies pass, so between votes and the next
+        // tick they are stale — typically 0 for newly-on-the-floor bills. The
+        // Legislative tab then shows "0% SUPPORT" even when votes have been
+        // cast. Recomputing from the bill_support join here keeps the display
+        // in sync with what Laws / bill.html already show.
+        const recalcTallies = (b) => {
+            let f = 0, a = 0, ab = 0;
+            (b.bill_support || []).forEach(s => {
+                const st = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+                if (st === 'yes')          f  += (s.seat_count || 0);
+                else if (st === 'no')      a  += (s.seat_count || 0);
+                else if (st === 'abstain') ab += (s.seat_count || 0);
+            });
+            b.votes_for     = f;
+            b.votes_against = a;
+            b.votes_abstain = ab;
+        };
+        floor.forEach(recalcTallies);
+
         _legData = {
             committee,
             floor,
@@ -2559,12 +2580,14 @@ function renderParliamentPanel() {
 
 function getBillSupportPercent(bill) {
     const { totalSeats, majority, parties } = _legData;
-    // Floor bills: use votes_for directly
+    // Floor bills: use votes_for (recomputed live from bill_support in
+    // loadLegislatureData so it reflects votes cast since the last tick,
+    // not the stale cached column).
     if (bill.status === 'floor' || bill.status === 'voting' || bill.status === 'vetoed') {
         const yesVotes = bill.votes_for || 0;
         return Math.round((yesVotes / totalSeats) * 100);
     }
-    // Committee bills: use calculateBillSupport
+    // Committee bills: use calculateBillSupport (sponsor + accepted supporters).
     const seatMap = {};
     for (const p of parties) seatMap[p.id] = p.seats || 0;
     const support = calculateBillSupport(bill.bill_support, bill.proposed_by, seatMap);
