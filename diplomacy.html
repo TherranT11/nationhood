@@ -754,14 +754,16 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
         });
         if (claimErr) console.warn('[ShippingApproval] Auto-claim failed (corp may need to assign vessel):', claimErr.message);
 
-        // Log event
-        await _supabase.from('event_log').insert({
-            nation_id: _worldState?.nation?.id,
-            event_name: 'Shipping application approved',
-            category: 'trade',
-            description_chosen: 'A shipping corporation has been approved to service a trade route. Route efficiency will increase.',
-            fired_at_tick: tick,
-        }).catch(() => {});
+        // Log event (non-critical — approval already persisted)
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: _worldState?.nation?.id,
+                event_name: 'Shipping application approved',
+                category: 'trade',
+                description_chosen: 'A shipping corporation has been approved to service a trade route. Route efficiency will increase.',
+                fired_at_tick: tick,
+            });
+        } catch (_) { /* event log failure must not surface as an approval failure */ }
 
         // Reload shipping data and re-render
         await loadShippingData();
