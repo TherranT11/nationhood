@@ -4253,7 +4253,7 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
         const issuerName = contract.issuer_name || 'the client';
         const { data: projectNation } = await _supabase.from('nations').select('name').eq('id', contract.nation_id).single();
         const projectNationName = projectNation?.name || 'Unknown';
-        const eventDesc = faction.faction_name + ' has completed the ' + contractName + ' project for ' + issuerName + ' in ' + projectNationName + '. Result: ' + result + ' (quality: ' + qualityScore + '/100).';
+        const eventDesc = faction.faction_name + ' has completed the ' + contractName + ' project for ' + issuerName + ' in ' + projectNationName + '.';
 
         const eventNationIds = new Set([contract.nation_id]);
         if (faction.nation_id && faction.nation_id !== contract.nation_id) eventNationIds.add(faction.nation_id);
