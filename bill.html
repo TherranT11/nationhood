@@ -1094,7 +1094,7 @@ function renderArticles() {
                 '</div>';
         } else if (bill.proposed_constitutional_reform) {
             // Constitutional Reform subtype
-            const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Absolute Monarchy', presidential: 'Presidential Republic', semi_presidential: 'Semi-Presidential Republic' };
+            const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Constitutional Monarchy', presidential: 'Presidential Republic', semi_presidential: 'Semi-Presidential Republic' };
             const systemLabel = systemLabels[bill.proposed_constitutional_reform] || bill.proposed_constitutional_reform;
             const effects = {
                 parliamentary: 'Stability +3, Legitimacy +2, Civil Unrest +5.<br>Presidential system will be deactivated if applicable. PM formation triggered.',
@@ -1122,7 +1122,7 @@ function renderArticles() {
                 '</div>';
         } else if (bill.proposed_hos_election_method) {
             // HoS Election Method subtype (legacy)
-            const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Absolute Monarchy' };
+            const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
             const methodLabel = methodLabels[bill.proposed_hos_election_method] || bill.proposed_hos_election_method;
             let effectsHTML = '';
             if (bill.proposed_hos_election_method === 'hereditary') {

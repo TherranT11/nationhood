@@ -131,15 +131,14 @@ export function canonicalizeNationGovType(govType) {
 
 /**
  * Returns a human-friendly government type label for display.
- * Accounts for Absolute Monarchy (hereditary HOS in a parliamentary system).
- *
- * @param {object} nation - Nation row (needs government_type, hos_election_method)
- * @returns {string} e.g. "Parliamentary Democracy", "Absolute Monarchy", "Presidential Republic", "Semi-Presidential Republic"
+ * Distinguishes Constitutional Monarchy (parliamentary + hereditary HoS) from
+ * Absolute Monarchy (government_type explicitly set to Absolute Monarchy).
  */
 export function getGovDisplayLabel(nation) {
     if (isSemiPresidential(nation)) return 'Semi-Presidential Republic';
     if (isPresidentialRepublic(nation)) return 'Presidential Republic';
-    if (nation?.hos_election_method === 'hereditary') return 'Absolute Monarchy';
+    if (isAbsoluteMonarchy(nation)) return 'Absolute Monarchy';
+    if (nation?.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
     return 'Parliamentary Democracy';
 }
 
@@ -176,7 +175,7 @@ export function getCurrentConstitutionalSystem(nation) {
 export function getConstitutionalSystemLabel(system) {
     switch (system) {
         case CONSTITUTIONAL_SYSTEMS.PARLIAMENTARY: return 'Parliamentary Democracy';
-        case CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY: return 'Absolute Monarchy';
+        case CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY: return 'Constitutional Monarchy';
         case CONSTITUTIONAL_SYSTEMS.PRESIDENTIAL: return 'Presidential Republic';
         case CONSTITUTIONAL_SYSTEMS.SEMI_PRESIDENTIAL: return 'Semi-Presidential Republic';
         default: return 'Unknown';
@@ -191,7 +190,7 @@ export function getConstitutionalSystemLabel(system) {
 export function getConstitutionalSystemDescription(system) {
     switch (system) {
         case CONSTITUTIONAL_SYSTEMS.PARLIAMENTARY: return 'Head of State appointed by parliament. Prime Minister holds executive power.';
-        case CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY: return 'Hereditary monarch holds supreme authority as Head of State.';
+        case CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY: return 'Hereditary monarch as Head of State. Prime Minister holds executive power.';
         case CONSTITUTIONAL_SYSTEMS.PRESIDENTIAL: return 'Directly elected President as sole executive. No Prime Minister.';
         case CONSTITUTIONAL_SYSTEMS.SEMI_PRESIDENTIAL: return 'Directly elected President shares power with a Prime Minister appointed by parliament.';
         default: return '';
