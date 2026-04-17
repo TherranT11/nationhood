@@ -6330,14 +6330,14 @@ function renderRouteApplicationModal() {
 
 async function raSubmitApplication() {
     if (_raSubmitting || !_raRoute || !_raVesselId || !faction || !shard) return;
+    _raSubmitting = true;
 
     const route = _raRoute;
     const appFee = 50000;
     const { data: freshFac } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
     const currentCash = Number(freshFac?.corp_cash_reserves ?? 0);
-    if (currentCash < appFee) { alert('Not enough funds. Application fee: $50k. You have $' + Math.round(currentCash / 1000) + 'k.'); return; }
+    if (currentCash < appFee) { alert('Not enough funds. Application fee: $50k. You have $' + Math.round(currentCash / 1000) + 'k.'); _raSubmitting = false; return; }
 
-    _raSubmitting = true;
     try {
         const newCash = currentCash - appFee;
         const { error: feeErr } = await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
@@ -6363,7 +6363,7 @@ async function raSubmitApplication() {
             category: 'corporate',
             description_chosen: faction.faction_name + ' submitted a shipping application for the ' + (route.goods_name || 'trade') + ' route at a proposed rate of ' + fmtBig(_raProposedRate) + '/trip. Vessel: ' + (_fleetVessels.find(v => v.id === _raVesselId)?.vessel_name || 'Unknown'),
             fired_at_tick: shard.current_tick,
-        }).catch(function() {});
+        }).catch(function(err) { console.warn('[Shipping] Event log failed:', err.message); });
 
         raClose();
         await refreshFactionAndCash();
