@@ -28,13 +28,16 @@ export var SHIPPING_SECTOR_MAP = {
 export var SHIPPING_ROUTE_THRESHOLD = 50000000; // $50M
 
 /**
- * Revenue percentage — shipping corps earn this fraction of the trade value being moved.
+ * Revenue fraction — shipping corps earn this slice of per-tick bilateral trade
+ * volume per completed transit. Calibrated so a single corp servicing a
+ * top-volume lane (~$10B/tick) earns ~$250k–$750k/trip, matching the
+ * intended per-ship/per-month payout; smaller routes scale down from there.
  * Bulk cargo: lower margin. Container freight: medium. Specialized: highest.
  */
 export var SHIPPING_REVENUE_RATES = {
-    bulk_cargo: 0.06,            // 6% of trade value
-    container_freight: 0.08,     // 8% of trade value
-    specialized_transport: 0.12, // 12% of trade value
+    bulk_cargo: 0.00004,           // 0.004% of trade value
+    container_freight: 0.00005,    // 0.005% of trade value
+    specialized_transport: 0.00008,// 0.008% of trade value
 };
 
 /**
