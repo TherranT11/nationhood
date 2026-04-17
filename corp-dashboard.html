@@ -1405,7 +1405,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         if (sector === 'Finance') {
             // Finance: interest + premiums earned from active loans/policies
             const { data: finLoans } = await _supabase.from('finance_active_loans')
-                .select('monthly_payment, interest_rate, principal, total_paid, finance_loan_requests!inner(request_type)')
+                .select('monthly_payment, interest_rate, principal, total_paid, finance_loan_requests(request_type)')
                 .eq('lender_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
             for (const loan of (finLoans || [])) {
