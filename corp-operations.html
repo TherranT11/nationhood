@@ -4191,9 +4191,9 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
         // Reputation change
         const repChange = result === 'DISTINCTION' ? 3 : result === 'PASS' ? 1 : result === 'CONDITIONAL' ? -1 : -3;
 
-        // Fetch contract for timeline data
+        // Fetch contract for timeline data + issuer info
         const { data: contract } = await _supabase.from('construction_contracts')
-            .select('awarded_at_tick, timeline_ticks, stalled_ticks, issuer_faction_id, nation_id')
+            .select('awarded_at_tick, timeline_ticks, stalled_ticks, issuer_faction_id, nation_id, issuer_name')
             .eq('id', contractId).single();
         if (!contract) { alert('Contract not found.'); return; }
 
@@ -4249,14 +4249,24 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
             }
         }
 
-        // Log event
-        await _supabase.from('event_log').insert({
-            nation_id: contract.nation_id,
-            event_name: contractName + ' — Delivered',
-            category: 'corporate',
-            description_chosen: faction.faction_name + ' has delivered "' + contractName + '" with a ' + result + ' rating (quality: ' + qualityScore + '/100). Payment: ' + hfFmtBig(actualPayment) + '.',
-            fired_at_tick: currentTick,
-        }).catch(() => {});
+        // Log events — visible to both builder and recipient nations
+        const issuerName = contract.issuer_name || 'the client';
+        const { data: projectNation } = await _supabase.from('nations').select('name').eq('id', contract.nation_id).single();
+        const projectNationName = projectNation?.name || 'Unknown';
+        const eventDesc = faction.faction_name + ' has completed the ' + contractName + ' project for ' + issuerName + ' in ' + projectNationName + '. Result: ' + result + ' (quality: ' + qualityScore + '/100).';
+
+        const eventNationIds = new Set([contract.nation_id]);
+        if (faction.nation_id && faction.nation_id !== contract.nation_id) eventNationIds.add(faction.nation_id);
+
+        await _supabase.from('event_log').insert(
+            [...eventNationIds].map(nid => ({
+                nation_id: nid,
+                event_name: contractName + ' — Project Completed',
+                category: 'corporate',
+                description_chosen: eventDesc,
+                fired_at_tick: currentTick,
+            }))
+        ).catch(err => console.warn('[Deliver] Event log failed:', err.message));
 
         alert('Project delivered!\n\n' +
             'Result: ' + result + '\n' +
