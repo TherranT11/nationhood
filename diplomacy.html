@@ -573,7 +573,7 @@ async function loadShippingData() {
                 .in('route_id', routeIds)
                 .eq('status', 'active'),
             _supabase.from('shipping_applications')
-                .select('id, route_id, faction_id, proposed_rate, status, applied_at_tick, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, shipping_fleet_capacity, shipping_fleet_deployed)')
+                .select('id, route_id, faction_id, proposed_rate, status, applied_at_tick, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, shipping_fleet_capacity, shipping_fleet_deployed)')
                 .in('route_id', routeIds)
                 .eq('status', 'pending'),
         ]);
@@ -878,23 +878,33 @@ function renderTradeAgreements() {
                             const fleetCap = corp.shipping_fleet_capacity || 0;
                             const fleetDep = corp.shipping_fleet_deployed || 0;
                             const available = Math.max(0, fleetCap - fleetDep);
-                            html += `<div style="padding:8px 10px;margin-bottom:4px;background:var(--bg-panel);border:1px solid var(--border-main);border-left:3px solid ${corpColor};">
-                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                                    <div style="display:flex;align-items:center;gap:8px;">
-                                        <div style="width:28px;height:28px;background:${corpColor}15;border:1px solid ${corpColor}33;display:flex;align-items:center;justify-content:center;font-size:14px;">\uD83D\uDEA2</div>
+                            const ticker = (corp.corp_ticker || corp.abbreviation || '').toUpperCase();
+                            const logoHtml = corp.custom_logo_url
+                                ? `<img src="${escapeHtml(corp.custom_logo_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:3px;" />`
+                                : `<span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${corpColor};">${escapeHtml(ticker.slice(0,2) || '??')}</span>`;
+                            html += `<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg-panel);border:1px solid var(--border-main);border-left:3px solid ${corpColor};">
+                                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:6px;">
+                                    Application for <span style="color:var(--accent);font-weight:700;">${escapeHtml(ag.name || 'Trade Agreement')}</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                                    <div style="display:flex;align-items:center;gap:10px;">
+                                        <div style="width:32px;height:32px;background:${corpColor}15;border:1px solid ${corpColor}33;display:flex;align-items:center;justify-content:center;border-radius:4px;overflow:hidden;">${logoHtml}</div>
                                         <div>
                                             <div style="font-size:13px;font-weight:700;color:var(--text-bright);">${escapeHtml(corp.faction_name || 'Unknown Corp')}</div>
-                                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${escapeHtml(corp.corp_sector || '')} \u00B7 ${escapeHtml(corp.corp_subsector || '')} \u00B7 Fleet: ${available}/${fleetCap} available</div>
+                                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${escapeHtml(corp.corp_subsector || corp.corp_sector || '')} \u00B7 Fleet: ${available}/${fleetCap} available</div>
                                         </div>
                                     </div>
-                                    <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent);">${fmtBudgetCurrency(app.proposed_rate || 0)}/transit</div>
+                                    <div style="text-align:right;">
+                                        <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent);">${fmtBudgetCurrency(app.proposed_rate || 0)}</div>
+                                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">per transit</div>
+                                    </div>
                                 </div>
-                                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-bottom:6px;">
-                                    Route: ${escapeHtml(app.route?.goods_name || 'Trade goods')} \u00B7 ${escapeHtml(app.route?.origin_port || '?')} \u2192 ${escapeHtml(app.route?.destination_port || '?')}
+                                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-bottom:8px;">
+                                    ${escapeHtml(app.route?.goods_name || 'Trade goods')} \u00B7 ${escapeHtml(app.route?.origin_port || '?')} \u2192 ${escapeHtml(app.route?.destination_port || '?')} \u00B7 ${app.route?.transit_ticks || '?'} tick${(app.route?.transit_ticks||0)!==1?'s':''}
                                 </div>
                                 <div style="display:flex;gap:6px;">
-                                    <button onclick="approveShippingApp('${app.id}', '${app.route_id}', '${app.faction_id}')" style="flex:1;padding:6px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#000;background:#5cc55c;border:none;cursor:pointer;">APPROVE</button>
-                                    <button onclick="rejectShippingApp('${app.id}')" style="flex:1;padding:6px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:pointer;">REJECT</button>
+                                    <button onclick="approveShippingApp('${app.id}', '${app.route_id}', '${app.faction_id}')" style="flex:1;padding:7px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#000;background:#5cc55c;border:none;cursor:pointer;">APPROVE</button>
+                                    <button onclick="rejectShippingApp('${app.id}')" style="flex:1;padding:7px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:pointer;">REJECT</button>
                                 </div>
                             </div>`;
                         }
