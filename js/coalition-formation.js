@@ -622,6 +622,26 @@ async function formGovernmentFallback(formation) {
     } catch (adminErr) {
         console.warn('[Coalition] Administration rollover failed (non-fatal):', adminErr.message);
     }
+
+    // Log to event_log so it appears in the Executive Timeline
+    try {
+        const pmPartyId = _ministryAssignments.prime_minister;
+        const pmParty = _allParties.find(p => p.id === pmPartyId);
+        const partyDetails = (formation.party_ids || []).map(pid => {
+            const p = _allParties.find(x => x.id === pid);
+            return p ? `${p.faction_name} (${p.seats || 0})` : null;
+        }).filter(Boolean).join(', ');
+        await _supabase.from('event_log').insert({
+            nation_id: nationId,
+            event_name: 'Coalition Government Formed',
+            category: 'government',
+            fired_at_tick: _currentTick,
+            description_used: `${pmParty?.faction_name || 'PM party'} formed a coalition government with: ${partyDetails}`,
+            description_chosen: `${pmParty?.faction_name || 'PM party'} formed a coalition government with: ${partyDetails}`,
+        });
+    } catch (logErr) {
+        console.warn('[Coalition] event_log insert failed (non-fatal):', logErr.message);
+    }
 }
 
 async function createMinistriesFromAssignments(nationId) {

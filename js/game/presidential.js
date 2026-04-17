@@ -130,17 +130,25 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
         .select('id, faction_id')
         .eq('nation_id', nationId).eq('is_active', true)
         .limit(1).maybeSingle();
-    // Semi-Presidential: PM nominates ministers (not president)
+    // Semi-Presidential: PM nominates ministers (not president), EXCEPT for the PM seat itself
+    // which must be nominated by the President.
     if (isSemiPresidential(nation)) {
-        const { data: hog } = await supabase.from('head_of_government')
-            .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
-        if (!hog || hog.faction_id !== presidentFactionId) {
-            throw new Error('Only the PM\'s party can nominate ministers in Semi-Presidential systems');
-        }
-        // Presidential-domain ministries must be from president's party
-        if (isPresidentialDomainMinistry(ministryKey)) {
-            if (nominee.partyId !== president.faction_id) {
-                throw new Error(`${ministryKey} minister must be from the President's party in Semi-Presidential systems`);
+        if (ministryKey === 'prime_minister') {
+            // PM nomination — must be the President's party
+            if (!president || president.faction_id !== presidentFactionId) {
+                throw new Error('Only the President\'s party can nominate the Prime Minister');
+            }
+        } else {
+            const { data: hog } = await supabase.from('head_of_government')
+                .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
+            if (!hog || hog.faction_id !== presidentFactionId) {
+                throw new Error('Only the PM\'s party can nominate ministers in Semi-Presidential systems');
+            }
+            // Presidential-domain ministries must be from president's party
+            if (isPresidentialDomainMinistry(ministryKey)) {
+                if (nominee.partyId !== president.faction_id) {
+                    throw new Error(`${ministryKey} minister must be from the President's party in Semi-Presidential systems`);
+                }
             }
         }
     } else {
