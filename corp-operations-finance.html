@@ -97,16 +97,16 @@ body { font-family:var(--font-sans); background:var(--bg-0); color:var(--text-pr
 /* Nav */
 .corp-hamburger { display:none; background:var(--bg-2); border:1px solid var(--border-0); color:var(--text-secondary); font-size:18px; padding:6px 12px; cursor:pointer; width:100%; text-align:left; }
 .corp-nav { display:flex; padding:0 22px; gap:0; height:40px; background:var(--bg-2); border-bottom:1px solid var(--border-0); }
-.corp-nav__tab {
+.corp-nav-tab {
   font-family:var(--font-mono); font-size:10px; font-weight:500; letter-spacing:0.8px; text-transform:uppercase;
   color:var(--text-dim); text-decoration:none; padding:0 14px; display:flex; align-items:center;
   border-bottom:2px solid transparent; transition: color 0.15s, border-color 0.15s;
 }
-.corp-nav__tab:hover { color: #a8a797; }
-.corp-nav__tab.active { color:var(--text-bright); border-bottom-color:var(--text-bright); }
-body.light-mode .corp-nav__tab { color:#666660; }
-body.light-mode .corp-nav__tab:hover { color:#333330; }
-body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a17; }
+.corp-nav-tab:hover { color: #a8a797; }
+.corp-nav-tab.active { color:var(--text-bright); border-bottom-color:var(--text-bright); }
+body.light-mode .corp-nav-tab { color:#666660; }
+body.light-mode .corp-nav-tab:hover { color:#333330; }
+body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a17; }
 
 /* Deal Flow container */
 .df-container { width:380px; height:450px; background:#1a1a16; border:1px solid #2a2a24; display:flex; flex-direction:column; overflow:hidden; }
@@ -301,8 +301,8 @@ body.light-mode .corp-nav__tab.active { color:#1a1a17; border-bottom-color:#1a1a
   .corp-hamburger { display:block; }
   .corp-nav { display:none; flex-direction:column; height:auto; padding:0; }
   .corp-nav.nav-open { display:flex; }
-  .corp-nav.nav-open .corp-nav__tab { padding:10px 22px; border-bottom:none; border-left:2px solid transparent; }
-  .corp-nav.nav-open .corp-nav__tab.active { border-left-color:var(--text-bright); border-bottom:none; }
+  .corp-nav.nav-open .corp-nav-tab { padding:10px 22px; border-bottom:none; border-left:2px solid transparent; }
+  .corp-nav.nav-open .corp-nav-tab.active { border-left-color:var(--text-bright); border-bottom:none; }
 }
 </style>
 </head>
@@ -488,6 +488,7 @@ async function loadDealFlow() {
                 insuredVesselId: req.insured_vessel_id,
                 isVesselInsurance: !!req.insured_vessel_id,
                 alreadyOffered: offeredSet.has(req.id),
+                requestingFactionId: req.requesting_faction?.id,
             };
         }
         return {
@@ -498,6 +499,7 @@ async function loadDealFlow() {
             entity: 'CORP',
             nation: borrowerNations[req.requesting_faction?.nation_id]?.name || 'N/A',
             nation_id: req.requesting_faction?.nation_id,
+            requestingFactionId: req.requesting_faction?.id,
             amount: req.amount,
             term: req.term_months,
             purpose: req.purpose || '',
@@ -820,7 +822,7 @@ function renderActivePortfolio() {
         const tm = DF_TYPE_META[d.type];
         const sm = AP_STATUS_META[d.status] || AP_STATUS_META.CURRENT;
         const hasAlert = !!d.alert;
-        const elapsed = d.elapsed || 0;
+        const elapsed = d.paymentsMade || 0;
         const term = d.term || 1;
         const pctComplete = Math.round((elapsed / term) * 100);
 
@@ -1605,6 +1607,7 @@ let rdLoanRate = 8;
 let rdLoanAmount = 18000000;
 let rdLoanTerm = 24;
 let rdLoanCollateral = 'equipment';
+let rdLoanTermsText = '';
 
 // Insurance controls
 let rdInsurePremium = 3.5;
@@ -1632,7 +1635,8 @@ function rdOpen(dealIdx) {
         rdLoanRate = 8;
         rdLoanAmount = deal.amount;
         rdLoanTerm = deal.term || 24;
-        rdLoanCollateral = deal.collateral || 'equipment';
+        rdLoanCollateral = deal.collateral || 'unsecured';
+        rdLoanTermsText = '';
     } else if (deal.type === 'INSURE') {
         rdInsurePremium = 3.5;
         rdInsureCoverage = deal.amount;
@@ -1654,7 +1658,8 @@ function rdClose() {
 }
 
 function rdSetLoanRate(v) { rdLoanRate = Number(v); renderReviewDeal(); }
-// rdSetLoanAmount, rdSetLoanTerm, rdSetCollateral removed — borrower's terms are fixed
+function rdSetLoanCollateral(v) { rdLoanCollateral = v; renderReviewDeal(); }
+function rdSetLoanTermsText(v) { rdLoanTermsText = v; }
 function rdSetInsurePremium(v) { rdInsurePremium = Number(v); renderReviewDeal(); }
 function rdSetInsureCoverage(v) { rdInsureCoverage = Number(v); renderReviewDeal(); }
 function rdSetInsureDeductible(v) { rdInsureDeductible = Number(v); renderReviewDeal(); }
@@ -1795,11 +1800,46 @@ function renderReviewDeal() {
 
         // Borrower's requested terms (read-only)
         html += `<div class="rd-control">
-            <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;margin-bottom:8px;text-transform:uppercase;">Borrower's Terms (Fixed)</div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;margin-bottom:8px;text-transform:uppercase;">Borrower's Request</div>
             <div class="rd-risk-row"><span class="rd-risk-label">LOAN AMOUNT</span><span class="rd-risk-value" style="color:#e8e4dc;">${fmtMoney(rdLoanAmount)}</span></div>
             <div class="rd-risk-row"><span class="rd-risk-label">TERM</span><span class="rd-risk-value" style="color:#e8e4dc;">${rdLoanTerm}mo</span></div>
-            <div class="rd-risk-row"><span class="rd-risk-label">COLLATERAL</span><span class="rd-risk-value" style="color:#e8e4dc;">${collTier.label}</span></div>
-            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:6px;">Amount, term, and collateral are set by the borrower. You set the interest rate.</div>
+        </div>`;
+
+        // Require Collateral selector
+        html += `<div class="rd-control">
+            <div class="rd-control__header">
+                <span class="rd-control__label">REQUIRE COLLATERAL</span>
+                <span class="rd-control__value" style="font-size:12px;color:#5a8aaa;">${collTier.label}</span>
+            </div>
+            <div style="display:flex;gap:4px;margin-top:6px;">
+                ${COLLATERAL_TIERS.map(c => `<div onclick="rdSetLoanCollateral('${c.id}')" style="
+                    flex:1;padding:6px 4px;text-align:center;
+                    font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.3px;
+                    background:${rdLoanCollateral === c.id || (collateralDisplayMap[rdLoanCollateral] || rdLoanCollateral) === c.id ? 'rgba(90,138,170,0.12)' : 'transparent'};
+                    border:1px solid ${rdLoanCollateral === c.id || (collateralDisplayMap[rdLoanCollateral] || rdLoanCollateral) === c.id ? 'rgba(90,138,170,0.3)' : '#2a2a24'};
+                    color:${rdLoanCollateral === c.id || (collateralDisplayMap[rdLoanCollateral] || rdLoanCollateral) === c.id ? '#5a8aaa' : '#6a6660'};
+                    cursor:pointer;
+                ">${c.label}</div>`).join('')}
+            </div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:6px;">
+                ${collTier.id === 'none' ? 'No collateral. Higher risk, lower acceptance chance.'
+                : collTier.id === 'equipment' ? 'Borrower pledges equipment as security. Moderate risk reduction.'
+                : 'Borrower pledges property. Strongest security, highest acceptance.'}
+            </div>
+        </div>`;
+
+        // Offer Terms text field
+        html += `<div class="rd-control">
+            <div class="rd-control__header">
+                <span class="rd-control__label">OFFER TERMS (OPTIONAL)</span>
+            </div>
+            <textarea id="rd-loan-terms" maxlength="500" rows="3" placeholder="e.g. Early repayment penalty of 2%. Quarterly reporting required..." oninput="rdSetLoanTermsText(this.value)" style="
+                width:100%;margin-top:6px;padding:8px 10px;
+                background:#1a1a16;border:1px solid #2a2a24;color:#e8e4dc;
+                font-family:var(--font-sans);font-size:11px;line-height:1.5;
+                resize:vertical;outline:none;box-sizing:border-box;
+            ">${escapeHtml(rdLoanTermsText)}</textarea>
+            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Visible to the borrower. 500 characters max.</div>
         </div>`;
     }
 
@@ -2043,6 +2083,10 @@ function renderReviewDeal() {
     const footerRiskColor = rdType === 'LOAN' ? defaultColor : rdType === 'INSURE' ? claimColor : bondDefaultColor;
     const actionLabel = rdType === 'LOAN' ? 'OFFER LOAN' : rdType === 'INSURE' ? 'WRITE POLICY' : 'BUY BONDS';
     const actionClass = rdType.toLowerCase();
+    const alreadyOffered = !!d.alreadyOffered;
+    const actionDisabled = alreadyOffered ? 'disabled' : '';
+    const actionTitle = alreadyOffered ? ' title="You already have an offer on this request."' : '';
+    const actionButtonLabel = alreadyOffered ? 'ALREADY OFFERED' : actionLabel;
 
     html += `<div class="rd-footer">
         <div style="display:flex;gap:12px;">
@@ -2052,7 +2096,7 @@ function renderReviewDeal() {
         </div>
         <div style="display:flex;gap:6px;">
             <button class="rd-btn-decline" onclick="rdClose()">DECLINE</button>
-            <button class="rd-btn-action ${actionClass}" onclick="rdSubmitOffer()">${actionLabel}</button>
+            <button class="rd-btn-action ${actionClass}" onclick="rdSubmitOffer()" ${actionDisabled}${actionTitle}>${actionButtonLabel}</button>
         </div>
     </div>`;
 
@@ -2062,6 +2106,8 @@ function renderReviewDeal() {
 window.rdOpen = rdOpen;
 window.rdClose = rdClose;
 window.rdSetLoanRate = rdSetLoanRate;
+window.rdSetLoanCollateral = rdSetLoanCollateral;
+window.rdSetLoanTermsText = rdSetLoanTermsText;
 window.rdSetInsurePremium = rdSetInsurePremium;
 window.rdSetInsureCoverage = rdSetInsureCoverage;
 window.rdSetInsureDeductible = rdSetInsureDeductible;
@@ -2072,6 +2118,10 @@ window.rdSetBondAmount = rdSetBondAmount;
 let _submittingOffer = false;
 async function rdSubmitOffer() {
     if (!rdDeal || !faction || !shard || _submittingOffer) return;
+    if (rdDeal.alreadyOffered) {
+        alert('You already submitted an offer for this request.');
+        return;
+    }
     _submittingOffer = true;
 
     const currentTick = shard.current_tick || 0;
@@ -2115,13 +2165,16 @@ async function rdSubmitOffer() {
         const collateralMap = { none: 'unsecured', equipment: 'equipment', property: 'property', full: 'property' };
         const collateral = collateralMap[rdLoanCollateral] || 'unsecured';
 
-        const { error } = await _supabase.from('finance_loan_offers').insert({
+        const offerRow = {
             request_id: rdDeal.requestId,
             offering_faction_id: faction.id,
             interest_rate: rate,
             collateral_type: collateral,
             created_tick: currentTick,
-        });
+        };
+        if (rdLoanTermsText.trim()) offerRow.offer_terms = rdLoanTermsText.trim();
+
+        const { error } = await _supabase.from('finance_loan_offers').insert(offerRow);
         if (error) {
             _submittingOffer = false;
             if (error.message.includes('unique') || error.message.includes('duplicate')) {
@@ -2195,7 +2248,15 @@ async function rdSubmitOffer() {
             status: 'accepted',
             created_tick: currentTick,
         });
-        if (offerErr) { alert('Failed to write policy: ' + offerErr.message); _submittingOffer = false; return; }
+        if (offerErr) {
+            _submittingOffer = false;
+            if (offerErr.message.includes('unique') || offerErr.message.includes('duplicate')) {
+                alert('You have already submitted a policy offer for this request.');
+            } else {
+                alert('Failed to write policy: ' + offerErr.message);
+            }
+            return;
+        }
 
         // Mark request as funded and get the requesting faction
         const { data: fundedReq } = await _supabase.from('finance_loan_requests').update({
@@ -2206,7 +2267,7 @@ async function rdSubmitOffer() {
         const policyRow = {
             request_id: rdDeal.requestId,
             offer_id: null,
-            borrower_faction_id: fundedReq?.requesting_faction_id || rdDeal.requestId,
+            borrower_faction_id: fundedReq?.requesting_faction_id || rdDeal.requestingFactionId,
             lender_faction_id: faction.id,
             nation_id: faction.nation_id,
             principal: coverage,
@@ -2327,7 +2388,30 @@ async function loadCollections() {
     renderCollections();
 }
 
+function routeToSharedOperationsTab(tab) {
+    const nextUrl = new URL('corp-operations.html', window.location.href);
+    nextUrl.search = window.location.search;
+    const params = nextUrl.searchParams;
+    params.set('tab', tab);
+    nextUrl.search = params.toString() ? `?${params.toString()}` : '';
+    window.location.href = nextUrl.toString();
+}
+
+function switchToExpansion(e) {
+    if (e?.preventDefault) e.preventDefault();
+    routeToSharedOperationsTab('expansion');
+}
+
+function switchToActions(e) {
+    if (e?.preventDefault) e.preventDefault();
+    routeToSharedOperationsTab('actions');
+}
+
 async function init() {
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    const isSharedTab = urlTab === 'expansion' || urlTab === 'actions';
+    const activeTab = isSharedTab ? urlTab : 'operations';
+
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
@@ -2361,6 +2445,12 @@ async function init() {
         return;
     }
 
+    // Expansion/actions are implemented in shared operations views, not Finance.
+    if (isSharedTab) {
+        routeToSharedOperationsTab(urlTab);
+        return;
+    }
+
     sessionStorage.setItem('active_faction_id', faction.id);
 
     // Load nation + shard
@@ -2378,7 +2468,7 @@ async function init() {
     const _topBarContainer = document.getElementById('corp-topbar-container');
     if (_topBarContainer) {
         const { renderCorpTopBar } = await import('./js/corp-topbar.js');
-        renderCorpTopBar(_topBarContainer, { faction, shard, activeTab: 'operations', allUserFactions });
+        renderCorpTopBar(_topBarContainer, { faction, shard, activeTab, allUserFactions });
     }
 
     // Faction switcher
@@ -2479,6 +2569,8 @@ window.toggleCorpDropdown = toggleCorpDropdown;
 window.switchFaction = switchFaction;
 window.toggleTheme = toggleTheme;
 window.doLogout = doLogout;
+window.switchToExpansion = switchToExpansion;
+window.switchToActions = switchToActions;
 
 init();
 </script>

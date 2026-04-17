@@ -248,12 +248,12 @@ function attachRadioListeners(root) {
             if (cursor) cursor.style.left = pct + '%';
             const valueEl = document.getElementById('radio-freq-value');
             if (valueEl) valueEl.textContent = freq + ' FM';
-            const existingFreqs = _stations.map(s => parseFloat(s.frequency)).filter(f => !isNaN(f));
-            const isOccupied = existingFreqs.some(f => Math.abs(f - parseFloat(freq)) < 0.2);
+            const freqNum = parseFloat(freq);
+            const occupiedBy = _allGlobalFreqs.find(function(s) { return Math.abs(s.freq - freqNum) < 0.2; });
             const statusEl = document.getElementById('radio-freq-status');
             if (statusEl) {
-                statusEl.textContent = isOccupied ? 'OCCUPIED' : 'AVAILABLE';
-                statusEl.className = 'radio-freq-status ' + (isOccupied ? 'radio-freq-status--occupied' : 'radio-freq-status--available');
+                statusEl.textContent = occupiedBy ? ('OCCUPIED (' + occupiedBy.callsign + ')') : 'AVAILABLE';
+                statusEl.className = 'radio-freq-status ' + (occupiedBy ? 'radio-freq-status--occupied' : 'radio-freq-status--available');
             }
         }
         if (e.target.id === 'radio-input-callsign') _modalState.callsign = e.target.value;
@@ -1183,13 +1183,22 @@ function renderCreateStationModal() {
     `;
 }
 
-function openCreateModal() {
+// Global frequency cache for availability checking (loaded on modal open)
+var _allGlobalFreqs = [];
+
+async function openCreateModal() {
     _modalState = { stationType: 'general', ideology: null, callsign: '', name: '', frequency: '92.0', description: '' };
+
+    // Load all frequencies globally so the slider shows accurate availability
+    try {
+        var { data: allStations } = await _supabase.from('radio_stations').select('frequency, callsign');
+        _allGlobalFreqs = (allStations || []).map(function(s) { return { freq: parseFloat(s.frequency), callsign: s.callsign }; }).filter(function(s) { return !isNaN(s.freq); });
+    } catch (_) { _allGlobalFreqs = []; }
+
     const overlay = document.getElementById('radio-create-modal');
     if (overlay) {
         overlay.innerHTML = renderCreateStationModal();
         overlay.classList.add('active');
-        // Click/input handlers are delegated from root — no re-binding needed
     }
 }
 

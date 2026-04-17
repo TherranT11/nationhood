@@ -183,7 +183,7 @@
                         <input type="radio" name="entrenchment-tier" value="entrenched" style="margin-top:3px;">
                         <div>
                             <div style="font-weight:600;color:var(--purple);">Entrenched Law</div>
-                            <div style="font-size:0.75rem;color:var(--text-secondary);">Requires 67% supermajority to repeal or amend. ${GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS}-tick cooldown before repeal can be filed. This bill must also pass with 67%.</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">Requires 67% supermajority to repeal or amend. 60-tick cooldown before repeal can be filed. This bill must also pass with 67%.</div>
                         </div>
                     </label>
                     <label class="entrenchment-option" style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;">
@@ -672,9 +672,6 @@ function filterAllLaws() {
         }
 
         // Authoritarian foundational laws
-        if (n.term_limits_abolished) foundationalLaws.push({ name: 'Abolish Term Limits', icon: '⛓', desc: 'All term limits for the head of government have been removed. Ruling party gains +5 approval/tick, press freedom erodes -0.3/tick.', value: 'Enacted' });
-        if (n.state_media_control) foundationalLaws.push({ name: 'State Media Control Act', icon: '📺', desc: 'State controls major media outlets. Press freedom capped at 40.', value: 'Enacted' });
-        if (n.emergency_powers_act) foundationalLaws.push({ name: 'Emergency Powers Act', icon: '🚨', desc: 'The head of government can declare national emergencies, bypassing legislative votes. Stability -1/tick, freedom index -0.5/tick, judicial independence -0.5/tick while active.', value: 'Enacted' });
         if (n.judicial_appointment_politicization) foundationalLaws.push({ name: 'Judicial Appointment Politicization Act', icon: '⚖️', desc: 'The ruling coalition appoints judges directly. Judicial independence permanently capped at 30. No confidence threshold raised to 60%.', value: 'Enacted' });
         if (n.electoral_commission_reform) foundationalLaws.push({ name: 'Electoral Commission Reform Act', icon: '🗳️', desc: 'The ruling coalition controls the election commission. Governing parties receive a 5-10% seat bonus in elections drawn from opposition.', value: 'Enacted' });
         if (n.party_registration_threshold > 0) foundationalLaws.push({ name: 'Political Party Registration Act', icon: '🚫', desc: `Parties below ${n.party_registration_threshold}% of seats have their seats reallocated. Affected parties cannot sponsor bills, vote, or hold ministries.`, value: `${n.party_registration_threshold}% threshold` });
@@ -941,7 +938,7 @@ function renderFloorBill(bill, isVetoed) {
                 (bill.bill_type === 'confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--blue);">🏛 Ambassador Confirmation Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'minister_confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--orange);">🏛 Cabinet Confirmation Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'veto_override' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">⚖ Veto Override Vote</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD) + ' seats) to override presidential veto.</div></div></div>' :
-                (bill.bill_type === 'foundational' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">' + (bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_parliamentary_term_length != null ? '🗓 Legislative Term — Proposed: ' + (bill.proposed_parliamentary_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : bill.proposed_abolish_term_limits ? '⛓ Abolish Term Limits' : bill.proposed_state_media_control ? '📺 State Media Control Act' : bill.proposed_emergency_powers_act ? '🚨 Emergency Powers Act' : bill.proposed_anti_disinformation_act ? '🔇 Anti-Disinformation Act' : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats') + '</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
+                (bill.bill_type === 'foundational' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">' + (bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_parliamentary_term_length != null ? '🗓 Legislative Term — Proposed: ' + (bill.proposed_parliamentary_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : bill.proposed_anti_disinformation_act ? '🔇 Anti-Disinformation Act' : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats') + '</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'default_resolution' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">💀 Sovereign Default Resolution</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_type === 'ratification' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--green);">🌐 Diplomatic Ratification Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to ratify.</div></div></div>' :
@@ -1161,7 +1158,7 @@ function renderCommitteeBill(bill) {
             </div>
             <div class="support-bar-track"><div class="threshold-marker"></div><div class="support-bar-fill ${support.percent >= 51 ? 'enough' : ''}" style="width:${support.percent}%"></div></div>
             <div class="bill-articles">
-                ${bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">${bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_parliamentary_term_length != null ? '🗓 Legislative Term — Proposed: ' + (bill.proposed_parliamentary_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : bill.proposed_abolish_term_limits ? '⛓ Abolish Term Limits' : bill.proposed_state_media_control ? '📺 State Media Control Act' : bill.proposed_emergency_powers_act ? '🚨 Emergency Powers Act' : bill.proposed_anti_disinformation_act ? '🔇 Anti-Disinformation Act' : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats'}</span><div class="article-desc">Requires 2/3 supermajority to pass. Co-sponsor required.</div></div></div>` :
+                ${bill.bill_type === 'foundational' ? `<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">${bill.proposed_term_length != null ? '📅 Term Length — Proposed: ' + (bill.proposed_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_parliamentary_term_length != null ? '🗓 Legislative Term — Proposed: ' + (bill.proposed_parliamentary_term_length / (GAME_CONFIG.TICKS_PER_YEAR || 12)) + ' Years' : bill.proposed_term_limit != null ? '🔒 Term Limits — Proposed: ' + (bill.proposed_term_limit === 0 ? 'No Term Limits' : bill.proposed_term_limit + ' Term' + (bill.proposed_term_limit !== 1 ? 's' : '')) : bill.proposed_hos_title ? '👑 Head of State Title — Proposed: ' + bill.proposed_hos_title : bill.proposed_anti_disinformation_act ? '🔇 Anti-Disinformation Act' : '🏛 Electoral Makeup — Proposed: ' + (bill.proposed_seats || '?') + ' seats'}</span><div class="article-desc">Requires 2/3 supermajority to pass. Co-sponsor required.</div></div></div>` :
                 (bill.bill_type === 'default_resolution' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">💀 Sovereign Default Resolution</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
                 (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">🗑️ Proposes to rescind an active law</span></div></div>' :
                 (bill.bill_type === 'ratification' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--green);">🌐 Diplomatic Ratification Vote</span><div class="article-desc">Requires simple majority (' + GAME_CONFIG.MAJORITY_SEATS + ' seats) to ratify.</div></div></div>' :
@@ -1234,9 +1231,6 @@ function renderFoundationalSector(sector) {
         items.push({ label: 'Term Limits', value: termLimit === 0 ? 'None (unlimited)' : termLimit + ' term' + (termLimit !== 1 ? 's' : '') });
     }
     // Authoritarian / special foundational laws
-    if (n.term_limits_abolished) items.push({ label: 'Term Limits Abolished', value: 'Active', cls: 'foundational--auth' });
-    if (n.state_media_control) items.push({ label: 'State Media Control', value: 'Active', cls: 'foundational--auth' });
-    if (n.emergency_powers_act) items.push({ label: 'Emergency Powers Act', value: 'Active', cls: 'foundational--auth' });
     if (n.judicial_appointment_politicization) items.push({ label: 'Judicial Politicization', value: 'Active', cls: 'foundational--auth' });
     if (n.electoral_commission_reform) items.push({ label: 'Electoral Commission Reform', value: 'Active', cls: 'foundational--auth' });
     if (n.party_registration_threshold > 0) items.push({ label: 'Party Registration Act', value: n.party_registration_threshold + '% threshold', cls: 'foundational--auth' });
@@ -2484,24 +2478,7 @@ function renderFoundationalOptions() {
             </div>
         </div>`;
         })()}
-        <div class="policy-option${selectedFoundationalType === 'abolish_term_limits' ? ' selected' : ''}" style="${selectedFoundationalType === 'abolish_term_limits' ? 'border-color:var(--red);' : ''}${currentNation.term_limits_abolished ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('abolish_term_limits')" data-foundational-type="abolish_term_limits">
-            <div class="policy-option-name">⛓ Abolish Term Limits <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
-            <div class="policy-option-desc">${currentNation.term_limits_abolished
-                ? 'Already enacted — term limits have been abolished.'
-                : 'Remove all term limits for the head of government. The ruling party gains +5 approval/tick but press freedom erodes -0.3/tick permanently. Requires 2/3 supermajority (' + required + ' seats).'}</div>
-        </div>
-        <div class="policy-option${selectedFoundationalType === 'state_media_control' ? ' selected' : ''}" style="${selectedFoundationalType === 'state_media_control' ? 'border-color:var(--red);' : ''}${currentNation.state_media_control ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('state_media_control')" data-foundational-type="state_media_control">
-            <div class="policy-option-name">📺 State Media Control Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
-            <div class="policy-option-desc">${currentNation.state_media_control
-                ? 'Already enacted — the government controls national media.'
-                : 'Government takes control of national media. Press freedom permanently capped at 40. +10 Government Approval. +2 Momentum all Parties in Government / tick for 10 ticks. Requires 2/3 supermajority (' + required + ' seats).'}</div>
-        </div>
-        <div class="policy-option${selectedFoundationalType === 'emergency_powers' ? ' selected' : ''}" style="${selectedFoundationalType === 'emergency_powers' ? 'border-color:var(--red);' : ''}${currentNation.emergency_powers_act ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('emergency_powers')" data-foundational-type="emergency_powers">
-            <div class="policy-option-name">🚨 Emergency Powers Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
-            <div class="policy-option-desc">${currentNation.emergency_powers_act
-                ? 'Already enacted — the head of government may declare national emergencies.'
-                : 'Grants the head of government power to declare national emergencies, bypassing legislative votes. While active: stability -1/tick, freedom index -0.5/tick, judicial independence -0.5/tick. Requires 2/3 supermajority (' + required + ' seats).'}</div>
-        </div>
+
         <div class="policy-option${selectedFoundationalType === 'judicial_appointment_politicization' ? ' selected' : ''}" style="${selectedFoundationalType === 'judicial_appointment_politicization' ? 'border-color:var(--red);' : ''}${currentNation.judicial_appointment_politicization ? 'opacity:0.5;pointer-events:none;' : ''}" onclick="selectFoundationalType('judicial_appointment_politicization')" data-foundational-type="judicial_appointment_politicization">
             <div class="policy-option-name">⚖️ Judicial Appointment Politicization Act <span class="article-ideology" style="background:var(--red);color:#fff;">AUTHORITARIAN</span></div>
             <div class="policy-option-desc">${currentNation.judicial_appointment_politicization
@@ -2956,48 +2933,6 @@ async function addArticle() {
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
             return;
-        } else if (selectedFoundationalType === 'abolish_term_limits') {
-            draftArticles = [];
-            draftArticles.push({
-                articleNumber: 2,
-                isFoundational: true,
-                foundationalSubtype: 'abolish_term_limits',
-                policy: null
-            });
-            renderDraftArticles(); hideAddArticleForm();
-            document.getElementById('bill-name-input').value = 'Abolish Term Limits Act';
-            document.getElementById('bill-name-section').style.display = 'block';
-            document.getElementById('submit-bill-btn').disabled = false;
-            _hideAllArticleButtons();
-            return;
-        } else if (selectedFoundationalType === 'state_media_control') {
-            draftArticles = [];
-            draftArticles.push({
-                articleNumber: 2,
-                isFoundational: true,
-                foundationalSubtype: 'state_media_control',
-                policy: null
-            });
-            renderDraftArticles(); hideAddArticleForm();
-            document.getElementById('bill-name-input').value = 'State Media Control Act';
-            document.getElementById('bill-name-section').style.display = 'block';
-            document.getElementById('submit-bill-btn').disabled = false;
-            _hideAllArticleButtons();
-            return;
-        } else if (selectedFoundationalType === 'emergency_powers') {
-            draftArticles = [];
-            draftArticles.push({
-                articleNumber: 2,
-                isFoundational: true,
-                foundationalSubtype: 'emergency_powers',
-                policy: null
-            });
-            renderDraftArticles(); hideAddArticleForm();
-            document.getElementById('bill-name-input').value = 'Emergency Powers Act';
-            document.getElementById('bill-name-section').style.display = 'block';
-            document.getElementById('submit-bill-btn').disabled = false;
-            _hideAllArticleButtons();
-            return;
         } else if (selectedFoundationalType === 'judicial_appointment_politicization') {
             draftArticles = [];
             draftArticles.push({
@@ -3228,36 +3163,7 @@ function renderDraftArticles() {
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
             }
-            if (art.foundationalSubtype === 'abolish_term_limits') {
-                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
-                    <div class="draft-article-info">
-                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
-                        <div class="draft-article-name">⛓ Abolish Term Limits</div>
-                        <div class="draft-article-meta">Removes all term limits. Ruling party +5 approval/tick, press freedom -0.3/tick. Requires 2/3 supermajority.</div>
-                    </div>
-                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
-                </div>`;
-            }
-            if (art.foundationalSubtype === 'state_media_control') {
-                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
-                    <div class="draft-article-info">
-                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
-                        <div class="draft-article-name">📺 State Media Control Act</div>
-                        <div class="draft-article-meta">Press freedom capped at 40. +10 Gov Approval. +2 Momentum/tick for governing parties (10 ticks). Requires 2/3 supermajority.</div>
-                    </div>
-                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
-                </div>`;
-            }
-            if (art.foundationalSubtype === 'emergency_powers') {
-                return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
-                    <div class="draft-article-info">
-                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
-                        <div class="draft-article-name">🚨 Emergency Powers Act</div>
-                        <div class="draft-article-meta">Head of government may declare emergencies to bypass votes. Stat drain while active. Requires 2/3 supermajority.</div>
-                    </div>
-                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
-                </div>`;
-            }
+
             if (art.foundationalSubtype === 'judicial_appointment_politicization') {
                 return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
                     <div class="draft-article-info">
@@ -3952,12 +3858,6 @@ async function submitToCommittee() {
                     ? (() => { const fArt = draftArticles.find(a => a.isFoundational); const safeDynasty = escapeHtml(fArt.proposedDynastyName || 'Royal'); const sysLabels = { parliamentary: 'a Parliamentary Democracy', constitutional_monarchy: `a Constitutional Monarchy (establishing the ${safeDynasty} dynasty)`, presidential: 'a Presidential Republic', semi_presidential: 'a Semi-Presidential Republic' }; return `This foundational law, proposed by the ${escapeHtml(currentFaction.faction_name)}, seeks to reform the system of government in ${escapeHtml(currentNation.name)} to ${sysLabels[fArt.proposedConstitutionalReform] || escapeHtml(fArt.proposedConstitutionalReform)}. This is a major constitutional change that will restructure the executive branch. Requires a two-thirds supermajority to pass.`; })()
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'hos_election'
                     ? `This foundational law, proposed by the ${escapeHtml(currentFaction.faction_name)}, seeks to change the Head of State election method in ${escapeHtml(currentNation.name)} to ${draftArticles.find(a => a.isFoundational).proposedHosElectionMethod === 'hereditary' ? 'hereditary succession (establishing the ' + escapeHtml(draftArticles.find(a => a.isFoundational).proposedDynastyName) + ' dynasty)' : draftArticles.find(a => a.isFoundational).proposedHosElectionMethod === 'direct_vote' ? 'direct popular vote' : 'parliamentary appointment'}. Requires a two-thirds supermajority to pass.`
-                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'abolish_term_limits'
-                    ? `This foundational law removes all presidential term limits in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
-                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'state_media_control'
-                    ? `This foundational law establishes state control over national media in ${currentNation.name}. Press freedom permanently capped at 40. +10 government approval. Governing parties receive +2 momentum/tick for 10 ticks. Requires a two-thirds supermajority to pass.`
-                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'emergency_powers'
-                    ? `This foundational law grants the head of government emergency powers in ${currentNation.name}, allowing them to bypass legislative votes. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'judicial_appointment_politicization'
                     ? `This foundational law politicizes judicial appointments in ${currentNation.name}. Judicial independence permanently capped at 30. Harder to impeach or remove leaders. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'electoral_commission_reform'
@@ -3998,12 +3898,6 @@ async function submitToCommittee() {
                 billInsert.proposed_hos_election_method = fArt.proposedHosElectionMethod;
                 if (fArt.proposedDynastyName) billInsert.proposed_dynasty_name = fArt.proposedDynastyName;
                 if (fArt.proposedDynastyCrest) billInsert.proposed_dynasty_crest_url = fArt.proposedDynastyCrest;
-            } else if (fArt.foundationalSubtype === 'abolish_term_limits') {
-                billInsert.proposed_abolish_term_limits = true;
-            } else if (fArt.foundationalSubtype === 'state_media_control') {
-                billInsert.proposed_state_media_control = true;
-            } else if (fArt.foundationalSubtype === 'emergency_powers') {
-                billInsert.proposed_emergency_powers_act = true;
             } else if (fArt.foundationalSubtype === 'judicial_appointment_politicization') {
                 billInsert.proposed_judicial_appointment_politicization = true;
             } else if (fArt.foundationalSubtype === 'electoral_commission_reform') {

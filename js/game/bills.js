@@ -18,6 +18,30 @@ import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
 import { calculateCaucusDispositions, calculateCaucusVoteAdjustment, updateCaucusRelationships } from './caucus.js';
 
+const _BILL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+function _billTickToDate(tick) {
+    if (tick == null) return null;
+    return `${_BILL_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
+}
+
+async function _logAdministrationIntegrityIssue(supabase, nationId, contextLabel) {
+    const [{ data: openRows }, { data: missingEndedTickRows }] = await Promise.all([
+        supabase.from('administrations').select('id').eq('nation_id', nationId).is('ended_at_tick', null),
+        supabase.from('administrations').select('id').eq('nation_id', nationId).not('ended_at_date', 'is', null).is('ended_at_tick', null)
+    ]);
+
+    if ((openRows || []).length !== 1 || (missingEndedTickRows || []).length > 0) {
+        console.warn('[enactFoundationalBill] administration integrity check warning', {
+            context: contextLabel,
+            nation_id: nationId,
+            open_count: (openRows || []).length,
+            open_admin_ids: (openRows || []).map(r => r.id),
+            ended_missing_tick_ids: (missingEndedTickRows || []).map(r => r.id)
+        });
+    }
+}
+
 // ==================== BILL SUPPORT ====================
 
 export function calculateBillSupport(billSupport, sponsorPartyId, allPartySeats) {
@@ -3686,12 +3710,13 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
             // Close administration
             const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-            const dateStr = shardData?.current_date || '';
+            const dateStr = shardData?.current_date || _billTickToDate(currentTick);
             const { error: adminErr } = await supabase.from('administrations')
                 .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
                 .eq('nation_id', bill.nation_id)
                 .is('ended_at_tick', null);
             if (adminErr) console.error('[enactFoundationalBill] Failed to close administration:', adminErr.message);
+            else await _logAdministrationIntegrityIssue(supabase, bill.nation_id, 'foundational_transition_no_president');
 
             // Fail bills on president's desk (orphaned without a president)
             const { error: deskErr } = await supabase.from('bills')
@@ -4062,11 +4087,13 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
 
                 // Close administration for transition
                 const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-                const dateStr = shardData?.current_date || '';
-                await supabase.from('administrations')
+                const dateStr = shardData?.current_date || _billTickToDate(currentTick);
+                const { error: closeAdminErr } = await supabase.from('administrations')
                     .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
                     .eq('nation_id', bill.nation_id)
                     .is('ended_at_tick', null);
+                if (closeAdminErr) console.error('[enactFoundationalBill] Failed to close administration on PM removal transition:', closeAdminErr.message);
+                else await _logAdministrationIntegrityIssue(supabase, bill.nation_id, 'foundational_transition_no_pm');
 
                 console.log(`[enactFoundationalBill] Presidential → Parliamentary Democracy, election at tick ${currentTick + 3}`);
             }
@@ -4104,111 +4131,6 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         }
 
         console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS title set to "${newTitle}".`);
-        return true;
-    }
-
-    // ── Abolish Term Limits subtype ──
-    if (bill.proposed_abolish_term_limits) {
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-        const updates = { term_limits_abolished: true };
-        // Also remove presidential term limit if applicable
-        if (hasElectedPresident(nation)) updates.presidential_term_limit = 0;
-
-        // One-time stat effects: legitimacy -5, stability +2
-        updates.legitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
-        updates.stability = Math.min(100, (nation?.stability ?? 50) + 2);
-
-        await supabase.from('nations').update(updates).eq('id', bill.nation_id);
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'term_limits_abolished',
-            description_used: 'Term limits have been abolished. The ruling party may now hold power indefinitely — but press freedom will erode over time.',
-            category: 'POLITICAL',
-            effects_applied: { law: 'abolish_term_limits', legitimacy: -5, stability: +2 },
-            fired_at_tick: currentTick
-        });
-
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Abolish Term Limits enacted for nation ${bill.nation_id}`);
-        return true;
-    }
-
-    // ── State Media Control Act subtype ──
-    if (bill.proposed_state_media_control) {
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-        const cappedPressFreedom = Math.min(Number(nation?.press_freedom ?? 50), 40);
-        await supabase.from('nations').update({
-            state_media_control: true,
-            press_freedom: cappedPressFreedom,
-            legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 3)
-        }).eq('id', bill.nation_id);
-
-        // Government approval: +10 one-time
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, 10, 'state_media_control');
-
-        // Governing parties: +2 momentum/tick for 10 ticks (snapshotted at enactment)
-        const { data: coalition } = await supabase.from('government_formations')
-            .select('party_ids').eq('nation_id', bill.nation_id).eq('status', 'active').maybeSingle();
-        const govPartyIds = coalition?.party_ids || [];
-
-        if (govPartyIds.length > 0) {
-            // Read existing timed effects and append the new momentum boost
-            const existingEffects = Array.isArray(nation?.timed_momentum_effects) ? nation.timed_momentum_effects : [];
-            existingEffects.push({
-                party_ids: govPartyIds,
-                delta_per_tick: 2,
-                remaining_ticks: 10,
-                source: 'state_media_control'
-            });
-            await supabase.from('nations').update({ timed_momentum_effects: existingEffects }).eq('id', bill.nation_id);
-        }
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'state_media_control',
-            description_used: 'The State Media Control Act has passed. Government now controls national media. Press freedom is permanently capped at 40. +10 government approval. Governing parties receive +2 momentum/tick for 10 ticks.',
-            category: 'POLITICAL',
-            effects_applied: { law: 'state_media_control', press_freedom_cap: 40, legitimacy: -3, gov_approval: 10, momentum_boost: { delta: 2, ticks: 10, parties: govPartyIds } },
-            fired_at_tick: currentTick
-        });
-
-        console.log(`[enactFoundationalBill] State Media Control Act enacted for nation ${bill.nation_id}`);
-        return true;
-    }
-
-    // ── Emergency Powers Act subtype ──
-    if (bill.proposed_emergency_powers_act) {
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-        await supabase.from('nations').update({
-            emergency_powers_act: true,
-            stability: Math.max(0, (nation?.stability ?? 50) - 2),
-            freedom_index: Math.max(0, (nation?.freedom_index ?? 50) - 3)
-        }).eq('id', bill.nation_id);
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'emergency_powers_act',
-            description_used: 'The Emergency Powers Act has passed. The head of government may now declare national emergencies, bypassing legislative votes on bills.',
-            category: 'POLITICAL',
-            effects_applied: { law: 'emergency_powers_act', stability: -2, freedom_index: -3 },
-            fired_at_tick: currentTick
-        });
-
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Emergency Powers Act enacted for nation ${bill.nation_id}`);
         return true;
     }
 

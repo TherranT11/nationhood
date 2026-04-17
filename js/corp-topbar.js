@@ -1,7 +1,7 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, cash, faction switcher, nav tabs
 
-const CORP_VERSION = 'Alpha 2.1.5.3';
+const CORP_VERSION = 'Alpha 2.1.5.6';
 
 const SECTOR_OPS_PAGE = {
     Construction: 'corp-operations.html',
@@ -93,6 +93,13 @@ export function renderCorpTopBar(container, opts = {}) {
             </div>`;
         }).join('');
     }
+    const hasParty = (allUserFactions || []).some(f => f.faction_type === 'party');
+    if (!hasParty) {
+        dropdownHtml += `<div class="corp-dd-item" data-action="found-party" style="border-top:1px solid var(--border-0, rgba(255,255,255,0.06));cursor:pointer;">
+            <span class="corp-dd-type" style="color:var(--amber)">+</span>
+            <span class="corp-dd-name">Found a Political Party</span>
+        </div>`;
+    }
 
     container.innerHTML = `
         <div class="corp-topbar">
@@ -154,6 +161,11 @@ export function renderCorpTopBar(container, opts = {}) {
         dropdown.addEventListener('click', (e) => {
             const item = e.target.closest('.corp-dd-item');
             if (!item) return;
+            if (item.dataset.action === 'found-party') {
+                sessionStorage.setItem('pending_faction_type', 'party');
+                window.location.href = 'select-nation.html';
+                return;
+            }
             const fid = item.dataset.factionId;
             const ftype = item.dataset.factionType;
             sessionStorage.setItem('active_faction_id', fid);

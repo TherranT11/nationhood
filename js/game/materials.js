@@ -65,7 +65,7 @@ export const MATERIALS = [
         priceDrivers: ['rare_minerals', 'physical_infrastructure', 'inflation'],
     },
     {
-        key: 'em',
+        key: 'em_systems',
         name: 'E&M Systems',
         category: 'MANUFACTURED',   // MANUFACTURED = tariff on manufactured goods
         tiers: {
@@ -76,7 +76,7 @@ export const MATERIALS = [
         priceDrivers: ['manufacturing_output', 'digital_infrastructure', 'inflation', 'energy_generation'],
     },
     {
-        key: 'glass',
+        key: 'glass_facades',
         name: 'Glass & Facades',
         category: 'MANUFACTURED',
         tiers: {
@@ -98,7 +98,7 @@ export const MATERIALS = [
         priceDrivers: ['oil_and_gas', 'manufacturing_output', 'inflation', 'fuel_prices'],
     },
     {
-        key: 'heavy',
+        key: 'heavy_parts',
         name: 'Heavy Machinery Parts',
         category: 'MANUFACTURED',
         tiers: {
@@ -170,10 +170,10 @@ export function calculateBasePrice(materialKey, tier, nation) {
         steel:     { LOW: 400, STD: 700, HIGH: 1200 },
         lumber:    { LOW: 80,  STD: 130, HIGH: 200 },
         aggregate: { LOW: 40,  STD: 60,  HIGH: 100 },
-        em:        { LOW: 400, STD: 700, HIGH: 1200 },
-        glass:     { LOW: 300, STD: 500, HIGH: 900 },
+        em_systems:    { LOW: 400, STD: 700, HIGH: 1200 },
+        glass_facades: { LOW: 300, STD: 500, HIGH: 900 },
         asphalt:   { LOW: 120, STD: 200, HIGH: 350 },
-        heavy:     { LOW: 800, STD: 1400, HIGH: 2400 },
+        heavy_parts:   { LOW: 800, STD: 1400, HIGH: 2400 },
     };
 
     const basePrice = BASE_PRICES[materialKey]?.[tier];
@@ -218,10 +218,10 @@ export function calculateSupply(materialKey, tier, nation) {
         steel:     { LOW: 2000, STD: 1500, HIGH: 500 },
         lumber:    { LOW: 8000, STD: 4000, HIGH: 1500 },
         aggregate: { LOW: 15000, STD: 6000, HIGH: 2000 },
-        em:        { LOW: 1000, STD: 700, HIGH: 300 },
-        glass:     { LOW: 1500, STD: 800, HIGH: 300 },
+        em_systems:    { LOW: 1000, STD: 700, HIGH: 300 },
+        glass_facades: { LOW: 1500, STD: 800, HIGH: 300 },
         asphalt:   { LOW: 4000, STD: 2000, HIGH: 800 },
-        heavy:     { LOW: 400, STD: 200, HIGH: 80 },
+        heavy_parts:   { LOW: 400, STD: 200, HIGH: 80 },
     };
 
     const base = BASE_SUPPLY[materialKey]?.[tier] || 0;

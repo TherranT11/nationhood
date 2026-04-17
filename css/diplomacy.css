@@ -5261,3 +5261,348 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
 .ts-opp-icon { font-size:0.85rem; margin-top:1px; flex-shrink:0; }
 .ts-opp-text { font-size:0.68rem; color:var(--accent); line-height:1.45; }
 .ts-opp-text strong { font-family:var(--font-mono); font-size:0.72rem; display:block; letter-spacing:0.03em; margin-bottom:1px; }
+
+/* ═══════════════════════════════════════════════════
+   TRADE NEGOTIATION MODAL
+   ═══════════════════════════════════════════════════ */
+.trade-neg-modal-content {
+  background: var(--bg-2, #1a1a17);
+  border: 1px solid var(--border-subtle, rgba(200,196,184,0.1));
+  border-radius: 4px;
+  max-width: 920px;
+  width: 94%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.trade-neg-modal-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
+  background: var(--bg-card, #1c1c18);
+  flex-shrink: 0;
+  position: relative;
+}
+.trade-neg-header__nations {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+.trade-neg-header__nation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.trade-neg-header__flag {
+  width: 40px;
+  height: 27px;
+  object-fit: cover;
+  border: 1px solid var(--border-main, rgba(255,255,255,0.06));
+}
+.trade-neg-header__name {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-bright, #f0efe6);
+  letter-spacing: 0.03em;
+}
+.trade-neg-header__title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--text-dim, #4a4940);
+  text-transform: uppercase;
+  text-align: center;
+  min-width: 200px;
+}
+.trade-neg-header__close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  color: var(--text-dim, #4a4940);
+  cursor: pointer;
+  line-height: 1;
+}
+.trade-neg-header__close:hover { color: var(--text-bright, #f0efe6); }
+
+/* ── Body: two-column layout ── */
+.trade-neg-modal-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.trade-neg-main {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border-main, rgba(255,255,255,0.06));
+}
+.trade-neg-chat {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.trade-neg-chat__header {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim, #4a4940);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
+  flex-shrink: 0;
+}
+.trade-neg-chat__messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 300px;
+}
+.trade-neg-chat__input {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-main, rgba(255,255,255,0.06));
+  flex-shrink: 0;
+}
+.trade-neg-chat__input input {
+  flex: 1;
+  padding: 7px 10px;
+  background: var(--bg-1, #141412);
+  border: 1px solid var(--border-main, rgba(255,255,255,0.06));
+  border-radius: 3px;
+  color: var(--text-bright, #f0efe6);
+  font-family: var(--font-sans, 'IBM Plex Sans');
+  font-size: 12px;
+  outline: none;
+}
+.trade-neg-chat__input input:focus {
+  border-color: var(--accent, #5aafa5);
+}
+.trade-neg-chat__input input::placeholder {
+  color: var(--text-ghost, #333229);
+}
+.trade-neg-chat__input button {
+  padding: 7px 14px;
+  background: var(--accent, #5aafa5);
+  border: none;
+  border-radius: 3px;
+  color: #000;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+.trade-neg-chat__input button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ── Chat message bubbles ── */
+.trade-neg-msg {
+  max-width: 90%;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary, #c4c2b8);
+}
+.trade-neg-msg--sent {
+  align-self: flex-end;
+  background: rgba(90,175,165,0.12);
+  border: 1px solid rgba(90,175,165,0.2);
+}
+.trade-neg-msg--received {
+  align-self: flex-start;
+  background: var(--bg-card, #1c1c18);
+  border: 1px solid var(--border-main, rgba(255,255,255,0.06));
+}
+.trade-neg-msg--system {
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim, #4a4940);
+  font-style: italic;
+  background: none;
+  border: none;
+  padding: 4px 0;
+}
+.trade-neg-msg__sender {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent, #5aafa5);
+  margin-bottom: 2px;
+  letter-spacing: 0.02em;
+}
+.trade-neg-msg__time {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-ghost, #333229);
+  margin-top: 2px;
+  text-align: right;
+}
+
+/* ── Footer ── */
+.trade-neg-modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-main, rgba(255,255,255,0.06));
+  background: var(--bg-card, #1c1c18);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.trade-neg-footer-btn--add {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 8px 16px;
+  color: var(--accent, #5aafa5);
+  background: transparent;
+  border: 1px solid var(--accent, #5aafa5);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.trade-neg-footer-btn--add:hover { background: rgba(90,175,165,0.08); }
+
+/* ── Articles ── */
+.trade-neg-article {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
+}
+.trade-neg-article__num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent, #5aafa5);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.trade-neg-article__text {
+  font-size: 13px;
+  color: var(--text-primary, #c4c2b8);
+  line-height: 1.6;
+}
+.trade-neg-article__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim, #4a4940);
+}
+.trade-neg-article__action {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  color: #c55;
+  cursor: pointer;
+  padding: 2px 6px;
+  border: 1px solid rgba(204,85,85,0.2);
+  background: rgba(204,85,85,0.04);
+}
+.trade-neg-article__action:hover { background: rgba(204,85,85,0.1); }
+.trade-neg-article__strike {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--amber, #b8860b);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* ── Add Article Form ── */
+.trade-neg-add-form {
+  padding: 14px 16px;
+  border: 1px solid var(--accent, #5aafa5);
+  background: rgba(90,175,165,0.04);
+  margin: 12px 0;
+}
+.trade-neg-add-form__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent, #5aafa5);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.trade-neg-add-form textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-1, #141412);
+  border: 1px solid var(--border-main, rgba(255,255,255,0.06));
+  color: var(--text-bright, #f0efe6);
+  font-family: var(--font-sans, 'IBM Plex Sans');
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+.trade-neg-add-form textarea:focus { border-color: var(--accent, #5aafa5); }
+.trade-neg-add-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+.trade-neg-add-form__counter {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-dim);
+  text-align: right;
+  margin-top: 3px;
+}
+.trade-neg-withdraw-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 8px 20px;
+  color: #c55;
+  background: transparent;
+  border: 1px solid #c55;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.trade-neg-withdraw-btn:hover {
+  background: rgba(204,85,85,0.08);
+}
+.trade-neg-withdraw-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  color: var(--text-dim);
+  border-color: var(--text-dim);
+}
+
+/* ── Greyed-out state (after withdrawal) ── */
+.trade-neg-chat--ended {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .trade-neg-modal-content { max-width: 98%; }
+  .trade-neg-modal-body { flex-direction: column; }
+  .trade-neg-main { border-right: none; border-bottom: 1px solid var(--border-main); }
+  .trade-neg-chat { width: 100%; min-height: 250px; }
+  .trade-neg-header__nations { flex-wrap: wrap; gap: 10px; }
+  .trade-neg-header__title { min-width: auto; }
+}

@@ -70,6 +70,7 @@
 <div id="subtab-trade" class="diplo-subtab-content" style="display:none;">
     <div id="trade-page" style="padding:0 12px 12px;">
         <div id="trade-header-stats"></div>
+        <div id="trade-agreements-row" style="margin-top:8px;"></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
             <div id="trade-left" style="width:480px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;"></div>
             <div id="trade-right" style="flex:1;display:flex;flex-direction:column;gap:8px;"></div>
@@ -129,6 +130,39 @@
     <div class="modal-overlay" id="ipo-create-modal">
         <div class="ipo-modal-content" id="ipo-create-modal-inner"></div>
     </div>
+
+</div>
+
+<!-- ═══ Trade Negotiation Modal (must be outside page container for position:fixed) ═══ -->
+<div class="modal-overlay" id="trade-neg-modal" onclick="/* do not close on outside click */">
+    <div class="trade-neg-modal-content" onclick="event.stopPropagation();">
+        <div class="trade-neg-modal-header" id="trade-neg-header"></div>
+        <div class="trade-neg-modal-body">
+            <div class="trade-neg-main" id="trade-neg-main">
+                <div id="trade-neg-articles"></div>
+                <div id="trade-neg-add-article-form" style="display:none;"></div>
+            </div>
+            <div class="trade-neg-chat" id="trade-neg-chat-panel">
+                <div class="trade-neg-chat__header">Trade Negotiations Discuss</div>
+                <div class="trade-neg-chat__messages" id="trade-neg-chat-messages"></div>
+                <div class="trade-neg-chat__input" id="trade-neg-chat-input-bar">
+                    <input type="text" id="trade-neg-chat-input" placeholder="Type a message..." maxlength="2000">
+                    <button id="trade-neg-chat-send" disabled>Send</button>
+                </div>
+            </div>
+        </div>
+        <div class="trade-neg-modal-footer">
+            <div style="display:flex;gap:8px;">
+                <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-structured-btn" onclick="negStructuredArticleOpen()">Add Article</button>
+                <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-article-btn" onclick="negArticleShowForm()">Add Text Article</button>
+                <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-name-btn" onclick="negNameAgreementOpen()" style="border-color:var(--amber);color:var(--amber);">Name Agreement</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-left:auto;">
+                <button id="trade-neg-agreement-btn" onclick="negAgreementToggle()" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:8px 16px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:pointer;transition:all 0.15s;">Not in Agreement [0/2]</button>
+                <button class="trade-neg-withdraw-btn" id="trade-neg-withdraw-btn" onclick="withdrawFromNegotiations()">Withdraw from Negotiations</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Shared Scripts -->
@@ -144,7 +178,7 @@ import { fetchActiveCoalition, detectHeadFaction, loadSeats } from './js/game/go
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement } from './js/game/diplomacy-constants.js';
 import { syncVoteTallies } from './js/game/bills.js';
-import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne } from './js/game/trade-constants.js';
+import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, SECTOR_DISPLAY_UNITS } from './js/game/trade-constants.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
 import { getNationNames } from './js/game/political-actions.js';
 /**
@@ -163,12 +197,17 @@ const DIPLO_SUBTABS = [
 let _diploActiveSubtab = 'world';
 let _tradeInitialized = false;
 
+let _tradeTabNeedsAttention = false;
+
 function renderDiploSubtabs() {
     const container = document.getElementById('diplo-subtabs');
     if (!container) return;
-    container.innerHTML = DIPLO_SUBTABS.map(tab =>
-        `<div class="diplo-subtab${_diploActiveSubtab === tab.id ? ' active' : ''}" data-tab="${tab.id}">${tab.label}</div>`
-    ).join('');
+    container.innerHTML = DIPLO_SUBTABS.map(tab => {
+        const dot = ((tab.id === 'trade' || tab.id === 'world') && _tradeTabNeedsAttention)
+            ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-left:5px;vertical-align:middle;"></span>'
+            : '';
+        return `<div class="diplo-subtab${_diploActiveSubtab === tab.id ? ' active' : ''}" data-tab="${tab.id}">${tab.label}${dot}</div>`;
+    }).join('');
     container.onclick = (e) => {
         const el = e.target.closest('.diplo-subtab');
         if (!el || el.dataset.tab === _diploActiveSubtab) return;
@@ -176,6 +215,47 @@ function renderDiploSubtabs() {
         renderDiploSubtabs();
         showDiploSubtab();
     };
+}
+
+async function checkTradeNotifications() {
+    const nationId = _worldState?.nation?.id;
+    const factionId = _worldState?.faction?.id;
+    if (!nationId || !factionId) { _tradeTabNeedsAttention = false; return; }
+
+    try {
+        // Load active/open negotiations for this nation
+        const { data: negs } = await _supabase.from('trade_negotiations')
+            .select('id, nation_a_id, nation_b_id, approved_by_a, approved_by_b')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .in('status', ['open', 'active']);
+
+        if (!negs || negs.length === 0) { _tradeTabNeedsAttention = false; return; }
+
+        // Check 1: other party agreed but we haven't
+        const weNeedToAgree = negs.some(neg => {
+            const weAreA = neg.nation_a_id === nationId;
+            const myApproved = weAreA ? neg.approved_by_a : neg.approved_by_b;
+            const theirApproved = weAreA ? neg.approved_by_b : neg.approved_by_a;
+            return theirApproved && !myApproved;
+        });
+
+        if (weNeedToAgree) { _tradeTabNeedsAttention = true; return; }
+
+        // Check 2: recent messages from the other side (last 2 ticks)
+        const currentTick = _worldState?.shard?.current_tick || 0;
+        const negIds = negs.map(n => n.id);
+        const { data: recentMsgs } = await _supabase.from('negotiation_messages')
+            .select('id, negotiation_id, sender_nation_id')
+            .in('negotiation_id', negIds)
+            .neq('sender_nation_id', nationId)
+            .eq('is_system', false)
+            .gte('sent_at_tick', currentTick - 2)
+            .limit(1);
+
+        _tradeTabNeedsAttention = (recentMsgs && recentMsgs.length > 0);
+    } catch (_) {
+        _tradeTabNeedsAttention = false;
+    }
 }
 
 function showDiploSubtab() {
@@ -423,6 +503,21 @@ function renderTradeEconomy() {
 
             html += `<div style="padding:10px 18px 14px;background:var(--bg-card);border-bottom:2px solid var(--border-main);">`;
 
+            // Global price per unit
+            const ECON_UNIT_PRICES = {
+                fuel_energy: { price: 85, unit: 'barrel' }, minerals: { price: 120, unit: 'tonne' },
+                grains_staples: { price: 235, unit: 'tonne' }, livestock_dairy: { price: 2800, unit: 'tonne' },
+                fruits_vegetables: { price: 900, unit: 'tonne' }, cash_crops: { price: 1400, unit: 'tonne' },
+                manufactured_goods: { price: 2200, unit: 'TEU' }, arms: { price: 45000, unit: 'unit' },
+            };
+            const globalUnitInfo = ECON_UNIT_PRICES[c.key];
+            if (globalUnitInfo) {
+                html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">GLOBAL PRICE</span>
+                    <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--amber);">$${globalUnitInfo.price.toLocaleString()} <span style="font-weight:400;color:var(--text-dim);font-size:10px;">per ${globalUnitInfo.unit}</span></span>
+                </div>`;
+            }
+
             // Domestic Production
             html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
                 <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">DOMESTIC PRODUCTION</span>
@@ -545,11 +640,14 @@ async function loadShippingData() {
     const nationId = _worldState?.nation?.id;
     if (!nationId) return;
 
+    try {
     // Routes involving our nation
-    const { data: routes } = await _supabase.from('shipping_routes')
+    const { data: routes, error: routeErr } = await _supabase.from('shipping_routes')
         .select('id, origin_nation_id, destination_nation_id, trade_sector, cargo_category, goods_name, trade_volume, estimated_revenue, transit_ticks, demand_level, trade_agreement_id, trade_agreement_name, status, competition_count')
         .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`)
         .eq('status', 'active');
+
+    if (routeErr) return;
 
     _shippingRoutesByAgreement = {};
     const routeIds = [];
@@ -590,6 +688,7 @@ async function loadShippingData() {
             }
         }
     }
+    } catch (_) { /* shipping_routes table may not exist yet */ }
 }
 
 function getAgreementShippingInfo(agreementId) {
@@ -702,21 +801,30 @@ window.rejectShippingApp = async function(appId) {
 // ═══════════════════════════════════════════════════
 
 let _tradeAgreementsList = [];
+let _tradeNegotiationsList = [];
 let _tradeExpandedAgreement = null;
 
 async function loadTradeAgreements() {
     const nationId = _worldState?.nation?.id;
     if (!nationId) return;
 
-    const { data } = await _supabase.from('trade_agreements')
-        .select('*')
-        .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
-        .order('enacted_at_tick', { ascending: false });
-    _tradeAgreementsList = data || [];
+    const [agResult, negResult] = await Promise.all([
+        _supabase.from('trade_agreements')
+            .select('*')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .order('enacted_at_tick', { ascending: false }),
+        _supabase.from('trade_negotiations')
+            .select('id, nation_a_id, nation_b_id, status, agreement_type, opened_at_tick')
+            .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
+            .in('status', ['open', 'active', 'ratification'])
+            .order('opened_at_tick', { ascending: false }),
+    ]);
+    _tradeAgreementsList = agResult.data || [];
+    _tradeNegotiationsList = negResult.data || [];
 }
 
 function renderTradeAgreements() {
-    const left = document.getElementById('trade-left');
+    const left = document.getElementById('trade-agreements-row');
     if (!left) return;
     const nationId = _worldState?.nation?.id;
     const currentTk = _worldState?.shard?.current_tick || 0;
@@ -731,7 +839,39 @@ function renderTradeAgreements() {
             <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${active.length} active${expired.length > 0 ? ' \u00B7 ' + expired.length + ' expired' : ''}</span>
         </div>`;
 
-    if (agreements.length === 0) {
+    // Ongoing trade negotiations (shown before agreements)
+    const ongoingNegs = _tradeNegotiationsList || [];
+    for (const neg of ongoingNegs) {
+        const partnerId = neg.nation_a_id === nationId ? neg.nation_b_id : neg.nation_a_id;
+        const partner = (_worldAllNations || []).find(n => n.id === partnerId);
+        const partnerName = partner?.name || 'Unknown';
+        const myName = _worldState?.nation?.name || 'Your Nation';
+        const myFlag = _worldState?.nation?.flag_url || `assets/flags/${myName}.png`;
+        const partnerFlag = partner?.flag_url || `assets/flags/${partnerName}.png`;
+
+        const isRatifying = neg.status === 'ratification';
+        const negBadgeColor = isRatifying ? 'var(--green)' : 'var(--amber)';
+        const negBadgeLabel = isRatifying ? 'RATIFYING' : 'ONGOING';
+        const negBadgeBg = isRatifying ? 'rgba(92,204,92,0.08)' : 'rgba(184,134,11,0.08)';
+        const negBadgeBorder = isRatifying ? 'rgba(92,204,92,0.2)' : 'rgba(184,134,11,0.2)';
+        const negBorderColor = isRatifying ? 'var(--green)' : 'var(--amber)';
+
+        html += `<div style="padding:12px 18px;border-bottom:1px solid var(--border-main);cursor:pointer;border-left:3px solid ${negBorderColor};"
+            onclick="openTradeNegModal('${partnerId}')">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <img src="${escapeHtml(myFlag)}" alt="" style="width:24px;height:16px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'">
+                    <span style="font-size:13px;font-weight:600;color:var(--text-bright);">${escapeHtml(myName)}</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">${isRatifying ? 'Ratification' : 'Trade Discussions'}</span>
+                    <span style="font-size:13px;font-weight:600;color:var(--text-bright);">${escapeHtml(partnerName)}</span>
+                    <img src="${escapeHtml(partnerFlag)}" alt="" style="width:24px;height:16px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'">
+                </div>
+                <span class="tr-badge" style="font-size:10px;padding:3px 10px;color:${negBadgeColor};background:${negBadgeBg};border-color:${negBadgeBorder};">${negBadgeLabel}</span>
+            </div>
+        </div>`;
+    }
+
+    if (agreements.length === 0 && ongoingNegs.length === 0) {
         html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);font-style:italic;">No trade agreements.</div>`;
     }
 
@@ -782,29 +922,30 @@ function renderTradeAgreements() {
             const articles = ag.articles || [];
             html += `<div style="padding:0 18px 14px;">`;
 
-            // Render articles
+            // Render articles (supports both old-style { type, data } and new-style { article_type, data } + { text })
             if (articles.length > 0) {
                 html += `<div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;margin:8px 0 6px;">ARTICLES</div>`;
+                const ROMAN_AG = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
                 for (let ai = 0; ai < articles.length; ai++) {
                     const art = articles[ai];
                     if (art._struck) continue;
-                    const artLabel = TRADE_ARTICLE_TYPES?.[art.type]?.label || art.type || 'Article';
-                    let summary = '';
+                    const num = ROMAN_AG[ai] || (ai + 1);
 
-                    // Build summary from article data
-                    if (art.data) {
-                        if (art.data.sectors && art.data.sectors.length > 0) {
-                            summary = art.data.sectors.map(s => TRADE_SECTOR_LABELS[s] || s).join(', ');
-                        }
-                        if (art.data.percentage) summary += (summary ? ' \u00B7 ' : '') + art.data.percentage + '%';
-                        if (art.data.duration_ticks) summary += (summary ? ' \u00B7 ' : '') + art.data.duration_ticks + ' ticks';
-                        if (art.data.sector) summary += (summary ? '' : '') + (TRADE_SECTOR_LABELS[art.data.sector] || art.data.sector);
-                        if (art.data.volume_pct) summary += (summary ? ' \u00B7 ' : '') + art.data.volume_pct + '% volume';
+                    let artLabel, summary;
+                    if (art.article_type) {
+                        artLabel = art.article_type.replace(/_/g, ' ').toUpperCase();
+                        summary = negStructuredArticleSummary(art);
+                    } else if (art.text) {
+                        artLabel = 'TEXT';
+                        summary = art.text;
+                    } else {
+                        artLabel = TRADE_ARTICLE_TYPES?.[art.type]?.label || art.type || 'Article';
+                        summary = renderTradeArticleSummary(art, nationId);
                     }
 
                     html += `<div style="padding:3px 6px;margin-bottom:2px;background:var(--bg-card);border:1px solid var(--border-main);">
-                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-secondary);">Art. ${ai + 1} \u2014 ${escapeHtml(artLabel)}</div>
-                        ${summary ? `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(summary)}</div>` : ''}
+                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-secondary);">Art. ${num} \u2014 ${escapeHtml(artLabel)}</div>
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(summary || '')}</div>
                     </div>`;
                 }
             }
@@ -822,6 +963,10 @@ function renderTradeAgreements() {
                 ${ag.auto_renew ? `<div style="padding:4px 6px;background:var(--bg-card);border:1px solid var(--border-main);">
                     <div style="font-family:var(--font-mono);font-size:7px;color:var(--green);">AUTO-RENEW</div>
                 </div>` : ''}
+                <div style="padding:4px 6px;background:var(--bg-card);border:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">EFFICIENCY</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${(ag.efficiency || 0.85) >= 0.88 ? 'var(--green)' : 'var(--amber)'};">${Math.round((ag.efficiency || 0.85) * 100)}%</div>
+                </div>
             </div>`;
 
             // Logistics / shipping corporations
@@ -927,25 +1072,16 @@ function renderTradeAgreements() {
 
     html += `</div>`;
 
-    // Append after existing economy panel (don't replace it)
-    const existingAgreements = left.querySelector('.tr-agreements-wrapper');
-    if (existingAgreements) {
-        existingAgreements.innerHTML = html;
-    } else {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'tr-agreements-wrapper';
-        wrapper.innerHTML = html;
-        left.appendChild(wrapper);
+    left.innerHTML = html;
 
-        // Click handler for expand/collapse
-        wrapper.onclick = (e) => {
-            const row = e.target.closest('.tr-agreement-row');
-            if (!row) return;
-            const agId = row.dataset.agId;
-            _tradeExpandedAgreement = _tradeExpandedAgreement === agId ? null : agId;
-            renderTradeAgreements();
-        };
-    }
+    // Click handler for expand/collapse
+    left.onclick = (e) => {
+        const row = e.target.closest('.tr-agreement-row');
+        if (!row) return;
+        const agId = row.dataset.agId;
+        _tradeExpandedAgreement = _tradeExpandedAgreement === agId ? null : agId;
+        renderTradeAgreements();
+    };
 }
 
 // ── All-nations trade flow data for partner analysis ──
@@ -1171,10 +1307,35 @@ function renderTradePartners() {
 
             html += `</div></div>`;
 
-            // Action buttons
+            // Active trade agreements with this partner
+            const partnerAgreements = (_tradeAgreementsList || []).filter(ag =>
+                ag.status === 'active' && (ag.nation_a_id === n.id || ag.nation_b_id === n.id));
+            if (partnerAgreements.length > 0) {
+                html += `<div style="padding:10px 18px;border-top:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--green);letter-spacing:1px;margin-bottom:6px;">ACTIVE TRADE AGREEMENTS</div>`;
+                for (const ag of partnerAgreements) {
+                    const typeLabel = AGREE_TYPE_LABELS[ag.agreement_type] || ag.agreement_type;
+                    const durLabel = ag.duration_type === 'permanent' ? 'Permanent' : (ag.expires_at_tick ? (ag.expires_at_tick - (_worldState?.shard?.current_tick || 0)) + ' ticks left' : '');
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.1);">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:11px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</span>
+                            <span class="tr-badge" style="font-size:7px;color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);">ACTIVE</span>
+                        </div>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${durLabel}</span>
+                    </div>`;
+                }
+                html += '</div>';
+            }
+
+            // Action buttons — check for ongoing negotiation with this partner
+            const hasOngoingNeg = _tradeNegotiationsList.some(neg =>
+                (neg.nation_a_id === n.id || neg.nation_b_id === n.id));
+            const tradeBtn = hasOngoingNeg
+                ? `<div class="tr-action-btn tr-action-btn--primary" onclick="event.stopPropagation();openTradeNegModal('${n.id}');">TRADE DISCUSSIONS</div>`
+                : `<div class="tr-action-btn tr-action-btn--primary" onclick="event.stopPropagation();openTradeNegModal('${n.id}');">DRAFT TRADE AGREEMENT</div>`;
             html += `<div style="padding:10px 18px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;gap:6px;">
                 <div class="tr-action-btn" onclick="event.stopPropagation();selectWorldNation('${n.id}');_diploActiveSubtab='world';renderDiploSubtabs();showDiploSubtab();">NATION INFO</div>
-                <div class="tr-action-btn tr-action-btn--primary">DRAFT TRADE AGREEMENT</div>
+                ${tradeBtn}
             </div>`;
 
             html += `</div>`;
@@ -2113,6 +2274,9 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
 initPage('diplomacy', async (state) => {
     // ── Subtab navigation ──
     renderDiploSubtabs();
+
+    // Check for trade notifications (non-blocking)
+    checkTradeNotifications().then(() => renderDiploSubtabs()).catch(() => {});
 
     // ── World Map: Pan + Zoom ──
     initWorldMap();
@@ -5438,7 +5602,7 @@ async function renderNationCardBody(nationId) {
                 </div>
                 <div class="info-row">
                     <span class="info-label">Stability</span>
-                    <span class="info-value" style="color:${getStatColor(targetNation.stability)}">${targetNation.stability ?? '—'}%</span>
+                    <span class="info-value" style="color:${getStatColor(targetNation.stability)}">${targetNation.stability != null ? Number(targetNation.stability).toFixed(1) : '—'}%</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Civil Unrest</span>
@@ -11857,7 +12021,7 @@ async function renderRelationDetail(nationId) {
         html += '<div><div class="detail-label">Our Ambassador' + ambTermStr(ambassador) + '</div><div class="detail-value">' + (ambName ? escapeHtml(ambName) + escapeHtml(ambParty) : 'None') + '</div></div>';
         html += '<div><div class="detail-label">Their Ambassador' + ambTermStr(theirAmbassador) + '</div><div class="detail-value">' + (theirAmbName ? escapeHtml(theirAmbName) + escapeHtml(theirAmbParty) : 'None') + '</div></div>';
         html += '<div><div class="detail-label">Population</div><div class="detail-value">' + formatNumber(targetNation.population) + '</div></div>';
-        html += '<div><div class="detail-label">Stability</div><div class="detail-value">' + (targetNation.stability ?? '—') + '%</div></div>';
+        html += '<div><div class="detail-label">Stability</div><div class="detail-value">' + (targetNation.stability != null ? Number(targetNation.stability).toFixed(1) : '—') + '%</div></div>';
         html += '</div>';
 
         // Relation bar
@@ -21409,6 +21573,1421 @@ window.previewExistingOrg = previewExistingOrg;
 window.requestToJoinOrg = requestToJoinOrg;
 window.openIPOExpelModal = openIPOExpelModal;
 window.submitIPOExpel = submitIPOExpel;
+
+// ═══════════════════════════════════════════════════
+// TRADE NEGOTIATION MODAL
+// ═══════════════════════════════════════════════════
+
+let _activeNegModal = null;
+let _negChatChannel = null;
+
+// Priority: Minister of Trade > PM > Ambassador
+
+async function resolveNegotiationChatRole(partnerNationId) {
+    const faction = _worldState?.faction;
+    const nation = _worldState?.nation;
+    if (!faction || !nation) return { canChat: false, role: null, displayName: null };
+
+    // Check Minister of Trade
+    const { data: motEntry } = await _supabase.from('ministries')
+        .select('minister_first_name, minister_last_name')
+        .eq('nation_id', nation.id)
+        .eq('ministry_key', 'trade')
+        .eq('party_id', faction.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (motEntry) {
+        const name = ((motEntry.minister_first_name || '') + ' ' + (motEntry.minister_last_name || '')).trim() || 'Minister';
+        return { canChat: true, role: 'trade_minister', displayName: name + ' (Minister of Trade)' };
+    }
+
+    // Check PM / Head of Government
+    const coalition = await fetchActiveCoalition(_supabase, nation.id);
+    let isPM = false;
+    if (isGovernmentPresidential(nation)) {
+        isPM = coalition?.lead_party_id === faction.id;
+    } else {
+        const alloc = coalition?.ministry_allocations || {};
+        isPM = alloc.prime_minister === faction.id;
+    }
+
+    if (isPM) {
+        const name = ((nation.head_of_state_first_name || '') + ' ' + (nation.head_of_state_last_name || '')).trim() || 'PM';
+        return { canChat: true, role: 'prime_minister', displayName: name + ' (PM)' };
+    }
+
+    // Check Ambassador to the partner nation
+    const { data: ambEntries } = await _supabase.from('ambassadors')
+        .select('ambassador_first_name, ambassador_last_name, target_nation_id')
+        .eq('nation_id', nation.id)
+        .eq('faction_id', faction.id)
+        .eq('target_nation_id', partnerNationId)
+        .eq('is_active', true)
+        .eq('status', 'active')
+        .limit(1);
+
+    if (ambEntries && ambEntries.length > 0) {
+        const amb = ambEntries[0];
+        const name = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim() || 'Ambassador';
+        const partnerName = (_worldAllNations || []).find(n => n.id === partnerNationId)?.name || 'Unknown';
+        return { canChat: true, role: 'ambassador', displayName: name + ' (Ambassador to ' + partnerName + ')' };
+    }
+
+    return { canChat: false, role: null, displayName: null };
+}
+
+let _negModalOpening = false;
+
+async function openTradeNegModal(partnerNationId) {
+    if (_negModalOpening) return;
+    if (_activeNegModal) closeTradeNegModal();
+    _negModalOpening = true;
+
+    try {
+    const myNation = _worldState?.nation;
+    if (!myNation) { alert('Nation data not loaded.'); return; }
+    const partner = (_worldAllNations || []).find(n => n.id === partnerNationId);
+    if (!partner) { alert('Partner nation not found.'); return; }
+
+    // Check or create a trade_negotiations row
+    const a = myNation.id < partnerNationId ? myNation.id : partnerNationId;
+    const b = myNation.id < partnerNationId ? partnerNationId : myNation.id;
+
+    let { data: neg, error: negErr } = await _supabase.from('trade_negotiations')
+        .select('id, status, draft_articles, approved_by_a, approved_by_b, nation_a_id, nation_b_id, agreement_type, agreement_name')
+        .eq('nation_a_id', a).eq('nation_b_id', b)
+        .in('status', ['open', 'active'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (negErr) { alert('Failed to load negotiations: ' + negErr.message); return; }
+
+    if (!neg) {
+        const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shardData?.current_tick || 0;
+        const { data: created, error: createErr } = await _supabase.from('trade_negotiations').insert({
+            nation_a_id: a,
+            nation_b_id: b,
+            status: 'open',
+            agreement_type: 'fta',
+            agreement_name: myNation.name + '-' + partner.name + ' Trade Agreement',
+            opened_at_tick: tick,
+            expires_at_tick: tick + 48,
+        }).select('id, status, draft_articles, approved_by_a, approved_by_b, nation_a_id, nation_b_id, agreement_type, agreement_name').single();
+        if (createErr) { alert('Failed to start negotiation: ' + createErr.message); return; }
+        neg = created;
+
+        // Fire event: trade negotiations begun
+        const eventText = 'Trade Minister of ' + myNation.name + ' has begun trade negotiations with the nation of ' + partner.name + '.';
+        _supabase.from('event_log').insert([myNation.id, partnerNationId].map(nid => ({
+            nation_id: nid,
+            event_name: 'Trade Negotiations Opened',
+            trigger_key: 'trade_negotiation_opened',
+            category: 'trade',
+            description_chosen: eventText,
+            fired_at_tick: tick,
+        }))).then(() => {});
+    }
+
+    // Resolve chat role
+    const chatRole = await resolveNegotiationChatRole(partnerNationId);
+
+    const myFlag = myNation.flag_url || `assets/flags/${myNation.name}.png`;
+    const partnerFlag = partner.flag_url || `assets/flags/${partner.name}.png`;
+
+    const weAreA = neg.nation_a_id === myNation.id;
+
+    _activeNegModal = {
+        negotiationId: neg.id,
+        myNationId: myNation.id,
+        partnerNationId: partnerNationId,
+        myNationName: myNation.name,
+        partnerNationName: partner.name,
+        myFlag,
+        partnerFlag,
+        status: neg.status,
+        chatRole,
+        articles: neg.draft_articles || [],
+        weAreA,
+        agreementType: neg.agreement_type,
+        agreementName: neg.agreement_name,
+        approvedByA: neg.approved_by_a,
+        approvedByB: neg.approved_by_b,
+    };
+
+    // Render header
+    const header = document.getElementById('trade-neg-header');
+    header.innerHTML = `
+        <div class="trade-neg-header__nations">
+            <div class="trade-neg-header__nation">
+                <img src="${escapeHtml(myFlag)}" alt="" class="trade-neg-header__flag" onerror="this.style.display='none'">
+                <span class="trade-neg-header__name">${escapeHtml(myNation.name)}</span>
+            </div>
+            <div class="trade-neg-header__title" id="trade-neg-title-text">${escapeHtml(neg.agreement_name || (myNation.name + '-' + partner.name + ' Trade Agreement'))}</div>
+            <div class="trade-neg-header__nation">
+                <span class="trade-neg-header__name">${escapeHtml(partner.name)}</span>
+                <img src="${escapeHtml(partnerFlag)}" alt="" class="trade-neg-header__flag" onerror="this.style.display='none'">
+            </div>
+        </div>
+        <span class="trade-neg-header__close" onclick="closeTradeNegModal()">&times;</span>
+    `;
+
+    document.getElementById('trade-neg-modal').classList.add('active');
+
+    // Configure chat input based on role
+    const inputBar = document.getElementById('trade-neg-chat-input-bar');
+    const chatMessages = document.getElementById('trade-neg-chat-messages');
+
+    if (chatRole.canChat) {
+        inputBar.style.display = 'flex';
+        inputBar.innerHTML = `
+            <input type="text" id="trade-neg-chat-input" placeholder="Chatting as ${escapeHtml(chatRole.displayName)}..." maxlength="2000">
+            <button id="trade-neg-chat-send" disabled>Send</button>
+        `;
+        // Wire input events
+        const input = document.getElementById('trade-neg-chat-input');
+        const sendBtn = document.getElementById('trade-neg-chat-send');
+        input.addEventListener('input', () => { sendBtn.disabled = !input.value.trim(); });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && input.value.trim()) {
+                e.preventDefault();
+                negChatSend();
+            }
+        });
+        sendBtn.addEventListener('click', () => negChatSend());
+    } else {
+        inputBar.style.display = 'none';
+    }
+
+    // Render articles in left panel + agreement button
+    negArticlesRender();
+    negAgreementRender();
+
+    // Update Name Agreement button state
+    const nameBtn = document.getElementById('trade-neg-name-btn');
+    if (nameBtn && _activeNegModal.agreementName && _activeNegModal.agreementName.trim()) {
+        nameBtn.style.borderColor = 'var(--green)';
+        nameBtn.style.color = 'var(--green)';
+        nameBtn.textContent = 'Rename Agreement';
+    }
+
+    // Load existing messages + start realtime
+    await negChatLoad(neg.id);
+    negChatSubscribe(neg.id);
+
+    } catch (err) {
+        alert('Trade negotiation error: ' + (err.message || err));
+    } finally {
+        _negModalOpening = false;
+    }
+}
+
+// ── Chat: Render a single message ──
+
+function negChatRenderMsg(msg) {
+    const factionId = _worldState?.faction?.id;
+    if (msg.is_system) {
+        return `<div class="trade-neg-msg trade-neg-msg--system">${escapeHtml(msg.message_text)}</div>`;
+    }
+    const isMine = msg.sender_faction_id === factionId;
+    const cls = isMine ? 'trade-neg-msg trade-neg-msg--sent' : 'trade-neg-msg trade-neg-msg--received';
+    const senderHtml = !isMine
+        ? `<div class="trade-neg-msg__sender">${escapeHtml(msg.sender_display_name)}</div>`
+        : '';
+    const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    return `<div class="${cls}">
+        ${senderHtml}
+        <div>${escapeHtml(msg.message_text)}</div>
+        <div class="trade-neg-msg__time">${time}</div>
+    </div>`;
+}
+
+// ── Chat: Load existing messages ──
+
+async function negChatLoad(negotiationId) {
+    const container = document.getElementById('trade-neg-chat-messages');
+    if (!container) return;
+
+    const { data: messages, error } = await _supabase
+        .from('negotiation_messages')
+        .select('*')
+        .eq('negotiation_id', negotiationId)
+        .order('created_at', { ascending: true })
+        .limit(200);
+
+    if (error) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:#c55;font-family:var(--font-mono);font-size:10px;">Failed to load messages.</div>';
+        return;
+    }
+
+    if (!messages || messages.length === 0) {
+        const canChat = _activeNegModal?.chatRole?.canChat;
+        const partnerName = _activeNegModal?.partnerNationName || 'the partner nation';
+        container.innerHTML = canChat
+            ? '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;">No messages yet. Start the conversation.</div>'
+            : `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;padding:20px;">
+                <div style="color:var(--text-dim);font-family:var(--font-mono);font-size:10px;text-align:center;">No messages yet.</div>
+                <div style="color:var(--text-ghost);font-family:var(--font-mono);font-size:9px;text-align:center;line-height:1.5;max-width:220px;">
+                    You need to hold the position of PM, Minister of Trade, or Ambassador to ${escapeHtml(partnerName)} to participate in this chat.
+                </div>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = messages.map(m => negChatRenderMsg(m)).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+// ── Chat: Send a message ──
+
+let _negChatSending = false;
+
+async function negChatSend() {
+    if (_negChatSending || !_activeNegModal?.chatRole?.canChat) return;
+    const input = document.getElementById('trade-neg-chat-input');
+    const sendBtn = document.getElementById('trade-neg-chat-send');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    _negChatSending = true;
+    if (sendBtn) sendBtn.disabled = true;
+    input.value = '';
+
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shardData?.current_tick || 0;
+
+    const msgRow = {
+        negotiation_id: _activeNegModal.negotiationId,
+        sender_nation_id: _activeNegModal.myNationId,
+        sender_faction_id: _worldState.faction.id,
+        sender_role: _activeNegModal.chatRole.role,
+        sender_display_name: _activeNegModal.chatRole.displayName,
+        message_text: text,
+        is_system: false,
+        sent_at_tick: tick,
+    };
+
+    const { error } = await _supabase.from('negotiation_messages').insert(msgRow);
+
+    if (error) {
+        input.value = text;
+        alert('Failed to send: ' + error.message);
+    } else {
+        // Optimistic render
+        const container = document.getElementById('trade-neg-chat-messages');
+        if (container) {
+            const empty = container.querySelector('[style*="justify-content:center"]');
+            if (empty && !container.querySelector('.trade-neg-msg')) empty.remove();
+            container.insertAdjacentHTML('beforeend', negChatRenderMsg({
+                ...msgRow,
+                created_at: new Date().toISOString(),
+            }));
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    _negChatSending = false;
+    if (sendBtn) sendBtn.disabled = !input.value.trim();
+    input.focus();
+}
+
+// ── Chat: Realtime subscription ──
+
+function negChatSubscribe(negotiationId) {
+    if (_negChatChannel) {
+        _supabase.removeChannel(_negChatChannel);
+        _negChatChannel = null;
+    }
+
+    _negChatChannel = _supabase
+        .channel('neg-chat-' + negotiationId)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'negotiation_messages',
+            filter: `negotiation_id=eq.${negotiationId}`,
+        }, (payload) => {
+            const msg = payload.new;
+            if (!msg) return;
+            // Skip own messages (already optimistically rendered)
+            if (msg.sender_faction_id === _worldState?.faction?.id) return;
+
+            const container = document.getElementById('trade-neg-chat-messages');
+            if (!container) return;
+            const empty = container.querySelector('[style*="justify-content:center"]');
+            if (empty && !container.querySelector('.trade-neg-msg')) empty.remove();
+            container.insertAdjacentHTML('beforeend', negChatRenderMsg(msg));
+            container.scrollTop = container.scrollHeight;
+
+            // If the other side withdrew, close the modal
+            if (msg.is_system && msg.message_text?.includes('withdrawn')) {
+                if (_activeNegModal) _activeNegModal.status = 'cancelled';
+                setTimeout(() => {
+                    closeTradeNegModal();
+                    alert('The other party has withdrawn from negotiations.');
+                    loadTradeAgreements().then(() => { renderTradeAgreements(); renderTradePartners(); }).catch(() => {});
+                }, 500);
+            }
+        })
+        .subscribe();
+}
+
+// ── Articles: Render ──
+
+function negArticlesRender() {
+    const container = document.getElementById('trade-neg-articles');
+    if (!container || !_activeNegModal) return;
+
+    const articles = _activeNegModal.articles || [];
+    const myNationId = _activeNegModal.myNationId;
+
+    if (articles.length === 0) {
+        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:200px;color:var(--text-dim);font-family:var(--font-mono);font-size:11px;">No articles yet. Click "Add Text Article" to begin drafting.</div>';
+        return;
+    }
+
+    const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
+
+    let html = '';
+    for (let i = 0; i < articles.length; i++) {
+        const art = articles[i];
+        const num = ROMAN[i] || (i + 1);
+        const isMine = art.author_nation_id === myNationId;
+
+        const hasStrike = !!art.strike_requested_by;
+        const strikeIsMine = art.strike_requested_by === myNationId;
+
+        const artContent = art.article_type
+            ? negStructuredArticleSummary(art)
+            : escapeHtml(art.text);
+        const typeTag = art.article_type
+            ? `<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;padding:1px 5px;color:var(--accent);background:rgba(90,175,165,0.08);border:1px solid rgba(90,175,165,0.15);margin-left:6px;vertical-align:middle;">${escapeHtml(art.article_type.replace('_',' ').toUpperCase())}</span>`
+            : '';
+
+        // Demand context for trade_flow articles
+        let demandCtxHtml = '';
+        if (art.article_type === 'trade_flow' && art.data) {
+            const d = art.data;
+            const buyerNationId = d.direction === 'a_buys_b' ? _activeNegModal.myNationId : _activeNegModal.partnerNationId;
+            const buyerName = d.direction === 'a_buys_b' ? _activeNegModal.myNationName : _activeNegModal.partnerNationName;
+            const isBuyerMe = buyerNationId === _activeNegModal.myNationId;
+
+            if (isBuyerMe && _tradeFlows[d.commodity]) {
+                const flow = _tradeFlows[d.commodity];
+                const domesticDemand = Number(flow.import_demand || 0);
+                const alreadyImporting = Number(flow.import_volume || 0);
+                const remaining = Math.max(0, domesticDemand - alreadyImporting);
+                const tradeVol = Number(d.volume || 0);
+                const overshoot = tradeVol > remaining;
+                const color = overshoot ? 'var(--amber)' : 'var(--green)';
+                demandCtxHtml = `<div style="font-family:var(--font-mono);font-size:9px;color:${color};margin-top:4px;">
+                    ${escapeHtml(buyerName)}'s remaining demand: ${formatNegMoney(remaining)}/tick
+                    ${remaining > 0 ? '(after domestic production and existing trade)' : '(fully supplied)'}
+                </div>`;
+            }
+        }
+
+        html += `<div class="trade-neg-article">
+            <div class="trade-neg-article__num">Article ${num}.${typeTag}</div>
+            <div class="trade-neg-article__text">${artContent}</div>
+            ${demandCtxHtml}
+            <div class="trade-neg-article__meta">
+                <span>Added by ${escapeHtml(art.author_nation_name || 'Unknown')}</span>
+                ${isMine
+                    ? `<span class="trade-neg-article__action" onclick="negArticleDelete('${art.id}')">Delete</span>`
+                    : (hasStrike && strikeIsMine
+                        ? `<span style="font-family:var(--font-mono);font-size:8px;color:var(--amber);opacity:0.7;">Strike Requested</span>`
+                        : (!hasStrike
+                            ? `<span class="trade-neg-article__action" style="color:var(--amber);border-color:rgba(184,134,11,0.2);background:rgba(184,134,11,0.04);" onclick="negArticleRequestStrike('${art.id}')">Request to Strike</span>`
+                            : ''))
+                }
+            </div>`;
+
+        if (hasStrike && !strikeIsMine) {
+            const requesterName = art.strike_requested_by_name || 'The other party';
+            html += `<div class="trade-neg-article__strike">${escapeHtml(requesterName)} is requesting this article be removed.</div>`;
+        }
+
+        html += '</div>';
+    }
+    container.innerHTML = html;
+}
+
+// ── Name Agreement ──
+
+function negNameAgreementOpen() {
+    if (_activeNegModal?.approvedByA && _activeNegModal?.approvedByB) { return; }
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form || !_activeNegModal) return;
+    const currentName = _activeNegModal.agreementName || '';
+    form.style.display = 'block';
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">Name This Agreement</div>
+        <input id="neg-name-input" type="text" maxlength="120" value="${escapeHtml(currentName)}" placeholder="e.g. Melizea-Hajjara Fuel & Dairy Accord" style="
+            width:100%;padding:8px 10px;background:var(--bg-1);border:1px solid var(--border-main);
+            color:var(--text-bright);font-family:var(--font-sans);font-size:13px;outline:none;box-sizing:border-box;
+        ">
+        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:3px;">120 characters max. Required before both parties can agree.</div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button onclick="negNameAgreementSave()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--amber,#b8860b);border:none;cursor:pointer;">Save Name</button>
+        </div>
+    </div>`;
+    document.getElementById('neg-name-input')?.focus();
+}
+
+let _negNaming = false;
+async function negNameAgreementSave() {
+    if (_negNaming || !_activeNegModal) return;
+    const input = document.getElementById('neg-name-input');
+    const name = (input?.value || '').trim();
+    if (!name) { alert('Enter a name for the agreement.'); return; }
+
+    _negNaming = true;
+    const { error } = await _supabase.from('trade_negotiations')
+        .update({ agreement_name: name })
+        .eq('id', _activeNegModal.negotiationId);
+
+    if (error) { alert('Failed to save name: ' + error.message); _negNaming = false; return; }
+
+    _activeNegModal.agreementName = name;
+    const titleEl = document.getElementById('trade-neg-title-text');
+    if (titleEl) titleEl.textContent = name;
+
+    // Update the Name Agreement button to show it's been set
+    const nameBtn = document.getElementById('trade-neg-name-btn');
+    if (nameBtn) {
+        nameBtn.style.borderColor = 'var(--green)';
+        nameBtn.style.color = 'var(--green)';
+        nameBtn.textContent = 'Rename Agreement';
+    }
+
+    negArticleCancelForm();
+    _negNaming = false;
+}
+
+window.negNameAgreementOpen = negNameAgreementOpen;
+window.negNameAgreementSave = negNameAgreementSave;
+
+// ── Structured Articles: Summary renderer ──
+
+function negStructuredArticleSummary(art) {
+    const d = art.data || {};
+    const nameA = _activeNegModal?.myNationName || 'Nation A';
+    const nameB = _activeNegModal?.partnerNationName || 'Nation B';
+    const sectorLabel = (k) => TRADEABLE_SECTOR_MAP[k]?.label || TRADE_SECTOR_LABELS[k] || k || 'Unknown';
+
+    switch (art.article_type) {
+        case 'transfer': {
+            const dir = d.direction === 'a_to_b' ? (nameA + ' → ' + nameB) : (nameB + ' → ' + nameA);
+            const typeLabel = d.transfer_type === 'recurring' ? 'Recurring' : 'One-Time';
+            const interval = d.transfer_type === 'recurring' ? ' per tick' : '';
+            return `${typeLabel} Transfer: $${formatNegMoney(d.amount)} ${dir}${interval}`;
+        }
+        case 'trade_flow': {
+            const dir = d.direction === 'a_buys_b' ? (nameA + ' buys from ' + nameB) : (nameB + ' buys from ' + nameA);
+            const priceLabel = d.price_modifier === 0 ? 'Market rate' : (d.price_modifier > 0 ? 'Market +' + d.price_modifier + '%' : 'Market ' + d.price_modifier + '%');
+            const durLabel = d.duration === 0 ? 'Continuous' : d.duration + ' ticks';
+            return `${sectorLabel(d.commodity)}: ${dir}, ${formatNegMoney(d.volume)}/tick at ${priceLabel}. Duration: ${durLabel}`;
+        }
+        case 'tariff_reduction': {
+            const sec = sectorLabel(d.sector);
+            const modeLabel = d.mode === 'reciprocal' ? 'Reciprocal' : 'One-sided';
+            return `${sec} Tariff Reduction (${modeLabel}): ${nameA}→${nameB} ${d.a_tariff_from || '?'}% → ${d.a_tariff_to || '?'}%, ${nameB}→${nameA} ${d.b_tariff_from || '?'}% → ${d.b_tariff_to || '?'}%`;
+        }
+        case 'market_access': {
+            const scopeLabel = d.scope === 'all_goods' ? 'All Goods' : sectorLabel(d.scope_sector);
+            const levels = { restricted: 'Restricted', preferential: 'Preferential (reduced tariffs)', free_trade: 'Free Trade (0%)' };
+            const extras = [];
+            if (d.volume_priority) extras.push('Volume priority');
+            if (d.price_priority) extras.push('Price priority');
+            return `Market Access — ${scopeLabel}: ${levels[d.level] || d.level}${extras.length ? '. ' + extras.join(', ') : ''}`;
+        }
+        case 'exit_terms': {
+            const parts = [];
+            parts.push('Min duration: ' + (d.min_duration || 0) + ' ticks');
+            parts.push('Exit notice: ' + (d.exit_notice || 0) + ' ticks');
+            const penalties = { none: 'No penalty', fixed: 'Fixed $' + formatNegMoney(d.penalty_amount || 0), percentage: (d.penalty_pct || 0) + '% of remaining value' };
+            parts.push(penalties[d.penalty_type] || 'No penalty');
+            return `Exit Terms: ${parts.join(', ')}`;
+        }
+        default: return art.text || 'Unknown article type';
+    }
+}
+
+function formatNegMoney(v) {
+    const n = Number(v) || 0;
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(0) + 'k';
+    return n.toLocaleString();
+}
+
+// ── Structured Articles: Type selector ──
+
+const NEG_ARTICLE_TYPES = [
+    { key: 'transfer', label: 'TRANSFER', desc: 'One-time or recurring financial transfer between nations.' },
+    { key: 'trade_flow', label: 'TRADE FLOW', desc: 'Establish a commodity trade route with volume and price terms.' },
+    { key: 'tariff_reduction', label: 'TARIFF REDUCTION', desc: 'Reduce tariffs on a specific sector for one or both nations.' },
+    { key: 'market_access', label: 'MARKET ACCESS', desc: 'Grant preferential or free trade access to sectors or all goods.' },
+    { key: 'exit_terms', label: 'EXIT TERMS', desc: 'Define minimum duration, exit notice period, and withdrawal penalties.' },
+];
+
+let _negStructuredType = null;
+
+function negStructuredArticleOpen() {
+    if (_activeNegModal?.approvedByA && _activeNegModal?.approvedByB) { return; }
+    _negStructuredType = null;
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+    form.style.display = 'block';
+
+    let html = '<div class="trade-neg-add-form">';
+    html += '<div class="trade-neg-add-form__label">Select Article Type</div>';
+
+    for (const t of NEG_ARTICLE_TYPES) {
+        html += `<div onclick="negStructuredArticleSelectType('${t.key}')" style="
+            padding:10px 12px;margin-bottom:4px;cursor:pointer;
+            border:1px solid var(--border-main);
+            background:var(--bg-1);
+            transition:all 0.1s;
+        " onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border-main)'">
+            <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent);letter-spacing:0.5px;">${t.label}</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${t.desc}</div>
+        </div>`;
+    }
+
+    html += '<div class="trade-neg-add-form__actions">';
+    html += '<button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>';
+    html += '</div></div>';
+    form.innerHTML = html;
+}
+
+function negStructuredArticleSelectType(typeKey) {
+    _negStructuredType = typeKey;
+    switch (typeKey) {
+        case 'transfer': return negStructuredTransferForm();
+        case 'trade_flow': return negStructuredTradeFlowForm();
+        case 'tariff_reduction': return negStructuredTariffForm();
+        case 'market_access': return negStructuredMarketAccessForm();
+        case 'exit_terms': return negStructuredExitTermsForm();
+    }
+}
+
+// ── Structured Articles: TRANSFER form ──
+
+function negStructuredTransferForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+    const nameA = _activeNegModal?.myNationName || 'Nation A';
+    const nameB = _activeNegModal?.partnerNationName || 'Nation B';
+
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">Transfer</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">TYPE</div>
+                <select id="neg-transfer-type" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="one_time">One-Time</option>
+                    <option value="recurring">Recurring (Per Tick)</option>
+                </select>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">AMOUNT ($)</div>
+                <input id="neg-transfer-amount" type="number" min="1" placeholder="e.g. 5000000" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">DIRECTION</div>
+                <select id="neg-transfer-direction" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="a_to_b">${escapeHtml(nameA)} → ${escapeHtml(nameB)}</option>
+                    <option value="b_to_a">${escapeHtml(nameB)} → ${escapeHtml(nameA)}</option>
+                </select>
+            </div>
+        </div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button onclick="negStructuredArticleConfirm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;">Confirm</button>
+        </div>
+    </div>`;
+}
+
+// ── Structured Articles: TRADE FLOW form ──
+
+function negStructuredTradeFlowForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+    const nameA = _activeNegModal?.myNationName || 'Nation A';
+    const nameB = _activeNegModal?.partnerNationName || 'Nation B';
+
+    const sectorOpts = TRADEABLE_SECTORS.map(s =>
+        `<option value="${s.key}">${escapeHtml(s.label)}</option>`
+    ).join('');
+
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">Trade Flow</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">COMMODITY</div>
+                <select id="neg-flow-commodity" onchange="negFlowUpdatePrice()" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    ${sectorOpts}
+                </select>
+                <div id="neg-flow-global-price" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:3px;"></div>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">DIRECTION</div>
+                <select id="neg-flow-direction" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="a_buys_b">${escapeHtml(nameA)} buys from ${escapeHtml(nameB)}</option>
+                    <option value="b_buys_a">${escapeHtml(nameB)} buys from ${escapeHtml(nameA)}</option>
+                </select>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">VOLUME ($ PER TICK)</div>
+                <input id="neg-flow-volume" type="number" min="1" placeholder="e.g. 500000000" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">PRICE (% vs MARKET)</div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <input id="neg-flow-price" type="range" min="-25" max="25" value="0" style="flex:1;" oninput="negFlowUpdatePrice()">
+                    <span id="neg-flow-price-label" style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-bright);width:45px;text-align:right;">0%</span>
+                </div>
+                <div id="neg-flow-adjusted-price" style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-top:2px;"></div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">Negative = discount, Positive = premium</div>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">DURATION</div>
+                <select id="neg-flow-duration" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="0">Continuous</option>
+                    <option value="12">12 ticks</option>
+                    <option value="24">24 ticks</option>
+                    <option value="36">36 ticks</option>
+                    <option value="48">48 ticks</option>
+                </select>
+            </div>
+        </div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button onclick="negStructuredArticleConfirm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;">Confirm</button>
+        </div>
+    </div>`;
+
+    // Initialize the price display for the default commodity
+    setTimeout(() => negFlowUpdatePrice(), 0);
+}
+
+function negFlowUpdatePrice() {
+    const commodity = document.getElementById('neg-flow-commodity')?.value || 'fuel_energy';
+    const priceMod = Number(document.getElementById('neg-flow-price')?.value || 0);
+    const priceLabel = document.getElementById('neg-flow-price-label');
+    const globalEl = document.getElementById('neg-flow-global-price');
+    const adjustedEl = document.getElementById('neg-flow-adjusted-price');
+
+    if (priceLabel) priceLabel.textContent = (priceMod > 0 ? '+' : '') + priceMod + '%';
+
+    // Real-world reference prices per physical unit at 1:1 supply/demand
+    const UNIT_PRICES = {
+        fuel_energy:        { price: 85,    unit: 'barrel' },
+        minerals:           { price: 120,   unit: 'tonne' },
+        grains_staples:     { price: 235,   unit: 'tonne' },
+        livestock_dairy:    { price: 2800,  unit: 'tonne' },
+        fruits_vegetables:  { price: 900,   unit: 'tonne' },
+        cash_crops:         { price: 1400,  unit: 'tonne' },
+        manufactured_goods: { price: 2200,  unit: 'TEU' },
+        arms:               { price: 45000, unit: 'unit' },
+    };
+
+    const info = UNIT_PRICES[commodity];
+    if (!info) {
+        if (globalEl) globalEl.textContent = '';
+        if (adjustedEl) adjustedEl.textContent = '';
+        return;
+    }
+
+    const basePrice = info.price;
+    const adjustedPrice = Math.round(basePrice * (1 + priceMod / 100));
+
+    if (globalEl) globalEl.textContent = 'Global price: $' + basePrice.toLocaleString() + ' per ' + info.unit;
+    if (adjustedEl) adjustedEl.textContent = 'Your price: $' + adjustedPrice.toLocaleString() + ' per ' + info.unit + ' (' + (priceMod >= 0 ? '+' : '') + priceMod + '%)';
+}
+
+window.negFlowUpdatePrice = negFlowUpdatePrice;
+
+// ── Structured Articles: TARIFF REDUCTION form ──
+
+function negStructuredTariffForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+    const nameA = _activeNegModal?.myNationName || 'Nation A';
+    const nameB = _activeNegModal?.partnerNationName || 'Nation B';
+
+    const sectorOpts = TRADEABLE_SECTORS.map(s =>
+        `<option value="${s.key}">${escapeHtml(s.label)}</option>`
+    ).join('');
+
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">Tariff Reduction</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">SECTOR</div>
+                <select id="neg-tariff-sector" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    ${sectorOpts}
+                </select>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">${escapeHtml(nameA)} TARIFF → ${escapeHtml(nameB)}</div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <input id="neg-tariff-a-from" type="number" min="0" max="100" placeholder="From %" style="width:48%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+                    <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">→</span>
+                    <input id="neg-tariff-a-to" type="number" min="0" max="100" placeholder="To %" style="width:48%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+                </div>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">${escapeHtml(nameB)} TARIFF → ${escapeHtml(nameA)}</div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <input id="neg-tariff-b-from" type="number" min="0" max="100" placeholder="From %" style="width:48%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+                    <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">→</span>
+                    <input id="neg-tariff-b-to" type="number" min="0" max="100" placeholder="To %" style="width:48%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+                </div>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">MODE</div>
+                <select id="neg-tariff-mode" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="reciprocal">Reciprocal</option>
+                    <option value="one_sided">One-sided</option>
+                </select>
+            </div>
+        </div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button onclick="negStructuredArticleConfirm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;">Confirm</button>
+        </div>
+    </div>`;
+}
+
+// ── Structured Articles: MARKET ACCESS form ──
+
+function negStructuredMarketAccessForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+
+    const sectorOpts = TRADEABLE_SECTORS.map(s =>
+        `<option value="${s.key}">${escapeHtml(s.label)}</option>`
+    ).join('');
+
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">Market Access</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">SCOPE</div>
+                <select id="neg-market-scope" onchange="document.getElementById('neg-market-sector-row').style.display=this.value==='sector'?'block':'none'" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="all_goods">All Goods</option>
+                    <option value="sector">Specific Sector</option>
+                </select>
+            </div>
+            <div id="neg-market-sector-row" style="display:none;">
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">SECTOR</div>
+                <select id="neg-market-sector" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    ${sectorOpts}
+                </select>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">ACCESS LEVEL</div>
+                <select id="neg-market-level" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="restricted">Restricted</option>
+                    <option value="preferential">Preferential (Reduced Tariffs)</option>
+                    <option value="free_trade">Free Trade (0%)</option>
+                </select>
+            </div>
+            <div style="display:flex;gap:16px;">
+                <label style="display:flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);cursor:pointer;">
+                    <input type="checkbox" id="neg-market-volume-priority"> Volume Priority
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);cursor:pointer;">
+                    <input type="checkbox" id="neg-market-price-priority"> Price Priority
+                </label>
+            </div>
+        </div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button onclick="negStructuredArticleConfirm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;">Confirm</button>
+        </div>
+    </div>`;
+}
+
+// ── Structured Articles: EXIT TERMS form ──
+
+function negStructuredExitTermsForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">Exit Terms</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">MINIMUM DURATION (TICKS)</div>
+                <input id="neg-exit-min-duration" type="number" min="0" max="100" value="12" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">EXIT NOTICE (TICKS)</div>
+                <input id="neg-exit-notice" type="number" min="0" max="24" value="3" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">PENALTY</div>
+                <select id="neg-exit-penalty-type" onchange="
+                    document.getElementById('neg-exit-penalty-fixed-row').style.display=this.value==='fixed'?'block':'none';
+                    document.getElementById('neg-exit-penalty-pct-row').style.display=this.value==='percentage'?'block':'none';
+                " style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                    <option value="none">None</option>
+                    <option value="fixed">Fixed Amount ($)</option>
+                    <option value="percentage">% of Remaining Value</option>
+                </select>
+            </div>
+            <div id="neg-exit-penalty-fixed-row" style="display:none;">
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">PENALTY AMOUNT ($)</div>
+                <input id="neg-exit-penalty-amount" type="number" min="0" placeholder="e.g. 10000000" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+            </div>
+            <div id="neg-exit-penalty-pct-row" style="display:none;">
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">PENALTY (%)</div>
+                <input id="neg-exit-penalty-pct" type="number" min="0" max="100" placeholder="e.g. 15" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+            </div>
+        </div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button onclick="negStructuredArticleConfirm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;">Confirm</button>
+        </div>
+    </div>`;
+}
+
+// ── Structured Articles: Confirm and insert ──
+
+let _negStructuredAdding = false;
+
+async function negStructuredArticleConfirm() {
+    if (_negStructuredAdding || !_activeNegModal || !_negStructuredType) return;
+
+    let data = {};
+
+    if (_negStructuredType === 'transfer') {
+        const amount = Number(document.getElementById('neg-transfer-amount')?.value || 0);
+        if (amount <= 0) { alert('Enter a valid amount.'); return; }
+        data = {
+            transfer_type: document.getElementById('neg-transfer-type')?.value || 'one_time',
+            amount: amount,
+            direction: document.getElementById('neg-transfer-direction')?.value || 'a_to_b',
+        };
+    } else if (_negStructuredType === 'trade_flow') {
+        const volume = Number(document.getElementById('neg-flow-volume')?.value || 0);
+        if (volume <= 0) { alert('Enter a valid volume.'); return; }
+        data = {
+            commodity: document.getElementById('neg-flow-commodity')?.value || 'fuel_energy',
+            direction: document.getElementById('neg-flow-direction')?.value || 'a_buys_b',
+            volume: volume,
+            price_modifier: Number(document.getElementById('neg-flow-price')?.value || 0),
+            duration: Number(document.getElementById('neg-flow-duration')?.value || 0),
+        };
+    } else if (_negStructuredType === 'tariff_reduction') {
+        const aFrom = Number(document.getElementById('neg-tariff-a-from')?.value);
+        const aTo = Number(document.getElementById('neg-tariff-a-to')?.value);
+        const bFrom = Number(document.getElementById('neg-tariff-b-from')?.value);
+        const bTo = Number(document.getElementById('neg-tariff-b-to')?.value);
+        if (isNaN(aFrom) || isNaN(aTo) || isNaN(bFrom) || isNaN(bTo)) { alert('Fill in all tariff values.'); return; }
+        data = {
+            sector: document.getElementById('neg-tariff-sector')?.value || 'fuel_energy',
+            a_tariff_from: aFrom,
+            a_tariff_to: aTo,
+            b_tariff_from: bFrom,
+            b_tariff_to: bTo,
+            mode: document.getElementById('neg-tariff-mode')?.value || 'reciprocal',
+        };
+    } else if (_negStructuredType === 'market_access') {
+        const scope = document.getElementById('neg-market-scope')?.value || 'all_goods';
+        data = {
+            scope: scope,
+            scope_sector: scope === 'sector' ? (document.getElementById('neg-market-sector')?.value || 'fuel_energy') : null,
+            level: document.getElementById('neg-market-level')?.value || 'preferential',
+            volume_priority: document.getElementById('neg-market-volume-priority')?.checked || false,
+            price_priority: document.getElementById('neg-market-price-priority')?.checked || false,
+        };
+    } else if (_negStructuredType === 'exit_terms') {
+        const penaltyType = document.getElementById('neg-exit-penalty-type')?.value || 'none';
+        data = {
+            min_duration: Number(document.getElementById('neg-exit-min-duration')?.value || 12),
+            exit_notice: Number(document.getElementById('neg-exit-notice')?.value || 3),
+            penalty_type: penaltyType,
+            penalty_amount: penaltyType === 'fixed' ? Number(document.getElementById('neg-exit-penalty-amount')?.value || 0) : 0,
+            penalty_pct: penaltyType === 'percentage' ? Number(document.getElementById('neg-exit-penalty-pct')?.value || 0) : 0,
+        };
+    }
+
+    _negStructuredAdding = true;
+
+    const newArticle = {
+        id: crypto.randomUUID(),
+        article_type: _negStructuredType,
+        data: data,
+        author_nation_id: _activeNegModal.myNationId,
+        author_nation_name: _activeNegModal.myNationName,
+        added_at_tick: 0,
+        strike_requested_by: null,
+        strike_requested_by_name: null,
+    };
+
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    newArticle.added_at_tick = shardData?.current_tick || 0;
+
+    const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
+        .select('draft_articles')
+        .eq('id', _activeNegModal.negotiationId)
+        .single();
+
+    if (fetchErr || !negRow) { alert('Failed to load articles.'); _negStructuredAdding = false; return; }
+
+    const current = negRow.draft_articles || [];
+    const updated = [...current, newArticle];
+
+    const { error: updateErr } = await _supabase.from('trade_negotiations')
+        .update({ draft_articles: updated })
+        .eq('id', _activeNegModal.negotiationId);
+
+    if (updateErr) { alert('Failed to add article: ' + updateErr.message); _negStructuredAdding = false; return; }
+
+    _activeNegModal.articles = updated;
+    negArticleCancelForm();
+    negArticlesRender();
+    _negStructuredAdding = false;
+}
+
+window.negStructuredArticleOpen = negStructuredArticleOpen;
+window.negStructuredArticleSelectType = negStructuredArticleSelectType;
+window.negStructuredArticleConfirm = negStructuredArticleConfirm;
+
+// ── Articles: Show add form ──
+
+function negArticleShowForm() {
+    if (_activeNegModal?.approvedByA && _activeNegModal?.approvedByB) { return; }
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+    form.style.display = 'block';
+    form.innerHTML = `<div class="trade-neg-add-form">
+        <div class="trade-neg-add-form__label">New Article</div>
+        <textarea id="trade-neg-article-text" maxlength="300" rows="3" placeholder="Enter article text..."></textarea>
+        <div class="trade-neg-add-form__counter"><span id="trade-neg-article-counter">0</span>/300</div>
+        <div class="trade-neg-add-form__actions">
+            <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
+            <button id="trade-neg-article-add-btn" onclick="negArticleAdd()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:#000;background:var(--accent,#5aafa5);border:none;cursor:pointer;" disabled>Add Article</button>
+        </div>
+    </div>`;
+    const textarea = document.getElementById('trade-neg-article-text');
+    const counter = document.getElementById('trade-neg-article-counter');
+    const addBtn = document.getElementById('trade-neg-article-add-btn');
+    textarea.focus();
+    textarea.addEventListener('input', () => {
+        counter.textContent = textarea.value.length;
+        addBtn.disabled = !textarea.value.trim();
+    });
+}
+
+function negArticleCancelForm() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (form) { form.style.display = 'none'; form.innerHTML = ''; }
+}
+
+// ── Articles: Add ──
+
+let _negArticleAdding = false;
+
+async function negArticleAdd() {
+    if (_negArticleAdding || !_activeNegModal) return;
+    const textarea = document.getElementById('trade-neg-article-text');
+    if (!textarea) return;
+    const text = textarea.value.trim();
+    if (!text) return;
+
+    _negArticleAdding = true;
+
+    const newArticle = {
+        id: crypto.randomUUID(),
+        text: text,
+        author_nation_id: _activeNegModal.myNationId,
+        author_nation_name: _activeNegModal.myNationName,
+        added_at_tick: 0,
+        strike_requested_by: null,
+        strike_requested_by_name: null,
+    };
+
+    // Get current tick
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    newArticle.added_at_tick = shardData?.current_tick || 0;
+
+    // Fetch current articles from DB (avoid stale state)
+    const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
+        .select('draft_articles')
+        .eq('id', _activeNegModal.negotiationId)
+        .single();
+
+    if (fetchErr) { alert('Failed to load articles: ' + fetchErr.message); _negArticleAdding = false; return; }
+
+    const current = negRow?.draft_articles || [];
+    const updated = [...current, newArticle];
+
+    const { error: updateErr } = await _supabase.from('trade_negotiations')
+        .update({ draft_articles: updated })
+        .eq('id', _activeNegModal.negotiationId);
+
+    if (updateErr) { alert('Failed to add article: ' + updateErr.message); _negArticleAdding = false; return; }
+
+    _activeNegModal.articles = updated;
+    negArticleCancelForm();
+    negArticlesRender();
+    _negArticleAdding = false;
+}
+
+// ── Articles: Delete (author only) ──
+
+let _negArticleDeleting = false;
+async function negArticleDelete(articleId) {
+    if (!_activeNegModal || _negArticleDeleting) return;
+    if (!confirm('Delete this article?')) return;
+    _negArticleDeleting = true;
+
+    const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
+        .select('draft_articles')
+        .eq('id', _activeNegModal.negotiationId)
+        .single();
+    if (fetchErr || !negRow) { alert('Failed to load articles.'); return; }
+
+    const current = negRow.draft_articles || [];
+    const updated = current.filter(a => a.id !== articleId);
+
+    const { error } = await _supabase.from('trade_negotiations')
+        .update({ draft_articles: updated })
+        .eq('id', _activeNegModal.negotiationId);
+
+    if (error) { alert('Failed to delete article: ' + error.message); _negArticleDeleting = false; return; }
+
+    _activeNegModal.articles = updated;
+    negArticlesRender();
+    _negArticleDeleting = false;
+}
+
+// ── Articles: Request to Strike (other party's articles) ──
+
+let _negArticleStriking = false;
+async function negArticleRequestStrike(articleId) {
+    if (!_activeNegModal || _negArticleStriking) return;
+    _negArticleStriking = true;
+
+    const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
+        .select('draft_articles')
+        .eq('id', _activeNegModal.negotiationId)
+        .single();
+    if (fetchErr || !negRow) { alert('Failed to load articles.'); return; }
+
+    const current = negRow.draft_articles || [];
+    const updated = current.map(a => {
+        if (a.id !== articleId) return a;
+        return {
+            ...a,
+            strike_requested_by: _activeNegModal.myNationId,
+            strike_requested_by_name: _activeNegModal.myNationName,
+        };
+    });
+
+    const { error } = await _supabase.from('trade_negotiations')
+        .update({ draft_articles: updated })
+        .eq('id', _activeNegModal.negotiationId);
+
+    if (error) { alert('Failed to request strike: ' + error.message); _negArticleStriking = false; return; }
+
+    _activeNegModal.articles = updated;
+    negArticlesRender();
+    _negArticleStriking = false;
+}
+
+// ── Agreement voting [0/2] → [1/2] → [2/2] → ratification bills ──
+
+function negAgreementRender() {
+    const btn = document.getElementById('trade-neg-agreement-btn');
+    if (!btn || !_activeNegModal) return;
+
+    const myApproved = _activeNegModal.weAreA ? _activeNegModal.approvedByA : _activeNegModal.approvedByB;
+    const theirApproved = _activeNegModal.weAreA ? _activeNegModal.approvedByB : _activeNegModal.approvedByA;
+    const count = (myApproved ? 1 : 0) + (theirApproved ? 1 : 0);
+
+    // Disable article buttons at 2/2
+    const addStructBtn = document.getElementById('trade-neg-add-structured-btn');
+    const addTextBtn = document.getElementById('trade-neg-add-article-btn');
+    const nameAgreementBtn = document.getElementById('trade-neg-name-btn');
+    if (count === 2) {
+        if (addStructBtn) { addStructBtn.disabled = true; addStructBtn.style.opacity = '0.3'; }
+        if (addTextBtn) { addTextBtn.disabled = true; addTextBtn.style.opacity = '0.3'; }
+        if (nameAgreementBtn) { nameAgreementBtn.disabled = true; nameAgreementBtn.style.opacity = '0.3'; }
+    } else {
+        if (addStructBtn) { addStructBtn.disabled = false; addStructBtn.style.opacity = '1'; }
+        if (addTextBtn) { addTextBtn.disabled = false; addTextBtn.style.opacity = '1'; }
+        if (nameAgreementBtn) { nameAgreementBtn.disabled = false; nameAgreementBtn.style.opacity = '1'; }
+    }
+
+    if (count === 2) {
+        btn.textContent = 'Agreement [2/2]';
+        btn.style.color = '#4ade80';
+        btn.style.borderColor = 'rgba(74,222,128,0.3)';
+        btn.disabled = true;
+    } else if (myApproved) {
+        btn.textContent = 'Agreement [' + count + '/2]';
+        btn.style.color = '#5aafa5';
+        btn.style.borderColor = 'rgba(90,175,165,0.3)';
+        btn.disabled = false;
+    } else {
+        btn.textContent = 'Not in Agreement [' + count + '/2]';
+        btn.style.color = 'var(--text-dim)';
+        btn.style.borderColor = 'var(--border-main)';
+        btn.disabled = false;
+    }
+}
+
+let _negAgreementToggling = false;
+
+async function negAgreementToggle() {
+    if (_negAgreementToggling || !_activeNegModal) return;
+    if (!_activeNegModal.chatRole?.canChat) {
+        alert('You need a diplomatic role to vote on the agreement.');
+        return;
+    }
+    if (_activeNegModal.status === 'cancelled' || _activeNegModal.status === 'ratification') {
+        return;
+    }
+    if (!_activeNegModal.agreementName || !_activeNegModal.agreementName.trim()) {
+        alert('The agreement must be named before both parties can agree. Click "Name Agreement" first.');
+        return;
+    }
+    const m = _activeNegModal;
+    const myApproved = m.weAreA ? m.approvedByA : m.approvedByB;
+    const approveCol = m.weAreA ? 'approved_by_a' : 'approved_by_b';
+    const approveRoleCol = m.weAreA ? 'approved_by_a_role' : 'approved_by_b_role';
+    const approveTickCol = m.weAreA ? 'approved_at_a_tick' : 'approved_at_b_tick';
+
+    _negAgreementToggling = true;
+
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shardData?.current_tick || 0;
+
+    if (myApproved) {
+        // Revoke approval
+        const updateData = { [approveCol]: null, [approveRoleCol]: null, [approveTickCol]: null };
+        const { error } = await _supabase.from('trade_negotiations').update(updateData).eq('id', m.negotiationId);
+        if (error) { alert('Failed to revoke agreement: ' + error.message); _negAgreementToggling = false; return; }
+        if (m.weAreA) { m.approvedByA = null; } else { m.approvedByB = null; }
+    } else {
+        // Grant approval
+        const factionId = _worldState?.faction?.id;
+        const role = m.chatRole?.role || 'trade_minister';
+        const updateData = { [approveCol]: factionId, [approveRoleCol]: role, [approveTickCol]: tick };
+
+        // Check if other side already approved — if so, generate ratification bills
+        const theirApproved = m.weAreA ? m.approvedByB : m.approvedByA;
+        if (theirApproved) {
+            updateData.status = 'ratification';
+
+            // Fetch nation names
+            const [{ data: nationARow }, { data: nationBRow }] = await Promise.all([
+                _supabase.from('nations').select('name').eq('id', m.weAreA ? m.myNationId : m.partnerNationId).single(),
+                _supabase.from('nations').select('name').eq('id', m.weAreA ? m.partnerNationId : m.myNationId).single(),
+            ]);
+            const nameA = nationARow?.name || 'Unknown';
+            const nameB = nationBRow?.name || 'Unknown';
+            const agreementName = m.agreementName || 'Trade Agreement';
+            const billTitle = 'Ratify: ' + agreementName;
+            const billPreamble = 'Ratification of the trade agreement "' + agreementName + '" between ' +
+                nameA + ' and ' + nameB + '. A YES vote enacts the agreement; a NO vote rejects it.';
+
+            const VOTING_WINDOW = 3;
+            const billBase = {
+                bill_type: 'ratification', bill_name: billTitle, preamble: billPreamble,
+                trade_negotiation_id: m.negotiationId, status: 'floor',
+                proposed_tick: tick, floor_tick: tick,
+                voting_ends_tick: tick + VOTING_WINDOW,
+            };
+
+            const nationAId = m.weAreA ? m.myNationId : m.partnerNationId;
+            const nationBId = m.weAreA ? m.partnerNationId : m.myNationId;
+            const approverA = m.weAreA ? factionId : m.approvedByA;
+            const approverB = m.weAreA ? m.approvedByB : factionId;
+
+            const billA = { ...billBase, nation_id: nationAId, proposed_by: approverA };
+            const billB = { ...billBase, nation_id: nationBId, proposed_by: approverB };
+
+            const [resultA, resultB] = await Promise.all([
+                _supabase.from('bills').insert(billA).select('id').single(),
+                _supabase.from('bills').insert(billB).select('id').single(),
+            ]);
+
+            if (resultA.error) { alert('Error creating ratification bill: ' + resultA.error.message); _negAgreementToggling = false; return; }
+            if (resultB.error) { alert('Error creating ratification bill: ' + resultB.error.message); _negAgreementToggling = false; return; }
+
+            updateData.bill_a_id = resultA.data?.id || null;
+            updateData.bill_b_id = resultB.data?.id || null;
+
+            // Build trade goods list from articles for the event description
+            const tradeGoods = (m.articles || [])
+                .filter(a => a.article_type === 'trade_flow' && a.data?.commodity)
+                .map(a => TRADE_SECTOR_LABELS[a.data.commodity] || a.data.commodity);
+            const uniqueGoods = [...new Set(tradeGoods)];
+            const goodsText = uniqueGoods.length > 0
+                ? ' which involved trade of ' + uniqueGoods.join(', ') + (uniqueGoods.length < (m.articles || []).length ? ' and other goods' : '')
+                : '';
+
+            // Fire signing event
+            const signingDesc = nameA + ' and ' + nameB + ' came together and signed the ' + agreementName + goodsText + '.';
+            const ratifyDesc = 'The ' + agreementName + ' has been sent to both parliaments for ratification.';
+            _supabase.from('event_log').insert([nationAId, nationBId].flatMap(nid => [
+                {
+                    nation_id: nid,
+                    event_name: agreementName + ' — Signed',
+                    trigger_key: 'trade_agreement_signed',
+                    category: 'trade', description_chosen: signingDesc, fired_at_tick: tick,
+                },
+                {
+                    nation_id: nid,
+                    event_name: agreementName + ' — Ratification',
+                    category: 'trade', description_chosen: ratifyDesc, fired_at_tick: tick,
+                },
+            ])).then(() => {});
+        }
+
+        const { error } = await _supabase.from('trade_negotiations').update(updateData).eq('id', m.negotiationId);
+        if (error) { alert('Failed to approve: ' + error.message); _negAgreementToggling = false; return; }
+        if (m.weAreA) { m.approvedByA = factionId; } else { m.approvedByB = factionId; }
+
+        if (theirApproved) {
+            m.status = 'ratification';
+            alert('Both sides have approved! Ratification bills have been submitted to both parliaments.');
+        }
+    }
+
+    negAgreementRender();
+    _negAgreementToggling = false;
+}
+
+window.negArticleShowForm = negArticleShowForm;
+window.negArticleCancelForm = negArticleCancelForm;
+window.negArticleAdd = negArticleAdd;
+window.negArticleDelete = negArticleDelete;
+window.negArticleRequestStrike = negArticleRequestStrike;
+window.negAgreementToggle = negAgreementToggle;
+
+// ── Modal close ──
+
+function closeTradeNegModal() {
+    document.getElementById('trade-neg-modal').classList.remove('active');
+    if (_negChatChannel) {
+        _supabase.removeChannel(_negChatChannel);
+        _negChatChannel = null;
+    }
+    _activeNegModal = null;
+    _negChatSending = false;
+    _negWithdrawing = false;
+    _negModalOpening = false;
+    _negArticleAdding = false;
+    _negArticleDeleting = false;
+    _negArticleStriking = false;
+    _negAgreementToggling = false;
+    _negStructuredAdding = false;
+    _negStructuredType = null;
+    _negNaming = false;
+
+    // Refresh trade notification badge (user may have read messages or agreed)
+    checkTradeNotifications().then(() => renderDiploSubtabs()).catch(() => {});
+}
+
+let _negWithdrawing = false;
+
+async function withdrawFromNegotiations() {
+    if (!_activeNegModal || _negWithdrawing) return;
+    if (_activeNegModal.status === 'cancelled') {
+        alert('This negotiation has already been ended.');
+        return;
+    }
+    const chatRole = _activeNegModal.chatRole;
+    if (!chatRole?.canChat) {
+        alert('You need a diplomatic role to withdraw from negotiations.');
+        return;
+    }
+
+    const partnerName = _activeNegModal.partnerNationName || 'Unknown';
+    if (!confirm('Withdraw from trade negotiations with ' + partnerName + '?\n\nThis will end the negotiation and cannot be undone.')) return;
+
+    _negWithdrawing = true;
+
+    const negId = _activeNegModal.negotiationId;
+    const myNationId = _activeNegModal.myNationId;
+    const partnerNationId = _activeNegModal.partnerNationId;
+
+    // Get current tick
+    const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shardData?.current_tick || 0;
+
+    // 1. Update negotiation status to cancelled
+    const { error: statusErr } = await _supabase.from('trade_negotiations')
+        .update({ status: 'cancelled', concluded_at_tick: tick })
+        .eq('id', negId);
+    if (statusErr) { alert('Failed to withdraw: ' + statusErr.message); _negWithdrawing = false; return; }
+
+    // 2. Insert system message into chat
+    await _supabase.from('negotiation_messages').insert({
+        negotiation_id: negId,
+        sender_nation_id: myNationId,
+        sender_faction_id: _worldState.faction.id,
+        sender_role: chatRole.role,
+        sender_display_name: 'System',
+        message_text: chatRole.displayName + ' has withdrawn from negotiations.',
+        is_system: true,
+        sent_at_tick: tick,
+    });
+
+    // 3. Build event text — always attribute to Minister of Trade in the event
+    const withdrawerName = chatRole.displayName.split(' (')[0];
+    const roleSuffix = chatRole.role === 'trade_minister' ? 'Minister of Trade '
+        : chatRole.role === 'prime_minister' ? 'Prime Minister '
+        : 'Ambassador ';
+    const eventText = roleSuffix + withdrawerName + ' has decided to end trade negotiations with ' + partnerName + '.';
+
+    // 4. Log events for BOTH nations (visible on Nation Local, Nation World, Executive Timeline)
+    await _supabase.from('event_log').insert([
+        {
+            nation_id: myNationId,
+            event_name: 'Trade Negotiations Withdrawn',
+            trigger_key: 'trade_negotiation_withdrawn',
+            category: 'trade',
+            description_chosen: eventText,
+            fired_at_tick: tick,
+        },
+        {
+            nation_id: partnerNationId,
+            event_name: 'Trade Negotiations Withdrawn',
+            trigger_key: 'trade_negotiation_withdrawn',
+            category: 'trade',
+            description_chosen: eventText,
+            fired_at_tick: tick,
+        },
+    ]);
+
+    // 5. Close modal and refresh agreements list
+    _activeNegModal.status = 'cancelled';
+    _negWithdrawing = false;
+    closeTradeNegModal();
+
+    // Refresh the trade data so the ongoing negotiation disappears
+    try { await loadTradeAgreements(); } catch (_) {}
+    renderTradeAgreements();
+    renderTradePartners();
+}
+
+window.openTradeNegModal = openTradeNegModal;
+window.closeTradeNegModal = closeTradeNegModal;
+window.withdrawFromNegotiations = withdrawFromNegotiations;
 </script>
 
 </body>

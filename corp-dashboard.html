@@ -986,16 +986,6 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
     </div>
   </div>
 
-  <!-- Dissolve Corporation -->
-  <div style="display:flex;justify-content:center;padding:40px 14px 60px;">
-    <div id="dissolve-box" style="border:1px solid #3a2020;background:rgba(204,85,85,0.03);padding:20px 32px;text-align:center;max-width:400px;width:100%;">
-      <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:2px;color:#a44;margin-bottom:8px;text-transform:uppercase;">Irreversible Action</div>
-      <button id="dissolve-btn" onclick="dissolveCorporation()" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#c55;background:transparent;border:1px solid #c55;padding:8px 28px;cursor:pointer;transition:all 0.15s;">Dissolve Corporation</button>
-      <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:8px;line-height:1.5;">
-        Permanently removes this corporation, all properties,<br>equipment, and inventory. Debts and active projects remain.
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- Property Sell/Refurbish Modal Overlay -->
@@ -1050,7 +1040,7 @@ async function init() {
         return;
     }
 
-    // Persist the active faction so dissolve and other actions can find it
+    // Persist the active faction so bankruptcy and other actions can find it
     sessionStorage.setItem('active_faction_id', faction.id);
 
     // If active faction isn't a corporation, redirect to party dashboard
@@ -1407,8 +1397,49 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const propertyRevBonus = propData?.propertyRevBonus || 0;
     const marketRev = Math.round(Math.round(annualMarketRev / 12) * workforceUtil) + propertyRevBonus;
 
-    const govContracts = 0;
-    const pvtContracts = 0;
+    // Private Contracts: sector-specific revenue from active deals
+    let govContracts = 0;
+    let pvtContracts = 0;
+    if (faction?.id) {
+        const sector = faction.corp_sector || '';
+        if (sector === 'Finance') {
+            // Finance: interest + premiums earned from active loans/policies
+            const { data: finLoans } = await _supabase.from('finance_active_loans')
+                .select('monthly_payment, interest_rate, principal, total_paid, finance_loan_requests!inner(request_type)')
+                .eq('lender_faction_id', faction.id)
+                .in('status', ['current', 'late', 'delinquent']);
+            for (const loan of (finLoans || [])) {
+                const reqType = loan.finance_loan_requests?.request_type || 'loan';
+                if (reqType === 'insurance') {
+                    pvtContracts += Number(loan.monthly_payment || 0);
+                } else if (reqType === 'loan') {
+                    const remaining = loan.principal - (loan.total_paid || 0);
+                    const monthlyRate = (loan.interest_rate / 100) / 12;
+                    pvtContracts += Math.round(remaining * monthlyRate);
+                } else if (reqType === 'bond') {
+                    pvtContracts += Number(loan.monthly_payment || 0);
+                }
+            }
+        } else if (sector === 'Construction') {
+            // Construction: revenue from in-progress contracts this corp is building
+            const { data: activeContracts } = await _supabase.from('construction_contracts')
+                .select('budget_ceiling, timeline_ticks')
+                .eq('awarded_to_faction', faction.id)
+                .eq('status', 'in_progress');
+            for (const c of (activeContracts || [])) {
+                pvtContracts += Math.round((c.budget_ceiling || 0) / (c.timeline_ticks || 1));
+            }
+        } else if (sector === 'Shipping') {
+            // Shipping: revenue from active shipping claims
+            const { data: activeClaims } = await _supabase.from('shipping_claims')
+                .select('revenue_per_transit')
+                .eq('faction_id', faction.id)
+                .eq('status', 'active');
+            for (const c of (activeClaims || [])) {
+                pvtContracts += Number(c.revenue_per_transit || 0);
+            }
+        }
+    }
     const totalRevenue = govContracts + pvtContracts + marketRev;
 
     // Expenses — workforce wages from wfData, divided by 12 (monthly)
@@ -2426,138 +2457,6 @@ async function handleCorpLogoUpload(e) {
 window.saveSlogan = saveSlogan;
 window.toggleCorpDropdown = toggleCorpDropdown;
 window.switchToFaction = switchToFaction;
-
-// ==================== DISSOLVE CORPORATION ====================
-
-let _dissolving = false;
-
-async function dissolveCorporation() {
-    if (_dissolving) { console.warn('Dissolve already in progress'); return; }
-    const { data: { user } } = await _supabase.auth.getUser();
-    if (!user) { alert('Not logged in.'); return; }
-
-    const factionId = sessionStorage.getItem('active_faction_id');
-    if (!factionId) { alert('No active faction selected.'); return; }
-
-    // Find the active corp faction — fetch fresh from DB to avoid stale cache
-    const { data: freshCorp, error: corpErr } = await _supabase
-        .from('factions')
-        .select('*')
-        .eq('id', factionId)
-        .eq('faction_type', 'corporation')
-        .is('abandoned_at', null)
-        .single();
-
-    if (corpErr || !freshCorp) {
-        alert('No active corporation found. It may have already been dissolved.');
-        console.error('Dissolve lookup failed:', corpErr?.message, 'factionId:', factionId);
-        return;
-    }
-    const corp = freshCorp;
-
-    const corpName = corp.faction_name || 'this corporation';
-
-    // Two-step confirmation
-    if (!confirm(
-        'DISSOLVE ' + corpName.toUpperCase() + '?\n\n' +
-        'This will permanently:\n' +
-        '• Remove the corporation from the game\n' +
-        '• Delete all properties, equipment, and inventory\n' +
-        '• Remove all cash reserves\n' +
-        '• Outstanding debts and active projects will remain\n\n' +
-        'This action CANNOT be undone.'
-    )) return;
-
-    const typed = prompt('Type "DISSOLVE" to confirm permanent dissolution of ' + corpName + ':');
-    if (typed !== 'DISSOLVE') { alert('Dissolution cancelled.'); return; }
-
-    _dissolving = true;
-    const btn = document.getElementById('dissolve-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'DISSOLVING...'; btn.style.opacity = '0.5'; }
-
-    try {
-        // Helper: run a Supabase mutation and throw on error
-        async function run(op) {
-            const { error } = await op;
-            if (error) throw error;
-        }
-
-        // 1. Delete all bids this corp has submitted
-        await run(_supabase.from('contract_bids').delete().eq('faction_id', factionId));
-
-        // 2. Expire any open contracts this corp issued (not in-progress — those stay)
-        await run(_supabase.from('construction_contracts')
-            .update({ status: 'expired' })
-            .eq('issuer_faction_id', factionId)
-            .in('status', ['open', 'bidding']));
-
-        // 3. Delete equipment and deliveries
-        await run(_supabase.from('corp_equipment_deliveries').delete().eq('faction_id', factionId));
-        await run(_supabase.from('corp_equipment').delete().eq('faction_id', factionId));
-
-        // 4. Delete properties
-        await run(_supabase.from('corp_properties').delete().eq('faction_id', factionId));
-
-        // 5. Delete warehouse / material inventory (tables may not exist yet)
-        await _supabase.from('corp_material_inventory').delete().eq('faction_id', factionId);
-        await _supabase.from('corp_warehouse').delete().eq('faction_id', factionId);
-
-        // 6. Delete executives and agitator pool entries for this corp
-        await _supabase.from('corp_executives').delete().eq('faction_id', factionId);
-        await _supabase.from('faction_agitators').delete().eq('faction_id', factionId);
-
-        // 7. Delete the corporation row entirely — dissolved corps should not persist
-        await run(_supabase.from('factions').delete().eq('id', factionId));
-
-        // 8. Log bankruptcy event
-        const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const dissolveTick = shardData?.current_tick || 0;
-        await _supabase.from('event_log').insert({
-            nation_id: corp.nation_id,
-            faction_id: factionId,
-            event_name: corpName + ' — Bankruptcy',
-            description_used: corpName + ' has officially filed for bankruptcy. It has laid off its executive staff and ceased operations.',
-            category: 'business',
-            trigger_key: 'corp_bankruptcy',
-            effects_applied: { corp_name: corpName, sector: corp.corp_sector },
-            fired_at_tick: dissolveTick,
-        });
-
-        // 9. Clear session and redirect
-        sessionStorage.removeItem('active_faction_id');
-        sessionStorage.removeItem('nationhood_state');
-
-        // Check if user still has other active factions
-        const { data: remaining, error: remainErr } = await _supabase
-            .from('factions')
-            .select('id, faction_type')
-            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
-        if (remainErr) console.warn('Failed to check remaining factions:', remainErr.message);
-
-        const party = (remaining || []).find(f => f.faction_type === 'party');
-        const otherCorp = (remaining || []).find(f => f.faction_type === 'corporation');
-
-        if (party) {
-            sessionStorage.setItem('active_faction_id', party.id);
-            alert(corpName + ' has been dissolved.\n\nRedirecting to your political party.');
-            window.location.href = 'dashboard.html';
-        } else if (otherCorp) {
-            sessionStorage.setItem('active_faction_id', otherCorp.id);
-            alert(corpName + ' has been dissolved.\n\nRedirecting to your other corporation.');
-            window.location.href = 'corp-dashboard.html';
-        } else {
-            alert(corpName + ' has been dissolved.\n\nYou have no remaining factions.');
-            window.location.href = 'faction-select.html';
-        }
-    } catch (err) {
-        alert('Dissolution failed: ' + (err.message || err) + '\n\nPlease try again or contact support.');
-        if (btn) { btn.disabled = false; btn.textContent = 'Dissolve Corporation'; btn.style.opacity = '1'; }
-    } finally {
-        _dissolving = false;
-    }
-}
-
-window.dissolveCorporation = dissolveCorporation;
 
 // ==================== SELL PROPERTY ====================
 

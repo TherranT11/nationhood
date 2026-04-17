@@ -151,22 +151,22 @@ body {
 
 /* ── Nav tabs ── */
 .corp-nav { display: flex; padding: 0 22px; gap: 0; height: 40px; background: var(--bg-2); border-bottom: 1px solid var(--border-0); }
-.corp-nav__tab {
+.corp-nav-tab {
   position: relative; font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
   letter-spacing: 0.06em; text-transform: uppercase; padding: 10px 15px;
   background: transparent; border: none; border-bottom: 2px solid transparent;
   color: #8a8978; cursor: pointer; transition: color 0.1s; white-space: nowrap; text-decoration: none;
 }
-.corp-nav__tab:hover { color: #a8a797; }
-.corp-nav__tab.active { color: var(--text-bright); border-bottom-color: var(--text-bright); }
+.corp-nav-tab:hover { color: #a8a797; }
+.corp-nav-tab.active { color: var(--text-bright); border-bottom-color: var(--text-bright); }
 .corp-hamburger {
   display: none; background: var(--bg-3); border: 1px solid var(--border-0);
   color: var(--text-dim); font-size: 18px; padding: 4px 10px; cursor: pointer; margin: 4px 22px;
 }
 .corp-hamburger:hover { color: var(--text-muted); }
-body.light-mode .corp-nav__tab { color: #666660; }
-body.light-mode .corp-nav__tab:hover { color: #333330; }
-body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a1a17; }
+body.light-mode .corp-nav-tab { color: #666660; }
+body.light-mode .corp-nav-tab:hover { color: #333330; }
+body.light-mode .corp-nav-tab.active { color: #1a1a17; border-bottom-color: #1a1a17; }
 
 /* ── Content ── */
 .content {
@@ -990,6 +990,21 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
   letter-spacing: 0.8px; padding: 1px 6px;
   color: var(--teal); background: var(--teal-faint); border: 1px solid var(--teal-border);
 }
+.pr-nation-bar {
+  padding: 6px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.pr-nation-label {
+  font-family: var(--font-mono); font-size: 7px; color: var(--text-dim);
+  letter-spacing: 1px; text-transform: uppercase; flex-shrink: 0;
+}
+.pr-nation-select {
+  flex: 1; padding: 3px 6px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  background: var(--bg-3); border: 1px solid var(--border-0);
+  color: var(--text-bright); cursor: pointer; outline: none;
+}
+.pr-nation-select:focus { border-color: var(--teal-border); }
 
 /* Material selector grid — 2×4 */
 .pr-mat-grid {
@@ -2067,8 +2082,8 @@ body.light-mode .av-empty__text { color: #1a1a17; }
   .corp-hamburger { display: block; }
   .corp-nav { display: none; flex-direction: column; height: auto; padding: 0; }
   .corp-nav.nav-open { display: flex; }
-  .corp-nav.nav-open .corp-nav__tab { padding: 10px 22px; border-bottom: none; border-left: 2px solid transparent; }
-  .corp-nav.nav-open .corp-nav__tab.active { border-left-color: var(--text-bright); border-bottom: none; }
+  .corp-nav.nav-open .corp-nav-tab { padding: 10px 22px; border-bottom: none; border-left: 2px solid transparent; }
+  .corp-nav.nav-open .corp-nav-tab.active { border-left-color: var(--text-bright); border-bottom: none; }
 }
 @media (max-width: 480px) {
   .top-bar-row1 { padding: 6px 8px; }
@@ -2516,6 +2531,11 @@ body.light-mode .av-empty__text { color: #1a1a17; }
         <span class="pr-card__nation-badge" id="pr-nation-badge">LOCAL — --</span>
       </div>
 
+      <div class="pr-nation-bar">
+        <span class="pr-nation-label">MARKET</span>
+        <select class="pr-nation-select" id="pr-nation-select" onchange="switchPrNation(this.value)"></select>
+      </div>
+
       <!-- Material selector grid -->
       <div class="pr-mat-grid" id="pr-mat-grid"></div>
 
@@ -2735,9 +2755,10 @@ import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
-import { EXEC_ROLES, EXEC_ROLE_META, generateExecutivePool } from './js/game/corp-executives.js';
+import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
 import { initAutoServices } from './js/corp-auto-services.js';
 import { initSubDashboard } from './js/corp-sub-dashboard.js';
+import { loadShippingRoutesSafe, loadActiveVoyagesSafe, loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -2748,11 +2769,14 @@ let playerBids = {}; // { contractId: bidData }
 let activeProjects = [];
 let warehouseData = {};  // { materialKey: { LOW: {qty,value}, STD: {qty,value}, HIGH: {qty,value} } }
 let whExpandedRow = -1;  // index of expanded material row, -1 = none
+const MATERIAL_KEY_ALIASES = { em: 'em_systems', glass: 'glass_facades', heavy: 'heavy_parts' };
+const canonicalMaterialKey = (key) => MATERIAL_KEY_ALIASES[key] || key;
 
 // Procurement state
 let prSelectedMat = 'concrete';
 let prSelectedTier = 'STD';
 let prPurchaseQty = 500;
+let prSelectedNation = null; // null = HQ nation (nationStats)
 
 // Equipment state
 let equipmentData = [];   // rows from corp_equipment
@@ -2785,6 +2809,10 @@ let emSelectedNation = null; // null = HQ nation (nationStats), otherwise a fore
 let emAllNations = [];       // all nations for the dropdown
 let nextTickAt = null;
 let tickInterval = null;
+
+function getPrMarketNation() {
+    return prSelectedNation || nationStats;
+}
 
 // Filters
 let typeFilter = 'ALL';
@@ -3271,7 +3299,34 @@ const PM_SEV_COLORS = {
     LOW: 'var(--green)', MODERATE: 'var(--amber)', HIGH: 'var(--orange)', CRITICAL: 'var(--red)',
 };
 
-let pmState = null; // { project, bid, tab, expandedEvent, selectedResponse, events }
+let pmState = null; // { project, bid, tab, expandedEvent, selectedResponse, events, permitRequirements }
+
+const PM_PERMIT_REQUIREMENTS_RPC = 'get_contract_permit_requirements';
+
+async function loadProjectPermitRequirements(projectId, factionId) {
+    if (!_supabase || !projectId || !factionId) return [];
+
+    try {
+        const { data, error } = await _supabase.rpc(PM_PERMIT_REQUIREMENTS_RPC, {
+            p_contract_id: projectId,
+            p_faction_id: factionId,
+        });
+        if (error) {
+            console.warn('[pm permits] failed to load permit requirements:', error.message);
+            return [];
+        }
+        if (!Array.isArray(data)) return [];
+        return data
+            .filter(row => row && row.name)
+            .map(row => ({
+                name: String(row.name),
+                has_permit: row.has_permit === true,
+            }));
+    } catch (err) {
+        console.warn('[pm permits] unexpected error loading permit requirements:', err);
+        return [];
+    }
+}
 
 async function openProjectModal(projectId) {
     const project = activeProjects.find(p => p.id === projectId);
@@ -3371,6 +3426,8 @@ async function openProjectModal(projectId) {
     const corpSkilled = Number(faction?.corp_skilled_workforce ?? 0);
     const corpInnovative = Number(faction?.corp_innovative_workforce ?? 0);
 
+    const permitRequirements = await loadProjectPermitRequirements(project.id, faction?.id);
+
     pmState = {
         project,
         bid,
@@ -3386,6 +3443,7 @@ async function openProjectModal(projectId) {
         phaseProgress,
         materials,
         equipment,
+        permitRequirements,
         budget,
         estCost,
         spent,
@@ -3546,7 +3604,7 @@ async function pmDeployEquipment(equipmentKey, units) {
         const { error } = await _supabase.from('corp_equipment')
             .update({ deployed: newDeployed, assigned_projects: assignments })
             .eq('faction_id', faction.id)
-            .eq('equipment_key', equipmentKey);
+            .eq('equipment_key', eqRow.equipment_key);
         if (error) { alert('Deploy failed: ' + error.message); return; }
 
         await loadEquipment();
@@ -3577,7 +3635,7 @@ async function pmUndeployEquipment(equipmentKey) {
         const { error } = await _supabase.from('corp_equipment')
             .update({ deployed: newDeployed, assigned_projects: assignments })
             .eq('faction_id', faction.id)
-            .eq('equipment_key', equipmentKey);
+            .eq('equipment_key', eqRow.equipment_key);
         if (error) { alert('Undeploy failed: ' + error.message); return; }
 
         await loadEquipment();
@@ -3768,27 +3826,21 @@ function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemainin
         html += '</div></div></div>';
     }
 
-    // Permits (from contract if available)
-    const permits = [];
-    // Show sector-appropriate permits based on project type
-    if (p.sector === 'civil_engineering' || p.sector === 'industrial' || p.sector === 'mega_project') {
-        permits.push({ name: 'Municipal Zoning Approval', status: 'ACTIVE' });
-        permits.push({ name: 'Structural Engineering Cert.', status: 'ACTIVE' });
-        if (p.sector !== 'civil_engineering') {
-            permits.push({ name: 'Environmental Impact Assessment', status: 'ACTIVE' });
-        }
-    }
+    // Permits (backend-driven requirement rows)
+    const permits = Array.isArray(s.permitRequirements) ? s.permitRequirements : [];
 
     if (permits.length > 0) {
         html += `<div style="padding:0 16px"><div class="pm-section">
             <div class="pm-section__title">Permits</div>`;
         for (const permit of permits) {
+            const hasPermit = permit.has_permit === true;
+            const statusText = hasPermit ? 'HAS PERMIT' : 'NEEDS TO GET';
             html += `<div class="pm-permit">
                 <div class="pm-permit__left">
-                    <span class="pm-permit__check" style="color:var(--green)">✓</span>
+                    <span class="pm-permit__check" style="color:${hasPermit ? 'var(--green)' : 'var(--amber)'}">${hasPermit ? '✓' : '!'}</span>
                     <span class="pm-permit__name">${escapeHtml(permit.name)}</span>
                 </div>
-                <span class="pm-permit__exp" style="color:var(--green)">ACTIVE</span>
+                <span class="pm-permit__exp" style="color:${hasPermit ? 'var(--green)' : 'var(--amber)'}">${statusText}</span>
             </div>`;
         }
         html += '</div></div>';
@@ -4643,17 +4695,39 @@ async function loadWarehouse() {
         .eq('faction_id', faction.id);
 
     warehouseData = {};
+    const legacyRowsToMigrate = [];
     if (error) {
         console.warn('Failed to load warehouse:', error.message);
     } else if (data) {
         for (const row of data) {
-            if (!warehouseData[row.material_key]) {
-                warehouseData[row.material_key] = {};
+            const canonicalKey = canonicalMaterialKey(row.material_key);
+            if (!warehouseData[canonicalKey]) {
+                warehouseData[canonicalKey] = {};
             }
-            warehouseData[row.material_key][row.quality_tier] = {
+            warehouseData[canonicalKey][row.quality_tier] = {
                 qty: row.quantity || 0,
                 value: Number(row.total_value) || 0,
             };
+            if (canonicalKey !== row.material_key) legacyRowsToMigrate.push(row);
+        }
+        if (legacyRowsToMigrate.length > 0) {
+            const migratedRows = legacyRowsToMigrate.map(row => ({
+                faction_id: faction.id,
+                nation_id: faction.nation_id,
+                material_key: canonicalMaterialKey(row.material_key),
+                quality_tier: row.quality_tier,
+                quantity: row.quantity || 0,
+                total_value: Number(row.total_value) || 0,
+                updated_at: new Date().toISOString(),
+            }));
+            await _supabase.from('corp_warehouse').upsert(migratedRows, { onConflict: 'faction_id,material_key,quality_tier' });
+            for (const row of legacyRowsToMigrate) {
+                await _supabase.from('corp_warehouse')
+                    .delete()
+                    .eq('faction_id', faction.id)
+                    .eq('material_key', row.material_key)
+                    .eq('quality_tier', row.quality_tier);
+            }
         }
     }
 
@@ -4677,10 +4751,25 @@ const PRICE_DRIVER_LABELS = {
 };
 
 function renderProcurement() {
-    const nationName = (nationStats?.name || faction?.nation || '—').toUpperCase();
+    const marketNation = getPrMarketNation();
+    const nationName = (marketNation?.name || nationStats?.name || faction?.nation || '—').toUpperCase();
+    const isImport = !!(prSelectedNation && nationStats && prSelectedNation.id !== nationStats.id);
 
     // Nation badge
-    document.getElementById('pr-nation-badge').textContent = 'LOCAL — ' + nationName;
+    document.getElementById('pr-nation-badge').textContent = (isImport ? 'IMPORT — ' : 'LOCAL — ') + nationName;
+
+    // Nation dropdown
+    const select = document.getElementById('pr-nation-select');
+    if (select && select.options.length === 0) {
+        const hqName = nationStats?.name || faction?.nation || '—';
+        let opts = `<option value="">${escapeHtml(hqName)} (HQ)</option>`;
+        for (const n of emAllNations) {
+            if (n.id === nationStats?.id) continue;
+            opts += `<option value="${n.id}">${escapeHtml(n.name)}</option>`;
+        }
+        select.innerHTML = opts;
+    }
+    if (select) select.value = prSelectedNation?.id || '';
 
     // Footer: cash + warehouse capacity
     const cash = Number(faction?.corp_cash_reserves) || 0;
@@ -4698,12 +4787,13 @@ function renderProcurement() {
 }
 
 function renderPrMatGrid() {
+    const marketNation = getPrMarketNation();
     const grid = document.getElementById('pr-mat-grid');
     let html = '';
     for (const mat of MATERIALS) {
         const active = prSelectedMat === mat.key;
         // Check if ALL tiers are locked
-        const allLocked = QUALITY_TIERS.every(t => !checkTierAvailability(mat.key, t, nationStats).available);
+        const allLocked = QUALITY_TIERS.every(t => !checkTierAvailability(mat.key, t, marketNation).available);
         const cls = 'pr-mat-btn' + (active ? ' active' : '') + (allLocked ? ' all-locked' : '');
         html += `<span class="${cls}" onclick="setPrMat('${mat.key}')">${escapeHtml(mat.name)}</span>`;
     }
@@ -4711,12 +4801,13 @@ function renderPrMatGrid() {
 }
 
 function renderPrTierBar() {
+    const marketNation = getPrMarketNation();
     const bar = document.getElementById('pr-tier-bar');
     let html = '<span class="pr-tier-label">GRADE</span>';
     for (const tier of QUALITY_TIERS) {
-        const avail = checkTierAvailability(prSelectedMat, tier, nationStats);
+        const avail = checkTierAvailability(prSelectedMat, tier, marketNation);
         const active = prSelectedTier === tier;
-        const price = avail.available ? calculateBasePrice(prSelectedMat, tier, nationStats) : null;
+        const price = avail.available ? calculateBasePrice(prSelectedMat, tier, marketNation) : null;
         const dotColor = MATERIAL_QUALITY_COLORS[tier];
         const locked = !avail.available;
         const cls = 'pr-tier-btn' + (active ? ' active' : '') + (locked ? ' locked' : '');
@@ -4735,8 +4826,9 @@ function renderPrTierBar() {
 }
 
 function renderPrContent() {
+    const marketNation = getPrMarketNation();
     const content = document.getElementById('pr-content');
-    const avail = checkTierAvailability(prSelectedMat, prSelectedTier, nationStats);
+    const avail = checkTierAvailability(prSelectedMat, prSelectedTier, marketNation);
     const mat = MATERIALS.find(m => m.key === prSelectedMat);
     if (!mat) return;
 
@@ -4747,7 +4839,7 @@ function renderPrContent() {
                 <div class="pr-locked-box__title">QUALITY TIER UNAVAILABLE</div>
                 <div class="pr-locked-box__desc">
                     ${escapeHtml(mat.name)} — ${QUALITY_LABELS[prSelectedTier]} grade
-                    is not produced domestically in ${escapeHtml(nationStats?.name || '—')}.
+                    is not produced domestically in ${escapeHtml(marketNation?.name || '—')}.
                 </div>
                 <div class="pr-locked-box__reason">
                     ${escapeHtml(avail.failedStat || 'unknown')} &lt; ${avail.failedMin || '?'}
@@ -4760,8 +4852,8 @@ function renderPrContent() {
         return;
     }
 
-    const price = calculateBasePrice(prSelectedMat, prSelectedTier, nationStats);
-    const supply = calculateSupply(prSelectedMat, prSelectedTier, nationStats);
+    const price = calculateBasePrice(prSelectedMat, prSelectedTier, marketNation);
+    const supply = calculateSupply(prSelectedMat, prSelectedTier, marketNation);
     const totalCost = price * prPurchaseQty;
 
     // Demand estimate: ratio of supply to a baseline
@@ -4769,7 +4861,7 @@ function renderPrContent() {
     const demandColor = demandRatio === 'LOW' ? 'var(--green)' : demandRatio === 'MODERATE' ? 'var(--amber)' : 'var(--red)';
 
     // Trend: simple heuristic based on inflation and demand
-    const inflation = Number(nationStats?.inflation ?? 50);
+    const inflation = Number(marketNation?.inflation ?? 50);
     const trend = inflation > 55 ? 'up' : inflation < 45 ? 'down' : 'flat';
     const trendChar = trend === 'up' ? '&#9650;' : trend === 'down' ? '&#9660;' : '&#8212;';
     const trendColor = trend === 'up' ? 'var(--red)' : trend === 'down' ? 'var(--green)' : 'var(--text-dim)';
@@ -4799,9 +4891,9 @@ function renderPrContent() {
 
     // Price drivers
     html += `<div class="pr-drivers">
-        <div class="pr-drivers__title">Price Drivers (${escapeHtml(nationStats?.name || '—')})</div>`;
+        <div class="pr-drivers__title">Price Drivers (${escapeHtml(marketNation?.name || '—')})</div>`;
     for (const statKey of mat.priceDrivers) {
-        const val = Number(nationStats?.[statKey] ?? 50);
+        const val = Number(marketNation?.[statKey] ?? 50);
         const barColor = val >= 50 ? 'var(--green)' : val >= 30 ? 'var(--amber)' : val >= 15 ? 'var(--orange)' : 'var(--red)';
         const label = PRICE_DRIVER_LABELS[statKey] || statKey;
         html += `<div class="pr-driver-row">
@@ -4869,11 +4961,12 @@ function renderPrContent() {
 }
 
 function setPrMat(key) {
+    const marketNation = getPrMarketNation();
     prSelectedMat = key;
     // Auto-select highest available tier
     prSelectedTier = 'STD';
     for (const tier of ['STD', 'HIGH', 'LOW']) {
-        if (checkTierAvailability(key, tier, nationStats).available) {
+        if (checkTierAvailability(key, tier, marketNation).available) {
             prSelectedTier = tier;
             break;
         }
@@ -4896,12 +4989,43 @@ function setPrQty(qty) {
 
 let _prPurchasing = false;
 
+async function switchPrNation(nationId) {
+    if (!nationId) {
+        prSelectedNation = null; // back to HQ
+    } else {
+        let n = emAllNations.find(x => x.id === nationId);
+        if (!n) {
+            try {
+                const { data } = await _supabase.from('nations').select('*').eq('id', nationId).single();
+                n = data;
+            } catch (_) { /* fall back to HQ */ }
+        }
+        prSelectedNation = n || null;
+    }
+
+    // Keep current selection valid for the selected nation
+    const marketNation = getPrMarketNation();
+    if (!checkTierAvailability(prSelectedMat, prSelectedTier, marketNation).available) {
+        prSelectedTier = 'STD';
+        for (const tier of ['STD', 'HIGH', 'LOW']) {
+            if (checkTierAvailability(prSelectedMat, tier, marketNation).available) {
+                prSelectedTier = tier;
+                break;
+            }
+        }
+    }
+    const select = document.getElementById('pr-nation-select');
+    if (select) select.value = nationId || '';
+    renderProcurement();
+}
+
 async function purchaseMaterial() {
     if (_prPurchasing) return;
     if (!faction || !nationStats) return;
 
-    const price = calculateBasePrice(prSelectedMat, prSelectedTier, nationStats);
-    const supply = calculateSupply(prSelectedMat, prSelectedTier, nationStats);
+    const marketNation = getPrMarketNation();
+    const price = calculateBasePrice(prSelectedMat, prSelectedTier, marketNation);
+    const supply = calculateSupply(prSelectedMat, prSelectedTier, marketNation);
     const totalCost = price * prPurchaseQty;
     const cash = Number(faction.corp_cash_reserves) || 0;
 
@@ -4929,7 +5053,8 @@ async function purchaseMaterial() {
         if (cashErr) throw cashErr;
 
         // Upsert warehouse row
-        const existing = warehouseData[prSelectedMat]?.[prSelectedTier];
+        const materialKey = canonicalMaterialKey(prSelectedMat);
+        const existing = warehouseData[materialKey]?.[prSelectedTier];
         const newQty = (existing?.qty || 0) + prPurchaseQty;
         const newValue = (existing?.value || 0) + totalCost;
 
@@ -4938,7 +5063,7 @@ async function purchaseMaterial() {
             .upsert({
                 faction_id: faction.id,
                 nation_id: faction.nation_id,
-                material_key: prSelectedMat,
+                material_key: materialKey,
                 quality_tier: prSelectedTier,
                 quantity: newQty,
                 total_value: newValue,
@@ -4955,8 +5080,24 @@ async function purchaseMaterial() {
 
         // Update local state
         faction.corp_cash_reserves = newCash;
-        if (!warehouseData[prSelectedMat]) warehouseData[prSelectedMat] = {};
-        warehouseData[prSelectedMat][prSelectedTier] = { qty: newQty, value: newValue };
+        if (!warehouseData[materialKey]) warehouseData[materialKey] = {};
+        warehouseData[materialKey][prSelectedTier] = { qty: newQty, value: newValue };
+
+        // Economic spillover: source nation gets +0.01 GDP growth per $1M purchased
+        const millionBlocks = Math.floor(totalCost / 1000000);
+        if (millionBlocks >= 1 && marketNation?.id) {
+            const gdpBoost = millionBlocks * 0.01;
+            const { data: sourceNation, error: srcErr } = await _supabase
+                .from('nations')
+                .select('gdp_growth')
+                .eq('id', marketNation.id)
+                .single();
+            if (!srcErr && sourceNation) {
+                const nextGrowth = Math.min(100, Math.round((Number(sourceNation.gdp_growth ?? 50) + gdpBoost) * 100) / 100);
+                await _supabase.from('nations').update({ gdp_growth: nextGrowth }).eq('id', marketNation.id);
+                if (nationStats?.id === marketNation.id) nationStats.gdp_growth = nextGrowth;
+            }
+        }
 
         // Re-render both cards
         renderWarehouse();
@@ -6008,6 +6149,8 @@ const DEMAND_COLORS = {
 // ── Available Routes (Shipping corps) ──
 let arRoutes = [];
 let _myShippingApps = []; // current corp's pending/approved applications
+let _arLoadState = 'ready';
+let _arLoadError = null;
 let arFilter = 'ALL';
 let arSelected = -1;
 
@@ -6036,23 +6179,15 @@ function arGetFiltered() {
 async function loadAvailableRoutes() {
     if (!faction || faction.corp_sector !== 'Shipping') return;
 
-    const subsectorMap = {
-        'Bulk Cargo': 'bulk_cargo',
-        'Container Freight': 'container_freight',
-        'Specialized Transport': 'specialized_transport'
-    };
-    const dbSubsector = subsectorMap[faction.corp_subsector] || '';
+    const result = await loadShippingRoutesSafe(_supabase, faction.id, faction.corp_subsector);
+    arRoutes = result.routes;
+    _myShippingApps = result.applications;
+    _arLoadState = result.state;
+    _arLoadError = result.error;
 
-    const [routeResult, appResult] = await Promise.all([
-        _supabase.from('shipping_routes').select('*')
-            .eq('status', 'active').eq('shipping_subsector', dbSubsector)
-            .order('estimated_revenue', { ascending: false }),
-        _supabase.from('shipping_applications').select('*')
-            .eq('faction_id', faction.id).in('status', ['pending', 'approved']),
-    ]);
-
-    arRoutes = routeResult.data || [];
-    _myShippingApps = appResult.data || [];
+    if (_arLoadError) {
+        console.warn('Failed to load available routes:', _arLoadError.message);
+    }
 
     arSelected = -1;
     renderAvailableRoutes();
@@ -6112,6 +6247,13 @@ function renderAvailableRoutes() {
 
     // List
     const listEl = document.getElementById('ar-list');
+    if (_arLoadState === 'error') {
+        listEl.innerHTML = '<div class="ar-empty"><div class="ar-empty__text">'
+            + escapeHtml((_arLoadError && _arLoadError.message) || 'Shipping routes are temporarily unavailable.')
+            + '</div></div>';
+        return;
+    }
+
     if (filtered.length === 0) {
         listEl.innerHTML = '<div class="ar-empty"><div class="ar-empty__text">'
             + (arRoutes.length === 0
@@ -6466,23 +6608,20 @@ async function arClaimRoute() {
 
 // ── Active Voyages (Shipping corps) ──
 let avClaims = [];
+let _avLoadState = 'ready';
+let _avLoadError = null;
 let avSelected = -1;
 
 async function loadActiveVoyages() {
     if (!faction || faction.corp_sector !== 'Shipping') return;
 
-    const { data, error } = await _supabase
-        .from('shipping_claims')
-        .select('*, shipping_routes(*)')
-        .eq('faction_id', faction.id)
-        .eq('status', 'active')
-        .order('claimed_at_tick', { ascending: false });
+    const result = await loadActiveVoyagesSafe(_supabase, faction.id);
+    avClaims = result.claims;
+    _avLoadState = result.state;
+    _avLoadError = result.error;
 
-    if (error) {
-        console.warn('Failed to load active voyages:', error.message);
-        avClaims = [];
-    } else {
-        avClaims = data || [];
+    if (_avLoadError) {
+        console.warn('Failed to load active voyages:', _avLoadError.message);
     }
 
     renderActiveVoyages();
@@ -6560,6 +6699,11 @@ function renderActiveVoyages() {
 
     // List
     const listEl = document.getElementById('av-list');
+    if (_avLoadState === 'error') {
+        listEl.innerHTML = '<div class="av-empty"><div class="av-empty__text">' + escapeHtml((_avLoadError && _avLoadError.message) || 'Active voyage data is temporarily unavailable.') + '</div></div>';
+        return;
+    }
+
     if (avClaims.length === 0) {
         listEl.innerHTML = '<div class="av-empty"><div class="av-empty__text">No active voyages.<br>Claim a shipping route to<br>deploy your fleet.</div></div>';
         return;
@@ -7042,9 +7186,11 @@ async function init() {
     const apEl = document.getElementById('topbar-ap');
     if (apEl) apEl.style.display = 'none';
 
-    // Nation pill
-    document.getElementById('nation-pill').textContent =
-        (nationStats?.name || faction.nation || '—').toUpperCase();
+    // Nation pill (legacy element; guard for shared top bar variants)
+    const nationPillEl = document.getElementById('nation-pill');
+    if (nationPillEl) {
+        nationPillEl.textContent = (nationStats?.name || faction.nation || '—').toUpperCase();
+    }
 
     // Faction dropdown
     const dd = document.getElementById('corp-faction-dropdown');
@@ -7095,10 +7241,10 @@ async function init() {
 
     // Check for ?tab= param to auto-switch on load (urlTab declared above in redirect check)
     if (urlTab === 'expansion') {
-        const expTab = document.querySelector('[data-tab="expansion"]');
+        const expTab = document.querySelector('[data-tab-action="expansion"]');
         if (expTab) switchToExpansion({ preventDefault: () => {}, target: expTab });
     } else if (urlTab === 'actions') {
-        const actTab = document.querySelector('[data-tab="actions"]');
+        const actTab = document.querySelector('[data-tab-action="actions"]');
         if (actTab) switchToActions({ preventDefault: () => {}, target: actTab });
     }
 }
@@ -7155,6 +7301,7 @@ window.setEmType = setEmType;
 window.setEmListing = setEmListing;
 window.setEmQty = setEmQty;
 window.purchaseEquipment = purchaseEquipment;
+window.switchPrNation = switchPrNation;
 window.setPrMat = setPrMat;
 window.setPrTier = setPrTier;
 window.setPrQty = setPrQty;
@@ -7200,7 +7347,7 @@ async function switchToExpansion(e) {
     expEl.style.gap = '12px';
     expEl.style.alignItems = 'flex-start';
     expEl.style.flexWrap = 'wrap';
-    document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.corp-nav-tab').forEach(t => t.classList.remove('active'));
     e.target.classList.add('active');
     await loadOwnedProperties();
     renderHireFireCard();
@@ -7222,8 +7369,8 @@ function switchToOperations(e) {
     document.getElementById('operations-content').style.display = 'flex';
     document.getElementById('expansion-content').style.display = 'none';
     document.getElementById('actions-content').style.display = 'none';
-    document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
-    document.querySelector('[data-tab="operations"]')?.classList.add('active');
+    document.querySelectorAll('.corp-nav-tab').forEach(t => t.classList.remove('active'));
+    getOperationsTabEl()?.classList.add('active');
 }
 
 async function switchToActions(e) {
@@ -7231,10 +7378,19 @@ async function switchToActions(e) {
     document.getElementById('operations-content').style.display = 'none';
     document.getElementById('expansion-content').style.display = 'none';
     document.getElementById('actions-content').style.display = 'block';
-    document.querySelectorAll('.corp-nav__tab').forEach(t => t.classList.remove('active'));
-    (e.target || document.querySelector('[data-tab="actions"]')).classList.add('active');
+    document.querySelectorAll('.corp-nav-tab').forEach(t => t.classList.remove('active'));
+    (e.target || document.querySelector('[data-tab-action="actions"]'))?.classList.add('active');
     await loadExecutives();
     renderActionsTab();
+}
+
+function getOperationsTabEl() {
+    return Array.from(document.querySelectorAll('.corp-nav-tab[href]:not([data-tab-action])')).find((tab) => {
+        const href = tab.getAttribute('href');
+        if (!href) return false;
+        const tabUrl = new URL(href, window.location.href);
+        return tabUrl.pathname === window.location.pathname && !tabUrl.searchParams.get('tab');
+    }) || null;
 }
 
 async function loadExecutives() {
@@ -7247,31 +7403,17 @@ async function loadExecutives() {
     if (poolRes.error) console.warn('Failed to load executive pool:', poolRes.error.message);
     _executives = execRes.data || [];
     _execPool = poolRes.data || [];
-
-    // Auto-seed CEO from faction leader data if no CEO row exists
-    const hasCEO = _executives.some(e => e.role === 'CEO');
-    if (!hasCEO && faction.leader_first_name && faction.leader_last_name) {
-        const skill = 25 + Math.floor(Math.random() * 21); // 25-45
-        const contractYears = 2 + Math.floor(Math.random() * 4); // 2-5
-        const totalComp = 25000000 + (skill - 25) * 1500000;
-        const annualSalary = Math.round(totalComp / contractYears);
-        const currentTick = shard?.current_tick || 0;
-        const ceoRow = {
-            faction_id: faction.id,
-            role: 'CEO',
-            first_name: faction.leader_first_name,
-            last_name: faction.leader_last_name,
-            age: faction.leader_age || 50,
-            origin_nation: faction.nation || null,
-            skill: skill,
-            salary_per_year: annualSalary,
-            contract_years: contractYears,
-            contract_start_tick: currentTick,
-            contract_end_tick: currentTick + (contractYears * 12),
-            status: 'active',
-        };
-        const { data: inserted, error: ceoErr } = await _supabase.from('corp_executives').insert(ceoRow).select();
-        if (!ceoErr && inserted) _executives.push(inserted[0]);
+    const seedResult = await createInitialExecutiveRoster({
+        supabase: _supabase,
+        faction: faction,
+        currentTick: shard?.current_tick || 0,
+        poolCandidates: _execPool,
+    });
+    if (seedResult?.error) {
+        console.warn('Failed to seed initial executive roster:', seedResult.error.message || seedResult.error);
+    }
+    if (seedResult?.executives) {
+        _executives = seedResult.executives;
     }
 }
 
@@ -7402,6 +7544,7 @@ const EXEC_ACTIONS = {
     CEO: [
         { id: 'statement', name: 'Issue Statement', desc: 'Issue a press release to the public events feed. Other players and media corps see it. Cost scales with CEO skill.', cost: '~$20k', costColor: '#5cb85c', tags: ['REPUTATION'], cooldown: 'once/tick' },
         { id: 'ipo', name: 'IPO', desc: 'Take the corporation public. Sell ~30% of shares for a massive cash injection. Permanent loss of full control.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['STRUCTURAL'], locked: true, lockReason: 'Coming soon' },
+        { id: 'bankruptcy', name: 'Declare Bankruptcy', desc: 'The CEO officially files for bankruptcy, ceasing all operations. Outstanding loans will be repaid up to 50% of the corporation\'s market valuation.', descRed: 'This will dissolve your corporation. Loans will be paid back, and you will need to found a new corporation. There is a 24 tick cooldown on declaring bankruptcy.', cost: 'IRREVERSIBLE', costColor: '#c55', tags: ['IRREVERSIBLE'] },
     ],
     CFO: [
         { id: 'loan', name: 'Request Loan', desc: 'Submit a loan application to all finance corporations. Set amount, purpose, term, and collateral. Receive competing offers.', cost: 'FREE', costColor: '#5cb85c', tags: ['FINANCIAL'] },
@@ -7419,7 +7562,7 @@ const EXEC_ACTIONS = {
         { id: 'sue_corp', name: 'Sue Corporation', desc: 'File a lawsuit against another corporation for patent infringement, contract breach, or predatory practices.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['LEGAL'], locked: true, lockReason: 'Coming soon' },
     ],
     Lobbyist: [
-        { id: 'donate', name: 'Political Donation', desc: 'Donate $1M to a political party in any nation where you have a presence. The target party receives $100k in party funds. You cannot donate to your own party.', cost: '$1M', costColor: '#ca5', tags: ['POLITICAL'], cooldown: 'once/tick' },
+        { id: 'donate', name: 'Political Donation', desc: 'Donate $1M to a political party in the nation where your National HQ is located. The target party receives $100k in party funds. You cannot donate to your own party.', cost: '$1M', costColor: '#ca5', tags: ['POLITICAL'], cooldown: 'once/tick' },
     ],
 };
 
@@ -7531,6 +7674,11 @@ function renderActionsRightPanel() {
 
         // Row 2: Description
         html += `<div style="font-size:14px;color:${isLocked ? 'var(--text-dim)' : 'var(--text-muted,#666)'};line-height:1.6;">${escapeHtml(action.desc)}</div>`;
+
+        // Red warning text (e.g. bankruptcy)
+        if (action.descRed) {
+            html += `<div style="font-size:13px;color:#c55;line-height:1.6;margin-top:4px;">${escapeHtml(action.descRed)}</div>`;
+        }
 
         // Lock reason
         if (isLocked && action.lockReason) {
@@ -7654,6 +7802,7 @@ function actExecute(actionId, role) {
         case 'restructure': return actOpenRestructure();
         case 'rebrand': return actOpenRebrand();
         case 'donate': return actOpenDonation();
+        case 'bankruptcy': return actDeclareBankruptcy();
         default: break;
     }
 }
@@ -7809,6 +7958,153 @@ async function actSubmitStatement() {
     _stmtSubmitting = false;
     markActionUsed('statement');
     actCloseStatement();
+}
+
+// ═══════════════════════════════════════════════════
+// CEO: Declare Bankruptcy
+// ═══════════════════════════════════════════════════
+
+const BANKRUPTCY_COOLDOWN_TICKS = 24;
+const LOAN_PAYBACK_CEILING = 0.50;
+
+async function checkBankruptcyCooldown(userId, currentTick) {
+    const cooldownTick = currentTick - BANKRUPTCY_COOLDOWN_TICKS;
+    const { data: recentBankruptcy } = await _supabase
+        .from('event_log')
+        .select('fired_at_tick, effects_applied')
+        .eq('trigger_key', 'corp_bankruptcy')
+        .gte('fired_at_tick', cooldownTick)
+        .order('fired_at_tick', { ascending: false })
+        .limit(20);
+    const myRecent = (recentBankruptcy || []).find(e => e.effects_applied?.user_id === userId);
+    const ticksLeft = myRecent
+        ? Math.max(0, (myRecent.fired_at_tick + BANKRUPTCY_COOLDOWN_TICKS) - currentTick)
+        : 0;
+    return { onCooldown: ticksLeft > 0, ticksLeft };
+}
+
+let _declaring = false;
+
+async function actDeclareBankruptcy() {
+    if (_declaring) return;
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { alert('Not logged in.'); return; }
+
+    const factionId = faction?.id || sessionStorage.getItem('active_faction_id');
+    if (!factionId) { alert('No active faction selected.'); return; }
+
+    const { data: freshCorp, error: corpErr } = await _supabase
+        .from('factions').select('*')
+        .eq('id', factionId).eq('faction_type', 'corporation').is('abandoned_at', null).single();
+    if (corpErr || !freshCorp) {
+        alert('No active corporation found. It may have already been dissolved.');
+        return;
+    }
+    const corp = freshCorp;
+    const corpName = corp.faction_name || 'this corporation';
+
+    const { data: shardData, error: shardErr } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    if (shardErr || !shardData) { alert('Failed to read game tick. Please try again.'); return; }
+    const currentTick = shardData.current_tick || 0;
+
+    const { onCooldown, ticksLeft } = await checkBankruptcyCooldown(user.id, currentTick);
+    if (onCooldown) {
+        alert('Bankruptcy is on cooldown. You must wait ' + ticksLeft + ' more tick' + (ticksLeft !== 1 ? 's' : '') + ' before declaring bankruptcy again.');
+        return;
+    }
+
+    if (!confirm(
+        'DECLARE BANKRUPTCY — ' + corpName.toUpperCase() + '?\n\n' +
+        'This will permanently:\n' +
+        '• Dissolve the corporation\n' +
+        '• Delete all properties, equipment, and inventory\n' +
+        '• Pay back outstanding loans (up to 50% of market valuation)\n' +
+        '• Remove all remaining cash reserves\n\n' +
+        'You will need to found a new corporation.\n' +
+        'There is a 24 tick cooldown on declaring bankruptcy.\n\n' +
+        'This action CANNOT be undone.'
+    )) return;
+
+    const typed = prompt('Type "BANKRUPT" to confirm bankruptcy of ' + corpName + ':');
+    if (typed !== 'BANKRUPT') { alert('Bankruptcy cancelled.'); return; }
+
+    _declaring = true;
+    try {
+        async function run(op) { const { error } = await op; if (error) throw error; }
+
+        const cashReserves = Number(corp.corp_cash_reserves) || 0;
+        const { data: props } = await _supabase.from('corp_properties').select('purchase_price, condition').eq('faction_id', factionId);
+        let propertyValue = 0;
+        for (const p of (props || [])) {
+            propertyValue += Math.round(Number(p.purchase_price || 0) * (Number(p.condition || 0) / 100));
+        }
+        const totalAssets = cashReserves + propertyValue;
+        const outstandingLoans = Number(corp.corp_loans) || 0;
+        const netWorth = totalAssets - outstandingLoans;
+        const valuation = Math.round(netWorth * 1.30);
+        const loanPaybackCap = Math.max(0, Math.round(valuation * LOAN_PAYBACK_CEILING));
+
+        const { data: activeLoans } = await _supabase.from('finance_active_loans').select('*')
+            .eq('borrower_faction_id', factionId).in('status', ['current', 'late', 'delinquent']).order('started_tick', { ascending: true });
+        let totalPayback = 0;
+        for (const loan of (activeLoans || [])) {
+            const remaining = loan.principal - loan.total_paid;
+            if (remaining <= 0) continue;
+            const canPay = Math.min(remaining, loanPaybackCap - totalPayback);
+            if (canPay <= 0) break;
+            const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
+            if (lender) {
+                await run(_supabase.from('factions').update({ corp_cash_reserves: (Number(lender.corp_cash_reserves) || 0) + canPay }).eq('id', loan.lender_faction_id));
+            }
+            await run(_supabase.from('finance_active_loans').update({ status: 'repaid', total_paid: loan.total_paid + canPay, completed_tick: currentTick }).eq('id', loan.id));
+            totalPayback += canPay;
+        }
+
+        await run(_supabase.from('contract_bids').delete().eq('faction_id', factionId));
+        await run(_supabase.from('construction_contracts').update({ status: 'expired' }).eq('issuer_faction_id', factionId).in('status', ['open', 'bidding']));
+        await run(_supabase.from('corp_equipment_deliveries').delete().eq('faction_id', factionId));
+        await run(_supabase.from('corp_equipment').delete().eq('faction_id', factionId));
+        await run(_supabase.from('corp_properties').delete().eq('faction_id', factionId));
+        await _supabase.from('corp_material_inventory').delete().eq('faction_id', factionId);
+        await _supabase.from('corp_warehouse').delete().eq('faction_id', factionId);
+        await _supabase.from('corp_executives').delete().eq('faction_id', factionId);
+        await _supabase.from('faction_agitators').delete().eq('faction_id', factionId);
+        await run(_supabase.from('factions').delete().eq('id', factionId));
+
+        const paybackNote = totalPayback > 0 ? ' $' + totalPayback.toLocaleString() + ' was repaid to creditors.' : '';
+        await run(_supabase.from('event_log').insert({
+            nation_id: corp.nation_id, faction_id: factionId,
+            event_name: corpName + ' — Bankruptcy',
+            description_used: corpName + ' has officially filed for bankruptcy. It has laid off its executive staff and ceased operations.' + paybackNote,
+            category: 'business', trigger_key: 'corp_bankruptcy',
+            effects_applied: { corp_name: corpName, sector: corp.corp_sector, user_id: user.id, loan_payback: totalPayback, valuation: valuation },
+            fired_at_tick: currentTick,
+        }));
+
+        sessionStorage.removeItem('active_faction_id');
+        sessionStorage.removeItem('nationhood_state');
+        const { data: remaining } = await _supabase.from('factions').select('id, faction_type').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+        const party = (remaining || []).find(f => f.faction_type === 'party');
+        const otherCorp = (remaining || []).find(f => f.faction_type === 'corporation');
+        const payMsg = totalPayback > 0 ? '\n$' + totalPayback.toLocaleString() + ' repaid to creditors.' : '';
+
+        if (party) {
+            sessionStorage.setItem('active_faction_id', party.id);
+            alert(corpName + ' has declared bankruptcy.' + payMsg + '\n\nRedirecting to your political party.');
+            window.location.href = 'dashboard.html';
+        } else if (otherCorp) {
+            sessionStorage.setItem('active_faction_id', otherCorp.id);
+            alert(corpName + ' has declared bankruptcy.' + payMsg + '\n\nRedirecting to your other corporation.');
+            window.location.href = 'corp-dashboard.html';
+        } else {
+            alert(corpName + ' has declared bankruptcy.' + payMsg + '\n\nYou have no remaining factions.');
+            window.location.href = 'faction-select.html';
+        }
+    } catch (err) {
+        alert('Bankruptcy failed: ' + (err.message || err) + '\n\nPlease try again or contact support.');
+    } finally {
+        _declaring = false;
+    }
 }
 
 // ═══════════════════════════════════════════════════
@@ -8413,17 +8709,14 @@ let _donateSelected = -1;
 async function actOpenDonation() {
     const cash = Number(faction?.corp_cash_reserves ?? 0);
 
-    // Get all nation IDs where corp has presence (home nation + regional HQs)
-    const presenceNationIds = new Set([faction.nation_id]);
-    for (const prop of (_ownedProperties || [])) {
-        if (prop.is_active && prop.nation_id) presenceNationIds.add(prop.nation_id);
-    }
-    const nationIds = [...presenceNationIds];
+    // Only parties in the nation where the National HQ is located.
+    // Subsidiaries / regional HQs in other nations do not unlock donations there.
+    const nationIds = [faction.nation_id];
 
     // Get user's own faction IDs (to block self-donation)
     const ownFactionIds = new Set(allUserFactions.map(f => f.id));
 
-    // Load all political parties in nations where corp has presence
+    // Load all political parties in the corp's home nation
     const { data: parties } = await _supabase.from('factions')
         .select('id, faction_name, abbreviation, party_color, party_funds, seats, momentum, nation, nation_id, leader_ideology, linked_user_id, ideology_value_1, ideology_value_2')
         .eq('faction_type', 'party')
@@ -8487,7 +8780,7 @@ function renderDonationModal() {
             <span style="font-family:var(--font-mono);font-size:11px;color:#6a6660;">&rarr; Target party receives</span>
             <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:#5cb85c;">+${hfFmtBig(partyReceives)}</span>
         </div>
-        <div style="font-family:var(--font-mono);font-size:10px;color:#6a6660;margin-top:4px;">Parties in all nations where you have a presence. You cannot donate to your own party.</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:#6a6660;margin-top:4px;">Parties in the nation where your National HQ is located. You cannot donate to your own party.</div>
     </div>`;
 
     // Party list
@@ -8559,6 +8852,7 @@ async function actSubmitDonation() {
     if (!faction || !shard || _donateSelected < 0 || _donateSubmitting) return;
     const party = _donateParties[_donateSelected];
     if (!party) return;
+    const currentTick = Number(shard?.current_tick || 0);
 
     // Guard: cannot donate to own party (same linked_user_id)
     const ownFactionIds = new Set(allUserFactions.map(f => f.id));
@@ -8572,10 +8866,29 @@ async function actSubmitDonation() {
     const lobbySkill = lobbyist ? lobbyist.skill : 50;
     const donateCost = Math.round(1000000 * skillCostMod(lobbySkill));
     const partyReceives = 100000; // $100k to party coffers
+    const repLoss = 2;
 
-    // Fresh cash check
-    const { data: freshCash } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
-    const cash = Number(freshCash?.corp_cash_reserves ?? 0);
+    // Read current faction state + cooldown atomically
+    const { data: freshFaction, error: freshFactionErr } = await _supabase
+        .from('factions')
+        .select('corp_cash_reserves, last_donation_tick')
+        .eq('id', faction.id)
+        .single();
+    if (freshFactionErr || !freshFaction) {
+        const errEl = document.getElementById('donate-error');
+        if (errEl) { errEl.textContent = 'Failed to verify cooldown: ' + (freshFactionErr?.message || 'unknown'); errEl.style.display = 'block'; }
+        return;
+    }
+
+    const prevDonationTick = Number(freshFaction.last_donation_tick ?? 0);
+    if (prevDonationTick === currentTick) {
+        const errEl = document.getElementById('donate-error');
+        if (errEl) { errEl.textContent = 'Political Donation is on cooldown until next tick.'; errEl.style.display = 'block'; }
+        markActionUsed('donate');
+        return;
+    }
+
+    const cash = Number(freshFaction.corp_cash_reserves ?? 0);
     if (cash < donateCost) {
         const errEl = document.getElementById('donate-error');
         if (errEl) { errEl.textContent = 'Insufficient cash. Need ' + hfFmtBig(donateCost) + ', have ' + hfFmtBig(cash) + '.'; errEl.style.display = 'block'; }
@@ -8586,16 +8899,32 @@ async function actSubmitDonation() {
     const btn = document.getElementById('donate-btn');
     if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
 
-    // Deduct $1M from corp
-    const { error: cashErr } = await _supabase.from('factions').update({
+    // Deduct cash + stamp cooldown atomically. Optimistic lock on last_donation_tick:
+    // if another request already updated it this tick, this UPDATE matches 0 rows.
+    const currentRep = Number(faction.corp_reputation ?? 50);
+    const nextRep = Math.max(0, currentRep - repLoss);
+    const { data: updated, error: cashErr } = await _supabase.from('factions').update({
         corp_cash_reserves: cash - donateCost,
-    }).eq('id', faction.id);
+        corp_reputation: nextRep,
+        last_donation_tick: currentTick,
+    }).eq('id', faction.id)
+      .eq('last_donation_tick', prevDonationTick)
+      .select('id');
 
     if (cashErr) {
         const errEl = document.getElementById('donate-error');
         _donateSubmitting = false;
         if (errEl) { errEl.textContent = 'Failed: ' + cashErr.message; errEl.style.display = 'block'; }
         if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        return;
+    }
+    if (!updated || updated.length === 0) {
+        // Another request already claimed this tick — race lost, no cash deducted
+        const errEl = document.getElementById('donate-error');
+        _donateSubmitting = false;
+        if (errEl) { errEl.textContent = 'Political Donation is on cooldown until next tick.'; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        markActionUsed('donate');
         return;
     }
 
@@ -8618,18 +8947,18 @@ async function actSubmitDonation() {
 
     // Update local state
     faction.corp_cash_reserves = cash - donateCost;
+    faction.corp_reputation = nextRep;
 
     // Log event
-    const currentTick = shard.current_tick || 0;
     const corpName = faction.faction_name || 'Corporation';
     const { error: donateLogErr } = await _supabase.from('event_log').insert({
         nation_id: party.nation_id || faction.nation_id,
         faction_id: faction.id,
         event_name: corpName + ' — Political Donation',
-        description_chosen: corpName + ' has donated ' + hfFmtBig(donateCost) + ' to ' + (party.faction_name || 'a political party') + '. The party receives ' + hfFmtBig(partyReceives) + ' in campaign funds.',
+        description_chosen: corpName + ' has donated ' + hfFmtBig(donateCost) + ' to ' + (party.faction_name || 'a political party') + '. The party receives ' + hfFmtBig(partyReceives) + ' in campaign funds. Corporate reputation decreases by ' + repLoss + '.',
         category: 'business',
         trigger_key: 'corp_donation',
-        effects_applied: { cost: donateCost, recipient_faction_id: party.id, recipient_name: party.faction_name, funds_granted: partyReceives, skill: lobbySkill },
+        effects_applied: { cost: donateCost, recipient_faction_id: party.id, recipient_name: party.faction_name, funds_granted: partyReceives, reputation_loss: repLoss, skill: lobbySkill },
         fired_at_tick: currentTick,
     });
     if (donateLogErr) console.warn('Failed to log donation event:', donateLogErr.message);
@@ -10412,16 +10741,44 @@ async function subPutForSale(propId) {
 
 // ─── SUBSIDIARY MARKETPLACE: show listings + bids ───
 let _marketplaceListings = [];
+let _subsidiaryMarketplaceUnavailable = false;
+
+function isFeatureUnavailableSupabaseError(error) {
+    if (!error) return false;
+    const code = String(error.code || '').toUpperCase();
+    const message = String(error.message || '');
+    return code === 'PGRST202'
+        || code === 'PGRST205'
+        || code === '42P01'
+        || /Could not find the table/i.test(message)
+        || /schema cache/i.test(message);
+}
+
+async function runSubsidiaryMarketplaceQuery(queryPromise, label) {
+    const { data, error } = await queryPromise;
+    if (!error) return { data: data || [], error: null, unavailable: false };
+
+    if (isFeatureUnavailableSupabaseError(error)) {
+        console.warn('[SubMarket] ' + label + ' unavailable in this environment:', error.message);
+        return { data: [], error, unavailable: true };
+    }
+
+    console.error('[SubMarket] ' + label + ' failed:', error.message);
+    return { data: [], error, unavailable: false };
+}
+
+let _subMarketLoadState = 'ready';
+let _subMarketLoadError = null;
 
 async function loadMarketplaceListings() {
-    const { data, error } = await _supabase
-        .from('subsidiary_sales')
-        .select('*, subsidiary_bids(*)')
-        .eq('status', 'listed')
-        .order('listed_at_tick', { ascending: false });
+    const result = await loadSubsidiaryMarketSafe(_supabase);
+    _marketplaceListings = result.listings;
+    _subMarketLoadState = result.state;
+    _subMarketLoadError = result.error;
 
-    if (error) { console.error('[SubMarket] Load failed:', error.message); return; }
-    _marketplaceListings = data || [];
+    if (_subMarketLoadError) {
+        console.error('[SubMarket] Load failed:', _subMarketLoadError.message);
+    }
 }
 
 function renderSubsidiaryMarketplaceCard() {
@@ -10468,7 +10825,9 @@ function renderSubsidiaryMarketplaceCard() {
     }
 
     // Available listings (buyer view)
-    if (listings.length === 0) {
+    if (_subMarketLoadState === 'error') {
+        html += `<div style="padding:24px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.red};font-style:italic;">${escapeHtml((_subMarketLoadError && _subMarketLoadError.message) || 'Subsidiary marketplace is temporarily unavailable.')}</div>`;
+    } else if (listings.length === 0) {
         html += `<div style="padding:24px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim};font-style:italic;">No subsidiaries for sale right now.</div>`;
     } else {
         for (const l of listings) {
@@ -11519,6 +11878,8 @@ let _bidWorkers = 120;
 let _bidMarkup = 15;
 let _bidWarehouse = {};
 let _bidCompetitors = [];
+let _bidPermitRequirements = [];
+let _bidPermitCosts = {};
 
 async function openBidAssembly() {
     if (!selectedContract) return;
@@ -11536,7 +11897,7 @@ async function openBidAssembly() {
             .select('material_key, quantity')
             .eq('faction_id', faction.id);
         for (const r of (invRows || [])) {
-            _bidWarehouse[r.material_key] = Number(r.quantity || 0);
+            _bidWarehouse[canonicalMaterialKey(r.material_key)] = Number(r.quantity || 0);
         }
     } catch (_) {
         // Table may not exist yet — warehouse inventory is Phase 5
@@ -11559,6 +11920,38 @@ async function openBidAssembly() {
         }));
     } catch (_) { /* table may not exist */ }
 
+    // Load permit requirements for this project/corporation from backend RPC
+    _bidPermitRequirements = [];
+    _bidPermitCosts = {};
+    try {
+        const { data: permitReqs, error: permitReqErr } = await _supabase.rpc('get_project_permit_requirements', {
+            p_contract_id: _bidContract.id,
+            p_faction_id: faction.id,
+            p_nation_id: _bidContract.nation_id
+        });
+        if (permitReqErr) throw permitReqErr;
+
+        _bidPermitRequirements = Array.isArray(permitReqs) ? permitReqs : [];
+        const requiredKeys = _bidPermitRequirements.map(r => r.permit_key).filter(Boolean);
+        if (requiredKeys.length > 0) {
+            const { data: permitDefs, error: permitDefsErr } = await _supabase
+                .from('construction_permits')
+                .select('permit_key, cost, processing_ticks')
+                .in('permit_key', requiredKeys);
+            if (permitDefsErr) throw permitDefsErr;
+            for (const p of (permitDefs || [])) {
+                _bidPermitCosts[p.permit_key] = {
+                    cost: Number(p.cost || 0),
+                    ticks: Number(p.processing_ticks || 0),
+                };
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to load project permit requirements', err);
+        _bidPermitRequirements = [];
+        _bidPermitCosts = {};
+    }
+
     // Initialize grades to STD for each required material
     _bidGrades = {};
     const mats = _bidContract.required_materials || {};
@@ -11578,6 +11971,8 @@ async function openBidAssembly() {
 function closeBidAssembly() {
     document.getElementById('bid-assembly-overlay')?.remove();
     _bidContract = null;
+    _bidPermitRequirements = [];
+    _bidPermitCosts = {};
 }
 
 function bidSetGrade(matKey, grade) {
@@ -11691,18 +12086,19 @@ function renderBidAssembly() {
     const laborCost = _bidWorkers * wageRate * estCompletionTicks;
 
     // ── PERMITS ──
-    const budget = budgetCeiling;
-    const PERMIT_TEMPLATES = [
-        { name: 'Municipal Zoning Approval', cost: 180000, ticks: 2, required: true },
-        { name: 'Structural Engineering Cert.', cost: 240000, ticks: 3, required: true },
-        { name: 'Environmental Impact Assessment', cost: 340000, ticks: 8, required: budget > 20000000 },
-        { name: 'Seismic Resilience Compliance', cost: 210000, ticks: 4, required: budget > 50000000 },
-        { name: 'Heritage Conservation Review', cost: 160000, ticks: 6, required: false },
-        { name: 'Fire Safety Certification', cost: 120000, ticks: 2, required: budget > 10000000 },
-    ];
-    const permits = PERMIT_TEMPLATES.filter(p => p.required);
-    const heldPermitNames = new Set(['Municipal Zoning Approval', 'Structural Engineering Cert.']);
-    const permitCost = permits.filter(p => !heldPermitNames.has(p.name)).reduce((s, p) => s + p.cost, 0);
+    const permits = (_bidPermitRequirements || []).map(req => {
+        const def = _bidPermitCosts[req.permit_key] || {};
+        return {
+            permit_key: req.permit_key,
+            name: req.permit_name || req.permit_key,
+            requiredByPolicy: req.required_by_policy || '—',
+            hasPermit: !!req.has_permit,
+            statusLabel: req.status_label || (req.has_permit ? 'HAS_PERMIT' : 'NEEDS_TO_GET'),
+            cost: Number(def.cost || 0),
+            ticks: Number(def.ticks || 0),
+        };
+    });
+    const permitCost = permits.filter(p => !p.hasPermit).reduce((s, p) => s + p.cost, 0);
 
     const overhead = 400000;
     const totalCost = materialCost + laborCost + permitCost + overhead;
@@ -11803,21 +12199,25 @@ function renderBidAssembly() {
                 <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
                     <span style="font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1.5px;color:${C.accentBright};text-transform:uppercase">Permits</span>
                 </div>
+                ${permits.length === 0
+                    ? `<div style="padding:8px 14px;border-bottom:1px solid ${C.border};font-family:${mono};font-size:8px;color:${C.dim};">No active permit laws apply to this project.</div>`
+                    : ''
+                }
                 ${permits.map(p => {
-                    const held = heldPermitNames.has(p.name);
+                    const held = p.hasPermit;
                     return `<div style="display:flex;align-items:center;padding:4px 14px;border-bottom:1px solid ${C.border};">
                         <div style="flex:1;display:flex;align-items:center;gap:6px;">
                             <span style="font-family:${mono};font-size:8px;font-weight:700;color:${held ? C.greenBright : C.orange}">${held ? '✓' : '○'}</span>
                             <span style="font-size:10px;color:${held ? C.muted : C.text}">${p.name}</span>
                         </div>
                         ${held
-                            ? `<span style="font-family:${mono};font-size:8px;color:${C.greenBright}">HELD</span>`
+                            ? `<span style="font-family:${mono};font-size:8px;color:${C.greenBright}">${p.statusLabel}</span>`
                             : `<div style="text-align:right">
                                 <span style="font-family:${mono};font-size:9px;color:${C.redDim}">${hfFmtBig(p.cost)}</span>
                                 <span style="font-family:${mono};font-size:7px;color:${C.dim};margin-left:4px">${p.ticks}t</span>
                             </div>`
                         }
-                    </div>`;
+                    </div><div style="padding:0 14px 4px 28px;border-bottom:1px solid ${C.border};font-family:${mono};font-size:7px;color:${C.dim};">Required by: ${escapeHtml(p.requiredByPolicy)}</div>`;
                 }).join('')}
                 <div style="display:flex;justify-content:space-between;padding:5px 14px;border-bottom:1px solid ${C.border};background:rgba(139,154,107,0.02);">
                     <span style="font-family:${mono};font-size:9px;color:${C.muted}">PERMIT COSTS</span>
@@ -11962,16 +12362,9 @@ async function submitBidAssembly() {
     const laborCost = _bidWorkers * wageRate * _sestTicks;
 
     // Permits
-    const budget = budgetCeiling;
-    const PERMIT_TEMPLATES = [
-        { name: 'Municipal Zoning Approval', cost: 180000, required: true },
-        { name: 'Structural Engineering Cert.', cost: 240000, required: true },
-        { name: 'Environmental Impact Assessment', cost: 340000, required: budget > 20000000 },
-        { name: 'Seismic Resilience Compliance', cost: 210000, required: budget > 50000000 },
-        { name: 'Fire Safety Certification', cost: 120000, required: budget > 10000000 },
-    ];
-    const heldPermitNames = new Set(['Municipal Zoning Approval', 'Structural Engineering Cert.']);
-    const permitCost = PERMIT_TEMPLATES.filter(p => p.required && !heldPermitNames.has(p.name)).reduce((s, p) => s + p.cost, 0);
+    const permitCost = (_bidPermitRequirements || [])
+        .filter(req => !req.has_permit)
+        .reduce((sum, req) => sum + Number(_bidPermitCosts[req.permit_key]?.cost || 0), 0);
 
     const overhead = 400000;
     const totalCost = materialCost + laborCost + permitCost + overhead;
@@ -13746,6 +14139,7 @@ window.confirmFireExec = confirmFireExec;
 window.actOpenStatement = actOpenStatement;
 window.actCloseStatement = actCloseStatement;
 window.actSubmitStatement = actSubmitStatement;
+window.actDeclareBankruptcy = actDeclareBankruptcy;
 window.actOpenRestructure = actOpenRestructure;
 window.actCloseRestructure = actCloseRestructure;
 window.actSubmitRestructure = actSubmitRestructure;
@@ -13773,9 +14167,15 @@ window.hfSetChange = hfSetChange;
 window.hfReset = hfReset;
 window.hfConfirm = hfConfirm;
 
-// Wire Operations tab to switch back
-document.querySelector('[data-tab="operations"]')?.addEventListener('click', function(e) {
-    if (this.classList.contains('active')) return;
+// Wire Operations tab to switch back (shared topbar renders nav dynamically)
+document.addEventListener('click', function(e) {
+    const tab = e.target.closest('.corp-nav-tab[href]:not([data-tab-action])');
+    if (!tab) return;
+    const href = tab.getAttribute('href');
+    if (!href) return;
+    const tabUrl = new URL(href, window.location.href);
+    if (tabUrl.pathname !== window.location.pathname || tabUrl.searchParams.get('tab')) return;
+    if (tab.classList.contains('active')) return;
     e.preventDefault();
     switchToOperations(e);
 });

@@ -1832,7 +1832,7 @@ export async function processGovernmentCollapseCheck(supabase, nation, currentTi
         // Close administration
         try {
             const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-            await closeAdministration(supabase, nation.id, nation, 'collapsed', currentTick, shard?.current_date || '', null);
+            await closeAdministration(supabase, nation.id, nation, 'collapsed', currentTick, shard?.current_date || _tickToDate(currentTick), null);
         } catch (e) { console.warn('[GovCollapse] closeAdministration failed:', e); }
 
         await dissolveCoalition(supabase, nation.id);
@@ -3251,7 +3251,7 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
         const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
         const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
         if (fullNation) {
-            await closeAdministration(supabase, nationId, fullNation, 'pm_resignation', currentTick, shard?.current_date || '', null);
+            await closeAdministration(supabase, nationId, fullNation, 'pm_resignation', currentTick, shard?.current_date || _tickToDate(currentTick), null);
         }
     } catch (adminErr) { console.warn('Could not close administration on PM resignation:', adminErr); }
     await dissolveCoalition(supabase, nationId);

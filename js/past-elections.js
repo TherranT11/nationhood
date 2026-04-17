@@ -145,6 +145,9 @@ function render(root, partyMap) {
         const prevAdmin = _administrations.find(a => a.ended_at_tick != null && a.ended_at_tick >= elec.election_tick - 2 && a.ended_at_tick <= elec.election_tick + 2);
 
         const typeInfo = getElectionTypeLabel(elec, prevAdmin);
+        const isPresidentialNation = (_state.nation?.government_type || '').toLowerCase().includes('presidential')
+            || _state.nation?.hos_election_method === 'direct_vote';
+        const leaderTitle = isPresidentialNation ? 'President' : 'PM';
         const pmName = admin?.prime_minister || 'Unknown';
         const pmColor = admin?.pm_party_id ? (votes.find(v => v.party_id === admin.pm_party_id)?.color || '#888') : '#888';
 
@@ -171,7 +174,7 @@ function render(root, partyMap) {
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
                     <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">
-                        PM: <span style="color:${pmColor};font-weight:700;">${esc(pmName)}</span>
+                        ${leaderTitle}: <span style="color:${pmColor};font-weight:700;">${esc(pmName)}</span>
                     </div>
                     <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">${isExp ? '\u25B2' : '\u25BC'}</span>
                 </div>
@@ -250,7 +253,7 @@ function render(root, partyMap) {
                             <div style="width:36px;height:36px;background:${pmColor}15;border:1.5px solid ${pmColor};display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;font-weight:700;color:${pmColor};">${esc(pmName.split(' ').map(n => n[0]).join(''))}</div>
                             <div>
                                 <div style="font-size:14px;font-weight:700;color:var(--text-bright);">${esc(pmName)}</div>
-                                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Prime Minister &middot; ${esc(admin.pm_party_name || '')} &middot; ${govType}</div>
+                                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${isPresidentialNation ? 'President' : 'Prime Minister'} &middot; ${esc(admin.pm_party_name || '')} &middot; ${govType}</div>
                             </div>
                         </div>
                         <div style="display:flex;height:8px;gap:1px;margin-bottom:8px;">${coalBarHtml}</div>

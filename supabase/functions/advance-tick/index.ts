@@ -1997,7 +1997,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
     // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT, ES, Embargo) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
-        .select('id, nation_a_id, nation_b_id, agreement_type, articles')
+        .select('id, nation_a_id, nation_b_id, agreement_type, articles, efficiency')
         .eq('status', 'active')
         .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff', 'export_subsidy', 'impose_embargo']);
 
@@ -2011,12 +2011,63 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     var exportSubsidyMap = {};
     var embargoMap = {};
     var activeRSCs = [];
+    var tradeEfficiencyMap = {}; // pairKey → efficiency (0-1), default 0.85
 
     // Helper: expand a sector key to account for food sub-sectors.
     // If an agreement references 'food_agriculture', it applies to all 4 sub-sectors.
     function expandSectorKey(sectorKey) {
         if (sectorKey === 'food_agriculture') return FOOD_SUBSECTOR_KEYS;
         return [sectorKey];
+    }
+
+    // Update efficiency for agreements that have active shipping claims
+    // Each active shipping claim on a route tied to an agreement adds 0.03 efficiency (cap at 1.0)
+    if (activeTradeAgreements && activeTradeAgreements.length > 0) {
+        try {
+            var agreementIds = activeTradeAgreements.map(function(a) { return a.id; });
+            var { data: shippedRoutes } = await supabase.from('shipping_routes')
+                .select('trade_agreement_id')
+                .in('trade_agreement_id', agreementIds)
+                .eq('status', 'active');
+
+            if (shippedRoutes && shippedRoutes.length > 0) {
+                // Collect agreement IDs that have active shipping routes
+                var agreedRouteAgIds = [...new Set(shippedRoutes.map(function(r) { return r.trade_agreement_id; }))];
+
+                // Check for active shipping claims on routes tied to these agreements
+                var { data: activeClaimsOnRoutes } = await supabase.from('shipping_claims')
+                    .select('route_id, shipping_routes!inner(trade_agreement_id)')
+                    .eq('status', 'active')
+                    .in('shipping_routes.trade_agreement_id', agreedRouteAgIds);
+
+                // Count active shipping claims per agreement
+                var claimCountByAg = {};
+                if (activeClaimsOnRoutes) {
+                    for (var ci = 0; ci < activeClaimsOnRoutes.length; ci++) {
+                        var claimAgId = activeClaimsOnRoutes[ci].shipping_routes?.trade_agreement_id;
+                        if (claimAgId) claimCountByAg[claimAgId] = (claimCountByAg[claimAgId] || 0) + 1;
+                    }
+                }
+
+                // Each active ship adds +3% efficiency (base 85%, cap 100%)
+                for (var ai = 0; ai < activeTradeAgreements.length; ai++) {
+                    var ag = activeTradeAgreements[ai];
+                    var shipCount = claimCountByAg[ag.id] || 0;
+                    if (shipCount > 0) {
+                        var newEff = Math.min(1.0, 0.85 + (shipCount * 0.03));
+                        if (Math.abs(Number(ag.efficiency) - newEff) > 0.001) {
+                            ag.efficiency = newEff;
+                            await supabase.from('trade_agreements').update({ efficiency: newEff }).eq('id', ag.id);
+                        }
+                    } else if (Number(ag.efficiency) > 0.85) {
+                        ag.efficiency = 0.85;
+                        await supabase.from('trade_agreements').update({ efficiency: 0.85 }).eq('id', ag.id);
+                    }
+                }
+            }
+        } catch (shippingEffErr) {
+            console.warn('[Trade] Shipping efficiency update failed (non-fatal):', shippingEffErr.message);
+        }
     }
 
     if (activeTradeAgreements) {
@@ -2026,6 +2077,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var k2 = ta.nation_b_id + '|' + ta.nation_a_id;
             if (!flagsMap[k1]) flagsMap[k1] = {};
             if (!flagsMap[k2]) flagsMap[k2] = {};
+
+            // Store efficiency for this bilateral pair (highest agreement wins)
+            var eff = Number(ta.efficiency ?? 0.85);
+            if (!tradeEfficiencyMap[k1] || eff > tradeEfficiencyMap[k1]) tradeEfficiencyMap[k1] = eff;
+            if (!tradeEfficiencyMap[k2] || eff > tradeEfficiencyMap[k2]) tradeEfficiencyMap[k2] = eff;
 
             if (ta.agreement_type === 'fta') {
                 flagsMap[k1].has_fta = true;
@@ -2390,8 +2446,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 }
                 if (aff <= 0) continue;
 
-                // Gravity-model weight: supply × demand × affinity
-                var w = adjustedCap * remainingDem * aff;
+                // Apply trade agreement efficiency (default 1.0 if no agreement, else 0.85+)
+                var pairEfficiency = tradeEfficiencyMap[exporter.id + '|' + importer.id] || 1.0;
+
+                // Gravity-model weight: supply × demand × affinity × efficiency
+                var w = adjustedCap * remainingDem * aff * pairEfficiency;
                 pairs.push({
                     expId: exporter.id,
                     impId: importer.id,
@@ -9107,13 +9166,16 @@ async function resolveExpiredVotes(supabase, nationId) {
                     if (otherPassed) {
                         // Both parliaments ratified — activate the trade agreement
                         // Extract duration info from draft articles
+                        // Supports both old-style { type: 'duration' } and new-style { article_type: 'exit_terms' }
                         const articles = neg.draft_articles || [];
                         const durationArt = articles.find(a => a.type === 'duration');
+                        const exitTermsArt = articles.find(a => a.article_type === 'exit_terms');
                         const durData = durationArt?.data || {};
+                        const exitData = exitTermsArt?.data || {};
                         const isPermanent = durData.duration_type === 'permanent';
-                        const durationTicks = durData.duration_ticks || null;
+                        const durationTicks = durData.duration_ticks || exitData.min_duration || null;
                         const autoRenew = durData.auto_renew || false;
-                        const withdrawalNotice = durData.withdrawal_notice_ticks || 3;
+                        const withdrawalNotice = durData.withdrawal_notice_ticks || exitData.exit_notice || 3;
 
                         // Ensure canonical nation order (nation_a_id < nation_b_id)
                         const nA = neg.nation_a_id < neg.nation_b_id ? neg.nation_a_id : neg.nation_b_id;
@@ -11329,111 +11391,6 @@ async function enactFoundationalBill(supabase, bill, currentTick) {
         }
 
         console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS title set to "${newTitle}".`);
-        return true;
-    }
-
-    // ── Abolish Term Limits subtype ──
-    if (bill.proposed_abolish_term_limits) {
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-        const updates = { term_limits_abolished: true };
-        // Also remove presidential term limit if applicable
-        if (hasElectedPresident(nation)) updates.presidential_term_limit = 0;
-
-        // One-time stat effects: legitimacy -5, stability +2
-        updates.legitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
-        updates.stability = Math.min(100, (nation?.stability ?? 50) + 2);
-
-        await supabase.from('nations').update(updates).eq('id', bill.nation_id);
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'term_limits_abolished',
-            description_used: 'Term limits have been abolished. The ruling party may now hold power indefinitely — but press freedom will erode over time.',
-            category: 'POLITICAL',
-            effects_applied: { law: 'abolish_term_limits', legitimacy: -5, stability: +2 },
-            fired_at_tick: currentTick
-        });
-
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Abolish Term Limits enacted for nation ${bill.nation_id}`);
-        return true;
-    }
-
-    // ── State Media Control Act subtype ──
-    if (bill.proposed_state_media_control) {
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-        const cappedPressFreedom = Math.min(Number(nation?.press_freedom ?? 50), 40);
-        await supabase.from('nations').update({
-            state_media_control: true,
-            press_freedom: cappedPressFreedom,
-            legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 3)
-        }).eq('id', bill.nation_id);
-
-        // Government approval: +10 one-time
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, 10, 'state_media_control');
-
-        // Governing parties: +2 momentum/tick for 10 ticks (snapshotted at enactment)
-        const { data: coalition } = await supabase.from('government_formations')
-            .select('party_ids').eq('nation_id', bill.nation_id).eq('status', 'active').maybeSingle();
-        const govPartyIds = coalition?.party_ids || [];
-
-        if (govPartyIds.length > 0) {
-            // Read existing timed effects and append the new momentum boost
-            const existingEffects = Array.isArray(nation?.timed_momentum_effects) ? nation.timed_momentum_effects : [];
-            existingEffects.push({
-                party_ids: govPartyIds,
-                delta_per_tick: 2,
-                remaining_ticks: 10,
-                source: 'state_media_control'
-            });
-            await supabase.from('nations').update({ timed_momentum_effects: existingEffects }).eq('id', bill.nation_id);
-        }
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'state_media_control',
-            description_used: 'The State Media Control Act has passed. Government now controls national media. Press freedom is permanently capped at 40. +10 government approval. Governing parties receive +2 momentum/tick for 10 ticks.',
-            category: 'POLITICAL',
-            effects_applied: { law: 'state_media_control', press_freedom_cap: 40, legitimacy: -3, gov_approval: 10, momentum_boost: { delta: 2, ticks: 10, parties: govPartyIds } },
-            fired_at_tick: currentTick
-        });
-
-        console.log(`[enactFoundationalBill] State Media Control Act enacted for nation ${bill.nation_id}`);
-        return true;
-    }
-
-    // ── Emergency Powers Act subtype ──
-    if (bill.proposed_emergency_powers_act) {
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-        await supabase.from('nations').update({
-            emergency_powers_act: true,
-            stability: Math.max(0, (nation?.stability ?? 50) - 2),
-            freedom_index: Math.max(0, (nation?.freedom_index ?? 50) - 3)
-        }).eq('id', bill.nation_id);
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'emergency_powers_act',
-            description_used: 'The Emergency Powers Act has passed. The head of government may now declare national emergencies, bypassing legislative votes on bills.',
-            category: 'POLITICAL',
-            effects_applied: { law: 'emergency_powers_act', stability: -2, freedom_index: -3 },
-            fired_at_tick: currentTick
-        });
-
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Emergency Powers Act enacted for nation ${bill.nation_id}`);
         return true;
     }
 
@@ -14861,49 +14818,101 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
  * Always schedules parliamentary. Presidential systems also get presidential elections.
  */
 async function ensureElectionsScheduled(supabase, nation, currentTick) {
-    // Always ensure a parliamentary election is scheduled
-    const { data: futureParl } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'scheduled')
-        .eq('election_type', 'parliamentary')
-        .gt('election_tick', currentTick)
-        .limit(1)
-        .maybeSingle();
+    const isPresidentialNation = hasElectedPresident(nation);
+    const isMonarchy = (nation.government_type || '').toLowerCase().includes('monarchy');
 
-    if (!futureParl) {
-        const { error: parlErr } = await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: currentTick + getParliamentaryTermTicks(nation),
-            election_type: 'parliamentary',
-            status: 'scheduled'
-        });
-        if (parlErr) console.error(`Failed to schedule parliamentary election for ${nation.name}:`, parlErr.message);
-        else console.log(`Scheduled next parliamentary election for ${nation.name}`);
-    }
+    // Absolute monarchies don't have elections
+    if (isMonarchy) return;
 
-    // Presidential systems also need presidential elections
-    if (hasElectedPresident(nation)) {
-        const { data: futurePres } = await supabase
+    if (isPresidentialNation) {
+        // Presidential/Semi-Presidential: General Elections + Midterms
+        // General = presidential + parliamentary on the same tick (every presidential_term_ticks)
+        // Midterm = parliamentary only at the halfway point
+
+        const presTerm = getPresidentialTermTicks(nation);
+        const midtermOffset = Math.floor(presTerm / 2);
+
+        // Check for any future scheduled elections
+        const { data: futureElections } = await supabase
+            .from('elections')
+            .select('id, election_type, election_tick')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .gt('election_tick', currentTick);
+
+        const futureParl = (futureElections || []).find(e => e.election_type === 'parliamentary');
+        const futurePres = (futureElections || []).find(e => e.election_type === 'presidential');
+
+        if (!futurePres) {
+            // Schedule next general election (presidential)
+            const generalTick = currentTick + presTerm;
+            const { error: presErr } = await supabase.from('elections').insert({
+                nation_id: nation.id,
+                election_tick: generalTick,
+                election_type: 'presidential',
+                status: 'scheduled'
+            });
+            if (presErr) console.error(`Failed to schedule presidential (general) election for ${nation.name}:`, presErr.message);
+            else console.log(`[Elections] ${nation.name}: General election (presidential) scheduled at tick ${generalTick}`);
+
+            // Also schedule the parliamentary component of the general election at the same tick
+            if (!futureParl) {
+                const { error: parlGenErr } = await supabase.from('elections').insert({
+                    nation_id: nation.id,
+                    election_tick: generalTick,
+                    election_type: 'parliamentary',
+                    status: 'scheduled'
+                });
+                if (parlGenErr) console.error(`Failed to schedule parliamentary (general) election for ${nation.name}:`, parlGenErr.message);
+                else console.log(`[Elections] ${nation.name}: General election (parliamentary) scheduled at tick ${generalTick}`);
+            }
+        } else if (!futureParl) {
+            // Presidential is scheduled but no parliamentary — schedule midterm
+            // Midterm goes at the halfway point of the presidential term
+            const midtermTick = currentTick + midtermOffset;
+            // Only schedule if midterm comes before the next general
+            if (midtermTick < futurePres.election_tick) {
+                const { error: midErr } = await supabase.from('elections').insert({
+                    nation_id: nation.id,
+                    election_tick: midtermTick,
+                    election_type: 'parliamentary',
+                    status: 'scheduled'
+                });
+                if (midErr) console.error(`Failed to schedule midterm election for ${nation.name}:`, midErr.message);
+                else console.log(`[Elections] ${nation.name}: Midterm election scheduled at tick ${midtermTick}`);
+            } else {
+                // Next general is sooner — schedule parliamentary at the same tick as presidential
+                const { error: parlGenErr } = await supabase.from('elections').insert({
+                    nation_id: nation.id,
+                    election_tick: futurePres.election_tick,
+                    election_type: 'parliamentary',
+                    status: 'scheduled'
+                });
+                if (parlGenErr) console.error(`Failed to schedule parliamentary (general) for ${nation.name}:`, parlGenErr.message);
+                else console.log(`[Elections] ${nation.name}: Parliamentary (general) scheduled at tick ${futurePres.election_tick}`);
+            }
+        }
+    } else {
+        // Parliamentary-only nations: schedule parliamentary elections on their own cycle
+        const { data: futureParl } = await supabase
             .from('elections')
             .select('id')
             .eq('nation_id', nation.id)
             .eq('status', 'scheduled')
-            .eq('election_type', 'presidential')
+            .eq('election_type', 'parliamentary')
             .gt('election_tick', currentTick)
             .limit(1)
             .maybeSingle();
 
-        if (!futurePres) {
-            const { error: presErr } = await supabase.from('elections').insert({
+        if (!futureParl) {
+            const { error: parlErr } = await supabase.from('elections').insert({
                 nation_id: nation.id,
-                election_tick: currentTick + getPresidentialTermTicks(nation),
-                election_type: 'presidential',
+                election_tick: currentTick + getParliamentaryTermTicks(nation),
+                election_type: 'parliamentary',
                 status: 'scheduled'
             });
-            if (presErr) console.error(`Failed to schedule presidential election for ${nation.name}:`, presErr.message);
-            else console.log(`Scheduled next presidential election for ${nation.name}`);
+            if (parlErr) console.error(`Failed to schedule parliamentary election for ${nation.name}:`, parlErr.message);
+            else console.log(`[Elections] ${nation.name}: Parliamentary election scheduled`);
         }
     }
 }
@@ -21639,12 +21648,6 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
         const ji = nationUpdates.judicial_independence ?? Number(nation.judicial_independence ?? 50);
         if (ji > 30) nationUpdates.judicial_independence = 30;
     }
-    // State Media Control Act: cap press_freedom at 40
-    if (nation.state_media_control) {
-        const pf = nationUpdates.press_freedom ?? Number(nation.press_freedom ?? 50);
-        if (pf > 40) nationUpdates.press_freedom = 40;
-    }
-
     if (Object.keys(nationUpdates).length > 0) {
         const { error } = await supabase
             .from('nations')

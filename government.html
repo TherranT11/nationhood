@@ -116,6 +116,13 @@ const MINISTRY_KEYS_CABINET = [
 const USE_COUNT_SCALE = [1.0, 0.70, 0.40, 0.15];
 function getUseCountScale(useCount) { return USE_COUNT_SCALE[Math.min(useCount, 3)]; }
 
+function isImplementedMinistryAction(action) {
+    if (!action) return false;
+    const hasApConfig = Array.isArray(action.apCosts) && action.apCosts.length > 0;
+    const hasCustomHandlerMarker = !!(action.customFlow || action.directions || action.isSpecialAction || action.isResolution);
+    return hasApConfig || hasCustomHandlerMarker;
+}
+
 const MINISTRY_ACTIONS = {
     interior: {
         actions: [
@@ -521,7 +528,6 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_expand_infrastructure',
                 name: 'Expand Infrastructure',
                 desc: 'Fund construction and expansion of major transport infrastructure including highways, rail, and ports.',
-                comingSoon: true, // Disabled — future phase
                 apCosts: [3, 4, 6, 8],
                 oneTimeCostPerMillion: 15_000_000,
                 delay: 3,
@@ -699,6 +705,42 @@ async function fetchMinisterInfo(ministryKey) {
         return { ministerName, partyName };
     } catch (_) {
         return { ministerName: 'Unknown', partyName: currentFaction?.faction_name || 'Unknown' };
+    }
+}
+
+function getCachedMinisterInfo(ministryKey) {
+    const ministry = Array.isArray(ministryData)
+        ? ministryData.find(m => m.ministry_key === ministryKey)
+        : null;
+    if (!ministry) return { ministerName: '', partyName: '' };
+    return {
+        ministerName: ministry.minister_first_name
+            ? `${ministry.minister_first_name} ${ministry.minister_last_name || ''}`.trim()
+            : '',
+        partyName: ministry?.factions?.faction_name || ''
+    };
+}
+
+async function insertMinisterActionTimelineEvent(ministryKey, actionName, tickOverride) {
+    if (!currentNation?.id || !ministryKey || !actionName) return;
+    try {
+        const cached = getCachedMinisterInfo(ministryKey);
+        const fetched = (!cached.ministerName || !cached.partyName)
+            ? await fetchMinisterInfo(ministryKey)
+            : { ministerName: '', partyName: '' };
+        const ministerName = cached.ministerName || fetched.ministerName || 'Unknown Minister';
+        const ministryName = MINISTRY_NAMES[ministryKey] || ministryKey;
+        const firedAtTick = Number.isFinite(tickOverride) ? tickOverride : currentTick;
+        await _supabase.from('event_log').insert({
+            nation_id: currentNation.id,
+            event_name: 'Minister Action',
+            category: 'POLITICS',
+            fired_at_tick: firedAtTick,
+            trigger_key: 'minister_action_used',
+            description_chosen: `${ministerName} (${ministryName}) used ${actionName}.`
+        });
+    } catch (timelineErr) {
+        console.warn('[Timeline] minister action event insert failed:', timelineErr);
     }
 }
 
@@ -1027,6 +1069,20 @@ function renderAdministrationTab(container) {
         container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading government data...</div>';
         return;
     }
+    const contextKey = getTimelineContextKey();
+    if (_timelineContextKey !== contextKey) {
+        _timelineContextKey = contextKey;
+        _timelineFilter = 'all';
+        _timelineEvents = [];
+        if (!contextKey) {
+            _timelineEmptyReason = 'No active administration record — timeline unavailable.';
+        } else if (_timelineCache.has(contextKey)) {
+            _timelineEvents = _timelineCache.get(contextKey)?.events || [];
+            _timelineEmptyReason = _timelineEvents.length === 0 ? 'No events recorded yet.' : '';
+        } else {
+            _timelineEmptyReason = '';
+        }
+    }
     // Phase 2+ will populate this
     container.innerHTML = `<div id="gov-admin-banner"></div>
         <div style="display:flex;gap:8px;margin-top:8px;">
@@ -1041,8 +1097,8 @@ function renderAdministrationTab(container) {
     renderAdminTimeline(); // renders with cached data or empty state
     renderAdminCabinet();
 
-    // Load timeline data async, then re-render
-    if (_timelineEvents.length === 0) {
+    // Load timeline data async by context key, then re-render
+    if (contextKey && !_timelineCache.has(contextKey)) {
         loadTimelineData().then(() => renderAdminTimeline());
     }
     renderAdminChat();
@@ -1125,8 +1181,9 @@ function renderAdminBanner() {
         </div>`;
     }
 
-    // Prime Minister section
-    if (hog) {
+    // Prime Minister section (shown for parliamentary + semi-presidential, hidden for pure presidential)
+    const isPurePresForPM = isPresidential && !isSemiPresidential(nation);
+    if (hog && !isPurePresForPM) {
         const pmName = `${hog.first_name} ${hog.last_name}`;
         const pmAge = hog.age || '';
         const pmPartyName = hog.factions?.faction_name || '';
@@ -1144,10 +1201,12 @@ function renderAdminBanner() {
                 </div>
             </div>
         </div>`;
-    } else if (!isPresidential) {
+    } else if (!isPurePresForPM) {
+        const isPresidentParty = president?.faction_id === currentFaction?.id;
         html += `<div class="ga-banner-leader">
             <div class="ga-banner-leader-label">PRIME MINISTER</div>
-            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;">Vacant — awaiting formation</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;">Vacant — awaiting nomination</div>
+            ${isPresidentParty ? '<div style="margin-top:8px;"><button class="action-btn" style="font-size:0.7rem;padding:5px 14px;" onclick="openNominatePMModal()">Nominate PM</button></div>' : ''}
         </div>`;
     }
 
@@ -1166,8 +1225,11 @@ function renderAdminBanner() {
         hosLast = nation?.head_of_state_last_name;
         hosAge = nation?.head_of_state_age;
     }
-    const hosTitle = isMonarchyGov ? (nation?.monarch_title || 'King') : 'Head of State';
-    if (hosFirst && hosLast) {
+    const isSemiPres = isSemiPresidential(nation);
+    const isPurePresidential = isPresidential && !isSemiPres;
+    const hosTitle = isMonarchyGov ? (nation?.monarch_title || 'King') : (isPurePresidential ? 'Vice President' : 'Head of State');
+    // Semi-Presidential: President already shown above, don't duplicate as "Head of State"
+    if (hosFirst && hosLast && !isSemiPres) {
         const hosName = `${hosFirst} ${hosLast}`;
         const hosInitials = hosName.split(' ').map(n => n[0] || '').join('');
         const hosColor = isMonarchyGov ? '#c8a832' : 'var(--text-dim)';
@@ -1230,9 +1292,45 @@ function renderAdminBanner() {
 
 let _timelineFilter = 'all';
 let _timelineEvents = [];
+let _timelineContextKey = null;
+const _timelineCache = new Map();
+const TIMELINE_CACHE_MAX = 4;
+let _timelineEmptyReason = '';
+
+function setTimelineCache(contextKey, events) {
+    if (!contextKey) return;
+    if (_timelineCache.has(contextKey)) _timelineCache.delete(contextKey);
+    _timelineCache.set(contextKey, { events: Array.isArray(events) ? events : [] });
+    while (_timelineCache.size > TIMELINE_CACHE_MAX) {
+        const oldestKey = _timelineCache.keys().next().value;
+        _timelineCache.delete(oldestKey);
+    }
+}
+
+function getTimelineContextKey() {
+    const nationId = currentNation?.id;
+    const admin = _govData?.admin;
+    if (!nationId || !admin?.id) return null;
+    return `${nationId}:${admin.id}:${admin.started_at_tick || 0}`;
+}
 
 async function loadTimelineData() {
-    if (!_govData?.admin || !currentNation) return;
+    const contextKey = getTimelineContextKey();
+    if (!contextKey || !_govData?.admin || !currentNation) {
+        _timelineEvents = [];
+        _timelineEmptyReason = _govData?.admin
+            ? 'Timeline unavailable for current context.'
+            : 'No active administration record — timeline unavailable.';
+        return;
+    }
+    const cacheHit = _timelineCache.get(contextKey);
+    if (cacheHit) {
+        _timelineEvents = cacheHit.events || [];
+        _timelineEmptyReason = _timelineEvents.length === 0
+            ? 'No events recorded yet.'
+            : '';
+        return;
+    }
     const startTick = _govData.admin.started_at_tick || 0;
     const nationId = currentNation.id;
 
@@ -1346,10 +1444,17 @@ async function loadTimelineData() {
 
         // Sort by tick descending (most recent first)
         merged.sort((a, b) => (b.tick || 0) - (a.tick || 0));
+        if (_timelineContextKey !== contextKey) return;
         _timelineEvents = merged;
+        setTimelineCache(contextKey, merged);
+        _timelineEmptyReason = _timelineEvents.length === 0
+            ? 'No events recorded yet.'
+            : '';
     } catch (err) {
         console.error('[Timeline] Load failed:', err);
+        if (_timelineContextKey !== contextKey) return;
         _timelineEvents = [];
+        _timelineEmptyReason = 'Timeline data failed to load.';
     }
 }
 
@@ -1423,7 +1528,8 @@ function renderAdminTimeline() {
         <div class="ga-tl-scroll">`;
 
     if (filtered.length === 0) {
-        html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No events recorded yet.</div>`;
+        const emptyReason = _timelineEmptyReason || 'No events recorded yet.';
+        html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">${escapeHtml(emptyReason)}</div>`;
     } else {
         for (let i = 0; i < filtered.length; i++) {
             const ev = filtered[i];
@@ -1543,7 +1649,7 @@ function renderAdminCabinet() {
 
         // Count available actions for this ministry
         const actionConfig = MINISTRY_ACTIONS[m.ministry_key];
-        const actionCount = actionConfig?.actions?.filter(a => !a.comingSoon)?.length || 0;
+        const actionCount = actionConfig?.actions?.filter(isImplementedMinistryAction)?.length || 0;
 
         // Scandal detection (from campaign_actions — simplified: check if ministry has a scandal note)
         const hasScandalBadge = false; // Phase 5 timeline will surface these
@@ -1626,7 +1732,7 @@ function renderMinistryExpandedContent(ministry, partyColor) {
     } else {
         // Ministry actions from config
         const actionConfig = MINISTRY_ACTIONS[key];
-        const actions = actionConfig?.actions?.filter(a => !a.comingSoon) || [];
+        const actions = actionConfig?.actions?.filter(isImplementedMinistryAction) || [];
 
         if (actions.length > 0) {
             html += `<div class="ga-stat-label" style="margin-bottom:4px;">MINISTRY ACTIONS</div>`;
@@ -1863,18 +1969,30 @@ function renderAdminActions() {
 
     let html = `<div class="ga-panel" style="text-align:center;padding:12px;">`;
 
-    // Call Early Elections (PM only, not caretaker)
-    if (isPM && !isCaretaker) {
-        const tierHint = approval > 50 ? 'Calling from strength — your party gains +3 momentum'
-            : approval < 35 ? 'Opposition gains +5 momentum each — orderly transition'
-            : 'Neutral call — no momentum changes';
+    // Call Early Elections — hidden for presidential, greyed for monarchy, active for parliamentary PM
+    const isMonarchyForElections = (nation.government_type || '').toLowerCase().includes('monarchy');
+    const isPresidentialForElections = isPresidential;
 
-        html += `<div class="ga-early-election-btn" onclick="callEarlyElections()">
-            <span style="font-size:12px;">&#9889;</span> CALL EARLY ELECTIONS
-        </div>
-        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">
-            PM only — dissolve the legislature · ${escapeHtml(tierHint)}
-        </div>`;
+    if (!isPresidentialForElections && isPM && !isCaretaker) {
+        if (isMonarchyForElections) {
+            html += `<div class="ga-early-election-btn" style="opacity:0.3;cursor:not-allowed;pointer-events:none;">
+                <span style="font-size:12px;">&#9889;</span> CALL EARLY ELECTIONS
+            </div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">
+                The monarch does not permit early elections.
+            </div>`;
+        } else {
+            const tierHint = approval > 50 ? 'Calling from strength — your party gains +3 momentum'
+                : approval < 35 ? 'Opposition gains +5 momentum each — orderly transition'
+                : 'Neutral call — no momentum changes';
+
+            html += `<div class="ga-early-election-btn" onclick="callEarlyElections()">
+                <span style="font-size:12px;">&#9889;</span> CALL EARLY ELECTIONS
+            </div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">
+                PM only — dissolve the legislature · ${escapeHtml(tierHint)}
+            </div>`;
+        }
     }
 
     // Caretaker notice
@@ -1890,8 +2008,8 @@ function renderAdminActions() {
         </div>`;
     }
 
-    // PM Resign (PM only, not caretaker)
-    if (isPM && !isCaretaker) {
+    // PM Resign (PM only, not caretaker, not presidential)
+    if (isPM && !isCaretaker && !isPresidentialForElections) {
         html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-main);">
             <span class="ga-resign-btn" onclick="resignPMAction()">RESIGN AS PRIME MINISTER</span>
             <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:3px;">
@@ -1933,7 +2051,7 @@ function renderLegislatureTab(container) {
         return;
     }
 
-    container.innerHTML = `<div style="display:flex;gap:8px;">
+    container.innerHTML = `<div class="legislature-text-scale" style="display:flex;gap:8px;">
         <div id="leg-left" style="width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;"></div>
         <div id="leg-right" style="flex:1;display:flex;flex-direction:column;gap:6px;"></div>
     </div>`;
@@ -2487,6 +2605,147 @@ function getBillSupportPercent(bill) {
     return support.percent;
 }
 
+function getBillEffects(bill) {
+    const articles = (bill.bill_articles || []).sort((a, b) => (a.article_number || 0) - (b.article_number || 0));
+    const effects = [];
+    const seen = new Set();
+    for (const art of articles) {
+        if (!art.policies) continue;
+        const p = art.policies;
+        if (Array.isArray(p.stat_effects)) {
+            for (const e of p.stat_effects) {
+                const stat = e?.stat_key;
+                const dir = (e?.direction || '').toLowerCase();
+                if (!stat || (dir !== 'up' && dir !== 'down')) continue;
+                const key = `${stat}:${dir}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                effects.push({ stat, dir });
+            }
+        } else if (p.target_stat) {
+            const stat = p.target_stat;
+            const dir = (p.stat_direction || 'UP').toLowerCase() === 'down' ? 'down' : 'up';
+            const key = `${stat}:${dir}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            effects.push({ stat, dir });
+        }
+    }
+    return effects;
+}
+
+function renderBillEffectChips(bill, withLabel = true) {
+    const effects = getBillEffects(bill);
+    if (effects.length === 0) return '';
+    let html = '';
+    if (withLabel) {
+        html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.8px;margin-bottom:4px;">PROJECTED EFFECTS IF PASSED</div>`;
+    }
+    html += `<div style="display:flex;flex-wrap:wrap;gap:4px;">`;
+    for (const e of effects) {
+        const isGood = (e.dir === 'up' && !STATS_LOWER_IS_BETTER.includes(e.stat))
+            || (e.dir === 'down' && STATS_LOWER_IS_BETTER.includes(e.stat));
+        const arrow = e.dir === 'up' ? '\u25B2' : '\u25BC';
+        const color = isGood ? 'var(--green)' : 'var(--red)';
+        html += `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(e.stat)} ${arrow}</span>`;
+    }
+    html += `</div>`;
+    return html;
+}
+
+function readCostNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+        const parsed = Number(value.replace(/[^0-9.-]/g, ''));
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+}
+
+function sumCostKeysDeep(node, keys) {
+    if (!node) return 0;
+    if (Array.isArray(node)) return node.reduce((sum, v) => sum + sumCostKeysDeep(v, keys), 0);
+    if (typeof node !== 'object') return 0;
+    let total = 0;
+    for (const [k, v] of Object.entries(node)) {
+        if (keys.includes(k)) total += readCostNumber(v);
+        if (v && typeof v === 'object') total += sumCostKeysDeep(v, keys);
+    }
+    return total;
+}
+
+function computeBillCostTotals(bill) {
+    const articles = bill.bill_articles || [];
+    let upfront = 0;
+    let ongoingYearly = 0;
+    const upfrontKeys = ['upfront_cost', 'one_time_cost', 'one_time', 'initial_cost', 'startup_cost', 'capex_cost', 'fund_draw'];
+    const annualKeys = ['ongoing_cost', 'annual_cost', 'yearly_cost', 'recurring_cost', 'per_year', 'cost_per_year'];
+    const monthlyKeys = ['monthly_cost', 'cost_per_month', 'per_month'];
+
+    for (const art of articles) {
+        const sources = [art.funding_data, art.effect_data?.funding_data, art.effect_data, art.policies];
+        for (const src of sources) {
+            upfront += sumCostKeysDeep(src, upfrontKeys);
+            ongoingYearly += sumCostKeysDeep(src, annualKeys);
+            ongoingYearly += sumCostKeysDeep(src, monthlyKeys) * 12;
+        }
+    }
+
+    return {
+        upfront: Math.max(0, upfront),
+        ongoingYearly: Math.max(0, ongoingYearly)
+    };
+}
+
+function formatCostCompact(n) {
+    if (!n || n <= 0) return '$0';
+    if (n >= 1_000_000_000) return '$' + (n / 1_000_000_000).toFixed(1) + 'B';
+    if (n >= 1_000_000) return '$' + Math.round(n / 1_000_000).toLocaleString() + 'M';
+    return '$' + Math.round(n).toLocaleString();
+}
+
+function renderBillVoteButtons(bill) {
+    const isFloor = bill.status === 'floor' || bill.status === 'voting';
+    const isCommittee = bill.status === 'committee';
+    if (!isFloor && !isCommittee) return '';
+
+    const myVote = (bill.bill_support || []).find(s => s.faction_id === currentFaction?.id);
+    const myStance = myVote?.stance;
+    let html = `<div style="display:flex;gap:4px;flex-wrap:wrap;">`;
+
+    if (isFloor) {
+        if (myStance === 'yes' || myStance === 'accept') {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes leg-vote-btn--active">VOTED YES</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes" onclick="event.stopPropagation();legCastVote('${bill.id}','yes')">VOTE YES</div>`;
+        }
+        if (myStance === 'no' || myStance === 'reject') {
+            html += `<div class="leg-vote-btn leg-vote-btn--no leg-vote-btn--active">VOTED NO</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--no" onclick="event.stopPropagation();legCastVote('${bill.id}','no')">VOTE NO</div>`;
+        }
+        if (myStance === 'abstain') {
+            html += `<div class="leg-vote-btn leg-vote-btn--abstain leg-vote-btn--active">ABSTAINED</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--abstain" onclick="event.stopPropagation();legCastVote('${bill.id}','abstain')">ABSTAIN</div>`;
+        }
+    } else if (isCommittee) {
+        if (myStance === 'accept') {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes leg-vote-btn--active">SUPPORTING</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--yes" onclick="event.stopPropagation();legCastVote('${bill.id}','accept')">SUPPORT</div>`;
+        }
+        if (myStance === 'reject') {
+            html += `<div class="leg-vote-btn leg-vote-btn--no leg-vote-btn--active">OPPOSING</div>`;
+        } else {
+            html += `<div class="leg-vote-btn leg-vote-btn--no" onclick="event.stopPropagation();legCastVote('${bill.id}','reject')">OPPOSE</div>`;
+        }
+    }
+
+    html += `</div>`;
+    return html;
+}
+
 function renderBillCard(bill, stageColor) {
     const { totalSeats, majority } = _legData;
     const isExp = _legExpandedBill === bill.id;
@@ -2501,47 +2760,92 @@ function renderBillCard(bill, stageColor) {
         <div class="leg-bill-header">
             <div>
                 <div style="display:flex;align-items:center;gap:6px;">
-                    <span style="font-size:13px;font-weight:700;color:${stageColor};">${escapeHtml(bill.bill_name || 'Untitled Bill')}</span>`;
+                    <span class="leg-bill-title" style="color:${stageColor};">${escapeHtml(bill.bill_name || 'Untitled Bill')}</span>`;
     if (bill.status === 'floor' || bill.status === 'voting') {
         html += passing
             ? `<span class="ga-badge ga-badge--green">LIKELY TO PASS</span>`
             : `<span class="ga-badge ga-badge--red">AT RISK</span>`;
     }
     html += `</div>
-                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">
+                <div class="leg-bill-meta">
                     Proposed by <span style="color:${partyColor};">${escapeHtml(partyName)}</span>${articles.length > 0 ? ' \u00B7 ' + articles.length + ' articles' : ''}
                 </div>
             </div>
             <div style="text-align:right;">
-                <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${passing ? 'var(--green)' : support >= 45 ? 'var(--amber)' : 'var(--red)'};">${support}%</div>
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">SUPPORT</div>
+                <div class="leg-bill-support-value" style="color:${passing ? 'var(--green)' : support >= 45 ? 'var(--amber)' : 'var(--red)'};">${support}%</div>
+                <div class="leg-bill-support-label">SUPPORT</div>
             </div>
         </div>`;
 
     // Support bar with majority marker
     const majorityPct = Math.round((majority / totalSeats) * 100);
-    html += `<div style="position:relative;margin:0 14px 8px;">
-        <div style="display:flex;height:4px;gap:0;">
+    html += `<div class="leg-support-bar-wrap">
+        <div class="leg-support-bar-track">
             <div style="width:${support}%;background:${passing ? 'var(--green)' : 'var(--amber)'};height:100%;"></div>
             <div style="flex:1;background:var(--border-main);height:100%;"></div>
         </div>
-        <div style="position:absolute;top:-3px;left:${majorityPct}%;width:1px;height:10px;background:var(--text-bright);"></div>
+        <div class="leg-support-marker" style="left:${majorityPct}%;"></div>
     </div>`;
+
+    // Always-visible effect chips, cost summary, and vote actions
+    const totals = computeBillCostTotals(bill);
+    const ongoingMonthly = totals.ongoingYearly / 12;
+    const effectChips = renderBillEffectChips(bill, false);
+    const inlineVotes = renderBillVoteButtons(bill);
+    html += `<div style="padding:0 14px 8px;">`;
+    if (effectChips) {
+        html += `<div style="margin-bottom:6px;">${effectChips}</div>`;
+    }
+    html += `<div style="font-family:var(--font-mono);font-size:calc(8px * var(--leg-scale, 1.755));color:var(--text-dim);margin-bottom:${inlineVotes ? '6px' : '0'};">
+        UPFRONT COST: ${formatCostCompact(totals.upfront)} | ONGOING COST: ${formatCostCompact(totals.ongoingYearly)} / YEAR (${formatCostCompact(ongoingMonthly)} / MONTH)
+    </div>`;
+    if (inlineVotes) {
+        html += inlineVotes;
+    }
+    html += `</div>`;
 
     // Articles (always visible for committee, on expand for floor)
     if (bill.status === 'committee' || isExp) {
         html += `<div style="padding:0 14px 8px;">`;
+        const toRoman = (n) => {
+            if (!n || n < 1) return '?';
+            const romanMap = [
+                [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
+                [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
+                [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+            ];
+            let num = n;
+            let out = '';
+            for (const [value, numeral] of romanMap) {
+                while (num >= value) {
+                    out += numeral;
+                    num -= value;
+                }
+            }
+            return out || '?';
+        };
+
         for (const art of articles) {
-            const policyName = art.policies?.name || art.article_title || 'Article ' + (art.article_number || '?');
+            const policy = art.policies || {};
+            const policyName = policy.name || policy.policy_name || art.article_title || 'Article ' + (art.article_number || '?');
+            const ideologyList = Array.isArray(policy.ideologies)
+                ? policy.ideologies
+                : (policy.ideology ? [policy.ideology] : []);
+            const ideologyLabels = ideologyList
+                .filter(Boolean)
+                .map((ideology) => ` (${escapeHtml(String(ideology))})`)
+                .join('');
+            const descriptionText = policy.description || art.article_text;
             const hasBudget = art.funding_data || art.effect_data?.funding_data;
             const badge = hasBudget ? 'BUDGET' : 'TEXT';
             const badgeColor = hasBudget ? 'var(--gold, #c8a832)' : 'var(--blue)';
+            const articleOrdinal = toRoman(art.article_number);
             html += `<div style="padding:5px 10px;margin-bottom:2px;border-left:2px solid var(--border-main);">
                 <div style="display:flex;align-items:center;gap:6px;">
-                    <span style="font-size:10px;font-weight:700;color:var(--text-bright);">Art. ${art.article_number || '?'}. ${escapeHtml(policyName)}</span>
+                    <span style="font-size:calc(10px * var(--leg-scale, 1.755));font-weight:700;color:var(--text-bright);">Article ${articleOrdinal}.: ${escapeHtml(policyName)}${ideologyLabels}</span>
                     <span class="leg-article-badge" style="color:${badgeColor};background:${badgeColor}10;border-color:${badgeColor}33;">${badge}</span>
                 </div>
-                ${art.article_text ? `<div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${escapeHtml(art.article_text)}</div>` : ''}
+                ${descriptionText ? `<p style="font-size:calc(9px * var(--leg-scale, 1.755));color:var(--text-dim);margin:2px 0 0;">${escapeHtml(descriptionText)}</p>` : ''}
             </div>`;
         }
         html += `</div>`;
@@ -2554,7 +2858,7 @@ function renderBillCard(bill, stageColor) {
 
     // Expand hint for floor bills (articles hidden by default)
     if (!isExp && (bill.status === 'floor' || bill.status === 'voting') && articles.length > 0) {
-        html += `<div style="padding:0 14px 8px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">&#9656; ${articles.length} article${articles.length !== 1 ? 's' : ''} \u00B7 click to expand &amp; vote</div>`;
+        html += `<div style="padding:0 14px 8px;font-family:var(--font-mono);font-size:calc(7px * var(--leg-scale, 1.755));color:var(--text-dim);">&#9656; ${articles.length} article${articles.length !== 1 ? 's' : ''} \u00B7 click to expand details</div>`;
     }
 
     html += `</div>`;
@@ -2566,34 +2870,12 @@ function renderBillExpandedContent(bill) {
     const isFloor = bill.status === 'floor' || bill.status === 'voting';
     const isCommittee = bill.status === 'committee';
 
-    // Collect stat effects from all articles' policies
-    const effects = [];
-    for (const art of articles) {
-        if (!art.policies) continue;
-        const p = art.policies;
-        if (p.stat_effects && Array.isArray(p.stat_effects)) {
-            for (const e of p.stat_effects) {
-                effects.push({ stat: e.stat_key, dir: e.direction });
-            }
-        } else if (p.target_stat) {
-            effects.push({ stat: p.target_stat, dir: (p.stat_direction || 'UP').toLowerCase() });
-        }
-    }
-
     let html = `<div class="leg-bill-expanded">`;
 
     // Effects
-    if (effects.length > 0) {
-        html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.8px;margin-bottom:4px;">PROJECTED EFFECTS IF PASSED</div>
-            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">`;
-        for (const e of effects) {
-            const isGood = (e.dir === 'up' && !STATS_LOWER_IS_BETTER.includes(e.stat))
-                || (e.dir === 'down' && STATS_LOWER_IS_BETTER.includes(e.stat));
-            const arrow = e.dir === 'up' ? '\u25B2' : '\u25BC';
-            const color = isGood ? 'var(--green)' : 'var(--red)';
-            html += `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(e.stat)} ${arrow}</span>`;
-        }
-        html += `</div>`;
+    const chips = renderBillEffectChips(bill, true);
+    if (chips) {
+        html += `<div style="margin-bottom:10px;">${chips}</div>`;
     }
 
     // Vote actions (floor bills only)
@@ -2602,11 +2884,11 @@ function renderBillExpandedContent(bill) {
         const myVote = (bill.bill_support || []).find(s => s.faction_id === currentFaction?.id);
         const myStance = myVote?.stance;
 
-        html += `<div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+        html += `<div class="leg-vote-row">
+            <div class="leg-vote-note">
                 Bill passes: YES voters +2 momentum per article \u00B7 Bill fails: YES voters -2, NO voters +2
             </div>
-            <div style="display:flex;gap:4px;">`;
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">`;
 
         if (myStance === 'yes' || myStance === 'accept') {
             html += `<div class="leg-vote-btn leg-vote-btn--yes leg-vote-btn--active">VOTED YES</div>`;
@@ -2632,11 +2914,11 @@ function renderBillExpandedContent(bill) {
         const myVote = (bill.bill_support || []).find(s => s.faction_id === currentFaction?.id);
         const myStance = myVote?.stance;
 
-        html += `<div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">
+        html += `<div class="leg-vote-row">
+            <div class="leg-vote-note">
                 Support adds your seats to the bill's backing \u00B7 Moves to floor when majority support reached
             </div>
-            <div style="display:flex;gap:4px;">`;
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">`;
         if (myStance === 'accept') {
             html += `<div class="leg-vote-btn leg-vote-btn--yes leg-vote-btn--active">SUPPORTING</div>`;
         } else {
@@ -2652,7 +2934,7 @@ function renderBillExpandedContent(bill) {
 
     // Link to full bill page
     html += `<div style="margin-top:8px;text-align:right;">
-        <span style="font-family:var(--font-mono);font-size:8px;color:var(--blue);cursor:pointer;" onclick="event.stopPropagation();window.location.href='bill.html?id=${bill.id}'">
+        <span class="leg-bill-link" onclick="event.stopPropagation();window.location.href='bill.html?id=${bill.id}'">
             View full bill &amp; negotiate \u2192
         </span>
     </div>`;
@@ -2874,16 +3156,7 @@ async function loadGovData() {
         const loadedParties = partiesRes.data || [];
 
         // Detect PM party (robust: HOG → coalition lead → PM ministry → allocations)
-        const _pmMinistry = (ministriesRes.data || []).find(m => m.ministry_key === 'prime_minister');
-        if (hog?.faction_id) {
-            pmFactionId = hog.faction_id;
-        } else if (coalition?.lead_party_id) {
-            pmFactionId = coalition.lead_party_id;
-        } else if (_pmMinistry?.party_id) {
-            pmFactionId = _pmMinistry.party_id;
-        } else if (coalition?.ministry_allocations?.prime_minister) {
-            pmFactionId = coalition.ministry_allocations.prime_minister;
-        }
+        pmFactionId = getPMFactionIdFromContext(coalition, ministriesRes.data || [], hog);
         isPMParty = !!(currentFaction && pmFactionId && currentFaction.id === pmFactionId);
 
         // Load ministry action logs for active action detection + use counts
@@ -2909,8 +3182,35 @@ async function loadGovData() {
             }
         } catch (_) { /* non-fatal — actions just won't show active state */ }
 
+        // Auto-seed ministries if none exist (prevents empty cabinet after SQL-seeded governments)
+        let ministries = ministriesRes.data || [];
+        if (ministries.length === 0 && coalition) {
+            try {
+                const leadPartyId = coalition.lead_party_id || (coalition.party_ids || [])[0];
+                if (leadPartyId) {
+                    const SEED_KEYS = [
+                        ['interior', 'Minister of the Interior'], ['foreign', 'Minister of Foreign Affairs'],
+                        ['defense', 'Minister of Defense'], ['finance', 'Minister of Finance'],
+                        ['education', 'Minister of Education'], ['healthcare', 'Minister of Health'],
+                        ['labor', 'Minister of Labor'], ['justice', 'Minister of Justice'],
+                        ['trade', 'Minister of Trade'], ['energy', 'Minister of Energy'],
+                        ['transportation', 'Minister of Transportation'],
+                    ];
+                    if (!isPresidential) {
+                        SEED_KEYS.unshift(['prime_minister', 'Prime Minister']);
+                    }
+                    const rows = SEED_KEYS.map(([key, name]) => ({
+                        nation_id: currentNation.id, ministry_key: key, ministry_name: name,
+                        party_id: leadPartyId, is_active: true,
+                    }));
+                    const { data: seeded } = await _supabase.from('ministries').insert(rows).select();
+                    if (seeded) ministries = seeded;
+                }
+            } catch (seedErr) { console.warn('[Gov] Ministry auto-seed failed:', seedErr.message); }
+        }
+
         // Set legacy globals so existing window.fireMinister etc. still work
-        ministryData = ministriesRes.data || [];
+        ministryData = ministries;
         coalitionData = coalition;
         allParties = loadedParties;
 
@@ -3353,7 +3653,8 @@ async function renderGovernmentPage() {
 
         // Auto-recover orphaned PM state: coalition exists, no HOG, current faction is PM party
         if (!isPresidential && coalition && !activeHOG) {
-            const pmPartyId = coalition.ministry_assignments?.prime_minister || coalition.lead_party_id;
+            const coalitionAllocations = getCoalitionAllocations(coalition);
+            const pmPartyId = coalitionAllocations.prime_minister || coalition.lead_party_id;
             if (pmPartyId && currentFaction?.id === pmPartyId) {
                 try {
                     const { data: shard } = await _supabase.from('shard')
@@ -5826,6 +6127,74 @@ function buildDefenseActionRows(isMyMinistry) {
 
 // ==================== EDUCATION MINISTRY — CUSTOM ACTION ROWS ====================
 
+function buildExpandInfrastructureActionRow({ ministryKey, action, canUse, ap, pop, discretionaryBalance }) {
+    if (!action) return '';
+    const actionId = `${ministryKey}-expandInfrastructure`;
+    const isActive = activeMinistryActions[actionId] || false;
+    const countKey = `${ministryKey}:expandInfrastructure`;
+    const useCount = ministryActionUseCounts[countKey] || 0;
+    const apCosts = Array.isArray(action.apCosts) && action.apCosts.length ? action.apCosts : [3, 4, 6, 8];
+    const apCost = apCosts[Math.min(useCount, apCosts.length - 1)];
+    const tagsHtml = (action.tags || []).map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
+
+    const oneTimeCost = action.oneTimeCostPerMillion && !action.budgetPerCapita
+        ? calculateOneTimeCost(action, pop)
+        : 0;
+    const hasPerTickCost = Number(action.budgetPerCapita || 0) > 0;
+    const hasOneTimeCost = oneTimeCost > 0;
+    const canCoverPerTick = !hasPerTickCost || discretionaryBalance > 0;
+    const canCoverOneTime = !hasOneTimeCost || discretionaryBalance >= oneTimeCost;
+    const isBudgetBlocked = !canCoverPerTick || !canCoverOneTime;
+    const isDisabled = !isActive && (!canUse || ap < apCost || isBudgetBlocked);
+
+    let budgetTagHtml = '';
+    if (hasOneTimeCost) {
+        budgetTagHtml = `<span class="tag tag--budget">${formatUpfrontCost(oneTimeCost)} UPFRONT</span>`;
+    } else if (hasPerTickCost) {
+        budgetTagHtml = `<span class="tag tag--budget">${formatBudgetDraw(action.budgetPerCapita, pop)}/TICK</span>`;
+    } else if (action.budgetSavesPerCapita) {
+        budgetTagHtml = `<span class="tag tag--positive">SAVES ${formatBudgetDraw(action.budgetSavesPerCapita, pop)}/TICK</span>`;
+    } else {
+        budgetTagHtml = `<span class="tag tag--neutral">NO TICK COST</span>`;
+    }
+
+    let extraInfoHtml = '';
+    if (!isActive && !canCoverPerTick) {
+        extraInfoHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">No discretionary funds available.</div>`;
+    } else if (!isActive && !canCoverOneTime) {
+        extraInfoHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">Insufficient discretionary funds.</div>`;
+    }
+
+    let stateClass = '';
+    let btnHtml = '';
+    if (isActive) {
+        stateClass = ' active';
+        btnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
+    } else if (!canUse) {
+        stateClass = ' disabled';
+    } else if (isBudgetBlocked) {
+        stateClass = ' disabled';
+        btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Insufficient discretionary funds">🔒</div>`;
+    } else if (ap < apCost) {
+        stateClass = ' disabled';
+        btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${apCost} AP">▶ ${apCost} AP</div>`;
+    } else {
+        btnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+    }
+
+    return `<div class="ministry-action${stateClass}" id="${actionId}" ${!isDisabled ? `onclick="ministryActionSelect('${actionId}')"` : ''}>
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">${escapeHtml(action.name)}</span>
+            <span class="ministry-action__ap-cost">${apCost} AP${useCount > 0 ? ' (use ' + (useCount + 1) + ')' : ''}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(action.desc)}${extraInfoHtml}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">${tagsHtml}${budgetTagHtml}</div>
+            <div id="${actionId}-btns">${btnHtml}</div>
+        </div>
+    </div>`;
+}
+
 const CURRICULUM_AXES = [
     { id: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism',
       tip: 'The degree to which citizens believe in personal agency and private responsibility versus shared social obligation and collective action.' },
@@ -5849,7 +6218,6 @@ function buildEducationActionRows(isMyMinistry) {
     const pop = currentNation?.population || 20000000;
     const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
-    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
 
     // Discretionary balance
     const ministry = ministryData.find(m => m.ministry_key === 'education');
@@ -5866,18 +6234,16 @@ function buildEducationActionRows(isMyMinistry) {
         <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
     </div>`;
 
-    // Action 1 — Expand Infrastructure (Coming Soon)
-    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
-        <div class="ministry-action__top">
-            <span class="ministry-action__name">Expand Infrastructure</span>
-            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
-        </div>
-        <div class="ministry-action__desc">Fund construction and expansion of schools and educational facilities nationally.</div>
-        <div class="ministry-action__bottom">
-            <div class="ministry-action__tags"></div>
-            <div>${comingSoonBtn}</div>
-        </div>
-    </div>`;
+    // Action 1 — Expand Infrastructure (shared execute flow)
+    const expandAction = config.actions.find(a => a.id === 'expandInfrastructure');
+    html += buildExpandInfrastructureActionRow({
+        ministryKey: 'education',
+        action: expandAction,
+        canUse,
+        ap,
+        pop,
+        discretionaryBalance
+    });
 
     // Action 2 — Standardised Curriculum
     const currAction = config.actions.find(a => a.id === 'standardisedCurriculum');
@@ -5981,7 +6347,6 @@ function buildHealthcareActionRows(isMyMinistry) {
     const pop = currentNation?.population || 20000000;
     const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
-    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
 
     // Discretionary balance
     const ministry = ministryData.find(m => m.ministry_key === 'healthcare');
@@ -5992,18 +6357,16 @@ function buildHealthcareActionRows(isMyMinistry) {
         <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
     </div>`;
 
-    // Action 1 — Expand Infrastructure (Coming Soon)
-    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
-        <div class="ministry-action__top">
-            <span class="ministry-action__name">Expand Infrastructure</span>
-            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
-        </div>
-        <div class="ministry-action__desc">Fund construction and modernisation of hospitals, clinics, and medical facilities nationally.</div>
-        <div class="ministry-action__bottom">
-            <div class="ministry-action__tags"></div>
-            <div>${comingSoonBtn}</div>
-        </div>
-    </div>`;
+    // Action 1 — Expand Infrastructure (shared execute flow)
+    const expandAction = config.actions.find(a => a.id === 'expandInfrastructure');
+    html += buildExpandInfrastructureActionRow({
+        ministryKey: 'healthcare',
+        action: expandAction,
+        canUse,
+        ap,
+        pop,
+        discretionaryBalance
+    });
 
     // Action 2 — Preventative Care Programme
     const prevAction = config.actions.find(a => a.id === 'preventativeCare');
@@ -6313,6 +6676,10 @@ async function confirmPharmaceuticalAction(direction) {
                 }
             });
         } catch (_) { /* best-effort */ }
+        await insertMinisterActionTimelineEvent(
+            'healthcare',
+            `${config.name} (${direction === 'increase' ? 'Increase Regulations' : 'Decrease Regulations'})`
+        );
 
     } catch (e) {
         // Revert optimistic UI — only reached if RPC itself failed
@@ -6476,7 +6843,6 @@ function buildLaborActionRows(isMyMinistry) {
     const pop = currentNation?.population || 20000000;
     const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
-    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
 
     // Discretionary balance
     const ministry = ministryData.find(m => m.ministry_key === 'labor');
@@ -6487,18 +6853,16 @@ function buildLaborActionRows(isMyMinistry) {
         <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
     </div>`;
 
-    // Action 1 — Expand Infrastructure (Coming Soon)
-    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
-        <div class="ministry-action__top">
-            <span class="ministry-action__name">Expand Infrastructure</span>
-            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
-        </div>
-        <div class="ministry-action__desc">Fund construction and expansion of training facilities, employment centres, and labor institutions nationally.</div>
-        <div class="ministry-action__bottom">
-            <div class="ministry-action__tags"></div>
-            <div>${comingSoonBtn}</div>
-        </div>
-    </div>`;
+    // Action 1 — Expand Infrastructure (shared execute flow)
+    const expandAction = config.actions.find(a => a.id === 'expandInfrastructure');
+    html += buildExpandInfrastructureActionRow({
+        ministryKey: 'labor',
+        action: expandAction,
+        canUse,
+        ap,
+        pop,
+        discretionaryBalance
+    });
 
     // Action 2 — Labor Policy (with direction selector)
     const laborAction = config.actions.find(a => a.id === 'laborPolicy');
@@ -6807,6 +7171,10 @@ async function confirmLaborPolicyAction(direction) {
                 }
             });
         } catch (_) { /* best-effort */ }
+        await insertMinisterActionTimelineEvent(
+            'labor',
+            `${config.name} (${direction === 'strengthen' ? 'Strengthen Unions' : 'Deregulate Labor'})`
+        );
 
     } catch (e) {
         // Revert optimistic UI — only reached if RPC itself failed
@@ -6965,35 +7333,35 @@ async function confirmLaborWorkforceAction(actionId) {
 // ==================== ENERGY MINISTRY — CUSTOM ACTION ROWS ====================
 
 function buildEnergyActionRows(isMyMinistry) {
-    const comingSoonBtn = `<div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div>`;
+    const config = MINISTRY_ACTIONS.energy;
     const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     const pop = currentNation?.population ?? 20000000;
     const reserveCap = Math.round((pop / 1000000) * 20);
+    const ap = currentFaction?.action_points ?? 0;
+    const canUse = isMyMinistry === true;
+    const ministry = ministryData.find(m => m.ministry_key === 'energy');
+    const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
 
     let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
         <span>ACTIONS</span>
         <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--text-muted);letter-spacing:0.03em;">Strategic Oil Reserve: <span style="color:${reserveMb > 0 ? '#c8a64e' : 'var(--text-dim)'}">${reserveMb} Mb</span> / ${reserveCap} Mb</span>
     </div>`;
 
-    // Action 1: Expand Infrastructure — COMING SOON
-    html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
-        <div class="ministry-action__top">
-            <span class="ministry-action__name">Expand Infrastructure</span>
-            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
-        </div>
-        <div class="ministry-action__desc">Fund construction and modernisation of energy generation and distribution infrastructure.</div>
-        <div class="ministry-action__bottom">
-            <div class="ministry-action__tags"></div>
-            <div>${comingSoonBtn}</div>
-        </div>
-    </div>`;
+    // Action 1: Expand Infrastructure (shared execute flow)
+    const expandAction = config?.actions?.find(a => a.id === 'expandInfrastructure');
+    html += buildExpandInfrastructureActionRow({
+        ministryKey: 'energy',
+        action: expandAction,
+        canUse,
+        ap,
+        pop,
+        discretionaryBalance
+    });
 
     // Action 2: Build Oil Reserves
     const buildApCosts = [2, 3, 5, 7];
     const buildUseCount = _energyBuildUseCount ?? 0;
     const buildApCost = buildApCosts[Math.min(buildUseCount, 3)];
-    const ap = currentFaction?.action_points ?? 0;
-    const canUse = isMyMinistry === true;
     const activeCycles = _energyBuildCycles.length;
 
     // Calculate accumulation rate from oil_and_gas + manufacturing_output
@@ -8485,16 +8853,7 @@ async function ministryActionConfirm(actionId) {
         // Fire CIVIC event (non-blocking)
         try {
             const effectiveTriggerKey = action.triggerKey || 'ministry_ability_used';
-            const { data: ministry } = await _supabase
-                .from('ministries')
-                .select('minister_first_name, minister_last_name, factions(faction_name)')
-                .eq('nation_id', currentNation.id)
-                .eq('ministry_key', ministryKey)
-                .single();
-            const ministerName = ministry
-                ? (ministry.minister_first_name + ' ' + (ministry.minister_last_name || '')).trim()
-                : 'Unknown';
-            const partyName = ministry?.factions?.faction_name || currentFaction?.faction_name || 'Unknown';
+            const { ministerName, partyName } = await fetchMinisterInfo(ministryKey);
             const placeholders = {
                     minister_name: ministerName,
                     party: partyName,
@@ -8511,6 +8870,7 @@ async function ministryActionConfirm(actionId) {
                 p_placeholders: placeholders
             });
         } catch (evtErr) { /* non-blocking — event display is best-effort */ }
+        await insertMinisterActionTimelineEvent(ministryKey, action.name);
 
     } catch (e) {
         // Revert optimistic UI
@@ -8676,8 +9036,10 @@ async function protestCrisisAction(actionType) {
 // ==================== ISSUE GOVERNMENT BONDS ====================
 let _bondCouponRate = 5;
 let _bondTermMonths = 60;
+let _bondMinistryKey = 'finance';
 
 function openBondIssuanceModal(ministryKey, apCost) {
+    _bondMinistryKey = ministryKey || 'finance';
     _bondCouponRate = 5;
     _bondTermMonths = 60;
 
@@ -8808,6 +9170,7 @@ async function submitBondIssuance(apCost) {
             description_chosen: `${currentNation.name} has issued government bonds at ${_bondCouponRate}% coupon for ${_bondTermMonths} months. Investment banks may now purchase positions.`,
             fired_at_tick: currentTick,
         });
+        await insertMinisterActionTimelineEvent(_bondMinistryKey, 'Issue Government Bonds', currentTick);
 
         // Update AP display
         const apEl = document.getElementById('faction-ap');
@@ -8829,12 +9192,29 @@ window.setBondTerm = setBondTerm;
 window.closeBondModal = closeBondModal;
 window.submitBondIssuance = submitBondIssuance;
 
+
+function getCoalitionAllocations(coalition) {
+    if (!coalition) return {};
+    return coalition.ministry_allocations || coalition.ministry_assignments || {};
+}
+
+function getPMFactionIdFromContext(coalition, ministries, hog) {
+    const pmMinistry = (ministries || []).find(m => m.ministry_key === 'prime_minister');
+    const allocations = getCoalitionAllocations(coalition);
+    return hog?.faction_id
+        || coalition?.lead_party_id
+        || pmMinistry?.party_id
+        || allocations?.prime_minister
+        || null;
+}
+
 // --- Vacant ministry alert (PM/President only) ---
 function renderVacantMinistryAlert(ministries, coalition) {
     // Determine if current player is PM or President
+    const allocations = getCoalitionAllocations(coalition);
     const isPlayerPMorPresident = isPresidential
         ? isPresidentParty
-        : !!(coalition && currentFaction && (coalition.ministry_assignments?.prime_minister === currentFaction.id || coalition.lead_party_id === currentFaction.id));
+        : !!(coalition && currentFaction && (allocations.prime_minister === currentFaction.id || coalition.lead_party_id === currentFaction.id));
     if (!isPlayerPMorPresident) return '';
 
     // Count vacant ministries (have a row but no party_id assigned)
@@ -8862,11 +9242,9 @@ function renderCabinet(ministries, coalition) {
     const isCaretaker = coalition && coalition.status === 'caretaker';
     const pmMinistry = ministries?.find(m => m.ministry_key === 'prime_minister');
     const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
-    const isPMPartyLocal = currentFaction && (
-        (coalition && currentFaction.id === coalition.lead_party_id) ||
-        (coalition && coalition.ministry_allocations?.prime_minister === currentFaction.id) ||
-        (pmMinistry && pmMinistry.party_id === currentFaction.id)
-    );
+    const allocations = getCoalitionAllocations(coalition);
+    const pmFactionIdLocal = getPMFactionIdFromContext(coalition, ministries, _govData?.hog);
+    const isPMPartyLocal = !!(currentFaction && pmFactionIdLocal && currentFaction.id === pmFactionIdLocal);
     const canAppoint = isPMPartyLocal && pmFilled && !isCaretaker;
 
     let govType = 'parliamentary';
@@ -8878,8 +9256,8 @@ function renderCabinet(ministries, coalition) {
 
     if ((!ministries || ministries.length === 0) && !isPresidential) {
         // Parliamentary with coalition allocations but no ministers yet
-        if (coalition && coalition.ministry_allocations) {
-            const cards = Object.entries(coalition.ministry_allocations)
+        if (coalition && Object.keys(allocations).length > 0) {
+            const cards = Object.entries(allocations)
                 .filter(([key]) => key !== 'prime_minister')
                 .map(([key, partyId]) => {
                     const party = partyData.find(p => p.party_id === partyId);
@@ -8911,7 +9289,7 @@ function renderCabinet(ministries, coalition) {
             isRuling: isRulingFaction,
             isMyMinistry,
             canAppoint: isPMPartyLocal && pmFilled && !isCaretaker,
-            isPMParty: isPMPartyLocal || isPMParty || (currentFaction && coalitionData && currentFaction.id === coalitionData.lead_party_id),
+            isPMParty: isPMPartyLocal || isPMParty,
             isPresidentParty: typeof isPresidentParty !== 'undefined' ? isPresidentParty : false,
             isCaretaker,
             requests,
@@ -9093,9 +9471,14 @@ function openAppointModal(ministryKey) {
     document.getElementById('assign-modal-title').textContent = 'Appoint — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
 
     const coalitionPartyIds = coalitionData?.party_ids || [];
-    const coalitionParties = allParties.filter(p => coalitionPartyIds.includes(p.id));
+    const hasCoalitionList = coalitionPartyIds.length > 0;
+    const govType = (currentNation?.government_type || '').toLowerCase();
+    const isAbsoluteMonarchy = govType.includes('absolute monarchy') || currentNation?.hos_election_method === 'hereditary';
+    const eligibleParties = (hasCoalitionList && !isAbsoluteMonarchy)
+        ? allParties.filter(p => coalitionPartyIds.includes(p.id))
+        : allParties;
 
-    generatedCandidates = coalitionParties.map(party => ({
+    generatedCandidates = eligibleParties.map(party => ({
         partyId: party.id,
         partyName: party.faction_name,
         firstName: FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)],
@@ -9103,15 +9486,17 @@ function openAppointModal(ministryKey) {
         age: 30 + Math.floor(Math.random() * 36)
     }));
 
-    document.getElementById('assign-candidates').innerHTML = generatedCandidates.map((c, i) => {
-        const candColor = getPartyColorById(c.partyId);
-        const candLogo = getPartyLogoById(c.partyId);
-        const candCustomLogo = getPartyCustomLogoById(c.partyId);
-        const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
-        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};">` +
-        `<div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div>` +
-        `<div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag other">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div></div>`;
-    }).join('');
+    document.getElementById('assign-candidates').innerHTML = generatedCandidates.length
+        ? generatedCandidates.map((c, i) => {
+            const candColor = getPartyColorById(c.partyId);
+            const candLogo = getPartyLogoById(c.partyId);
+            const candCustomLogo = getPartyCustomLogoById(c.partyId);
+            const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
+            return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};">` +
+            `<div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div>` +
+            `<div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag other">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div></div>`;
+        }).join('')
+        : `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;padding:8px 0;">No eligible parties found.</div>`;
 
     document.getElementById('assign-modal').classList.add('active');
 }
@@ -9373,7 +9758,7 @@ async function purgeMinister(ministryKey) {
             const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
             if (fullNation) {
                 try {
-                    await closeAdministration(_supabase, currentNation.id, fullNation, 'pm_replaced', tick, '', null);
+                    await closeAdministration(_supabase, currentNation.id, fullNation, 'pm_replaced', tick, tickToDate(tick), null);
                 } catch (adminErr) {
                     throw new Error(`Administration lifecycle failed on PM purge: ${adminErr.message || adminErr}`);
                 }
@@ -11073,7 +11458,8 @@ async function refreshGovernmentUI() {
     if (ministryKey === 'prime_minister') { alert('Cannot dismiss the Prime Minister this way.'); return; }
 
     // Permission check: PM party (parliamentary) or President party (presidential)
-    const canFire = isPresidential ? isPresidentParty : (currentFaction.id === coalitionData?.lead_party_id);
+    const pmFactionIdLocal = getPMFactionIdFromContext(coalitionData, ministryData, _govData?.hog);
+    const canFire = isPresidential ? isPresidentParty : (currentFaction.id === pmFactionIdLocal);
     if (!canFire) { alert('Only the head of government can dismiss ministers.'); return; }
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
@@ -11181,10 +11567,13 @@ async function refreshGovernmentUI() {
 const END_REASON_LABELS = {
     election_loss: 'Election Loss',
     new_coalition: 'New Coalition',
-    coalition_collapse: 'Collapsed',
+    coalition_collapse: 'Coalition Collapsed',
+    collapsed: 'Government Collapsed',
     coup: 'Coup',
     dissolved: 'Dissolved',
     pm_replaced: 'PM Replaced',
+    pm_resignation: 'PM Resignation',
+    constitutional_transition: 'Constitutional Transition',
     regime_collapse: 'Regime Collapsed',
     revolution: 'Revolution',
     power_vacuum: 'Power Vacuum',
@@ -11366,6 +11755,20 @@ async function loadPastAdministrations() {
 
         if (error) throw error;
         if (!admins || admins.length === 0) {
+            const { data: transitionEvents, error: transitionErr } = await _supabase
+                .from('event_log')
+                .select('event_id, event_name, category, fired_at_tick')
+                .eq('nation_id', currentNation.id)
+                .or('event_name.ilike.%transition%,event_name.ilike.%collapsed%,event_name.ilike.%resignation%,event_name.ilike.%dissolved%')
+                .order('fired_at_tick', { ascending: false })
+                .limit(5);
+            if (!transitionErr && (transitionEvents || []).length > 0) {
+                console.warn('[GovernmentUI] transition events detected but no administrations found', {
+                    nation_id: currentNation.id,
+                    transition_events: transitionEvents
+                });
+            }
+
             container.innerHTML = `
                 <div class="past-admins-toggle" style="cursor: default;">
                     <span class="past-admins-toggle-text">Past Administrations (0)</span>

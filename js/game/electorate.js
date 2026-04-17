@@ -457,10 +457,10 @@ export const ELECTORATE_CONFIG = {
 
     // ── 3-pillar election weights (sum to 1.0) ──
     // Old 5-pillar weights removed. New system: Governance 35%, Momentum 25%, Ideology 30%, Gov Approval 10%.
-    PILLAR_WEIGHT_GOVERNANCE: 0.35,
-    PILLAR_WEIGHT_MOMENTUM: 0.25,
+    PILLAR_WEIGHT_GOVERNANCE: 0.40,
+    PILLAR_WEIGHT_MOMENTUM: 0.30,
     PILLAR_WEIGHT_IDEOLOGY: 0.30,
-    PILLAR_WEIGHT_GOV_APPROVAL: 0.10,
+    PILLAR_WEIGHT_GOV_APPROVAL: 0.00,
 
     // ── Alignment tick config ──
     ALIGNMENT_DRIFT_SPEED: 2,       // max points per tick toward target alignment
@@ -1182,32 +1182,14 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             govApprovalPillar * CFG.PILLAR_WEIGHT_GOV_APPROVAL
         );
 
-        // Incumbency turnout modifier for governing parties
-        // Bonus: up to +0.08 turnout at high approval, decays with tenure, flips negative below ~35% approval
-        // Timeline: 0-35 ticks = honeymoon (full bonus), 35-74 = linear decay, 74+ = zero
-        let incumbencyTurnoutBonus = 0;
-        if (governingIds.has(f.id)) {
-            // Approval factor: positive above 40, zero at 35, negative below 30
-            const approvalFactor = clamp((govApproval - 35) / 30, -1, 1); // -1 to +1
-
-            // Fatigue factor: full through 35 ticks, linear decay 35-74, zero at 74+
-            const fatigueFactor = incumbencyTicks <= 35
-                ? 1.0
-                : Math.max(0, 1 - (incumbencyTicks - 35) / 39);
-
-            // Base bonus: +0.08 at peak, scales with approval and fatigue
-            incumbencyTurnoutBonus = round3(0.08 * approvalFactor * fatigueFactor);
-        }
-
         updates.push({
             faction_id: f.id,
             nation_id: nationId,
             ideological_alignment: round2(ideology),
             party_approval: round2(partyApproval),
-            visibility: round2(momentum), // visibility column repurposed for momentum display
+            visibility: round2(momentum),
             raw_appeal: rawAppeal,
             last_updated_tick: currentTick,
-            _incumbencyBonus: incumbencyTurnoutBonus, // consumed by computeRealizedVoteShares
         });
     }
 
@@ -1436,39 +1418,14 @@ function computeContestedVoteShares(updates) {
 function computeRealizedVoteShares(updates, profile, nation) {
     if (updates.length === 0) return;
 
-    const polarization = clamp(Number(nation?.polarization ?? 50), 0, 100);
+    // Uniform turnout: all parties get the same base turnout rate.
+    // Elections are determined by Momentum/Ideology/Governance through raw_appeal only.
+    // No visibility-based turnout distortion.
+    const baseTurnout = 0.65;
 
-    // Dynamic base turnout:
-    //   Base 50% + polarization pushes it up (polarized electorates are angry, they vote)
-    const polBonus = polarization * CFG.TURNOUT_POLARIZATION_SCALE;
-    const nationalBase = CFG.TURNOUT_BASE + polBonus;
-
-    // Compute per-faction turnout rate
     for (const u of updates) {
-        const vis = Number(u.visibility ?? CFG.DEFAULT_VISIBILITY);
-        const visBonus = Math.max(0, (vis - 50)) * CFG.TURNOUT_VISIBILITY_SCALE;
-        // Incumbency bonus: governing parties mobilize supporters better (or worse if unpopular)
-        const incumbencyBonus = Number(u._incumbencyBonus ?? 0);
-        u.turnout_rate = round3(clamp(nationalBase + visBonus + incumbencyBonus, 0.25, CFG.TURNOUT_MAX));
-    }
-
-    // realized = contested × turnout (then renormalize)
-    let totalRealized = 0;
-    for (const u of updates) {
-        u.realized_vote_share = u.contested_vote_share * u.turnout_rate;
-        totalRealized += u.realized_vote_share;
-    }
-
-    // Renormalize so realized shares sum to 1.0
-    if (totalRealized > 0) {
-        for (const u of updates) {
-            u.realized_vote_share = round4(u.realized_vote_share / totalRealized);
-        }
-    } else {
-        const even = round4(1 / updates.length);
-        for (const u of updates) {
-            u.realized_vote_share = even;
-        }
+        u.turnout_rate = baseTurnout;
+        u.realized_vote_share = u.contested_vote_share;
     }
 }
 

@@ -76,7 +76,73 @@ export async function initCoalitionFormation(supabase, state) {
     const election = electionResult.data;
     const hasFormedGov = !!coalitionResult.data;
 
-    // Formation is needed if: a completed election exists and no government has been formed
+    // Presidential systems don't use coalition formation — the president governs directly
+    const isPresidentialSystem = (nation.government_type || '').toLowerCase().includes('presidential')
+        || nation.hos_election_method === 'direct_vote';
+    if (isPresidentialSystem) {
+        _formationNeeded = false;
+
+        // If an election just happened and no government exists, auto-create one for the president's party
+        if (election && !hasFormedGov) {
+            try {
+                const currentTick = shardResult.data?.current_tick ?? 0;
+                // Find the president's party (active president row or largest party)
+                const { data: activePresident } = await supabase.from('presidents')
+                    .select('faction_id').eq('nation_id', nation.id).eq('is_active', true).maybeSingle();
+                const presPartyId = activePresident?.faction_id || (_allParties[0]?.id);
+
+                if (presPartyId) {
+                    const isSemiPres = (nation.government_type || '').toLowerCase().includes('semi');
+
+                    // Create government formation
+                    await supabase.from('government_formations').insert({
+                        nation_id: nation.id,
+                        proposed_by: presPartyId,
+                        status: 'formed',
+                        party_ids: [presPartyId],
+                        formation_type: 'coalition',
+                        formed_at: new Date().toISOString(),
+                    });
+
+                    // Delete existing ministries to avoid duplicates
+                    await supabase.from('ministries').delete()
+                        .eq('nation_id', nation.id).eq('is_active', true);
+
+                    // Semi-Presidential: ALL slots vacant (including PM) — President nominates PM,
+                    // then PM appoints cabinet after parliamentary confirmation
+                    // Pure Presidential: slots assigned to president's party (no PM)
+                    const CABINET_MINISTRIES = [
+                        ['interior', 'Minister of the Interior'], ['foreign', 'Minister of Foreign Affairs'],
+                        ['defense', 'Minister of Defense'], ['finance', 'Minister of Finance'],
+                        ['education', 'Minister of Education'], ['healthcare', 'Minister of Health'],
+                        ['labor', 'Minister of Labor'], ['justice', 'Minister of Justice'],
+                        ['trade', 'Minister of Trade'], ['energy', 'Minister of Energy'],
+                        ['transportation', 'Minister of Transportation'],
+                    ];
+                    if (isSemiPres) {
+                        CABINET_MINISTRIES.unshift(['prime_minister', 'Prime Minister']);
+                    }
+                    const rows = CABINET_MINISTRIES.map(([key, name]) => ({
+                        nation_id: nation.id, ministry_key: key, ministry_name: name,
+                        party_id: isSemiPres ? null : presPartyId,
+                        is_active: true,
+                    }));
+                    await supabase.from('ministries').insert(rows);
+
+                    // Semi-Presidential: ensure no HOG row exists (PM is vacant)
+                    if (isSemiPres) {
+                        await supabase.from('head_of_government').delete().eq('nation_id', nation.id);
+                    }
+                }
+            } catch (presGovErr) {
+                console.warn('[Coalition] Presidential auto-gov failed:', presGovErr.message);
+            }
+        }
+
+        return { needed: false };
+    }
+
+    // Parliamentary systems use coalition formation
     if (election && !hasFormedGov) {
         _formationNeeded = true;
         _electionId = election.id;
@@ -101,10 +167,10 @@ export async function renderFormationTab(root) {
     if (!root) return;
 
     // Auto-repair: check if any formation has ministry_assignments but cabinet is empty
-    // This handles the case where Form Government "succeeded" (status may be 'active' or 'formed')
-    // but ministry rows were never populated
+    // Skip for semi-presidential — vacant ministries are intentional (PM nominates)
     const nationId = _state.nation?.id;
-    if (nationId) {
+    const isSemiPresRepair = (_state.nation?.government_type || '').toLowerCase().includes('semi');
+    if (nationId && !isSemiPresRepair) {
         const { count: vacantCount } = await _supabase.from('ministries')
             .select('id', { count: 'exact', head: true })
             .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
@@ -155,6 +221,24 @@ export async function renderFormationTab(root) {
                 return;
             }
         }
+    }
+
+    // Presidential systems — no coalition formation
+    const isPresidentialRender = (_state.nation?.government_type || '').toLowerCase().includes('presidential')
+        || _state.nation?.hos_election_method === 'direct_vote';
+    if (isPresidentialRender) {
+        const isSemiPresRender = (_state.nation?.government_type || '').toLowerCase().includes('semi');
+        root.innerHTML = `<div class="cf-page">
+            <div class="cf-no-formation">
+                <div class="cf-no-icon">&#127979;</div>
+                <div class="cf-no-title">${isSemiPresRender ? 'Semi-Presidential System' : 'Presidential System'}</div>
+                <div class="cf-no-desc">${isSemiPresRender
+                    ? 'The President nominates a Prime Minister for parliamentary confirmation. The PM then appoints cabinet ministers. No coalition formation is required.'
+                    : 'The President governs directly and nominates cabinet ministers. No coalition formation is required.'
+                }</div>
+            </div>
+        </div>`;
+        return;
     }
 
     // Absolute monarchies don't hold elections
@@ -672,7 +756,11 @@ async function loadFormations() {
 
 // ════════════════════════ EVENTS ════════════════════════
 
+let _formationEventsBound = false;
 function bindFormationEvents(root) {
+    // Only bind once — delegation from root survives innerHTML rebuilds
+    if (_formationEventsBound) return;
+    _formationEventsBound = true;
     root.addEventListener('click', async (e) => {
         // Party checkbox toggle
         const checkItem = e.target.closest('.cf-party-check:not(.disabled)');

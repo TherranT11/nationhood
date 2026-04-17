@@ -20,28 +20,105 @@
 }
 
 /* ── Bill cards ── */
+.legislature-text-scale {
+    --leg-scale: 1.755;
+}
+
 .leg-bill-card {
     background: var(--bg-panel); border: 1px solid var(--border-main);
     margin-bottom: 4px; cursor: pointer; transition: border-color 0.15s;
 }
 .leg-bill-card:hover { border-color: var(--border-bright, #444); }
 .leg-bill-header {
-    padding: 10px 14px;
+    padding: 11px 14px;
     display: flex; justify-content: space-between; align-items: center;
 }
 .leg-bill-expanded {
-    padding: 8px 14px; border-top: 1px solid var(--border-main);
+    padding: 10px 14px; border-top: 1px solid var(--border-main);
     background: var(--bg-card);
 }
+.leg-bill-title {
+    font-size: calc(13px * var(--leg-scale, 1.35));
+    font-weight: 700;
+}
+.leg-bill-meta {
+    font-family: var(--font-mono);
+    font-size: calc(8px * var(--leg-scale, 1.35));
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+.leg-bill-support-value {
+    font-family: var(--font-mono);
+    font-size: calc(18px * var(--leg-scale, 1.35));
+    font-weight: 700;
+    line-height: 1;
+}
+.leg-bill-support-label {
+    font-family: var(--font-mono);
+    font-size: calc(7px * var(--leg-scale, 1.35));
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+.leg-support-bar-wrap { position: relative; margin: 0 14px 10px; }
+.leg-support-bar-track { display: flex; height: 5px; gap: 0; }
+.leg-support-marker { position: absolute; top: -4px; width: 1px; height: 12px; background: var(--text-bright); }
+.leg-article-row {
+    padding: 7px 10px;
+    margin-bottom: 3px;
+    border-left: 2px solid var(--border-main);
+}
+.leg-article-title {
+    font-size: calc(10px * var(--leg-scale, 1.35));
+    font-weight: 700;
+    color: var(--text-bright);
+}
+.leg-article-text {
+    font-size: calc(9px * var(--leg-scale, 1.35));
+    color: var(--text-dim);
+    margin-top: 2px;
+    line-height: 1.35;
+}
+.leg-expand-hint {
+    padding: 0 14px 10px;
+    font-family: var(--font-mono);
+    font-size: calc(7px * var(--leg-scale, 1.35));
+    color: var(--text-dim);
+}
 .leg-article-badge {
-    font-family: var(--font-mono); font-size: 6px; font-weight: 700;
-    padding: 1px 5px; border: 1px solid;
+    font-family: var(--font-mono); font-size: calc(6px * var(--leg-scale, 1.35)); font-weight: 700;
+    padding: 2px 6px; border: 1px solid;
+}
+.leg-effects-title {
+    font-family: var(--font-mono);
+    font-size: calc(7px * var(--leg-scale, 1.35));
+    font-weight: 700;
+    color: var(--text-dim);
+    letter-spacing: 0.8px;
+    margin-bottom: 5px;
+}
+.leg-vote-note {
+    font-family: var(--font-mono);
+    font-size: calc(7px * var(--leg-scale, 1.35));
+    color: var(--text-dim);
+    line-height: 1.4;
+}
+.leg-vote-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+.leg-bill-link {
+    font-family: var(--font-mono);
+    font-size: calc(8px * var(--leg-scale, 1.35));
+    color: var(--blue);
+    cursor: pointer;
 }
 
 /* ── Vote buttons ── */
 .leg-vote-btn {
-    padding: 4px 14px;
-    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    padding: 6px 16px;
+    font-family: var(--font-mono); font-size: calc(8px * var(--leg-scale, 1.35)); font-weight: 700;
     letter-spacing: 0.5px; cursor: pointer; transition: filter 0.15s;
 }
 .leg-vote-btn--yes { color: #000; background: var(--green); }
@@ -55,8 +132,8 @@
 
 /* ── Filter bar ── */
 .leg-filter-btn {
-    padding: 4px 12px;
-    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    padding: 5px 13px;
+    font-family: var(--font-mono); font-size: calc(8px * var(--leg-scale, 1.35)); font-weight: 700;
     letter-spacing: 0.5px; color: var(--filter-color);
     background: transparent; border: 1px solid var(--filter-color, var(--border-main));
     cursor: pointer; display: flex; align-items: center; gap: 4px;
@@ -68,8 +145,8 @@
     border-color: var(--filter-color); opacity: 1;
 }
 .leg-propose-btn {
-    padding: 4px 14px;
-    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    padding: 6px 16px;
+    font-family: var(--font-mono); font-size: calc(9px * var(--leg-scale, 1.35)); font-weight: 700;
     letter-spacing: 0.5px; color: var(--text-bright);
     border: 1px solid var(--border-main);
     cursor: pointer; display: flex; align-items: center; gap: 4px;
@@ -93,8 +170,11 @@
     }
 }
 @media (max-width: 768px) {
-    .leg-bill-header { flex-direction: column; gap: 6px; align-items: flex-start !important; }
-    .leg-filter-btn { padding: 3px 8px; font-size: 7px; }
-    .leg-propose-btn { font-size: 8px; padding: 3px 10px; }
-    .leg-vote-btn { padding: 3px 10px; font-size: 7px; }
+    .leg-bill-header { flex-direction: column; gap: 8px; align-items: flex-start !important; }
+    .leg-filter-btn { padding: 4px 9px; font-size: calc(7px * var(--leg-scale, 1.35)); }
+    .leg-propose-btn { font-size: calc(8px * var(--leg-scale, 1.35)); padding: 4px 11px; }
+    .leg-vote-btn { padding: 4px 11px; font-size: calc(7px * var(--leg-scale, 1.35)); }
+    .leg-article-row { padding: 6px 9px; }
+    .leg-support-bar-wrap { margin-bottom: 8px; }
+    .leg-vote-row { flex-direction: column; align-items: stretch; }
 }

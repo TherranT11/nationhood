@@ -1311,19 +1311,85 @@ async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
     }
 }
 
+function parseRequiredForSectors(rawRequiredFor) {
+    if (Array.isArray(rawRequiredFor)) return rawRequiredFor.filter(Boolean);
+    if (typeof rawRequiredFor === 'string') {
+        try {
+            const parsed = JSON.parse(rawRequiredFor);
+            if (Array.isArray(parsed)) return parsed.filter(Boolean);
+        } catch (_) { /* ignore malformed JSON */ }
+    }
+    return [];
+}
+
+function permitAppliesToSector(requiredFor, sector) {
+    if (!sector) return true;
+    const allowed = parseRequiredForSectors(requiredFor);
+    if (allowed.length === 0) return true;
+    return allowed.includes(sector) || allowed.includes('all') || allowed.includes('*');
+}
+
+async function getRequiredPermitKeysForProject(supabase, nationId, sector, cache = {}) {
+    const cacheKey = `${nationId}:${sector || 'unknown'}`;
+    if (cache[cacheKey]) return cache[cacheKey];
+
+    const { data: reqLaws } = await supabase
+        .from('active_laws')
+        .select('policies(permit_key)')
+        .eq('nation_id', nationId)
+        .not('policies.permit_key', 'is', null);
+
+    const lawPermitKeys = [...new Set((reqLaws || []).map(l => l.policies?.permit_key).filter(Boolean))];
+    if (lawPermitKeys.length === 0) {
+        const empty = [];
+        cache[cacheKey] = empty;
+        return empty;
+    }
+
+    const { data: permitDefs } = await supabase
+        .from('construction_permits')
+        .select('permit_key, required_for')
+        .in('permit_key', lawPermitKeys);
+
+    const requiredKeys = (permitDefs || [])
+        .filter(def => permitAppliesToSector(def.required_for, sector))
+        .map(def => def.permit_key);
+
+    cache[cacheKey] = requiredKeys;
+    return requiredKeys;
+}
+
+async function getPermitComplianceSnapshot(supabase, { nationId, sector, factionId, contractId, checkpoint, cache = {} }) {
+    const requiredPermitKeys = await getRequiredPermitKeysForProject(supabase, nationId, sector, cache);
+    const { data: heldPermitsRows } = await supabase
+        .from('corp_permits')
+        .select('permit_key')
+        .eq('faction_id', factionId)
+        .eq('nation_id', nationId)
+        .eq('status', 'active');
+    const heldPermitKeys = [...new Set((heldPermitsRows || []).map(p => p.permit_key).filter(Boolean))];
+    const heldSet = new Set(heldPermitKeys);
+    const missingPermitKeys = requiredPermitKeys.filter(k => !heldSet.has(k));
+
+    console.log(`[PermitCheck:${checkpoint}] project=${contractId} required=${JSON.stringify(requiredPermitKeys)} held=${JSON.stringify(heldPermitKeys)} missing=${JSON.stringify(missingPermitKeys)}`);
+
+    return { requiredPermitKeys, heldPermitKeys, missingPermitKeys };
+}
+
 async function resolveExpiredBids(supabase, nationId, currentTick) {
     // Find contracts ready to resolve:
     // 1. Bidding timer expired (3 ticks), OR
     // 2. Already have 3+ bids (auto-resolve immediately)
     const { data: openContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, budget_ceiling, bidding_ends_tick')
+        .select('id, name, budget_ceiling, bidding_ends_tick, sector')
         .eq('nation_id', nationId)
         .in('status', ['open', 'bidding']);
 
     if (!openContracts || openContracts.length === 0) return [];
 
     const results = [];
+    const permitScopeCache = {};
     for (const contract of openContracts) {
         // Load all pending bids
         const { data: bids } = await supabase
@@ -1363,6 +1429,42 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
             // Highest quality
             winner = bids!.reduce((best, b) => (b.estimated_quality || 0) > (best.estimated_quality || 0) ? b : best, bids![0]);
             method = 'highest_quality';
+        }
+
+        const awardPermitSnapshot = await getPermitComplianceSnapshot(supabase, {
+            nationId,
+            sector: contract.sector,
+            factionId: winner.faction_id,
+            contractId: contract.id,
+            checkpoint: 'award',
+            cache: permitScopeCache,
+        });
+        if (awardPermitSnapshot.missingPermitKeys.length > 0) {
+            try {
+                await supabase.from('construction_events').insert({
+                    contract_id: contract.id,
+                    faction_id: winner.faction_id,
+                    nation_id: nationId,
+                    event_key: 'permit_compliance_warning',
+                    type: 'REGULATORY',
+                    severity: 'HIGH',
+                    title: 'Permit Compliance Warning',
+                    description: `Awarded bidder is missing required permits for this project sector: ${awardPermitSnapshot.missingPermitKeys.join(', ')}.`,
+                    impact: 'Construction start is blocked until required permits are active.',
+                    responses: [{
+                        key: 'acknowledge',
+                        label: 'Acknowledged',
+                        tag: 'HIGH',
+                        detail: 'Missing permits logged for compliance monitoring.',
+                        cost: 0,
+                        delay: 1,
+                        qualityImpact: 0,
+                    }],
+                    status: 'ACTIVE',
+                    fired_at_tick: currentTick,
+                    expires_at_tick: currentTick + 3,
+                });
+            } catch (_) { /* non-fatal */ }
         }
 
         await supabase.from('construction_contracts')
@@ -1421,11 +1523,28 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 1. Move newly awarded contracts to in_progress
     const { data: newlyAwarded } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick')
+        .select('id, name, awarded_to_faction, awarded_at_tick, stalled_ticks, sector')
         .eq('nation_id', nationId)
         .eq('status', 'awarded');
 
+    const permitScopeCache = {};
     for (const contract of (newlyAwarded || [])) {
+        const startPermitSnapshot = await getPermitComplianceSnapshot(supabase, {
+            nationId,
+            sector: contract.sector,
+            factionId: contract.awarded_to_faction,
+            contractId: contract.id,
+            checkpoint: 'start',
+            cache: permitScopeCache,
+        });
+        if (startPermitSnapshot.missingPermitKeys.length > 0) {
+            await supabase.from('construction_contracts')
+                .update({ stalled_ticks: Number(contract.stalled_ticks || 0) + 1 })
+                .eq('id', contract.id);
+            console.log(`[Projects] ${contract.name}: START BLOCKED — missing required permits ${startPermitSnapshot.missingPermitKeys.join(', ')}`);
+            continue;
+        }
+
         await supabase.from('construction_contracts')
             .update({ status: 'in_progress' })
             .eq('id', contract.id);
@@ -1674,17 +1793,17 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             let missingPermitPenalty = 0;
             let heldKeysDelivery = new Set();
             try {
-                const { data: reqLawsDelivery } = await supabase
-                    .from('active_laws')
-                    .select('policies(permit_key)')
-                    .eq('nation_id', nationId)
-                    .not('policies.permit_key', 'is', null);
-                const reqKeysDelivery = new Set((reqLawsDelivery || []).map(l => l.policies?.permit_key).filter(Boolean));
-                const { data: heldAtDelivery } = await supabase.from('corp_permits')
-                    .select('permit_key').eq('faction_id', bid.faction_id).eq('status', 'active');
-                heldKeysDelivery = new Set((heldAtDelivery || []).map(p => p.permit_key));
+                const deliveryPermitSnapshot = await getPermitComplianceSnapshot(supabase, {
+                    nationId,
+                    sector: contract.sector,
+                    factionId: bid.faction_id,
+                    contractId: contract.id,
+                    checkpoint: 'completion',
+                    cache: permitScopeCache,
+                });
+                heldKeysDelivery = new Set(deliveryPermitSnapshot.heldPermitKeys);
 
-                for (const reqKey of reqKeysDelivery) {
+                for (const reqKey of deliveryPermitSnapshot.missingPermitKeys) {
                     if (!heldKeysDelivery.has(reqKey)) {
                         if (reqKey === 'municipal_zoning') missingPermitPenalty -= 100; // auto-FAIL
                         else if (reqKey === 'structural_engineering') missingPermitPenalty -= 10;
@@ -1968,6 +2087,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
  */
 async function generateProjectEvents(supabase, nationId, currentTick) {
     const results = [];
+    const permitScopeCache = {};
 
     // Load in_progress contracts with phase and sector
     const { data: contracts } = await supabase
@@ -2104,21 +2224,16 @@ async function generateProjectEvents(supabase, nationId, currentTick) {
         // ── Regulatory & Material Quality Events (only if no event fired above) ──
         if (!results.some(r => r.contract === contract.name)) {
             try {
-                // Load required permits for this nation (from active laws with permit_key)
-                const { data: reqLaws } = await supabase
-                    .from('active_laws')
-                    .select('policies(permit_key)')
-                    .eq('nation_id', nationId)
-                    .not('policies.permit_key', 'is', null);
-                const requiredKeys = new Set((reqLaws || []).map(l => l.policies?.permit_key).filter(Boolean));
-
-                // Load corp's active permits
-                const { data: _corpActivePerms } = await supabase.from('corp_permits')
-                    .select('permit_key').eq('faction_id', contract.awarded_to_faction).eq('status', 'active');
-                const heldPermits = new Set((_corpActivePerms || []).map(p => p.permit_key));
-
-                // Count missing required permits
-                const missingPermits = [...requiredKeys].filter(k => !heldPermits.has(k));
+                const permitSnapshot = await getPermitComplianceSnapshot(supabase, {
+                    nationId,
+                    sector: contract.sector,
+                    factionId: contract.awarded_to_faction,
+                    contractId: contract.id,
+                    checkpoint: 'events',
+                    cache: permitScopeCache,
+                });
+                const heldPermits = new Set(permitSnapshot.heldPermitKeys);
+                const missingPermits = permitSnapshot.missingPermitKeys;
                 const missingCount = missingPermits.length;
 
                 // Regulatory events based on missing permits
@@ -2454,6 +2569,15 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
             .update(updateFields)
             .eq('id', corp.id);
         if (updateErr) console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
+
+        // Credit corporate tax to the nation's debt reduction
+        if (taxAmount > 0) {
+            const { data: nationRow } = await supabase.from('nations').select('debt').eq('id', nation.id).single();
+            if (nationRow) {
+                const newDebt = Math.max(0, Number(nationRow.debt || 0) - taxAmount);
+                await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
+            }
+        }
     }
     console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, tax rate=${ns('corporate_tax')}%`);
 }
@@ -3124,12 +3248,11 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             }
 
             const corps = corpFactions || [];
-            if (corps.length === 0) continue;
 
-            summary.corpsProcessed += corps.length;
-            console.log(`[advance-corp-tick] ${nation.name}: ${corps.length} corporation(s)`);
-
-            // ── Construction Sector ──────────────────────────────────────
+            // ── Construction Sector (runs for ALL nations) ───────────────
+            // Contract generation, bid resolution, and project advancement
+            // are not gated behind local corp presence — corps from any
+            // nation can bid on contracts.
             try {
                 // Bid resolution FIRST: expired bidding windows → award winners
                 const bidResults = await resolveExpiredBids(supabase, nation.id, currentTick);
@@ -3335,6 +3458,11 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Construction failed for ${nation.name} (non-fatal):`, constructionErr);
                 summary.errors.push({ nation: nation.name, sector: 'construction', error: String(constructionErr) });
             }
+
+            // ── Corp-specific processing (requires local corporations) ──
+            if (corps.length === 0) continue;
+            summary.corpsProcessed += corps.length;
+            console.log(`[advance-corp-tick] ${nation.name}: ${corps.length} corporation(s)`);
 
             // ── Property Effects (maintenance, condition degradation) ──
             try {
