@@ -39,14 +39,13 @@ export var SHIPPING_REVENUE_RATES = {
 
 /**
  * Calculate transit time in ticks based on proximity (0-100).
- * Bordering nations (0): 1 tick. Distant (100): 6 ticks.
+ * 0-70 proximity → 0 ticks (instant). 71+ → 1 tick.
  * @param {number} proximity - 0 (bordering) to 100 (far)
- * @returns {number} transit ticks (1-6)
+ * @returns {number} transit ticks (0 or 1)
  */
 export function calculateTransitTicks(proximity) {
     var p = Number(proximity) || 0;
-    // 0 = bordering → 1 tick, 100 = far → 6 ticks
-    return Math.max(1, Math.min(6, 1 + Math.floor(p / 20)));
+    return p >= 71 ? 1 : 0;
 }
 
 /**
