@@ -3412,7 +3412,7 @@ async function openProjectModal(projectId) {
     const estCost = bid?.estimated_cost || 0;
     const spent = Math.round(estCost * Math.min(1, ticksElapsed / totalTicks));
     const quality = bid?.estimated_quality || 65;
-    const qualityLabel = quality >= 80 ? 'STRONG' : quality >= 60 ? 'PROMISING' : quality >= 40 ? 'FAIR' : 'UNCERTAIN';
+    const qualityLabel = quality >= 75 ? 'EXCELLENT' : quality >= 50 ? 'FAIR' : quality >= 25 ? 'POOR' : 'BAD';
 
     // Workforce from contract + actual assignments
     const reqWf = project.required_workforce || {};
@@ -3765,12 +3765,12 @@ function renderProjectModal() {
     if (activeEvents > 0) {
         footerLeft += `<span class="pm-ftr__badge" style="color:var(--red);background:var(--red-faint);border:1px solid var(--red-border)">${activeEvents} EVENT${activeEvents > 1 ? 'S' : ''} REQUIRES RESPONSE</span>`;
     }
-    footerLeft += `<span class="pm-ftr__badge" style="color:${s.quality >= 70 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : 'var(--orange)'};background:var(--bg-0);border:1px solid var(--border-0)">QUALITY: ${s.quality}/100 — ${s.qualityLabel}</span>`;
+    footerLeft += `<span class="pm-ftr__badge" style="color:${s.quality >= 75 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : s.quality >= 25 ? 'var(--orange)' : 'var(--red)'};background:var(--bg-0);border:1px solid var(--border-0)">QUALITY: ${s.quality}/100 — ${s.qualityLabel}</span>`;
 
     document.getElementById('pm-footer').innerHTML = `
         <div class="pm-ftr__left">${footerLeft}</div>
         <div style="display:flex;gap:8px;">
-            ${s.effectiveProgress >= s.totalTicks ? `<button style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#000;background:var(--green);border:none;cursor:pointer;" onclick="closeProjectModal();deliverProject('${pmState.project.id}','${(pmState.project.name || '').replace(/'/g, "\\'")}',${pmState.bid?.bid_price || 0},${pmState.bid?.estimated_cost || 0},${pmState.bid?.estimated_quality || 65})">DELIVER</button>` : ''}
+            ${s.effectiveProgress >= s.totalTicks ? `<button data-deliver-id="${pmState.project.id}" style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#000;background:var(--green);border:none;cursor:pointer;" onclick="closeProjectModal();deliverProject('${pmState.project.id}','${(pmState.project.name || '').replace(/'/g, "\\'")}',${pmState.bid?.bid_price || 0},${pmState.bid?.estimated_cost || 0},${pmState.bid?.estimated_quality || 65})">DELIVER</button>` : ''}
             <button class="pm-ftr__close" onclick="closeProjectModal()">CLOSE</button>
         </div>
     `;
@@ -3786,7 +3786,7 @@ function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemainin
         { label: 'Budget', value: fmtBudget(s.budget), sub: `${budgetPct}% spent`, color: budgetColor },
         { label: 'Spent', value: fmtBudget(s.spent), color: 'var(--red)' },
         { label: 'Remaining', value: fmtBudget(remaining), color: 'var(--green)' },
-        { label: 'Quality', value: `${s.quality}/100`, sub: s.qualityLabel, color: s.quality >= 70 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : 'var(--red)' },
+        { label: 'Quality', value: `${s.quality}/100`, sub: s.qualityLabel, color: s.quality >= 75 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : s.quality >= 25 ? 'var(--orange)' : 'var(--red)' },
         { label: 'Workforce', value: `${s.laborCount}/${s.wfNeeded}`, sub: `Bid: ${s.laborCount}`, color: s.laborCount < s.wfNeeded ? 'var(--orange)' : 'var(--text-bright)' },
         { label: 'Remaining', value: `${ticksRemaining} ticks`, sub: isLate ? 'OVERDUE' : `Deadline: ${deadlineDate}`, color: isLate ? 'var(--red)' : 'var(--text-bright)' },
     ];
@@ -4166,10 +4166,53 @@ async function requestInsurance(contractId, budgetCeiling) {
 window.requestInsurance = requestInsurance;
 
 let _delivering = false;
+const _deliveredContractIds = new Set();
+
+// Resolve corp_properties metadata for a delivered contract. Returns null when the
+// contract shouldn't become a property (eg national infrastructure with no corp issuer).
+function _deliveryPropertyMeta(contract, paidPrice) {
+    const tk = contract?.template_key;
+    if (!tk) return null;
+    // Port facilities: PF_CATALOG carries catalog name, maintenance and style.
+    if (tk === 'fuel_depot' || tk === 'dry_dock') {
+        const style = contract.project_subtype || 'Basic';
+        const row = PF_CATALOG.find(r => r.type === tk && r.name === contract.name)
+            || PF_CATALOG.find(r => r.type === tk && r.style === style)
+            || PF_CATALOG.find(r => r.type === tk);
+        return {
+            type: tk,
+            style,
+            capacity: style === 'Modern' ? 500 : 250,
+            maintenance: row?.maint || Math.round(paidPrice * 0.001),
+        };
+    }
+    // Custom corp-commissioned buildings submitted via cpSubmit.
+    if (tk === 'custom_building') {
+        return {
+            type: 'office',
+            style: contract.project_subtype || 'Basic',
+            capacity: 500,
+            maintenance: Math.round(paidPrice * 0.001),
+        };
+    }
+    // Everything else (national infrastructure templates) is not a corp property.
+    return null;
+}
+
+function _setDeliverButtonsDisabled(contractId, disabled) {
+    document.querySelectorAll(`[data-deliver-id="${contractId}"]`).forEach(btn => {
+        btn.disabled = disabled;
+        btn.style.opacity = disabled ? '0.55' : '';
+        btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+        if (disabled) btn.textContent = 'DELIVERING…';
+    });
+}
 async function deliverProject(contractId, contractName, bidPrice, estCost, estQuality) {
     if (_delivering || !faction || !shard) return;
+    if (_deliveredContractIds.has(contractId)) return;
     if (!confirm('Deliver "' + contractName + '"?\n\nAn inspection will be conducted and payment issued based on quality.')) return;
     _delivering = true;
+    _setDeliverButtonsDisabled(contractId, true);
 
     try {
         const currentTick = shard.current_tick || 0;
@@ -4191,11 +4234,17 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
         // Reputation change
         const repChange = result === 'DISTINCTION' ? 3 : result === 'PASS' ? 1 : result === 'CONDITIONAL' ? -1 : -3;
 
-        // Fetch contract for timeline data + issuer info
+        // Fetch contract + status to guard against double-delivery, plus issuer info
         const { data: contract } = await _supabase.from('construction_contracts')
-            .select('awarded_at_tick, timeline_ticks, stalled_ticks, issuer_faction_id, nation_id, issuer_name')
+            .select('awarded_at_tick, timeline_ticks, stalled_ticks, issuer_faction_id, nation_id, status, name, template_key, project_subtype, issuer_type, issuer_name')
             .eq('id', contractId).single();
         if (!contract) { alert('Contract not found.'); return; }
+        if (contract.status === 'completed' || contract.status === 'delivered') {
+            _deliveredContractIds.add(contractId);
+            alert('This project has already been delivered.');
+            await loadActiveProjects();
+            return;
+        }
 
         const totalTicks = contract.timeline_ticks || 8;
         const actualTicks = Math.max(0, currentTick - (contract.awarded_at_tick || currentTick));
@@ -4249,6 +4298,33 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
             }
         }
 
+        // Hand over the finished asset to the issuer — corp-commissioned projects
+        // (issuer_faction_id set) become a property on the issuer's PROPERTY card.
+        // National infrastructure with no corp issuer is skipped.
+        if (contract.issuer_faction_id) {
+            try {
+                const propMeta = _deliveryPropertyMeta(contract, bidPrice);
+                if (propMeta) {
+                    await _supabase.from('corp_properties').insert({
+                        faction_id: contract.issuer_faction_id,
+                        nation_id: contract.nation_id,
+                        name: contract.name || contractName,
+                        type: propMeta.type,
+                        style: propMeta.style,
+                        capacity: propMeta.capacity,
+                        purchase_price: bidPrice,
+                        monthly_maintenance: propMeta.maintenance,
+                        condition: Math.max(25, Math.min(100, qualityScore)),
+                        purchased_at_tick: currentTick,
+                        built_via_contract_id: contractId,
+                        is_active: true,
+                    });
+                }
+            } catch (propErr) {
+                console.warn('[deliverProject] Failed to register property for issuer:', propErr?.message || propErr);
+            }
+        }
+
         // Log events — visible to both builder and recipient nations
         const issuerName = contract.issuer_name || 'the client';
         const { data: projectNation } = await _supabase.from('nations').select('name').eq('id', contract.nation_id).single();
@@ -4278,10 +4354,12 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
             '\nReputation: ' + (repChange > 0 ? '+' : '') + repChange +
             '\nNet Profit: ' + (netProfit >= 0 ? '+' : '') + hfFmtBig(netProfit));
 
+        _deliveredContractIds.add(contractId);
         await loadActiveProjects();
         await loadDeliveries();
     } catch (err) {
         alert('Delivery failed: ' + (err.message || err));
+        _setDeliverButtonsDisabled(contractId, false);
     } finally {
         _delivering = false;
     }
@@ -4359,7 +4437,7 @@ async function confirmEventResponse(eventId, responseKey) {
         // Update quality in pmState if it changed
         if (result?.quality_applied && result.quality_applied !== 0) {
             pmState.quality = Math.max(0, Math.min(100, pmState.quality + result.quality_applied));
-            pmState.qualityLabel = pmState.quality >= 80 ? 'STRONG' : pmState.quality >= 60 ? 'PROMISING' : pmState.quality >= 40 ? 'FAIR' : 'UNCERTAIN';
+            pmState.qualityLabel = pmState.quality >= 75 ? 'EXCELLENT' : pmState.quality >= 50 ? 'FAIR' : pmState.quality >= 25 ? 'POOR' : 'BAD';
         }
 
         renderProjectModal();
@@ -4627,7 +4705,7 @@ function renderActiveProjects() {
                 </div>
             </div>
             ${effectiveProgress >= totalTicks ? `<div style="padding:6px 10px;border-top:1px solid var(--border-0);">
-                <button onclick="event.stopPropagation();deliverProject('${p.id}','${escapeHtml(p.name).replace(/'/g, "\\'")}',${bidPrice},${estCost},${quality})" style="width:100%;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#000;background:var(--green);border:none;cursor:pointer;">DELIVER PROJECT</button>
+                <button data-deliver-id="${p.id}" onclick="event.stopPropagation();deliverProject('${p.id}','${escapeHtml(p.name).replace(/'/g, "\\'")}',${bidPrice},${estCost},${quality})" style="width:100%;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#000;background:var(--green);border:none;cursor:pointer;">DELIVER PROJECT</button>
             </div>` : ''}
         </div>`;
     }
@@ -12244,8 +12322,8 @@ function renderBidAssembly() {
     // Quality
     const gradeVals = Object.values(_bidGrades);
     const qualityEst = gradeVals.length > 0 ? Math.round(gradeVals.reduce((s, g) => s + (g === 'HIGH' ? 85 : g === 'STD' ? 65 : 45), 0) / gradeVals.length) : 50;
-    const qualityColor = qualityEst >= 75 ? C.greenBright : qualityEst >= 55 ? C.yellow : C.orange;
-    const qualityLabel = qualityEst >= 75 ? 'STRONG' : qualityEst >= 55 ? 'PROMISING' : 'UNCERTAIN';
+    const qualityColor = qualityEst >= 75 ? C.greenBright : qualityEst >= 50 ? C.yellow : qualityEst >= 25 ? C.orange : C.red;
+    const qualityLabel = qualityEst >= 75 ? 'EXCELLENT' : qualityEst >= 50 ? 'FAIR' : qualityEst >= 25 ? 'POOR' : 'BAD';
 
     const overlay = document.createElement('div');
     overlay.id = 'bid-assembly-overlay';
@@ -13682,16 +13760,18 @@ async function pfOpenBuild(facilityType) {
         const seq = (existingContracts || 0) + 1;
         const projectCode = `PVT-P${seq}-${gameYear}`;
 
-        // Port facility material/workforce requirements (smaller than buildings)
+        // Port facility material/workforce requirements — scaled so build cost at
+        // STANDARD material grade lands in the ~$100M ballpark of the PF_CATALOG
+        // ceiling. Materials 10x, equipment 5x, workforce 20x vs the old recipe.
         const isAdvanced = selected.style === 'Modern';
         const materials = {
-            concrete: isAdvanced ? 6 : 4,
-            steel: isAdvanced ? 5 : 3,
-            heavy_parts: isAdvanced ? 3 : 2,
-            aggregate: isAdvanced ? 3 : 2,
+            concrete: isAdvanced ? 60 : 40,
+            steel: isAdvanced ? 50 : 30,
+            heavy_parts: isAdvanced ? 30 : 20,
+            aggregate: isAdvanced ? 30 : 20,
         };
-        const equipment = { trucks: 1, mixers: 1, excavators: 1 };
-        const workforce = { general: isAdvanced ? 12 : 8, skilled: isAdvanced ? 5 : 3 };
+        const equipment = { trucks: 5, mixers: 5, excavators: 5 };
+        const workforce = { general: isAdvanced ? 240 : 160, skilled: isAdvanced ? 100 : 60 };
         const timeline = isAdvanced ? 6 : 4;
 
         // Insert construction contract

@@ -218,7 +218,7 @@
     font-size: 12px;
     color: var(--nws-paper);
     white-space: nowrap;
-    animation: nws-ticker 30s linear infinite;
+    animation: nws-ticker 60s linear infinite;
     letter-spacing: 0.3px;
 }
 
