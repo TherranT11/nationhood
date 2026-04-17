@@ -4968,7 +4968,7 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   background: var(--bg-2, #1a1a17);
   border: 1px solid var(--border-subtle, rgba(200,196,184,0.1));
   border-radius: 4px;
-  max-width: 920px;
+  max-width: 1288px;  /* +40% over legacy 920px — 4-column layout needs the room */
   width: 94%;
   max-height: 85vh;
   display: flex;
