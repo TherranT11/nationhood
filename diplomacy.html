@@ -648,8 +648,8 @@ async function loadShippingData() {
         // simpler and more reliable than pushing an or() filter onto the
         // embedded table, which has historically been flaky in postgrest.
         const routeColumns = 'id, origin_nation_id, destination_nation_id, origin_port, destination_port, trade_sector, cargo_category, goods_name, trade_volume, estimated_revenue, transit_ticks, demand_level, trade_agreement_id, trade_agreement_name, status, competition_count';
-        const corpAppColumns = 'id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, shipping_fleet_capacity, shipping_fleet_deployed, corp_reputation, corp_cash_reserves';
-        const corpClaimColumns = 'id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, corp_reputation, corp_cash_reserves';
+        const corpAppColumns = 'id, nation_id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, shipping_fleet_capacity, shipping_fleet_deployed, corp_reputation, corp_cash_reserves';
+        const corpClaimColumns = 'id, nation_id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, corp_reputation, corp_cash_reserves';
 
         const [routesRes, appsRes, claimsRes] = await Promise.all([
             _supabase.from('shipping_routes')
@@ -1096,8 +1096,8 @@ window.openShippingBidModal = async function(routeId) {
     if (!route) return;
     const apps = _shippingAppsByRoute[routeId] || [];
 
-    // Fetch the selling nation's Minister of Trade display name (non-blocking —
-    // a failed lookup just shows "Minister of Trade" with no personal name).
+    // Selling nation's Minister of Trade display name (non-blocking — a
+    // failed lookup just shows "Minister of Trade" with no personal name).
     let mot = { first: '', last: '' };
     try {
         const { data: mr, error: motErr } = await _supabase.from('ministries')
@@ -1112,7 +1112,31 @@ window.openShippingBidModal = async function(routeId) {
         console.warn('[ShippingBidModal] MoT lookup threw:', e?.message || e);
     }
 
-    _shippingBidModal = { routeId, route, apps, mot };
+    // Per-corp badge data. Non-blocking — missing sets just mean no badges.
+    const activeCorpSet = new Set();
+    const incumbentCorpSet = new Set();
+    try {
+        const factionIds = [...new Set(apps.map(a => a.faction_id).filter(Boolean))];
+        if (factionIds.length > 0) {
+            const [activeRes, incRes] = await Promise.all([
+                _supabase.from('shipping_claims').select('faction_id').eq('status', 'active').in('faction_id', factionIds),
+                _supabase.from('shipping_claims').select('faction_id').eq('route_id', routeId).eq('status', 'released').in('faction_id', factionIds),
+            ]);
+            if (activeRes.error)   console.warn('[ShippingBidModal] active-claim fetch error:', activeRes.error.message);
+            if (incRes.error)      console.warn('[ShippingBidModal] incumbent fetch error:', incRes.error.message);
+            for (const c of (activeRes.data || [])) activeCorpSet.add(c.faction_id);
+            for (const c of (incRes.data    || [])) incumbentCorpSet.add(c.faction_id);
+        }
+    } catch (e) {
+        console.warn('[ShippingBidModal] badge fetch threw:', e?.message || e);
+    }
+
+    _shippingBidModal = {
+        routeId, route, apps, mot,
+        sort: 'lowest_bid',
+        activeCorps: activeCorpSet,
+        incumbentCorps: incumbentCorpSet,
+    };
     _renderShippingBidModalOverlay();
     document.body.style.overflow = 'hidden';
 };
@@ -1123,6 +1147,13 @@ window.closeShippingBidModal = function() {
     document.body.style.overflow = '';
 };
 
+window.setShippingBidSort = function(key) {
+    if (!_shippingBidModal) return;
+    if (_shippingBidModal.sort === key) return;
+    _shippingBidModal.sort = key;
+    _renderShippingBidModalOverlay();
+};
+
 // Bind ESC + overlay click once. The rendered overlay stops propagation on
 // its inner content so clicks inside the modal don't trigger dismissal.
 if (!window._shippingBidModalEscBound) {
@@ -1130,6 +1161,106 @@ if (!window._shippingBidModalEscBound) {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && _shippingBidModal) window.closeShippingBidModal();
     });
+}
+
+// Sort-tab chip for the bids header. Active tab gets the accent underline.
+function _renderBidSortTab(key, label, activeKey) {
+    const isActive = activeKey === key;
+    return `<button onclick="setShippingBidSort('${key}')" style="padding:6px 12px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:${isActive ? 'var(--text-bright)' : 'var(--text-dim)'};background:${isActive ? 'var(--bg-card)' : 'transparent'};border:1px solid ${isActive ? 'var(--border-main)' : 'transparent'};cursor:pointer;">${escapeHtml(label)}</button>`;
+}
+
+// Single bid row. Computes derived fields (badges, tier, monthly cost, margin)
+// locally so the comparator in _renderShippingBidModalOverlay only has to sort
+// the raw app rows, not a pre-built view model.
+function _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, originNation, activeCorps, incumbentCorps) {
+    const corp = app.factions || {};
+    const color = corp.party_color || '#5a8aaa';
+    const ticker = (corp.corp_ticker || corp.abbreviation || '').toUpperCase();
+    const logoHtml = corp.custom_logo_url
+        ? `<img src="${escapeHtml(corp.custom_logo_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:3px;" />`
+        : `<span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${color};">${escapeHtml(ticker.slice(0,2) || '??')}</span>`;
+
+    const rate = Number(app.proposed_rate) || 0;
+    const monthlyCost = rate * tripsPerMonth;
+    // Est. margin: selling-nation perspective — positive % = savings vs median,
+    // negative = premium over median. Dim when within ±2%.
+    const marginPct = bidMedian > 0 ? ((bidMedian - rate) / bidMedian) * 100 : 0;
+    const marginColor = Math.abs(marginPct) < 2 ? 'var(--text-dim)' : marginPct > 0 ? 'var(--green)' : 'var(--red)';
+    const marginLabel = (marginPct > 0 ? '+' : '') + marginPct.toFixed(1) + '%';
+
+    const rep = Math.round(Number(corp.corp_reputation) || 0);
+    const repColor = rep >= 80 ? 'var(--green)' : rep >= 60 ? 'var(--accent)' : rep >= 40 ? 'var(--amber)' : 'var(--red)';
+    const repLabel = rep >= 80 ? 'Excellent' : rep >= 60 ? 'Good' : rep >= 40 ? 'Fair' : rep >= 20 ? 'Unproven' : 'Poor';
+
+    const fleetCap = Number(corp.shipping_fleet_capacity) || 0;
+    const fleetDep = Number(corp.shipping_fleet_deployed) || 0;
+    const activeShips = Math.max(0, fleetDep);
+
+    // Badges: BEST (lowest bid), ACTIVE (has any active claim), LOCAL (corp HQ
+    // nation matches route origin or destination but NOT the selling nation).
+    // Skipped per Phase 3 scope: NEW (needs age threshold), FLAGGED (needs rep/sanction threshold).
+    const badges = [];
+    if (bidMin > 0 && rate === bidMin) badges.push({ label: 'BEST', color: 'var(--green)' });
+    if (activeCorps?.has(app.faction_id))   badges.push({ label: 'ACTIVE', color: 'var(--accent)' });
+    const corpNationId = corp.nation_id;
+    const corpIsLocal = corpNationId && (corpNationId === r.origin_nation_id || corpNationId === r.destination_nation_id);
+    if (corpIsLocal) badges.push({ label: 'LOCAL', color: 'var(--amber)' });
+
+    // Tier line below the corp name.
+    //   INCUMBENT — previously held a released claim on this exact route
+    //   DOMESTIC  — corp HQ is the selling (origin) nation
+    //   MAJOR/REGIONAL — fleet-capacity heuristic for everyone else
+    let tier;
+    if (incumbentCorps?.has(app.faction_id)) tier = 'INCUMBENT';
+    else if (corpNationId && corpNationId === r.origin_nation_id) tier = 'DOMESTIC';
+    else if (fleetCap >= 20) tier = 'MAJOR';
+    else if (fleetCap >= 6)  tier = 'REGIONAL';
+    else                     tier = 'MINOR';
+
+    // Corp's home-nation abbreviation for the subline (falls back to the corp ticker).
+    const corpNation = corpNationId ? (_worldAllNations || []).find(n => n.id === corpNationId) : null;
+    const corpNationAbbr = (corpNation?.abbreviation || corpNation?.name || ticker || '').toUpperCase();
+
+    const badgeHtml = badges.map(b =>
+        `<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;padding:1px 5px;color:${b.color};background:${b.color === 'var(--green)' ? 'rgba(92,204,92,0.08)' : b.color === 'var(--amber)' ? 'rgba(200,168,50,0.08)' : 'rgba(90,138,170,0.08)'};border:1px solid ${b.color};">${b.label}</span>`
+    ).join('');
+
+    return `<div style="display:grid;grid-template-columns:36px minmax(0,1fr) 120px 140px 110px 120px 110px 110px;gap:12px;padding:14px 22px;border-bottom:1px solid var(--border-main);align-items:center;border-left:3px solid ${color};">
+        <div style="width:36px;height:36px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;border-radius:4px;overflow:hidden;">${logoHtml}</div>
+        <div style="min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="font-size:14px;font-weight:700;color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(corp.faction_name || 'Unknown Corp')}</span>
+                ${badgeHtml}
+            </div>
+            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.5px;margin-top:3px;">${escapeHtml(corpNationAbbr)} \u00B7 ${tier}</div>
+        </div>
+        <div style="text-align:right;">
+            <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${rate === bidMin && bidMin > 0 ? 'var(--green)' : 'var(--text-bright)'};">${fmt(rate)}</div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">per trip</div>
+        </div>
+        <div style="text-align:right;">
+            <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${repColor};">${rep}</div>
+            <div style="height:3px;background:var(--border-main);margin-top:3px;position:relative;">
+                <div style="position:absolute;left:0;top:0;height:100%;width:${Math.max(0, Math.min(100, rep))}%;background:${repColor};"></div>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:2px;">${repLabel}</div>
+        </div>
+        <div style="text-align:right;">
+            <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--text-bright);">${activeShips}</div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">active fleet</div>
+        </div>
+        <div style="text-align:right;">
+            <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--text-bright);">${fmt(monthlyCost)}</div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">${tripsPerMonth} trips/mo</div>
+        </div>
+        <div style="text-align:right;">
+            <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${marginColor};">${marginLabel}</div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">vs. median</div>
+        </div>
+        <div style="text-align:right;">
+            <button disabled title="Selection lands in Phase 4" style="padding:8px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:not-allowed;opacity:0.55;">SELECT</button>
+        </div>
+    </div>`;
 }
 
 function _renderShippingBidModalOverlay() {
@@ -1178,6 +1309,27 @@ function _renderShippingBidModalOverlay() {
         : ('$' + Math.round(Number(n) || 0).toLocaleString());
 
     const motName = (mot.first || mot.last) ? `${mot.first} ${mot.last}`.trim() : '—';
+
+    // Sorted bid list. Sort keys correspond to the four tabs below.
+    const sortKey = _shippingBidModal.sort || 'lowest_bid';
+    const tripsPerMonthCached = tripsPerMonth; // alias so the comparator reads naturally
+    const sortedApps = [...apps].sort((a, b) => {
+        const aRate = Number(a.proposed_rate) || 0;
+        const bRate = Number(b.proposed_rate) || 0;
+        const aCorp = a.factions || {};
+        const bCorp = b.factions || {};
+        switch (sortKey) {
+            case 'reputation':
+                return (Number(bCorp.corp_reputation) || 0) - (Number(aCorp.corp_reputation) || 0);
+            case 'capacity':
+                return (Number(bCorp.shipping_fleet_capacity) || 0) - (Number(aCorp.shipping_fleet_capacity) || 0);
+            case 'monthly':
+                return (aRate * tripsPerMonthCached) - (bRate * tripsPerMonthCached);
+            case 'lowest_bid':
+            default:
+                return aRate - bRate;
+        }
+    });
 
     // Route permit code: derived from origin nation abbreviation + route-ID tail.
     const originAbbr = (originNation?.abbreviation || originName.slice(0, 3)).toUpperCase();
@@ -1252,11 +1404,34 @@ function _renderShippingBidModalOverlay() {
                 </div>
             </div>
 
-            <!-- Bids table (Phase 3) -->
-            <div id="shipping-bid-modal-bids" style="padding:18px 22px;min-height:120px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:1px;">
+            <!-- Bids header + sort tabs -->
+            <div style="padding:14px 22px 8px;display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--text-muted);">\u25A0 BIDS</span>
+                <div style="display:flex;gap:2px;">
+                    ${_renderBidSortTab('lowest_bid', 'LOWEST BID', sortKey)}
+                    ${_renderBidSortTab('reputation', 'REPUTATION', sortKey)}
+                    ${_renderBidSortTab('capacity',   'CAPACITY',   sortKey)}
+                    ${_renderBidSortTab('monthly',    'MONTHLY COST', sortKey)}
+                </div>
+            </div>
+
+            <!-- Column headers -->
+            <div style="display:grid;grid-template-columns:36px minmax(0,1fr) 120px 140px 110px 120px 110px 110px;gap:12px;padding:10px 22px;border-bottom:1px solid var(--border-main);background:var(--bg-card);font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1px;color:var(--text-dim);">
+                <span></span>
+                <span>CORPORATION</span>
+                <span style="text-align:right;">BID ($/TRIP)</span>
+                <span style="text-align:right;">REPUTATION</span>
+                <span style="text-align:right;">ACTIVE SHIPS</span>
+                <span style="text-align:right;">MONTHLY COST</span>
+                <span style="text-align:right;">EST. MARGIN</span>
+                <span style="text-align:right;">ACTION</span>
+            </div>
+
+            <!-- Bids rows -->
+            <div id="shipping-bid-modal-bids">
                 ${apps.length === 0
-                    ? 'NO PENDING BIDS'
-                    : `<span>BIDS TABLE \u2014 PHASE 3 (${apps.length} bid${apps.length !== 1 ? 's' : ''} loaded)</span>`}
+                    ? `<div style="padding:40px 22px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:1px;">NO PENDING BIDS</div>`
+                    : sortedApps.map(app => _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, originNation, _shippingBidModal.activeCorps, _shippingBidModal.incumbentCorps)).join('')}
             </div>
 
             <!-- Footer -->
