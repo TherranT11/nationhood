@@ -6412,7 +6412,11 @@ async function raSubmitApplication() {
 
         if (appErr) {
             await _supabase.from('factions').update({ corp_cash_reserves: currentCash }).eq('id', faction.id);
-            alert('Application failed: ' + appErr.message); return;
+            const isDup = appErr.code === '23505' || /duplicate key|idx_shipping_applications_unique/i.test(appErr.message || '');
+            alert(isDup
+                ? 'You already have a pending or approved application on this route. Withdraw it from Route Applications before applying again.'
+                : 'Application failed: ' + appErr.message);
+            return;
         }
 
         try {
