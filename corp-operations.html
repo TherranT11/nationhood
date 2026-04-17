@@ -3769,7 +3769,10 @@ function renderProjectModal() {
 
     document.getElementById('pm-footer').innerHTML = `
         <div class="pm-ftr__left">${footerLeft}</div>
-        <button class="pm-ftr__close" onclick="closeProjectModal()">CLOSE</button>
+        <div style="display:flex;gap:8px;">
+            ${s.effectiveProgress >= s.totalTicks ? `<button style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#000;background:var(--green);border:none;cursor:pointer;" onclick="closeProjectModal();deliverProject('${pmState.project.id}','${(pmState.project.name || '').replace(/'/g, "\\'")}',${pmState.bid?.bid_price || 0},${pmState.bid?.estimated_cost || 0},${pmState.bid?.estimated_quality || 65})">DELIVER</button>` : ''}
+            <button class="pm-ftr__close" onclick="closeProjectModal()">CLOSE</button>
+        </div>
     `;
 }
 
