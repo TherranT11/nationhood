@@ -6804,13 +6804,18 @@ function renderActiveVoyages() {
 let _vesselIncidents = [];
 
 const VI_INCIDENT_META = {
-    stranded: { label: 'STRANDED' },
+    stranded:            { label: 'STRANDED' },
+    mechanical_failure:  { label: 'MECHANICAL' },
+    collision:           { label: 'COLLISION' },
+    fire:                { label: 'FIRE' },
+    piracy:              { label: 'PIRACY' },
+    storm_damage:        { label: 'STORM' },
 };
 
 async function loadVesselIncidents() {
     if (!faction) { _vesselIncidents = []; renderVesselIncidents(); return; }
     const { data, error } = await _supabase.from('vessel_incidents')
-        .select('id, vessel_id, nation_id, incident_type, incident_tick, description, status, corp_vessels!vessel_id(id, vessel_name, vessel_class)')
+        .select('id, vessel_id, nation_id, incident_type, incident_tick, description, severity, status, corp_vessels!vessel_id(id, vessel_name, vessel_class)')
         .eq('faction_id', faction.id)
         .eq('status', 'pending')
         .order('incident_tick', { ascending: false });
@@ -6841,12 +6846,19 @@ function renderVesselIncidents() {
     listEl.innerHTML = incidents.map(inc => {
         const meta = VI_INCIDENT_META[inc.incident_type] || { label: (inc.incident_type || 'INCIDENT').toUpperCase() };
         const vesselName = inc.corp_vessels?.vessel_name || 'Unknown Vessel';
+        const isTotal = inc.severity === 'total';
+        const severityChip = inc.severity
+            ? `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.8px;padding:1px 6px;margin-left:4px;color:${isTotal ? '#000' : 'var(--amber)'};background:${isTotal ? 'var(--red)' : 'var(--amber-faint)'};border:1px solid ${isTotal ? 'var(--red)' : 'var(--amber-border)'};">${isTotal ? 'TOTAL LOSS' : 'PARTIAL'}</span>`
+            : '';
         return `<div class="vi-item" data-incident-id="${inc.id}">
             <div class="vi-item__head">
                 <span class="vi-item__vessel">${escapeHtml(vesselName)}</span>
                 <span class="vi-item__tick">Tick ${inc.incident_tick}</span>
             </div>
-            <span class="vi-item__type">${escapeHtml(meta.label)}</span>
+            <div style="display:flex;align-items:center;gap:0;margin-bottom:6px;flex-wrap:wrap;">
+                <span class="vi-item__type" style="margin-bottom:0;">${escapeHtml(meta.label)}</span>
+                ${severityChip}
+            </div>
             <div class="vi-item__desc">${escapeHtml(inc.description || '')}</div>
             <div class="vi-item__actions">
                 <button class="vi-action-btn vi-action-btn--dismiss" onclick="viDismissIncident('${inc.id}')">DISMISS</button>
@@ -6883,12 +6895,21 @@ async function viFileClaim(incidentId) {
             return;
         }
 
-        const vesselName = inc.corp_vessels?.vessel_name || 'vessel';
-        const confirmMsg = `File claim on ${vesselName}?\n\nPolicy principal: $${Math.round(Number(policy.principal) || 0).toLocaleString()}\nDeductible: ${policy.deductible_pct || 10}%`;
+        const vesselName   = inc.corp_vessels?.vessel_name || 'vessel';
+        const principal    = Number(policy.principal) || 0;
+        // Total losses pay out the full principal; partial losses pay 35% of
+        // principal (before deductible) to represent a recoverable asset plus
+        // repair costs. Strand (no severity) defaults to total-loss treatment
+        // since the vessel ends up anchored just like a total-loss incident.
+        const isTotal      = inc.severity === 'total' || inc.incident_type === 'stranded' || !inc.severity;
+        const claimAmount  = Math.round(isTotal ? principal : principal * 0.35);
+        const confirmMsg   = `File claim on ${vesselName}?\n\n` +
+                             `Severity:    ${isTotal ? 'Total loss' : 'Partial loss'}\n` +
+                             `Claim:       $${claimAmount.toLocaleString()}\n` +
+                             `Deductible:  ${policy.deductible_pct || 10}%`;
         if (!confirm(confirmMsg)) return;
 
         const policySource = autoPolicy ? 'auto' : 'deal';
-        const claimAmount  = Number(policy.principal) || 0;
         const currentTick  = shard?.current_tick || 0;
 
         const { data: claimIns, error: claimErr } = await _supabase.from('insurance_claims').insert({

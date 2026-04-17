@@ -3826,6 +3826,24 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 if (vessels && vessels.length > 0) {
                     let totalMaintenance = 0;
 
+                    // Pre-fetch route info for every in-transit vessel — needed for
+                    // the Job 2 incident rolls below (cargo-driven fire rates,
+                    // proximity-driven storms, coastal-vs-international collision).
+                    const transitClaimIds = vessels
+                        .filter(v => v.status === 'in_transit' && v.active_claim_id)
+                        .map(v => v.active_claim_id);
+                    const claimRouteMap = new Map();
+                    if (transitClaimIds.length > 0) {
+                        try {
+                            const { data: claimRoutes } = await supabase.from('shipping_claims')
+                                .select('id, route_id, shipping_routes!inner(id, destination_nation_id, scope, trade_sector, proximity)')
+                                .in('id', transitClaimIds);
+                            for (const c of (claimRoutes || [])) claimRouteMap.set(c.id, c);
+                        } catch (routeFetchErr) {
+                            console.warn('[advance-corp-tick] Transit-route fetch for incidents failed:', routeFetchErr?.message || routeFetchErr);
+                        }
+                    }
+
                     for (const v of vessels) {
                         const updates = {};
 
@@ -3893,8 +3911,141 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             }
                         }
 
-                        // Fuel decay: 1d10+5% for vessels in transit
+                        // ── Incident rolls (Job 2) ──────────────────────────
+                        // While in transit, each vessel independently rolls for the
+                        // five non-strand incident types. Rates are per-transit-tick;
+                        // any that fire write a vessel_incidents row + event_log and
+                        // apply vessel-state side effects (partial → condition hit,
+                        // total → release claim + force 'anchored' like a strand).
+                        // Strand remains handled separately below via fuel depletion.
                         if (v.status === 'in_transit') {
+                            const claimInfo = claimRouteMap.get(v.active_claim_id);
+                            const route     = claimInfo?.shipping_routes || null;
+                            const scope     = route?.scope || 'INTERNATIONAL';
+                            const cargo     = route?.trade_sector || '';
+                            const prox      = Number(route?.proximity) || 0;
+                            const firedIncidents = [];
+                            const R = () => Math.random();
+
+                            // Mechanical failure — scales with condition decay.
+                            let mechChance = 0.005;
+                            if (v.condition < 30)      mechChance *= 3;
+                            else if (v.condition < 50) mechChance *= 2;
+                            if (R() < mechChance) firedIncidents.push({
+                                type: 'mechanical_failure',
+                                severity: 'partial',
+                                description: `${v.vessel_name} suffered a mechanical failure mid-transit. Engine / drive-train damage reported.`,
+                            });
+
+                            // Collision / grounding — coastal lanes have more traffic.
+                            let colChance = 0.003;
+                            if (scope === 'COASTAL') colChance *= 1.5;
+                            if (R() < colChance) {
+                                const isTotal = R() < 0.2; // 20% of collisions are total-loss
+                                firedIncidents.push({
+                                    type: 'collision',
+                                    severity: isTotal ? 'total' : 'partial',
+                                    description: isTotal
+                                        ? `${v.vessel_name} lost in a collision — total loss reported.`
+                                        : `${v.vessel_name} involved in a collision. Hull damage reported.`,
+                                });
+                            }
+
+                            // Fire / explosion — fuel and arms cargoes carry elevated risk.
+                            let fireChance = 0.0015;
+                            if (cargo === 'fuel_energy' || cargo === 'arms') fireChance *= 2.5;
+                            if (R() < fireChance) {
+                                const isTotal = R() < 0.4; // fires escalate faster than collisions
+                                firedIncidents.push({
+                                    type: 'fire',
+                                    severity: isTotal ? 'total' : 'partial',
+                                    description: `Fire broke out aboard ${v.vessel_name}.` +
+                                        (cargo === 'fuel_energy' ? ' Fuel cargo ignited.' :
+                                         cargo === 'arms'        ? ' Munitions compartment compromised.' : '') +
+                                        (isTotal ? ' Vessel reported total loss.' : ''),
+                                });
+                            }
+
+                            // Piracy — flat per-transit rate for now (affinity-aware
+                            // rates wait on a future diplomatic-relations spec).
+                            if (R() < 0.005) firedIncidents.push({
+                                type: 'piracy',
+                                severity: 'partial',
+                                description: `Pirates boarded ${v.vessel_name}. Cargo lost to seizure; crew safe. Ransom demanded.`,
+                            });
+
+                            // Storm damage — long-haul routes expose vessels to worse weather.
+                            let stormChance = 0.004;
+                            if (prox >= 50) stormChance *= 1.5;
+                            if (R() < stormChance) firedIncidents.push({
+                                type: 'storm_damage',
+                                severity: 'partial',
+                                description: `${v.vessel_name} caught in heavy weather. Structural damage reported.`,
+                            });
+
+                            for (const inc of firedIncidents) {
+                                // Side effects first. Total losses get the same
+                                // treatment as strand (anchored + claim released +
+                                // fleet slot freed); partial losses knock condition.
+                                if (inc.severity === 'total') {
+                                    updates.status = 'anchored';
+                                    updates.active_claim_id = null;
+                                    if (v.active_claim_id) {
+                                        const { error: relErr } = await supabase.from('shipping_claims').update({
+                                            vessel_status: 'idle',
+                                            status: 'released',
+                                            released_at_tick: currentTick,
+                                            revenue_per_transit: 0,
+                                        }).eq('id', v.active_claim_id);
+                                        if (relErr) console.warn('[advance-corp-tick] Claim release on total-loss incident failed:', relErr.message);
+                                        const { data: fleetRow } = await supabase.from('factions')
+                                            .select('shipping_fleet_deployed').eq('id', corp.id).single();
+                                        const fleetNow = Math.max(0, Number(fleetRow?.shipping_fleet_deployed || 0) - 1);
+                                        await supabase.from('factions').update({ shipping_fleet_deployed: fleetNow }).eq('id', corp.id);
+                                    }
+                                } else {
+                                    // Partial — condition hit 20-40%, floored at 0.
+                                    const hit = 20 + Math.floor(Math.random() * 21);
+                                    const currentCond = Number(updates.condition ?? v.condition) || 0;
+                                    updates.condition = Math.max(0, currentCond - hit);
+                                }
+
+                                try {
+                                    const { error: incErr } = await supabase.from('vessel_incidents').insert({
+                                        faction_id:    corp.id,
+                                        vessel_id:     v.id,
+                                        nation_id:     route?.destination_nation_id || v.current_port_nation_id || null,
+                                        incident_type: inc.type,
+                                        incident_tick: currentTick,
+                                        description:   inc.description,
+                                        severity:      inc.severity,
+                                        status:        'pending',
+                                    });
+                                    if (incErr) console.warn(`[advance-corp-tick] vessel_incidents insert failed for ${v.vessel_name} (${inc.type}):`, incErr.message);
+                                } catch (incThrow) {
+                                    console.warn(`[advance-corp-tick] vessel_incidents insert threw for ${v.vessel_name} (${inc.type}):`, incThrow?.message || incThrow);
+                                }
+                                try {
+                                    await supabase.from('event_log').insert({
+                                        nation_id:          route?.destination_nation_id || v.current_port_nation_id || corp.nation_id,
+                                        faction_id:         corp.id,
+                                        event_name:         `${corp.faction_name || 'A corporation'}: ${inc.type.replace(/_/g, ' ')} on ${v.vessel_name}`,
+                                        category:           'corporate',
+                                        description_chosen: inc.description + ' If the vessel is insured, the owning corporation can file a claim from their Shipping Operations view.',
+                                        fired_at_tick:      currentTick,
+                                    });
+                                } catch (evErr) {
+                                    console.warn('[advance-corp-tick] incident event_log insert failed:', evErr?.message || evErr);
+                                }
+                            }
+
+                        }
+
+                        // Fuel decay: 1d10+5% for vessels in transit. Skip if a
+                        // total-loss incident above already flipped the vessel to
+                        // 'anchored' — the ship is lost, double-processing the
+                        // strand path would double-free the fleet slot.
+                        if (v.status === 'in_transit' && updates.status !== 'anchored') {
                             const fuelBurn = 5 + Math.floor(Math.random() * 10) + 1; // 6-15%
                             const newFuel = Math.max(0, v.fuel - fuelBurn);
                             updates.fuel = newFuel;
