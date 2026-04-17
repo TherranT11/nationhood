@@ -381,9 +381,9 @@ function renderTradeEconomy() {
         </div>
         <div class="tr-commodity-header">
             <span style="flex:1;">COMMODITY</span>
-            <span style="width:75px;text-align:right;">PROD</span>
-            <span style="width:75px;text-align:right;">DEMAND</span>
-            <span style="width:75px;text-align:right;">BAL</span>
+            <span style="width:75px;text-align:right;">PROD /MO</span>
+            <span style="width:75px;text-align:right;">DEMAND /MO</span>
+            <span style="width:75px;text-align:right;">BAL /MO</span>
         </div>`;
 
     const nationId = _worldState?.nation?.id;
@@ -1420,7 +1420,7 @@ function renderTradePartners() {
                         <span style="font-size:13px;color:var(--text-bright);font-weight:${isWeNeed ? '700' : '400'};">${escapeHtml(s.name)}</span>
                         ${isWeNeed ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
                 </div>`;
             }
             if (surpluses.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No surpluses</div>`;
@@ -1435,7 +1435,7 @@ function renderTradePartners() {
                         <span style="font-size:13px;color:var(--text-bright);font-weight:${weHave ? '700' : '400'};">${escapeHtml(d.name)}</span>
                         ${weHave ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
                 </div>`;
             }
             if (deficits.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No deficits</div>`;

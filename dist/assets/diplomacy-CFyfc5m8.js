@@ -10,9 +10,9 @@ import{_supabase as p}from"./supabase-client-CiYoFhIh.js";/* empty css          
         </div>
         <div class="tr-commodity-header">
             <span style="flex:1;">COMMODITY</span>
-            <span style="width:75px;text-align:right;">PROD</span>
-            <span style="width:75px;text-align:right;">DEMAND</span>
-            <span style="width:75px;text-align:right;">BAL</span>
+            <span style="width:75px;text-align:right;">PROD /MO</span>
+            <span style="width:75px;text-align:right;">DEMAND /MO</span>
+            <span style="width:75px;text-align:right;">BAL /MO</span>
         </div>`;const r=U?.nation?.id;for(const o of t){const s=o.production-o.demand,l=Jt===o.key,d=la===o.key,m=l?"background:var(--bg-card);":d?s>0?"background:rgba(92,204,92,0.04);":"background:rgba(204,85,85,0.04);":"";if(n+=`<div class="tr-commodity-row" data-sector="${o.key}" style="${m}">
             <div style="flex:1;display:flex;align-items:center;gap:8px;">
                 <span style="font-size:16px;">${o.icon}</span>
@@ -257,7 +257,7 @@ import{_supabase as p}from"./supabase-client-CiYoFhIh.js";/* empty css          
                         <span style="font-size:13px;color:var(--text-bright);font-weight:${C?"700":"400"};">${c(k.name)}</span>
                         ${C?'<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>':""}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${V(k.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${V(k.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
                 </div>`}v.length===0&&(l+='<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No surpluses</div>'),l+=`</div><div style="flex:1;padding:14px 18px;">
                         <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;background:var(--green);"></span>THEY NEED</div>`;for(const k of y.slice(0,6)){const C=z.includes(k.sector);l+=`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
                     <div style="display:flex;align-items:center;gap:6px;">
@@ -265,7 +265,7 @@ import{_supabase as p}from"./supabase-client-CiYoFhIh.js";/* empty css          
                         <span style="font-size:13px;color:var(--text-bright);font-weight:${C?"700":"400"};">${c(k.name)}</span>
                         ${C?'<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>':""}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${V(k.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${V(k.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
                 </div>`}y.length===0&&(l+='<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No deficits</div>'),l+="</div></div>";const B=(va||[]).filter(k=>k.status==="active"&&(k.nation_a_id===d.id||k.nation_b_id===d.id));if(B.length>0){l+=`<div style="padding:10px 18px;border-top:1px solid var(--border-main);">
                     <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--green);letter-spacing:1px;margin-bottom:6px;">ACTIVE TRADE AGREEMENTS</div>`;for(const k of B){const C=pa[k.agreement_type]||k.agreement_type,E=k.duration_type==="permanent"?"Permanent":k.expires_at_tick?k.expires_at_tick-(U?.shard?.current_tick||0)+" ticks left":"";l+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.1);">
                         <div style="display:flex;align-items:center;gap:6px;">
