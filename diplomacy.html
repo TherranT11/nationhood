@@ -85,6 +85,7 @@
     <div class="trade-neg-modal-content" onclick="event.stopPropagation();">
         <div class="trade-neg-modal-header" id="trade-neg-header"></div>
         <div class="trade-neg-modal-body">
+            <div class="trade-neg-econ trade-neg-econ--mine" id="trade-neg-my-econ"></div>
             <div class="trade-neg-main" id="trade-neg-main">
                 <div id="trade-neg-articles"></div>
                 <div id="trade-neg-add-article-form" style="display:none;"></div>
@@ -97,6 +98,7 @@
                     <button id="trade-neg-chat-send" disabled>Send</button>
                 </div>
             </div>
+            <div class="trade-neg-econ trade-neg-econ--theirs" id="trade-neg-their-econ"></div>
         </div>
         <div class="trade-neg-modal-footer">
             <div style="display:flex;gap:8px;">
@@ -381,9 +383,9 @@ function renderTradeEconomy() {
         </div>
         <div class="tr-commodity-header">
             <span style="flex:1;">COMMODITY</span>
-            <span style="width:75px;text-align:right;">PROD</span>
-            <span style="width:75px;text-align:right;">DEMAND</span>
-            <span style="width:75px;text-align:right;">BAL</span>
+            <span style="width:75px;text-align:right;">PROD /MO</span>
+            <span style="width:75px;text-align:right;">DEMAND /MO</span>
+            <span style="width:75px;text-align:right;">BAL /MO</span>
         </div>`;
 
     const nationId = _worldState?.nation?.id;
@@ -1420,7 +1422,7 @@ function renderTradePartners() {
                         <span style="font-size:13px;color:var(--text-bright);font-weight:${isWeNeed ? '700' : '400'};">${escapeHtml(s.name)}</span>
                         ${isWeNeed ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
                 </div>`;
             }
             if (surpluses.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No surpluses</div>`;
@@ -1435,7 +1437,7 @@ function renderTradePartners() {
                         <span style="font-size:13px;color:var(--text-bright);font-weight:${weHave ? '700' : '400'};">${escapeHtml(d.name)}</span>
                         ${weHave ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
                 </div>`;
             }
             if (deficits.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No deficits</div>`;
@@ -17761,8 +17763,9 @@ async function openTradeNegModal(partnerNationId) {
         inputBar.style.display = 'none';
     }
 
-    // Render articles in left panel + agreement button
+    // Render articles in main panel + economy side panels + agreement button
     negArticlesRender();
+    negEconomyRender();
     negAgreementRender();
 
     // Update Name Agreement button state
@@ -17933,6 +17936,143 @@ function negChatSubscribe(negotiationId) {
             }
         })
         .subscribe();
+}
+
+// ── Economy side panels (your flows + their surpluses/deficits) ──
+//
+// Reuses the Trade tab's already-loaded data:
+//   _tradeFlows         — my nation's per-sector flows (production+demand)
+//   _allNationFlows     — every nation's flows, used for partner surplus/deficit
+// All numbers are monthly ($) so we append "/mo" affordances to the headers.
+
+function negEconomyRender() {
+    if (!_activeNegModal) return;
+    const partnerId = _activeNegModal.partnerNationId;
+
+    const myEl = document.getElementById('trade-neg-my-econ');
+    if (myEl) myEl.innerHTML = _negRenderMyEconomyHtml();
+
+    const theirEl = document.getElementById('trade-neg-their-econ');
+    if (theirEl) theirEl.innerHTML = _negRenderTheirEconomyHtml(partnerId);
+}
+
+function _negRenderMyEconomyHtml() {
+    // Iterate my nation's flows directly — same data source the Trade tab uses.
+    const flows = _tradeFlows || {};
+    const rows = [];
+    for (const [key, flow] of Object.entries(flows)) {
+        // Skip the food_agriculture parent when its sub-sectors are present.
+        if (key === 'food_agriculture' && (flows.grains_staples || flows.livestock_dairy)) continue;
+        const prod = Number(flow.export_capacity) || 0;
+        const dem  = Number(flow.import_demand)   || 0;
+        rows.push({
+            key,
+            name: TRADE_SECTOR_LABELS[key] || key,
+            icon: TRADE_SECTOR_ICONS[key]  || '\uD83D\uDCE6',
+            prod, dem,
+        });
+    }
+    // Keep a stable sort: biggest absolute imbalance first.
+    rows.sort((a, b) => Math.abs(b.prod - b.dem) - Math.abs(a.prod - a.dem));
+
+    const formatShort = (v) => {
+        if (!v) return '$0';
+        if (v >= 1_000_000_000) return '$' + (v / 1_000_000_000).toFixed(1) + 'B';
+        if (v >= 1_000_000)     return '$' + Math.round(v / 1_000_000) + 'M';
+        return '$' + Math.round(v).toLocaleString();
+    };
+    const formatBal = (v) => {
+        if (Math.abs(v) < 1) return '\u2014';
+        const sign = v > 0 ? '+' : '-';
+        return sign + formatShort(Math.abs(v));
+    };
+
+    let html = `<div class="trade-neg-econ__head">
+        <span class="trade-neg-econ__head-dot"></span>Your Economy
+    </div>
+    <div class="trade-neg-econ__cols">
+        <span>Commodity</span><span>Prod</span><span>Dem</span><span>Bal /mo</span>
+    </div>
+    <div class="trade-neg-econ__list">`;
+    if (rows.length === 0) {
+        html += `<div class="trade-neg-econ__empty">No flow data yet.</div>`;
+    } else {
+        for (const r of rows) {
+            const bal = r.prod - r.dem;
+            const bclass = bal > 1 ? 'trade-neg-econ__bal--pos'
+                         : bal < -1 ? 'trade-neg-econ__bal--neg'
+                         : 'trade-neg-econ__bal--neu';
+            html += `<div class="trade-neg-econ__row">
+                <div class="trade-neg-econ__name">
+                    <span class="trade-neg-econ__glyph">${r.icon}</span>
+                    <span>${escapeHtml(r.name)}</span>
+                </div>
+                <span class="trade-neg-econ__num">${formatShort(r.prod)}</span>
+                <span class="trade-neg-econ__num">${formatShort(r.dem)}</span>
+                <span class="trade-neg-econ__bal ${bclass}">${formatBal(bal)}</span>
+            </div>`;
+        }
+    }
+    html += `</div>`;
+    return html;
+}
+
+function _negRenderTheirEconomyHtml(partnerId) {
+    // Partner's surpluses = they can offer. Deficits = they need.
+    const partnerFlows = (_allNationFlows && _allNationFlows[partnerId]) || {};
+    const myFlows = _tradeFlows || {};
+
+    const sectorIcon  = (k) => (typeof TRADE_SECTOR_ICONS !== 'undefined' && TRADE_SECTOR_ICONS[k]) || '\uD83D\uDCE6';
+    const sectorLabel = (k) => (typeof TRADE_SECTOR_LABELS !== 'undefined' && TRADE_SECTOR_LABELS[k]) || k;
+    const formatShort = (v) => {
+        if (!v) return '$0';
+        if (v >= 1_000_000_000) return '$' + (v / 1_000_000_000).toFixed(1) + 'B';
+        if (v >= 1_000_000)     return '$' + Math.round(v / 1_000_000) + 'M';
+        return '$' + Math.round(v).toLocaleString();
+    };
+
+    const surpluses = [];
+    const deficits  = [];
+    for (const [sector, flow] of Object.entries(partnerFlows)) {
+        if (sector === 'food_agriculture' && (partnerFlows.grains_staples || partnerFlows.livestock_dairy)) continue;
+        const bal = Number(flow.export_capacity || 0) - Number(flow.import_demand || 0);
+        const entry = { sector, name: sectorLabel(sector), icon: sectorIcon(sector), amount: Math.abs(bal) };
+        if (bal > 0) surpluses.push(entry);
+        else if (bal < 0) deficits.push(entry);
+    }
+    surpluses.sort((a, b) => b.amount - a.amount);
+    deficits.sort((a, b) => b.amount - a.amount);
+
+    // Match sets — a partner "offer" matches when we have a deficit in that sector, vice versa.
+    const myDeficits  = new Set(Object.entries(myFlows).filter(([, f]) => (f.import_demand || 0) > (f.export_capacity || 0)).map(([k]) => k));
+    const mySurpluses = new Set(Object.entries(myFlows).filter(([, f]) => (f.export_capacity || 0) > (f.import_demand || 0)).map(([k]) => k));
+
+    const renderSection = (title, dotClass, items, matchSet) => {
+        let h = `<div class="trade-neg-econ__section">
+            <div class="trade-neg-econ__head ${dotClass}">
+                <span class="trade-neg-econ__head-dot"></span>${title}
+            </div>
+            <div class="trade-neg-econ__list">`;
+        if (items.length === 0) {
+            h += `<div class="trade-neg-econ__empty">No data</div>`;
+        } else {
+            for (const it of items.slice(0, 8)) {
+                const match = matchSet.has(it.sector);
+                h += `<div class="trade-neg-econ__row--simple ${match ? 'trade-neg-econ__row--match' : ''}">
+                    <div class="trade-neg-econ__name">
+                        <span class="trade-neg-econ__glyph">${it.icon}</span>
+                        <span>${escapeHtml(it.name)}${match ? '<span class="trade-neg-econ__match">match</span>' : ''}</span>
+                    </div>
+                    <span class="trade-neg-econ__val">${formatShort(it.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:9px;"> /mo</span></span>
+                </div>`;
+            }
+        }
+        h += `</div></div>`;
+        return h;
+    };
+
+    return renderSection('They Can Offer', 'trade-neg-econ__head--offer', surpluses, myDeficits)
+         + renderSection('They Need',      'trade-neg-econ__head--need',  deficits,  mySurpluses);
 }
 
 // ── Articles: Render ──

@@ -5296,7 +5296,164 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   pointer-events: none;
 }
 
+/* ── Economy side panels (your / theirs) ── */
+.trade-neg-econ {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-1, #141412);
+}
+.trade-neg-econ--mine {
+  border-right: 1px solid var(--border-main, rgba(255,255,255,0.06));
+}
+.trade-neg-econ--theirs {
+  border-left: 1px solid var(--border-main, rgba(255,255,255,0.06));
+}
+.trade-neg-econ__head {
+  padding: 10px 14px 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim, #4a4940);
+  border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.trade-neg-econ__head-dot {
+  width: 6px; height: 6px;
+  background: var(--accent, #5aafa5);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.trade-neg-econ__head--offer .trade-neg-econ__head-dot { background: var(--accent, #5aafa5); }
+.trade-neg-econ__head--need  .trade-neg-econ__head-dot { background: var(--green, #5cc55c); }
+.trade-neg-econ__section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.trade-neg-econ__section + .trade-neg-econ__section {
+  border-top: 1px solid var(--border-main, rgba(255,255,255,0.06));
+}
+.trade-neg-econ__list {
+  overflow-y: auto;
+  padding: 4px 0 8px;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.trade-neg-econ__cols {
+  display: grid;
+  grid-template-columns: 1fr 52px 52px 56px;
+  gap: 8px;
+  padding: 6px 12px 5px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.8px;
+  color: var(--text-dim, #4a4940);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
+  flex-shrink: 0;
+}
+.trade-neg-econ__cols span:not(:first-child) { text-align: right; }
+.trade-neg-econ__row {
+  display: grid;
+  grid-template-columns: 1fr 52px 52px 56px;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.02);
+}
+.trade-neg-econ__row:last-child { border-bottom: none; }
+.trade-neg-econ__row--simple {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px;
+}
+.trade-neg-econ__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-secondary, #a1a08d);
+}
+.trade-neg-econ__name span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trade-neg-econ__row--match .trade-neg-econ__name {
+  color: var(--text-bright, #f0efe6);
+  font-weight: 600;
+}
+.trade-neg-econ__glyph {
+  width: 16px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1;
+}
+.trade-neg-econ__num,
+.trade-neg-econ__val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  color: var(--text-dim, #4a4940);
+  font-variant-numeric: tabular-nums;
+}
+.trade-neg-econ__val {
+  color: var(--accent, #5aafa5);
+  font-weight: 600;
+}
+.trade-neg-econ__bal {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.trade-neg-econ__bal--pos { color: var(--green, #5cc55c); }
+.trade-neg-econ__bal--neg { color: var(--red, #d44a4a); }
+.trade-neg-econ__bal--neu { color: var(--text-ghost, #333229); }
+.trade-neg-econ__match {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 1px 4px;
+  color: var(--green, #5cc55c);
+  background: rgba(92,204,92,0.06);
+  border: 1px solid rgba(92,204,92,0.15);
+  text-transform: uppercase;
+  margin-left: 4px;
+  vertical-align: 1px;
+}
+.trade-neg-econ__empty {
+  padding: 14px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-ghost, #333229);
+  font-style: italic;
+  text-align: center;
+}
+
 /* ── Responsive ── */
+@media (max-width: 1400px) {
+  .trade-neg-econ { width: 220px; }
+}
+@media (max-width: 1200px) {
+  .trade-neg-econ--mine,
+  .trade-neg-econ--theirs { display: none; }
+}
 @media (max-width: 768px) {
   .trade-neg-modal-content { max-width: 98%; }
   .trade-neg-modal-body { flex-direction: column; }
