@@ -616,7 +616,7 @@ async function loadShippingData() {
                 .select(routeColumns)
                 .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`),
             _supabase.from('shipping_applications')
-                .select(`id, route_id, faction_id, vessel_id, proposed_rate, status, applied_at_tick, factions!faction_id(${corpAppColumns}), shipping_routes!inner(${routeColumns})`)
+                .select(`id, route_id, faction_id, proposed_rate, status, applied_at_tick, factions!faction_id(${corpAppColumns}), shipping_routes!inner(${routeColumns})`)
                 .eq('status', 'pending'),
             _supabase.from('shipping_claims')
                 .select(`id, route_id, faction_id, market_share_pct, revenue_per_transit, total_revenue, transits_completed, status, factions!faction_id(${corpClaimColumns}), shipping_routes!inner(${routeColumns})`)

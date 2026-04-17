@@ -6401,7 +6401,7 @@ async function raSubmitApplication() {
         const { error: feeErr } = await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
         if (feeErr) { alert('Failed to deduct fee.'); return; }
 
-        const { error: appErr } = await _supabase.from('shipping_applications').insert({
+        const appPayload = {
             route_id: route.id,
             faction_id: faction.id,
             vessel_id: _raVesselId,
@@ -6409,7 +6409,17 @@ async function raSubmitApplication() {
             application_fee: appFee,
             status: 'pending',
             applied_at_tick: shard.current_tick,
-        });
+        };
+
+        let { error: appErr } = await _supabase.from('shipping_applications').insert(appPayload);
+
+        // If the vessel_id column doesn't exist yet (migration 20260417 not applied),
+        // retry without it so corps can still submit applications.
+        if (appErr && /vessel_id/i.test(appErr.message || '')) {
+            const { vessel_id: _drop, ...legacyPayload } = appPayload;
+            const retry = await _supabase.from('shipping_applications').insert(legacyPayload);
+            appErr = retry.error;
+        }
 
         if (appErr) {
             await _supabase.from('factions').update({ corp_cash_reserves: currentCash }).eq('id', faction.id);
