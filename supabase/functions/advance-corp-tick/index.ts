@@ -144,6 +144,38 @@ const CC_REQUIREMENTS = {
 function ccRand(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
 function ccPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+// Resolve corp_properties metadata for a delivered contract when the contract has
+// an issuer (corp-commissioned project). Returns null for national infrastructure
+// or unrecognized templates so the caller can skip the property handoff. Keep the
+// defaults here aligned with PF_CATALOG in corp-operations.html so client-side and
+// tick-processor-delivered assets show up identically on the issuer's property card.
+function getDeliveredPropertyMeta(contract, fallbackPaidPrice) {
+    const tk = contract?.template_key;
+    if (!tk) return null;
+    if (tk === 'fuel_depot' || tk === 'dry_dock') {
+        const style = contract.project_subtype || 'Basic';
+        const isModern = style === 'Modern';
+        const maintenance = tk === 'fuel_depot'
+            ? (isModern ? 110000 : 85000)
+            : (isModern ? 200000 : 150000);
+        return {
+            type: tk,
+            style,
+            capacity: isModern ? 500 : 250,
+            maintenance,
+        };
+    }
+    if (tk === 'custom_building') {
+        return {
+            type: 'office',
+            style: contract.project_subtype || 'Basic',
+            capacity: 500,
+            maintenance: Math.max(10000, Math.round(Number(fallbackPaidPrice || 0) * 0.001)),
+        };
+    }
+    return null;
+}
+
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION EVENTS — Templates
 //
@@ -1554,7 +1586,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 2. Process in_progress contracts
     const { data: activeContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned, modifiers')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned, modifiers, template_key, project_subtype, issuer_faction_id')
         .eq('nation_id', nationId)
         .eq('status', 'in_progress');
 
@@ -1986,6 +2018,34 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                     await supabase.from('factions')
                         .update({ corp_cash_reserves: newCash })
                         .eq('id', bid.faction_id);
+                }
+            }
+
+            // Hand over the finished asset to the issuer — corp-commissioned projects
+            // (issuer_faction_id set) become a property on the issuer's PROPERTY card.
+            // National infrastructure with no corp issuer is skipped.
+            if (contract.issuer_faction_id) {
+                try {
+                    const propMeta = getDeliveredPropertyMeta(contract, payment);
+                    if (propMeta) {
+                        const { error: propErr } = await supabase.from('corp_properties').insert({
+                            faction_id: contract.issuer_faction_id,
+                            nation_id: nationId,
+                            name: contract.name,
+                            type: propMeta.type,
+                            style: propMeta.style,
+                            capacity: propMeta.capacity,
+                            purchase_price: actualPayment,
+                            monthly_maintenance: propMeta.maintenance,
+                            condition: Math.max(25, Math.min(100, qualityScore)),
+                            purchased_at_tick: currentTick,
+                            built_via_contract_id: contract.id,
+                            is_active: true,
+                        });
+                        if (propErr) console.warn(`[Projects] Failed to register property for issuer on ${contract.name}:`, propErr.message);
+                    }
+                } catch (propErr) {
+                    console.warn(`[Projects] Property handoff failed for ${contract.name}:`, propErr.message);
                 }
             }
 
