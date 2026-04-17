@@ -1274,13 +1274,17 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
 }
 
 // ==================== SUBSIDIARY REVENUE ====================
-// Each corp tick: subsidiaries gain or lose cash based on nation GDP Growth.
-// Investment return = sub_cash × 0.02 × (1 + (gdpGrowth - 30)/100) × (reputation/100)
+// Each corp tick: subsidiaries gain or lose cash based on nation GDP Growth
+// and their PARENT corp's reputation (which drifts on contract deliveries).
+// Investment return = sub_cash × 0.02 × (1 + (gdpGrowth - 30)/100) × baseRepMult × parentRepMult
 // Operating overhead = $200K/month base cost per subsidiary (scaled by GDP)
 // Revenue = investment return - operating overhead
 // GDP Growth < 30 → investment returns go negative, PLUS overhead → bleeds fast
 // GDP Growth > 30 → investment returns grow, offset overhead
-// Reputation scales investment returns (25 = 0.25x, 50 = 0.50x, 100 = 1.0x)
+// baseRepMult is a flat 0.25 (legacy; was meant to be per-sub reputation).
+// parentRepMult: symmetric around 1.0 at parent corp_reputation=50
+//   (parent rep 0 → 0.3x revenue, rep 50 → 1.0x, rep 100 → 1.7x, clamped).
+//   Natural growth loop: parent ships contracts → rep ↑ → sub revenue ↑ → cash compounds.
 // sub_cash CAN go negative (subsidiary in debt — needs capital injection or dissolution)
 // Losses clamped to max 5% of |sub_cash| per tick to prevent instant wipeout.
 
@@ -1289,6 +1293,9 @@ const SUB_GDP_NEUTRAL = 30;
 const SUB_DEFAULT_REPUTATION = 25;
 const SUB_MAX_LOSS_RATE = 0.05;
 const SUB_OPERATING_OVERHEAD = 200_000; // $200K/month base cost per subsidiary
+const SUB_PARENT_REP_NEUTRAL = 50;       // at this rep the parent-rep multiplier is 1.0x
+const SUB_PARENT_REP_MIN = 0.3;          // min multiplier at rep 0
+const SUB_PARENT_REP_MAX = 1.7;          // max multiplier at rep 100
 
 async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
@@ -1306,14 +1313,23 @@ async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
 
     if (hqErr || !hqs || hqs.length === 0) return;
 
-    const repMult = SUB_DEFAULT_REPUTATION / 100;
+    const baseRepMult = SUB_DEFAULT_REPUTATION / 100;
     for (const hq of hqs) {
         const subCash = Number(hq.sub_cash ?? 0);
+        const corp = corpMap[hq.faction_id];
+
+        // Parent corp's reputation drives the growth/shrink delta — symmetric
+        // around 1.0 at rep 50, clamped so one bad tick can't zero revenue.
+        const parentRep = Number(corp?.corp_reputation ?? SUB_PARENT_REP_NEUTRAL);
+        const parentRepMult = Math.max(
+            SUB_PARENT_REP_MIN,
+            Math.min(SUB_PARENT_REP_MAX, (parentRep - SUB_PARENT_REP_NEUTRAL) / 100 + 1)
+        );
 
         // Investment return: based on positive cash balance × GDP × reputation
         const investCash = Math.max(0, subCash);
         const gdpMod = (gdpGrowth - SUB_GDP_NEUTRAL) / 100;
-        const investReturn = Math.round(investCash * SUB_REVENUE_BASE * (1 + gdpMod) * repMult);
+        const investReturn = Math.round(investCash * SUB_REVENUE_BASE * (1 + gdpMod) * baseRepMult * parentRepMult);
 
         // Operating overhead: scales with GDP (bad GDP = higher costs)
         // At GDP 50 (average): 1.0x overhead. At GDP 10: 1.4x. At GDP 80: 0.7x.
@@ -1334,11 +1350,10 @@ async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
             .update({ sub_cash: newSubCash })
             .eq('id', hq.id);
 
-        const corp = corpMap[hq.faction_id];
         if (updErr) {
             console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name}:`, updErr.message);
         } else {
-            console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, overhead:${overhead.toLocaleString()}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
+            console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, parentRep:${parentRep}, repMult:${parentRepMult.toFixed(2)}, overhead:${overhead.toLocaleString()}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
         }
     }
 }
