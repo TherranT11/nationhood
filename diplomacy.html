@@ -21971,8 +21971,17 @@ function negArticlesRender() {
         let demandCtxHtml = '';
         if (art.article_type === 'trade_flow' && art.data) {
             const d = art.data;
-            const buyerNationId = d.direction === 'a_buys_b' ? _activeNegModal.myNationId : _activeNegModal.partnerNationId;
-            const buyerName = d.direction === 'a_buys_b' ? _activeNegModal.myNationName : _activeNegModal.partnerNationName;
+            // direction is author-relative (party A = article author); resolve via
+            // art.author_nation_id so both viewers identify the same buyer.
+            const authorIsMe = art.author_nation_id
+                ? art.author_nation_id === _activeNegModal.myNationId
+                : true;
+            const partyAId = authorIsMe ? _activeNegModal.myNationId : _activeNegModal.partnerNationId;
+            const partyBId = authorIsMe ? _activeNegModal.partnerNationId : _activeNegModal.myNationId;
+            const partyAName = authorIsMe ? _activeNegModal.myNationName : _activeNegModal.partnerNationName;
+            const partyBName = authorIsMe ? _activeNegModal.partnerNationName : _activeNegModal.myNationName;
+            const buyerNationId = d.direction === 'a_buys_b' ? partyAId : partyBId;
+            const buyerName = d.direction === 'a_buys_b' ? partyAName : partyBName;
             const isBuyerMe = buyerNationId === _activeNegModal.myNationId;
 
             if (isBuyerMe && _tradeFlows[d.commodity]) {
@@ -22076,8 +22085,19 @@ window.negNameAgreementSave = negNameAgreementSave;
 
 function negStructuredArticleSummary(art) {
     const d = art.data || {};
-    const nameA = _activeNegModal?.myNationName || 'Nation A';
-    const nameB = _activeNegModal?.partnerNationName || 'Nation B';
+    // direction fields (a_buys_b, a_to_b, a_tariff_from, ...) are stored relative to
+    // the article's AUTHOR: party A = whoever added the article. Resolve nameA/nameB
+    // via art.author_nation_id so both viewers render the same labels. Legacy rows
+    // without author_nation_id fall back to the viewer's perspective.
+    const authorIsMe = art.author_nation_id
+        ? art.author_nation_id === _activeNegModal?.myNationId
+        : true;
+    const nameA = authorIsMe
+        ? (_activeNegModal?.myNationName || 'Nation A')
+        : (_activeNegModal?.partnerNationName || 'Nation A');
+    const nameB = authorIsMe
+        ? (_activeNegModal?.partnerNationName || 'Nation B')
+        : (_activeNegModal?.myNationName || 'Nation B');
     const sectorLabel = (k) => TRADEABLE_SECTOR_MAP[k]?.label || TRADE_SECTOR_LABELS[k] || k || 'Unknown';
 
     switch (art.article_type) {
