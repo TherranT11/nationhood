@@ -2545,18 +2545,19 @@ function renderFoundationalOptions() {
             { key: 'act_of_abdication', icon: '👑', name: 'Act of Abdication', desc: 'Dissolve the monarchy. Elections scheduled 2 months after passage. Government becomes Parliamentary Democracy. The nuclear option.', requires: 'parliamentary_supremacy' },
         ];
         const tagHtml = '<span class="article-ideology" style="background:#5a8aaa;color:#fff;font-size:0.55rem;margin-left:4px;">ERODING THE MONARCHY</span>';
-        foundationalHTML += '<div style="margin-top:16px;padding-top:12px;border-top:2px solid rgba(90,138,170,0.3);"><div style="font-family:var(--font-mono);font-size:0.65rem;font-weight:700;letter-spacing:1.5px;color:#5a8aaa;margin-bottom:8px;">PRO-DEMOCRACY REFORMS</div>';
+        let monarchyHTML = '<div style="margin-top:16px;padding-top:12px;border-top:2px solid rgba(90,138,170,0.3);"><div style="font-family:var(--font-mono);font-size:0.65rem;font-weight:700;letter-spacing:1.5px;color:#5a8aaa;margin-bottom:8px;">PRO-DEMOCRACY REFORMS</div>';
         for (const mr of MR) {
-            const enacted = currentNation['monarchy_' + mr.key.replace('act_of_abdication', '')] || false;
+            const enacted = !!currentNation['monarchy_' + mr.key];
             const missingPrereq = mr.requires && !currentNation['monarchy_' + mr.requires];
             const locked = enacted || missingPrereq;
             const lockReason = enacted ? 'Already enacted.' : missingPrereq ? 'Requires: ' + MR.find(m => m.key === mr.requires)?.name : '';
-            foundationalHTML += `<div class="policy-option${selectedFoundationalType === 'monarchy_' + mr.key ? ' selected' : ''}" style="${selectedFoundationalType === 'monarchy_' + mr.key ? 'border-color:#5a8aaa;' : ''}${locked ? 'opacity:0.4;pointer-events:none;' : ''}" onclick="selectFoundationalType('monarchy_${mr.key}')" data-foundational-type="monarchy_${mr.key}">
+            monarchyHTML += `<div class="policy-option${selectedFoundationalType === 'monarchy_' + mr.key ? ' selected' : ''}" style="${selectedFoundationalType === 'monarchy_' + mr.key ? 'border-color:#5a8aaa;' : ''}${locked ? 'opacity:0.4;pointer-events:none;' : ''}" onclick="selectFoundationalType('monarchy_${mr.key}')" data-foundational-type="monarchy_${mr.key}">
                 <div class="policy-option-name">${mr.icon} ${mr.name} ${tagHtml}</div>
                 <div class="policy-option-desc">${locked ? lockReason : mr.desc + ' Requires 2/3 supermajority (' + required + ' seats).'}</div>
             </div>`;
         }
-        foundationalHTML += '</div>';
+        monarchyHTML += '</div>';
+        container.innerHTML += monarchyHTML;
     }
     selectedFoundationalType = null;
     selectedPolicy = null;
