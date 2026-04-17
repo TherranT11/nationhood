@@ -4249,14 +4249,16 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
             }
         }
 
-        // Log event
-        await _supabase.from('event_log').insert({
-            nation_id: contract.nation_id,
-            event_name: contractName + ' — Delivered',
-            category: 'corporate',
-            description_chosen: faction.faction_name + ' has delivered "' + contractName + '" with a ' + result + ' rating (quality: ' + qualityScore + '/100). Payment: ' + hfFmtBig(actualPayment) + '.',
-            fired_at_tick: currentTick,
-        }).catch(() => {});
+        // Log event (non-critical — delivery already persisted above)
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: contract.nation_id,
+                event_name: contractName + ' — Delivered',
+                category: 'corporate',
+                description_chosen: faction.faction_name + ' has delivered "' + contractName + '" with a ' + result + ' rating (quality: ' + qualityScore + '/100). Payment: ' + hfFmtBig(actualPayment) + '.',
+                fired_at_tick: currentTick,
+            });
+        } catch (_) { /* event log failure must not surface as a delivery failure */ }
 
         alert('Project delivered!\n\n' +
             'Result: ' + result + '\n' +
