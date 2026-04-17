@@ -2554,6 +2554,33 @@ function renderFoundationalOptions() {
                 ? 'Already enacted — the government defines what constitutes disinformation.'
                 : 'The government defines what constitutes "disinformation." Independent journalists, academics, and opposition figures can be sanctioned. Press freedom ceiling -5 permanently, freedom index -0.2/tick for 20 ticks, government approval +7, legitimacy -4, polarization +4. -5 relations with all nations. Requires 2/3 supermajority (' + required + ' seats).'}</div>
         </div>`;
+    // ── [Eroding the Monarchy] — Pro-democracy reform series (only for Absolute Monarchies) ──
+    const isMonarchyNation = (currentNation.government_type || '').toLowerCase().includes('monarchy') || currentNation.hos_election_method === 'hereditary';
+    if (isMonarchyNation) {
+        const MR = [
+            { key: 'freedom_of_press', icon: '📰', name: 'Freedom of the Press Act', desc: 'Legalize independent media. Press Freedom +5, Freedom Index +3, Legitimacy +2. The Crown gains legitimacy by showing restraint.' },
+            { key: 'right_of_assembly', icon: '✊', name: 'Right of Assembly Act', desc: 'Legalize political gatherings and peaceful protest. Freedom +3, Civil Unrest -2, Stability +2.', requires: 'freedom_of_press' },
+            { key: 'independent_judiciary', icon: '⚖️', name: 'Independent Judiciary Act', desc: 'Establish courts free from royal interference. Judicial Independence +5, Legitimacy -2, Corruption -3.', requires: 'right_of_assembly' },
+            { key: 'parliamentary_inquiry', icon: '🔍', name: 'Parliamentary Inquiry Act', desc: 'Parliament gains power to investigate the Crown. Corruption -3, Legitimacy -3, Transparency +3.', requires: 'independent_judiciary' },
+            { key: 'civil_liberties_charter', icon: '📜', name: 'Civil Liberties Charter', desc: 'Codify individual rights the Crown cannot override. Freedom +5, Stability +2, Legitimacy -3, Happiness +3.', requires: 'parliamentary_inquiry' },
+            { key: 'electoral_reform', icon: '🗳', name: 'Electoral Reform Act', desc: 'Establish the legal framework for democratic elections. Freedom +3, Legitimacy -5, Political Engagement +5. Point of no return — democracy has infrastructure.', requires: 'civil_liberties_charter' },
+            { key: 'parliamentary_supremacy', icon: '🏛', name: 'Parliamentary Supremacy Act', desc: 'Parliament can override royal veto with 2/3 majority. Legitimacy -5, Stability -3, Freedom +5. The monarch\'s veto becomes advisory.', requires: 'electoral_reform' },
+            { key: 'act_of_abdication', icon: '👑', name: 'Act of Abdication', desc: 'Dissolve the monarchy. Elections scheduled 2 months after passage. Government becomes Parliamentary Democracy. The nuclear option.', requires: 'parliamentary_supremacy' },
+        ];
+        const tagHtml = '<span class="article-ideology" style="background:#5a8aaa;color:#fff;font-size:0.55rem;margin-left:4px;">ERODING THE MONARCHY</span>';
+        foundationalHTML += '<div style="margin-top:16px;padding-top:12px;border-top:2px solid rgba(90,138,170,0.3);"><div style="font-family:var(--font-mono);font-size:0.65rem;font-weight:700;letter-spacing:1.5px;color:#5a8aaa;margin-bottom:8px;">PRO-DEMOCRACY REFORMS</div>';
+        for (const mr of MR) {
+            const enacted = currentNation['monarchy_' + mr.key.replace('act_of_abdication', '')] || false;
+            const missingPrereq = mr.requires && !currentNation['monarchy_' + mr.requires];
+            const locked = enacted || missingPrereq;
+            const lockReason = enacted ? 'Already enacted.' : missingPrereq ? 'Requires: ' + MR.find(m => m.key === mr.requires)?.name : '';
+            foundationalHTML += `<div class="policy-option${selectedFoundationalType === 'monarchy_' + mr.key ? ' selected' : ''}" style="${selectedFoundationalType === 'monarchy_' + mr.key ? 'border-color:#5a8aaa;' : ''}${locked ? 'opacity:0.4;pointer-events:none;' : ''}" onclick="selectFoundationalType('monarchy_${mr.key}')" data-foundational-type="monarchy_${mr.key}">
+                <div class="policy-option-name">${mr.icon} ${mr.name} ${tagHtml}</div>
+                <div class="policy-option-desc">${locked ? lockReason : mr.desc + ' Requires 2/3 supermajority (' + required + ' seats).'}</div>
+            </div>`;
+        }
+        foundationalHTML += '</div>';
+    }
     selectedFoundationalType = null;
     selectedPolicy = null;
     document.getElementById('add-article-btn').disabled = true;
@@ -2605,7 +2632,8 @@ function selectFoundationalType(type) {
         const isSelected = el.dataset.foundationalType === type;
         el.classList.toggle('selected', isSelected);
         const authTypes = ['abolish_term_limits', 'state_media_control', 'emergency_powers', 'judicial_appointment_politicization', 'electoral_commission_reform', 'party_registration_act', 'legislative_quorum_reform', 'constitutional_amendment_streamlining', 'anti_disinformation_act'];
-        el.style.borderColor = isSelected ? (authTypes.includes(type) ? 'var(--red)' : 'var(--purple)') : '';
+        const monarchyTypes = ['monarchy_freedom_of_press', 'monarchy_right_of_assembly', 'monarchy_independent_judiciary', 'monarchy_parliamentary_inquiry', 'monarchy_civil_liberties_charter', 'monarchy_electoral_reform', 'monarchy_parliamentary_supremacy', 'monarchy_act_of_abdication'];
+        el.style.borderColor = isSelected ? (authTypes.includes(type) ? 'var(--red)' : monarchyTypes.includes(type) ? '#5a8aaa' : 'var(--purple)') : '';
     });
     const seatsConfig = document.getElementById('foundational-seats-config');
     const hosConfig = document.getElementById('foundational-hos-config');
@@ -3062,6 +3090,31 @@ async function addArticle() {
             document.getElementById('submit-bill-btn').disabled = false;
             _hideAllArticleButtons();
             return;
+        } else if (selectedFoundationalType && selectedFoundationalType.startsWith('monarchy_')) {
+            const reformKey = selectedFoundationalType;
+            const MONARCHY_BILL_NAMES = {
+                monarchy_freedom_of_press: 'Freedom of the Press Act',
+                monarchy_right_of_assembly: 'Right of Assembly Act',
+                monarchy_independent_judiciary: 'Independent Judiciary Act',
+                monarchy_parliamentary_inquiry: 'Parliamentary Inquiry Act',
+                monarchy_civil_liberties_charter: 'Civil Liberties Charter',
+                monarchy_electoral_reform: 'Electoral Reform Act',
+                monarchy_parliamentary_supremacy: 'Parliamentary Supremacy Act',
+                monarchy_act_of_abdication: 'Act of Abdication',
+            };
+            draftArticles = [];
+            draftArticles.push({
+                articleNumber: 2,
+                isFoundational: true,
+                foundationalSubtype: reformKey,
+                policy: null
+            });
+            renderDraftArticles(); hideAddArticleForm();
+            document.getElementById('bill-name-input').value = MONARCHY_BILL_NAMES[reformKey] || 'Monarchy Reform Act';
+            document.getElementById('bill-name-section').style.display = 'block';
+            document.getElementById('submit-bill-btn').disabled = false;
+            _hideAllArticleButtons();
+            return;
         } else {
             alert('Please select a foundational option first.');
             return;
@@ -3261,6 +3314,18 @@ function renderDraftArticles() {
                         <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">Authoritarian</span></div>
                         <div class="draft-article-name">🔇 Anti-Disinformation Act</div>
                         <div class="draft-article-meta">Press freedom ceiling -5 permanently. Freedom index -0.2/tick (20 ticks). Gov approval +7. Legitimacy -4, polarization +4. -5 relations with all nations. Requires 2/3 supermajority.</div>
+                    </div>
+                    <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+                </div>`;
+            }
+            if (art.foundationalSubtype && art.foundationalSubtype.startsWith('monarchy_')) {
+                const MR_NAMES = { monarchy_freedom_of_press: '📰 Freedom of the Press Act', monarchy_right_of_assembly: '✊ Right of Assembly Act', monarchy_independent_judiciary: '⚖️ Independent Judiciary Act', monarchy_parliamentary_inquiry: '🔍 Parliamentary Inquiry Act', monarchy_civil_liberties_charter: '📜 Civil Liberties Charter', monarchy_electoral_reform: '🗳 Electoral Reform Act', monarchy_parliamentary_supremacy: '🏛 Parliamentary Supremacy Act', monarchy_act_of_abdication: '👑 Act of Abdication' };
+                const mrName = MR_NAMES[art.foundationalSubtype] || art.foundationalSubtype;
+                return `<div class="draft-article-card" style="border-left:3px solid #5a8aaa;">
+                    <div class="draft-article-info">
+                        <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:#5a8aaa;">Eroding the Monarchy</span></div>
+                        <div class="draft-article-name">${mrName}</div>
+                        <div class="draft-article-meta">Pro-democracy reform. Requires 2/3 supermajority. Subject to royal assent.</div>
                     </div>
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
@@ -3905,6 +3970,8 @@ async function submitToCommittee() {
                     ? `This foundational law lowers the supermajority threshold for all future foundational bills from 67% to 55% in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'anti_disinformation_act'
                     ? `This foundational law empowers the government of ${currentNation.name} to define what constitutes "disinformation." Independent journalists, academics, and opposition figures may be sanctioned. Press freedom ceiling permanently reduced by 5. Freedom index drains -0.2/tick for 20 ticks. +7 government approval. Legitimacy -4, polarization +4. -5 relations with all nations. Requires a two-thirds supermajority to pass.`
+                    : draftArticles.find(a => a.isFoundational).foundationalSubtype && draftArticles.find(a => a.isFoundational).foundationalSubtype.startsWith('monarchy_')
+                    ? (() => { const MR_PREAMBLES = { monarchy_freedom_of_press: 'legalizes independent media and press freedom. Press Freedom +5, Freedom Index +3, Legitimacy +2.', monarchy_right_of_assembly: 'legalizes political gatherings and peaceful protest. Freedom +3, Civil Unrest -2, Stability +2.', monarchy_independent_judiciary: 'establishes courts independent of royal interference. Judicial Independence +5, Legitimacy -2, Corruption -3.', monarchy_parliamentary_inquiry: 'grants Parliament the power to investigate the Crown. Corruption -3, Legitimacy -3, Transparency +3.', monarchy_civil_liberties_charter: 'codifies individual rights the Crown cannot override. Freedom +5, Stability +2, Legitimacy -3, Happiness +3.', monarchy_electoral_reform: 'establishes the legal framework for democratic elections. Freedom +3, Legitimacy -5, Political Engagement +5.', monarchy_parliamentary_supremacy: 'grants Parliament the power to override royal veto. Legitimacy -5, Stability -3, Freedom +5.', monarchy_act_of_abdication: 'dissolves the monarchy and schedules democratic elections. Stability -5, Civil Unrest +10, Freedom +8. Government becomes Parliamentary Democracy.' }; return `This foundational law, proposed by the ${escapeHtml(currentFaction.faction_name)}, ${MR_PREAMBLES[draftArticles.find(a => a.isFoundational).foundationalSubtype] || 'reforms the monarchy.'} Requires a two-thirds supermajority to pass.`; })()
                     : `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the number of legislative seats in ${currentNation.name} from ${GAME_CONFIG.TOTAL_SEATS} to ${draftArticles.find(a => a.isFoundational).proposedSeats}. Requires a two-thirds supermajority to pass.`)
                 : `This ${'bill'}, put forth in the ${'legislature'} of the nation of ${currentNation.name}, by the ${currentFaction.faction_name}, seeks to enact the following provisions.`
         };
@@ -3949,6 +4016,8 @@ async function submitToCommittee() {
                 billInsert.proposed_constitutional_amendment_streamlining = true;
             } else if (fArt.foundationalSubtype === 'anti_disinformation_act') {
                 billInsert.proposed_anti_disinformation_act = true;
+            } else if (fArt.foundationalSubtype && fArt.foundationalSubtype.startsWith('monarchy_')) {
+                billInsert.proposed_monarchy_reform = fArt.foundationalSubtype.replace('monarchy_', '');
             } else {
                 billInsert.proposed_seats = fArt.proposedSeats;
             }

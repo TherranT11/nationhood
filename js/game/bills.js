@@ -4410,6 +4410,128 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
         return true;
     }
 
+    // ── [Eroding the Monarchy] — Pro-democracy reform series ──
+    if (bill.proposed_monarchy_reform) {
+        const reformKey = bill.proposed_monarchy_reform;
+        const { data: nation } = await supabase.from('nations')
+            .select('id, name, government_type, monarch_faction_id')
+            .eq('id', bill.nation_id).single();
+
+        if (!nation) { console.error(`[enactFoundationalBill] Nation not found for monarchy reform`); return false; }
+
+        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill as passed:`, billErr.message); return false; }
+
+        const MONARCHY_REFORMS = {
+            freedom_of_press: {
+                statChanges: { press_freedom: 5, freedom_index: 3, legitimacy: 2 },
+                nationFlag: 'monarchy_freedom_of_press',
+                eventDesc: 'The Freedom of the Press Act has been enacted. Independent media is now legal. The Crown gains legitimacy through restraint.',
+            },
+            right_of_assembly: {
+                statChanges: { freedom_index: 3, civil_unrest: -2, stability: 2 },
+                nationFlag: 'monarchy_right_of_assembly',
+                eventDesc: 'The Right of Assembly Act has been enacted. Political gatherings and peaceful protest are now legal.',
+            },
+            independent_judiciary: {
+                statChanges: { judicial_independence: 5, legitimacy: -2, corruption: -3 },
+                nationFlag: 'monarchy_independent_judiciary',
+                eventDesc: 'The Independent Judiciary Act has been enacted. Courts now operate free from royal interference.',
+            },
+            parliamentary_inquiry: {
+                statChanges: { corruption: -3, legitimacy: -3, transparency: 3 },
+                nationFlag: 'monarchy_parliamentary_inquiry',
+                eventDesc: 'The Parliamentary Inquiry Act has been enacted. Parliament can now investigate the Crown\'s finances and decisions.',
+            },
+            civil_liberties_charter: {
+                statChanges: { freedom_index: 5, stability: 2, legitimacy: -3, happiness: 3 },
+                nationFlag: 'monarchy_civil_liberties',
+                eventDesc: 'The Civil Liberties Charter has been enacted. Individual rights are now codified and cannot be overridden by royal decree.',
+            },
+            electoral_reform: {
+                statChanges: { freedom_index: 3, legitimacy: -5, political_engagement: 5 },
+                nationFlag: 'monarchy_electoral_reform',
+                eventDesc: 'The Electoral Reform Act has been enacted. The legal framework for democratic elections now exists. This is the point of no return.',
+            },
+            parliamentary_supremacy: {
+                statChanges: { legitimacy: -5, stability: -3, freedom_index: 5, political_engagement: 5 },
+                nationFlag: 'monarchy_parliamentary_supremacy',
+                eventDesc: 'The Parliamentary Supremacy Act has been enacted. Parliament can now override royal veto with a two-thirds majority. The monarch\'s legislative power is effectively advisory.',
+            },
+            act_of_abdication: {
+                statChanges: { stability: -5, civil_unrest: 10, freedom_index: 8, legitimacy: -10 },
+                nationFlag: null,
+                eventDesc: 'The Act of Abdication has been enacted. The monarchy is dissolved. Democratic elections are scheduled.',
+            },
+        };
+
+        const reform = MONARCHY_REFORMS[reformKey];
+        if (!reform) { console.warn(`[enactFoundationalBill] Unknown monarchy reform: ${reformKey}`); return false; }
+
+        // Apply stat changes
+        if (reform.statChanges && Object.keys(reform.statChanges).length > 0) {
+            const { error: statErr } = await supabase.rpc('increment_nation_stats', {
+                p_nation_id: bill.nation_id,
+                p_changes: reform.statChanges,
+            });
+            if (statErr) console.error(`[enactFoundationalBill] Monarchy reform stat update failed:`, statErr.message);
+        }
+
+        // Set nation flag (for prerequisite tracking)
+        if (reform.nationFlag) {
+            await supabase.from('nations').update({ [reform.nationFlag]: true }).eq('id', bill.nation_id);
+        }
+
+        // Act of Abdication: dissolve monarchy, schedule elections
+        if (reformKey === 'act_of_abdication') {
+            // Clear monarch
+            await supabase.from('nations').update({
+                government_type: 'Democracy',
+                monarch_faction_id: null,
+                failed_formation_attempts: 0,
+            }).eq('id', bill.nation_id);
+
+            // Reset legitimacy and gov approval for fresh start
+            await supabase.rpc('increment_nation_stats', {
+                p_nation_id: bill.nation_id,
+                p_changes: { legitimacy: 50 - (Number(nation.legitimacy) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
+            }).catch(() => {});
+
+            // Dissolve any existing coalition
+            await supabase.from('active_coalitions').update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
+                .eq('nation_id', bill.nation_id).in('status', ['formed', 'active']);
+
+            // Deactivate PM
+            await supabase.from('head_of_government').update({ active: false })
+                .eq('nation_id', bill.nation_id).eq('active', true);
+
+            // Schedule election 2 ticks from now
+            await supabase.from('elections').insert({
+                nation_id: bill.nation_id,
+                election_tick: currentTick + 2,
+                election_type: 'parliamentary',
+                status: 'scheduled',
+                trigger: 'abdication',
+            });
+
+            console.log(`[enactFoundationalBill] Monarchy dissolved for ${nation.name}. Election scheduled at tick ${currentTick + 2}.`);
+        }
+
+        // Log event
+        await supabase.from('event_log').insert({
+            nation_id: bill.nation_id,
+            event_name: 'FOUNDATIONAL_LAW_PASSED',
+            trigger_key: 'monarchy_reform_' + reformKey,
+            description_used: reform.eventDesc,
+            category: 'POLITICAL',
+            effects_applied: { law: reformKey, tag: 'eroding_the_monarchy', ...reform.statChanges },
+            fired_at_tick: currentTick,
+        });
+
+        console.log(`[enactFoundationalBill] [Eroding the Monarchy] ${reformKey} enacted for nation ${bill.nation_id}`);
+        return true;
+    }
+
     // ── Electoral Makeup subtype ──
     // Validate proposed_seats BEFORE marking the bill as passed
     let newTotalSeats = bill.proposed_seats;
