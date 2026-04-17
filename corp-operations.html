@@ -3412,7 +3412,7 @@ async function openProjectModal(projectId) {
     const estCost = bid?.estimated_cost || 0;
     const spent = Math.round(estCost * Math.min(1, ticksElapsed / totalTicks));
     const quality = bid?.estimated_quality || 65;
-    const qualityLabel = quality >= 80 ? 'STRONG' : quality >= 60 ? 'PROMISING' : quality >= 40 ? 'FAIR' : 'UNCERTAIN';
+    const qualityLabel = quality >= 75 ? 'EXCELLENT' : quality >= 50 ? 'FAIR' : quality >= 25 ? 'POOR' : 'BAD';
 
     // Workforce from contract + actual assignments
     const reqWf = project.required_workforce || {};
@@ -3765,7 +3765,7 @@ function renderProjectModal() {
     if (activeEvents > 0) {
         footerLeft += `<span class="pm-ftr__badge" style="color:var(--red);background:var(--red-faint);border:1px solid var(--red-border)">${activeEvents} EVENT${activeEvents > 1 ? 'S' : ''} REQUIRES RESPONSE</span>`;
     }
-    footerLeft += `<span class="pm-ftr__badge" style="color:${s.quality >= 70 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : 'var(--orange)'};background:var(--bg-0);border:1px solid var(--border-0)">QUALITY: ${s.quality}/100 — ${s.qualityLabel}</span>`;
+    footerLeft += `<span class="pm-ftr__badge" style="color:${s.quality >= 75 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : s.quality >= 25 ? 'var(--orange)' : 'var(--red)'};background:var(--bg-0);border:1px solid var(--border-0)">QUALITY: ${s.quality}/100 — ${s.qualityLabel}</span>`;
 
     document.getElementById('pm-footer').innerHTML = `
         <div class="pm-ftr__left">${footerLeft}</div>
@@ -3786,7 +3786,7 @@ function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemainin
         { label: 'Budget', value: fmtBudget(s.budget), sub: `${budgetPct}% spent`, color: budgetColor },
         { label: 'Spent', value: fmtBudget(s.spent), color: 'var(--red)' },
         { label: 'Remaining', value: fmtBudget(remaining), color: 'var(--green)' },
-        { label: 'Quality', value: `${s.quality}/100`, sub: s.qualityLabel, color: s.quality >= 70 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : 'var(--red)' },
+        { label: 'Quality', value: `${s.quality}/100`, sub: s.qualityLabel, color: s.quality >= 75 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : s.quality >= 25 ? 'var(--orange)' : 'var(--red)' },
         { label: 'Workforce', value: `${s.laborCount}/${s.wfNeeded}`, sub: `Bid: ${s.laborCount}`, color: s.laborCount < s.wfNeeded ? 'var(--orange)' : 'var(--text-bright)' },
         { label: 'Remaining', value: `${ticksRemaining} ticks`, sub: isLate ? 'OVERDUE' : `Deadline: ${deadlineDate}`, color: isLate ? 'var(--red)' : 'var(--text-bright)' },
     ];
@@ -4368,7 +4368,7 @@ async function confirmEventResponse(eventId, responseKey) {
         // Update quality in pmState if it changed
         if (result?.quality_applied && result.quality_applied !== 0) {
             pmState.quality = Math.max(0, Math.min(100, pmState.quality + result.quality_applied));
-            pmState.qualityLabel = pmState.quality >= 80 ? 'STRONG' : pmState.quality >= 60 ? 'PROMISING' : pmState.quality >= 40 ? 'FAIR' : 'UNCERTAIN';
+            pmState.qualityLabel = pmState.quality >= 75 ? 'EXCELLENT' : pmState.quality >= 50 ? 'FAIR' : pmState.quality >= 25 ? 'POOR' : 'BAD';
         }
 
         renderProjectModal();
@@ -12253,8 +12253,8 @@ function renderBidAssembly() {
     // Quality
     const gradeVals = Object.values(_bidGrades);
     const qualityEst = gradeVals.length > 0 ? Math.round(gradeVals.reduce((s, g) => s + (g === 'HIGH' ? 85 : g === 'STD' ? 65 : 45), 0) / gradeVals.length) : 50;
-    const qualityColor = qualityEst >= 75 ? C.greenBright : qualityEst >= 55 ? C.yellow : C.orange;
-    const qualityLabel = qualityEst >= 75 ? 'STRONG' : qualityEst >= 55 ? 'PROMISING' : 'UNCERTAIN';
+    const qualityColor = qualityEst >= 75 ? C.greenBright : qualityEst >= 50 ? C.yellow : qualityEst >= 25 ? C.orange : C.red;
+    const qualityLabel = qualityEst >= 75 ? 'EXCELLENT' : qualityEst >= 50 ? 'FAIR' : qualityEst >= 25 ? 'POOR' : 'BAD';
 
     const overlay = document.createElement('div');
     overlay.id = 'bid-assembly-overlay';

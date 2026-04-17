@@ -714,16 +714,16 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
         const tmpl = CC_TEMPLATES[key];
         if (!tmpl) continue;
 
-        // Generate required materials first (needed for budget calculation) — 1.5x base quantities
+        // Generate required materials first (needed for budget calculation) — 10x base quantities
         const requiredMats: Record<string, number> = {};
         const reqs = CC_REQUIREMENTS[key];
         if (reqs?.mat) {
-            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 1.5);
+            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 10);
         }
 
-        // Generate workforce (doubled from template ranges)
+        // Generate workforce (100x template ranges)
         const requiredWf = reqs?.wf
-            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]) * 2, skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) * 2 }
+            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]) * 100, skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) * 100 }
             : {};
 
         // Budget: range from [all LOW materials, 0% markup] to [all HIGH materials, 40% markup]
@@ -807,7 +807,7 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
                 const equipDef = CC_REQUIREMENTS[key]?.equip || {};
                 const result = {};
                 for (const [ek, range] of Object.entries(equipDef)) {
-                    result[ek] = Array.isArray(range) ? ccRand(range[0], range[1]) : (range || 1);
+                    result[ek] = Array.isArray(range) ? ccRand(range[0], range[1]) * 5 : ((range || 1) * 5);
                 }
                 return result;
             })(),
@@ -904,10 +904,10 @@ async function generateInfraRenewalContracts(supabase, nation, currentTick) {
         const reqs = CC_REQUIREMENTS[key];
         const requiredMats: Record<string, number> = {};
         if (reqs?.mat) {
-            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 1.5);
+            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 10);
         }
         const requiredWf = reqs?.wf
-            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]) * 2, skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) * 2 }
+            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]) * 100, skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) * 100 }
             : {};
 
         // Budget calculation (same as regular generation)
@@ -944,7 +944,7 @@ async function generateInfraRenewalContracts(supabase, nation, currentTick) {
                 const equipDef = CC_REQUIREMENTS[key]?.equip || {};
                 const result = {};
                 for (const [ek, range] of Object.entries(equipDef)) {
-                    result[ek] = Array.isArray(range) ? ccRand(range[0], range[1]) : (range || 1);
+                    result[ek] = Array.isArray(range) ? ccRand(range[0], range[1]) * 5 : ((range || 1) * 5);
                 }
                 return result;
             })(),
