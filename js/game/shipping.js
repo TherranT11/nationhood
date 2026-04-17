@@ -237,3 +237,242 @@ export async function generateShippingRoutes(supabase, currentTick) {
 
     return { generated: generated, expired: expiredCount, total: routeRows.length };
 }
+
+// ==================== ORGANIC TRADE ROUTES ====================
+
+/**
+ * Revenue multiplier for organic routes vs agreement-backed routes.
+ * Organic routes pay less to incentivize real trade deals.
+ */
+var ORGANIC_REVENUE_MULTIPLIER = 0.35; // 35% of normal rate
+
+/**
+ * Minimum proximity to generate organic routes between nations.
+ * Nations further apart than this don't have enough natural commerce.
+ */
+var ORGANIC_MIN_PROXIMITY = 70; // 0 = bordering, 100 = far — lower = closer
+
+/**
+ * Max organic routes per nation pair per tick.
+ * Keeps the market from being flooded.
+ */
+var ORGANIC_MAX_ROUTES_PER_PAIR = 2;
+
+/**
+ * Organic route expiry in ticks. Routes regenerate with potentially different goods.
+ */
+var ORGANIC_ROUTE_LIFETIME = 8;
+
+/**
+ * Sectors eligible for organic trade (excludes arms — those need government contracts).
+ */
+var ORGANIC_ELIGIBLE_SECTORS = [
+    'fuel_energy', 'minerals', 'grains_staples', 'livestock_dairy',
+    'cash_crops', 'manufactured_goods', 'technology', 'fruits_vegetables'
+];
+
+/**
+ * Generate organic trade routes — baseline commerce between neighboring nations.
+ * These exist regardless of trade agreements, representing natural free-market trade.
+ * Lower volume and revenue than agreement-backed routes.
+ *
+ * @param {Object} supabase    - Supabase client (service_role)
+ * @param {number} currentTick - current game tick
+ * @returns {Object} { generated, expired }
+ */
+export async function generateOrganicRoutes(supabase, currentTick) {
+    // Fetch all nations with GDP and population for volume weighting
+    var { data: nations } = await supabase.from('nations')
+        .select('id, name, population, gdp_growth, manufacturing_output, standard_of_living');
+    if (!nations || nations.length < 2) return { generated: 0, expired: 0 };
+
+    var nationMap = {};
+    for (var ni = 0; ni < nations.length; ni++) {
+        nationMap[nations[ni].id] = nations[ni];
+    }
+
+    // Fetch ports
+    var { data: ports } = await supabase.from('nation_ports').select('nation_id, port_name');
+    var portMap = {};
+    if (ports) {
+        for (var pi = 0; pi < ports.length; pi++) {
+            portMap[ports[pi].nation_id] = ports[pi].port_name;
+        }
+    }
+
+    // Fetch proximity
+    var { data: relations } = await supabase
+        .from('diplomatic_relations')
+        .select('nation_a_id, nation_b_id, proximity');
+    var proxMap = {};
+    if (relations) {
+        for (var ri = 0; ri < relations.length; ri++) {
+            var r = relations[ri];
+            proxMap[r.nation_a_id + '|' + r.nation_b_id] = r.proximity;
+            proxMap[r.nation_b_id + '|' + r.nation_a_id] = r.proximity;
+        }
+    }
+
+    // Fetch existing active organic routes to avoid duplicates
+    var { data: existingOrganic } = await supabase
+        .from('shipping_routes')
+        .select('origin_nation_id, destination_nation_id, trade_sector')
+        .eq('status', 'active')
+        .is('trade_agreement_id', null)
+        .gte('last_refreshed_tick', currentTick - ORGANIC_ROUTE_LIFETIME);
+    var existingSet = new Set();
+    if (existingOrganic) {
+        for (var ei = 0; ei < existingOrganic.length; ei++) {
+            var e = existingOrganic[ei];
+            existingSet.add(e.origin_nation_id + '|' + e.destination_nation_id + '|' + e.trade_sector);
+        }
+    }
+
+    // Fetch tariffs
+    var tariffMap = {};
+    for (var tni = 0; tni < nations.length; tni++) {
+        tariffMap[nations[tni].id] = Number(nations[tni].tariffs) || 0;
+    }
+
+    // Seeded random from tick (deterministic but varies per tick)
+    function seededRandom(seed) {
+        var x = Math.sin(seed) * 10000;
+        return x - Math.floor(x);
+    }
+
+    var generated = 0;
+    var routeRows = [];
+
+    // Evaluate all nation pairs
+    for (var i = 0; i < nations.length; i++) {
+        for (var j = i + 1; j < nations.length; j++) {
+            var nA = nations[i];
+            var nB = nations[j];
+
+            // Both need ports
+            if (!portMap[nA.id] || !portMap[nB.id]) continue;
+
+            // Check proximity
+            var proximity = proxMap[nA.id + '|' + nB.id];
+            if (proximity === undefined || proximity === null) continue;
+            if (proximity > ORGANIC_MIN_PROXIMITY) continue;
+
+            // Combined economic strength determines volume
+            var popFactor = Math.sqrt((nA.population || 1000000) * (nB.population || 1000000)) / 10000000;
+            var gdpFactor = ((Number(nA.gdp_growth) || 50) + (Number(nB.gdp_growth) || 50)) / 100;
+            var closeness = 1 - (proximity / 100); // 1 = bordering, 0 = far
+
+            // How many routes this pair gets (1-2)
+            var routeCount = Math.min(ORGANIC_MAX_ROUTES_PER_PAIR, closeness > 0.7 ? 2 : 1);
+
+            // Weight sectors by nation stats
+            var sectorWeights = [];
+            for (var si = 0; si < ORGANIC_ELIGIBLE_SECTORS.length; si++) {
+                var sector = ORGANIC_ELIGIBLE_SECTORS[si];
+                var weight = 1;
+                var mfg = ((Number(nA.manufacturing_output) || 50) + (Number(nB.manufacturing_output) || 50)) / 100;
+                if (sector === 'manufactured_goods' || sector === 'technology') weight = mfg;
+                if (sector === 'fuel_energy' || sector === 'minerals') weight = 1.2 - mfg * 0.3;
+                if (sector === 'grains_staples' || sector === 'fruits_vegetables') weight = 0.8 + popFactor * 0.2;
+                sectorWeights.push({ sector: sector, weight: weight });
+            }
+
+            for (var rc = 0; rc < routeCount; rc++) {
+                // Pick sector using seeded random weighted selection
+                var seed = currentTick * 1000 + i * 100 + j * 10 + rc;
+                var rand = seededRandom(seed);
+                var totalWeight = 0;
+                for (var wi = 0; wi < sectorWeights.length; wi++) totalWeight += sectorWeights[wi].weight;
+                var pick = rand * totalWeight;
+                var cumulative = 0;
+                var chosenSector = ORGANIC_ELIGIBLE_SECTORS[0];
+                for (var wi2 = 0; wi2 < sectorWeights.length; wi2++) {
+                    cumulative += sectorWeights[wi2].weight;
+                    if (pick <= cumulative) { chosenSector = sectorWeights[wi2].sector; break; }
+                }
+
+                // Determine direction (higher GDP exports)
+                var originId, destId;
+                if ((Number(nA.gdp_growth) || 50) >= (Number(nB.gdp_growth) || 50)) {
+                    originId = nA.id; destId = nB.id;
+                } else {
+                    originId = nB.id; destId = nA.id;
+                }
+
+                // Skip if this exact route already exists
+                var routeKey = originId + '|' + destId + '|' + chosenSector;
+                if (existingSet.has(routeKey)) continue;
+                existingSet.add(routeKey);
+
+                var sectorMeta = SHIPPING_SECTOR_MAP[chosenSector];
+                if (!sectorMeta) continue;
+
+                // Organic volume: much smaller than agreement-backed
+                var baseVolume = popFactor * gdpFactor * closeness * 30000000; // ~$30M base scaled
+                var volume = Math.round(Math.max(5000000, baseVolume * (0.7 + seededRandom(seed + 999) * 0.6)));
+                var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || 0.06;
+                var estRevenue = Math.round(volume * revenueRate * ORGANIC_REVENUE_MULTIPLIER);
+
+                var transitTicks = calculateTransitTicks(proximity);
+                var scope = getRouteScope(proximity, false);
+
+                routeRows.push({
+                    origin_nation_id: originId,
+                    destination_nation_id: destId,
+                    origin_port: portMap[originId],
+                    destination_port: portMap[destId],
+                    trade_sector: chosenSector,
+                    cargo_category: sectorMeta.category,
+                    shipping_subsector: sectorMeta.subsector,
+                    scope: scope,
+                    goods_name: sectorMeta.goods,
+                    goods_description: 'Open market — ' + sectorMeta.goodsSub,
+                    vessel_class: sectorMeta.vessel,
+                    vessel_note: sectorMeta.vesselNote,
+                    trade_volume: volume,
+                    estimated_revenue: estRevenue,
+                    volume_physical: Math.round(volume / 100),
+                    volume_unit: sectorMeta.unit,
+                    transit_ticks: transitTicks,
+                    proximity: proximity,
+                    tariff_rate: tariffMap[destId] || 0,
+                    demand_level: volume >= 20000000 ? 'MODERATE' : 'LOW',
+                    trade_agreement_id: null,
+                    trade_agreement_name: null,
+                    status: 'active',
+                    generated_at_tick: currentTick,
+                    last_refreshed_tick: currentTick,
+                });
+
+                generated++;
+            }
+        }
+    }
+
+    // Upsert organic routes
+    if (routeRows.length > 0) {
+        var BATCH = 50;
+        for (var bi = 0; bi < routeRows.length; bi += BATCH) {
+            var chunk = routeRows.slice(bi, bi + BATCH);
+            var { error: upsertErr } = await supabase.from('shipping_routes').upsert(chunk, {
+                onConflict: 'origin_nation_id,destination_nation_id,trade_sector,status'
+            });
+            if (upsertErr) {
+                console.error('[Shipping] Organic route upsert error:', upsertErr.message);
+            }
+        }
+    }
+
+    // Expire old organic routes beyond lifetime
+    var { data: expiredOrganic } = await supabase
+        .from('shipping_routes')
+        .update({ status: 'expired' })
+        .eq('status', 'active')
+        .is('trade_agreement_id', null)
+        .lt('last_refreshed_tick', currentTick - ORGANIC_ROUTE_LIFETIME)
+        .select('id');
+
+    var expiredCount = expiredOrganic ? expiredOrganic.length : 0;
+
+    return { generated: generated, expired: expiredCount };
+}

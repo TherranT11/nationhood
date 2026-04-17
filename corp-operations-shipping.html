@@ -5988,6 +5988,10 @@ function renderAvailableRoutes() {
             html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
                 + 'color:#5c5;background:rgba(92,204,92,0.06);border:1px solid rgba(92,204,92,0.15)">NO COMPETITION</span>';
         }
+        if (!route.trade_agreement_id && !isGov) {
+            html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
+                + 'color:#9e9a92;background:rgba(158,154,146,0.06);border:1px solid rgba(158,154,146,0.15)">OPEN MARKET</span>';
+        }
         // Show application status for this route
         var myApp = _myShippingApps.find(function(a) { return a.route_id === route.id; });
         if (myApp) {
