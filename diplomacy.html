@@ -71,7 +71,6 @@
     <div id="trade-page" style="padding:0 12px 12px;">
         <div id="trade-header-stats"></div>
         <div id="trade-agreements-row" style="margin-top:8px;"></div>
-        <div id="trade-shipping-contracts" style="margin-top:8px;"></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
             <div id="trade-left" style="width:480px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;"></div>
             <div id="trade-right" style="flex:1;display:flex;flex-direction:column;gap:8px;"></div>
@@ -86,6 +85,7 @@
     <div class="trade-neg-modal-content" onclick="event.stopPropagation();">
         <div class="trade-neg-modal-header" id="trade-neg-header"></div>
         <div class="trade-neg-modal-body">
+            <div class="trade-neg-econ trade-neg-econ--mine" id="trade-neg-my-econ"></div>
             <div class="trade-neg-main" id="trade-neg-main">
                 <div id="trade-neg-articles"></div>
                 <div id="trade-neg-add-article-form" style="display:none;"></div>
@@ -98,6 +98,7 @@
                     <button id="trade-neg-chat-send" disabled>Send</button>
                 </div>
             </div>
+            <div class="trade-neg-econ trade-neg-econ--theirs" id="trade-neg-their-econ"></div>
         </div>
         <div class="trade-neg-modal-footer">
             <div style="display:flex;gap:8px;">
@@ -295,7 +296,6 @@ async function initTradeTab() {
     renderTradeHeaderStats();
     renderTradeEconomy();
     renderTradeAgreements();
-    renderShippingContracts();
     renderTradePartners();
 }
 
@@ -383,9 +383,9 @@ function renderTradeEconomy() {
         </div>
         <div class="tr-commodity-header">
             <span style="flex:1;">COMMODITY</span>
-            <span style="width:75px;text-align:right;">PROD</span>
-            <span style="width:75px;text-align:right;">DEMAND</span>
-            <span style="width:75px;text-align:right;">BAL</span>
+            <span style="width:75px;text-align:right;">PROD /MO</span>
+            <span style="width:75px;text-align:right;">DEMAND /MO</span>
+            <span style="width:75px;text-align:right;">BAL /MO</span>
         </div>`;
 
     const nationId = _worldState?.nation?.id;
@@ -565,11 +565,17 @@ function renderTradeEconomy() {
 // ═══════════════════════════════════════════════════
 
 let _shippingRoutesByAgreement = {}; // agreementId → [routes]
-let _shippingRouteById = {};         // routeId → route
 let _shippingClaimsByRoute = {};     // routeId → [claims with faction data]
 let _shippingAppsByRoute = {};       // routeId → [pending applications]
+let _allShippingRoutes = [];         // flat list of routes involving our nation
+let _shippingRowExpanded = null;     // id of the currently-expanded shipping contract row
 let _isTradeMinister = false;        // current faction holds the trade ministry
 
+// The diplomacy refactor (9733595) dropped the initPage assignment to
+// currentFaction/currentNation, so diplomaticRoles never populates on first
+// load — which means diplomaticRoles?.isMoT is permanently false. Until that
+// is restored at the page level, this flag is the authoritative MoT check for
+// the shipping-accept flow. Refreshed on tab init and before every approve/reject.
 async function refreshTradeMinisterFlag() {
     _isTradeMinister = false;
     const nationId = _worldState?.nation?.id;
@@ -590,57 +596,73 @@ async function loadShippingData() {
     const nationId = _worldState?.nation?.id;
     if (!nationId) return;
 
-    try {
-    // Routes involving our nation
-    const { data: routes, error: routeErr } = await _supabase.from('shipping_routes')
-        .select('id, origin_nation_id, destination_nation_id, origin_port, destination_port, trade_sector, cargo_category, goods_name, trade_volume, estimated_revenue, transit_ticks, demand_level, trade_agreement_id, trade_agreement_name, status, competition_count')
-        .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`)
-        .eq('status', 'active');
-
-    if (routeErr) return;
-
     _shippingRoutesByAgreement = {};
-    _shippingRouteById = {};
-    const routeIds = [];
-    if (routes) {
-        for (const r of routes) {
-            _shippingRouteById[r.id] = r;
+    _allShippingRoutes = [];
+    _shippingClaimsByRoute = {};
+    _shippingAppsByRoute = {};
+
+    try {
+        // Pull routes that touch our nation, plus all pending applications
+        // and active claims (embedded with their routes). Filter the apps +
+        // claims client-side to those whose route involves our nation —
+        // simpler and more reliable than pushing an or() filter onto the
+        // embedded table, which has historically been flaky in postgrest.
+        const routeColumns = 'id, origin_nation_id, destination_nation_id, origin_port, destination_port, trade_sector, cargo_category, goods_name, trade_volume, estimated_revenue, transit_ticks, demand_level, trade_agreement_id, trade_agreement_name, status, competition_count';
+        const corpAppColumns = 'id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, shipping_fleet_capacity, shipping_fleet_deployed, corp_reputation, corp_cash_reserves';
+        const corpClaimColumns = 'id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, corp_reputation, corp_cash_reserves';
+
+        const [routesRes, appsRes, claimsRes] = await Promise.all([
+            _supabase.from('shipping_routes')
+                .select(routeColumns)
+                .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`),
+            _supabase.from('shipping_applications')
+                .select(`id, route_id, faction_id, vessel_id, proposed_rate, status, applied_at_tick, factions!faction_id(${corpAppColumns}), shipping_routes!inner(${routeColumns})`)
+                .eq('status', 'pending'),
+            _supabase.from('shipping_claims')
+                .select(`id, route_id, faction_id, market_share_pct, revenue_per_transit, total_revenue, transits_completed, status, factions!faction_id(${corpClaimColumns}), shipping_routes!inner(${routeColumns})`)
+                .eq('status', 'active'),
+        ]);
+
+        if (routesRes.error) console.warn('[Shipping] routes query error:', routesRes.error.message);
+        if (appsRes.error)   console.warn('[Shipping] apps query error:',   appsRes.error.message);
+        if (claimsRes.error) console.warn('[Shipping] claims query error:', claimsRes.error.message);
+
+        // Client-side filter: keep only apps + claims whose route touches our nation.
+        const ourNation = (r) => r && (r.origin_nation_id === nationId || r.destination_nation_id === nationId);
+        const apps   = (appsRes.data   || []).filter(a => ourNation(a.shipping_routes));
+        const claims = (claimsRes.data || []).filter(c => ourNation(c.shipping_routes));
+
+        // Index routes (from the dedicated query and any embedded in apps/claims).
+        const routeMap = new Map();
+        for (const r of (routesRes.data || [])) routeMap.set(r.id, r);
+        for (const a of apps) {
+            const r = a.shipping_routes;
+            if (r && !routeMap.has(r.id)) routeMap.set(r.id, r);
+        }
+        for (const c of claims) {
+            const r = c.shipping_routes;
+            if (r && !routeMap.has(r.id)) routeMap.set(r.id, r);
+        }
+
+        _allShippingRoutes = Array.from(routeMap.values());
+        for (const r of _allShippingRoutes) {
             if (r.trade_agreement_id) {
                 if (!_shippingRoutesByAgreement[r.trade_agreement_id]) _shippingRoutesByAgreement[r.trade_agreement_id] = [];
                 _shippingRoutesByAgreement[r.trade_agreement_id].push(r);
             }
-            routeIds.push(r.id);
         }
-    }
 
-    // Claims on those routes (which corporations are servicing them)
-    _shippingClaimsByRoute = {};
-    _shippingAppsByRoute = {};
-    if (routeIds.length > 0) {
-        const [claimsResult, appsResult] = await Promise.all([
-            _supabase.from('shipping_claims')
-                .select('id, route_id, faction_id, market_share_pct, revenue_per_transit, total_revenue, transits_completed, status, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector)')
-                .in('route_id', routeIds)
-                .eq('status', 'active'),
-            _supabase.from('shipping_applications')
-                .select('id, route_id, faction_id, vessel_id, proposed_rate, status, applied_at_tick, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, shipping_fleet_capacity, shipping_fleet_deployed, corp_cash_reserves, corp_reputation)')
-                .in('route_id', routeIds)
-                .eq('status', 'pending'),
-        ]);
-        if (claimsResult.data) {
-            for (const c of claimsResult.data) {
-                if (!_shippingClaimsByRoute[c.route_id]) _shippingClaimsByRoute[c.route_id] = [];
-                _shippingClaimsByRoute[c.route_id].push(c);
-            }
+        for (const a of apps) {
+            if (!_shippingAppsByRoute[a.route_id]) _shippingAppsByRoute[a.route_id] = [];
+            _shippingAppsByRoute[a.route_id].push(a);
         }
-        if (appsResult.data) {
-            for (const a of appsResult.data) {
-                if (!_shippingAppsByRoute[a.route_id]) _shippingAppsByRoute[a.route_id] = [];
-                _shippingAppsByRoute[a.route_id].push(a);
-            }
+        for (const c of claims) {
+            if (!_shippingClaimsByRoute[c.route_id]) _shippingClaimsByRoute[c.route_id] = [];
+            _shippingClaimsByRoute[c.route_id].push(c);
         }
+    } catch (err) {
+        console.warn('[Shipping] loadShippingData failed:', err);
     }
-    } catch (_) { /* shipping_routes table may not exist yet */ }
 }
 
 function getAgreementShippingInfo(agreementId) {
@@ -723,7 +745,6 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
             alert('Could not activate the route: ' + claimFailureMsg);
             await loadShippingData();
             renderTradeAgreements();
-            renderShippingContracts();
             return;
         }
 
@@ -764,7 +785,6 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
         // Reload shipping data and re-render
         await loadShippingData();
         renderTradeAgreements();
-        renderShippingContracts();
     } catch (err) {
         console.error('[ShippingApproval] Error:', err);
         alert('Failed to accept application.');
@@ -789,7 +809,6 @@ window.rejectShippingApp = async function(appId) {
 
         await loadShippingData();
         renderTradeAgreements();
-        renderShippingContracts();
     } catch (err) {
         console.error('[ShippingReject] Error:', err);
         alert('Failed to reject application.');
@@ -816,7 +835,7 @@ async function loadTradeAgreements() {
             .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
             .order('enacted_at_tick', { ascending: false }),
         _supabase.from('trade_negotiations')
-            .select('id, nation_a_id, nation_b_id, status, agreement_type, opened_at_tick')
+            .select('id, nation_a_id, nation_b_id, status, agreement_type, opened_at_tick, approved_by_a, approved_by_b')
             .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
             .in('status', ['open', 'active', 'ratification'])
             .order('opened_at_tick', { ascending: false }),
@@ -824,6 +843,211 @@ async function loadTradeAgreements() {
     _tradeAgreementsList = agResult.data || [];
     _tradeNegotiationsList = negResult.data || [];
 }
+
+// ── Shipping Contracts block (pending applications + active claims) ──
+//
+// Rendered at the top of the AGREEMENTS panel so government-side users can
+// accept/reject applications and see live active shipping contracts without
+// having to expand each trade agreement row.
+function renderShippingContractsBlock() {
+    const routeMap = new Map();
+    for (const r of (_allShippingRoutes || [])) routeMap.set(r.id, r);
+
+    // Only the Minister of Trade can accept/reject shipping applications.
+    // Everyone else in the nation sees the row and terms but gets an
+    // "awaiting decision" notice instead of action buttons.
+    // (diplomaticRoles is unreliable on this page — see refreshTradeMinisterFlag.)
+    const canAct = !!_isTradeMinister;
+
+    // Flatten pending applications + active claims with their routes attached.
+    const pendingApps = [];
+    for (const [routeId, apps] of Object.entries(_shippingAppsByRoute || {})) {
+        const route = routeMap.get(routeId);
+        for (const a of (apps || [])) pendingApps.push({ ...a, route });
+    }
+    const activeClaims = [];
+    for (const [routeId, claims] of Object.entries(_shippingClaimsByRoute || {})) {
+        const route = routeMap.get(routeId);
+        for (const c of (claims || [])) activeClaims.push({ ...c, route });
+    }
+
+    if (pendingApps.length === 0 && activeClaims.length === 0) return '';
+
+    const fmt = (n) => (typeof fmtBudgetCurrency === 'function')
+        ? fmtBudgetCurrency(n)
+        : ('$' + Math.round(Number(n) || 0).toLocaleString());
+
+    // 1 tick = 30 game days = 1 month.
+    const TICKS_PER_MONTH = 1;
+
+    let html = '';
+
+    // Section header
+    html += `<div style="padding:10px 18px;background:var(--bg-card);border-bottom:1px solid var(--border-main);display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1.2px;color:var(--text-muted);">SHIPPING CONTRACTS</span>
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">
+            ${pendingApps.length} pending${activeClaims.length > 0 ? ' · ' + activeClaims.length + ' active' : ''}
+        </span>
+    </div>`;
+
+    // Pending applications — collapsible rows
+    for (const app of pendingApps) {
+        const corp = app.factions || {};
+        const color = corp.party_color || '#5a8aaa';
+        const ticker = (corp.corp_ticker || corp.abbreviation || '').toUpperCase();
+        const logoHtml = corp.custom_logo_url
+            ? `<img src="${escapeHtml(corp.custom_logo_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:3px;" />`
+            : `<span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${color};">${escapeHtml(ticker.slice(0,2) || '??')}</span>`;
+        const r = app.route || {};
+        const routeLabel = (r.origin_port && r.destination_port)
+            ? `${r.origin_port} → ${r.destination_port}`
+            : (r.goods_name || 'route');
+        const isExp = _shippingRowExpanded === 'app:' + app.id;
+
+        const rate = Number(app.proposed_rate || 0);
+        const transitTicks = Math.max(1, Number(r.transit_ticks || 1));
+        const transitsPerMonth = TICKS_PER_MONTH / transitTicks;
+        const monthlyCost = rate * transitsPerMonth;
+
+        const fleetCap = corp.shipping_fleet_capacity || 0;
+        const fleetDep = corp.shipping_fleet_deployed || 0;
+        const available = Math.max(0, fleetCap - fleetDep);
+
+        html += `<div style="border-bottom:1px solid var(--border-main);border-left:3px solid ${color};">
+            <div onclick="toggleShippingRow('app:${app.id}')"
+                 style="padding:12px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;${isExp ? 'background:var(--bg-card);' : ''}">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:28px;height:28px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;border-radius:4px;overflow:hidden;">${logoHtml}</div>
+                    <div>
+                        <div style="font-size:13px;font-weight:600;color:var(--text-bright);">
+                            ${escapeHtml(corp.faction_name || 'Unknown Corp')}
+                            <span style="color:var(--text-dim);font-weight:400;"> application for </span>
+                            <span style="color:var(--text-bright);">${escapeHtml(routeLabel)}</span>
+                        </div>
+                        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px;">
+                            ${escapeHtml(r.goods_name || 'Trade goods')} · ${fmt(rate)}/trip · ${transitTicks} tick cycle
+                        </div>
+                    </div>
+                </div>
+                <span class="tr-badge" style="font-size:10px;padding:3px 10px;color:#c8a832;background:rgba(200,168,50,0.08);border-color:rgba(200,168,50,0.2);">PENDING</span>
+            </div>
+            ${isExp ? (() => {
+                const corpRep  = Number(corp.corp_reputation ?? 50);
+                const corpCash = Number(corp.corp_cash_reserves ?? 0);
+                const repColor = corpRep >= 70 ? 'var(--green)' : corpRep >= 40 ? 'var(--accent)' : 'var(--amber)';
+                return `<div style="padding:0 18px 14px 34px;">
+                <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:4px 0 12px;font-family:var(--font-mono);font-size:10px;">
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">FLEET ON OFFER</div>
+                        <div style="color:var(--text-bright);font-size:14px;font-weight:700;">${available} <span style="color:var(--text-dim);font-weight:400;font-size:10px;">of ${fleetCap}</span></div>
+                        <div style="color:var(--text-dim);font-size:8px;">vessels available</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">REPUTATION</div>
+                        <div style="color:${repColor};font-size:14px;font-weight:700;">${corpRep}<span style="color:var(--text-dim);font-weight:400;font-size:10px;">/100</span></div>
+                        <div style="color:var(--text-dim);font-size:8px;">corp standing</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">CASH RESERVES</div>
+                        <div style="color:var(--text-bright);font-size:14px;font-weight:700;">${fmt(corpCash)}</div>
+                        <div style="color:var(--text-dim);font-size:8px;">balance sheet</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">PRICE PER TRIP</div>
+                        <div style="color:var(--accent);font-size:14px;font-weight:700;">${fmt(rate)}</div>
+                        <div style="color:var(--text-dim);font-size:8px;">${transitTicks} tick cycle</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">MONTHLY COST TO NATION</div>
+                        <div style="color:#d06a6a;font-size:14px;font-weight:700;">${fmt(monthlyCost)}</div>
+                        <div style="color:var(--text-dim);font-size:8px;">~${transitsPerMonth.toFixed(1)} trips/mo</div>
+                    </div>
+                </div>
+                ${canAct ? `<div style="display:flex;gap:8px;">
+                    <button onclick="event.stopPropagation();approveShippingApp('${app.id}', '${app.route_id}', '${app.faction_id}')"
+                        style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#000;background:#5cc55c;border:none;cursor:pointer;letter-spacing:1px;">ACCEPT</button>
+                    <button onclick="event.stopPropagation();rejectShippingApp('${app.id}')"
+                        style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:pointer;letter-spacing:1px;">REJECT</button>
+                </div>` : `<div style="padding:8px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);background:var(--bg-card);border:1px dashed var(--border-main);">
+                    Awaiting decision from the Minister of Trade
+                </div>`}
+            </div>`;
+            })() : ''}
+        </div>`;
+    }
+
+    // Active shipping contracts (claims) — collapsible rows
+    for (const claim of activeClaims) {
+        const corp = claim.factions || {};
+        const color = corp.party_color || '#5cc55c';
+        const ticker = (corp.corp_ticker || corp.abbreviation || '').toUpperCase();
+        const logoHtml = corp.custom_logo_url
+            ? `<img src="${escapeHtml(corp.custom_logo_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:3px;" />`
+            : `<span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${color};">${escapeHtml(ticker.slice(0,2) || '??')}</span>`;
+        const r = claim.route || {};
+        const routeLabel = (r.origin_port && r.destination_port)
+            ? `${r.origin_port} → ${r.destination_port}`
+            : (r.goods_name || 'route');
+        const isExp = _shippingRowExpanded === 'claim:' + claim.id;
+
+        const rate = Number(claim.revenue_per_transit || 0);
+        const transitTicks = Math.max(1, Number(r.transit_ticks || 1));
+        const transitsPerMonth = TICKS_PER_MONTH / transitTicks;
+        const monthlyCost = rate * transitsPerMonth;
+        const transits = Number(claim.transits_completed || 0);
+        const totalPaid = Number(claim.total_revenue || 0);
+        const marketShare = Number(claim.market_share_pct || 0);
+
+        html += `<div style="border-bottom:1px solid var(--border-main);border-left:3px solid ${color};">
+            <div onclick="toggleShippingRow('claim:${claim.id}')"
+                 style="padding:12px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;${isExp ? 'background:var(--bg-card);' : ''}">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:28px;height:28px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;border-radius:4px;overflow:hidden;">${logoHtml}</div>
+                    <div>
+                        <div style="font-size:13px;font-weight:600;color:var(--text-bright);">
+                            ${escapeHtml(corp.faction_name || 'Unknown Corp')}
+                            <span style="color:var(--text-dim);font-weight:400;"> servicing </span>
+                            <span style="color:var(--text-bright);">${escapeHtml(routeLabel)}</span>
+                        </div>
+                        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px;">
+                            ${escapeHtml(r.goods_name || 'Trade goods')} · ${fmt(rate)}/trip · ${transits} trips completed
+                        </div>
+                    </div>
+                </div>
+                <span class="tr-badge" style="font-size:10px;padding:3px 10px;color:var(--green);background:rgba(92,204,92,0.08);border-color:rgba(92,204,92,0.2);">ACTIVE CONTRACT</span>
+            </div>
+            ${isExp ? `<div style="padding:0 18px 14px 34px;">
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:4px 0 4px;font-family:var(--font-mono);font-size:10px;">
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">MARKET SHARE</div>
+                        <div style="color:var(--text-bright);font-size:14px;font-weight:700;">${marketShare}%</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">PRICE PER TRIP</div>
+                        <div style="color:var(--accent);font-size:14px;font-weight:700;">${fmt(rate)}</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">MONTHLY COST</div>
+                        <div style="color:#d06a6a;font-size:14px;font-weight:700;">${fmt(monthlyCost)}</div>
+                        <div style="color:var(--text-dim);font-size:8px;">~${transitsPerMonth.toFixed(1)} trips/mo</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-dim);font-size:8px;letter-spacing:1px;margin-bottom:2px;">TOTAL PAID</div>
+                        <div style="color:var(--text-bright);font-size:14px;font-weight:700;">${fmt(totalPaid)}</div>
+                        <div style="color:var(--text-dim);font-size:8px;">${transits} transit${transits === 1 ? '' : 's'}</div>
+                    </div>
+                </div>
+            </div>` : ''}
+        </div>`;
+    }
+
+    return html;
+}
+
+window.toggleShippingRow = function(id) {
+    _shippingRowExpanded = (_shippingRowExpanded === id) ? null : id;
+    renderTradeAgreements();
+};
 
 function renderTradeAgreements() {
     const left = document.getElementById('trade-agreements-row');
@@ -841,6 +1065,9 @@ function renderTradeAgreements() {
             <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${active.length} active${expired.length > 0 ? ' \u00B7 ' + expired.length + ' expired' : ''}</span>
         </div>`;
 
+    // Shipping contracts (pending applications + active claims) — rendered at top
+    html += renderShippingContractsBlock();
+
     // Ongoing trade negotiations (shown before agreements)
     const ongoingNegs = _tradeNegotiationsList || [];
     for (const neg of ongoingNegs) {
@@ -851,12 +1078,32 @@ function renderTradeAgreements() {
         const myFlag = _worldState?.nation?.flag_url || `assets/flags/${myName}.png`;
         const partnerFlag = partner?.flag_url || `assets/flags/${partnerName}.png`;
 
+        // Three-state badge:
+        //   RATIFICATION    — bill in parliament (status='ratification')
+        //   READY TO RATIFY — both sides approved but not yet sent to parliament
+        //   ONGOING         — negotiation in progress (default)
         const isRatifying = neg.status === 'ratification';
-        const negBadgeColor = isRatifying ? 'var(--green)' : 'var(--amber)';
-        const negBadgeLabel = isRatifying ? 'RATIFYING' : 'ONGOING';
-        const negBadgeBg = isRatifying ? 'rgba(92,204,92,0.08)' : 'rgba(184,134,11,0.08)';
-        const negBadgeBorder = isRatifying ? 'rgba(92,204,92,0.2)' : 'rgba(184,134,11,0.2)';
-        const negBorderColor = isRatifying ? 'var(--green)' : 'var(--amber)';
+        const bothApproved = !isRatifying && !!neg.approved_by_a && !!neg.approved_by_b;
+        let negBadgeColor, negBadgeLabel, negBadgeBg, negBadgeBorder, negBorderColor;
+        if (isRatifying) {
+            negBadgeLabel  = 'RATIFICATION';
+            negBadgeColor  = 'var(--green)';
+            negBadgeBg     = 'rgba(92,204,92,0.08)';
+            negBadgeBorder = 'rgba(92,204,92,0.2)';
+            negBorderColor = 'var(--green)';
+        } else if (bothApproved) {
+            negBadgeLabel  = 'READY TO RATIFY';
+            negBadgeColor  = 'var(--teal)';
+            negBadgeBg     = 'rgba(90,175,165,0.08)';
+            negBadgeBorder = 'rgba(90,175,165,0.25)';
+            negBorderColor = 'var(--teal)';
+        } else {
+            negBadgeLabel  = 'ONGOING';
+            negBadgeColor  = 'var(--amber)';
+            negBadgeBg     = 'rgba(184,134,11,0.08)';
+            negBadgeBorder = 'rgba(184,134,11,0.2)';
+            negBorderColor = 'var(--amber)';
+        }
 
         html += `<div style="padding:12px 18px;border-bottom:1px solid var(--border-main);cursor:pointer;border-left:3px solid ${negBorderColor};"
             onclick="openTradeNegModal('${partnerId}')">
@@ -1004,21 +1251,27 @@ function renderTradeAgreements() {
                         <span>\u00B7 ${fmtBudgetCurrency(shipInfo.totalRevenue)} total revenue</span>
                     </div></div>`;
                 } else {
-                    // Pending shipping applications render in the top-level SHIPPING CONTRACTS
-                    // panel; here we only surface the efficiency impact of having no carrier.
+                    // Check for pending applications on this agreement's routes.
+                    // Actual accept/reject lives in the top-level Shipping Contracts
+                    // section — this is just a heads-up badge on the agreement row.
                     const agRoutes = _shippingRoutesByAgreement[ag.id] || [];
                     let pendingCount = 0;
                     for (const r of agRoutes) pendingCount += (_shippingAppsByRoute[r.id] || []).length;
 
                     html += `<div style="margin-top:6px;background:rgba(200,136,68,0.03);border:1px solid rgba(200,136,68,0.15);padding:8px 10px;">
-                        <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                            <span style="font-size:12px;font-weight:700;color:var(--orange);">No shipping corporation assigned</span>
-                            <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--orange);">85% efficiency</span>
-                        </div>
-                        <div style="font-size:11px;color:var(--text-dim);">Trade operates at 85% capacity. Each approved shipping corporation adds +3% efficiency (max 100%).</div>
-                        ${pendingCount > 0 ? `<div style="margin-top:6px;font-family:var(--font-mono);font-size:10px;color:#c8a832;">\uD83D\uDCE8 ${pendingCount} application${pendingCount !== 1 ? 's' : ''} pending — see SHIPPING CONTRACTS above.</div>` : ''}
-                    </div>`;
+                        <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>`;
+                    if (pendingCount > 0) {
+                        html += `<div style="font-family:var(--font-mono);font-size:11px;color:#c8a832;">
+                            \uD83D\uDCE8 ${pendingCount} shipping application${pendingCount !== 1 ? 's' : ''} pending — review under <strong>SHIPPING CONTRACTS</strong> above.
+                        </div>`;
+                    } else {
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                <span style="font-size:12px;font-weight:700;color:var(--orange);">No shipping corporation assigned</span>
+                                <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--orange);">85% efficiency</span>
+                            </div>
+                            <div style="font-size:11px;color:var(--text-dim);">Trade operates at 85% capacity. Each approved shipping corporation adds +3% efficiency (max 100%).</div>`;
+                    }
+                    html += `</div>`;
                 }
             }
 
@@ -1040,116 +1293,6 @@ function renderTradeAgreements() {
         _tradeExpandedAgreement = _tradeExpandedAgreement === agId ? null : agId;
         renderTradeAgreements();
     };
-}
-
-// ═══════════════════════════════════════════════════
-// SHIPPING CONTRACTS PANEL (pending applications awaiting Trade Minister review)
-// ═══════════════════════════════════════════════════
-
-function renderShippingContracts() {
-    const container = document.getElementById('trade-shipping-contracts');
-    if (!container) return;
-
-    // Flatten all pending applications across routes touching our nation
-    const apps = [];
-    for (const routeId of Object.keys(_shippingAppsByRoute)) {
-        const route = _shippingRouteById[routeId];
-        if (!route) continue;
-        for (const a of _shippingAppsByRoute[routeId]) apps.push({ ...a, route });
-    }
-
-    // Hide panel entirely when there's nothing to review
-    if (apps.length === 0) { container.innerHTML = ''; return; }
-
-    const isMoT = !!_isTradeMinister;
-
-    let html = `<div class="tr-panel">
-        <div class="tr-panel-header">
-            <span class="tr-panel-title">SHIPPING CONTRACTS</span>
-            <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${apps.length} pending</span>
-        </div>`;
-
-    for (const app of apps) {
-        const corp = app.factions || {};
-        const route = app.route || {};
-        const corpColor = corp.party_color || '#5a8aaa';
-        const fleetCap = Number(corp.shipping_fleet_capacity ?? 0);
-        const fleetDep = Number(corp.shipping_fleet_deployed ?? 0);
-        const available = Math.max(0, fleetCap - fleetDep);
-        const ticker = (corp.corp_ticker || corp.abbreviation || '').toUpperCase();
-        const logoHtml = corp.custom_logo_url
-            ? `<img src="${escapeHtml(corp.custom_logo_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:3px;" />`
-            : `<span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${corpColor};">${escapeHtml(ticker.slice(0,2) || '??')}</span>`;
-
-        const sectorLabel = route.goods_name || (route.trade_sector || 'Trade goods');
-        const originPort = route.origin_port || '?';
-        const destPort = route.destination_port || '?';
-        const pricePerTrip = Number(app.proposed_rate || 0);
-        // Round-trip cycle: out + back. 0-tick (instant) transits still cost 1 cycle/tick minimum.
-        const oneWayTicks = Number(route.transit_ticks ?? 0);
-        const cycleTicks = Math.max(1, oneWayTicks * 2);
-        // 1 tick = 30 days = 1 month, so trips per month = 1 / cycleTicks.
-        const tripsPerMonth = 1 / cycleTicks;
-        const monthlyCost = Math.round(pricePerTrip * tripsPerMonth);
-
-        const cashReserves = Number(corp.corp_cash_reserves ?? 0);
-        const reputation = Math.round(Number(corp.corp_reputation ?? 0));
-
-        const footer = isMoT
-            ? `<div style="display:flex;gap:8px;justify-content:flex-end;padding:10px 18px;background:var(--bg-card);border-top:1px solid var(--border-main);">
-                <button onclick="rejectShippingApp('${app.id}')" style="padding:7px 18px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.5px;color:#d44a4a;background:transparent;border:1px solid #d44a4a66;cursor:pointer;">REJECT</button>
-                <button onclick="approveShippingApp('${app.id}', '${app.route_id}', '${app.faction_id}')" style="padding:7px 18px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.5px;color:#000;background:#5cc55c;border:1px solid #5cc55c;cursor:pointer;">ACCEPT</button>
-            </div>`
-            : `<div style="padding:10px 18px;background:var(--bg-card);border-top:1px solid var(--border-main);text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Awaiting decision from the Minister of Trade</div>`;
-
-        html += `<div style="border-bottom:1px solid var(--border-main);">
-            <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-left:3px solid ${corpColor};">
-                <div style="width:36px;height:36px;background:${corpColor}15;border:1px solid ${corpColor}33;display:flex;align-items:center;justify-content:center;border-radius:4px;overflow:hidden;flex-shrink:0;">${logoHtml}</div>
-                <div style="flex:1;min-width:0;">
-                    <div style="font-size:14px;color:var(--text-bright);">
-                        <span style="font-weight:700;">${escapeHtml(corp.faction_name || 'Unknown Corp')}</span>
-                        <span style="color:var(--text-dim);font-weight:400;"> application for </span>
-                        <span style="font-weight:700;">${escapeHtml(originPort)} \u2192 ${escapeHtml(destPort)}</span>
-                    </div>
-                    <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:2px;">
-                        ${escapeHtml(sectorLabel)} \u00B7 ${fmtBudgetCurrency(pricePerTrip)}/trip \u00B7 ${cycleTicks} tick cycle
-                    </div>
-                </div>
-                <span class="tr-badge" style="color:var(--amber);background:rgba(200,168,50,0.08);border-color:rgba(200,168,50,0.35);">PENDING</span>
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;padding:12px 18px;background:var(--bg-card);">
-                <div>
-                    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">FLEET ON OFFER</div>
-                    <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--text-bright);">${available} <span style="font-size:11px;font-weight:400;color:var(--text-dim);">of ${fleetCap}</span></div>
-                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px;">vessels available</div>
-                </div>
-                <div>
-                    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">REPUTATION</div>
-                    <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${reputation >= 70 ? 'var(--green)' : reputation >= 40 ? 'var(--amber)' : 'var(--red)'};">${reputation}<span style="font-size:11px;font-weight:400;color:var(--text-dim);">/100</span></div>
-                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px;">corp standing</div>
-                </div>
-                <div>
-                    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">CASH RESERVES</div>
-                    <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--text-bright);">${fmtBudgetCurrency(cashReserves)}</div>
-                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px;">balance sheet</div>
-                </div>
-                <div>
-                    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">PRICE PER TRIP</div>
-                    <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent);">${fmtBudgetCurrency(pricePerTrip)}</div>
-                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px;">${cycleTicks} tick cycle</div>
-                </div>
-                <div>
-                    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">MONTHLY COST TO NATION</div>
-                    <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--orange);">${fmtBudgetCurrency(monthlyCost)}</div>
-                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px;">~${tripsPerMonth.toFixed(1)} trips/mo</div>
-                </div>
-            </div>
-            ${footer}
-        </div>`;
-    }
-
-    html += `</div>`;
-    container.innerHTML = html;
 }
 
 // ── All-nations trade flow data for partner analysis ──
@@ -1353,7 +1496,7 @@ function renderTradePartners() {
                         <span style="font-size:13px;color:var(--text-bright);font-weight:${isWeNeed ? '700' : '400'};">${escapeHtml(s.name)}</span>
                         ${isWeNeed ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
                 </div>`;
             }
             if (surpluses.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No surpluses</div>`;
@@ -1368,7 +1511,7 @@ function renderTradePartners() {
                         <span style="font-size:13px;color:var(--text-bright);font-weight:${weHave ? '700' : '400'};">${escapeHtml(d.name)}</span>
                         ${weHave ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}</span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
                 </div>`;
             }
             if (deficits.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No deficits</div>`;
@@ -1586,52 +1729,6 @@ function nationInfoUrl(nationName) {
 
 // ==================== UNSEEN PROPOSAL TRACKING ====================
 
-function renderWorldEvents() {
-    const scroll = document.getElementById('world-events-scroll');
-    const filterLabel = document.getElementById('world-events-filter-label');
-    if (!scroll) return;
-
-    let events = _worldEvents;
-
-    if (_worldEventTab === 'nation' && _worldEventNationFilter) {
-        events = events.filter(e => e.nation_id === _worldEventNationFilter);
-        const nation = (_worldAllNations || []).find(n => n.id === _worldEventNationFilter);
-        if (filterLabel) filterLabel.textContent = nation?.name?.toUpperCase() || '';
-    } else {
-        // World tab — show all
-        if (filterLabel) filterLabel.textContent = '';
-    }
-
-    // Sync active tab button state
-    const tabContainer = document.getElementById('world-events-tabs');
-    if (tabContainer) {
-        tabContainer.querySelectorAll('.world-events-tab').forEach(b => {
-            b.classList.toggle('active', b.dataset.tab === _worldEventTab);
-        });
-    }
-
-    if (events.length === 0) {
-        scroll.innerHTML = '<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No recent events.</div>';
-        return;
-    }
-
-    scroll.innerHTML = events.map(ev => {
-        const cat = ev.category || 'government';
-        const catStyle = EVENT_CAT_COLORS[cat] || EVENT_CAT_COLORS.government;
-        const nation = (_worldAllNations || []).find(n => n.id === ev.nation_id);
-        const nationName = nation?.name || 'Unknown';
-        const desc = ev.description_chosen || ev.event_name || '';
-        const truncDesc = desc.length > 120 ? desc.slice(0, 117) + '...' : desc;
-
-        return `<div class="world-event-row">
-            <span class="world-event-tick">${ev.fired_at_tick}</span>
-            <span class="world-event-cat" style="color:${catStyle.color};border-color:${catStyle.border};background:${catStyle.bg};">${escapeHtml(cat)}</span>
-            <span class="world-event-text" title="${escapeHtml(desc)}">${escapeHtml(truncDesc)}</span>
-            <span class="world-event-nation">${escapeHtml(nationName)}</span>
-        </div>`;
-    }).join('');
-}
-
 // ═══════════════════════════════════════════════════
 // WORLD MAP — Pan + Zoom
 // ═══════════════════════════════════════════════════
@@ -1833,11 +1930,6 @@ async function selectWorldNation(nationId) {
     const govData = await fetchNationGovernmentData(nation.id);
     const extraData = { gov: govData, tradeData: null };
     renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors, extraData);
-
-    // Auto-switch to NATION tab filtered to the selected nation
-    _worldEventNationFilter = nation.id;
-    _worldEventTab = 'nation';
-    renderWorldEvents();
 
     // Fetch bilateral trade data async, then patch just the trade section
     if (!isYou && myNationId) {
@@ -2241,9 +2333,6 @@ initPage('diplomacy', async (state) => {
 
     // ── World Map: Pan + Zoom ──
     initWorldMap();
-
-    // ── Event tab toggle (bind once) ──
-    initWorldEventTabs();
 
     // ── Nation highlight: load all nations for the panel ──
     try {
@@ -17638,10 +17727,13 @@ async function openTradeNegModal(partnerNationId) {
     const a = myNation.id < partnerNationId ? myNation.id : partnerNationId;
     const b = myNation.id < partnerNationId ? partnerNationId : myNation.id;
 
+    // Include 'ratification' so re-opening the modal after Send to Parliament
+    // surfaces the existing articles in read-only mode instead of spawning a
+    // fresh empty negotiation row.
     let { data: neg, error: negErr } = await _supabase.from('trade_negotiations')
         .select('id, status, draft_articles, approved_by_a, approved_by_b, nation_a_id, nation_b_id, agreement_type, agreement_name')
         .eq('nation_a_id', a).eq('nation_b_id', b)
-        .in('status', ['open', 'active'])
+        .in('status', ['open', 'active', 'ratification'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -17745,8 +17837,9 @@ async function openTradeNegModal(partnerNationId) {
         inputBar.style.display = 'none';
     }
 
-    // Render articles in left panel + agreement button
+    // Render articles in main panel + economy side panels + agreement button
     negArticlesRender();
+    negEconomyRender();
     negAgreementRender();
 
     // Update Name Agreement button state
@@ -17917,6 +18010,143 @@ function negChatSubscribe(negotiationId) {
             }
         })
         .subscribe();
+}
+
+// ── Economy side panels (your flows + their surpluses/deficits) ──
+//
+// Reuses the Trade tab's already-loaded data:
+//   _tradeFlows         — my nation's per-sector flows (production+demand)
+//   _allNationFlows     — every nation's flows, used for partner surplus/deficit
+// All numbers are monthly ($) so we append "/mo" affordances to the headers.
+
+function negEconomyRender() {
+    if (!_activeNegModal) return;
+    const partnerId = _activeNegModal.partnerNationId;
+
+    const myEl = document.getElementById('trade-neg-my-econ');
+    if (myEl) myEl.innerHTML = _negRenderMyEconomyHtml();
+
+    const theirEl = document.getElementById('trade-neg-their-econ');
+    if (theirEl) theirEl.innerHTML = _negRenderTheirEconomyHtml(partnerId);
+}
+
+function _negRenderMyEconomyHtml() {
+    // Iterate my nation's flows directly — same data source the Trade tab uses.
+    const flows = _tradeFlows || {};
+    const rows = [];
+    for (const [key, flow] of Object.entries(flows)) {
+        // Skip the food_agriculture parent when its sub-sectors are present.
+        if (key === 'food_agriculture' && (flows.grains_staples || flows.livestock_dairy)) continue;
+        const prod = Number(flow.export_capacity) || 0;
+        const dem  = Number(flow.import_demand)   || 0;
+        rows.push({
+            key,
+            name: TRADE_SECTOR_LABELS[key] || key,
+            icon: TRADE_SECTOR_ICONS[key]  || '\uD83D\uDCE6',
+            prod, dem,
+        });
+    }
+    // Keep a stable sort: biggest absolute imbalance first.
+    rows.sort((a, b) => Math.abs(b.prod - b.dem) - Math.abs(a.prod - a.dem));
+
+    const formatShort = (v) => {
+        if (!v) return '$0';
+        if (v >= 1_000_000_000) return '$' + (v / 1_000_000_000).toFixed(1) + 'B';
+        if (v >= 1_000_000)     return '$' + Math.round(v / 1_000_000) + 'M';
+        return '$' + Math.round(v).toLocaleString();
+    };
+    const formatBal = (v) => {
+        if (Math.abs(v) < 1) return '\u2014';
+        const sign = v > 0 ? '+' : '-';
+        return sign + formatShort(Math.abs(v));
+    };
+
+    let html = `<div class="trade-neg-econ__head">
+        <span class="trade-neg-econ__head-dot"></span>Your Economy
+    </div>
+    <div class="trade-neg-econ__cols">
+        <span>Commodity</span><span>Prod</span><span>Dem</span><span>Bal /mo</span>
+    </div>
+    <div class="trade-neg-econ__list">`;
+    if (rows.length === 0) {
+        html += `<div class="trade-neg-econ__empty">No flow data yet.</div>`;
+    } else {
+        for (const r of rows) {
+            const bal = r.prod - r.dem;
+            const bclass = bal > 1 ? 'trade-neg-econ__bal--pos'
+                         : bal < -1 ? 'trade-neg-econ__bal--neg'
+                         : 'trade-neg-econ__bal--neu';
+            html += `<div class="trade-neg-econ__row">
+                <div class="trade-neg-econ__name">
+                    <span class="trade-neg-econ__glyph">${r.icon}</span>
+                    <span>${escapeHtml(r.name)}</span>
+                </div>
+                <span class="trade-neg-econ__num">${formatShort(r.prod)}</span>
+                <span class="trade-neg-econ__num">${formatShort(r.dem)}</span>
+                <span class="trade-neg-econ__bal ${bclass}">${formatBal(bal)}</span>
+            </div>`;
+        }
+    }
+    html += `</div>`;
+    return html;
+}
+
+function _negRenderTheirEconomyHtml(partnerId) {
+    // Partner's surpluses = they can offer. Deficits = they need.
+    const partnerFlows = (_allNationFlows && _allNationFlows[partnerId]) || {};
+    const myFlows = _tradeFlows || {};
+
+    const sectorIcon  = (k) => (typeof TRADE_SECTOR_ICONS !== 'undefined' && TRADE_SECTOR_ICONS[k]) || '\uD83D\uDCE6';
+    const sectorLabel = (k) => (typeof TRADE_SECTOR_LABELS !== 'undefined' && TRADE_SECTOR_LABELS[k]) || k;
+    const formatShort = (v) => {
+        if (!v) return '$0';
+        if (v >= 1_000_000_000) return '$' + (v / 1_000_000_000).toFixed(1) + 'B';
+        if (v >= 1_000_000)     return '$' + Math.round(v / 1_000_000) + 'M';
+        return '$' + Math.round(v).toLocaleString();
+    };
+
+    const surpluses = [];
+    const deficits  = [];
+    for (const [sector, flow] of Object.entries(partnerFlows)) {
+        if (sector === 'food_agriculture' && (partnerFlows.grains_staples || partnerFlows.livestock_dairy)) continue;
+        const bal = Number(flow.export_capacity || 0) - Number(flow.import_demand || 0);
+        const entry = { sector, name: sectorLabel(sector), icon: sectorIcon(sector), amount: Math.abs(bal) };
+        if (bal > 0) surpluses.push(entry);
+        else if (bal < 0) deficits.push(entry);
+    }
+    surpluses.sort((a, b) => b.amount - a.amount);
+    deficits.sort((a, b) => b.amount - a.amount);
+
+    // Match sets — a partner "offer" matches when we have a deficit in that sector, vice versa.
+    const myDeficits  = new Set(Object.entries(myFlows).filter(([, f]) => (f.import_demand || 0) > (f.export_capacity || 0)).map(([k]) => k));
+    const mySurpluses = new Set(Object.entries(myFlows).filter(([, f]) => (f.export_capacity || 0) > (f.import_demand || 0)).map(([k]) => k));
+
+    const renderSection = (title, dotClass, items, matchSet) => {
+        let h = `<div class="trade-neg-econ__section">
+            <div class="trade-neg-econ__head ${dotClass}">
+                <span class="trade-neg-econ__head-dot"></span>${title}
+            </div>
+            <div class="trade-neg-econ__list">`;
+        if (items.length === 0) {
+            h += `<div class="trade-neg-econ__empty">No data</div>`;
+        } else {
+            for (const it of items.slice(0, 8)) {
+                const match = matchSet.has(it.sector);
+                h += `<div class="trade-neg-econ__row--simple ${match ? 'trade-neg-econ__row--match' : ''}">
+                    <div class="trade-neg-econ__name">
+                        <span class="trade-neg-econ__glyph">${it.icon}</span>
+                        <span>${escapeHtml(it.name)}${match ? '<span class="trade-neg-econ__match">match</span>' : ''}</span>
+                    </div>
+                    <span class="trade-neg-econ__val">${formatShort(it.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:9px;"> /mo</span></span>
+                </div>`;
+            }
+        }
+        h += `</div></div>`;
+        return h;
+    };
+
+    return renderSection('They Can Offer', 'trade-neg-econ__head--offer', surpluses, myDeficits)
+         + renderSection('They Need',      'trade-neg-econ__head--need',  deficits,  mySurpluses);
 }
 
 // ── Articles: Render ──
