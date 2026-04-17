@@ -775,9 +775,13 @@ async function _doApproveShippingApp(appId, routeId, corpFactionId) {
     if (claimFailureMsg) {
         // Revert the app back to pending so the MoT can try a different corp
         // (the unique index on route_id/faction_id blocks re-accept while approved).
-        await _supabase.from('shipping_applications')
+        // If the revert itself fails the app is wedged at status='approved' with
+        // no claim — log so an admin can see the leak; the original RPC error is
+        // still what we return to the caller.
+        const { error: revertErr } = await _supabase.from('shipping_applications')
             .update({ status: 'pending', reviewed_at_tick: null, reviewed_by_faction_id: null })
             .eq('id', appId);
+        if (revertErr) console.warn('[ShippingApproval] Revert-to-pending failed after claim error:', revertErr.message);
         return { ok: false, error: claimFailureMsg };
     }
 
@@ -991,14 +995,7 @@ function renderShippingContractsBlock() {
             ? `${r.origin_port} → ${r.destination_port}`
             : (r.goods_name || 'route');
 
-        // Bidding deadline: 3 ticks after the earliest bid landed. Deterministic
-        // per-route so the same countdown shows no matter which bid opened it.
-        const earliestBidTick = apps.reduce(
-            (min, a) => Math.min(min, Number(a.applied_at_tick) || 0),
-            Number.POSITIVE_INFINITY
-        );
-        const currentTick = _worldState?.shard?.current_tick || 0;
-        const closesInTicks = Number.isFinite(earliestBidTick) ? Math.max(0, (earliestBidTick + 3) - currentTick) : null;
+        const closesInTicks = _shippingBidCloseTicks(apps);
         const closesLabel = closesInTicks === null ? '' :
             closesInTicks === 0 ? 'closing this tick' :
             `closes in ${closesInTicks} tick${closesInTicks !== 1 ? 's' : ''}`;
@@ -1104,6 +1101,17 @@ window.toggleShippingRow = function(id) {
 // / trips projected), an empty bids-table scaffold, and the footer with
 // SELECTED / CONTRACT VALUE / TERM and the three action buttons (all
 // stubbed until later phases).
+
+// Shared countdown helper — used by both the route-summary row and the modal
+// header. Bidding deadline is 3 ticks after the earliest bid landed; if there
+// are no bids (caller shouldn't normally pass an empty list) returns null.
+function _shippingBidCloseTicks(apps) {
+    if (!apps || apps.length === 0) return null;
+    const earliest = apps.reduce((m, a) => Math.min(m, Number(a.applied_at_tick) || 0), Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(earliest)) return null;
+    const currentTick = _worldState?.shard?.current_tick || 0;
+    return Math.max(0, (earliest + 3) - currentTick);
+}
 
 let _shippingBidModal = null; // { routeId, route, apps, mot: {first, last} } | null
 
@@ -1308,7 +1316,7 @@ function _renderBidSortTab(key, label, activeKey) {
 // Single bid row. Computes derived fields (badges, tier, monthly cost, margin)
 // locally so the comparator in _renderShippingBidModalOverlay only has to sort
 // the raw app rows, not a pre-built view model.
-function _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, originNation, activeCorps, incumbentCorps, selectedAppId, canAct) {
+function _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, activeCorps, incumbentCorps, selectedAppId, canAct) {
     const corp = app.factions || {};
     const color = corp.party_color || '#5a8aaa';
     const ticker = (corp.corp_ticker || corp.abbreviation || '').toUpperCase();
@@ -1413,7 +1421,6 @@ function _renderShippingBidModalOverlay() {
     }
 
     const { route: r, apps, mot } = _shippingBidModal;
-    const currentTick = _worldState?.shard?.current_tick || 0;
 
     const originNation = (_worldAllNations || []).find(n => n.id === r.origin_nation_id);
     const destNation   = (_worldAllNations || []).find(n => n.id === r.destination_nation_id);
@@ -1421,13 +1428,7 @@ function _renderShippingBidModalOverlay() {
     const destName   = destNation?.name || 'Unknown';
     const sellingFlag = originNation?.flag_url || (originNation?.name ? `assets/flags/${originNation.name}.png` : '');
 
-    // Closing countdown: 3 ticks from the earliest bid.
-    const earliestBidTick = apps.length > 0
-        ? apps.reduce((m, a) => Math.min(m, Number(a.applied_at_tick) || 0), Number.POSITIVE_INFINITY)
-        : null;
-    const closesInTicks = earliestBidTick !== null && Number.isFinite(earliestBidTick)
-        ? Math.max(0, (earliestBidTick + 3) - currentTick)
-        : null;
+    const closesInTicks = _shippingBidCloseTicks(apps);
     const closesLabel = closesInTicks === null ? 'OPEN BIDDING'
         : closesInTicks === 0 ? 'CLOSING THIS TICK'
         : `CLOSES IN ${closesInTicks} TICK${closesInTicks !== 1 ? 'S' : ''}`;
@@ -1583,7 +1584,7 @@ function _renderShippingBidModalOverlay() {
             <div id="shipping-bid-modal-bids">
                 ${apps.length === 0
                     ? `<div style="padding:40px 22px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:1px;">NO PENDING BIDS</div>`
-                    : sortedApps.map(app => _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, originNation, _shippingBidModal.activeCorps, _shippingBidModal.incumbentCorps, _shippingBidModal.selectedAppId, canAct)).join('')}
+                    : sortedApps.map(app => _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, _shippingBidModal.activeCorps, _shippingBidModal.incumbentCorps, _shippingBidModal.selectedAppId, canAct)).join('')}
             </div>
 
             <!-- Footer -->
