@@ -3084,7 +3084,8 @@ const SHIPPING_SECTOR_MAP = {
 };
 
 const SHIPPING_ROUTE_THRESHOLD = 50000000;
-const SHIPPING_REVENUE_RATES = { bulk_cargo: 0.00004, container_freight: 0.00005, specialized_transport: 0.00008 };
+const SHIPPING_REVENUE_RATES = { bulk_cargo: 0.0006, container_freight: 0.0008, specialized_transport: 0.0012 };
+const SHIPPING_MONTHS_PER_YEAR = 12;
 
 function _shipTransitTicks(prox) { return (Number(prox) || 0) >= 71 ? 1 : 0; }
 function _shipDemand(vol) { return vol >= 500000000 ? 'CRITICAL' : vol >= 200000000 ? 'HIGH' : vol >= 100000000 ? 'MODERATE' : 'LOW'; }
@@ -3126,7 +3127,7 @@ async function generateShippingRoutes(supabase, currentTick) {
             trade_sector: tp.sector, cargo_category: sm.category, shipping_subsector: sm.subsector,
             scope: _shipScope(prox, tp.sector === 'arms'),
             goods_name: sm.goods, goods_description: sm.goodsSub, vessel_class: sm.vessel, vessel_note: sm.vesselNote,
-            trade_volume: Math.round(tp.trade_volume), estimated_revenue: Math.round(tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || 0.06)),
+            trade_volume: Math.round(tp.trade_volume), estimated_revenue: Math.round(tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) / SHIPPING_MONTHS_PER_YEAR),
             volume_physical: Math.round(tp.trade_volume / 100), volume_unit: sm.unit,
             transit_ticks: _shipTransitTicks(prox), proximity: prox, tariff_rate: tariffMap[tp.importer_nation_id] || 0,
             demand_level: _shipDemand(tp.trade_volume),
@@ -3208,7 +3209,7 @@ async function generateOrganicRoutes(supabase, currentTick) {
                 const sm = SHIPPING_SECTOR_MAP[chosen];
                 if (!sm) continue;
                 const vol = Math.round(Math.max(5e6, popF * gdpF * close * 3e7 * (0.7 + sRand(seed + 999) * 0.6)));
-                const rev = Math.round(vol * (SHIPPING_REVENUE_RATES[sm.subsector] || 0.06) * ORGANIC_REVENUE_MULT);
+                const rev = Math.round(vol * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) * ORGANIC_REVENUE_MULT / SHIPPING_MONTHS_PER_YEAR);
 
                 rows.push({
                     origin_nation_id: originId, destination_nation_id: destId,
@@ -3727,15 +3728,34 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             // Update assigned vessel: arrived at destination port + auto-refuel
                             const destNationId = claim.shipping_routes?.destination_nation_id || claim.nation_id;
 
-                            // Auto-refuel: check for fuel depot in destination nation
-                            // Base fuel cost = $50k per refuel. State = 3x ($150k). Depot owner = +15%.
-                            const { data: fuelDepot } = await supabase.from('corp_properties')
-                                .select('id, faction_id')
-                                .eq('nation_id', destNationId)
-                                .eq('type', 'fuel_depot')
-                                .eq('is_active', true)
-                                .limit(1)
-                                .maybeSingle();
+                            // Auto-refuel: check for fuel depot in destination nation.
+                            // Base fuel cost = $50k per refuel. State = 3x ($150k). Other corp's depot = 1.15x.
+                            // Prefer our OWN depot first — a previous LIMIT 1 without an
+                            // owner filter could return another corp's depot and leave us
+                            // paying the 1.15x rate even when our own was available.
+                            let fuelDepot = null;
+                            {
+                                const { data: ownDepot } = await supabase.from('corp_properties')
+                                    .select('id, faction_id')
+                                    .eq('nation_id', destNationId)
+                                    .eq('faction_id', claim.faction_id)
+                                    .eq('type', 'fuel_depot')
+                                    .eq('is_active', true)
+                                    .limit(1)
+                                    .maybeSingle();
+                                if (ownDepot) {
+                                    fuelDepot = ownDepot;
+                                } else {
+                                    const { data: anyDepot } = await supabase.from('corp_properties')
+                                        .select('id, faction_id')
+                                        .eq('nation_id', destNationId)
+                                        .eq('type', 'fuel_depot')
+                                        .eq('is_active', true)
+                                        .limit(1)
+                                        .maybeSingle();
+                                    fuelDepot = anyDepot;
+                                }
+                            }
 
                             const baseFuelCost = 50000;
                             let fuelCost;
@@ -3878,11 +3898,19 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 updates.active_claim_id = null;
                                 console.log(`[advance-corp-tick] Vessel ${v.vessel_name}: STRANDED (out of fuel mid-transit)`);
 
-                                // Release the shipping claim
+                                // Release the shipping claim, zero out the revenue going forward,
+                                // and free the fleet slot so the corp doesn't keep earning from a
+                                // lost ship. Insurance (below) is the only remaining cashflow.
                                 if (v.active_claim_id) {
                                     await supabase.from('shipping_claims').update({
-                                        vessel_status: 'idle', status: 'suspended',
+                                        vessel_status: 'idle',
+                                        status: 'released',
+                                        released_at_tick: currentTick,
+                                        revenue_per_transit: 0,
                                     }).eq('id', v.active_claim_id);
+                                    await supabase.from('factions').update({
+                                        shipping_fleet_deployed: Math.max(0, Number(corp.shipping_fleet_deployed || 0) - 1),
+                                    }).eq('id', corp.id);
                                 }
 
                                 // Auto-file insurance claim if vessel has active coverage

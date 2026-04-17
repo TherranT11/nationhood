@@ -26584,10 +26584,11 @@ var SHIPPING_ROUTE_THRESHOLD = 50000000; // $50M
  * Bulk cargo: lower margin. Container freight: medium. Specialized: highest.
  */
 var SHIPPING_REVENUE_RATES = {
-    bulk_cargo: 0.00004,           // 0.004% of trade value — ~$250k–$750k/trip on top lanes
-    container_freight: 0.00005,    // 0.005% of trade value
-    specialized_transport: 0.00008,// 0.008% of trade value
+    bulk_cargo: 0.0006,            // 0.06% of annual trade value
+    container_freight: 0.0008,     // 0.08% of annual trade value
+    specialized_transport: 0.0012, // 0.12% of annual trade value
 };
+var MONTHS_PER_YEAR = 12;
 
 /**
  * Calculate transit time in ticks based on proximity (0-100).
@@ -26721,8 +26722,9 @@ async function generateShippingRoutes(supabase, currentTick) {
         var isGov = tp.sector === 'arms';
         var scope = getRouteScope(proximity, isGov);
         var demandLevel = getDemandLevel(tp.trade_volume);
-        var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || 0.06;
-        var estRevenue = Math.round(tp.trade_volume * revenueRate);
+        var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
+        // Annual rate × monthly volume / 12 months = per-trip payout.
+        var estRevenue = Math.round(tp.trade_volume * revenueRate / MONTHS_PER_YEAR);
 
         // Physical volume conversion (using same factor as display units)
         var volumePhysical = Math.round(tp.trade_volume / 100); // rough conversion

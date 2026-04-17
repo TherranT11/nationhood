@@ -28,17 +28,22 @@ export var SHIPPING_SECTOR_MAP = {
 export var SHIPPING_ROUTE_THRESHOLD = 50000000; // $50M
 
 /**
- * Revenue fraction — shipping corps earn this slice of per-tick bilateral trade
- * volume per completed transit. Calibrated so a single corp servicing a
- * top-volume lane (~$10B/tick) earns ~$250k–$750k/trip, matching the
- * intended per-ship/per-month payout; smaller routes scale down from there.
+ * Annual revenue fraction — shipping corps earn this share of the trade value
+ * they move, expressed as an ANNUAL rate. Per-transit revenue divides by
+ * MONTHS_PER_YEAR so the corp earns the monthly slice of that annual total
+ * per completed trip, regardless of how many trips a route can fit per year.
+ *
  * Bulk cargo: lower margin. Container freight: medium. Specialized: highest.
+ * Target: single corp on a top-volume lane (~$10B/tick) earns $250k–$750k/trip.
  */
 export var SHIPPING_REVENUE_RATES = {
-    bulk_cargo: 0.00004,           // 0.004% of trade value
-    container_freight: 0.00005,    // 0.005% of trade value
-    specialized_transport: 0.00008,// 0.008% of trade value
+    bulk_cargo: 0.0006,            // 0.06% of annual trade value
+    container_freight: 0.0008,     // 0.08% of annual trade value
+    specialized_transport: 0.0012, // 0.12% of annual trade value
 };
+
+/** Ticks per year — used to turn the annual rate into a per-trip payout. */
+export var MONTHS_PER_YEAR = 12;
 
 /**
  * Calculate transit time in ticks based on proximity (0-100).
@@ -172,8 +177,9 @@ export async function generateShippingRoutes(supabase, currentTick) {
         var isGov = tp.sector === 'arms';
         var scope = getRouteScope(proximity, isGov);
         var demandLevel = getDemandLevel(tp.trade_volume);
-        var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || 0.06;
-        var estRevenue = Math.round(tp.trade_volume * revenueRate);
+        var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
+        // Annual rate × trade volume (per-tick/per-month) ÷ 12 months = per-trip payout.
+        var estRevenue = Math.round(tp.trade_volume * revenueRate / MONTHS_PER_YEAR);
 
         // Physical volume conversion (using same factor as display units)
         var volumePhysical = Math.round(tp.trade_volume / 100); // rough conversion
@@ -412,8 +418,9 @@ export async function generateOrganicRoutes(supabase, currentTick) {
                 // Organic volume: much smaller than agreement-backed
                 var baseVolume = popFactor * gdpFactor * closeness * 30000000; // ~$30M base scaled
                 var volume = Math.round(Math.max(5000000, baseVolume * (0.7 + seededRandom(seed + 999) * 0.6)));
-                var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || 0.06;
-                var estRevenue = Math.round(volume * revenueRate * ORGANIC_REVENUE_MULTIPLIER);
+                var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
+                // Annual rate × monthly volume ÷ 12 = per-trip payout; organic lanes pay 35% of that.
+                var estRevenue = Math.round(volume * revenueRate * ORGANIC_REVENUE_MULTIPLIER / MONTHS_PER_YEAR);
 
                 var transitTicks = calculateTransitTicks(proximity);
                 var scope = getRouteScope(proximity, false);
