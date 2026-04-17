@@ -161,6 +161,70 @@
     padding: 8px 14px; margin-bottom: 4px;
 }
 
+/* ── Laws tab: category headers + compact rows ── */
+.laws-category-header {
+    padding: 7px 20px;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-main);
+    border-bottom: 1px solid var(--border-main);
+    border-left: 3px solid var(--accent);
+    display: flex; justify-content: space-between; align-items: baseline;
+    position: sticky; top: 0; z-index: 1;
+}
+.laws-category-header:first-child { border-top: none; }
+.laws-category-title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px; color: var(--accent); text-transform: uppercase;
+}
+.laws-category-count {
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+    letter-spacing: 0.5px;
+}
+
+.laws-row {
+    display: flex; gap: 16px; align-items: flex-start;
+    padding: 7px 20px;
+    border-bottom: 1px solid var(--border-main);
+}
+.laws-row.enacted { background: rgba(92, 204, 92, 0.02); }
+.laws-row-main { flex: 1; min-width: 0; }
+.laws-row-title {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 2px;
+}
+.laws-row-name {
+    font-size: 13px; font-weight: 700; color: var(--text-bright);
+}
+.laws-enacted-badge {
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 1px 5px;
+    color: var(--green); background: rgba(92,204,92,0.08);
+    border: 1px solid rgba(92,204,92,0.2);
+}
+.laws-minor {
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+}
+.laws-ideo-badge {
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+    padding: 1px 5px; border: 1px solid;
+}
+.laws-row-desc {
+    font-size: 11px; color: var(--text-dim); line-height: 1.45;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.laws-row-effects {
+    display: flex; flex-wrap: wrap; gap: 3px;
+    align-items: center; flex-shrink: 0;
+    max-width: 45%;
+    justify-content: flex-end;
+}
+.laws-effect-tag {
+    font-family: var(--font-mono); font-size: 9px;
+    padding: 1px 5px; border: 1px solid;
+    background: var(--bg-panel);
+}
+
 /* ── Responsive ── */
 @media (max-width: 1200px) {
     #leg-left { width: 100% !important; }
@@ -177,4 +241,8 @@
     .leg-article-row { padding: 6px 9px; }
     .leg-support-bar-wrap { margin-bottom: 8px; }
     .leg-vote-row { flex-direction: column; align-items: stretch; }
+    .laws-category-header { padding: 6px 10px; }
+    .laws-row { padding: 6px 10px; flex-direction: column; gap: 6px; }
+    .laws-row-effects { max-width: 100%; justify-content: flex-start; }
+    .laws-row-desc { white-space: normal; }
 }
