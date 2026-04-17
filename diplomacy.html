@@ -570,6 +570,7 @@ let _shippingRowExpanded = null;     // id of the currently-expanded shipping co
 
 async function loadShippingData() {
     const nationId = _worldState?.nation?.id;
+    console.log('[Shipping] loadShippingData() called, nationId =', nationId);
     if (!nationId) return;
 
     _shippingRoutesByAgreement = {};
