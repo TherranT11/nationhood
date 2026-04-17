@@ -746,6 +746,106 @@ function getAgreementShippingInfo(agreementId) {
 
 let _shippingApprovalPending = false;
 
+// Core approval logic — does not prompt, alert, or toggle the pending lock.
+// Callers (approveShippingApp, awardShippingContract) own UX + locking so the
+// AWARD-many flow can reuse this without triggering a cascade of confirm()s.
+// Returns { ok: true, eventText? } | { ok: false, error }.
+async function _doApproveShippingApp(appId, routeId, corpFactionId) {
+    const tick = _worldState?.shard?.current_tick || 0;
+
+    // Read the application first so we know which vessel the corp put on offer
+    // AND the service rate they proposed. Read failure is non-fatal.
+    const { data: appRow, error: appReadErr } = await _supabase.from('shipping_applications')
+        .select('vessel_id, proposed_rate').eq('id', appId).maybeSingle();
+    if (appReadErr) console.warn('[ShippingApproval] app lookup failed:', appReadErr.message);
+    const vesselId = appRow?.vessel_id || null;
+    const proposedRate = Number(appRow?.proposed_rate) || 0;
+
+    const { error: appErr } = await _supabase.from('shipping_applications')
+        .update({ status: 'approved', reviewed_at_tick: tick, reviewed_by_faction_id: _worldState?.faction?.id })
+        .eq('id', appId);
+    if (appErr) return { ok: false, error: appErr.message };
+
+    const { data: claimData, error: claimErr } = await _supabase.rpc('claim_shipping_route', {
+        p_faction_id: corpFactionId,
+        p_route_id: routeId,
+        p_current_tick: tick,
+    });
+    const claimFailureMsg = claimErr?.message || (claimData && claimData.success === false ? claimData.error : null);
+    if (claimFailureMsg) {
+        // Revert the app back to pending so the MoT can try a different corp
+        // (the unique index on route_id/faction_id blocks re-accept while approved).
+        await _supabase.from('shipping_applications')
+            .update({ status: 'pending', reviewed_at_tick: null, reviewed_by_faction_id: null })
+            .eq('id', appId);
+        return { ok: false, error: claimFailureMsg };
+    }
+
+    if (claimData?.claim_id) {
+        // Bid becomes the per-transit payout, clamped to the service-rate band.
+        if (proposedRate > 0) {
+            const MIN_RATE = 250000, MAX_RATE = 750000;
+            const clamped = Math.round(Math.min(MAX_RATE, Math.max(MIN_RATE, proposedRate)));
+            const share   = Number(claimData.market_share) || 100;
+            const revPerT = Math.round(clamped * (share / 100));
+            const { error: rateErr } = await _supabase.from('shipping_claims')
+                .update({ revenue_per_transit: revPerT })
+                .eq('id', claimData.claim_id);
+            if (rateErr) console.warn('[ShippingApproval] Service-rate update failed:', rateErr.message);
+        }
+
+        if (vesselId) {
+            // Assign the offered vessel only if it's still idle; otherwise the corp
+            // reassigns from their Active Voyages view.
+            const { data: vesselUpd, error: vesselErr } = await _supabase.from('corp_vessels').update({
+                status: 'in_transit',
+                active_claim_id: claimData.claim_id,
+                current_port_nation_id: null,
+            })
+                .eq('id', vesselId)
+                .eq('faction_id', corpFactionId)
+                .is('active_claim_id', null)
+                .eq('status', 'in_port')
+                .select('id');
+            if (vesselErr) {
+                console.warn('[ShippingApproval] Vessel assignment failed:', vesselErr.message);
+            } else if (!vesselUpd || vesselUpd.length === 0) {
+                console.warn('[ShippingApproval] Offered vessel no longer idle; corp must assign manually.');
+            }
+        }
+    }
+
+    // Non-critical event log.
+    try {
+        await _supabase.from('event_log').insert({
+            nation_id: _worldState?.nation?.id,
+            event_name: 'Shipping application accepted',
+            category: 'trade',
+            description_chosen: 'A shipping corporation has been accepted to service a trade route. Route efficiency will increase.',
+            fired_at_tick: tick,
+        });
+    } catch (_) { /* event log failure must not surface as an approval failure */ }
+
+    return { ok: true };
+}
+
+// Core rejection logic — parallel to _doApproveShippingApp. Reason is optional
+// (awardShippingContract passes a standardised "another bid was awarded" string
+// when bulk-rejecting losers).
+async function _doRejectShippingApp(appId, reason) {
+    const tick = _worldState?.shard?.current_tick || 0;
+    const { error } = await _supabase.from('shipping_applications')
+        .update({
+            status: 'rejected',
+            reviewed_at_tick: tick,
+            reviewed_by_faction_id: _worldState?.faction?.id,
+            rejection_reason: reason || null,
+        })
+        .eq('id', appId);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+}
+
 window.approveShippingApp = async function(appId, routeId, corpFactionId) {
     if (_shippingApprovalPending) return;
     await refreshTradeMinisterFlag();
@@ -754,94 +854,13 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
     _shippingApprovalPending = true;
 
     try {
-        const tick = _worldState?.shard?.current_tick || 0;
-
-        // Read the application first so we know which vessel the corp put on offer
-        // AND the service rate they proposed (that's what they actually get paid, not
-        // the route's default estimated_revenue). A read failure is non-fatal.
-        const { data: appRow, error: appReadErr } = await _supabase.from('shipping_applications')
-            .select('vessel_id, proposed_rate').eq('id', appId).maybeSingle();
-        if (appReadErr) console.warn('[ShippingApproval] app lookup failed:', appReadErr.message);
-        const vesselId = appRow?.vessel_id || null;
-        const proposedRate = Number(appRow?.proposed_rate) || 0;
-
-        // Update application status
-        const { error: appErr } = await _supabase.from('shipping_applications')
-            .update({ status: 'approved', reviewed_at_tick: tick, reviewed_by_faction_id: _worldState?.faction?.id })
-            .eq('id', appId);
-        if (appErr) { alert('Failed to accept: ' + appErr.message); return; }
-
-        // Auto-create a shipping claim via RPC
-        const { data: claimData, error: claimErr } = await _supabase.rpc('claim_shipping_route', {
-            p_faction_id: corpFactionId,
-            p_route_id: routeId,
-            p_current_tick: tick,
-        });
-        const claimFailureMsg = claimErr?.message || (claimData && claimData.success === false ? claimData.error : null);
-        if (claimFailureMsg) {
-            // The unique (route, faction) index would block re-acceptance while status='approved',
-            // so revert the application back to pending and surface the reason.
-            await _supabase.from('shipping_applications')
-                .update({ status: 'pending', reviewed_at_tick: null, reviewed_by_faction_id: null })
-                .eq('id', appId);
-            alert('Could not activate the route: ' + claimFailureMsg);
+        const res = await _doApproveShippingApp(appId, routeId, corpFactionId);
+        if (!res.ok) {
+            alert('Could not activate the route: ' + res.error);
             await loadShippingData();
             renderTradeAgreements();
             return;
         }
-
-        if (claimData?.claim_id) {
-            // Overwrite the claim's revenue_per_transit with the corp's proposed
-            // service rate, clamped to the $250k–$750k band, split by market share.
-            // The RPC initializes revenue_per_transit from estimated_revenue, which
-            // ignores what the corp actually bid; this makes the bid authoritative.
-            if (proposedRate > 0) {
-                const MIN_RATE = 250000, MAX_RATE = 750000;
-                const clamped  = Math.round(Math.min(MAX_RATE, Math.max(MIN_RATE, proposedRate)));
-                const share    = Number(claimData.market_share) || 100;
-                const revPerT  = Math.round(clamped * (share / 100));
-                const { error: rateErr } = await _supabase.from('shipping_claims')
-                    .update({ revenue_per_transit: revPerT })
-                    .eq('id', claimData.claim_id);
-                if (rateErr) console.warn('[ShippingApproval] Service-rate update failed:', rateErr.message);
-            }
-
-            if (vesselId) {
-                // Assign the vessel the corp put on offer to the new claim so it shows up
-                // as an Active Voyage on the corp's side immediately. Filter on the vessel
-                // still being idle so we don't clobber a vessel the corp has since reassigned.
-                const { data: vesselUpd, error: vesselErr } = await _supabase.from('corp_vessels').update({
-                    status: 'in_transit',
-                    active_claim_id: claimData.claim_id,
-                    current_port_nation_id: null,
-                })
-                    .eq('id', vesselId)
-                    .eq('faction_id', corpFactionId)
-                    .is('active_claim_id', null)
-                    .eq('status', 'in_port')
-                    .select('id');
-                if (vesselErr) {
-                    console.warn('[ShippingApproval] Vessel assignment failed:', vesselErr.message);
-                } else if (!vesselUpd || vesselUpd.length === 0) {
-                    // Vessel is no longer idle — the claim is active but the corp will need to
-                    // assign a vessel manually from their Active Voyages view.
-                    console.warn('[ShippingApproval] Offered vessel no longer idle; corp must assign manually.');
-                }
-            }
-        }
-
-        // Log event (non-critical — approval already persisted)
-        try {
-            await _supabase.from('event_log').insert({
-                nation_id: _worldState?.nation?.id,
-                event_name: 'Shipping application accepted',
-                category: 'trade',
-                description_chosen: 'A shipping corporation has been accepted to service a trade route. Route efficiency will increase.',
-                fired_at_tick: tick,
-            });
-        } catch (_) { /* event log failure must not surface as an approval failure */ }
-
-        // Reload shipping data and re-render
         await loadShippingData();
         renderTradeAgreements();
     } catch (err) {
@@ -860,11 +879,8 @@ window.rejectShippingApp = async function(appId) {
     _shippingApprovalPending = true;
 
     try {
-        const tick = _worldState?.shard?.current_tick || 0;
-        const { error } = await _supabase.from('shipping_applications')
-            .update({ status: 'rejected', reviewed_at_tick: tick, reviewed_by_faction_id: _worldState?.faction?.id, rejection_reason: reason || null })
-            .eq('id', appId);
-        if (error) { alert('Failed to reject: ' + error.message); return; }
+        const res = await _doRejectShippingApp(appId, reason);
+        if (!res.ok) { alert('Failed to reject: ' + res.error); return; }
 
         await loadShippingData();
         renderTradeAgreements();
@@ -1154,6 +1170,69 @@ window.setShippingBidSort = function(key) {
     _renderShippingBidModalOverlay();
 };
 
+window.selectShippingBid = function(appId) {
+    if (!_shippingBidModal || _shippingBidModal.awardPending) return;
+    // Toggle: clicking the already-selected row clears the selection.
+    _shippingBidModal.selectedAppId = _shippingBidModal.selectedAppId === appId ? null : appId;
+    _renderShippingBidModalOverlay();
+};
+
+// Award the selected bid and bulk-reject the remaining ones on the same route.
+// Winner first — if the claim RPC fails, losers are NOT rejected so the MoT
+// can retry or pick a different bid.
+window.awardShippingContract = async function() {
+    if (!_shippingBidModal) return;
+    if (_shippingBidModal.awardPending || _shippingApprovalPending) return;
+
+    await refreshTradeMinisterFlag();
+    if (!_isTradeMinister) { alert('Only the Minister of Trade can award contracts.'); return; }
+
+    const sel = (_shippingBidModal.apps || []).find(a => a.id === _shippingBidModal.selectedAppId);
+    if (!sel) { alert('Select a bid first.'); return; }
+
+    const losers = (_shippingBidModal.apps || []).filter(a => a.id !== sel.id);
+    const corpName = sel.factions?.faction_name || 'selected corporation';
+    const loserNote = losers.length > 0
+        ? `\n\nThe other ${losers.length} bid${losers.length !== 1 ? 's' : ''} on this route will be rejected.`
+        : '';
+    if (!confirm(`Award this route to ${corpName}?${loserNote}`)) return;
+
+    _shippingBidModal.awardPending = true;
+    _shippingApprovalPending = true;
+    _renderShippingBidModalOverlay();
+
+    try {
+        const winRes = await _doApproveShippingApp(sel.id, sel.route_id, sel.faction_id);
+        if (!winRes.ok) {
+            alert('Could not award the contract: ' + (winRes.error || 'unknown error') + '\n\nNo bids were rejected.');
+            return;
+        }
+
+        // Bulk-reject losers in parallel. Individual failures get logged but
+        // don't unwind the award — the winning claim is already active.
+        if (losers.length > 0) {
+            const rejectResults = await Promise.all(losers.map(l =>
+                _doRejectShippingApp(l.id, 'Another bid was awarded for this route.')
+            ));
+            const failed = rejectResults.filter(r => !r.ok).length;
+            if (failed > 0) console.warn(`[ShippingAward] ${failed}/${losers.length} loser rejections failed`);
+        }
+
+        window.closeShippingBidModal();
+        await loadShippingData();
+        renderTradeAgreements();
+    } catch (e) {
+        console.error('[ShippingAward] Error:', e);
+        alert('Award failed: ' + (e?.message || 'unknown error'));
+    } finally {
+        if (_shippingBidModal) {
+            _shippingBidModal.awardPending = false;
+            _renderShippingBidModalOverlay();
+        }
+        _shippingApprovalPending = false;
+    }
+};
+
 // Bind ESC + overlay click once. The rendered overlay stops propagation on
 // its inner content so clicks inside the modal don't trigger dismissal.
 if (!window._shippingBidModalEscBound) {
@@ -1172,7 +1251,7 @@ function _renderBidSortTab(key, label, activeKey) {
 // Single bid row. Computes derived fields (badges, tier, monthly cost, margin)
 // locally so the comparator in _renderShippingBidModalOverlay only has to sort
 // the raw app rows, not a pre-built view model.
-function _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, originNation, activeCorps, incumbentCorps) {
+function _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, originNation, activeCorps, incumbentCorps, selectedAppId, canAct) {
     const corp = app.factions || {};
     const color = corp.party_color || '#5a8aaa';
     const ticker = (corp.corp_ticker || corp.abbreviation || '').toUpperCase();
@@ -1225,7 +1304,13 @@ function _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, or
         `<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;padding:1px 5px;color:${b.color};background:${b.color === 'var(--green)' ? 'rgba(92,204,92,0.08)' : b.color === 'var(--amber)' ? 'rgba(200,168,50,0.08)' : 'rgba(90,138,170,0.08)'};border:1px solid ${b.color};">${b.label}</span>`
     ).join('');
 
-    return `<div style="display:grid;grid-template-columns:36px minmax(0,1fr) 120px 140px 110px 120px 110px 110px;gap:12px;padding:14px 22px;border-bottom:1px solid var(--border-main);align-items:center;border-left:3px solid ${color};">
+    const isSelected = selectedAppId === app.id;
+    const rowBg = isSelected ? `background:${color}12;` : '';
+    const selectBtnHtml = canAct
+        ? `<button onclick="selectShippingBid('${app.id}')" style="padding:8px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:${isSelected ? '#000' : 'var(--text-bright)'};background:${isSelected ? color : 'transparent'};border:1px solid ${color};cursor:pointer;">${isSelected ? 'SELECTED' : 'SELECT'}</button>`
+        : `<button disabled style="padding:8px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:not-allowed;opacity:0.55;">SELECT</button>`;
+
+    return `<div style="display:grid;grid-template-columns:36px minmax(0,1fr) 120px 140px 110px 120px 110px 110px;gap:12px;padding:14px 22px;border-bottom:1px solid var(--border-main);align-items:center;border-left:3px solid ${color};${rowBg}">
         <div style="width:36px;height:36px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;border-radius:4px;overflow:hidden;">${logoHtml}</div>
         <div style="min-width:0;">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -1258,7 +1343,7 @@ function _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, or
             <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">vs. median</div>
         </div>
         <div style="text-align:right;">
-            <button disabled title="Selection lands in Phase 4" style="padding:8px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:not-allowed;opacity:0.55;">SELECT</button>
+            ${selectBtnHtml}
         </div>
     </div>`;
 }
@@ -1309,6 +1394,16 @@ function _renderShippingBidModalOverlay() {
         : ('$' + Math.round(Number(n) || 0).toLocaleString());
 
     const motName = (mot.first || mot.last) ? `${mot.first} ${mot.last}`.trim() : '—';
+
+    // Only the Minister of Trade can SELECT / AWARD / REJECT-ALL. Everyone
+    // else in the nation sees read-only bids.
+    const canAct = !!_isTradeMinister;
+    const awardPending = !!_shippingBidModal.awardPending;
+    const selectedApp = (apps || []).find(a => a.id === _shippingBidModal.selectedAppId) || null;
+    const contractTermTicks = 36;
+    const contractValue = selectedApp
+        ? (Number(selectedApp.proposed_rate) || 0) * tripsPerMonth * contractTermTicks
+        : 0;
 
     // Sorted bid list. Sort keys correspond to the four tabs below.
     const sortKey = _shippingBidModal.sort || 'lowest_bid';
@@ -1431,20 +1526,25 @@ function _renderShippingBidModalOverlay() {
             <div id="shipping-bid-modal-bids">
                 ${apps.length === 0
                     ? `<div style="padding:40px 22px;text-align:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:1px;">NO PENDING BIDS</div>`
-                    : sortedApps.map(app => _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, originNation, _shippingBidModal.activeCorps, _shippingBidModal.incumbentCorps)).join('')}
+                    : sortedApps.map(app => _renderShippingBidRow(app, r, bidMin, bidMedian, tripsPerMonth, fmt, originNation, _shippingBidModal.activeCorps, _shippingBidModal.incumbentCorps, _shippingBidModal.selectedAppId, canAct)).join('')}
             </div>
 
             <!-- Footer -->
             <div style="padding:14px 22px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
                 <div style="display:flex;gap:22px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">
-                    <span><span style="color:var(--text-muted);letter-spacing:1px;">SELECTED</span> <span style="color:var(--text-bright);font-weight:600;">NONE</span></span>
-                    <span><span style="color:var(--text-muted);letter-spacing:1px;">CONTRACT VALUE</span> <span style="color:var(--text-bright);font-weight:600;">—</span></span>
-                    <span><span style="color:var(--text-muted);letter-spacing:1px;">TERM</span> <span style="color:var(--text-bright);font-weight:600;">36 TICKS</span></span>
+                    <span><span style="color:var(--text-muted);letter-spacing:1px;">SELECTED</span> <span style="color:var(--text-bright);font-weight:600;">${selectedApp ? escapeHtml(selectedApp.factions?.faction_name || 'Corp') : 'NONE'}</span></span>
+                    <span><span style="color:var(--text-muted);letter-spacing:1px;">CONTRACT VALUE</span> <span style="color:var(--text-bright);font-weight:600;">${selectedApp ? fmt(contractValue) : '—'}</span></span>
+                    <span><span style="color:var(--text-muted);letter-spacing:1px;">TERM</span> <span style="color:var(--text-bright);font-weight:600;">${contractTermTicks} TICKS</span></span>
                 </div>
                 <div style="display:flex;gap:8px;">
-                    <button disabled style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:not-allowed;opacity:0.5;">REQUEST MORE BIDS</button>
-                    <button disabled style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:not-allowed;opacity:0.5;">REJECT ALL</button>
-                    <button disabled style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#000;background:#5cc55c;border:none;cursor:not-allowed;opacity:0.5;">AWARD CONTRACT</button>
+                    <button disabled title="Phase 5" style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:not-allowed;opacity:0.5;">REQUEST MORE BIDS</button>
+                    <button disabled title="Phase 5" style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:not-allowed;opacity:0.5;">REJECT ALL</button>
+                    <button
+                        ${(!canAct || !selectedApp || awardPending) ? 'disabled' : ''}
+                        onclick="window.awardShippingContract()"
+                        style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#000;background:#5cc55c;border:none;cursor:${(!canAct || !selectedApp || awardPending) ? 'not-allowed' : 'pointer'};opacity:${(!canAct || !selectedApp || awardPending) ? 0.5 : 1};">
+                        ${awardPending ? 'AWARDING\u2026' : 'AWARD CONTRACT'}
+                    </button>
                 </div>
             </div>
         </div>`;
