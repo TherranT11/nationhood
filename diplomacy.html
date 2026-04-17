@@ -763,7 +763,7 @@ async function loadTradeAgreements() {
 // Rendered at the top of the AGREEMENTS panel so government-side users can
 // accept/reject applications and see live active shipping contracts without
 // having to expand each trade agreement row.
-function renderShippingContractsBlock(currentTk) {
+function renderShippingContractsBlock() {
     const routeMap = new Map();
     for (const r of (_allShippingRoutes || [])) routeMap.set(r.id, r);
 
@@ -957,7 +957,7 @@ function renderTradeAgreements() {
         </div>`;
 
     // Shipping contracts (pending applications + active claims) — rendered at top
-    html += renderShippingContractsBlock(currentTk);
+    html += renderShippingContractsBlock();
 
     // Ongoing trade negotiations (shown before agreements)
     const ongoingNegs = _tradeNegotiationsList || [];
