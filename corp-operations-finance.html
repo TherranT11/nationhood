@@ -1639,7 +1639,9 @@ function rdOpen(dealIdx) {
         rdLoanCollateral = deal.collateral || 'unsecured';
         rdLoanTermsText = '';
     } else if (deal.type === 'INSURE') {
-        rdInsurePremium = 3.5;
+        // Vessel insurance pays half the premium of project/construction
+        // insurance; underwriters set the rate in a 0.5–4% band instead of 1–8%.
+        rdInsurePremium = deal.isVesselInsurance ? 1.75 : 3.5;
         rdInsureCoverage = deal.amount;
         rdInsureDeductible = 10;
         rdPolicyTerms = '';
@@ -1874,17 +1876,22 @@ function renderReviewDeal() {
 
         html += `<div class="rd-section-bar" style="color:#aa7a5a;">Set Policy Terms</div>`;
 
-        // Premium Rate slider
-        const premPct = ((rdInsurePremium - 1) / 7) * 100;
+        // Premium Rate slider — vessel insurance runs a 0.5–4% band (half the
+        // rate of non-vessel insurance, where the band stays 1–8%).
+        const isVesselPolicy = !!rdDeal.isVesselInsurance;
+        const premMin  = isVesselPolicy ? 0.5  : 1;
+        const premMax  = isVesselPolicy ? 4    : 8;
+        const premStep = isVesselPolicy ? 0.25 : 0.5;
+        const premPct  = premMax > premMin ? ((rdInsurePremium - premMin) / (premMax - premMin)) * 100 : 0;
         html += `<div class="rd-control">
             <div class="rd-control__header">
                 <span class="rd-control__label">PREMIUM RATE (ANNUAL)</span>
                 <span class="rd-control__value" style="font-size:16px;color:#aa7a5a;">${rdInsurePremium}%</span>
             </div>
-            <input type="range" class="rd-control__range" min="1" max="8" step="0.5" value="${rdInsurePremium}"
+            <input type="range" class="rd-control__range" min="${premMin}" max="${premMax}" step="${premStep}" value="${rdInsurePremium}"
                 oninput="rdSetInsurePremium(this.value)"
                 style="background:linear-gradient(90deg,#aa7a5a ${premPct}%,#2a2a24 ${premPct}%);">
-            <div class="rd-control__hints"><span>1% (competitive)</span><span>8% (expensive)</span></div>
+            <div class="rd-control__hints"><span>${premMin}% (competitive)</span><span>${premMax}% (expensive)</span></div>
         </div>`;
 
         // Coverage Amount slider
