@@ -746,7 +746,7 @@ async function loadTradeAgreements() {
             .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
             .order('enacted_at_tick', { ascending: false }),
         _supabase.from('trade_negotiations')
-            .select('id, nation_a_id, nation_b_id, status, agreement_type, opened_at_tick')
+            .select('id, nation_a_id, nation_b_id, status, agreement_type, opened_at_tick, approved_by_a, approved_by_b')
             .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
             .in('status', ['open', 'active', 'ratification'])
             .order('opened_at_tick', { ascending: false }),
@@ -781,12 +781,32 @@ function renderTradeAgreements() {
         const myFlag = _worldState?.nation?.flag_url || `assets/flags/${myName}.png`;
         const partnerFlag = partner?.flag_url || `assets/flags/${partnerName}.png`;
 
+        // Three-state badge:
+        //   RATIFICATION    — bill in parliament (status='ratification')
+        //   READY TO RATIFY — both sides approved but not yet sent to parliament
+        //   ONGOING         — negotiation in progress (default)
         const isRatifying = neg.status === 'ratification';
-        const negBadgeColor = isRatifying ? 'var(--green)' : 'var(--amber)';
-        const negBadgeLabel = isRatifying ? 'RATIFYING' : 'ONGOING';
-        const negBadgeBg = isRatifying ? 'rgba(92,204,92,0.08)' : 'rgba(184,134,11,0.08)';
-        const negBadgeBorder = isRatifying ? 'rgba(92,204,92,0.2)' : 'rgba(184,134,11,0.2)';
-        const negBorderColor = isRatifying ? 'var(--green)' : 'var(--amber)';
+        const bothApproved = !isRatifying && !!neg.approved_by_a && !!neg.approved_by_b;
+        let negBadgeColor, negBadgeLabel, negBadgeBg, negBadgeBorder, negBorderColor;
+        if (isRatifying) {
+            negBadgeLabel  = 'RATIFICATION';
+            negBadgeColor  = 'var(--green)';
+            negBadgeBg     = 'rgba(92,204,92,0.08)';
+            negBadgeBorder = 'rgba(92,204,92,0.2)';
+            negBorderColor = 'var(--green)';
+        } else if (bothApproved) {
+            negBadgeLabel  = 'READY TO RATIFY';
+            negBadgeColor  = 'var(--teal)';
+            negBadgeBg     = 'rgba(90,175,165,0.08)';
+            negBadgeBorder = 'rgba(90,175,165,0.25)';
+            negBorderColor = 'var(--teal)';
+        } else {
+            negBadgeLabel  = 'ONGOING';
+            negBadgeColor  = 'var(--amber)';
+            negBadgeBg     = 'rgba(184,134,11,0.08)';
+            negBadgeBorder = 'rgba(184,134,11,0.2)';
+            negBorderColor = 'var(--amber)';
+        }
 
         html += `<div style="padding:12px 18px;border-bottom:1px solid var(--border-main);cursor:pointer;border-left:3px solid ${negBorderColor};"
             onclick="openTradeNegModal('${partnerId}')">
@@ -17448,10 +17468,13 @@ async function openTradeNegModal(partnerNationId) {
     const a = myNation.id < partnerNationId ? myNation.id : partnerNationId;
     const b = myNation.id < partnerNationId ? partnerNationId : myNation.id;
 
+    // Include 'ratification' so re-opening the modal after Send to Parliament
+    // surfaces the existing articles in read-only mode instead of spawning a
+    // fresh empty negotiation row.
     let { data: neg, error: negErr } = await _supabase.from('trade_negotiations')
         .select('id, status, draft_articles, approved_by_a, approved_by_b, nation_a_id, nation_b_id, agreement_type, agreement_name')
         .eq('nation_a_id', a).eq('nation_b_id', b)
-        .in('status', ['open', 'active'])
+        .in('status', ['open', 'active', 'ratification'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
