@@ -6741,20 +6741,25 @@ async function arApplyToService() {
         }).select('*').single();
 
         if (appErr) {
-            alert('Application failed: ' + appErr.message);
             // Refund fee on failure
             await _supabase.from('factions').update({ corp_cash_reserves: currentCash }).eq('id', faction.id);
+            const isDup = appErr.code === '23505' || /duplicate key|idx_shipping_applications_unique/i.test(appErr.message || '');
+            alert(isDup
+                ? 'You already have a pending or approved application on this route. Withdraw it from Route Applications before applying again.'
+                : 'Application failed: ' + appErr.message);
             return;
         }
 
-        // Log event
-        await _supabase.from('event_log').insert({
-            nation_id: route.origin_nation_id,
-            event_name: faction.faction_name + ' applied to service ' + (route.origin_port || '?') + ' → ' + (route.destination_port || '?') + ' route',
-            category: 'corporate',
-            description_chosen: faction.faction_name + ' has submitted a shipping application for the ' + (route.goods_name || 'trade') + ' route between ' + (route.origin_port || '?') + ' and ' + (route.destination_port || '?') + '. Awaiting government approval.',
-            fired_at_tick: shard.current_tick,
-        }).catch(function() {});
+        // Log event (non-critical — application already persisted)
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: route.origin_nation_id,
+                event_name: faction.faction_name + ' applied to service ' + (route.origin_port || '?') + ' → ' + (route.destination_port || '?') + ' route',
+                category: 'corporate',
+                description_chosen: faction.faction_name + ' has submitted a shipping application for the ' + (route.goods_name || 'trade') + ' route between ' + (route.origin_port || '?') + ' and ' + (route.destination_port || '?') + '. Awaiting government approval.',
+                fired_at_tick: shard.current_tick,
+            });
+        } catch (_) { /* event log failure must not surface as an application failure */ }
 
         await refreshFactionAndCash();
         arSelected = -1;

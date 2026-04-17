@@ -6412,16 +6412,22 @@ async function raSubmitApplication() {
 
         if (appErr) {
             await _supabase.from('factions').update({ corp_cash_reserves: currentCash }).eq('id', faction.id);
-            alert('Application failed: ' + appErr.message); return;
+            const isDup = appErr.code === '23505' || /duplicate key|idx_shipping_applications_unique/i.test(appErr.message || '');
+            alert(isDup
+                ? 'You already have a pending or approved application on this route. Withdraw it from Route Applications before applying again.'
+                : 'Application failed: ' + appErr.message);
+            return;
         }
 
-        await _supabase.from('event_log').insert({
-            nation_id: route.origin_nation_id,
-            event_name: faction.faction_name + ' applied to service ' + (route.origin_port || '?') + ' → ' + (route.destination_port || '?'),
-            category: 'corporate',
-            description_chosen: faction.faction_name + ' submitted a shipping application for the ' + (route.goods_name || 'trade') + ' route at a proposed rate of ' + fmtBig(_raProposedRate) + '/trip. Vessel: ' + (_fleetVessels.find(v => v.id === _raVesselId)?.vessel_name || 'Unknown'),
-            fired_at_tick: shard.current_tick,
-        }).catch(function(err) { console.warn('[Shipping] Event log failed:', err.message); });
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: route.origin_nation_id,
+                event_name: faction.faction_name + ' applied to service ' + (route.origin_port || '?') + ' → ' + (route.destination_port || '?'),
+                category: 'corporate',
+                description_chosen: faction.faction_name + ' submitted a shipping application for the ' + (route.goods_name || 'trade') + ' route at a proposed rate of ' + fmtBig(_raProposedRate) + '/trip. Vessel: ' + (_fleetVessels.find(v => v.id === _raVesselId)?.vessel_name || 'Unknown'),
+                fired_at_tick: shard.current_tick,
+            });
+        } catch (err) { console.warn('[Shipping] Event log failed:', err?.message || err); }
 
         raClose();
         await refreshFactionAndCash();
