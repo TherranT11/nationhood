@@ -54,7 +54,7 @@ export async function initCoalitionFormation(supabase, state) {
             .maybeSingle(),
         supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
         supabase.from('government_formations')
-            .select('id')
+            .select('id, election_id, formed_at, formed_tick, created_at, created_tick')
             .eq('nation_id', nation.id)
             .eq('status', 'formed')
             .order('formed_at', { ascending: false })
@@ -74,7 +74,27 @@ export async function initCoalitionFormation(supabase, state) {
     _majoritySeats = Math.ceil(_totalSeats / 2) + 1;
 
     const election = electionResult.data;
-    const hasFormedGov = !!coalitionResult.data;
+    const formedGov = coalitionResult.data || null;
+    const hasFormedGov = !!formedGov;
+    const hasCurrentCycleFormedGov = (() => {
+        if (!formedGov) return false;
+        if (!election) return true; // no completed election to anchor against
+
+        // Primary check: the formed government is explicitly tied to the latest completed election.
+        if (formedGov.election_id && formedGov.election_id === election.id) return true;
+
+        // Fallback check: treat as current-cycle only when formation tick is at/after election tick.
+        const candidateTicks = [
+            formedGov.formed_tick,
+            formedGov.created_tick,
+        ].map((v) => Number(v)).filter((v) => Number.isFinite(v));
+
+        if (candidateTicks.length > 0 && Number.isFinite(election.election_tick)) {
+            return Math.max(...candidateTicks) >= election.election_tick;
+        }
+
+        return false;
+    })();
 
     // Presidential systems don't use coalition formation — the president governs directly
     const isPresidentialSystem = (nation.government_type || '').toLowerCase().includes('presidential')
@@ -83,7 +103,7 @@ export async function initCoalitionFormation(supabase, state) {
         _formationNeeded = false;
 
         // If an election just happened and no government exists, auto-create one for the president's party
-        if (election && !hasFormedGov) {
+        if (election && !hasCurrentCycleFormedGov) {
             try {
                 const currentTick = shardResult.data?.current_tick ?? 0;
                 // Find the president's party (active president row or largest party)
@@ -143,7 +163,7 @@ export async function initCoalitionFormation(supabase, state) {
     }
 
     // Parliamentary systems use coalition formation
-    if (election && !hasFormedGov) {
+    if (election && !hasCurrentCycleFormedGov) {
         _formationNeeded = true;
         _electionId = election.id;
         _lastElectionTick = election.election_tick;
