@@ -2418,9 +2418,6 @@ body.light-mode .av-empty__text { color: #1a1a17; }
           <span class="filter-pill active" data-filter="type" data-value="ALL" onclick="setFilter('type','ALL')">All</span>
           <span class="filter-pill" data-filter="type" data-value="GOVERNMENT" onclick="setFilter('type','GOVERNMENT')">Gov</span>
           <span class="filter-pill" data-filter="type" data-value="PRIVATE" onclick="setFilter('type','PRIVATE')">Private</span>
-          <div style="flex:1"></div>
-          <span class="oc-filters__label" style="width:auto;">Nation</span>
-          <span class="filter-pill active" id="nation-pill">--</span>
         </div>
         <div class="oc-filters__row">
           <span class="oc-filters__label">Sort</span>
@@ -2765,6 +2762,7 @@ let faction = null;
 let nationStats = null;
 let shard = null;
 let contracts = [];
+const _contractNationNames = {}; // nation_id -> nation name, populated by loadContracts
 let playerBids = {}; // { contractId: bidData }
 let activeProjects = [];
 let warehouseData = {};  // { materialKey: { LOW: {qty,value}, STD: {qty,value}, HIGH: {qty,value} } }
@@ -2938,8 +2936,27 @@ function renderContracts() {
         filtered = filtered.filter(c => c.issuer_type === 'PRIVATE');
     }
 
-    if (sortBy === 'TIMELINE') filtered.sort((a, b) => (a.timeline_ticks || 0) - (b.timeline_ticks || 0));
-    if (sortBy === 'BUDGET') filtered.sort((a, b) => (b.budget_ceiling || 0) - (a.budget_ceiling || 0));
+    // Build set of nations where the player has a National HQ or Regional HQ
+    const hqNationIds = new Set();
+    if (faction?.nation_id) hqNationIds.add(faction.nation_id);
+    for (const p of (_ownedProperties || [])) {
+        if (p.type === 'regional_hq' && p.is_active && p.nation_id) hqNationIds.add(p.nation_id);
+    }
+    // A contract "belongs to your HQ" when it's in a HQ nation AND you can bid on it.
+    const isHQPriority = c => hqNationIds.has(c.nation_id) && isQualified(c);
+
+    const sortByCriterion = (a, b) => {
+        if (sortBy === 'TIMELINE') return (a.timeline_ticks || 0) - (b.timeline_ticks || 0);
+        if (sortBy === 'BUDGET') return (b.budget_ceiling || 0) - (a.budget_ceiling || 0);
+        return 0;
+    };
+    // HQ-nation bidable contracts forced to the top; within each group, apply selected sort.
+    filtered.sort((a, b) => {
+        const ha = isHQPriority(a) ? 1 : 0;
+        const hb = isHQPriority(b) ? 1 : 0;
+        if (ha !== hb) return hb - ha;
+        return sortByCriterion(a, b);
+    });
 
     document.getElementById('oc-count').textContent = filtered.length + ' AVAILABLE';
 
@@ -2967,6 +2984,8 @@ function renderContracts() {
         const timelineWarn = (c.timeline_ticks || 0) > 18 ? ' warn' : '';
         const biddingEnds = c.bidding_ends_tick ? Math.max(0, c.bidding_ends_tick - currentTick) : '?';
 
+        const nationName = _contractNationNames[c.nation_id] || '—';
+        const isHq = hqNationIds.has(c.nation_id);
         html += `
             <div class="oc-item${lockedClass}" data-contract-id="${c.id}">
                 <div class="oc-item__row1">
@@ -2975,6 +2994,7 @@ function renderContracts() {
                 </div>
                 <div class="oc-item__row2">
                     <span class="oc-item__issuer ${typeClass}">${escapeHtml(c.issuer_name || '—')}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.7px;color:${isHq ? 'var(--teal)' : 'var(--text-dim)'};margin-left:8px;text-transform:uppercase;">${escapeHtml(nationName)}${isHq ? ' · HQ' : ''}</span>
                     <span class="oc-item__id" style="margin-left:auto;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${biddingEnds} tick${biddingEnds !== 1 ? 's' : ''} left</span>
                 </div>
                 <div class="oc-item__stats">
@@ -4551,6 +4571,14 @@ async function loadContracts() {
         // Filter by reputation: corps only see contracts they're reputable enough for
         const myRep = Number(faction.corp_reputation ?? 0);
         contracts = (data || []).filter(c => myRep >= (c.min_reputation || 0));
+    }
+
+    // Resolve nation names for the contract list (cache on the module for the session)
+    const uniqNationIds = [...new Set(contracts.map(c => c.nation_id).filter(Boolean))];
+    const uncached = uniqNationIds.filter(id => !_contractNationNames[id]);
+    if (uncached.length > 0) {
+        const { data: natRows } = await _supabase.from('nations').select('id, name').in('id', uncached);
+        for (const n of (natRows || [])) _contractNationNames[n.id] = n.name;
     }
 
     // Load player's existing bids on open contracts
