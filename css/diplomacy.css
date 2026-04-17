@@ -1985,33 +1985,11 @@
   border-top: none;
 }
 
-/* ── Config Fields Inside Articles ── */
-.config-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.config-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.config-label {
-  font-family: var(--font-mono);
-  font-size: 8px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  min-width: 80px;
-  flex-shrink: 0;
-}
+/* ── Config Fields Inside Articles — layout rules live higher up in this
+      file; only the `.is-selected` modifier family below is duplicated-with-
+      overrides for the trade-neg modal. ── */
 
 /* ── Toggle Group (radio-like single selection) ── */
-.toggle-group {
-  display: flex;
-  gap: 0;
-}
 .toggle-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
@@ -2035,12 +2013,9 @@
   color: var(--text-muted);
 }
 
-/* ── Checkbox Group (multi-select) ── */
-.check-group {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
+/* ── Checkbox Group (multi-select) — `.check-group` layout rule lives
+      higher up; only the `.is-selected` modifier family is duplicated
+      here with tighter transitions. ── */
 .check-opt {
   font-family: var(--font-mono);
   font-size: 8.5px;
