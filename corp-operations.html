@@ -4167,6 +4167,38 @@ window.requestInsurance = requestInsurance;
 
 let _delivering = false;
 const _deliveredContractIds = new Set();
+
+// Resolve corp_properties metadata for a delivered contract. Returns null when the
+// contract shouldn't become a property (eg national infrastructure with no corp issuer).
+function _deliveryPropertyMeta(contract, paidPrice) {
+    const tk = contract?.template_key;
+    if (!tk) return null;
+    // Port facilities: PF_CATALOG carries catalog name, maintenance and style.
+    if (tk === 'fuel_depot' || tk === 'dry_dock') {
+        const style = contract.project_subtype || 'Basic';
+        const row = PF_CATALOG.find(r => r.type === tk && r.name === contract.name)
+            || PF_CATALOG.find(r => r.type === tk && r.style === style)
+            || PF_CATALOG.find(r => r.type === tk);
+        return {
+            type: tk,
+            style,
+            capacity: style === 'Modern' ? 500 : 250,
+            maintenance: row?.maint || Math.round(paidPrice * 0.001),
+        };
+    }
+    // Custom corp-commissioned buildings submitted via cpSubmit.
+    if (tk === 'custom_building') {
+        return {
+            type: 'office',
+            style: contract.project_subtype || 'Basic',
+            capacity: 500,
+            maintenance: Math.round(paidPrice * 0.001),
+        };
+    }
+    // Everything else (national infrastructure templates) is not a corp property.
+    return null;
+}
+
 function _setDeliverButtonsDisabled(contractId, disabled) {
     document.querySelectorAll(`[data-deliver-id="${contractId}"]`).forEach(btn => {
         btn.disabled = disabled;
@@ -4204,7 +4236,7 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
 
         // Fetch contract + status to guard against double-delivery
         const { data: contract } = await _supabase.from('construction_contracts')
-            .select('awarded_at_tick, timeline_ticks, stalled_ticks, issuer_faction_id, nation_id, status')
+            .select('awarded_at_tick, timeline_ticks, stalled_ticks, issuer_faction_id, nation_id, status, name, template_key, project_subtype, issuer_type')
             .eq('id', contractId).single();
         if (!contract) { alert('Contract not found.'); return; }
         if (contract.status === 'completed' || contract.status === 'delivered') {
@@ -4263,6 +4295,33 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
                 await _supabase.from('factions').update({
                     corp_reputation: Math.max(0, Math.min(100, Number(repData.corp_reputation || 50) + repChange)),
                 }).eq('id', faction.id);
+            }
+        }
+
+        // Hand over the finished asset to the issuer — corp-commissioned projects
+        // (issuer_faction_id set) become a property on the issuer's PROPERTY card.
+        // National infrastructure with no corp issuer is skipped.
+        if (contract.issuer_faction_id) {
+            try {
+                const propMeta = _deliveryPropertyMeta(contract, bidPrice);
+                if (propMeta) {
+                    await _supabase.from('corp_properties').insert({
+                        faction_id: contract.issuer_faction_id,
+                        nation_id: contract.nation_id,
+                        name: contract.name || contractName,
+                        type: propMeta.type,
+                        style: propMeta.style,
+                        capacity: propMeta.capacity,
+                        purchase_price: bidPrice,
+                        monthly_maintenance: propMeta.maintenance,
+                        condition: Math.max(25, Math.min(100, qualityScore)),
+                        purchased_at_tick: currentTick,
+                        built_via_contract_id: contractId,
+                        is_active: true,
+                    });
+                }
+            } catch (propErr) {
+                console.warn('[deliverProject] Failed to register property for issuer:', propErr?.message || propErr);
             }
         }
 
@@ -13691,16 +13750,18 @@ async function pfOpenBuild(facilityType) {
         const seq = (existingContracts || 0) + 1;
         const projectCode = `PVT-P${seq}-${gameYear}`;
 
-        // Port facility material/workforce requirements (smaller than buildings)
+        // Port facility material/workforce requirements — scaled so build cost at
+        // STANDARD material grade lands in the ~$100M ballpark of the PF_CATALOG
+        // ceiling. Materials 10x, equipment 5x, workforce 20x vs the old recipe.
         const isAdvanced = selected.style === 'Modern';
         const materials = {
-            concrete: isAdvanced ? 6 : 4,
-            steel: isAdvanced ? 5 : 3,
-            heavy_parts: isAdvanced ? 3 : 2,
-            aggregate: isAdvanced ? 3 : 2,
+            concrete: isAdvanced ? 60 : 40,
+            steel: isAdvanced ? 50 : 30,
+            heavy_parts: isAdvanced ? 30 : 20,
+            aggregate: isAdvanced ? 30 : 20,
         };
-        const equipment = { trucks: 1, mixers: 1, excavators: 1 };
-        const workforce = { general: isAdvanced ? 12 : 8, skilled: isAdvanced ? 5 : 3 };
+        const equipment = { trucks: 5, mixers: 5, excavators: 5 };
+        const workforce = { general: isAdvanced ? 240 : 160, skilled: isAdvanced ? 100 : 60 };
         const timeline = isAdvanced ? 6 : 4;
 
         // Insert construction contract

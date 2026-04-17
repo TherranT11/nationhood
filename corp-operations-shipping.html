@@ -13408,16 +13408,18 @@ async function pfOpenBuild(facilityType) {
         const seq = (existingContracts || 0) + 1;
         const projectCode = `PVT-P${seq}-${gameYear}`;
 
-        // Port facility material/workforce requirements (smaller than buildings)
+        // Port facility material/workforce requirements — scaled so build cost at
+        // STANDARD material grade lands in the ~$100M ballpark of the PF_CATALOG
+        // ceiling. Materials 10x, equipment 5x, workforce 20x vs the old recipe.
         const isAdvanced = selected.style === 'Modern';
         const materials = {
-            concrete: isAdvanced ? 6 : 4,
-            steel: isAdvanced ? 5 : 3,
-            heavy_parts: isAdvanced ? 3 : 2,
-            aggregate: isAdvanced ? 3 : 2,
+            concrete: isAdvanced ? 60 : 40,
+            steel: isAdvanced ? 50 : 30,
+            heavy_parts: isAdvanced ? 30 : 20,
+            aggregate: isAdvanced ? 30 : 20,
         };
-        const equipment = { trucks: 1, mixers: 1, excavators: 1 };
-        const workforce = { general: isAdvanced ? 12 : 8, skilled: isAdvanced ? 5 : 3 };
+        const equipment = { trucks: 5, mixers: 5, excavators: 5 };
+        const workforce = { general: isAdvanced ? 240 : 160, skilled: isAdvanced ? 100 : 60 };
         const timeline = isAdvanced ? 6 : 4;
 
         // Insert construction contract
