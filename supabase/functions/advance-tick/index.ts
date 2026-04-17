@@ -2026,12 +2026,14 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     // shipping claim on any route between the pair adds +0.03, capped at 1.0.
     // The agreement.efficiency column is kept in sync so the UI can display it.
     try {
-        var { data: allActiveClaims } = await supabase.from('shipping_claims')
+        var claimsRes = await supabase.from('shipping_claims')
             .select('route_id, shipping_routes!inner(origin_nation_id, destination_nation_id, status, trade_agreement_id)')
             .eq('status', 'active');
-        if (allActiveClaims) {
-            for (var ci = 0; ci < allActiveClaims.length; ci++) {
-                var cr = allActiveClaims[ci].shipping_routes;
+        if (claimsRes.error) {
+            console.warn('[Trade] Ship-count query error (non-fatal, defaults to 85%):', claimsRes.error.message);
+        } else if (claimsRes.data) {
+            for (var ci = 0; ci < claimsRes.data.length; ci++) {
+                var cr = claimsRes.data[ci].shipping_routes;
                 if (!cr || cr.status !== 'active') continue;
                 var pk1 = cr.origin_nation_id + '|' + cr.destination_nation_id;
                 var pk2 = cr.destination_nation_id + '|' + cr.origin_nation_id;
@@ -2054,7 +2056,8 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 var newEff = Math.min(1.0, 0.85 + (pairShips * 0.03));
                 if (Math.abs(Number(ag.efficiency) - newEff) > 0.001) {
                     ag.efficiency = newEff;
-                    await supabase.from('trade_agreements').update({ efficiency: newEff }).eq('id', ag.id);
+                    var updRes = await supabase.from('trade_agreements').update({ efficiency: newEff }).eq('id', ag.id);
+                    if (updRes.error) console.warn('[Trade] Agreement efficiency update failed for', ag.id, updRes.error.message);
                 }
             }
         } catch (shippingEffErr) {

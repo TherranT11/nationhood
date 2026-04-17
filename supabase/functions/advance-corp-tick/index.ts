@@ -3216,7 +3216,7 @@ async function generateOrganicRoutes(supabase, currentTick) {
                 const sm = SHIPPING_SECTOR_MAP[chosen];
                 if (!sm) continue;
                 const vol = Math.round(Math.max(5e6, popF * gdpF * close * 3e7 * (0.7 + sRand(seed + 999) * 0.6)));
-                const rev = Math.round(vol * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) * ORGANIC_REVENUE_MULT / SHIPPING_MONTHS_PER_YEAR);
+                const rev = _clampServiceRate(vol * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) * ORGANIC_REVENUE_MULT / SHIPPING_MONTHS_PER_YEAR);
 
                 rows.push({
                     origin_nation_id: originId, destination_nation_id: destId,
@@ -3909,15 +3909,19 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 // and free the fleet slot so the corp doesn't keep earning from a
                                 // lost ship. Insurance (below) is the only remaining cashflow.
                                 if (v.active_claim_id) {
-                                    await supabase.from('shipping_claims').update({
+                                    const { error: relErr } = await supabase.from('shipping_claims').update({
                                         vessel_status: 'idle',
                                         status: 'released',
                                         released_at_tick: currentTick,
                                         revenue_per_transit: 0,
                                     }).eq('id', v.active_claim_id);
-                                    await supabase.from('factions').update({
-                                        shipping_fleet_deployed: Math.max(0, Number(corp.shipping_fleet_deployed || 0) - 1),
-                                    }).eq('id', corp.id);
+                                    if (relErr) console.warn('[advance-corp-tick] Claim release on strand failed:', relErr.message);
+                                    // Re-read fleet_deployed before decrementing so multiple ship
+                                    // losses in the same tick don't clobber each other's updates.
+                                    const { data: fleetRow } = await supabase.from('factions')
+                                        .select('shipping_fleet_deployed').eq('id', corp.id).single();
+                                    const fleetNow = Math.max(0, Number(fleetRow?.shipping_fleet_deployed || 0) - 1);
+                                    await supabase.from('factions').update({ shipping_fleet_deployed: fleetNow }).eq('id', corp.id);
                                 }
 
                                 // Auto-file insurance claim if vessel has active coverage

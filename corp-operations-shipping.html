@@ -6244,7 +6244,6 @@ function renderRouteApplicationModal() {
     const maintCostEst = Math.round(baseRev * 0.08);
     const netProfit = _raProposedRate - fuelCostEst - maintCostEst;
     const profitColor = netProfit > 0 ? C.green : netProfit < 0 ? C.red : C.dim;
-    const ratePct = baseRev > 0 ? Math.round((_raProposedRate / baseRev) * 100) : 100;
 
     // Available vessels (in_port, matching class, not assigned)
     const availableVessels = _fleetVessels.filter(v =>
