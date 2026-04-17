@@ -288,7 +288,7 @@ async function initTradeTab() {
 
     // Load trade agreements + shipping data
     try {
-        await Promise.all([loadTradeAgreements(), loadShippingData()]);
+        await Promise.all([loadTradeAgreements(), loadShippingData(), refreshTradeMinisterFlag()]);
     } catch (err) {
         console.error('[Trade] Failed to load agreements/shipping:', err);
     }
@@ -569,10 +569,31 @@ let _shippingClaimsByRoute = {};     // routeId → [claims with faction data]
 let _shippingAppsByRoute = {};       // routeId → [pending applications]
 let _allShippingRoutes = [];         // flat list of routes involving our nation
 let _shippingRowExpanded = null;     // id of the currently-expanded shipping contract row
+let _isTradeMinister = false;        // current faction holds the trade ministry
+
+// The diplomacy refactor (9733595) dropped the initPage assignment to
+// currentFaction/currentNation, so diplomaticRoles never populates on first
+// load — which means diplomaticRoles?.isMoT is permanently false. Until that
+// is restored at the page level, this flag is the authoritative MoT check for
+// the shipping-accept flow. Refreshed on tab init and before every approve/reject.
+async function refreshTradeMinisterFlag() {
+    _isTradeMinister = false;
+    const nationId = _worldState?.nation?.id;
+    const factionId = _worldState?.faction?.id;
+    if (!nationId || !factionId) return;
+    try {
+        const { data } = await _supabase.from('ministries')
+            .select('party_id')
+            .eq('nation_id', nationId)
+            .eq('ministry_key', 'trade')
+            .eq('is_active', true)
+            .maybeSingle();
+        _isTradeMinister = !!data && data.party_id === factionId;
+    } catch (_) { _isTradeMinister = false; }
+}
 
 async function loadShippingData() {
     const nationId = _worldState?.nation?.id;
-    console.log('[Shipping] loadShippingData() called, nationId =', nationId);
     if (!nationId) return;
 
     _shippingRoutesByAgreement = {};
@@ -595,7 +616,7 @@ async function loadShippingData() {
                 .select(routeColumns)
                 .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`),
             _supabase.from('shipping_applications')
-                .select(`id, route_id, faction_id, proposed_rate, status, applied_at_tick, factions!faction_id(${corpAppColumns}), shipping_routes!inner(${routeColumns})`)
+                .select(`id, route_id, faction_id, vessel_id, proposed_rate, status, applied_at_tick, factions!faction_id(${corpAppColumns}), shipping_routes!inner(${routeColumns})`)
                 .eq('status', 'pending'),
             _supabase.from('shipping_claims')
                 .select(`id, route_id, faction_id, market_share_pct, revenue_per_transit, total_revenue, transits_completed, status, factions!faction_id(${corpClaimColumns}), shipping_routes!inner(${routeColumns})`)
@@ -639,14 +660,6 @@ async function loadShippingData() {
             if (!_shippingClaimsByRoute[c.route_id]) _shippingClaimsByRoute[c.route_id] = [];
             _shippingClaimsByRoute[c.route_id].push(c);
         }
-
-        console.log('[Shipping] loaded for', nationId, {
-            routes: _allShippingRoutes.length,
-            pendingApps: apps.length,
-            activeClaims: claims.length,
-            totalPendingAppsInResponse: (appsRes.data || []).length,
-            totalActiveClaimsInResponse: (claimsRes.data || []).length,
-        });
     } catch (err) {
         console.warn('[Shipping] loadShippingData failed:', err);
     }
@@ -695,33 +708,76 @@ let _shippingApprovalPending = false;
 
 window.approveShippingApp = async function(appId, routeId, corpFactionId) {
     if (_shippingApprovalPending) return;
-    if (!confirm('Approve this shipping corporation to service this route?')) return;
+    await refreshTradeMinisterFlag();
+    if (!_isTradeMinister) { alert('Only the Minister of Trade can accept shipping applications.'); return; }
+    if (!confirm('Accept this shipping corporation to service this route?')) return;
     _shippingApprovalPending = true;
 
     try {
         const tick = _worldState?.shard?.current_tick || 0;
 
+        // Read the application first so we know which vessel the corp put on offer.
+        // A failure here is non-fatal — acceptance still proceeds without vessel auto-assign.
+        const { data: appRow, error: appReadErr } = await _supabase.from('shipping_applications')
+            .select('vessel_id').eq('id', appId).maybeSingle();
+        if (appReadErr) console.warn('[ShippingApproval] vessel_id lookup failed:', appReadErr.message);
+        const vesselId = appRow?.vessel_id || null;
+
         // Update application status
         const { error: appErr } = await _supabase.from('shipping_applications')
             .update({ status: 'approved', reviewed_at_tick: tick, reviewed_by_faction_id: _worldState?.faction?.id })
             .eq('id', appId);
-        if (appErr) { alert('Failed to approve: ' + appErr.message); return; }
+        if (appErr) { alert('Failed to accept: ' + appErr.message); return; }
 
         // Auto-create a shipping claim via RPC
-        const { error: claimErr } = await _supabase.rpc('claim_shipping_route', {
+        const { data: claimData, error: claimErr } = await _supabase.rpc('claim_shipping_route', {
             p_faction_id: corpFactionId,
             p_route_id: routeId,
             p_current_tick: tick,
         });
-        if (claimErr) console.warn('[ShippingApproval] Auto-claim failed (corp may need to assign vessel):', claimErr.message);
+        const claimFailureMsg = claimErr?.message || (claimData && claimData.success === false ? claimData.error : null);
+        if (claimFailureMsg) {
+            // The unique (route, faction) index would block re-acceptance while status='approved',
+            // so revert the application back to pending and surface the reason.
+            await _supabase.from('shipping_applications')
+                .update({ status: 'pending', reviewed_at_tick: null, reviewed_by_faction_id: null })
+                .eq('id', appId);
+            alert('Could not activate the route: ' + claimFailureMsg);
+            await loadShippingData();
+            renderTradeAgreements();
+            return;
+        }
+
+        if (vesselId && claimData?.claim_id) {
+            // Assign the vessel the corp put on offer to the new claim so it shows up
+            // as an Active Voyage on the corp's side immediately. Filter on the vessel
+            // still being idle so we don't clobber a vessel the corp has since reassigned.
+            const { data: vesselUpd, error: vesselErr } = await _supabase.from('corp_vessels').update({
+                status: 'in_transit',
+                active_claim_id: claimData.claim_id,
+                current_port_nation_id: null,
+            })
+                .eq('id', vesselId)
+                .eq('faction_id', corpFactionId)
+                .is('active_claim_id', null)
+                .eq('status', 'in_port')
+                .select('id');
+            if (vesselErr) {
+                console.warn('[ShippingApproval] Vessel assignment failed:', vesselErr.message);
+            } else if (!vesselUpd || vesselUpd.length === 0) {
+                // Vessel is no longer idle — the claim is active but the corp will need to
+                // assign a vessel manually from their Active Voyages view.
+                console.warn('[ShippingApproval] Offered vessel no longer idle; corp must assign manually.');
+            }
+        }
 
         // Log event (non-critical — approval already persisted)
         try {
             await _supabase.from('event_log').insert({
                 nation_id: _worldState?.nation?.id,
-                event_name: 'Shipping application approved',
+                event_name: 'Shipping application accepted',
                 category: 'trade',
-                description_chosen: 'A shipping corporation has been approved to service a trade route. Route efficiency will increase.',
+                description_chosen: 'A shipping corporation has been accepted to service a trade route. Route efficiency will increase.',
                 fired_at_tick: tick,
             });
         } catch (_) { /* event log failure must not surface as an approval failure */ }
@@ -731,7 +787,7 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
         renderTradeAgreements();
     } catch (err) {
         console.error('[ShippingApproval] Error:', err);
-        alert('Failed to approve application.');
+        alert('Failed to accept application.');
     } finally {
         _shippingApprovalPending = false;
     }
@@ -739,6 +795,8 @@ window.approveShippingApp = async function(appId, routeId, corpFactionId) {
 
 window.rejectShippingApp = async function(appId) {
     if (_shippingApprovalPending) return;
+    await refreshTradeMinisterFlag();
+    if (!_isTradeMinister) { alert('Only the Minister of Trade can reject shipping applications.'); return; }
     const reason = prompt('Rejection reason (optional):') || '';
     _shippingApprovalPending = true;
 
@@ -798,7 +856,8 @@ function renderShippingContractsBlock() {
     // Only the Minister of Trade can accept/reject shipping applications.
     // Everyone else in the nation sees the row and terms but gets an
     // "awaiting decision" notice instead of action buttons.
-    const canAct = !!diplomaticRoles?.isMoT;
+    // (diplomaticRoles is unreliable on this page — see refreshTradeMinisterFlag.)
+    const canAct = !!_isTradeMinister;
 
     // Flatten pending applications + active claims with their routes attached.
     const pendingApps = [];
@@ -818,8 +877,8 @@ function renderShippingContractsBlock() {
         ? fmtBudgetCurrency(n)
         : ('$' + Math.round(Number(n) || 0).toLocaleString());
 
-    // Rough conversion: ~30 ticks ≈ one month (matches the tick-processor cadence).
-    const TICKS_PER_MONTH = 30;
+    // 1 tick = 30 game days = 1 month.
+    const TICKS_PER_MONTH = 1;
 
     let html = '';
 

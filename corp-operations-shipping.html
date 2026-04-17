@@ -6404,6 +6404,7 @@ async function raSubmitApplication() {
         const { error: appErr } = await _supabase.from('shipping_applications').insert({
             route_id: route.id,
             faction_id: faction.id,
+            vessel_id: _raVesselId,
             proposed_rate: _raProposedRate,
             application_fee: appFee,
             status: 'pending',
