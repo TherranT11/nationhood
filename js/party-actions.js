@@ -19,6 +19,7 @@ let _isOpposition = false;   // is this faction in opposition?
 let _administration = null;  // active administration data
 let _lawsuits = [];          // faction's lawsuits (active + resolved)
 let _standing = null;        // faction_electoral_standing row (pillar scores)
+let _seatTxInProgress = false; // module-level lock for Grant/Revoke Seats actions
 
 function esc(str) {
     if (!str) return '';
@@ -2426,6 +2427,8 @@ async function openGrantSeatsModal(root) {
         // Grant button
         document.getElementById('royal-grant')?.addEventListener('click', async () => {
             if (!selectedFactionId) return;
+            if (_seatTxInProgress) return;
+            _seatTxInProgress = true;
             const btn = document.getElementById('royal-grant');
             if (btn) { btn.disabled = true; btn.textContent = 'Granting...'; }
 
@@ -2438,28 +2441,44 @@ async function openGrantSeatsModal(root) {
                 const freshTarget = (freshFactions || []).find(f => f.id === selectedFactionId);
                 if (!freshMonarch || !freshTarget) { alert('Faction not found.'); return; }
 
-                // Seat-conserving grant: total must stay at nation.total_seats
-                const currentTotal = (freshFactions || []).reduce((s, f) => s + Math.max(0, f.seats || 0), 0);
-                const cap = nation?.total_seats || 100;
+                const sumBefore = (freshFactions || []).reduce((s, f) => s + Math.max(0, f.seats || 0), 0);
 
-                // Build new seat map: give target the granted seats
-                const updates = [];
+                // Build a working map of seat counts so we can validate conservation in one place.
+                const seatMap = new Map();
+                for (const f of (freshFactions || [])) seatMap.set(f.id, Math.max(0, f.seats || 0));
+
+                // 1. Take from monarch (leave at least 1 seat).
                 let remaining = grantAmount;
+                const monarchAvail = Math.max(0, (seatMap.get(faction.id) || 0) - 1);
+                const monarchTake = Math.min(remaining, monarchAvail);
+                if (monarchTake > 0) {
+                    seatMap.set(faction.id, (seatMap.get(faction.id) || 0) - monarchTake);
+                    remaining -= monarchTake;
+                }
 
-                // Take from monarch first
-                const monarchTake = Math.min(remaining, Math.max(0, freshMonarch.seats || 0) - 1);
-                if (monarchTake > 0) remaining -= monarchTake;
-
-                // If monarch didn't have enough, take proportionally from other parties
+                // 2. If monarch couldn't cover, take proportionally from other parties (excluding target).
                 if (remaining > 0) {
-                    const donors = (freshFactions || []).filter(f => f.id !== faction.id && f.id !== selectedFactionId && (f.seats || 0) > 0);
-                    const donorTotal = donors.reduce((s, f) => s + (f.seats || 0), 0);
-                    if (donorTotal > 0) {
+                    const donors = (freshFactions || [])
+                        .filter(f => f.id !== faction.id && f.id !== selectedFactionId && (seatMap.get(f.id) || 0) > 0);
+                    let donorPool = donors.reduce((s, f) => s + (seatMap.get(f.id) || 0), 0);
+                    for (const d of donors) {
+                        if (remaining <= 0 || donorPool <= 0) break;
+                        const share = Math.round(remaining * (seatMap.get(d.id) || 0) / donorPool);
+                        const take = Math.min(share, seatMap.get(d.id) || 0, remaining);
+                        if (take > 0) {
+                            seatMap.set(d.id, (seatMap.get(d.id) || 0) - take);
+                            donorPool -= take;
+                            remaining -= take;
+                        }
+                    }
+                    // Top-up pass: if rounding left a leftover, drain remaining from any donor with seats.
+                    if (remaining > 0) {
                         for (const d of donors) {
-                            const share = Math.round(remaining * (d.seats || 0) / donorTotal);
-                            const take = Math.min(share, d.seats || 0);
+                            if (remaining <= 0) break;
+                            const avail = seatMap.get(d.id) || 0;
+                            const take = Math.min(remaining, avail);
                             if (take > 0) {
-                                updates.push({ id: d.id, seats: (d.seats || 0) - take });
+                                seatMap.set(d.id, avail - take);
                                 remaining -= take;
                             }
                         }
@@ -2469,23 +2488,36 @@ async function openGrantSeatsModal(root) {
                 const actualGrant = grantAmount - remaining;
                 if (actualGrant <= 0) { alert('No seats available to grant.'); return; }
 
-                const newMonarchSeats = Math.max(1, (freshMonarch.seats || 0) - Math.min(grantAmount - remaining, grantAmount));
-                const newTargetSeats = (freshTarget.seats || 0) + actualGrant;
+                // 3. Credit target.
+                seatMap.set(selectedFactionId, (seatMap.get(selectedFactionId) || 0) + actualGrant);
+
+                // 4. Conservation invariant: sum-after must equal sum-before.
+                let sumAfter = 0;
+                for (const v of seatMap.values()) sumAfter += v;
+                if (sumAfter !== sumBefore) {
+                    console.error('[GrantSeats] Conservation violated', { sumBefore, sumAfter, grantAmount, actualGrant });
+                    alert('Internal error: seat totals would not balance. Aborting.');
+                    return;
+                }
+
+                // 5. Write only the rows whose seats actually changed.
+                const writes = [];
+                for (const f of (freshFactions || [])) {
+                    const before = Math.max(0, f.seats || 0);
+                    const after = seatMap.get(f.id) || 0;
+                    if (before !== after) writes.push({ id: f.id, seats: after });
+                }
+                for (const w of writes) {
+                    const { error } = await _supabase.from('factions').update({ seats: w.seats }).eq('id', w.id);
+                    if (error) { alert('Failed to grant seats: ' + error.message); return; }
+                }
+
                 const legGain = actualGrant * 0.5;
                 const newLeg = Math.min(100, (Number(nation.legitimacy) || 50) + legGain);
-
-                // Write all seat updates atomically
-                updates.push({ id: faction.id, seats: newMonarchSeats });
-                updates.push({ id: selectedFactionId, seats: newTargetSeats });
-
-                for (const u of updates) {
-                    const { error } = await _supabase.from('factions').update({ seats: u.seats }).eq('id', u.id);
-                    if (error) { alert('Failed to grant seats.'); return; }
-                }
                 const { error: e3 } = await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
                 if (e3) { alert('Failed to update legitimacy.'); return; }
 
-                faction.seats = newMonarchSeats;
+                faction.seats = seatMap.get(faction.id) || 0;
                 nation.legitimacy = newLeg;
 
                 // Log event (non-blocking)
@@ -2505,6 +2537,8 @@ async function openGrantSeatsModal(root) {
             } catch (err) {
                 console.error('[GrantSeats] Error:', err);
                 alert('Failed to grant seats.');
+            } finally {
+                _seatTxInProgress = false;
             }
         });
     }
@@ -2607,29 +2641,51 @@ async function openRevokeSeatsModal(root) {
 
         document.getElementById('royal-revoke')?.addEventListener('click', async () => {
             if (!selectedFactionId) return;
+            if (_seatTxInProgress) return;
+            _seatTxInProgress = true;
             const btn = document.getElementById('royal-revoke');
             if (btn) { btn.disabled = true; btn.textContent = 'Revoking...'; }
 
             try {
-                const target = seatedFactions.find(f => f.id === selectedFactionId);
                 const cost = revokeAmount * 100000;
 
-                // Fetch fresh funds
-                const { data: fresh } = await _supabase.from('factions').select('party_funds').eq('id', faction.id).single();
-                const curFunds = fresh?.party_funds || 0;
+                // Fetch fresh state for monarch + target so we don't write stale seats.
+                const { data: freshFactions } = await _supabase.from('factions')
+                    .select('id, faction_name, seats, party_funds')
+                    .eq('nation_id', nation.id).eq('faction_type', 'party').is('abandoned_at', null);
+                const freshMonarch = (freshFactions || []).find(f => f.id === faction.id);
+                const freshTarget = (freshFactions || []).find(f => f.id === selectedFactionId);
+                if (!freshMonarch || !freshTarget) { alert('Faction not found.'); return; }
+
+                const curFunds = freshMonarch.party_funds || 0;
                 if (curFunds < cost) { alert('Not enough funds.'); return; }
 
+                const sumBefore = (freshFactions || []).reduce((s, f) => s + Math.max(0, f.seats || 0), 0);
+
+                const take = Math.min(revokeAmount, freshTarget.seats || 0);
+                if (take <= 0) { alert('Target has no seats to revoke.'); return; }
+
                 const newFunds = curFunds - cost;
-                const newMonarchSeats = (faction.seats || 0) + revokeAmount;
-                const newTargetSeats = Math.max(0, (target?.seats || 0) - revokeAmount);
-                const legCost = revokeAmount;
+                const newMonarchSeats = (freshMonarch.seats || 0) + take;
+                const newTargetSeats = (freshTarget.seats || 0) - take;
+                const legCost = take;
                 const newLeg = Math.max(0, (Number(nation.legitimacy) || 50) - legCost);
 
-                const { error: e1 } = await _supabase.from('factions').update({ seats: newMonarchSeats, party_funds: newFunds }).eq('id', faction.id);
-                const { error: e2 } = await _supabase.from('factions').update({ seats: newTargetSeats }).eq('id', selectedFactionId);
-                const { error: e3 } = await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
+                // Conservation invariant: monarch gains exactly what target loses.
+                const sumAfter = sumBefore - (freshMonarch.seats || 0) - (freshTarget.seats || 0)
+                    + newMonarchSeats + newTargetSeats;
+                if (sumAfter !== sumBefore) {
+                    console.error('[RevokeSeats] Conservation violated', { sumBefore, sumAfter, take });
+                    alert('Internal error: seat totals would not balance. Aborting.');
+                    return;
+                }
 
-                if (e1 || e2 || e3) { alert('Failed to revoke seats.'); return; }
+                const { error: e1 } = await _supabase.from('factions').update({ seats: newMonarchSeats, party_funds: newFunds }).eq('id', faction.id);
+                if (e1) { alert('Failed to revoke seats: ' + e1.message); return; }
+                const { error: e2 } = await _supabase.from('factions').update({ seats: newTargetSeats }).eq('id', selectedFactionId);
+                if (e2) { alert('Failed to revoke seats: ' + e2.message); return; }
+                const { error: e3 } = await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
+                if (e3) { alert('Failed to update legitimacy.'); return; }
 
                 faction.seats = newMonarchSeats;
                 faction.party_funds = newFunds;
@@ -2639,9 +2695,9 @@ async function openRevokeSeatsModal(root) {
                 try {
                     await _supabase.from('event_log').insert({
                         nation_id: nation.id,
-                        event_name: `${nation.monarch_title || 'King'} revokes ${revokeAmount} seats from ${target?.faction_name || 'unknown'}`,
+                        event_name: `${nation.monarch_title || 'King'} revokes ${take} seats from ${freshTarget.faction_name || 'unknown'}`,
                         category: 'political',
-                        description_chosen: `The ${nation.monarch_title || 'King'} has revoked ${revokeAmount} seat${revokeAmount !== 1 ? 's' : ''} from ${target?.faction_name}. Legitimacy -${legCost}.`,
+                        description_chosen: `The ${nation.monarch_title || 'King'} has revoked ${take} seat${take !== 1 ? 's' : ''} from ${freshTarget.faction_name}. Legitimacy -${legCost}.`,
                         fired_at_tick: _state.shard?.current_tick || 0,
                     });
                 } catch (_) { /* non-blocking */ }
@@ -2651,6 +2707,8 @@ async function openRevokeSeatsModal(root) {
             } catch (err) {
                 console.error('[RevokeSeats] Error:', err);
                 alert('Failed to revoke seats.');
+            } finally {
+                _seatTxInProgress = false;
             }
         });
     }
