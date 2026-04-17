@@ -43,8 +43,13 @@ export async function initCoalitionFormation(supabase, state) {
     const faction = state.faction;
     if (!nation || !faction) return { needed: false };
 
-    // Fetch latest election, current tick, active coalition, and all parties in parallel
-    const [electionResult, shardResult, coalitionResult, partiesResult] = await Promise.all([
+    // Fetch latest election, current tick, active coalition, all parties, and
+    // the canonical "is there a sitting PM" check (head_of_government). The
+    // Administrative tab treats an active head_of_government row + populated
+    // ministries as "government exists", so the Election tab must agree —
+    // otherwise we'd flash "No Government — Snap Election Imminent" while a
+    // full cabinet is live one tab over.
+    const [electionResult, shardResult, coalitionResult, partiesResult, hogResult] = await Promise.all([
         supabase.from('elections')
             .select('id, election_type, election_tick, status')
             .eq('nation_id', nation.id)
@@ -54,10 +59,10 @@ export async function initCoalitionFormation(supabase, state) {
             .maybeSingle(),
         supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
         supabase.from('government_formations')
-            .select('id')
+            .select('id, status')
             .eq('nation_id', nation.id)
-            .eq('status', 'formed')
-            .order('formed_at', { ascending: false })
+            .in('status', ['formed', 'active'])
+            .order('formed_at', { ascending: false, nullsFirst: false })
             .limit(1)
             .maybeSingle(),
         supabase.from('factions')
@@ -66,6 +71,12 @@ export async function initCoalitionFormation(supabase, state) {
             .eq('faction_type', 'party')
             .is('abandoned_at', null)
             .order('seats', { ascending: false }),
+        supabase.from('head_of_government')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .eq('active', true)
+            .limit(1)
+            .maybeSingle(),
     ]);
 
     _currentTick = shardResult.data?.current_tick ?? 0;
@@ -74,7 +85,10 @@ export async function initCoalitionFormation(supabase, state) {
     _majoritySeats = Math.ceil(_totalSeats / 2) + 1;
 
     const election = electionResult.data;
-    const hasFormedGov = !!coalitionResult.data;
+    // A government exists if EITHER a formation row is in formed/active OR
+    // an active head_of_government row exists (for nations whose finalize
+    // step never wrote the formation row, e.g. fallback paths).
+    const hasFormedGov = !!coalitionResult.data || !!hogResult.data;
 
     // Presidential systems don't use coalition formation — the president governs directly
     const isPresidentialSystem = (nation.government_type || '').toLowerCase().includes('presidential')

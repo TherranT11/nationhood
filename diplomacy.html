@@ -572,56 +572,66 @@ async function loadShippingData() {
     const nationId = _worldState?.nation?.id;
     if (!nationId) return;
 
-    try {
-    // Routes involving our nation (any status — apps must surface even if a
-    // route was deactivated, otherwise the cabinet can't act on them).
-    const { data: routes, error: routeErr } = await _supabase.from('shipping_routes')
-        .select('id, origin_nation_id, destination_nation_id, origin_port, destination_port, trade_sector, cargo_category, goods_name, trade_volume, estimated_revenue, transit_ticks, demand_level, trade_agreement_id, trade_agreement_name, status, competition_count')
-        .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`);
-
-    if (routeErr) return;
-
     _shippingRoutesByAgreement = {};
-    _allShippingRoutes = routes || [];
-    const routeIds = [];
-    if (routes) {
-        for (const r of routes) {
+    _allShippingRoutes = [];
+    _shippingClaimsByRoute = {};
+    _shippingAppsByRoute = {};
+
+    try {
+        // Fetch routes, applications, and claims in parallel. We pull
+        // applications + claims via an inner-join embed on shipping_routes
+        // and filter at the join, so an app surfaces even if our routes
+        // query somehow misses its row (RLS edge cases, deactivated routes,
+        // race with the route generator, etc.).
+        const routeColumns = 'id, origin_nation_id, destination_nation_id, origin_port, destination_port, trade_sector, cargo_category, goods_name, trade_volume, estimated_revenue, transit_ticks, demand_level, trade_agreement_id, trade_agreement_name, status, competition_count';
+        const corpAppColumns = 'id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, shipping_fleet_capacity, shipping_fleet_deployed';
+        const corpClaimColumns = 'id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url';
+
+        const [routesRes, appsRes, claimsRes] = await Promise.all([
+            _supabase.from('shipping_routes')
+                .select(routeColumns)
+                .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`),
+            _supabase.from('shipping_applications')
+                .select(`id, route_id, faction_id, proposed_rate, status, applied_at_tick, factions(${corpAppColumns}), shipping_routes!inner(${routeColumns})`)
+                .eq('status', 'pending')
+                .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`, { foreignTable: 'shipping_routes' }),
+            _supabase.from('shipping_claims')
+                .select(`id, route_id, faction_id, market_share_pct, revenue_per_transit, total_revenue, transits_completed, status, factions(${corpClaimColumns}), shipping_routes!inner(${routeColumns})`)
+                .eq('status', 'active')
+                .or(`origin_nation_id.eq.${nationId},destination_nation_id.eq.${nationId}`, { foreignTable: 'shipping_routes' }),
+        ]);
+
+        // Index routes (from the dedicated query and any embedded in apps/claims).
+        const routeMap = new Map();
+        for (const r of (routesRes.data || [])) routeMap.set(r.id, r);
+        for (const a of (appsRes.data || [])) {
+            const r = a.shipping_routes;
+            if (r && !routeMap.has(r.id)) routeMap.set(r.id, r);
+        }
+        for (const c of (claimsRes.data || [])) {
+            const r = c.shipping_routes;
+            if (r && !routeMap.has(r.id)) routeMap.set(r.id, r);
+        }
+
+        _allShippingRoutes = Array.from(routeMap.values());
+        for (const r of _allShippingRoutes) {
             if (r.trade_agreement_id) {
                 if (!_shippingRoutesByAgreement[r.trade_agreement_id]) _shippingRoutesByAgreement[r.trade_agreement_id] = [];
                 _shippingRoutesByAgreement[r.trade_agreement_id].push(r);
             }
-            routeIds.push(r.id);
         }
-    }
 
-    // Claims on those routes (which corporations are servicing them)
-    _shippingClaimsByRoute = {};
-    _shippingAppsByRoute = {};
-    if (routeIds.length > 0) {
-        const [claimsResult, appsResult] = await Promise.all([
-            _supabase.from('shipping_claims')
-                .select('id, route_id, faction_id, market_share_pct, revenue_per_transit, total_revenue, transits_completed, status, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector)')
-                .in('route_id', routeIds)
-                .eq('status', 'active'),
-            _supabase.from('shipping_applications')
-                .select('id, route_id, faction_id, proposed_rate, status, applied_at_tick, factions(id, faction_name, abbreviation, party_color, corp_sector, corp_subsector, corp_ticker, custom_logo_url, shipping_fleet_capacity, shipping_fleet_deployed)')
-                .in('route_id', routeIds)
-                .eq('status', 'pending'),
-        ]);
-        if (claimsResult.data) {
-            for (const c of claimsResult.data) {
-                if (!_shippingClaimsByRoute[c.route_id]) _shippingClaimsByRoute[c.route_id] = [];
-                _shippingClaimsByRoute[c.route_id].push(c);
-            }
+        for (const a of (appsRes.data || [])) {
+            if (!_shippingAppsByRoute[a.route_id]) _shippingAppsByRoute[a.route_id] = [];
+            _shippingAppsByRoute[a.route_id].push(a);
         }
-        if (appsResult.data) {
-            for (const a of appsResult.data) {
-                if (!_shippingAppsByRoute[a.route_id]) _shippingAppsByRoute[a.route_id] = [];
-                _shippingAppsByRoute[a.route_id].push(a);
-            }
+        for (const c of (claimsRes.data || [])) {
+            if (!_shippingClaimsByRoute[c.route_id]) _shippingClaimsByRoute[c.route_id] = [];
+            _shippingClaimsByRoute[c.route_id].push(c);
         }
+    } catch (err) {
+        console.warn('[Shipping] loadShippingData failed:', err);
     }
-    } catch (_) { /* shipping_routes table may not exist yet */ }
 }
 
 function getAgreementShippingInfo(agreementId) {
