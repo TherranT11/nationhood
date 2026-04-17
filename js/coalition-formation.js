@@ -59,7 +59,7 @@ export async function initCoalitionFormation(supabase, state) {
             .maybeSingle(),
         supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
         supabase.from('government_formations')
-            .select('id, status')
+            .select('id, status, election_id, formed_at, formed_tick, created_at, created_tick')
             .eq('nation_id', nation.id)
             .in('status', ['formed', 'active'])
             .order('formed_at', { ascending: false, nullsFirst: false })
@@ -85,10 +85,40 @@ export async function initCoalitionFormation(supabase, state) {
     _majoritySeats = Math.ceil(_totalSeats / 2) + 1;
 
     const election = electionResult.data;
-    // A government exists if EITHER a formation row is in formed/active OR
-    // an active head_of_government row exists (for nations whose finalize
-    // step never wrote the formation row, e.g. fallback paths).
-    const hasFormedGov = !!coalitionResult.data || !!hogResult.data;
+    const formedGov = coalitionResult.data || null;
+    const hasActiveHoG = !!hogResult.data;
+
+    // Cycle-anchored check: is the formation row tied to the LATEST election?
+    // This stops a stale 1995 formation from masking the need for a new
+    // government after a 2000 election.
+    const hasCurrentCycleFormedGov = (() => {
+        if (!formedGov) return false;
+        if (!election) return true; // no completed election to anchor against
+
+        // Primary check: the formed government is explicitly tied to the latest completed election.
+        if (formedGov.election_id && formedGov.election_id === election.id) return true;
+
+        // Fallback check: treat as current-cycle only when formation tick is at/after election tick.
+        const candidateTicks = [
+            formedGov.formed_tick,
+            formedGov.created_tick,
+        ].map((v) => Number(v)).filter((v) => Number.isFinite(v));
+
+        if (candidateTicks.length > 0 && Number.isFinite(election.election_tick)) {
+            return Math.max(...candidateTicks) >= election.election_tick;
+        }
+
+        return false;
+    })();
+
+    // A government effectively exists if either:
+    //   1. A formation row is current-cycle and in formed/active status, OR
+    //   2. An active head_of_government row exists (canonical "PM is sitting"
+    //      signal — used by the Administrative tab; covers fallback paths
+    //      that never wrote a formation row).
+    // Without (2), the Election tab would falsely claim "No Government" while
+    // a full cabinet renders one tab over.
+    const hasFormedGov = hasCurrentCycleFormedGov || hasActiveHoG;
 
     // Presidential systems don't use coalition formation — the president governs directly
     const isPresidentialSystem = (nation.government_type || '').toLowerCase().includes('presidential')
@@ -97,7 +127,7 @@ export async function initCoalitionFormation(supabase, state) {
         _formationNeeded = false;
 
         // If an election just happened and no government exists, auto-create one for the president's party
-        if (election && !hasFormedGov) {
+        if (election && !hasCurrentCycleFormedGov) {
             try {
                 const currentTick = shardResult.data?.current_tick ?? 0;
                 // Find the president's party (active president row or largest party)
@@ -156,7 +186,10 @@ export async function initCoalitionFormation(supabase, state) {
         return { needed: false };
     }
 
-    // Parliamentary systems use coalition formation
+    // Parliamentary systems use coalition formation. Use the combined gate
+    // (hasFormedGov) so an active PM in head_of_government short-circuits
+    // the "needs formation" branch even if the current-cycle formation row
+    // is missing (fallback paths, repaired data, legacy nations).
     if (election && !hasFormedGov) {
         _formationNeeded = true;
         _electionId = election.id;
@@ -468,6 +501,21 @@ const MINISTRY_FULL_NAMES = {
 const MINISTRY_KEYS = ['prime_minister', 'interior', 'foreign', 'defense', 'finance',
     'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
 
+function getExpectedCabinetMinistryKeys(nation) {
+    const governmentType = (nation?.government_type || '').toLowerCase();
+    const isPresidential = governmentType.includes('presidential')
+        || nation?.hos_election_method === 'direct_vote';
+    const isSemiPresidential = governmentType.includes('semi');
+
+    const parliamentaryKeys = ['prime_minister', 'interior', 'foreign', 'defense', 'finance',
+        'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
+    const presidentialKeys = ['interior', 'foreign', 'defense', 'finance',
+        'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
+
+    if (isSemiPresidential) return parliamentaryKeys;
+    return isPresidential ? presidentialKeys : parliamentaryKeys;
+}
+
 function renderMinistryAssignment(formation) {
     const coalitionParties = (formation.party_ids || [])
         .map(pid => _allParties.find(p => p.id === pid))
@@ -574,14 +622,48 @@ async function handleFormGovernment(formation, root) {
         }).eq('id', formation.id);
 
         // Ensure ministries are populated regardless of RPC path
-        // Check for VACANT ministries (party_id is null) — rows exist but are empty
+        // Validate both active row count and vacant row count.
+        const expectedCabinetKeys = getExpectedCabinetMinistryKeys(nation);
+        const expectedCabinetSize = expectedCabinetKeys.length;
+        const { count: totalActiveCount } = await _supabase.from('ministries')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', nationId).eq('is_active', true);
         const { count: vacantCount } = await _supabase.from('ministries')
             .select('id', { count: 'exact', head: true })
             .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
 
-        if (vacantCount && vacantCount >= 5) {
-            console.warn(`[Coalition] ${vacantCount} vacant ministries — populating from assignments`);
+        if (!totalActiveCount || totalActiveCount < expectedCabinetSize || (vacantCount && vacantCount > 0)) {
+            console.warn(
+                `[Coalition] Ministry invariant check failed (expected=${expectedCabinetSize}, active=${totalActiveCount || 0}, vacant=${vacantCount || 0}) — populating from assignments`
+            );
             await createMinistriesFromAssignments(nationId);
+        }
+
+        // RPC success alone is insufficient unless active-administration invariants are satisfied.
+        const { data: activeAdministration, error: activeAdminErr } = await _supabase.from('administrations')
+            .select('id')
+            .eq('nation_id', nationId)
+            .is('ended_at_tick', null)
+            .limit(1)
+            .maybeSingle();
+        if (activeAdminErr) {
+            console.warn('[Coalition] Failed to verify active administration:', activeAdminErr.message);
+        } else if (!activeAdministration) {
+            try {
+                const coalition = {
+                    id: formation.id,
+                    party_ids: formation.party_ids || [],
+                    lead_party_id: _ministryAssignments.prime_minister,
+                };
+                await rolloverAdministration(
+                    _supabase, nationId, _state.nation,
+                    'election', coalition, _allParties,
+                    _currentTick, _state.shard?.current_date || '',
+                    Number(_state.nation?.gov_approval ?? 50)
+                );
+            } catch (adminErr) {
+                console.warn('[Coalition] Post-finalization administration rollover failed (non-fatal):', adminErr.message);
+            }
         }
 
         // Auto-appoint PM's party leader (skip coalition check — we just formed it)
