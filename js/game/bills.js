@@ -8,6 +8,7 @@ import { hasElectedPresident, getCurrentConstitutionalSystem } from './governmen
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology, loadNationIdeologies } from './ideology.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
+import { computeCorpValuation } from './corp-valuation.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
@@ -2932,7 +2933,7 @@ export async function enactBill(supabase, bill, currentTick) {
                 if (tariffWriteErr) console.error('[enactBill] Failed to write sector_tariffs:', tariffWriteErr.message);
                 else console.log(`[enactBill] Sector tariff: ${effect.sector} → ${tariffRate}%`);
             }
-        } else if (effect.type === 'gov_bailout' && effect.corp_faction_id && typeof effect.amount === 'number') {
+        } else if (effect.type === 'gov_bailout' && effect.corp_faction_id && Number.isFinite(effect.amount) && effect.amount > 0) {
             // Government Bailout: single-source-of-truth is effect_data { corp_faction_id, amount }.
             // Re-validate corp, recompute valuation, fund from reserves → debt, +0.1 gdp_growth,
             // then apply -50 momentum and -20 gov_approval event per yes voter.
@@ -2947,13 +2948,9 @@ export async function enactBill(supabase, bill, currentTick) {
                 } else {
                     const { data: props } = await supabase.from('corp_properties')
                         .select('purchase_price, condition').eq('faction_id', corpId);
-                    let propertyValue = 0;
-                    for (const p of (props || [])) {
-                        propertyValue += Math.round(Number(p.purchase_price || 0) * (Number(p.condition || 0) / 100));
-                    }
                     const corpCash = Number(corp.corp_cash_reserves || 0);
                     const corpLoans = Number(corp.corp_loans || 0);
-                    const valuation = Math.round((corpCash + propertyValue - corpLoans) * 1.30);
+                    const valuation = computeCorpValuation({ cash: corpCash, loans: corpLoans, properties: props });
                     const cap = Math.max(0, 3 * valuation);
                     const payout = Math.min(requested, cap);
                     if (payout > 0) {
