@@ -950,7 +950,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
-import { computeEquipmentValue } from './js/game/corp-valuation.js';
+import { computeEquipmentValue, computeFinanceReceivableValue, computeCorpValuationBreakdown } from './js/game/corp-valuation.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -2378,32 +2378,21 @@ async function renderValuation(nation, nationName, faction, wfData, propData, eq
     // Assets — read from DB columns (set at corp creation, scaled by currency strength)
     const cashReserves = Number(faction.corp_cash_reserves) || 0;
     const propertyValue = propData?.propertyValue || 0;
-    // Active Contracts: principal value of commercial instruments the corp
-    // holds as receivables. Today this is loan principal outstanding for
-    // Finance corps; Construction/Shipping stay at 0 until we decide how to
-    // capitalise work-in-progress / shipping claims on the balance sheet.
-    let activeContracts = 0;
+    // Active Contracts / Finance Receivables: principal value of lender-side
+    // positions that remain collectible.
+    let receivableBreakdown = { loans: 0, bonds: 0, insurance: 0, total: 0 };
     if (faction?.id && faction.corp_sector === 'Finance') {
         try {
             const { data: finLoans } = await _supabase.from('finance_active_loans')
-                .select('remaining_principal, finance_loan_requests(request_type)')
+                .select('principal, remaining_principal, finance_loan_requests!inner(request_type)')
                 .eq('lender_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
-            for (const loan of (finLoans || [])) {
-                const reqType = loan.finance_loan_requests?.request_type || 'loan';
-                // Loans: outstanding principal owed to us is the asset value.
-                // Bonds: face value outstanding is the asset. Insurance policies
-                // are written as a contingent liability for the insurer, so they
-                // don't count here.
-                if (reqType === 'loan' || reqType === 'bond') {
-                    const remaining = Math.max(0, Number(loan.remaining_principal || 0));
-                    activeContracts += remaining;
-                }
-            }
+            receivableBreakdown = computeFinanceReceivableValue(finLoans || []);
         } catch (err) {
             console.warn('[Valuation] finance_active_loans lookup failed:', err);
         }
     }
+    const activeContracts = receivableBreakdown.total;
     const totalAssets = cashReserves + propertyValue + equipmentValue + activeContracts;
 
     // Liabilities
@@ -2413,14 +2402,17 @@ async function renderValuation(nation, nationName, faction, wfData, propData, eq
     const pendingProjectCosts = 0;
     const totalLiabilities = outstandingLoans + accountsPayable + pendingProjectCosts;
 
-    // Net Worth
-    const netWorth = totalAssets - totalLiabilities;
-
-    // Market Valuation — based on net worth + demand modifier
-    // Demand: count corps in this subsector in this nation
-    const demandBonus = 0.30; // HIGH demand (0-1 corps) — will be dynamic later
-    const valuation = Math.round(netWorth * (1 + demandBonus));
-    const valuationDelta = valuation - netWorth;
+    // Net Worth + Market Valuation from shared valuation module.
+    const basis = computeCorpValuationBreakdown({
+        cash: cashReserves,
+        propertyValue,
+        equipmentValue,
+        loans: totalLiabilities,
+        financeReceivables: activeContracts,
+    });
+    const netWorth = basis.valuationBasis;
+    const valuation = basis.valuation;
+    const valuationDelta = valuation - basis.valuationBasis;
     const valuationAbove = valuationDelta > 0;
 
     document.getElementById('val-type-badge').textContent = companyType.toUpperCase();
@@ -2438,7 +2430,8 @@ async function renderValuation(nation, nationName, faction, wfData, propData, eq
         ${line('Cash & Reserves', cashReserves, { indent: true })}
         ${line('Property', propertyValue, { indent: true })}
         ${line('Equipment', equipmentValue, { indent: true })}
-        ${line('Active Contracts', activeContracts, { indent: true })}
+        ${line('Finance Receivables (Loans + Bonds)', activeContracts, { indent: true })}
+        ${line('Insurance Coverage (excluded)', receivableBreakdown.insurance, { indent: true, color: 'var(--text-dim)' })}
         ${line('Total Assets', totalAssets, { bold: true, color: 'var(--green)' })}
 
         <div class="val-section-hdr"><span class="val-section-hdr__label" style="color:var(--red);">Liabilities</span></div>
@@ -2446,6 +2439,9 @@ async function renderValuation(nation, nationName, faction, wfData, propData, eq
         ${line('Accounts Payable', accountsPayable, { indent: true })}
         ${line('Pending Project Costs', pendingProjectCosts, { indent: true })}
         ${line('Total Liabilities', totalLiabilities, { bold: true, color: 'var(--red)' })}
+
+        <div class="val-section-hdr"><span class="val-section-hdr__label">Reconciliation</span></div>
+        ${line('Cash + Property + Equipment + Receivables - Liabilities', basis.valuationBasis, { indent: true })}
 
         <div class="val-net">
             <span class="val-net__label">Net Worth</span>
