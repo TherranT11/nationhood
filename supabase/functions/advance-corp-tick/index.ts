@@ -3181,7 +3181,7 @@ async function generateShippingRoutes(supabase, currentTick) {
     return { generated: routeRows.length, expired: expired?.length || 0, total: routeRows.length };
 }
 
-const ORGANIC_REVENUE_MULT = 0.35;
+const ORGANIC_REVENUE_MULT = 0.35; // pre-bid: organic routes are generated at 35% of normal lane economics
 // Proximity cap removed (third pass). Player feedback: long-haul lanes
 // are fine, the problem was LOW-volume clutter, not geography. Kept as
 // a null check only so pairs with no diplomatic_relations row still
@@ -3262,6 +3262,8 @@ async function generateOrganicRoutes(supabase, currentTick) {
                 // the Available Routes list. Agreement-backed routes are
                 // unaffected — this path only generates organic spot lanes.
                 if (vol < ORGANIC_MIN_VOLUME) continue;
+                // pre-bid: card/tick baseline for organic routes is discounted before clamp/ceiling.
+                // post-bid organic multiplier is 1.0 (client approval path), so this base carries through.
                 const rev = _clampServiceRate(vol * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) * ORGANIC_REVENUE_MULT / SHIPPING_MONTHS_PER_YEAR, _computeServiceRateCeiling(vol * ORGANIC_REVENUE_MULT, sm.subsector));
 
                 rows.push({
