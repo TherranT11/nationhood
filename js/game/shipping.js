@@ -94,9 +94,10 @@ export function clampServiceRate(value, ceiling) {
  * routes couldn't clear 4-tick Container maintenance.
  */
 export var AGREEMENT_REVENUE_MULTIPLIER = 1.2;
-export var ORGANIC_REVENUE_MULTIPLIER_POST = 0.85;
+export var ORGANIC_REVENUE_MULTIPLIER_POST = 1.0; // post-bid: no extra organic penalty; pre-bid 0.35 handles discount
 
 export function revenueTierMultiplier(route) {
+    // post-bid: agreement lanes get a bonus; organic lanes keep the clamped bid unchanged.
     return route && route.trade_agreement_id ? AGREEMENT_REVENUE_MULTIPLIER : ORGANIC_REVENUE_MULTIPLIER_POST;
 }
 
@@ -312,7 +313,7 @@ export async function generateShippingRoutes(supabase, currentTick) {
  * Revenue multiplier for organic routes vs agreement-backed routes.
  * Organic routes pay less to incentivize real trade deals.
  */
-var ORGANIC_REVENUE_MULTIPLIER = 0.35; // 35% of normal rate
+var ORGANIC_REVENUE_MULTIPLIER = 0.35; // pre-bid: organic routes are generated at 35% of normal lane economics
 
 /**
  * Minimum proximity to generate organic routes between nations.
@@ -484,9 +485,8 @@ export async function generateOrganicRoutes(supabase, currentTick) {
                 var baseVolume = popFactor * gdpFactor * closeness * 30000000; // ~$30M base scaled
                 var volume = Math.round(Math.max(5000000, baseVolume * (0.7 + seededRandom(seed + 999) * 0.6)));
                 var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
-                // Organic lanes still pay 35% of the normal rate before clamping.
-                // Ceiling is based on the organic (post-0.35) volume share so the
-                // route card shows what the corp can actually bid to.
+                // pre-bid: route-card estimate is discounted to 35% before clamp/ceiling.
+                // post-bid organic multiplier is 1.0, so approved claims earn off this same base.
                 var estRevenue = clampServiceRate(
                     volume * revenueRate * ORGANIC_REVENUE_MULTIPLIER / MONTHS_PER_YEAR,
                     computeServiceRateCeiling(volume * ORGANIC_REVENUE_MULTIPLIER, sectorMeta.subsector)
