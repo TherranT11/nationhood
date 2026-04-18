@@ -176,6 +176,13 @@ function getDeliveredPropertyMeta(contract, fallbackPaidPrice) {
     return null;
 }
 
+function resolveIncidentNationId(vessel, corpNationId, claimRouteMap) {
+    const destinationNationId = vessel?.active_claim_id
+        ? claimRouteMap?.get(vessel.active_claim_id)?.shipping_routes?.destination_nation_id
+        : null;
+    return destinationNationId || vessel?.current_port_nation_id || corpNationId || null;
+}
+
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION EVENTS — Templates
 //
@@ -4028,6 +4035,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             const scope     = route?.scope || 'INTERNATIONAL';
                             const cargo     = route?.trade_sector || '';
                             const prox      = Number(route?.proximity) || 0;
+                            const incidentNationId = resolveIncidentNationId(v, corp.nation_id, claimRouteMap);
                             const firedIncidents = [];
                             const R = () => Math.random();
 
@@ -4118,7 +4126,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                     const { error: incErr } = await supabase.from('vessel_incidents').insert({
                                         faction_id:    corp.id,
                                         vessel_id:     v.id,
-                                        nation_id:     route?.destination_nation_id || v.current_port_nation_id || null,
+                                        nation_id:     incidentNationId,
                                         incident_type: inc.type,
                                         incident_tick: currentTick,
                                         description:   inc.description,
@@ -4131,7 +4139,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 }
                                 try {
                                     await supabase.from('event_log').insert({
-                                        nation_id:          route?.destination_nation_id || v.current_port_nation_id || corp.nation_id,
+                                        nation_id:          incidentNationId,
                                         faction_id:         corp.id,
                                         event_name:         `${corp.faction_name || 'A corporation'}: ${inc.type.replace(/_/g, ' ')} on ${v.vessel_name}`,
                                         category:           'corporate',
@@ -4183,9 +4191,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 // The corp decides from their Shipping Operations view whether to
                                 // FILE CLAIM (spawns an insurance_claims row) or DISMISS the
                                 // incident. No auto-file.
-                                const strandNationId = claim?.shipping_routes?.destination_nation_id
-                                    || v.current_port_nation_id
-                                    || null;
+                                const strandNationId = resolveIncidentNationId(v, corp.nation_id, claimRouteMap);
                                 const strandDescription = `Vessel ${v.vessel_name} stranded at sea — fuel depleted mid-transit.`;
                                 try {
                                     const { error: incErr } = await supabase.from('vessel_incidents').insert({
@@ -4203,7 +4209,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 }
                                 try {
                                     await supabase.from('event_log').insert({
-                                        nation_id:          strandNationId || corp.nation_id,
+                                        nation_id:          strandNationId,
                                         faction_id:         corp.id,
                                         event_name:         `${corp.faction_name || 'A corporation'} vessel stranded at sea`,
                                         category:           'corporate',
