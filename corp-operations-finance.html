@@ -360,8 +360,12 @@ let _branchCount = 0;         // active branch_office properties owned by this c
 // Two gates both have to clear before the corp can underwrite more:
 //   1. Reserve gate: cash must stay ≥ reserveReqPct × exposure
 //      (15%, or 12% under Financial Sector Deregulation).
-//   2. Lending-cap gate: the lender can only deploy a capped fraction
-//      of cash — 50% base + 15% per branch_office, max 100%.
+//   2. Lending-cap gate: deployed capital must stay ≤ a capped
+//      fraction of TOTAL CAPITAL (cash + deployed) — 50% base +
+//      15% per branch_office, max 100%. Measuring against total
+//      capital rather than cash keeps the base invariant across an
+//      origination, so loans don't cannibalise their own cap (see
+//      the block comment on totalCapital below for why).
 //
 // Previously the Reserves & Risk card used the reserve gate alone
 // while the loan validator used the lending-cap gate alone. A corp
@@ -2237,7 +2241,7 @@ async function rdSubmitOffer() {
     const [cashRes, liveLoansRes] = await Promise.all([
         _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single(),
         _supabase.from('finance_active_loans')
-            .select('principal, total_paid, collateral_type, finance_loan_requests!inner(request_type)')
+            .select('principal, total_paid, finance_loan_requests!inner(request_type)')
             .eq('lender_faction_id', faction.id)
             .in('status', ['current', 'late', 'delinquent']),
     ]);
