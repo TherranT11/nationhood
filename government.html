@@ -2554,6 +2554,19 @@ async function _gbSelectCategory(container, row, kind) {
         </div>
     `).join('');
 
+    // Surface the policy rate for the three tax categories players
+    // actually tune — lets them read Revenue ↔ Rate at a glance
+    // without tabbing to Economy.
+    const rateByDescKey = {
+        incomeTax: currentNation?.income_tax,
+        corpTax:   currentNation?.corporate_tax,
+        salesTax:  currentNation?.sales_tax,
+    };
+    const currentRate = rateByDescKey[row.descKey];
+    const rateCell = (currentRate != null)
+        ? `<div><span class="gb-deep__stat-k">Current Rate</span><span class="gb-deep__stat-v">${Number(currentRate).toFixed(1)}%</span></div>`
+        : '';
+
     body.innerHTML = `
         <div>
             <div class="gb-deep__kicker">${escapeHtml(kicker)}</div>
@@ -2562,6 +2575,7 @@ async function _gbSelectCategory(container, row, kind) {
         <div class="gb-deep__stats">
             <div><span class="gb-deep__stat-k">Monthly</span><span class="gb-deep__stat-v">${_gbFmtCurrency(mo)}</span></div>
             <div><span class="gb-deep__stat-k">Yearly</span><span class="gb-deep__stat-v">${_gbFmtCurrency(row.yr)}</span></div>
+            ${rateCell}
         </div>
         <p class="gb-deep__desc">${escapeHtml(desc)}</p>
         ${subRows.length ? `
