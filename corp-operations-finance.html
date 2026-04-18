@@ -1291,6 +1291,15 @@ function renderReservesRisk() {
         lendingCapPct, lendingCap, totalDeployed,
         deployable: availableCapital, limiter,
     } = cap;
+    // Breadcrumb for a prior intermittent bug: Reserves & Risk would
+    // render $0 exposure while the Active Portfolio card next to it
+    // clearly had entries. Suggests apPortfolio got mutated or the
+    // remaining formula went sideways. Keep a one-liner log so if we
+    // see it again we know the portfolio shape at the moment of desync.
+    if (apPortfolio.length > 0 && totalExposure === 0) {
+        console.warn('[RR] Portfolio has entries but totalExposure=0. Sample:',
+            apPortfolio.slice(0, 3).map(p => ({ type: p.type, remaining: p.remaining, principal: p.principal })));
+    }
     const deployed = totalExposure;
     const totalAssets = cash + deployed;
     const reserveRatio = totalExposure > 0 ? Math.round((cash / totalExposure) * 100) : 100;
@@ -2246,7 +2255,7 @@ async function rdSubmitOffer() {
     const [cashRes, liveLoansRes] = await Promise.all([
         _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single(),
         _supabase.from('finance_active_loans')
-            .select('principal, total_paid, finance_loan_requests!inner(request_type)')
+            .select('principal, total_paid, total_interest_paid, finance_loan_requests!inner(request_type)')
             .eq('lender_faction_id', faction.id)
             .in('status', ['current', 'late', 'delinquent']),
     ]);
@@ -2264,10 +2273,20 @@ async function rdSubmitOffer() {
         const type = req === 'insurance' ? 'INSURE' : req === 'bond' ? 'BOND' : 'LOAN';
         const principal = Number(l.principal) || 0;
         const totalPaid = Number(l.total_paid) || 0;
+        const totalInterestPaid = Number(l.total_interest_paid) || 0;
+        // True remaining = principal − principal_paid, where
+        //   principal_paid = total_paid − total_interest_paid.
+        // The earlier `principal − total_paid` drifted negative past the
+        // amortization crossover and produced ALL-ZERO exposure for
+        // long-running loan books, which read as "Zellox has $0 deployed"
+        // on the Reserves & Risk card.
+        const remaining = type === 'INSURE'
+            ? 0
+            : Math.max(0, principal - totalPaid + totalInterestPaid);
         return {
             type,
             principal,
-            remaining: type === 'INSURE' ? 0 : Math.max(0, principal - totalPaid),
+            remaining,
             coverage:  type === 'INSURE' ? principal : 0,
             faceValue: type === 'BOND'   ? principal : 0,
         };
@@ -2477,13 +2496,27 @@ async function loadActivePortfolio() {
 
     const TYPE_MAP = { loan: 'LOAN', bond: 'BOND', insurance: 'INSURE' };
     const isInsurance = (loan) => loan.finance_loan_requests?.request_type === 'insurance';
+    // True remaining balance. Previously `principal - total_paid` — but
+    // total_paid accumulates the FULL monthly payment (interest + principal)
+    // in the tick processor, so subtracting it from principal drifts NEGATIVE
+    // past a loan's amortization crossover. Correct identity:
+    //   principal_paid = total_paid - total_interest_paid
+    //   remaining      = principal - principal_paid
+    // Math.max(0, …) guards against floating-point underflow at the last
+    // payment of a loan's term.
+    const loanRemaining = (loan) => Math.max(
+        0,
+        Number(loan.principal || 0)
+        - Number(loan.total_paid || 0)
+        + Number(loan.total_interest_paid || 0)
+    );
     apPortfolio = (loans || []).map(loan => ({
         id: loan.id,
         type: TYPE_MAP[loan.finance_loan_requests?.request_type] || 'LOAN',
         counterparty: loan.borrower?.faction_name || 'Unknown',
         abbr: loan.borrower?.abbreviation || loan.borrower?.corp_ticker || '??',
         nation: loan.loan_nation?.name || loan.borrower?.nation || 'Unknown',
-        remaining: isInsurance(loan) ? 0 : loan.principal - loan.total_paid,
+        remaining: isInsurance(loan) ? 0 : loanRemaining(loan),
         principal: loan.principal,
         earned: isInsurance(loan) ? ((loan.monthly_payment || 0) * (loan.payments_made || 0)) : (loan.total_interest_paid || 0),
         rate: loan.interest_rate,
