@@ -20,6 +20,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { computeMonthlyLoanBreakdown } from "../_shared/loan-accounting.ts";
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════════════════════
@@ -2975,6 +2976,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             await supabase.from('finance_active_loans').update({
                 total_paid: loan.total_paid + payment,
                 total_interest_paid: (loan.total_interest_paid || 0) + payment,
+                remaining_principal: isMatured ? 0 : Number((loan.remaining_principal ?? loan.principal) || 0),
                 payments_made: newPaymentsMade,
                 last_payment_tick: currentTick,
                 status: isMatured ? 'repaid' : 'current',
@@ -2993,23 +2995,28 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             .single();
 
         const borrowerCash = Number(borrower?.corp_cash_reserves) || 0;
-        const payment = loan.monthly_payment;
-        const monthlyRate = (loan.interest_rate / 100) / 12;
-        const remainingPrincipal = loan.principal - loan.total_paid;
-        const interestPortion = Math.round(remainingPrincipal * monthlyRate);
+        const payment = Number(loan.monthly_payment) || 0;
+        const remainingPrincipal = Number(
+            loan.remaining_principal ?? Math.max(0, Number(loan.principal || 0) - Number(loan.total_paid || 0))
+        );
+        const breakdown = computeMonthlyLoanBreakdown({
+            payment,
+            annualRatePct: Number(loan.interest_rate) || 0,
+            remainingPrincipal,
+        });
 
         if (borrowerCash >= payment) {
-            const newTotalPaid = loan.total_paid + payment;
-            const newInterestPaid = loan.total_interest_paid + interestPortion;
-            const newPaymentsMade = loan.payments_made + 1;
-            const isRepaid = newPaymentsMade >= loan.term_months;
+            const newTotalPaid = Number(loan.total_paid || 0) + payment;
+            const newInterestPaid = Number(loan.total_interest_paid || 0) + breakdown.interestPortion;
+            const newPaymentsMade = (loan.payments_made || 0) + 1;
+            const isRepaid = breakdown.fullyRepaid;
 
             await supabase.from('factions').update({
                 corp_cash_reserves: borrowerCash - payment
             }).eq('id', loan.borrower_faction_id);
 
             // Lender receives payment + deregulation interest bonus
-            const deregBonus = Math.round(interestPortion * interestBonus);
+            const deregBonus = Math.round(breakdown.interestPortion * interestBonus);
             const lenderReceives = payment + deregBonus;
             const { data: lender } = await supabase
                 .from('factions')
@@ -3023,6 +3030,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             await supabase.from('finance_active_loans').update({
                 total_paid: newTotalPaid,
                 total_interest_paid: newInterestPaid,
+                remaining_principal: breakdown.nextRemainingPrincipal,
                 payments_made: newPaymentsMade,
                 payments_missed: 0,
                 last_payment_tick: currentTick,

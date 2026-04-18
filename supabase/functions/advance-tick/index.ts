@@ -13,6 +13,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { computeMonthlyLoanBreakdown } from "../_shared/loan-accounting.ts";
 
 let rpcPreflightCheckPromise = null;
 
@@ -32666,18 +32667,20 @@ async function processAutoRatePolicies(supabase, nationId, currentTick) {
 
             // For loans: reduce remaining principal and track corp_debt
             if (p.service_type === 'loan') {
-                var interestPortion = Math.round(Number(p.remaining_principal ?? 0) * (Number(p.rate_at_issue ?? 0) / 100 / 12));
-                var principalPortion = Math.max(0, payment - interestPortion);
-                var oldPrincipal = Number(p.remaining_principal ?? 0);
-                policyUpdate.remaining_principal = Math.max(0, oldPrincipal - principalPortion);
+                var breakdown = computeMonthlyLoanBreakdown({
+                    payment: payment,
+                    annualRatePct: Number(p.rate_at_issue ?? 0),
+                    remainingPrincipal: Number(p.remaining_principal ?? 0),
+                });
+                policyUpdate.remaining_principal = breakdown.nextRemainingPrincipal;
 
                 // Reduce borrower's corp_debt by principal paid down
-                if (principalPortion > 0) {
+                if (breakdown.principalPortion > 0) {
                     var { data: debtRow, error: debtErr } = await supabase.from('factions')
                         .select('corp_debt').eq('id', p.borrower_faction_id).single();
                     if (!debtErr && debtRow) {
                         var { error: debtUpErr } = await supabase.from('factions').update({
-                            corp_debt: Math.max(0, Number(debtRow.corp_debt ?? 0) - principalPortion),
+                            corp_debt: Math.max(0, Number(debtRow.corp_debt ?? 0) - breakdown.principalPortion),
                         }).eq('id', p.borrower_faction_id);
                         if (debtUpErr) console.warn('[SubPayments] Failed to reduce corp_debt:', debtUpErr.message);
                     }

@@ -1371,7 +1371,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                 if (reqType === 'insurance') {
                     pvtContracts += Number(loan.monthly_payment || 0);
                 } else if (reqType === 'loan') {
-                    const remaining = loan.principal - (loan.total_paid || 0);
+                    const remaining = Number(loan.remaining_principal ?? Math.max(0, Number(loan.principal || 0) - Number(loan.total_paid || 0)));
                     const monthlyRate = (loan.interest_rate / 100) / 12;
                     pvtContracts += Math.round(remaining * monthlyRate);
                 } else if (reqType === 'bond') {
@@ -1752,6 +1752,7 @@ async function acceptOffer(offerId, requestId) {
             collateral_type: offer.collateral_type,
             purpose: request.purpose,
             monthly_payment: monthlyPayment,
+            remaining_principal: request.amount,
             started_tick: currentTick,
         });
 
@@ -2373,7 +2374,7 @@ async function renderValuation(nation, nationName, faction, wfData, propData) {
                 // are written as a contingent liability for the insurer, so they
                 // don't count here.
                 if (reqType === 'loan' || reqType === 'bond') {
-                    const remaining = Math.max(0, Number(loan.principal || 0) - Number(loan.total_paid || 0));
+                    const remaining = Number(loan.remaining_principal ?? Math.max(0, Number(loan.principal || 0) - Number(loan.total_paid || 0)));
                     activeContracts += remaining;
                 }
             }
