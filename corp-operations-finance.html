@@ -1348,7 +1348,7 @@ function renderReservesRisk() {
     html += '<div class="rr-section-bar">Capital Position</div>';
     html += '<div class="rr-section">';
     html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-        <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.8px;">TOTAL ASSETS</span>
+        <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.8px;">TOTAL CAPITAL</span>
         <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--panel-text);">${fmtMoney(totalAssets)}</span>
     </div>`;
     html += rrSegBar([{ value: cash, color: '#5c5' }, { value: deployed, color: '#8b9a6b' }], 6);
@@ -1368,8 +1368,13 @@ function renderReservesRisk() {
     html += `<div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:3px;">
         <span style="color:#c55;">${minRatioPct}% minimum</span><span>30% healthy</span><span style="color:#5c5;">60%+</span>
     </div>`;
+    // Three cells so the math reads straight off the card: reserve
+    // requirement (liquidity gate) · lending cap (% of total capital
+    // gate, the invariant that drives AVAILABLE) · the available
+    // headroom that's the min of both.
     html += `<div class="rr-reserve-cells">
         <div class="rr-reserve-cell"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">REQUIRED (${minRatioPct}%)</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;margin-top:1px;">${fmtMoney(requiredReserve)}</div></div>
+        <div class="rr-reserve-cell"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">LENDING CAP (${lendingCapPct}%)</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--panel-text);margin-top:1px;">${fmtMoney(lendingCap)}</div></div>
         <div class="rr-reserve-cell"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">AVAILABLE TO DEPLOY</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${availableCapital > 0 ? '#5c5' : '#c55'};margin-top:1px;">${fmtMoney(availableCapital)}</div></div>
     </div>`;
     // Show which gate is the binding constraint so the user can read the
