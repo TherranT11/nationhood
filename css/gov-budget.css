@@ -61,9 +61,12 @@
 /* ── Stat cards ──────────────────────────────────────────── */
 .gb-stats {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 16px;
     margin-bottom: 32px;
+}
+@media (max-width: 1400px) {
+    .gb-stats { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 1020px) {
     .gb-stats { grid-template-columns: repeat(2, 1fr); }
@@ -85,7 +88,10 @@
     min-height: 150px;
 }
 /* Per-section colored outlines — matches the left stripe so the box
-   and the stripe read as one identity. */
+   and the stripe read as one identity. GDP uses a muted-purple accent
+   distinct from the 4 fiscal-cycle colors since it's the economic base
+   the fiscal cycle rides on top of, not a fiscal-cycle line itself. */
+.gb-stat.is-gdp  { border-color: #9a8fb0; }
 .gb-stat.is-rev  { border-color: var(--green); }
 .gb-stat.is-exp  { border-color: var(--red);   }
 .gb-stat.is-bal  { border-color: var(--blue);  }
@@ -100,6 +106,7 @@
     width: 2px;
     background: var(--border-2);
 }
+.gb-stat.is-gdp::before  { background: #9a8fb0; }
 .gb-stat.is-rev::before  { background: var(--green); }
 .gb-stat.is-exp::before  { background: var(--red); }
 .gb-stat.is-bal::before  { background: var(--blue); }
@@ -122,6 +129,7 @@
     height: 7px;
     border-radius: 1px;
 }
+.gb-stat.is-gdp  .gb-stat__dot { background: #9a8fb0;      box-shadow: 0 0 8px rgba(154,143,176,0.35); }
 .gb-stat.is-rev  .gb-stat__dot { background: var(--green); box-shadow: 0 0 8px rgba(122,154,91,0.35); }
 .gb-stat.is-exp  .gb-stat__dot { background: var(--red);   box-shadow: 0 0 8px rgba(166,93,93,0.35); }
 .gb-stat.is-bal  .gb-stat__dot { background: var(--blue);  box-shadow: 0 0 8px rgba(107,140,174,0.35); }
@@ -137,6 +145,7 @@
     font-variant-numeric: tabular-nums;
     line-height: 1.1;
 }
+.gb-stat.is-gdp  .gb-stat__primary { color: #b8aed0; }
 .gb-stat.is-rev  .gb-stat__primary { color: #9ac89e; }
 .gb-stat.is-exp  .gb-stat__primary { color: #d88d82; }
 .gb-stat.is-bal  .gb-stat__primary { color: #9cb8d2; }
