@@ -2663,14 +2663,46 @@ async function fetchBilateralTrade(myNationId, theirNationId) {
 }
 
 const AGREE_TYPE_LABELS = {
+    fta: 'Free Trade Agreement',
     free_trade: 'Free Trade Agreement',
+    pta: 'Preferential Trade',
     preferential_trade: 'Preferential Trade',
+    goods_trade: 'Goods & Services Trade Agreement',
     resource_supply: 'Resource Supply Contract',
     export_subsidy: 'Export Subsidy',
     economic_aid: 'Economic Aid',
+    stockpile_purchase: 'Stockpile Purchase',
     retaliatory_tariff: 'Retaliatory Tariff',
     impose_embargo: 'Embargo',
 };
+
+/**
+ * Recompute the singular `agreement_type` for a negotiation from its
+ * draft_articles. Call before every draft_articles UPDATE.
+ *
+ * Today this only catches one drift case: a negotiation opened as 'fta' (or
+ * with no type yet) that has since been filled with structured articles from
+ * the modern article modal (trade_flow / transfer / market_access /
+ * tariff_reduction / exit_terms). An FTA stored like that was being treated
+ * by the tick processor as "eliminate all tariffs", which is wrong — it was
+ * really a product-flow agreement.
+ *
+ * We preserve non-mismatched types (pta, resource_supply, economic_aid, etc.)
+ * as-is because their required_articles already match the articles the modal
+ * produces for them.
+ */
+const STRUCTURED_ARTICLE_TYPES = new Set([
+    'trade_flow', 'transfer', 'market_access', 'tariff_reduction', 'exit_terms',
+]);
+function inferAgreementType(articles, currentType) {
+    const nonDuration = (articles || []).filter(a => (a.article_type || a.type) !== 'duration');
+    if (nonDuration.length === 0) return currentType || null;
+    const allStructured = nonDuration.every(a => STRUCTURED_ARTICLE_TYPES.has(a.article_type || a.type));
+    if (allStructured && (currentType === 'fta' || currentType === null || currentType === undefined || currentType === 'pending')) {
+        return 'goods_trade';
+    }
+    return currentType;
+}
 
 // TRADE_SECTOR_LABELS defined above (line ~224) — shared by both trade tab and bilateral trade panel
 
@@ -8667,7 +8699,7 @@ async function saveTradeArticle(negotiationId, articleType) {
             const grace = Math.min(2, Math.max(0, parseInt(document.getElementById('cond-grace')?.value || '1')));
             if (!statKey) { alert('Please select a stat to monitor.'); return; }
             // Check max conditions
-            const { data: condNeg } = await _supabase.from('trade_negotiations').select('draft_articles').eq('id', negotiationId).single();
+            const { data: condNeg } = await _supabase.from('trade_negotiations').select('draft_articles, agreement_type').eq('id', negotiationId).single();
             const existingConditions = (condNeg?.draft_articles || []).filter(a => a.type === 'aid_condition');
             if (existingConditions.length >= DIPLOMACY_CONFIG.AID_MAX_CONDITIONS) {
                 alert('Maximum ' + DIPLOMACY_CONFIG.AID_MAX_CONDITIONS + ' conditions per agreement.');
@@ -8695,7 +8727,7 @@ async function saveTradeArticle(negotiationId, articleType) {
     }
 
     // Fetch current articles and append (or replace for non-repeatable types)
-    const { data: neg } = await _supabase.from('trade_negotiations').select('draft_articles').eq('id', negotiationId).single();
+    const { data: neg } = await _supabase.from('trade_negotiations').select('draft_articles, agreement_type').eq('id', negotiationId).single();
     if (!neg) { alert('Negotiation not found.'); return; }
 
     const articles = neg.draft_articles || [];
@@ -19347,7 +19379,7 @@ async function negStructuredArticleConfirm() {
     newArticle.added_at_tick = shardData?.current_tick || 0;
 
     const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
-        .select('draft_articles')
+        .select('draft_articles, agreement_type')
         .eq('id', _activeNegModal.negotiationId)
         .single();
 
@@ -19357,7 +19389,7 @@ async function negStructuredArticleConfirm() {
     const updated = [...current, newArticle];
 
     const { error: updateErr } = await _supabase.from('trade_negotiations')
-        .update({ draft_articles: updated })
+        .update({ draft_articles: updated, agreement_type: inferAgreementType(updated, negRow.agreement_type) })
         .eq('id', _activeNegModal.negotiationId);
 
     if (updateErr) { alert('Failed to add article: ' + updateErr.message); _negStructuredAdding = false; return; }
@@ -19432,7 +19464,7 @@ async function negArticleAdd() {
 
     // Fetch current articles from DB (avoid stale state)
     const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
-        .select('draft_articles')
+        .select('draft_articles, agreement_type')
         .eq('id', _activeNegModal.negotiationId)
         .single();
 
@@ -19442,7 +19474,7 @@ async function negArticleAdd() {
     const updated = [...current, newArticle];
 
     const { error: updateErr } = await _supabase.from('trade_negotiations')
-        .update({ draft_articles: updated })
+        .update({ draft_articles: updated, agreement_type: inferAgreementType(updated, negRow.agreement_type) })
         .eq('id', _activeNegModal.negotiationId);
 
     if (updateErr) { alert('Failed to add article: ' + updateErr.message); _negArticleAdding = false; return; }
@@ -19462,7 +19494,7 @@ async function negArticleDelete(articleId) {
     _negArticleDeleting = true;
 
     const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
-        .select('draft_articles')
+        .select('draft_articles, agreement_type')
         .eq('id', _activeNegModal.negotiationId)
         .single();
     if (fetchErr || !negRow) { alert('Failed to load articles.'); return; }
@@ -19471,7 +19503,7 @@ async function negArticleDelete(articleId) {
     const updated = current.filter(a => a.id !== articleId);
 
     const { error } = await _supabase.from('trade_negotiations')
-        .update({ draft_articles: updated })
+        .update({ draft_articles: updated, agreement_type: inferAgreementType(updated, negRow.agreement_type) })
         .eq('id', _activeNegModal.negotiationId);
 
     if (error) { alert('Failed to delete article: ' + error.message); _negArticleDeleting = false; return; }
@@ -19489,7 +19521,7 @@ async function negArticleRequestStrike(articleId) {
     _negArticleStriking = true;
 
     const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
-        .select('draft_articles')
+        .select('draft_articles, agreement_type')
         .eq('id', _activeNegModal.negotiationId)
         .single();
     if (fetchErr || !negRow) { alert('Failed to load articles.'); return; }
@@ -19505,7 +19537,7 @@ async function negArticleRequestStrike(articleId) {
     });
 
     const { error } = await _supabase.from('trade_negotiations')
-        .update({ draft_articles: updated })
+        .update({ draft_articles: updated, agreement_type: inferAgreementType(updated, negRow.agreement_type) })
         .eq('id', _activeNegModal.negotiationId);
 
     if (error) { alert('Failed to request strike: ' + error.message); _negArticleStriking = false; return; }

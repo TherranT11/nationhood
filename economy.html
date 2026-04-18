@@ -3466,7 +3466,7 @@ function renderTariffAgreementsSection(nation) {
         }
 
         // Border color by type
-        var borderColor = ag.agreement_type === 'fta' ? '#5cb85c' : ag.agreement_type === 'pta' ? '#5b9bd5' : '#888';
+        var borderColor = ag.agreement_type === 'fta' ? '#5cb85c' : ag.agreement_type === 'pta' ? '#5b9bd5' : ag.agreement_type === 'goods_trade' ? '#c88444' : '#888';
 
         h += '<div class="tariff-agreement-card" style="border-left-color:' + borderColor + '">';
         h += '<div class="ta-card-header">';

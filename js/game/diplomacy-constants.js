@@ -162,6 +162,19 @@ export const AID_CONDITION_STATS = [
  *   RT   — Retaliatory Tariff: unilateral surcharge on specific nation/sectors
  */
 export const TRADE_AGREEMENT_TYPES = {
+    goods_trade: {
+        key: 'goods_trade',
+        label: 'Goods & Services Trade Agreement',
+        shortLabel: 'GTA',
+        description: 'Product-specific trade contracts between two nations. Each article defines its own commodity flow, volume, price terms, and duration. Does not grant blanket tariff elimination — only the terms written into each article apply.',
+        bilateral: true,
+        // No top-level required_articles — this type is defined by the structured
+        // article modal (trade_flow / transfer / market_access / tariff_reduction
+        // / exit_terms). The article modal enforces its own validity.
+        required_articles: [],
+        optional_articles: ['trade_flow', 'transfer', 'market_access', 'tariff_reduction', 'exit_terms', 'text_article'],
+        icon: 'truck'
+    },
     fta: {
         key: 'fta',
         label: 'Free Trade Agreement',
