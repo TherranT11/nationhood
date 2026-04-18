@@ -85,13 +85,10 @@ export function clampServiceRate(value, ceiling) {
 }
 
 /**
- * Tier multipliers — applied to the corp's clamped bid when the shipping
- * claim is created (and to the displayed estimated_revenue on route cards
- * so what the corp sees matches what they'll earn). Agreement-backed lanes
- * pay more (formal bilateral trade = higher stakes for both nations);
- * organic lanes pay less (free-market spillover, smaller cargo commitments).
- * Organic was 0.7 — bumped to 0.85 because at 0.7 even ceiling-bid organic
- * routes couldn't clear 4-tick Container maintenance.
+ * Tier multipliers — applied post-bid when the shipping claim is created.
+ * Agreement-backed lanes get a bonus (formal bilateral trade = higher stakes
+ * for both nations). Organic lanes are neutral here (1.0); their discount is
+ * applied pre-bid during route generation via ORGANIC_REVENUE_MULTIPLIER.
  */
 export var AGREEMENT_REVENUE_MULTIPLIER = 1.2;
 export var ORGANIC_REVENUE_MULTIPLIER_POST = 1.0; // post-bid: no extra organic penalty; pre-bid 0.35 handles discount
