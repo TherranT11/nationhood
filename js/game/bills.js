@@ -2932,6 +2932,59 @@ export async function enactBill(supabase, bill, currentTick) {
                 if (tariffWriteErr) console.error('[enactBill] Failed to write sector_tariffs:', tariffWriteErr.message);
                 else console.log(`[enactBill] Sector tariff: ${effect.sector} → ${tariffRate}%`);
             }
+        } else if (effect.type === 'gov_bailout' && effect.corp_faction_id && typeof effect.amount === 'number') {
+            // Government Bailout: single-source-of-truth is effect_data { corp_faction_id, amount }.
+            // Re-validate corp, recompute valuation, fund from reserves → debt, +0.1 gdp_growth,
+            // then apply -50 momentum and -20 gov_approval event per yes voter.
+            try {
+                const corpId = effect.corp_faction_id;
+                const requested = Math.max(0, Number(effect.amount));
+                const { data: corp } = await supabase.from('factions')
+                    .select('id, faction_name, faction_type, nation_id, corp_cash_reserves, corp_loans, abandoned_at')
+                    .eq('id', corpId).single();
+                if (!corp || corp.faction_type !== 'corporation' || corp.abandoned_at || corp.nation_id !== bill.nation_id) {
+                    console.log(`[enactBill] gov_bailout voided: corp ${corpId} missing/moved/dissolved`);
+                } else {
+                    const { data: props } = await supabase.from('corp_properties')
+                        .select('purchase_price, condition').eq('faction_id', corpId);
+                    let propertyValue = 0;
+                    for (const p of (props || [])) {
+                        propertyValue += Math.round(Number(p.purchase_price || 0) * (Number(p.condition || 0) / 100));
+                    }
+                    const corpCash = Number(corp.corp_cash_reserves || 0);
+                    const corpLoans = Number(corp.corp_loans || 0);
+                    const valuation = Math.round((corpCash + propertyValue - corpLoans) * 1.30);
+                    const cap = Math.max(0, 3 * valuation);
+                    const payout = Math.min(requested, cap);
+                    if (payout > 0) {
+                        const { data: nation } = await supabase.from('nations')
+                            .select('budget_reserves, debt, gdp_growth').eq('id', bill.nation_id).single();
+                        const reserves = Number(nation?.budget_reserves || 0);
+                        const drawReserves = Math.max(0, Math.min(payout, reserves));
+                        const drawDebt = payout - drawReserves;
+                        const currentGdp = Number(nation?.gdp_growth ?? 50);
+                        const newGdp = Math.round(Math.max(0, Math.min(100, currentGdp + 0.1)) * 10) / 10;
+                        await supabase.from('nations').update({
+                            budget_reserves: Math.round(reserves - drawReserves),
+                            debt: Math.round(Number(nation?.debt || 0) + drawDebt),
+                            gdp_growth: newGdp,
+                        }).eq('id', bill.nation_id);
+                        await supabase.from('factions').update({
+                            corp_cash_reserves: corpCash + payout,
+                        }).eq('id', corpId);
+                        console.log(`[enactBill] gov_bailout: $${Math.round(payout / 1e6)}M to ${corp.faction_name} (reserves: $${Math.round(drawReserves / 1e6)}M, debt: +$${Math.round(drawDebt / 1e6)}M, gdp_growth: ${currentGdp} → ${newGdp})`);
+                    } else {
+                        console.log(`[enactBill] gov_bailout: payout capped to 0 (valuation $${Math.round(valuation / 1e6)}M)`);
+                    }
+                    const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'accept' || s.stance === 'yes');
+                    for (const v of yesVoters) {
+                        await supabase.rpc('adjust_momentum', { p_faction_id: v.faction_id, p_delta: -50 });
+                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, -20, 'gov_bailout');
+                    }
+                }
+            } catch (e) {
+                console.error('[enactBill] gov_bailout failed:', e?.message || e);
+            }
         } else if (typeof effect.target_stat === 'string' && typeof effect.delta === 'number') {
             // Backward compatibility: parse legacy stat_effect-like payloads
             const key = effect.target_stat.toLowerCase();

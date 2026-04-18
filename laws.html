@@ -46,6 +46,28 @@
         <div class="add-text-article-section" id="add-tariff-section" onclick="showTariffForm()">
             <span class="add-text-article-btn-text">+ Tariff Article</span>
         </div>
+        <div class="add-text-article-section" id="add-bailout-section" onclick="showBailoutForm()">
+            <span class="add-text-article-btn-text">+ Government Bailout</span>
+        </div>
+        <div id="add-bailout-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label" style="color:var(--amber);">Corporation (headquartered in this nation)</label>
+                <select class="form-select" id="bailout-corp-select" onchange="onBailoutCorpChange()">
+                    <option value="">-- Choose a corporation --</option>
+                </select>
+                <div id="bailout-valuation" style="font-size:0.75rem;color:var(--text-secondary);margin-top:4px;"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Amount (in millions of $)</label>
+                <input type="number" class="form-input" id="bailout-amount" min="1" step="1" value="100" oninput="onBailoutAmountChange()">
+                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;">Funded first from national budget reserves; any shortfall adds to debt. Cannot exceed 3× market valuation.</div>
+                <div id="bailout-cap-warning" style="font-size:0.75rem;color:var(--red);margin-top:4px;display:none;"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hideBailoutForm()">Cancel</button>
+                <button class="btn-add" id="add-bailout-btn" disabled onclick="addBailoutArticle()">Add to Bill</button>
+            </div>
+        </div>
         <div id="add-tariff-form" style="display:none;">
             <div class="form-group">
                 <label class="form-label" style="color:var(--amber);">Select Sector or Good</label>
@@ -1582,6 +1604,7 @@ function _hideAllArticleForms() {
     document.getElementById('add-entrenchment-form').style.display = 'none';
     document.getElementById('add-permit-form').style.display = 'none';
     document.getElementById('add-tariff-form').style.display = 'none';
+    document.getElementById('add-bailout-form').style.display = 'none';
 }
 function _showAllArticleButtons() {
     document.getElementById('add-article-section').style.display = 'block';
@@ -1592,6 +1615,7 @@ function _showAllArticleButtons() {
     document.getElementById('add-entrenchment-section').style.display = (hasEntrenchment || hasFoundational) ? 'none' : 'block';
     document.getElementById('add-permit-section').style.display = 'block';
     document.getElementById('add-tariff-section').style.display = 'block';
+    document.getElementById('add-bailout-section').style.display = 'block';
 }
 function _hideAllArticleButtons() {
     document.getElementById('add-article-section').style.display = 'none';
@@ -1600,6 +1624,7 @@ function _hideAllArticleButtons() {
     document.getElementById('add-entrenchment-section').style.display = 'none';
     document.getElementById('add-permit-section').style.display = 'none';
     document.getElementById('add-tariff-section').style.display = 'none';
+    document.getElementById('add-bailout-section').style.display = 'none';
 }
 
 function showAddArticleForm() {
@@ -2023,6 +2048,123 @@ window.hideTariffForm = hideTariffForm;
 window.onTariffSectorChange = onTariffSectorChange;
 window.onTariffRateChange = onTariffRateChange;
 window.addTariffArticle = addTariffArticle;
+
+// ==================== GOVERNMENT BAILOUT ARTICLE ====================
+
+// Corps headquartered in the current nation, with current market valuation.
+// Valuation formula mirrors corp-operations.html actDeclareBankruptcy (cash + condition-weighted property - loans) * 1.30.
+let _bailoutCorps = [];
+
+async function _loadBailoutCorps() {
+    const { data: corps } = await _supabase.from('factions')
+        .select('id, faction_name, corp_cash_reserves, corp_loans')
+        .eq('faction_type', 'corporation')
+        .eq('nation_id', currentNation.id)
+        .is('abandoned_at', null);
+    const list = corps || [];
+    const results = [];
+    for (const c of list) {
+        const { data: props } = await _supabase.from('corp_properties')
+            .select('purchase_price, condition').eq('faction_id', c.id);
+        let propertyValue = 0;
+        for (const p of (props || [])) {
+            propertyValue += Math.round(Number(p.purchase_price || 0) * (Number(p.condition || 0) / 100));
+        }
+        const cash = Number(c.corp_cash_reserves || 0);
+        const loans = Number(c.corp_loans || 0);
+        const valuation = Math.round((cash + propertyValue - loans) * 1.30);
+        results.push({ id: c.id, faction_name: c.faction_name, valuation });
+    }
+    _bailoutCorps = results;
+    return results;
+}
+
+async function showBailoutForm() {
+    _hideAllArticleButtons(); _hideAllArticleForms();
+    document.getElementById('add-bailout-form').style.display = 'block';
+    const sel = document.getElementById('bailout-corp-select');
+    sel.innerHTML = '<option value="">-- Loading... --</option>';
+    sel.disabled = true;
+    const corps = await _loadBailoutCorps();
+    if (corps.length === 0) {
+        sel.innerHTML = '<option value="">-- No corporations headquartered here --</option>';
+    } else {
+        sel.innerHTML = '<option value="">-- Choose a corporation --</option>' +
+            corps.map(c => `<option value="${c.id}">${escapeHtml(c.faction_name || 'Unnamed Corp')}</option>`).join('');
+    }
+    sel.disabled = false;
+    document.getElementById('bailout-valuation').textContent = '';
+    document.getElementById('bailout-amount').value = 100;
+    document.getElementById('bailout-cap-warning').style.display = 'none';
+    document.getElementById('add-bailout-btn').disabled = true;
+}
+
+function hideBailoutForm() {
+    _showAllArticleButtons(); _hideAllArticleForms();
+}
+
+function onBailoutCorpChange() {
+    const corpId = document.getElementById('bailout-corp-select').value;
+    const corp = _bailoutCorps.find(c => c.id === corpId);
+    const valEl = document.getElementById('bailout-valuation');
+    if (!corp) { valEl.textContent = ''; document.getElementById('add-bailout-btn').disabled = true; return; }
+    const valM = Math.round(corp.valuation / 1_000_000);
+    const capM = Math.max(0, valM * 3);
+    valEl.textContent = `Market valuation: $${valM.toLocaleString()}M  ·  Max bailout: $${capM.toLocaleString()}M (3× valuation)`;
+    onBailoutAmountChange();
+}
+
+function onBailoutAmountChange() {
+    const corpId = document.getElementById('bailout-corp-select').value;
+    const corp = _bailoutCorps.find(c => c.id === corpId);
+    const amountM = Number(document.getElementById('bailout-amount').value);
+    const warnEl = document.getElementById('bailout-cap-warning');
+    const btn = document.getElementById('add-bailout-btn');
+    if (!corp || !amountM || amountM < 1) { btn.disabled = true; warnEl.style.display = 'none'; return; }
+    const capM = Math.max(0, Math.round((corp.valuation * 3) / 1_000_000));
+    if (amountM > capM) {
+        warnEl.textContent = `Amount exceeds 3× market valuation ($${capM.toLocaleString()}M).`;
+        warnEl.style.display = 'block';
+        btn.disabled = true;
+    } else {
+        warnEl.style.display = 'none';
+        btn.disabled = false;
+    }
+}
+
+function addBailoutArticle() {
+    if (_draftArticleLock) return;
+    const corpId = document.getElementById('bailout-corp-select').value;
+    const corp = _bailoutCorps.find(c => c.id === corpId);
+    const amountM = Number(document.getElementById('bailout-amount').value);
+    if (!corp || !amountM || amountM < 1) return;
+    const capM = Math.max(0, Math.round((corp.valuation * 3) / 1_000_000));
+    if (amountM > capM) return;
+    _draftArticleLock = true;
+    try {
+        const articleNum = draftArticles.length + 2;
+        const amountDollars = amountM * 1_000_000;
+        draftArticles.push({
+            articleNumber: articleNum,
+            isBailout: true,
+            corpFactionId: corp.id,
+            corpName: corp.faction_name,
+            amount: amountDollars,
+        });
+        renderDraftArticles();
+        _showAllArticleButtons(); _hideAllArticleForms();
+        document.getElementById('bill-name-section').style.display = 'block';
+        updateSubmitButtonCost();
+    } finally {
+        _draftArticleLock = false;
+    }
+}
+
+window.showBailoutForm = showBailoutForm;
+window.hideBailoutForm = hideBailoutForm;
+window.onBailoutCorpChange = onBailoutCorpChange;
+window.onBailoutAmountChange = onBailoutAmountChange;
+window.addBailoutArticle = addBailoutArticle;
 
 function onFundingMinistryChange() {
     const key = document.getElementById('funding-ministry-select').value;
@@ -3361,6 +3503,17 @@ function renderDraftArticles() {
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;
         }
+        if (art.isBailout) {
+            const amtM = Math.round((art.amount || 0) / 1_000_000);
+            return `<div class="draft-article-card" style="border-left:3px solid var(--amber);">
+                <div class="draft-article-info">
+                    <div class="draft-article-num">Article ${art.articleNumber}${_costBadge}</div>
+                    <div class="draft-article-name">Government Bailout of ${escapeHtml(art.corpName || 'Corp')} <span class="article-ideology" style="background:rgba(200,168,50,0.10);color:#c8a832;border:1px solid rgba(200,168,50,0.30);">BAILOUT</span></div>
+                    <div class="draft-article-meta">Grants $${amtM.toLocaleString()}M to ${escapeHtml(art.corpName || 'Corp')}. Drawn from budget reserves first, overflow to debt. Yes-voters: −50 Momentum each, −20 gov approval event each.</div>
+                </div>
+                <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
+            </div>`;
+        }
         const ideos = art.policy.ideologies || (art.policy.ideology ? [art.policy.ideology] : []);
         const ideoHTML = ideos.map(i => {
             const colorClass = getIdeologyChipClass(i, factionIdeology);
@@ -3915,6 +4068,15 @@ async function submitToCommittee() {
                         article_title: art.policy.policy_name,
                         article_text: art.policy.description,
                         effect_data: art.effect_data,
+                    };
+                }
+                if (art.isBailout) {
+                    const amtM = Math.round((art.amount || 0) / 1_000_000);
+                    return {
+                        bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id,
+                        article_title: 'Government Bailout',
+                        article_text: `Government Bailout of ${art.corpName} for an amount of $${amtM.toLocaleString()}M.`,
+                        effect_data: { type: 'gov_bailout', corp_faction_id: art.corpFactionId, amount: art.amount },
                     };
                 }
                 if (art.isFunding) {
