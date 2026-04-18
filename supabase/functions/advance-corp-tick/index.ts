@@ -3192,6 +3192,9 @@ const ORGANIC_MIN_VOLUME = 5_000_000_000;
 // $50M → $5B to target roughly a 90% cut from the ~370-route baseline,
 // leaving only the top-tier cross-border flows. Filters the long tail
 // of small-economy / low-gdp pairs regardless of how close they sit.
+const ORGANIC_MAX_INSERTS_PER_TICK = 140;
+// Second safeguard: global insert cap per tick. Candidates are sorted by
+// realized trade_volume descending before insert so highest-impact lanes win.
 const ORGANIC_LIFETIME = 8;
 const ORGANIC_SECTORS = ['fuel_energy','minerals','grains_staples','livestock_dairy','cash_crops','manufactured_goods','technology','fruits_vegetables'];
 
@@ -3282,9 +3285,14 @@ async function generateOrganicRoutes(supabase, currentTick) {
         }
     }
 
-    if (rows.length > 0) {
-        for (let i = 0; i < rows.length; i += 50) {
-            const { error } = await supabase.from('shipping_routes').upsert(rows.slice(i, i + 50), { onConflict: 'origin_nation_id,destination_nation_id,trade_sector,status' });
+    const prioritizedRows = rows
+        .sort((a, b) => Number(b.trade_volume || 0) - Number(a.trade_volume || 0))
+        .slice(0, ORGANIC_MAX_INSERTS_PER_TICK);
+    const cappedOut = Math.max(0, rows.length - prioritizedRows.length);
+
+    if (prioritizedRows.length > 0) {
+        for (let i = 0; i < prioritizedRows.length; i += 50) {
+            const { error } = await supabase.from('shipping_routes').upsert(prioritizedRows.slice(i, i + 50), { onConflict: 'origin_nation_id,destination_nation_id,trade_sector,status' });
             if (error) console.error('[Shipping] Organic route upsert error:', error.message);
         }
     }
@@ -3292,7 +3300,27 @@ async function generateOrganicRoutes(supabase, currentTick) {
     const { data: expOrganic } = await supabase.from('shipping_routes').update({ status: 'expired' })
         .eq('status', 'active').is('trade_agreement_id', null).lt('last_refreshed_tick', currentTick - ORGANIC_LIFETIME).select('id');
 
-    return { generated: rows.length, expired: expOrganic?.length || 0 };
+    return { generated: prioritizedRows.length, expired: expOrganic?.length || 0, capped_out: cappedOut };
+}
+
+async function captureShippingRouteTelemetry(supabase, currentTick) {
+    const { data: routes, error } = await supabase
+        .from('shipping_routes')
+        .select('scope, trade_agreement_id')
+        .eq('status', 'active')
+        .eq('generated_at_tick', currentTick);
+    if (error) {
+        console.warn('[advance-corp-tick] Shipping telemetry query failed:', error.message);
+        return null;
+    }
+
+    const telemetry = { agreement: 0, organic: 0, government: 0 };
+    for (const route of (routes || [])) {
+        if (route.scope === 'GOVERNMENT') telemetry.government++;
+        else if (route.trade_agreement_id) telemetry.agreement++;
+        else telemetry.organic++;
+    }
+    return telemetry;
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -3668,7 +3696,12 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     const organicResult = await generateOrganicRoutes(supabase, currentTick);
                     if (organicResult.generated > 0 || organicResult.expired > 0) {
                         summary.organicShipping = organicResult;
-                        console.log(`[advance-corp-tick] Organic routes: ${organicResult.generated} generated, ${organicResult.expired} expired`);
+                        console.log(`[advance-corp-tick] Organic routes: ${organicResult.generated} generated, ${organicResult.expired} expired, ${organicResult.capped_out || 0} capped`);
+                    }
+                    const shippingTelemetry = await captureShippingRouteTelemetry(supabase, currentTick);
+                    if (shippingTelemetry) {
+                        summary.shippingTelemetry = shippingTelemetry;
+                        console.log(`[advance-corp-tick] Shipping telemetry @ tick ${currentTick}: agreement=${shippingTelemetry.agreement}, organic=${shippingTelemetry.organic}, government=${shippingTelemetry.government}`);
                     }
                     summary._shippingRoutesGenerated = true;
                 }
