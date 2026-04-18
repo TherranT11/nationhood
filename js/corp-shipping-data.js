@@ -37,18 +37,31 @@ function buildLoadResult(dataKey, items, error) {
     };
 }
 
-export async function loadShippingRoutesSafe(supabase, factionId, corpSubsector) {
+export async function loadShippingRoutesSafe(supabase, factionId, corpSubsector, options = {}) {
     const subsectorMap = {
         'Bulk Cargo': 'bulk_cargo',
         'Container Freight': 'container_freight',
         'Specialized Transport': 'specialized_transport',
     };
     const dbSubsector = subsectorMap[corpSubsector] || '';
+    const routeOrigin = (options.routeOrigin || 'all').toLowerCase();
+    const routeOffset = Math.max(0, Number(options.offset || 0));
+    const routeLimit = Math.max(1, Math.min(Number(options.limit || 200), 500));
+
+    let routeQuery = supabase.from('shipping_routes').select('*')
+        .eq('status', 'active')
+        .eq('shipping_subsector', dbSubsector);
+    if (routeOrigin === 'organic') {
+        routeQuery = routeQuery.is('trade_agreement_id', null);
+    } else if (routeOrigin === 'agreement') {
+        routeQuery = routeQuery.not('trade_agreement_id', 'is', null);
+    }
+    routeQuery = routeQuery
+        .order('estimated_revenue', { ascending: false })
+        .range(routeOffset, routeOffset + routeLimit - 1);
 
     const [routeResult, appResult] = await Promise.all([
-        supabase.from('shipping_routes').select('*')
-            .eq('status', 'active').eq('shipping_subsector', dbSubsector)
-            .order('estimated_revenue', { ascending: false }),
+        routeQuery,
         supabase.from('shipping_applications').select('*')
             .eq('faction_id', factionId).in('status', ['pending', 'approved']),
     ]);
