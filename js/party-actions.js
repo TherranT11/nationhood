@@ -267,6 +267,27 @@ export async function initPartyActions(supabase, state) {
     // Act-of-Abdication reversal flow. New parties in a monarchy start with 0
     // seats and never become the monarch by side-effect.
 
+    // Bug fix: state.faction was captured at page init (common.js) and never
+    // refreshed, so the header's Momentum + Party Funds would drift out of
+    // sync with the DB after a tick. The Parties page refetches factions
+    // directly, which is why players saw e.g. "9.33 momentum on Parties, 23.3
+    // on Actions" for the same faction on the same tick. Pull fresh values
+    // here so every render in this module reads live state.
+    try {
+        const { data: freshFaction } = await _supabase.from('factions')
+            .select('momentum, party_funds, seats, action_points')
+            .eq('id', faction.id)
+            .single();
+        if (freshFaction) {
+            faction.momentum = freshFaction.momentum ?? faction.momentum;
+            faction.party_funds = freshFaction.party_funds ?? faction.party_funds;
+            faction.seats = freshFaction.seats ?? faction.seats;
+            faction.action_points = freshFaction.action_points ?? faction.action_points;
+        }
+    } catch (err) {
+        console.warn('[PartyActions] faction refresh failed, using cached state:', err);
+    }
+
     // Fetch platforms + agitator + opposition status + electoral standing + fundraise count
     const [myPlat, nationPlat, agitatorResult, oppositionResult, standingResult] = await Promise.all([
         _supabase.from('faction_platforms').select('*').eq('faction_id', faction.id).order('slot'),
@@ -361,7 +382,13 @@ function renderPage(root) {
                         <div class="pa-header-stat-value" style="color:${momentum > 0 ? 'var(--text-bright)' : 'var(--red)'};">${Number(momentum).toFixed(1)}</div>
                     </div>
                     <div class="pa-header-stat">
-                        <div class="pa-header-stat-label">${_isMonarchy ? 'Legitimacy' : 'Governance'}</div>
+                        <!-- This is the NATION's gov_approval, not the party's
+                             own governance-score (that lives on the Parties
+                             page). Labelling it "Governance" caused reports of
+                             inconsistency since it read 48 here while the per-
+                             party score read 0 on Parties. Label explicitly
+                             so both surfaces stay coherent. -->
+                        <div class="pa-header-stat-label">${_isMonarchy ? 'Legitimacy' : 'Nat. Approval'}</div>
                         <div class="pa-header-stat-value" style="color:var(--green);">${_isMonarchy ? Math.round(Number(_state.nation?.legitimacy ?? _state.nation?.gov_approval ?? 50)) : Math.round(Number(_state.nation?.gov_approval ?? 0))}</div>
                     </div>
                 </div>
