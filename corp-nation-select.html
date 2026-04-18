@@ -450,6 +450,7 @@ import { getNationNames } from './js/game/political-actions.js';
 import { getStartingEquipment } from './js/game/equipment.js';
 import { hasElectedPresident } from './js/game/government-types.js';
 import { generateExecutivePool, createCEORecord } from './js/game/corp-executives.js';
+import { VESSEL_SPECS } from './js/game/vessels.js';
 
 const FLAG_URLS = {
     'Melizea': 'assets/flags/Melizea.png',
@@ -860,18 +861,9 @@ async function confirmNation() {
                 shipping_fleet_deployed: 0,
             }).eq('id', isLinkedCorp ? currentUser.id : corpRow.id);
 
-            // Seed starting vessels based on subsector
-            const VESSEL_SPECS = {
-                // Halved from the original — mirrors the canonical copy in
-                // supabase/functions/advance-corp-tick/index.ts.
-                Coastal:   { capacity_dwt: 14000, capacity_unit: 'DWT', base_maintenance:  90000, fuel_capacity: 800,  purchase_price: 3000000 },
-                Container: { capacity_dwt: 4800,  capacity_unit: 'TEU', base_maintenance: 145000, fuel_capacity: 2100, purchase_price: 65000000 },
-                Bulk:      { capacity_dwt: 28000, capacity_unit: 'DWT', base_maintenance: 175000, fuel_capacity: 1800, purchase_price: 3000000 },
-                Tanker:    { capacity_dwt: 42000, capacity_unit: 'DWT', base_maintenance: 190000, fuel_capacity: 2400, purchase_price: 53000000 },
-                Reefer:    { capacity_dwt: 12000, capacity_unit: 'DWT', base_maintenance: 140000, fuel_capacity: 1600, purchase_price: 6000000 },
-                LNG:       { capacity_dwt: 18000, capacity_unit: 'DWT', base_maintenance: 290000, fuel_capacity: 1400, purchase_price: 78000000 },
-            };
-
+            // Seed starting vessels based on subsector. Specs come from
+            // js/game/vessels.js (shared with market-buy and shipyard-order
+            // paths) so capacity and maintenance can't drift per entry point.
             const STARTING_FLEET = {
                 'Bulk Cargo':             [{ cls: 'Coastal', idx: 1 }, { cls: 'Coastal', idx: 2 }, { cls: 'Reefer', idx: 3 }],
                 'Container Freight':      [{ cls: 'Coastal', idx: 1 }, { cls: 'Container', idx: 2 }],

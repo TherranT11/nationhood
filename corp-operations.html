@@ -2771,6 +2771,7 @@ import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecu
 import { initAutoServices } from './js/corp-auto-services.js';
 import { initSubDashboard } from './js/corp-sub-dashboard.js';
 import { loadShippingRoutesSafe, loadActiveVoyagesSafe, loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
+import { VESSEL_SPECS } from './js/game/vessels.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -14063,17 +14064,7 @@ async function smPurchase(listingId, totalPrice) {
     if (!listing) { _smPurchasing = false; return; }
 
     const currentTick = shard.current_tick || 0;
-    const specs = {
-        // Halved from the original table — mirrors the canonical copy in
-        // supabase/functions/advance-corp-tick/index.ts.
-        Coastal:   { capacity_dwt: 14000, capacity_unit: 'DWT', base_maintenance:  90000, fuel_capacity: 800,  purchase_price: 3000000 },
-        Container: { capacity_dwt: 4800,  capacity_unit: 'TEU', base_maintenance: 145000, fuel_capacity: 2100, purchase_price: 65000000 },
-        Bulk:      { capacity_dwt: 28000, capacity_unit: 'DWT', base_maintenance: 175000, fuel_capacity: 1800, purchase_price: 3000000 },
-        Tanker:    { capacity_dwt: 42000, capacity_unit: 'DWT', base_maintenance: 190000, fuel_capacity: 2400, purchase_price: 53000000 },
-        Reefer:    { capacity_dwt: 12000, capacity_unit: 'DWT', base_maintenance: 140000, fuel_capacity: 1600, purchase_price: 6000000 },
-        LNG:       { capacity_dwt: 18000, capacity_unit: 'DWT', base_maintenance: 290000, fuel_capacity: 1400, purchase_price: 78000000 },
-    };
-    const s = specs[listing.vessel_class] || specs.Coastal;
+    const s = VESSEL_SPECS[listing.vessel_class] || VESSEL_SPECS.Coastal;
 
     // Deduct cash
     const { error: cashErr } = await _supabase.from('factions').update({
@@ -14357,17 +14348,16 @@ async function smPlaceOrder() {
     }
 
     // Create order
-    const specs = { Coastal: { dwt: 14000, unit: 'DWT', maint: 180000, fuel: 800 }, Container: { dwt: 4800, unit: 'TEU', maint: 290000, fuel: 2100 }, Bulk: { dwt: 28000, unit: 'DWT', maint: 350000, fuel: 1800 }, Tanker: { dwt: 42000, unit: 'DWT', maint: 380000, fuel: 2400 }, Reefer: { dwt: 12000, unit: 'DWT', maint: 280000, fuel: 1600 }, LNG: { dwt: 18000, unit: 'DWT', maint: 580000, fuel: 1400 } };
-    const s = specs[_commClass] || specs.Coastal;
+    const s = VESSEL_SPECS[_commClass] || VESSEL_SPECS.Coastal;
 
     const { error: orderErr } = await _supabase.from('vessel_orders').insert({
         faction_id: faction.id,
         vessel_name: name,
         vessel_class: _commClass,
-        capacity_dwt: s.dwt,
-        capacity_unit: s.unit,
-        base_maintenance: s.maint,
-        fuel_capacity: s.fuel,
+        capacity_dwt: s.capacity_dwt,
+        capacity_unit: s.capacity_unit,
+        base_maintenance: s.base_maintenance,
+        fuel_capacity: s.fuel_capacity,
         purchase_price: vt.baseCost,
         shipyard_nation_id: nation.id,
         shipyard_nation: nation.name,

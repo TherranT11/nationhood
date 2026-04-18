@@ -2667,6 +2667,8 @@ import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecu
 import { initAutoServices } from './js/corp-auto-services.js';
 import { initSubDashboard } from './js/corp-sub-dashboard.js';
 import { loadShippingRoutesSafe, loadActiveVoyagesSafe, loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
+import { VESSEL_SPECS } from './js/game/vessels.js';
+import { MIN_REVENUE_PER_TRIP, clampServiceRate, computeServiceRateCeiling, revenueTierMultiplier } from './js/game/shipping.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -5996,18 +5998,12 @@ function arSetFilter(scope) {
     renderAvailableRoutes();
 }
 
-// Tier multipliers — must match the values in diplomacy.html's
-// approveShippingApp (which applies them to revenue_per_transit on claim
-// creation). Kept here so the available-routes list can preview the
-// tier-adjusted EST. REV the corp will actually earn.
-const AR_AGREEMENT_MULT = 1.2;
-const AR_ORGANIC_MULT   = 0.7;
-
-function arTierMult(route) {
-    return route && route.trade_agreement_id ? AR_AGREEMENT_MULT : AR_ORGANIC_MULT;
-}
+// Preview the tier-adjusted EST. REV the corp will actually earn on a
+// given route. revenueTierMultiplier is sourced from js/game/shipping.js
+// so available-routes preview, the application modal, and the diplomat's
+// approveShippingApp all evaluate against the same number.
 function arEffectiveRevenue(route) {
-    return Math.round(Number(route?.estimated_revenue || 0) * arTierMult(route));
+    return Math.round(Number(route?.estimated_revenue || 0) * revenueTierMultiplier(route));
 }
 
 function arGetFiltered() {
@@ -6154,8 +6150,9 @@ function renderAvailableRoutes() {
             html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
                 + 'color:#5c5;background:rgba(92,204,92,0.06);border:1px solid rgba(92,204,92,0.15)">NO COMPETITION</span>';
         }
-        // Trade-tier badge — agreement routes pay 1.2× the bid, organic 0.7×
-        // per the revenueTierMultiplier contract in js/game/shipping.js.
+        // Trade-tier badge — agreement routes pay AGREEMENT_REVENUE_MULTIPLIER
+        // (1.2), organic routes pay ORGANIC_REVENUE_MULTIPLIER_POST (0.85) per
+        // the revenueTierMultiplier contract in js/game/shipping.js.
         if (route.trade_agreement_id && !isGov) {
             const agName = route.trade_agreement_name
                 ? ' \u00B7 ' + escapeHtml(String(route.trade_agreement_name).slice(0, 28))
@@ -6365,7 +6362,7 @@ async function _fetchDepotForNation(nationId) {
 // "fuel = 15% of annual revenue, maint = 8%" estimate that had no
 // connection to what the tick actually charges. Now:
 //
-//   revenue         = bid × tierMult         (0.7 organic, 1.2 agreement)
+//   revenue         = bid × tierMult         (0.85 organic, 1.2 agreement)
 //   fuelPerTrip     = destDepot.cost         (real $50k / $57.5k / $150k)
 //   netPerTrip      = revenue − fuel
 //
@@ -6399,10 +6396,12 @@ async function arApplyToService() {
 
     _raRoute = route;
     _raRoute.destDepot = await _fetchDepotForNation(route.destination_nation_id);
-    // Default bid at the mid-market ($500k). Corps can slide up toward the ceiling
-    // to earn more (at the risk of looking greedy to the Trade Minister) or down
-    // toward the floor to undercut rivals.
-    _raProposedRate = Math.min(750000, Math.max(250000, Number(route.estimated_revenue) || 500000));
+    // Default bid at the route's estimated revenue (already clamped to the
+    // lane's band by the generator). Corps can slide up toward the ceiling
+    // to earn more or down toward the floor to undercut rivals.
+    const _raCeiling = computeServiceRateCeiling(route.trade_volume, route.shipping_subsector);
+    const _raMid = Math.round((MIN_REVENUE_PER_TRIP + _raCeiling) / 2);
+    _raProposedRate = clampServiceRate(Number(route.estimated_revenue) || _raMid, _raCeiling);
     _raVesselId = null;
     renderRouteApplicationModal();
 }
@@ -6424,9 +6423,10 @@ function renderRouteApplicationModal() {
     const r = _raRoute;
     const sm = AR_SCOPE_META[r.scope] || AR_SCOPE_META.INTERNATIONAL;
     const appFee = 50000;
-    // Tier multiplier on the realized contract value. Must match the server
-    // side in diplomacy.html's approveShippingApp.
-    const tierMult = r.trade_agreement_id ? 1.2 : 0.7;
+    // Tier multiplier on the realized contract value. Sourced from
+    // js/game/shipping.js so corps, diplomats, and the edge function
+    // all evaluate bids against the same number.
+    const tierMult = revenueTierMultiplier(r);
     const depotCost = Number(r.destDepot?.cost) || 150000; // fallback to state-depot rate
 
     // Available vessels (in_port, matching class, not assigned)
@@ -6515,17 +6515,18 @@ function renderRouteApplicationModal() {
 
             ${(() => {
                 // Trade-tier panel — reminds the bidder that agreement lanes
-                // pay 1.2× their clamped bid and organic lanes 0.7×. Same
-                // multiplier numbers applied in diplomacy.html's approveShippingApp.
+                // pay AGREEMENT_REVENUE_MULTIPLIER and organic lanes pay
+                // ORGANIC_REVENUE_MULTIPLIER_POST. Same numbers applied in
+                // diplomacy.html's approveShippingApp.
                 const isAgreement = !!r.trade_agreement_id;
-                const tierMult    = isAgreement ? 1.2 : 0.7;
-                const stripe      = isAgreement ? C.green : C.dim;
-                const header      = isAgreement
+                const tierMultLocal = revenueTierMultiplier(r);
+                const stripe       = isAgreement ? C.green : C.dim;
+                const header       = isAgreement
                     ? `ACTIVE TRADE AGREEMENT${r.trade_agreement_name ? ' \u00B7 ' + escapeHtml(r.trade_agreement_name) : ''}`
                     : 'OPEN-MARKET ROUTE';
-                const copy        = isAgreement
-                    ? `Revenue = your bid \u00D7 ${tierMult.toFixed(1)} (agreement bonus).`
-                    : `Revenue = your bid \u00D7 ${tierMult.toFixed(1)} (organic route penalty). Agreement-backed lanes pay more.`;
+                const copy         = isAgreement
+                    ? `Revenue = your bid \u00D7 ${tierMultLocal.toFixed(2)} (agreement bonus).`
+                    : `Revenue = your bid \u00D7 ${tierMultLocal.toFixed(2)} (organic route penalty). Agreement-backed lanes pay more.`;
                 return `<div style="padding:7px 10px;margin-bottom:14px;background:${C.card};border:1px solid ${C.border};border-left:2px solid ${stripe};font-family:${M};font-size:9px;color:${C.text};line-height:1.5;">
                     <span style="color:${C.dim};font-size:7px;font-weight:700;letter-spacing:0.5px;">${header}</span><br>
                     ${copy}
@@ -6560,11 +6561,19 @@ function renderRouteApplicationModal() {
         html += `</div>`;
     }
 
-    // Proposed rate slider — service rate is fixed in the $250k–$750k band regardless
-    // of the route's raw trade volume. Corps bid higher to stand out (and earn more)
-    // or lower to look cheaper for the Trade Minister's review.
-    const minRate = 250000;
-    const maxRate = 750000;
+    // Proposed rate slider — floor is flat ($250k), ceiling scales with the
+    // lane's trade volume (capped at HARD_CEILING_PER_TRIP). Corps bid higher
+    // to stand out (and earn more) or lower to look cheaper for the Trade
+    // Minister's review.
+    const minRate = MIN_REVENUE_PER_TRIP;
+    const maxRate = computeServiceRateCeiling(r.trade_volume, r.shipping_subsector);
+    const midRate = Math.round((minRate + maxRate) / 2);
+    // If the bid drifted outside the recomputed band (e.g. a route with a
+    // smaller ceiling than the cached _raProposedRate), clamp it so the
+    // slider value never falls outside its own min/max.
+    if (_raProposedRate > maxRate || _raProposedRate < minRate) {
+        _raProposedRate = Math.min(maxRate, Math.max(minRate, _raProposedRate));
+    }
     html += `
             <div style="margin-bottom:14px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
@@ -6576,7 +6585,7 @@ function renderRouteApplicationModal() {
                     style="width:100%;accent-color:${C.gold};height:5px;" />
                 <div style="display:flex;justify-content:space-between;font-family:${M};font-size:8px;color:${C.dim};margin-top:3px;">
                     <span>Floor (${fmtBig(minRate)})</span>
-                    <span style="color:${C.muted};">Mid-market (${fmtBig(500000)})</span>
+                    <span style="color:${C.muted};">Mid (${fmtBig(midRate)})</span>
                     <span>Ceiling (${fmtBig(maxRate)})</span>
                 </div>
             </div>`;
@@ -14205,19 +14214,7 @@ async function smPurchase(listingId, totalPrice) {
     if (!listing) { _smPurchasing = false; return; }
 
     const currentTick = shard.current_tick || 0;
-    const specs = {
-        // Halved from the original table — mirrors the canonical copy in
-        // supabase/functions/advance-corp-tick/index.ts. Keeping the four
-        // copies aligned is on us; a drift here means client quotes don't
-        // match what the edge function actually charges.
-        Coastal:   { capacity_dwt: 14000, capacity_unit: 'DWT', base_maintenance:  90000, fuel_capacity: 800,  purchase_price: 3000000 },
-        Container: { capacity_dwt: 4800,  capacity_unit: 'TEU', base_maintenance: 145000, fuel_capacity: 2100, purchase_price: 65000000 },
-        Bulk:      { capacity_dwt: 28000, capacity_unit: 'DWT', base_maintenance: 175000, fuel_capacity: 1800, purchase_price: 3000000 },
-        Tanker:    { capacity_dwt: 42000, capacity_unit: 'DWT', base_maintenance: 190000, fuel_capacity: 2400, purchase_price: 53000000 },
-        Reefer:    { capacity_dwt: 12000, capacity_unit: 'DWT', base_maintenance: 140000, fuel_capacity: 1600, purchase_price: 6000000 },
-        LNG:       { capacity_dwt: 18000, capacity_unit: 'DWT', base_maintenance: 290000, fuel_capacity: 1400, purchase_price: 78000000 },
-    };
-    const s = specs[listing.vessel_class] || specs.Coastal;
+    const s = VESSEL_SPECS[listing.vessel_class] || VESSEL_SPECS.Coastal;
 
     // Deduct cash
     const { error: cashErr } = await _supabase.from('factions').update({
@@ -14501,17 +14498,16 @@ async function smPlaceOrder() {
     }
 
     // Create order
-    const specs = { Coastal: { dwt: 14000, unit: 'DWT', maint: 180000, fuel: 800 }, Container: { dwt: 4800, unit: 'TEU', maint: 290000, fuel: 2100 }, Bulk: { dwt: 28000, unit: 'DWT', maint: 350000, fuel: 1800 }, Tanker: { dwt: 42000, unit: 'DWT', maint: 380000, fuel: 2400 }, Reefer: { dwt: 12000, unit: 'DWT', maint: 280000, fuel: 1600 }, LNG: { dwt: 18000, unit: 'DWT', maint: 580000, fuel: 1400 } };
-    const s = specs[_commClass] || specs.Coastal;
+    const s = VESSEL_SPECS[_commClass] || VESSEL_SPECS.Coastal;
 
     const { error: orderErr } = await _supabase.from('vessel_orders').insert({
         faction_id: faction.id,
         vessel_name: name,
         vessel_class: _commClass,
-        capacity_dwt: s.dwt,
-        capacity_unit: s.unit,
-        base_maintenance: s.maint,
-        fuel_capacity: s.fuel,
+        capacity_dwt: s.capacity_dwt,
+        capacity_unit: s.capacity_unit,
+        base_maintenance: s.base_maintenance,
+        fuel_capacity: s.fuel_capacity,
         purchase_price: vt.baseCost,
         shipyard_nation_id: nation.id,
         shipyard_nation: nation.name,
