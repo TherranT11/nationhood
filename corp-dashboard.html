@@ -1517,8 +1517,18 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                 const reqType = row.finance_loan_requests?.request_type || 'loan';
                 const pmt = Number(row.monthly_payment || 0);
                 if (pmt <= 0) continue;
-                if (reqType === 'insurance') insurancePremiums += pmt;
-                else corpLoanService += pmt; // loan, bond, or default
+                if (reqType === 'insurance') {
+                    insurancePremiums += pmt;
+                } else if (reqType === 'bond') {
+                    // Bonds: the nation treasury pays the coupon, not the
+                    // corp (advance-corp-tick:2923-2981 credits the bondholder
+                    // without deducting from the borrower). So a corp listed
+                    // as borrower on a bond row has no cash impact from the
+                    // payment — skip it to avoid over-reporting expenses.
+                    continue;
+                } else {
+                    corpLoanService += pmt; // standard loans
+                }
             }
         } catch (err) {
             console.warn('[Finances] borrower finance_active_loans lookup failed:', err);
