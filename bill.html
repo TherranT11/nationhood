@@ -1926,18 +1926,47 @@ function renderRatificationBill() {
         const durData = durationArt?.data || {};
         const isPerm = durData.duration_type === 'permanent';
         const durTicks = durData.duration_ticks || 0;
-        const durLabel = isPerm ? 'Permanent' : (durTicks >= 12 ? (durTicks / 12).toFixed(1).replace(/\.0$/, '') + ' year(s)' : durTicks + ' month(s)');
+
+        // When there is no top-level duration article, fall back to per-article
+        // durations from trade_flow / tariff_reduction / etc. Use the max so the
+        // preamble reflects how long the agreement actually runs.
+        // Modern trade_flow articles store per-article duration in months under
+        // `data.duration` (bill.html render at line ~1752 reads the same field).
+        const perArticleDurations = articles
+            .map(a => Number(a?.data?.duration) || 0)
+            .filter(v => v > 0);
+        const maxArticleDur = perArticleDurations.length ? Math.max(...perArticleDurations) : 0;
+        const hasPerArticleDurations = perArticleDurations.length > 0;
+
+        let durLabel;
+        if (isPerm) {
+            durLabel = 'Permanent';
+        } else if (durTicks > 0) {
+            durLabel = durTicks >= 12
+                ? (durTicks / 12).toFixed(1).replace(/\.0$/, '') + ' year(s)'
+                : durTicks + ' month(s)';
+        } else if (maxArticleDur > 0) {
+            durLabel = 'Up to ' + (maxArticleDur >= 12
+                ? (maxArticleDur / 12).toFixed(1).replace(/\.0$/, '') + ' year(s)'
+                : maxArticleDur + ' month(s)') + ' (per-article)';
+        } else {
+            durLabel = 'Per-article (see provisions)';
+        }
+
+        const typeLabel = typeInfo.label || neg.agreement_type || 'Trade Agreement';
+        const typeShort = typeInfo.shortLabel || '';
+        const typeDescription = typeInfo.description || '';
 
         // Section 1: Preamble
         html += '<div class="article preamble" style="border-left-color:var(--blue);">' +
             '<div class="article-number" style="color:var(--blue);">TRADE RATIFICATION</div>' +
             '<div class="article-title">' + escapeHtml(neg.agreement_name || bill.bill_name || 'Trade Agreement') + '</div>' +
             '<div class="article-description">' +
-                '<strong>Type:</strong> ' + escapeHtml(typeInfo.label || neg.agreement_type || 'Trade Agreement') +
-                    (typeInfo.shortLabel ? ' (' + typeInfo.shortLabel + ')' : '') + '<br>' +
+                '<strong>Type:</strong> ' + escapeHtml(typeLabel) +
+                    (typeShort ? ' (' + typeShort + ')' : '') + '<br>' +
                 '<strong>Parties:</strong> ' + escapeHtml(nationAName) + ' and ' + escapeHtml(nationBName) + '<br>' +
                 '<strong>Duration:</strong> ' + durLabel + '<br>' +
-                '<strong>Description:</strong> ' + escapeHtml(typeInfo.description || '') +
+                '<strong>Description:</strong> ' + escapeHtml(typeDescription) +
             '</div>' +
         '</div>';
 

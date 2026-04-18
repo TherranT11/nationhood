@@ -9,7 +9,7 @@
 }
 .corp-topbar__left { display: flex; align-items: center; gap: 0; }
 .corp-topbar__sep {
-    width: 1px; height: 31px; background: rgba(255,255,255,0.08);
+    width: 1px; height: 31px; background: var(--border-1);
     margin: 0 16px; flex-shrink: 0;
 }
 .corp-topbar__badge { display: flex; align-items: center; gap: 8px; }
@@ -63,7 +63,7 @@
     cursor: pointer; border-bottom: 1px solid var(--border-0);
     font-family: var(--font-mono); font-size: 11px;
 }
-.corp-dd-item:hover { background: rgba(255,255,255,0.02); }
+.corp-dd-item:hover { background: var(--bg-hover); }
 .corp-dd-item.active { background: rgba(90,175,165,0.04); }
 .corp-dd-type { font-size: 8px; font-weight: 700; letter-spacing: 0.5px; min-width: 32px; }
 .corp-dd-name { color: var(--text-bright); flex: 1; }

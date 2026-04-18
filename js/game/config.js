@@ -14,9 +14,9 @@ export const GAME_CONFIG = {
     DRAFT_BILL_AP_COST: 2,
     FREE_BILL_ARTICLES: 4,         // First 4 non-text articles are free; article 5+ costs 1 AP each
     VETO_APPROVAL_COST: 3,
-    NO_CONFIDENCE_AP_COST: 5,
+    NO_CONFIDENCE_AP_COST: 0,                 // free to file (was 5; party-action redesign)
     NO_CONFIDENCE_VOTING_TICKS: 6,
-    NO_CONFIDENCE_COOLDOWN_TICKS: 6,
+    NO_CONFIDENCE_COOLDOWN_TICKS: 12,         // 12-tick cooldown per TARGETED PM party (was 6 on caller)
     FOUNDATIONAL_AP_COST: 3,
     FOUNDATIONAL_VOTING_TICKS: 6,
     SUPERMAJORITY_THRESHOLD: 2/3,
