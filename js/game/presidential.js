@@ -221,7 +221,13 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
     const majoritySeats = Math.ceil(nationTotalSeats * 0.5) + 1;
-    const nominatorTitle = isSemiPresidential(nation) ? 'Prime Minister' : 'President';
+    // Who nominates which seat under semi-presidential:
+    //   - PM seat → President (the one exception)
+    //   - All other cabinet seats → Prime Minister
+    // Under pure presidential, President nominates everyone.
+    const nominatorTitle = (!isSemiPresidential(nation) || ministryKey === 'prime_minister')
+        ? 'President'
+        : 'Prime Minister';
     const preamble = `The ${nominatorTitle} nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
