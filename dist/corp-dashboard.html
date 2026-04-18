@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Corporation HQ | Nationhood Alpha</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg-0: #0e0e0c;
@@ -62,7 +62,7 @@ body {
 }
 .top-bar-left { display: flex; align-items: center; gap: 0; }
 .top-bar-sep {
-  width: 1px; height: 31px; background: rgba(255,255,255,0.08);
+  width: 1px; height: 31px; background: var(--border-1);
   margin: 0 16px; flex-shrink: 0;
 }
 .corp-badge {
@@ -119,22 +119,6 @@ body {
   font-family: var(--font-mono);
   font-size: 12px; font-weight: 800; color: var(--amber);
   min-width: 18px; text-align: right;
-}
-.theme-toggle-btn {
-  font-family: var(--font-mono);
-  font-size: 9px; font-weight: 500;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  background: var(--bg-3);
-  border: 1px solid var(--border-0);
-  color: var(--text-dim);
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: all 0.1s;
-}
-.theme-toggle-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-muted);
-  border-color: var(--border-1);
 }
 .logout-btn {
   font-family: var(--font-mono);
@@ -241,7 +225,7 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
   border-color: var(--text-primary);
 }
 .corp-events-tab:hover:not(.active) {
-  background: rgba(255,255,255,0.05);
+  background: var(--border-hair);
 }
 .corp-events-scroll {
   overflow-y: auto;
@@ -775,39 +759,6 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
   padding: 80px 20px;
 }
 
-/* ═══════ LIGHT MODE ═══════ */
-body.light-mode {
-  --bg-0: #f4f3ef;
-  --bg-1: #eae9e4;
-  --bg-2: #ffffff;
-  --bg-3: #f0efeb;
-  --bg-4: #e8e7e2;
-  --bg-5: #dddcd7;
-  --bg-hover: #e8e7e2;
-  --text-bright: #1a1a17;
-  --text-primary: #333;
-  --text-secondary: #666;
-  --text-muted: #888;
-  --text-dim: #aaa;
-  --text-ghost: #ccc;
-  --border-hair: rgba(0,0,0,0.04);
-  --border-0: rgba(0,0,0,0.08);
-  --border-1: rgba(0,0,0,0.12);
-  --border-2: rgba(0,0,0,0.16);
-  --green: #2d8a2d;
-  --green-faint: rgba(45,138,45,0.08);
-  --green-border: rgba(45,138,45,0.2);
-  --red: #c0392b;
-  --amber: #b8860b;
-  --amber-faint: rgba(184,134,11,0.08);
-  --amber-border: rgba(184,134,11,0.2);
-  --blue: #2874a6;
-  --blue-faint: rgba(40,116,166,0.08);
-  --blue-border: rgba(40,116,166,0.2);
-  --teal: #1a8a7d;
-  --teal-faint: rgba(26,138,125,0.08);
-  --teal-border: rgba(26,138,125,0.2);
-}
 body.light-mode .top-bar-row1 { background: #fff; border-bottom-color: rgba(0,0,0,0.1); }
 body.light-mode .top-bar-sep { background: rgba(0,0,0,0.1); }
 body.light-mode .corp-logo { background: var(--bg-3); border-color: rgba(0,0,0,0.1); color: #999; }
@@ -817,8 +768,7 @@ body.light-mode .tick-value { color: #1a1a17; }
 body.light-mode .corp-name-badge { background: rgba(26,138,125,0.08); border-color: rgba(26,138,125,0.2); color: #1a8a7d; }
 body.light-mode .topbar-ap { background: rgba(184,134,11,0.08); border-color: rgba(184,134,11,0.2); }
 body.light-mode .topbar-ap__count { color: #b8860b; }
-body.light-mode .theme-toggle-btn { background: #f0efeb; border-color: rgba(0,0,0,0.1); color: #666; }
-body.light-mode .logout-btn { background: rgba(192,57,43,0.06); border-color: rgba(192,57,43,0.2); color: #c0392b; }
+body.light-mode body.light-mode .logout-btn { background: rgba(192,57,43,0.06); border-color: rgba(192,57,43,0.2); color: #c0392b; }
 body.light-mode .corp-faction-dropdown { background: #fff; border-color: rgba(0,0,0,0.1); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
 body.light-mode .corp-dd-item:hover { background: #f5f5f0; }
 body.light-mode .corp-dd-item.active { background: rgba(26,138,125,0.08); border-left-color: #1a8a7d; }
@@ -867,15 +817,17 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
   }
 }
 </style>
-  <script type="module" crossorigin src="/assets/corp-dashboard-qiWJ1NzD.js"></script>
+  <script type="module" crossorigin src="/assets/corp-dashboard-WBUGCMxC.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-CY90Gazr.js">
   <link rel="modulepreload" crossorigin href="/assets/messaging-BUrQna7p.js">
   <link rel="modulepreload" crossorigin href="/assets/equipment-DsuDdEne.js">
-  <link rel="stylesheet" crossorigin href="/assets/corp-topbar-gfsg-rAx.css">
+  <link rel="stylesheet" crossorigin href="/assets/corp-topbar-Do50UtYN.css">
+  <link rel="stylesheet" crossorigin href="/assets/corp-light-theme-l9hU6ojy.css">
 </head>
 <body>
+<script src="js/corp-theme-init.js"></script>
 
 <div id="loading" class="loading-msg">LOADING CORPORATION...</div>
 
@@ -998,7 +950,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
 <div id="prop-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;justify-content:center;align-items:center;">
     <div id="prop-modal-content" style="background:var(--bg-2, #1a1a17);border:1px solid var(--border-hair, rgba(200,196,184,0.08));padding:16px;max-width:360px;width:90%;"></div>
 </div>
-
+
 
 <!-- HOW TO GUIDE OVERLAY -->
 <div id="corp-howto-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;justify-content:center;align-items:flex-start;overflow-y:auto;padding:40px 20px;">

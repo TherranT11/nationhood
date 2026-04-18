@@ -19,6 +19,16 @@ Nationhood is an ambitious browser-based political simulation game with ~150 fil
 
 ---
 
+## Contributor Note: Generated advance-tick edge function
+
+- `supabase/functions/advance-tick/index.ts` is generated output and must not be edited directly.
+- The only editable game-logic source is `js/game/*.js` (especially `js/game/political-actions.js` for political actions).
+- After changing game logic, regenerate with:
+  - `node scripts/sync-edge-function.js`
+- CI enforces this by failing when generator output and `index.ts` diverge.
+
+---
+
 ## CRITICAL Issues
 
 ### 1. RLS Policies Are Completely Permissive (Security)

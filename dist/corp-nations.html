@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nations | Nationhood Alpha</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg-0: #0e0e0c;
@@ -58,7 +58,7 @@ body {
   background: var(--bg-2); border-bottom: 1px solid var(--border-0);
 }
 .top-bar-left { display: flex; align-items: center; gap: 0; }
-.top-bar-sep { width: 1px; height: 31px; background: rgba(255,255,255,0.08); margin: 0 16px; flex-shrink: 0; }
+.top-bar-sep { width: 1px; height: 31px; background: var(--border-1); margin: 0 16px; flex-shrink: 0; }
 .corp-badge { display: flex; align-items: center; gap: 8px; }
 .corp-logo {
   width: 35px; height: 35px; background: var(--bg-3); border: 1px solid var(--border-0); border-radius: 6px;
@@ -78,7 +78,7 @@ body {
 .corp-faction-dropdown__item { padding: 8px 12px; cursor: pointer; font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
 .corp-faction-dropdown__item:hover { background: var(--bg-hover); color: var(--text-bright); }
 .corp-faction-dropdown__item.active { color: var(--teal); }
-.theme-toggle-btn, .logout-btn { font-family: var(--font-mono); font-size: 9px; padding: 4px 10px; background: var(--bg-3); border: 1px solid var(--border-1); color: var(--text-secondary); cursor: pointer; }
+.logout-btn { font-family: var(--font-mono); font-size: 9px; padding: 4px 10px; background: var(--bg-3); border: 1px solid var(--border-1); color: var(--text-secondary); cursor: pointer; }
 .loading-msg { padding: 40px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
 
 /* ── Nav ── */
@@ -124,13 +124,15 @@ body {
   .nations-detail { max-height: none; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/corp-nations-CCtYOCM1.js"></script>
+  <script type="module" crossorigin src="/assets/corp-nations-C20-BFh0.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-CY90Gazr.js">
-  <link rel="stylesheet" crossorigin href="/assets/corp-topbar-gfsg-rAx.css">
+  <link rel="stylesheet" crossorigin href="/assets/corp-topbar-Do50UtYN.css">
+  <link rel="stylesheet" crossorigin href="/assets/corp-light-theme-l9hU6ojy.css">
 </head>
 <body>
+<script src="js/corp-theme-init.js"></script>
 
 <div id="loading" class="loading-msg">LOADING NATIONS...</div>
 
@@ -164,6 +166,6 @@ body {
     </div>
   </div>
 </div>
-
+
 </body>
 </html>

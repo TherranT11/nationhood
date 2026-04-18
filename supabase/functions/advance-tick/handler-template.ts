@@ -7,7 +7,8 @@
  * acquires a database lock, and processes the full game tick.
  *
  * AUTO-GENERATED — do not edit index.ts directly.
- * Source: js/game-common.js + supabase/functions/advance-tick/handler-template.ts
+ * Game-logic source of truth lives in js/game/*.js (especially political-actions.js).
+ * Source: js/game/*.js + supabase/functions/advance-tick/handler-template.ts
  * Regenerate with: node scripts/sync-edge-function.js
  */
 
@@ -53,14 +54,14 @@ async function ensureApRpcAvailability(supabase) {
     return rpcPreflightCheckPromise;
 }
 
-// ===== GAME LOGIC (from js/game-common.js) =====
+// ===== GAME LOGIC (from js/game/*.js modules) =====
 
 // __GAME_COMMON_JS__
 
 // ===== END GAME LOGIC =====
 
 
-// ===== TICK-ONLY HELPERS (edge-function-only — not in game-common.js) =====
+// ===== TICK-ONLY HELPERS (edge-function-only — not in js/game/*.js modules) =====
 
 // ==================== FACTION MOMENTUM HELPER ====================
 // Thin wrapper around adjust_momentum RPC for use in tick-only code.
