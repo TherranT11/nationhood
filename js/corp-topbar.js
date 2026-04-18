@@ -2,6 +2,17 @@
 // Renders a unified top bar with logo, tick info, cash, faction switcher, nav tabs
 
 const CORP_VERSION = 'Alpha 2.2.0.1';
+const THEME_STORAGE_KEY = 'corpThemePref';
+
+// Sync body.light-mode from localStorage. Called at render (and by a tiny inline
+// script at the top of each corp body) so saved preference survives page loads
+// and the first paint matches the final theme.
+function applyStoredCorpTheme() {
+    try {
+        const pref = localStorage.getItem(THEME_STORAGE_KEY);
+        document.body.classList.toggle('light-mode', pref === 'light');
+    } catch (e) { /* localStorage unavailable (private mode, etc.) — default dark */ }
+}
 
 const SECTOR_OPS_PAGE = {
     Construction: 'corp-operations.html',
@@ -42,8 +53,10 @@ function escHtml(str) {
  * @param {Object} opts.supabase - Supabase client
  */
 export function renderCorpTopBar(container, opts = {}) {
+    applyStoredCorpTheme();
     const { faction, shard, activeTab, allUserFactions, badges } = opts;
     const tabBadges = badges || {}; // { tabId: { count, color } }
+    const isLightMode = document.body.classList.contains('light-mode');
     const ticker = faction?.corp_ticker || faction?.abbreviation || '';
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(2) + 'B'
@@ -131,7 +144,7 @@ export function renderCorpTopBar(container, opts = {}) {
                     <span class="corp-topbar__badge-btn" id="corp-name-badge" onclick="window._corpTopbarToggleDropdown()">[${escHtml(ticker.toUpperCase() || '--')}] ▾</span>
                     <div class="corp-topbar__dropdown" id="corp-faction-dropdown">${dropdownHtml}</div>
                 </div>
-                <button class="corp-topbar__btn" onclick="window._corpTopbarToggleTheme()" id="theme-toggle">Light</button>
+                <button class="corp-topbar__btn" onclick="window._corpTopbarToggleTheme()" id="theme-toggle">${isLightMode ? 'Dark' : 'Light'}</button>
                 <button class="corp-topbar__btn corp-topbar__btn--logout" onclick="window._corpTopbarLogout()">Logout</button>
             </div>
         </div>
@@ -213,9 +226,10 @@ window._corpTopbarToggleDropdown = function() {
 };
 
 window._corpTopbarToggleTheme = function() {
-    document.body.classList.toggle('light-mode');
+    const nowLight = document.body.classList.toggle('light-mode');
+    try { localStorage.setItem(THEME_STORAGE_KEY, nowLight ? 'light' : 'dark'); } catch (e) {}
     const btn = document.getElementById('theme-toggle');
-    if (btn) btn.textContent = document.body.classList.contains('light-mode') ? 'Dark' : 'Light';
+    if (btn) btn.textContent = nowLight ? 'Dark' : 'Light';
 };
 
 window._corpTopbarLogout = async function() {
