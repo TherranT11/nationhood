@@ -8699,7 +8699,7 @@ async function saveTradeArticle(negotiationId, articleType) {
             const grace = Math.min(2, Math.max(0, parseInt(document.getElementById('cond-grace')?.value || '1')));
             if (!statKey) { alert('Please select a stat to monitor.'); return; }
             // Check max conditions
-            const { data: condNeg } = await _supabase.from('trade_negotiations').select('draft_articles, agreement_type').eq('id', negotiationId).single();
+            const { data: condNeg } = await _supabase.from('trade_negotiations').select('draft_articles').eq('id', negotiationId).single();
             const existingConditions = (condNeg?.draft_articles || []).filter(a => a.type === 'aid_condition');
             if (existingConditions.length >= DIPLOMACY_CONFIG.AID_MAX_CONDITIONS) {
                 alert('Maximum ' + DIPLOMACY_CONFIG.AID_MAX_CONDITIONS + ' conditions per agreement.');
@@ -8744,7 +8744,9 @@ async function saveTradeArticle(negotiationId, articleType) {
         articles.push({ type: articleType, data: articleData });
     }
 
-    const { error } = await _supabase.from('trade_negotiations').update({ draft_articles: articles }).eq('id', negotiationId);
+    const { error } = await _supabase.from('trade_negotiations')
+        .update({ draft_articles: articles, agreement_type: inferAgreementType(articles, neg.agreement_type) })
+        .eq('id', negotiationId);
     if (error) {
         alert('Error saving article: ' + error.message);
         return;

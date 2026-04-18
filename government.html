@@ -70,7 +70,7 @@ import { nominateMinister, nominatePMCandidate, signPresidentialBill, vetoPresid
 import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder } from './js/game/executive-orders.js';
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
-import { calculateBillSupport } from './js/game/bills.js';
+import { calculateBillSupport, computeBillCostTotals } from './js/game/bills.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -1647,11 +1647,33 @@ function renderAdminCabinet() {
                 </div>
             </div>`;
         } else {
+            // Vacant ministry controls depend on government type:
+            //   Presidential      → President's party NOMINATEs; nomination
+            //                       goes to the floor for a confirmation vote.
+            //   Semi-presidential → PM's party NOMINATEs (president nominates
+            //                       presidential-domain ministries; that
+            //                       domain constraint is enforced inside
+            //                       openNominateModal).
+            //   Parliamentary     → PM's party APPOINTs directly.
+            // Mirrors the button logic that was only wired into the legacy
+            // buildMinistryManagementButtons() ministry card.
             const isCaretaker = coalitionData?.status === 'caretaker';
-            const canAppoint = isPMParty && !isCaretaker;
+            const isSemiPres = isSemiPresidential(currentNation);
+            let actionBtn = '';
+            if (isPresidential && !isSemiPres) {
+                if (isPresidentParty) {
+                    actionBtn = `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openNominateModal('${escapeHtml(m.ministry_key)}')">NOMINATE</button>`;
+                }
+            } else if (isSemiPres) {
+                if (isPMParty) {
+                    actionBtn = `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openNominateModal('${escapeHtml(m.ministry_key)}')">NOMINATE</button>`;
+                }
+            } else if (isPMParty && !isCaretaker) {
+                actionBtn = `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openAssignModal('${escapeHtml(m.ministry_key)}')">APPOINT</button>`;
+            }
             html += `<div class="ga-vacant-row">
                 <span class="ga-vacant-label">Vacant</span>
-                ${canAppoint ? `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openAssignModal('${escapeHtml(m.ministry_key)}')">APPOINT</button>` : ''}
+                ${actionBtn}
             </div>`;
         }
 
@@ -2647,50 +2669,6 @@ function renderBillEffectChips(bill, withLabel = true) {
     return html;
 }
 
-function readCostNumber(value) {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string') {
-        const parsed = Number(value.replace(/[^0-9.-]/g, ''));
-        return Number.isFinite(parsed) ? parsed : 0;
-    }
-    return 0;
-}
-
-function sumCostKeysDeep(node, keys) {
-    if (!node) return 0;
-    if (Array.isArray(node)) return node.reduce((sum, v) => sum + sumCostKeysDeep(v, keys), 0);
-    if (typeof node !== 'object') return 0;
-    let total = 0;
-    for (const [k, v] of Object.entries(node)) {
-        if (keys.includes(k)) total += readCostNumber(v);
-        if (v && typeof v === 'object') total += sumCostKeysDeep(v, keys);
-    }
-    return total;
-}
-
-function computeBillCostTotals(bill) {
-    const articles = bill.bill_articles || [];
-    let upfront = 0;
-    let ongoingYearly = 0;
-    const upfrontKeys = ['upfront_cost', 'one_time_cost', 'one_time', 'initial_cost', 'startup_cost', 'capex_cost', 'fund_draw'];
-    const annualKeys = ['ongoing_cost', 'annual_cost', 'yearly_cost', 'recurring_cost', 'per_year', 'cost_per_year'];
-    const monthlyKeys = ['monthly_cost', 'cost_per_month', 'per_month'];
-
-    for (const art of articles) {
-        const sources = [art.funding_data, art.effect_data?.funding_data, art.effect_data, art.policies];
-        for (const src of sources) {
-            upfront += sumCostKeysDeep(src, upfrontKeys);
-            ongoingYearly += sumCostKeysDeep(src, annualKeys);
-            ongoingYearly += sumCostKeysDeep(src, monthlyKeys) * 12;
-        }
-    }
-
-    return {
-        upfront: Math.max(0, upfront),
-        ongoingYearly: Math.max(0, ongoingYearly)
-    };
-}
-
 function formatCostCompact(n) {
     if (!n || n <= 0) return '$0';
     if (n >= 1_000_000_000) return '$' + (n / 1_000_000_000).toFixed(1) + 'B';
@@ -2782,16 +2760,22 @@ function renderBillCard(bill, stageColor) {
     </div>`;
 
     // Always-visible effect chips, cost summary, and vote actions
-    const totals = computeBillCostTotals(bill);
-    const ongoingMonthly = totals.ongoingYearly / 12;
+    const totals = computeBillCostTotals(bill, currentNation);
+    const ongoingMonthly = totals.ongoingMonthly;
     const effectChips = renderBillEffectChips(bill, false);
     const inlineVotes = renderBillVoteButtons(bill);
     html += `<div style="padding:0 14px 8px;">`;
     if (effectChips) {
         html += `<div style="margin-bottom:6px;">${effectChips}</div>`;
     }
+    // Clamp repeal-heavy negatives to 0 on the summary card so a small
+    // save-only bill doesn't read as a confusing "−$Xm/yr"; the detail view
+    // still shows the signed savings line.
+    const upfrontDisplay = formatCostCompact(Math.max(0, totals.upfront));
+    const ongoingYearlyDisplay = formatCostCompact(Math.max(0, totals.ongoingYearly));
+    const ongoingMonthlyDisplay = formatCostCompact(Math.max(0, ongoingMonthly));
     html += `<div style="font-family:var(--font-mono);font-size:calc(8px * var(--leg-scale, 1.755));color:var(--text-dim);margin-bottom:${inlineVotes ? '6px' : '0'};">
-        UPFRONT COST: ${formatCostCompact(totals.upfront)} | ONGOING COST: ${formatCostCompact(totals.ongoingYearly)} / YEAR (${formatCostCompact(ongoingMonthly)} / MONTH)
+        UPFRONT COST: ${upfrontDisplay} | ONGOING COST: ${ongoingYearlyDisplay} / YEAR (${ongoingMonthlyDisplay} / MONTH)
     </div>`;
     if (inlineVotes) {
         html += inlineVotes;
@@ -2881,40 +2865,44 @@ function renderBillCard(bill, stageColor) {
 
 let _presidentialActionLock = false;
 
-async function signBillFromLegislature(billId) {
+// Shared runner for Sign / Veto — splits "action failed" from "refresh
+// failed" so a successful DB write never shows an error toast just because
+// the re-render hit a transient issue.
+async function _runPresidentialAction(actionName, actionFn) {
     if (_presidentialActionLock || !isPresidentParty || !currentFaction) return;
-    if (!confirm('Sign this bill into law?')) return;
     _presidentialActionLock = true;
     try {
-        await signPresidentialBill(_supabase, billId, currentFaction.id);
-        await loadLegislatureData();
-        const content = document.getElementById('gov-content');
-        if (content) renderLegislatureTab(content);
-    } catch (err) {
-        console.error('[Legislature] Sign failed:', err);
-        alert('Error signing bill: ' + (err?.message || 'Unknown error'));
+        try {
+            await actionFn();
+        } catch (err) {
+            console.error(`[Legislature] ${actionName} failed:`, err);
+            alert(`Error ${actionName.toLowerCase()}: ` + (err?.message || 'Unknown error'));
+            return;
+        }
+        try {
+            await loadLegislatureData();
+            const content = document.getElementById('gov-content');
+            if (content) renderLegislatureTab(content);
+        } catch (refreshErr) {
+            // Action committed server-side; refresh stumbled. Log, don't
+            // mislead the user — they can refresh manually if needed.
+            console.warn(`[Legislature] ${actionName} succeeded but refresh failed:`, refreshErr);
+        }
     } finally {
         _presidentialActionLock = false;
     }
 }
+
+async function signBillFromLegislature(billId) {
+    if (!confirm('Sign this bill into law?')) return;
+    return _runPresidentialAction('Sign', () => signPresidentialBill(_supabase, billId, currentFaction.id));
+}
 window.signBillFromLegislature = signBillFromLegislature;
 
 async function vetoBillFromLegislature(billId) {
-    if (_presidentialActionLock || !isPresidentParty || !currentFaction) return;
     const overrideSeats = Math.ceil((currentNation?.total_seats || GAME_CONFIG.TOTAL_SEATS) * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
     if (!confirm(`VETO this bill?\n\nA veto override bill will be automatically created requiring ${overrideSeats} seats (\u2154 supermajority).\n\nProceed?`)) return;
-    _presidentialActionLock = true;
-    try {
-        await vetoPresidentialBill(_supabase, billId, currentFaction.id);
-        await loadLegislatureData();
-        const content = document.getElementById('gov-content');
-        if (content) renderLegislatureTab(content);
-    } catch (err) {
-        console.error('[Legislature] Veto failed:', err);
-        alert('Error vetoing bill: ' + (err?.message || 'Unknown error'));
-    } finally {
-        _presidentialActionLock = false;
-    }
+    return _runPresidentialAction('Veto', () => vetoPresidentialBill(_supabase, billId, currentFaction.id));
 }
 window.vetoBillFromLegislature = vetoBillFromLegislature;
 
@@ -3049,8 +3037,8 @@ function renderBillsList() {
         </div>`;
     }
     html += `<div style="width:1px;height:20px;background:var(--border-main);margin:0 4px;"></div>
-        <div class="leg-propose-btn" onclick="window.location.href='laws.html?propose=1'">
-            PROPOSE BILL <span class="ga-ap-badge" style="background:var(--amber-faint);color:var(--accent);border-color:var(--amber-border);">$50k</span>
+        <div class="leg-propose-btn" onclick="window.location.href='laws.html?propose=1'" title="$50k base + $20k per article">
+            PROPOSE BILL <span class="ga-ap-badge" style="background:var(--amber-faint);color:var(--accent);border-color:var(--amber-border);">$50k + $20k/art</span>
         </div>
     </div></div>`;
 

@@ -5,7 +5,7 @@
 
 import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { hasElectedPresident, getCurrentConstitutionalSystem } from './government-types.js';
-import { DIPLOMACY_CONFIG } from './diplomacy-constants.js';
+import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology, loadNationIdeologies } from './ideology.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
@@ -52,6 +52,73 @@ export function calculateBillSupport(billSupport, sponsorPartyId, allPartySeats)
     const totalSupport = sponsorSeats + acceptedSeats;
     const percent = Math.round((totalSupport / GAME_CONFIG.TOTAL_SEATS) * 100);
     return { sponsorSeats, acceptedSeats, totalSupport, percent };
+}
+
+
+// ==================== BILL COST TOTALS ====================
+
+/**
+ * Scale a policy's raw cost by its scaling stat. Mirrors bill.html's
+ * scalePolicyCost() so every surface that displays bill totals converges.
+ */
+function _scalePolicyCost(baseCost, scalingStat, nation) {
+    if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
+    const statVal = Number(nation[scalingStat]) || 1;
+    const divisor = RAW_SCALING_DIVISORS?.[scalingStat] || 50;
+    return baseCost * (statVal / divisor);
+}
+
+/**
+ * Sum upfront + ongoing cost across a bill's articles.
+ *
+ * Returns { upfront, ongoingMonthly, ongoingYearly }. ongoingMonthly is
+ * per-tick (1 tick = 1 month); ongoingYearly = ongoingMonthly × 12.
+ *
+ * Article handling (matches bill.html's per-article render):
+ *   1. Funding-data (BUDGET): fd.discretionary → upfront,
+ *      Σ institutions[].base_cost × (toPct - fromPct)/100 → monthly ongoing.
+ *   2. Repeal: subtract the repealed policy's scaled ongoing (negative
+ *      monthly) — repealing saves what the law was spending.
+ *   3. Policy: scaled upfront_cost + scaled (ongoing_cost_per_tick ||
+ *      ongoing_base_cost).
+ *   4. Text / entrenchment / anything without a policies join: zero.
+ */
+export function computeBillCostTotals(bill, nation) {
+    const articles = bill?.bill_articles || [];
+    let upfront = 0;
+    let ongoingMonthly = 0;
+
+    for (const art of articles) {
+        // (1) Funding-data (BUDGET) article
+        const fd = art.funding_data;
+        if (fd) {
+            upfront += Number(fd.discretionary || 0);
+            for (const inst of (fd.institutions || [])) {
+                const fromPct = Number(inst.current_pct || 0);
+                const toPct = Number(inst.proposed_pct || 0);
+                if (fromPct === toPct) continue;
+                const baseCost = Number(inst.base_cost || 0);
+                ongoingMonthly += ((toPct - fromPct) / 100) * baseCost;
+            }
+            continue;
+        }
+
+        const p = art.policies;
+        if (!p) continue; // text-only / entrenchment / missing join
+
+        // (2) Repeal article — saves the repealed law's ongoing cost
+        if (art.repeal_active_law_id) {
+            const onCost = _scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, nation);
+            ongoingMonthly -= onCost;
+            continue;
+        }
+
+        // (3) Policy article
+        upfront += _scalePolicyCost(p.upfront_cost || 0, p.upfront_scaling_stat, nation);
+        ongoingMonthly += _scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, nation);
+    }
+
+    return { upfront, ongoingMonthly, ongoingYearly: ongoingMonthly * 12 };
 }
 
 
