@@ -589,9 +589,28 @@ async function handleFormGovernment(formation, root) {
         const nation = _state.nation;
         const nationId = nation.id;
 
-        // Save ministry assignments to the formation
+        // Generate minister names for each assigned slot. The RPC
+        // finalize_government_formation wipes all ministries and then
+        // repopulates from government_formations.minister_names — without
+        // this block, minister_names is null and the RPC leaves the cabinet
+        // blank after wiping it.
+        const namePools = getNationNames(nation?.name) || {};
+        const firstPool = namePools.firstNames || ['Alex', 'Maria', 'Carlos'];
+        const lastPool = namePools.lastNames || ['Garcia', 'Torres', 'Silva'];
+        const minister_names = {};
+        for (const [key, partyId] of Object.entries(_ministryAssignments || {})) {
+            if (!partyId) continue;
+            minister_names[key] = {
+                first_name: firstPool[Math.floor(Math.random() * firstPool.length)],
+                last_name: lastPool[Math.floor(Math.random() * lastPool.length)],
+                age: 35 + Math.floor(Math.random() * 25),
+            };
+        }
+
+        // Save ministry assignments + names to the formation
         const { error: assignErr } = await _supabase.from('government_formations').update({
             ministry_assignments: _ministryAssignments,
+            minister_names,
         }).eq('id', formation.id);
         if (assignErr) throw new Error('Failed to save assignments: ' + assignErr.message);
 
