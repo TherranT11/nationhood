@@ -887,11 +887,11 @@ function renderActivePortfolio() {
     </div>`;
     html += `<div class="ap-summary" style="margin-top:-1px;border-top:none;">
         <div class="ap-summary__cell" style="flex:1;">
-            <div class="ap-summary__label" title="Total loan payments collected across active loans. monthly_payment = interest + principal.">LOAN CASH COLLECTED (TOTAL PAYMENTS)</div>
+            <div class="ap-summary__label" title="Total loan cash collected across active loans. Loan cash collected = interest portion + principal portion.">LOAN CASH COLLECTED (INTEREST + PRINCIPAL)</div>
             <div class="ap-summary__value" style="font-size:12px;color:var(--panel-text);">${fmtMoney(loanCashCollectedTotal)}</div>
         </div>
         <div class="ap-summary__cell" style="flex:1;">
-            <div class="ap-summary__label" title="Interest portion of loan payments recognized as operating revenue. Principal repayment is asset conversion, not revenue.">LOAN INTEREST REVENUE</div>
+            <div class="ap-summary__label" title="Interest portion of loan payments recognized as operating revenue. Principal repayment increases cash but is not profit.">LOAN INTEREST REVENUE (P&L)</div>
             <div class="ap-summary__value" style="font-size:12px;color:#5c5;">${fmtMoney(loanInterestRevenueTotal)}</div>
         </div>
     </div>`;
@@ -955,9 +955,9 @@ function renderActivePortfolio() {
         const earnedVal = d.earned || d.premiumsCollected || d.couponsReceived || 0;
         // Per-type label so lenders don't read "EARNED" as gross cashflow: for
         // loans it's the interest portion only, not principal repayment.
-        const earnedLabel = d.type === 'LOAN' ? 'INTEREST EARNED' : d.type === 'INSURE' ? 'PREMIUMS EARNED' : 'COUPONS EARNED';
+        const earnedLabel = d.type === 'LOAN' ? 'INTEREST REVENUE (P&L)' : d.type === 'INSURE' ? 'PREMIUMS EARNED' : 'COUPONS EARNED';
         const earnedTooltip = d.type === 'LOAN'
-            ? 'Loan monthly payment = interest + principal. This metric tracks interest revenue only.'
+            ? 'Loan monthly cash = interest + principal. This metric tracks interest revenue only; principal is asset repayment.'
             : '';
         const rateColor = tm.class === 'loan' ? '#5a8aaa' : tm.class === 'insure' ? '#aa7a5a' : '#8a6aaa';
 
@@ -989,10 +989,12 @@ function renderActivePortfolio() {
                 const rows = [
                     { label: 'PRINCIPAL', value: fmtMoney(d.principal || 0) },
                     { label: 'REMAINING', value: fmtMoney(d.remaining || 0), color: 'var(--panel-text)' },
-                    { label: 'MONTHLY PAYMENT (INT + PRIN)', value: fmtMoney(d.monthlyPayment || 0), title: 'monthly_payment = interest + principal' },
-                    { label: 'INTEREST REVENUE (TO DATE)', value: fmtMoney(d.interestRevenue || 0), color: '#5c5', title: 'Recognized operating revenue from this loan.' },
-                    { label: 'PRINCIPAL REPAID (TO DATE)', value: fmtMoney(d.principalRepaid || 0), title: 'Principal repayment reduces receivable and increases cash; it is not operating revenue.' },
-                    { label: 'CASH COLLECTED (TO DATE)', value: fmtMoney(d.cashCollected || 0), title: 'Total loan payments collected = interest + principal.' },
+                    { label: 'MONTHLY INTEREST PORTION (P&L REVENUE)', value: fmtMoney(d.monthlyInterestPortion || 0), color: '#5c5', title: 'Recognized operating revenue from this month\'s loan payment.' },
+                    { label: 'MONTHLY PRINCIPAL PORTION (ASSET REPAYMENT)', value: fmtMoney(d.monthlyPrincipalPortion || 0), title: 'Principal repayment increases cash and reduces receivable; it is not profit.' },
+                    { label: 'TOTAL MONTHLY PAYMENT (CASH COLLECTED)', value: fmtMoney(d.monthlyPayment || 0), title: 'Loan cash collected each month = interest portion + principal portion.' },
+                    { label: 'INTEREST REVENUE TO DATE (P&L)', value: fmtMoney(d.interestRevenue || 0), color: '#5c5', title: 'Cumulative operating revenue recognized from interest.' },
+                    { label: 'PRINCIPAL REPAID TO DATE (ASSET REPAYMENT)', value: fmtMoney(d.principalRepaid || 0), title: 'Cumulative principal repaid. Cash inflow, not revenue.' },
+                    { label: 'LOAN CASH COLLECTED TO DATE (INTEREST + PRINCIPAL)', value: fmtMoney(d.cashCollected || 0), title: 'Cumulative loan cash collected = interest + principal.' },
                     { label: 'MISSED PAYMENTS', value: String(d.missedPayments || 0), color: (d.missedPayments || 0) > 0 ? '#c55' : '#5c5' },
                     { label: 'NEXT DUE', value: d.nextPayment || '—', color: d.status === 'LATE' ? '#c55' : '#9e9a92' },
                 ];
@@ -2535,6 +2537,14 @@ async function loadActivePortfolio() {
         + Number(loan.total_interest_paid || 0)
     );
     apPortfolio = (loans || []).map(loan => ({
+        monthlyInterestPortion: Math.max(0, Math.min(
+            Number(loan.monthly_payment || 0),
+            Math.round(Math.max(0, Number(loan.remaining_principal || 0)) * ((Number(loan.interest_rate || 0) / 100) / 12))
+        )),
+        monthlyPrincipalPortion: Math.max(0, Number(loan.monthly_payment || 0) - Math.max(0, Math.min(
+            Number(loan.monthly_payment || 0),
+            Math.round(Math.max(0, Number(loan.remaining_principal || 0)) * ((Number(loan.interest_rate || 0) / 100) / 12))
+        ))),
         id: loan.id,
         type: TYPE_MAP[loan.finance_loan_requests?.request_type] || 'LOAN',
         counterparty: loan.borrower?.faction_name || 'Unknown',
