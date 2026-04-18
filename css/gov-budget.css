@@ -71,17 +71,26 @@
 
 .gb-stat {
     background: var(--bg-2);
-    /* Visible box: --border-1 (0.08 alpha) disappears on dark backgrounds.
-       Bumped to --border-2 so each card reads as a distinct tile at a
-       glance, matching the handoff-bundle design's visual weight. */
-    border: 1px solid var(--border-2);
+    /* Defined box: --border-2 (0.12 alpha) was still near-invisible on
+       the dark page background. Dropped to an explicit strong rgba so
+       the card outline reads at arm's length, plus a quiet shadow so
+       the cards sit slightly off the page instead of melting into it. */
+    border: 1px solid rgba(255,255,255,0.22);
     border-radius: 4px;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.25);
     padding: 18px 20px 20px;
     position: relative;
     display: flex;
     flex-direction: column;
     gap: 10px;
     min-height: 150px;
+}
+/* Light-mode override — flip the border to a dark rgba and keep the
+   shadow subtle so the defined-box effect persists under body.light-mode
+   without looking heavy. */
+body.light-mode .gb-stat {
+    border-color: rgba(0,0,0,0.22);
+    box-shadow: 0 2px 0 rgba(0,0,0,0.08);
 }
 .gb-stat::before {
     content: "";
@@ -196,11 +205,16 @@
 /* ── Panels (Income / Costs) ─────────────────────────────── */
 .gb-panel {
     background: var(--bg-2);
-    /* Matches the stat-card box weight so the three panels on the
-       Breakdown column read as a set of peers. */
-    border: 1px solid var(--border-2);
+    /* Matches the stat-card box weight + shadow so the three panels on
+       the Breakdown column read as a set of defined peers. */
+    border: 1px solid rgba(255,255,255,0.22);
     border-radius: 4px;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.25);
     overflow: hidden;
+}
+body.light-mode .gb-panel {
+    border-color: rgba(0,0,0,0.22);
+    box-shadow: 0 2px 0 rgba(0,0,0,0.08);
 }
 .gb-panel__head {
     padding: 13px 18px 11px;
@@ -309,16 +323,21 @@
 /* ── Deep Dive panel ─────────────────────────────────────── */
 .gb-deep {
     background: var(--bg-2);
-    /* Same visible-border bump as the stat cards + breakdown panels so
+    /* Same defined-box treatment as the stat cards + breakdown panels so
        the Deep Dive doesn't disappear into the page at rest. */
-    border: 1px solid var(--border-2);
+    border: 1px solid rgba(255,255,255,0.22);
     border-radius: 4px;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.25);
     overflow: hidden;
     position: sticky;
     top: 20px;
     min-height: 400px;
     display: flex;
     flex-direction: column;
+}
+body.light-mode .gb-deep {
+    border-color: rgba(0,0,0,0.22);
+    box-shadow: 0 2px 0 rgba(0,0,0,0.08);
 }
 .gb-deep__head {
     padding: 13px 18px 11px;
