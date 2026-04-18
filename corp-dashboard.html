@@ -1336,15 +1336,18 @@ function getFinanceDealMetrics({
     interestRate = 0,
     principal = 0,
     totalPaid = 0,
+    remainingPrincipal = null,
     claimsPaid = 0,
 }) {
     const type = String(requestType || 'loan');
     const payment = Math.max(0, Number(monthlyPayment) || 0);
     const principalAmt = Math.max(0, Number(principal) || 0);
     const principalPaid = Math.max(0, Number(totalPaid) || 0);
-    const remainingPrincipal = Math.max(0, principalAmt - principalPaid);
+    const normalizedRemainingPrincipal = remainingPrincipal == null
+        ? Math.max(0, principalAmt - principalPaid)
+        : Math.max(0, Number(remainingPrincipal) || 0);
     const monthlyRate = Math.max(0, Number(interestRate) || 0) / 100 / 12;
-    const rawInterest = remainingPrincipal * monthlyRate;
+    const rawInterest = normalizedRemainingPrincipal * monthlyRate;
     const interestIncomeThisTick = type === 'loan'
         ? Math.min(payment, Math.round(rawInterest))
         : payment;
@@ -1353,7 +1356,7 @@ function getFinanceDealMetrics({
         : 0;
     const outstandingExposure = type === 'insurance'
         ? Math.max(0, principalAmt - (Number(claimsPaid) || 0))
-        : remainingPrincipal;
+        : normalizedRemainingPrincipal;
     return {
         cashInflowThisTick: payment,
         interestIncomeThisTick,
@@ -1402,7 +1405,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         if (sector === 'Finance') {
             // Finance KPI contract: Private Contracts = gross inflow this tick.
             const { data: finLoans } = await _supabase.from('finance_active_loans')
-                .select('monthly_payment, interest_rate, principal, total_paid, claims_paid, finance_loan_requests(request_type)')
+                .select('monthly_payment, interest_rate, principal, total_paid, remaining_principal, claims_paid, finance_loan_requests(request_type)')
                 .eq('lender_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
             for (const loan of (finLoans || [])) {
@@ -1412,6 +1415,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                     interestRate: loan.interest_rate,
                     principal: loan.principal,
                     totalPaid: loan.total_paid,
+                    remainingPrincipal: loan.remaining_principal,
                     claimsPaid: loan.claims_paid,
                 });
                 pvtContracts += metrics.cashInflowThisTick;
