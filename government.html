@@ -662,10 +662,6 @@ async function handleMinistryConflict(action, ministryKey) {
     if (conflictRow) {
         conflictRow.classList.remove('active');
         const conflictBtns = document.getElementById(conflictActionId + '-btns');
-        const conflictConfig = MINISTRY_ACTIONS[ministryKey]?.actions.find(a => a.id === conflictActId);
-        const conflictCountKey = ministryKey + ':' + conflictActId;
-        const conflictUseCount = ministryActionUseCounts[conflictCountKey] || 0;
-        const conflictApCost = conflictConfig?.apCosts[Math.min(conflictUseCount, 3)] || 2;
         if (conflictBtns) {
             conflictBtns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${conflictActionId}')">▶ FREE</div>`;
         }
@@ -1706,10 +1702,8 @@ function renderMinistryExpandedContent(ministry, partyColor) {
         if (actions.length > 0) {
             html += `<div class="ga-stat-label" style="margin-bottom:4px;">MINISTRY ACTIONS</div>`;
             for (const action of actions) {
-                // AP cost (scaled by use count)
                 const countKey = key + ':' + action.id;
                 const useCount = ministryActionUseCounts[countKey] || 0;
-                const apCost = action.apCosts ? action.apCosts[Math.min(useCount, action.apCosts.length - 1)] : '?';
 
                 // Active check
                 const actionId = key + '-' + action.id;
@@ -6054,7 +6048,7 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
             </div>
             <div class="ministry-action__desc">${escapeHtml(action.desc)}${extraInfoHtml}</div>
             <div class="ministry-action__bottom">
-                <div class="ministry-action__tags">${tagsHtml}${budgetTagHtml}${isActive && (action.id === 'austerityMeasures' || action.id === 'stimulusPackage') ? '' : ''}</div>
+                <div class="ministry-action__tags">${tagsHtml}${budgetTagHtml}</div>
                 <div id="${actionId}-btns">${btnHtml}</div>
             </div>
         </div>`;
@@ -8669,7 +8663,7 @@ function refreshMinistryActionStates(ministryKey) {
         const isDisabled = !canUse || ap < apCost || isBlocked;
         const btns = document.getElementById(actionId + '-btns');
         const apLabel = row.querySelector('.ministry-action__ap-cost');
-        if (apLabel) apLabel.textContent = 'FREE';
+        if (apLabel) apLabel.textContent = 'FREE' + (useCount > 0 ? ' (use ' + (useCount + 1) + ')' : '');
 
         if (!canUse) {
             row.classList.add('disabled');
@@ -9733,7 +9727,7 @@ async function purgeMinister(ministryKey) {
 
     if (!confirm(
         '⛔ PURGE ' + ministerName + ' from ' + (MINISTRY_NAMES[ministryKey] || ministryKey) + '?\n\n' +
-        ''Scapegoat Effects:\n' +
+        'Scapegoat Effects:\n' +
         '• ' + partyName + ' loses 2–4 Loyalty and 1–2 Approval\n' +
         '• Your faction gains +4–5 Approval (decays over time)\n' +
         '• Nation: +1 Corruption, Stability shifts ±1–2\n\n' +
@@ -9741,10 +9735,11 @@ async function purgeMinister(ministryKey) {
     )) return;
     _govActionLock = true;
 
-    const apResult = await deductAP(_supabase, currentFaction.id, 1);
+    const apResult = await deductAP(_supabase, currentFaction.id, 0);
     if (!apResult.success) {
         if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
         alert('Unexpected error.');
+        _govActionLock = false;
         return;
     }
     currentFaction.action_points = apResult.newAp;
@@ -9879,10 +9874,11 @@ async function requestMinistry(ministryKey) {
     const myCount = ministryRequests.filter(r => r.faction_id === currentFaction.id).length;
     if (myCount >= 2) { alert('You can only have 2 active ministry requests.'); return; }
     _govActionLock = true;
-    const apResult = await deductAP(_supabase, currentFaction.id, 1);
+    const apResult = await deductAP(_supabase, currentFaction.id, 0);
     if (!apResult.success) {
         if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
         alert('Unexpected error.');
+        _govActionLock = false;
         return;
     }
     currentFaction.action_points = apResult.newAp;
@@ -10131,7 +10127,6 @@ function renderImpeachmentButton() {
     // President's own party cannot file impeachment
     if (isPresidentParty) return '';
 
-    const effectiveAPCost = getImpeachmentAPCost();
     const mySeats = allPartySeats[currentFaction.id] || currentFaction.seats || 0;
 
     // Build charge requirement status indicators
@@ -10862,28 +10857,8 @@ async function buildImpeachmentCharges() {
 }
 
 function getImpeachmentAPCost() {
-    // Base cost
-    let cost = GAME_CONFIG.IMPEACHMENT_AP_COST;
-
-    // Check president's party leader traits for constitutional_scholar (+3 AP to opponents)
-    if (presidentFactionId) {
-        const presParty = allParties.find(p => p.id === presidentFactionId);
-        if (presParty) {
-            const posTraits = presParty.leader_positive_traits || [];
-            if (posTraits.includes('constitutional_scholar')) cost += 3;
-        }
-    }
-
-    // Check president's party leader traits for paper_thin_mandate (-2 AP for opponents)
-    if (presidentFactionId) {
-        const presParty = allParties.find(p => p.id === presidentFactionId);
-        if (presParty) {
-            const negTraits = presParty.leader_negative_traits || [];
-            if (negTraits.includes('paper_thin_mandate')) cost -= 2;
-        }
-    }
-
-    return Math.max(1, cost);
+    // Impeachment is free (AP system removed from government.html).
+    return 0;
 }
 
 async function fileImpeachment() {
@@ -11449,13 +11424,12 @@ async function refreshGovernmentUI() {
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
     const ministryName = MINISTRY_NAMES[ministryKey] || ministry.ministry_name || ministryKey;
-    if (!confirm('Dismiss ' + ministerName + ' from ' + ministryName + '?\n
-A replacement will need to be appointed.\nThe new minister starts at 50% approval.\nNote: The underlying national stats will not change.')) return;
+    if (!confirm('Dismiss ' + ministerName + ' from ' + ministryName + '?\n\nA replacement will need to be appointed.\nThe new minister starts at 50% approval.\nNote: The underlying national stats will not change.')) return;
     _govActionLock = true;
 
     try {
         // Deduct AP
-        const apResult = await deductAP(_supabase, currentFaction.id, 1);
+        const apResult = await deductAP(_supabase, currentFaction.id, 0);
         if (!apResult.success) {
             if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
             alert('Unexpected error.');
