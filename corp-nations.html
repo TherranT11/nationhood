@@ -6,6 +6,7 @@
 <title>Nations | Nationhood Alpha</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/corp-topbar.css">
+<link rel="stylesheet" href="css/corp-light-theme.css">
 <style>
 :root {
   --bg-0: #0e0e0c;
@@ -44,39 +45,6 @@
   --font-serif: 'IBM Plex Serif', Georgia, serif;
 }
 
-/* ═══════ LIGHT MODE PALETTE (always on; toggle removed) ═══════ */
-body.light-mode {
-  --bg-0: #f4f3ef;
-  --bg-1: #eae9e4;
-  --bg-2: #ffffff;
-  --bg-3: #f0efeb;
-  --bg-4: #e8e7e2;
-  --bg-5: #dddcd7;
-  --bg-hover: #e8e7e2;
-  --text-bright: #1a1a17;
-  --text-primary: #333;
-  --text-secondary: #666;
-  --text-muted: #888;
-  --text-dim: #aaa;
-  --text-ghost: #ccc;
-  --border-hair: rgba(0,0,0,0.04);
-  --border-0: rgba(0,0,0,0.08);
-  --border-1: rgba(0,0,0,0.12);
-  --border-2: rgba(0,0,0,0.16);
-  --border-main: rgba(0,0,0,0.12);
-  --bg-card: #ffffff;
-  --bg-panel: #faf9f5;
-  --green: #2d8a2d; --green-faint: rgba(45,138,45,0.08); --green-border: rgba(45,138,45,0.2);
-  --red: #c0392b; --red-faint: rgba(192,57,43,0.08); --red-border: rgba(192,57,43,0.2);
-  --amber: #b8860b; --amber-faint: rgba(184,134,11,0.08); --amber-border: rgba(184,134,11,0.2);
-  --blue: #2874a6; --blue-faint: rgba(40,116,166,0.08); --blue-border: rgba(40,116,166,0.2);
-  --teal: #1a8a7d; --teal-faint: rgba(26,138,125,0.08); --teal-border: rgba(26,138,125,0.2);
-  --orange: #d35400; --orange-faint: rgba(211,84,0,0.08); --orange-border: rgba(211,84,0,0.2);
-  --purple: #6a4c93; --purple-faint: rgba(106,76,147,0.08); --purple-border: rgba(106,76,147,0.2);
-  --gold: #a88520; --gold-faint: rgba(168,133,32,0.08); --gold-border: rgba(168,133,32,0.2);
-}
-
-
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
   background: var(--bg-0);
@@ -112,7 +80,7 @@ body {
 .corp-faction-dropdown__item { padding: 8px 12px; cursor: pointer; font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
 .corp-faction-dropdown__item:hover { background: var(--bg-hover); color: var(--text-bright); }
 .corp-faction-dropdown__item.active { color: var(--teal); }
-.theme-toggle-btn, .logout-btn { font-family: var(--font-mono); font-size: 9px; padding: 4px 10px; background: var(--bg-3); border: 1px solid var(--border-1); color: var(--text-secondary); cursor: pointer; }
+.logout-btn { font-family: var(--font-mono); font-size: 9px; padding: 4px 10px; background: var(--bg-3); border: 1px solid var(--border-1); color: var(--text-secondary); cursor: pointer; }
 .loading-msg { padding: 40px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
 
 /* ── Nav ── */

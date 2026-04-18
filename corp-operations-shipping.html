@@ -6,6 +6,7 @@
 <title>Shipping Operations | Nationhood Alpha</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/corp-topbar.css">
+<link rel="stylesheet" href="css/corp-light-theme.css">
 <style>
 :root {
   --bg-0: #0e0e0c;
@@ -50,39 +51,6 @@
   --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
   --font-serif: 'IBM Plex Serif', Georgia, serif;
 }
-
-/* ═══════ LIGHT MODE PALETTE (always on; toggle removed) ═══════ */
-body.light-mode {
-  --bg-0: #f4f3ef;
-  --bg-1: #eae9e4;
-  --bg-2: #ffffff;
-  --bg-3: #f0efeb;
-  --bg-4: #e8e7e2;
-  --bg-5: #dddcd7;
-  --bg-hover: #e8e7e2;
-  --text-bright: #1a1a17;
-  --text-primary: #333;
-  --text-secondary: #666;
-  --text-muted: #888;
-  --text-dim: #aaa;
-  --text-ghost: #ccc;
-  --border-hair: rgba(0,0,0,0.04);
-  --border-0: rgba(0,0,0,0.08);
-  --border-1: rgba(0,0,0,0.12);
-  --border-2: rgba(0,0,0,0.16);
-  --border-main: rgba(0,0,0,0.12);
-  --bg-card: #ffffff;
-  --bg-panel: #faf9f5;
-  --green: #2d8a2d; --green-faint: rgba(45,138,45,0.08); --green-border: rgba(45,138,45,0.2);
-  --red: #c0392b; --red-faint: rgba(192,57,43,0.08); --red-border: rgba(192,57,43,0.2);
-  --amber: #b8860b; --amber-faint: rgba(184,134,11,0.08); --amber-border: rgba(184,134,11,0.2);
-  --blue: #2874a6; --blue-faint: rgba(40,116,166,0.08); --blue-border: rgba(40,116,166,0.2);
-  --teal: #1a8a7d; --teal-faint: rgba(26,138,125,0.08); --teal-border: rgba(26,138,125,0.2);
-  --orange: #d35400; --orange-faint: rgba(211,84,0,0.08); --orange-border: rgba(211,84,0,0.2);
-  --purple: #6a4c93; --purple-faint: rgba(106,76,147,0.08); --purple-border: rgba(106,76,147,0.2);
-  --gold: #a88520; --gold-faint: rgba(168,133,32,0.08); --gold-border: rgba(168,133,32,0.2);
-}
-
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -145,13 +113,6 @@ body {
   font-family: var(--font-mono); font-size: 12px; font-weight: 800; color: var(--amber);
   min-width: 18px; text-align: right;
 }
-.theme-toggle-btn {
-  font-family: var(--font-mono); font-size: 9px; font-weight: 500;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  background: var(--bg-3); border: 1px solid var(--border-0); color: var(--text-dim);
-  padding: 4px 10px; cursor: pointer; transition: all 0.1s;
-}
-.theme-toggle-btn:hover { background: var(--bg-hover); color: var(--text-muted); border-color: var(--border-1); }
 .logout-btn {
   font-family: var(--font-mono); font-size: 9px; font-weight: 700;
   letter-spacing: 0.06em; text-transform: uppercase;
@@ -640,7 +601,7 @@ body.light-mode .oc-empty__text { color: #1a1a17; }
 .bid-accuracy {
   font-family: var(--font-mono); font-size: 8px; color: var(--text-dim);
   padding: 4px 8px; margin: 6px 0;
-  background: rgba(255,255,255,0.02); border: 1px solid var(--border-0);
+  background: var(--border-hair); border: 1px solid var(--border-0);
   line-height: 1.5;
 }
 /* Markup slider */
@@ -1379,7 +1340,7 @@ body.light-mode .wh-empty__text { color: #1a1a17; }
   border-bottom: 2px solid transparent; margin-bottom: -1px;
   background: none; border-top: none; border-left: none; border-right: none;
 }
-.pm-tab:hover { background: rgba(255,255,255,0.01); }
+.pm-tab:hover { background: var(--border-hair); }
 .pm-tab.active { border-bottom-color: var(--green); }
 .pm-tab__label {
   font-family: var(--font-mono); font-size: 9px; font-weight: 700;
@@ -2751,7 +2712,7 @@ function renderModifierBadges(modifierKeys) {
         if (!def) return '';
         const repColor = def.reputation_bonus > 0 ? 'var(--green)' : def.reputation_bonus < 0 ? 'var(--red)' : 'var(--text-dim)';
         const repStr = def.reputation_bonus > 0 ? '+' + def.reputation_bonus : def.reputation_bonus < 0 ? String(def.reputation_bonus) : '';
-        return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);">${def.icon || '📍'} ${escapeHtml(def.name)}${repStr ? ` <span style="color:${repColor};font-weight:700;">${repStr} REP</span>` : ''}</span>`;
+        return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background: var(--border-hair);border:1px solid var(--border-0);border-radius:3px;font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);">${def.icon || '📍'} ${escapeHtml(def.name)}${repStr ? ` <span style="color:${repColor};font-weight:700;">${repStr} REP</span>` : ''}</span>`;
     }).filter(Boolean).join(' ');
 }
 
@@ -3003,7 +2964,7 @@ function openContractDetail(contract) {
             const costLabel = mdef.cost_multiplier > 1 ? '+' + Math.round((mdef.cost_multiplier - 1) * 100) + '% cost' : mdef.cost_multiplier < 1 ? Math.round((1 - mdef.cost_multiplier) * 100) + '% cheaper' : '';
             const repLabel = mdef.reputation_bonus !== 0 ? (mdef.reputation_bonus > 0 ? '+' : '') + mdef.reputation_bonus + ' rep' : '';
             const reqPermits = mdef.required_permits || [];
-            contentHtml += `<div style="padding:6px 10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:4px;">
+            contentHtml += `<div style="padding:6px 10px;background: var(--border-hair);border:1px solid var(--border-hair);border-radius:4px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;">
                     <span style="font-weight:600;font-size:0.78rem;color:var(--text-primary);">${mdef.icon || '📍'} ${escapeHtml(mdef.name)}</span>
                     <span style="font-family:var(--font-mono);font-size:0.6rem;">
@@ -3739,7 +3700,7 @@ function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemainin
         const addQty = Math.min(wt.corpAvail, required - assigned);
         const canRemove = assigned > 0;
 
-        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.72rem;">`;
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-hair);font-size:0.72rem;">`;
         html += `<div>`;
         html += `<span style="color:${wt.color};font-weight:600;">${wt.label}</span>`;
         html += `<span style="color:var(--text-dim);margin-left:8px;">Required: <strong>${required}</strong></span>`;
@@ -3913,7 +3874,7 @@ function renderPmMaterials(s) {
             const tierColor = tier === 'HIGH' ? 'var(--green)' : tier === 'LOW' ? 'var(--orange)' : 'var(--text-muted)';
             const tierLabel = tier === 'HIGH' ? 'HIGH' : tier === 'LOW' ? 'LOW' : 'STD';
 
-            html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.7rem;">`;
+            html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border-hair);font-size:0.7rem;">`;
             html += `<div style="display:flex;align-items:center;gap:6px;">`;
             html += `<span style="font-family:var(--font-mono);font-size:0.6rem;font-weight:700;color:${tierColor};width:32px;">${tierLabel}</span>`;
             html += `<span style="color:var(--text-dim);">Warehouse: <strong style="color:var(--text-primary);">${wh.qty}</strong></span>`;
@@ -7799,7 +7760,7 @@ function renderActionsTab() {
         if (isVacant && role !== 'CEO') {
             // Vacant slot
             html += `<div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:45px;height:45px;background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);flex-shrink:0;">?</div>
+                <div style="width:45px;height:45px;background: var(--border-hair);border:1px dashed var(--border-1);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);flex-shrink:0;">?</div>
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;align-items:center;gap:4px;">
                         <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
@@ -11137,7 +11098,7 @@ function renderSubsidiaryMarketplaceCard() {
         for (const l of myListings) {
             const bids = l.subsidiary_bids || [];
             const pendingBids = bids.filter(b => b.status === 'pending');
-            html += `<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;justify-content:space-between;align-items:center;">
+            html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);display:flex;justify-content:space-between;align-items:center;">
                 <div>
                     <span style="font-size:11px;font-weight:700;color:${C.bright};">${escapeHtml(l.subsidiary_name)}</span>
                     <span style="font-family:${mono};font-size:8px;color:${C.dim};margin-left:6px;">${escapeHtml(l.subsector || '')}</span>
