@@ -1986,15 +1986,21 @@ function renderAdminActions() {
     // tab since they surface state rather than actions.
     const isPresidentialForElections = isPresidential;
 
-    // Caretaker notice
+    // Caretaker notice. One tick == one month — show the countdown in months
+    // so players aren't reading a raw tick counter. Null tick (scheduled-
+    // election row not yet loaded) falls back to "pending" rather than "?".
     if (isCaretaker) {
         const electionTick = coalition._earlyElectionTick;
-        const ticksLeft = electionTick ? Math.max(0, electionTick - currentTick) : '?';
+        const ticksLeft = electionTick != null ? Math.max(0, electionTick - currentTick) : null;
+        let countdown;
+        if (ticksLeft == null)       countdown = 'Election pending';
+        else if (ticksLeft === 0)    countdown = 'Election this tick';
+        else                         countdown = `Election in ${ticksLeft} month${ticksLeft !== 1 ? 's' : ''}`;
         html += `<div style="display:flex;align-items:center;gap:8px;justify-content:center;padding:8px 0;">
             <span style="font-size:14px;">&#9888;&#65039;</span>
             <div>
                 <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--amber);">CARETAKER GOVERNMENT</div>
-                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Election in ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} · Legislation frozen</div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${countdown} · Legislation frozen</div>
             </div>
         </div>`;
     }
@@ -3809,6 +3815,23 @@ async function loadGovData() {
         ministryData = ministries;
         coalitionData = coalition;
         allParties = loadedParties;
+
+        // Attach the next scheduled election tick to the coalition object
+        // whenever we're in caretaker mode, so renderAdminActions can show
+        // the correct countdown. The alternate render path in
+        // renderGovernmentPage does the same on its own fetched copy —
+        // both paths mutate the object that _govData.coalition points to.
+        if (coalition && coalition.status === 'caretaker') {
+            const { data: nextEl } = await _supabase
+                .from('elections')
+                .select('election_tick')
+                .eq('nation_id', currentNation.id)
+                .eq('status', 'scheduled')
+                .order('election_tick', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+            if (nextEl) coalition._earlyElectionTick = nextEl.election_tick;
+        }
 
         _govData = {
             coalition,
@@ -11827,7 +11850,7 @@ async function callEarlyElections() {
         tierEffects +
         `• Freeze all pending legislation\n` +
         `• Dissolve the legislature\n` +
-        `• Trigger elections in ${GAME_CONFIG.EARLY_ELECTION_TICKS} ticks\n\n` +
+        `• Trigger elections on the next tick (${GAME_CONFIG.EARLY_ELECTION_TICKS} month)\n\n` +
         `The government will remain as caretaker until then.\n` +
         `After the election: coalition dissolves, PM removed, ministries vacated.\n\n` +
         `Proceed?`;
