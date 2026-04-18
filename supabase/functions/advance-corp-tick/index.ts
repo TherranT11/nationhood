@@ -2995,14 +2995,17 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
         const borrowerCash = Number(borrower?.corp_cash_reserves) || 0;
         const payment = loan.monthly_payment;
         const monthlyRate = (loan.interest_rate / 100) / 12;
-        const remainingPrincipal = loan.principal - loan.total_paid;
+        const remainingPrincipal = Math.max(0, Number(loan.remaining_principal) || 0);
         const interestPortion = Math.round(remainingPrincipal * monthlyRate);
+        const principalPortion = Math.max(0, payment - interestPortion);
+        const newRemainingPrincipal = Math.max(0, remainingPrincipal - principalPortion);
 
         if (borrowerCash >= payment) {
             const newTotalPaid = loan.total_paid + payment;
             const newInterestPaid = loan.total_interest_paid + interestPortion;
             const newPaymentsMade = loan.payments_made + 1;
-            const isRepaid = newPaymentsMade >= loan.term_months;
+            const isTermSatisfied = loan.term_months <= 0 || newPaymentsMade >= loan.term_months;
+            const isRepaid = newRemainingPrincipal <= 0 && isTermSatisfied;
 
             await supabase.from('factions').update({
                 corp_cash_reserves: borrowerCash - payment
@@ -3023,6 +3026,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             await supabase.from('finance_active_loans').update({
                 total_paid: newTotalPaid,
                 total_interest_paid: newInterestPaid,
+                remaining_principal: newRemainingPrincipal,
                 payments_made: newPaymentsMade,
                 payments_missed: 0,
                 last_payment_tick: currentTick,
