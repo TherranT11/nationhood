@@ -1359,6 +1359,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     let financeLoanPrincipalRepaid = 0;
     let financeLoanCashCollected = 0;
     let financeLoanLifetimeInterest = 0;
+    let financeInsurancePremiumRevenue = 0;
     // Construction corps only: per-tick build cost the server deducts for
     // each in-progress contract. Mirrors advance-corp-tick/index.ts:1714
     // (perTickCost = bid.estimated_cost / timeline_ticks). Without this line,
@@ -1376,7 +1377,9 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
             for (const loan of (finLoans || [])) {
                 const reqType = loan.finance_loan_requests?.request_type || 'loan';
                 if (reqType === 'insurance') {
-                    pvtContracts += Number(loan.monthly_payment || 0);
+                    const premiumRevenue = Number(loan.monthly_payment || 0);
+                    pvtContracts += premiumRevenue;
+                    financeInsurancePremiumRevenue += premiumRevenue;
                 } else if (reqType === 'loan') {
                     const monthlyPayment = Number(loan.monthly_payment || 0);
                     const remaining = Math.max(0, Number(loan.remaining_principal || 0));
@@ -1631,11 +1634,17 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                 <div class="seg-legend__item"><div class="seg-legend__dot" style="background:var(--text-dim)"></div><span class="seg-legend__label">Market</span></div>
             </div>
             <div class="fin-row"><span class="fin-row__label">Government Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(govContracts)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Private Operating Revenue (contracts + loan interest/premiums)</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
-            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Interest portion of this tick's loan payments recognized as operating revenue in P&L.">Loan Interest Revenue (P&L) <span class="fin-row__badge">REVENUE</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeLoanInterestRevenue)}</span></div>` : ''}
-            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Principal repayment increases cash and reduces the loan receivable. It is not revenue or profit.">Loan Principal Repaid (asset repayment) <span class="fin-row__badge">ASSET→CASH</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanPrincipalRepaid)}</span></div>` : ''}
-            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Portfolio cumulative cash from loans. Loan cash collected = interest + principal.">Loan Cash Collected (interest + principal) <span class="fin-row__badge">PORTFOLIO</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanCashCollected)}</span></div>` : ''}
-            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Portfolio cumulative interest portion collected from loans.">Loan Interest Revenue to Date (P&L) <span class="fin-row__badge">PORTFOLIO</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeLoanLifetimeInterest)}</span></div>` : ''}
+            <div class="fin-row"><span class="fin-row__label" title="Private operating revenue includes contracts plus loan interest and insurance premiums only; principal repayments are excluded.">Private Operating Revenue (contracts + loan interest/premiums only)</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">P&L revenue</div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Interest portion of this tick's loan payments recognized as operating revenue in P&L.">Loan Interest Revenue (this tick) <span class="fin-row__badge">REVENUE</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeLoanInterestRevenue)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' && financeInsurancePremiumRevenue > 0 ? `<div class="fin-row"><span class="fin-row__label" title="Insurance premiums collected this tick are recognized as operating revenue in P&L.">Insurance Premium Revenue (this tick) <span class="fin-row__badge">REVENUE</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeInsurancePremiumRevenue)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">Non-revenue cash movements</div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Principal repayment increases cash and reduces the loan receivable. It is not revenue or profit.">Loan Principal Repaid (this tick) <span class="fin-row__badge">ASSET→CASH</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanPrincipalRepaid)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Loan cash collected this tick equals interest plus principal.">Loan Cash Collected (this tick) <span class="fin-row__badge">CASH</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanInterestRevenue + financeLoanPrincipalRepaid)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">Lifetime portfolio totals</div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Portfolio cumulative cash from loans. Loan cash collected = interest + principal.">Loan Cash Collected (to date) <span class="fin-row__badge">PORTFOLIO</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanCashCollected)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Portfolio cumulative interest portion collected from loans.">Loan Interest (to date) <span class="fin-row__badge">PORTFOLIO</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeLoanLifetimeInterest)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:2px 12px 4px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.2px;">Principal repayment increases cash but does not increase profit.</div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(marketRev - propertyRevBonus)}</span></div>
             ${propertyRevBonus > 0 ? `<div class="fin-row"><span class="fin-row__label">Property Revenue<span class="fin-row__badge">BUILDINGS</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(propertyRevBonus)}</span></div>` : ''}
             ${depotRevenueRows.map(d => `<div class="fin-row"><span class="fin-row__label">Fuel Depot (${d.nation})<span class="fin-row__badge">${d.visitors} visitor${d.visitors !== 1 ? 's' : ''}</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(d.revenue)}</span></div>`).join('')}
@@ -1643,7 +1652,6 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                 <span class="fin-total__label">Total Revenue</span>
                 <span class="fin-total__value" style="color:var(--green)">${fmtMoney(totalRevenue)}</span>
             </div>
-            ${faction?.corp_sector === 'Finance' ? `<div style="padding:4px 12px 0 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;">Loan cash collected this tick = interest ${fmtMoney(financeLoanInterestRevenue)} + principal ${fmtMoney(financeLoanPrincipalRepaid)} = ${fmtMoney(financeLoanInterestRevenue + financeLoanPrincipalRepaid)}.</div>` : ''}
         </div>
         <!-- Expenses -->
         <div class="fin-section">
