@@ -1713,6 +1713,17 @@ function renderMinistryExpandedContent(ministry, partyColor) {
 
     let html = `<div class="ga-ministry-expanded">`;
 
+    // Bug fix: vacant ministries shouldn't offer ministry actions — there's
+    // no minister to execute them. Show an explanatory note and return early
+    // so the render below (which assumes an appointed minister) is skipped.
+    if (!isFilled) {
+        html += `<div style="padding:5px 8px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);background:var(--bg-card);border:1px solid var(--border-main);">
+            No minister in place. Ministry actions unlock once a minister is ${isPresidential ? 'nominated and confirmed' : 'appointed'}.
+        </div>`;
+        html += `</div>`;
+        return html;
+    }
+
     // Foreign ministry → link to diplomacy
     if (key === 'foreign') {
         html += `<div style="padding:5px 8px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);background:var(--bg-card);border:1px solid var(--border-main);">Foreign Ministry actions are conducted in the <a href="diplomacy.html" style="color:var(--accent);text-decoration:underline;">Diplomacy panel</a>.</div>`;
@@ -3199,6 +3210,16 @@ async function loadGovData() {
             const { data } = await _supabase.from('presidents').select('*, factions(id, faction_name, abbreviation, party_color)').eq('nation_id', currentNation.id).eq('is_active', true).maybeSingle();
             president = data;
         }
+
+        // Bug fix: the new UI path (renderGovSubtabs/renderGovContent/loadGovData)
+        // never reaches refreshGovernmentUI, which is where presidentFactionId and
+        // isPresidentParty used to be assigned. Without these, renderAdminCabinet's
+        // NOMINATE branch (which gates on isPresidentParty) never fires and
+        // presidents can't nominate from the new cabinet grid. Set them here so
+        // every renderer that runs after loadGovData sees the right values.
+        presidentFactionId = president?.faction_id || null;
+        isPresidentParty = !!(presidentFactionId && currentFaction?.id === presidentFactionId);
+        presidentData = president || null;
 
         const coalition = coalitionRes;
         const hog = hogRes.data;
