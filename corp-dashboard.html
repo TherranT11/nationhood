@@ -1440,7 +1440,74 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
             }
         }
     }
-    const totalRevenue = govContracts + pvtContracts + marketRev;
+
+    // Fuel-depot revenue — $7,500 per refuel from visiting corps that don't
+    // own a depot in the same nation. Estimated from active shipping_claims
+    // routed to our depot nations; one refuel per transit completion.
+    // Shown per-depot so the corp sees which locations are earning.
+    let depotRevenueRows = []; // { nation, revenue, visitors }
+    let depotRevenueTotal = 0;
+    try {
+        const { data: myDepots } = await _supabase.from('corp_properties')
+            .select('id, nation_id, nations!nation_id(name)')
+            .eq('faction_id', faction.id)
+            .eq('type', 'fuel_depot')
+            .eq('is_active', true);
+
+        if (myDepots && myDepots.length > 0) {
+            const depotNationIds = myDepots.map(d => d.nation_id).filter(Boolean);
+            if (depotNationIds.length > 0) {
+                const { data: visitingClaims } = await _supabase.from('shipping_claims')
+                    .select('faction_id, shipping_routes!inner(destination_nation_id, status)')
+                    .eq('status', 'active')
+                    .in('shipping_routes.destination_nation_id', depotNationIds);
+
+                // Which visiting corps also own their own depot in the destination?
+                // Those ships refuel at their own depot, we don't collect the markup.
+                const visitorIds = [...new Set((visitingClaims || [])
+                    .map(c => c.faction_id)
+                    .filter(f => f && f !== faction.id))];
+                const otherDepotPairs = new Set();
+                if (visitorIds.length > 0) {
+                    const { data: ownedElsewhere } = await _supabase.from('corp_properties')
+                        .select('faction_id, nation_id')
+                        .in('faction_id', visitorIds)
+                        .in('nation_id', depotNationIds)
+                        .eq('type', 'fuel_depot')
+                        .eq('is_active', true);
+                    for (const d of (ownedElsewhere || [])) {
+                        otherDepotPairs.add(d.faction_id + '|' + d.nation_id);
+                    }
+                }
+
+                const visitorCountByNation = {};
+                for (const c of (visitingClaims || [])) {
+                    const destId = c.shipping_routes?.destination_nation_id;
+                    if (!destId) continue;
+                    if (c.faction_id === faction.id) continue;          // our own ships use our depot at base cost — no markup
+                    if (otherDepotPairs.has(c.faction_id + '|' + destId)) continue; // visitor owns a depot here, uses own
+                    visitorCountByNation[destId] = (visitorCountByNation[destId] || 0) + 1;
+                }
+
+                const DEPOT_MARKUP_PER_TRIP = 7500;
+                for (const d of myDepots) {
+                    const visitors = visitorCountByNation[d.nation_id] || 0;
+                    const revenue  = visitors * DEPOT_MARKUP_PER_TRIP;
+                    depotRevenueRows.push({
+                        nation:  d.nations?.name || 'Unknown',
+                        revenue,
+                        visitors,
+                    });
+                    depotRevenueTotal += revenue;
+                }
+                depotRevenueRows.sort((a, b) => b.revenue - a.revenue);
+            }
+        }
+    } catch (depotRevErr) {
+        console.warn('Fuel depot revenue estimate failed (non-fatal):', depotRevErr?.message || depotRevErr);
+    }
+
+    const totalRevenue = govContracts + pvtContracts + marketRev + depotRevenueTotal;
 
     // Expenses — workforce wages from wfData, divided by 12 (monthly)
     const annualWages = wfData?.totalWages || 0;
@@ -1509,7 +1576,10 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
 
     const revTotal = totalRevenue || 1;
     const govPct = (govContracts / revTotal * 100).toFixed(1);
-    const pvtPct = (pvtContracts / revTotal * 100).toFixed(1);
+    // Depot revenue rolls into the Private segment on the segmented bar — it's
+    // revenue collected from other corporations, semantically private, and the
+    // three segments need to sum to 100% of totalRevenue.
+    const pvtPct = ((pvtContracts + depotRevenueTotal) / revTotal * 100).toFixed(1);
     const mktPct = (marketRev / revTotal * 100).toFixed(1);
 
     document.getElementById('fin-body').innerHTML = `
@@ -1530,6 +1600,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
             <div class="fin-row"><span class="fin-row__label">Private Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(marketRev - propertyRevBonus)}</span></div>
             ${propertyRevBonus > 0 ? `<div class="fin-row"><span class="fin-row__label">Property Revenue<span class="fin-row__badge">BUILDINGS</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(propertyRevBonus)}</span></div>` : ''}
+            ${depotRevenueRows.map(d => `<div class="fin-row"><span class="fin-row__label">Fuel Depot (${d.nation})<span class="fin-row__badge">${d.visitors} visitor${d.visitors !== 1 ? 's' : ''}</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(d.revenue)}</span></div>`).join('')}
             <div class="fin-total">
                 <span class="fin-total__label">Total Revenue</span>
                 <span class="fin-total__value" style="color:var(--green)">${fmtMoney(totalRevenue)}</span>

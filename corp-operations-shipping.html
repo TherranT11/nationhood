@@ -6269,7 +6269,49 @@ let _raVesselId = null;
 let _raProposedRate = 0;
 let _raSubmitting = false;
 
-function arApplyToService() {
+// Look up the fuel depot situation in a destination nation for the visiting
+// corp. Mirrors the logic in advance-corp-tick's refuel block:
+//   own depot → $50k base
+//   other corp's depot → $50k × 1.15 = $57.5k (markup goes to depot owner)
+//   no depot → $50k × 3 = $150k to state
+// Returns { tier: 'own'|'other'|'state', cost, ownerFactionId, ownerName }.
+// Non-fatal — on any error returns the state-tier fallback so the UI still
+// renders something sensible.
+async function _fetchDepotForNation(nationId) {
+    const STATE_COST = 150000;
+    const OTHER_COST = Math.round(50000 * 1.15);
+    const OWN_COST   = 50000;
+    if (!nationId) return { tier: 'state', cost: STATE_COST, ownerFactionId: null, ownerName: null };
+    try {
+        // Prefer our own depot first so the UI tier matches what the tick actually charges.
+        const { data: ownDepot } = await _supabase.from('corp_properties')
+            .select('id, faction_id')
+            .eq('nation_id', nationId)
+            .eq('faction_id', faction.id)
+            .eq('type', 'fuel_depot')
+            .eq('is_active', true)
+            .limit(1).maybeSingle();
+        if (ownDepot) return { tier: 'own', cost: OWN_COST, ownerFactionId: faction.id, ownerName: faction.faction_name };
+
+        const { data: otherDepot } = await _supabase.from('corp_properties')
+            .select('id, faction_id, factions!faction_id(faction_name)')
+            .eq('nation_id', nationId)
+            .eq('type', 'fuel_depot')
+            .eq('is_active', true)
+            .limit(1).maybeSingle();
+        if (otherDepot) return {
+            tier: 'other',
+            cost: OTHER_COST,
+            ownerFactionId: otherDepot.faction_id,
+            ownerName: otherDepot.factions?.faction_name || 'another corporation',
+        };
+    } catch (e) {
+        console.warn('[Depot lookup] failed:', e?.message || e);
+    }
+    return { tier: 'state', cost: STATE_COST, ownerFactionId: null, ownerName: null };
+}
+
+async function arApplyToService() {
     if (arSelected < 0 || !faction || !shard) return;
     var filtered = arGetFiltered();
     var route = filtered[arSelected];
@@ -6286,6 +6328,7 @@ function arApplyToService() {
     }
 
     _raRoute = route;
+    _raRoute.destDepot = await _fetchDepotForNation(route.destination_nation_id);
     // Default bid at the mid-market ($500k). Corps can slide up toward the ceiling
     // to earn more (at the risk of looking greedy to the Trade Minister) or down
     // toward the floor to undercut rivals.
@@ -6362,6 +6405,31 @@ function renderRouteApplicationModal() {
                     <div style="font-family:${M};font-size:9px;font-weight:700;color:${Number(r.competition_count||0)===0?C.green:C.orange};margin-top:1px;">${r.competition_count || 0}</div>
                 </div>
             </div>
+
+            ${(() => {
+                // Destination-port fuel depot status — same tiers the tick processor
+                // charges at arrival. Helps the corp price their bid knowing the
+                // per-trip refuel cost up front.
+                const dep = r.destDepot;
+                if (!dep) return '';
+                const dpName = r.destination_port || 'this port';
+                const costLabel = '$' + Math.round(dep.cost).toLocaleString() + ' / refuel';
+                let depText, depColor;
+                if (dep.tier === 'own') {
+                    depText  = `${dpName} has your Fuel Depot (${escapeHtml(dep.ownerName || faction.faction_name || 'your corp')}) — ${costLabel}.`;
+                    depColor = C.green;
+                } else if (dep.tier === 'other') {
+                    depText  = `${dpName} has a Fuel Depot (${escapeHtml(dep.ownerName || 'another corp')}) — ${costLabel}.`;
+                    depColor = C.gold;
+                } else {
+                    depText  = `${dpName} has no fuel depot — paying ${costLabel} to the government-owned depot.`;
+                    depColor = C.orange;
+                }
+                return `<div style="padding:7px 10px;margin-bottom:14px;background:${C.card};border:1px solid ${C.border};border-left:2px solid ${depColor};font-family:${M};font-size:9px;color:${C.text};line-height:1.5;">
+                    <span style="color:${C.dim};font-size:7px;font-weight:700;letter-spacing:0.5px;">FUEL AT DESTINATION</span><br>
+                    ${depText}
+                </div>`;
+            })()}
 
             <div style="font-family:${M};font-size:10px;color:${C.dim};letter-spacing:1px;margin-bottom:6px;">SELECT VESSEL</div>`;
 
