@@ -3104,6 +3104,10 @@ const SHIPPING_MONTHS_PER_YEAR = 12;
 const SHIPPING_MIN_PER_TRIP = 250000;
 const SHIPPING_MIN_CEILING = 750000;
 const SHIPPING_HARD_CEILING = 5000000;
+const GOV_CONTRACT_VALUE_MIN = 1000000;
+const GOV_CONTRACT_VALUE_MAX = 18000000;
+const GOV_CONTRACT_DURATION_FLOOR = 2;
+const GOV_CONTRACT_PREMIUM_MULT = 1.35;
 function _computeServiceRateCeiling(tradeVolume, subsector) {
     const rate = SHIPPING_REVENUE_RATES[subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
     const uncapped = (Number(tradeVolume) || 0) * rate / SHIPPING_MONTHS_PER_YEAR;
@@ -3121,6 +3125,20 @@ function _clampServiceRate(v, ceiling) {
 function _shipTransitTicks(prox) { return (Number(prox) || 0) >= 71 ? 1 : 0; }
 function _shipDemand(vol) { return vol >= 500000000 ? 'CRITICAL' : vol >= 200000000 ? 'HIGH' : vol >= 100000000 ? 'MODERATE' : 'LOW'; }
 function _shipScope(prox, isGov) { return isGov ? 'GOVERNMENT' : (prox <= 15 ? 'COASTAL' : 'INTERNATIONAL'); }
+function _clampGovContractValue(v) {
+    const n = Number(v) || 0;
+    return Math.round(Math.min(GOV_CONTRACT_VALUE_MAX, Math.max(GOV_CONTRACT_VALUE_MIN, n)));
+}
+function _computeGovContractTerms(tradeVolume, subsector, transitTicks, estimatedRevenue) {
+    const safeTransitTicks = Math.max(1, Number(transitTicks) || 1);
+    const contractDuration = Math.max(GOV_CONTRACT_DURATION_FLOOR, safeTransitTicks);
+    const perTransitEstimate = _clampServiceRate(
+        Number(estimatedRevenue) || 0,
+        _computeServiceRateCeiling(tradeVolume, subsector),
+    );
+    const contractValue = _clampGovContractValue(perTransitEstimate * contractDuration * GOV_CONTRACT_PREMIUM_MULT);
+    return { contractDuration, contractValue };
+}
 
 async function generateShippingRoutes(supabase, currentTick) {
     const { data: tradePartners } = await supabase.from('trade_partners')
@@ -3152,17 +3170,30 @@ async function generateShippingRoutes(supabase, currentTick) {
         if (!oPort || !dPort) continue;
         const prox = proxMap[tp.exporter_nation_id + '|' + tp.importer_nation_id] ?? 50;
         const ag = agMap[tp.exporter_nation_id + '|' + tp.importer_nation_id] || null;
+        const tradeVolume = Math.round(tp.trade_volume);
+        const transitTicks = _shipTransitTicks(prox);
+        const estimatedRevenue = _clampServiceRate(
+            tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) / SHIPPING_MONTHS_PER_YEAR,
+            _computeServiceRateCeiling(tp.trade_volume, sm.subsector),
+        );
+        const isGovRoute = tp.sector === 'arms';
+        const govTerms = isGovRoute
+            ? _computeGovContractTerms(tradeVolume, sm.subsector, transitTicks, estimatedRevenue)
+            : null;
         routeRows.push({
             origin_nation_id: tp.exporter_nation_id, destination_nation_id: tp.importer_nation_id,
             origin_port: oPort, destination_port: dPort,
             trade_sector: tp.sector, cargo_category: sm.category, shipping_subsector: sm.subsector,
-            scope: _shipScope(prox, tp.sector === 'arms'),
+            scope: _shipScope(prox, isGovRoute),
             goods_name: sm.goods, goods_description: sm.goodsSub, vessel_class: sm.vessel, vessel_note: sm.vesselNote,
-            trade_volume: Math.round(tp.trade_volume), estimated_revenue: _clampServiceRate(tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) / SHIPPING_MONTHS_PER_YEAR, _computeServiceRateCeiling(tp.trade_volume, sm.subsector)),
+            trade_volume: tradeVolume, estimated_revenue: estimatedRevenue,
             volume_physical: Math.round(tp.trade_volume / 100), volume_unit: sm.unit,
-            transit_ticks: _shipTransitTicks(prox), proximity: prox, tariff_rate: tariffMap[tp.importer_nation_id] || 0,
+            transit_ticks: transitTicks, proximity: prox, tariff_rate: tariffMap[tp.importer_nation_id] || 0,
             demand_level: _shipDemand(tp.trade_volume),
             trade_agreement_id: ag?.id || null, trade_agreement_name: ag?.agreement_name || null,
+            gov_issuer: isGovRoute ? 'Ministry of Defense' : null,
+            gov_contract_duration: govTerms?.contractDuration ?? null,
+            gov_contract_value: govTerms?.contractValue ?? null,
             status: 'active', generated_at_tick: currentTick, last_refreshed_tick: currentTick,
         });
     }
