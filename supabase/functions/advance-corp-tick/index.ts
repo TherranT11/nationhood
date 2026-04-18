@@ -3158,18 +3158,16 @@ async function generateShippingRoutes(supabase, currentTick) {
 }
 
 const ORGANIC_REVENUE_MULT = 0.35;
-// Proximity cap tightened 30 → 20 (second pass). The first pass took the cap
-// from 70 → 30, which still left the available-routes list flooded with
-// hundreds of near-neighbor spot lanes. 20 narrows it to true short-haul
-// pairs; combined with the one-route-per-pair rule and the volume gate
-// below, this cuts the organic-route count roughly 80% from the post-30
-// baseline.
-const ORGANIC_MAX_PROX = 20;
-// Minimum realized volume for a route to even be inserted. Below this the
-// revenue is noise and the route just clutters the UI. Applied AFTER the
-// popF/gdpF/close/random calculation so small-economy pairs fall out
-// naturally rather than being gated purely by nation-level population.
-const ORGANIC_MIN_VOLUME = 50_000_000;
+// Proximity cap removed (third pass). Player feedback: long-haul lanes
+// are fine, the problem was LOW-volume clutter, not geography. Kept as
+// a null check only so pairs with no diplomatic_relations row still
+// short-circuit — the downstream transit-time calc needs proximity to
+// be a number.
+const ORGANIC_MIN_VOLUME = 5_000_000_000;
+// Minimum realized volume for a route to even be inserted. Raised from
+// $50M → $5B to target roughly a 90% cut from the ~370-route baseline,
+// leaving only the top-tier cross-border flows. Filters the long tail
+// of small-economy / low-gdp pairs regardless of how close they sit.
 const ORGANIC_LIFETIME = 8;
 const ORGANIC_SECTORS = ['fuel_energy','minerals','grains_staples','livestock_dairy','cash_crops','manufactured_goods','technology','fruits_vegetables'];
 
@@ -3196,7 +3194,10 @@ async function generateOrganicRoutes(supabase, currentTick) {
             const nA = nations[i], nB = nations[j];
             if (!portMap[nA.id] || !portMap[nB.id]) continue;
             const prox = proxMap[nA.id + '|' + nB.id];
-            if (prox === undefined || prox === null || prox > ORGANIC_MAX_PROX) continue;
+            // Null check only — proximity cap was removed. A pair without
+            // a diplomatic_relations row can't compute transit_ticks or a
+            // proximity-weighted volume, so we still skip those.
+            if (prox === undefined || prox === null) continue;
 
             const popF = Math.sqrt((nA.population || 1e6) * (nB.population || 1e6)) / 1e7;
             const gdpF = ((Number(nA.gdp_growth) || 50) + (Number(nB.gdp_growth) || 50)) / 100;
