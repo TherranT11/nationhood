@@ -1357,6 +1357,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     let pvtContracts = 0;
     let financeLoanInterestRevenue = 0;
     let financeLoanPrincipalRepaid = 0;
+    let financeLoanScheduledPaymentsTick = 0;
     let financeLoanCashCollected = 0;
     let financeLoanLifetimeInterest = 0;
     let financeInsurancePremiumRevenue = 0;
@@ -1382,6 +1383,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                     financeInsurancePremiumRevenue += premiumRevenue;
                 } else if (reqType === 'loan') {
                     const monthlyPayment = Number(loan.monthly_payment || 0);
+                    financeLoanScheduledPaymentsTick += monthlyPayment;
                     const remaining = Math.max(0, Number(loan.remaining_principal || 0));
                     const monthlyRate = (loan.interest_rate / 100) / 12;
                     const monthlyInterest = Math.max(0, Math.min(monthlyPayment, Math.round(remaining * monthlyRate)));
@@ -1593,6 +1595,9 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const netProfit = totalRevenue - totalExpenses;
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const debt = outstandingDebt;
+    const financeLoanPaymentReconciliationDelta = financeLoanScheduledPaymentsTick - (financeLoanInterestRevenue + financeLoanPrincipalRepaid);
+    const FINANCE_LOAN_RECON_TOLERANCE = 0.01;
+    const isFinanceLoanReconciliationOff = Math.abs(financeLoanPaymentReconciliationDelta) > FINANCE_LOAN_RECON_TOLERANCE;
 
     // Driver data for display
     const drivers = [
@@ -1641,6 +1646,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
             ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">Non-revenue cash movements</div>` : ''}
             ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Principal repayment increases cash and reduces the loan receivable. It is not revenue or profit.">Loan Principal Repaid (this tick) <span class="fin-row__badge">ASSET→CASH</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanPrincipalRepaid)}</span></div>` : ''}
             ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Loan cash collected this tick equals interest plus principal.">Loan Cash Collected (this tick) <span class="fin-row__badge">CASH</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanInterestRevenue + financeLoanPrincipalRepaid)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Checks this tick's scheduled loan payments against computed split. Portfolio Scheduled Loan Payments = Interest Revenue + Principal Repaid.">Loan Payment Reconciliation (this tick) <span class="fin-row__badge">CHECK</span></span><span class="fin-row__value" style="color:${isFinanceLoanReconciliationOff ? 'var(--red)' : 'var(--text-bright)'}">${fmtMoney(financeLoanScheduledPaymentsTick)} = ${fmtMoney(financeLoanInterestRevenue)} + ${fmtMoney(financeLoanPrincipalRepaid)} (Δ ${financeLoanPaymentReconciliationDelta >= 0 ? '+' : '-'}${fmtMoney(Math.abs(financeLoanPaymentReconciliationDelta))})</span></div>` : ''}
             ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">Lifetime portfolio totals</div>` : ''}
             ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Portfolio cumulative cash from loans. Loan cash collected = interest + principal.">Loan Cash Collected (to date) <span class="fin-row__badge">PORTFOLIO</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanCashCollected)}</span></div>` : ''}
             ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Portfolio cumulative interest portion collected from loans.">Loan Interest (to date) <span class="fin-row__badge">PORTFOLIO</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeLoanLifetimeInterest)}</span></div>` : ''}
