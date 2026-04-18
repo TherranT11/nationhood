@@ -2295,7 +2295,7 @@ async function rdSubmitOffer() {
     const [cashRes, liveLoansRes] = await Promise.all([
         _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single(),
         _supabase.from('finance_active_loans')
-            .select('principal, total_paid, finance_loan_requests!inner(request_type)')
+            .select('principal, total_paid, remaining_principal, finance_loan_requests!inner(request_type)')
             .eq('lender_faction_id', faction.id)
             .in('status', ['current', 'late', 'delinquent']),
     ]);
@@ -2313,10 +2313,11 @@ async function rdSubmitOffer() {
         const type = req === 'insurance' ? 'INSURE' : req === 'bond' ? 'BOND' : 'LOAN';
         const principal = Number(l.principal) || 0;
         const totalPaid = Number(l.total_paid) || 0;
+        const remainingPrincipal = Number(l.remaining_principal ?? (principal - totalPaid)) || 0;
         return {
             type,
             principal,
-            remaining: type === 'INSURE' ? 0 : Math.max(0, principal - totalPaid),
+            remaining: type === 'INSURE' ? 0 : Math.max(0, remainingPrincipal),
             coverage:  type === 'INSURE' ? principal : 0,
             faceValue: type === 'BOND'   ? principal : 0,
         };

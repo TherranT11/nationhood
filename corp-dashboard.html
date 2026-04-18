@@ -2405,7 +2405,7 @@ async function renderValuation(nation, nationName, faction, wfData, propData) {
     if (faction?.id && faction.corp_sector === 'Finance') {
         try {
             const { data: finLoans } = await _supabase.from('finance_active_loans')
-                .select('principal, total_paid, finance_loan_requests(request_type)')
+                .select('principal, total_paid, remaining_principal, finance_loan_requests(request_type)')
                 .eq('lender_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
             for (const loan of (finLoans || [])) {
@@ -2415,7 +2415,9 @@ async function renderValuation(nation, nationName, faction, wfData, propData) {
                 // are written as a contingent liability for the insurer, so they
                 // don't count here.
                 if (reqType === 'loan' || reqType === 'bond') {
-                    const remaining = Math.max(0, Number(loan.principal || 0) - Number(loan.total_paid || 0));
+                    const remaining = Math.max(0, Number(
+                        loan.remaining_principal ?? ((Number(loan.principal) || 0) - (Number(loan.total_paid) || 0))
+                    ) || 0);
                     activeContracts += remaining;
                 }
             }
