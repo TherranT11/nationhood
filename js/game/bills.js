@@ -1442,6 +1442,38 @@ export async function resolveExpiredVotes(supabase, nationId) {
                                 console.log(`[resolveExpiredVotes] Updated government_formations PM assignment to ${pm.party_id}`);
                             }
                         } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
+
+                        // Install the confirmed PM into head_of_government immediately.
+                        // The UI (and many server-side flows) read head_of_government,
+                        // not ministries.prime_minister. Without this, the PM vanishes
+                        // until the next-tick processParliamentaryPMTimeout safety net
+                        // fires — and that safety net won't run if coalition status is
+                        // 'caretaker', and even when it does it installs the party
+                        // leader, not the nominee confirmed by parliament.
+                        try {
+                            await supabase.from('head_of_government')
+                                .update({ active: false })
+                                .eq('nation_id', bill.nation_id)
+                                .eq('active', true);
+                            const { error: hogUpsertErr } = await supabase.from('head_of_government')
+                                .upsert({
+                                    nation_id: bill.nation_id,
+                                    faction_id: pm.party_id,
+                                    first_name: pm.first_name,
+                                    last_name: pm.last_name,
+                                    age: pm.age || 50,
+                                    ideology: 'Centrist',
+                                    active: true,
+                                    appointed_tick: currentTick,
+                                }, { onConflict: 'nation_id' });
+                            if (hogUpsertErr) {
+                                console.error('[resolveExpiredVotes] Failed to install HOG for confirmed PM:', hogUpsertErr.message);
+                            } else {
+                                console.log(`[resolveExpiredVotes] Installed HOG for confirmed PM ${pm.first_name} ${pm.last_name} (party ${pm.party_id})`);
+                            }
+                        } catch (hogErr) {
+                            console.error('[resolveExpiredVotes] HOG install threw:', hogErr);
+                        }
                     }
                 }
 
