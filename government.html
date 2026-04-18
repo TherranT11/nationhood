@@ -3223,29 +3223,49 @@ async function loadGovData() {
             }
         } catch (_) { /* non-fatal — actions just won't show active state */ }
 
-        // Auto-seed ministries if none exist (prevents empty cabinet after SQL-seeded governments)
+        // Auto-seed ministries only when the cabinet is genuinely empty.
+        //
+        // Prior bug: this block fired when `ministriesRes.data` was [], which is
+        // also what supabase-js returns on a failed fetch (error set, data null,
+        // `|| []` swallows it) or when every row sits with is_active=false from
+        // a dissolved administration. Because `ministries` has no UNIQUE
+        // constraint on (nation_id, ministry_key), the follow-up INSERT created
+        // duplicate rows. Subsequent renders ran `.find(m => m.ministry_key === k)`
+        // and often hit the empty ghost before the real appointment, so the
+        // player saw the cabinet vacate itself after every appointment.
         let ministries = ministriesRes.data || [];
-        if (ministries.length === 0 && coalition) {
+        if (!ministriesRes.error && ministries.length === 0 && coalition) {
             try {
-                const leadPartyId = coalition.lead_party_id || (coalition.party_ids || [])[0];
-                if (leadPartyId) {
-                    const SEED_KEYS = [
-                        ['interior', 'Minister of the Interior'], ['foreign', 'Minister of Foreign Affairs'],
-                        ['defense', 'Minister of Defense'], ['finance', 'Minister of Finance'],
-                        ['education', 'Minister of Education'], ['healthcare', 'Minister of Health'],
-                        ['labor', 'Minister of Labor'], ['justice', 'Minister of Justice'],
-                        ['trade', 'Minister of Trade'], ['energy', 'Minister of Energy'],
-                        ['transportation', 'Minister of Transportation'],
-                    ];
-                    if (!isPresidential) {
-                        SEED_KEYS.unshift(['prime_minister', 'Prime Minister']);
+                // Gate seeding behind a no-filter count — if any ministry row
+                // exists for this nation (active or not), skip the seed and
+                // surface the condition instead of creating duplicates.
+                const { count: totalMinistryCount, error: countErr } = await _supabase.from('ministries')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('nation_id', currentNation.id);
+                // Strict equality with 0 (not falsy) so an errored count — which
+                // returns null/undefined — does NOT slip past the guard and
+                // trigger the very duplicate-row bug we're trying to avoid.
+                if (!countErr && totalMinistryCount === 0) {
+                    const leadPartyId = coalition.lead_party_id || (coalition.party_ids || [])[0];
+                    if (leadPartyId) {
+                        const SEED_KEYS = [
+                            ['interior', 'Minister of the Interior'], ['foreign', 'Minister of Foreign Affairs'],
+                            ['defense', 'Minister of Defense'], ['finance', 'Minister of Finance'],
+                            ['education', 'Minister of Education'], ['healthcare', 'Minister of Health'],
+                            ['labor', 'Minister of Labor'], ['justice', 'Minister of Justice'],
+                            ['trade', 'Minister of Trade'], ['energy', 'Minister of Energy'],
+                            ['transportation', 'Minister of Transportation'],
+                        ];
+                        if (!isPresidential) {
+                            SEED_KEYS.unshift(['prime_minister', 'Prime Minister']);
+                        }
+                        const rows = SEED_KEYS.map(([key, name]) => ({
+                            nation_id: currentNation.id, ministry_key: key, ministry_name: name,
+                            party_id: leadPartyId, is_active: true,
+                        }));
+                        const { data: seeded } = await _supabase.from('ministries').insert(rows).select();
+                        if (seeded) ministries = seeded;
                     }
-                    const rows = SEED_KEYS.map(([key, name]) => ({
-                        nation_id: currentNation.id, ministry_key: key, ministry_name: name,
-                        party_id: leadPartyId, is_active: true,
-                    }));
-                    const { data: seeded } = await _supabase.from('ministries').insert(rows).select();
-                    if (seeded) ministries = seeded;
                 }
             } catch (seedErr) { console.warn('[Gov] Ministry auto-seed failed:', seedErr.message); }
         }
