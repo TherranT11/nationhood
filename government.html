@@ -2075,9 +2075,12 @@ async function loadLawsData() {
 // the Budget tab doesn't need per-policy detail — the Deep Dive
 // surfaces the same institution-level breakdowns live.
 
-let _budgetData = null;      // { revenue, expenditures, inflationMult, tariffSource, aid }
+let _budgetData = null;         // { budget, expenditures, aidReceived, aidGiven, debtService, debt }
 let _budgetLoading = false;
-let _budgetSelectedKey = null; // selected income/cost row key
+let _budgetSelectedKey = null;  // selected income/cost row key
+let _budgetSelectGen = 0;       // monotonic counter — prevents an earlier
+                                // deep-dive fetch from clobbering a later
+                                // selection if the user clicks quickly.
 
 function _gbScaleCost(baseCost, scalingStat, nation) {
     if (!scalingStat || !baseCost) return baseCost || 0;
@@ -2204,11 +2207,9 @@ async function loadBudgetData() {
     _budgetData = {
         budget,
         expenditures,
-        inflationMult,
         aidReceived,
         aidGiven,
         debtService: Number(budget.debtService || 0),
-        gdp: Number(nation.gdp || 0),
         debt: Number(nation.debt || 0),
     };
 }
@@ -2233,11 +2234,12 @@ function _gbBuildIncomeRows(d) {
     return rows.filter(r => r.key !== 'oil_gas' || r.yr > 0);
 }
 
-// Cost line items: ministries (from expenditures), plus the financial
-// overhead buckets (debt interest, bonds approx, government admin) that
-// don't live in fiscal_category. Bonds are shown as a placeholder since
-// the game doesn't yet split principal vs. interest — the whole debt
-// service annual is represented under Interest on Debt.
+// Cost line items: Interest on Debt (from calculateNationalBudget's
+// debtService), optional Foreign Aid (Given) when there are outbound
+// economic-aid flows, then one row per fiscal-category ministry.
+// The game doesn't separately model bond principal payments or
+// government-admin overhead, so those stay out of the list — the
+// design's placeholder lines for them are omitted rather than faked.
 function _gbBuildCostRows(d) {
     const ministryMeta = [
         { key: 'Interior',        label: 'Ministry of the Interior' },
@@ -2438,6 +2440,8 @@ const _GB_DEEP_COPY = {
 
 async function _gbSelectCategory(container, row, kind) {
     _budgetSelectedKey = row.key;
+    const gen = ++_budgetSelectGen;
+
     container.querySelectorAll('.gb-panel__row').forEach(el => el.classList.remove('is-selected'));
     const el = container.querySelector(`.gb-panel__row[data-key="${CSS.escape(row.key)}"][data-kind="${kind}"]`);
     if (el) el.classList.add('is-selected');
@@ -2492,6 +2496,10 @@ async function _gbSelectCategory(container, row, kind) {
             console.warn('[Budget] Deep-dive institution fetch failed:', err.message);
         }
     }
+
+    // A later click superseded this selection — bail before we write into
+    // the DOM and clobber the newer row's deep-dive payload.
+    if (gen !== _budgetSelectGen) return;
 
     const colors = ['#7a9a5b', '#b09a5b', '#6b8cae', '#a65d5d', '#9a8fb0', '#7aa29c', '#d48a3c', '#5bc0de'];
     const subTotal = subRows.reduce((s, r) => s + r.v, 0) || row.yr;
