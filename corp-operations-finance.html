@@ -56,7 +56,7 @@ body { font-family:var(--font-sans); background:var(--bg-0); color:var(--text-pr
 }
 .top-bar-left { display: flex; align-items: center; gap: 0; }
 .top-bar-sep {
-  width: 1px; height: 31px; background: rgba(255,255,255,0.08);
+  width: 1px; height: 31px; background: var(--border-1);
   margin: 0 16px; flex-shrink: 0;
 }
 .top-bar-right { display: flex; align-items: center; gap: 10px; }
@@ -111,20 +111,20 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 /* Deal Flow container — Deal cards scaled up ~40% and given full borders so
    they read clearly as tap targets. Designed around a ≥44px high row to
    satisfy touch guidelines without further mobile overrides. */
-.df-container { width:440px; height:520px; background:#1a1a16; border:1px solid #2a2a24; display:flex; flex-direction:column; overflow:hidden; }
-.df-header { padding:10px 16px; border-bottom:1px solid #2a2a24; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+.df-container { width:440px; height:520px; background:#f8f7f2; border:1px solid #e8e7e0; display:flex; flex-direction:column; overflow:hidden; }
+.df-header { padding:10px 16px; border-bottom:1px solid #e8e7e0; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
 .df-header__left { display:flex; align-items:center; gap:8px; }
 .df-header__dot { font-size:10px; color:var(--teal); }
 .df-header__title { font-family:var(--font-mono); font-size:14px; font-weight:700; letter-spacing:2px; color:#9e9a92; text-transform:uppercase; }
-.df-filters { padding:8px 14px; border-bottom:1px solid #2a2a24; background:#1c1c18; flex-shrink:0; display:flex; gap:4px; }
-.df-pill { flex:1; text-align:center; padding:7px 0; font-family:var(--font-mono); font-size:11px; font-weight:700; cursor:pointer; letter-spacing:0.8px; border:1px solid #2a2a24; color:#6a6660; background:transparent; transition:all 0.1s; }
+.df-filters { padding:8px 14px; border-bottom:1px solid #e8e7e0; background:#faf9f5; flex-shrink:0; display:flex; gap:4px; }
+.df-pill { flex:1; text-align:center; padding:7px 0; font-family:var(--font-mono); font-size:11px; font-weight:700; cursor:pointer; letter-spacing:0.8px; border:1px solid #e8e7e0; color:#6a6660; background:transparent; transition:all 0.1s; }
 .df-pill.active-all { color:#000; background:#8b9a6b; border-color:#8b9a6b; }
 .df-pill.active-loan { color:#000; background:#5a8aaa; border-color:#5a8aaa; }
 .df-pill.active-insure { color:#000; background:#aa7a5a; border-color:#aa7a5a; }
 .df-pill.active-bond { color:#000; background:#8a6aaa; border-color:#8a6aaa; }
 /* Card list — padded gutter + gap so cards read as discrete tappable units. */
 .df-list { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:8px; }
-.df-deal { padding:12px 14px; border:1px solid #2a2a24; border-left:3px solid transparent; background:#1c1c18; cursor:pointer; position:relative; transition:border-color 0.12s, background 0.12s, transform 0.08s; }
+.df-deal { padding:12px 14px; border:1px solid #e8e7e0; border-left:3px solid transparent; background:#faf9f5; cursor:pointer; position:relative; transition:border-color 0.12s, background 0.12s, transform 0.08s; }
 .df-deal:hover { background:#201e1a; border-color:#3a3a32; border-left-color:#6a6660; }
 .df-deal:active { transform:scale(0.995); }
 .df-deal.sel-loan { border-left-color:#5a8aaa; background:rgba(90,138,170,0.08); border-color:rgba(90,138,170,0.35); }
@@ -141,46 +141,46 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 .df-risk-moderate { color:#ca5; }
 .df-risk-elevated { color:#c84; }
 .df-risk-high { color:#c55; }
-.df-metrics { display:flex; gap:0; background:#1c1c18; border:1px solid #2a2a24; }
+.df-metrics { display:flex; gap:0; background:#faf9f5; border:1px solid #e8e7e0; }
 .df-metrics > div { padding:6px 10px; }
-.df-metrics > div + div { border-left:1px solid #2a2a24; }
+.df-metrics > div + div { border-left:1px solid #e8e7e0; }
 .df-metrics__label { font-family:var(--font-mono); font-size:9px; color:#6a6660; letter-spacing:0.5px; }
 .df-metrics__value { font-family:var(--font-mono); font-weight:700; margin-top:2px; }
-.df-detail { background:#121210; border:1px solid #2a2a24; padding:7px 10px; margin-top:6px; }
+.df-detail { background:#ffffff; border:1px solid #e8e7e0; padding:7px 10px; margin-top:6px; }
 .df-detail-row { display:flex; justify-content:space-between; padding:3px 0; }
-.df-detail-row + .df-detail-row { border-top:1px solid #2a2a24; }
+.df-detail-row + .df-detail-row { border-top:1px solid #e8e7e0; }
 .df-detail-label { font-family:var(--font-mono); font-size:11px; color:#6a6660; }
 .df-detail-value { font-family:var(--font-mono); font-size:12px; }
-.df-footer { padding:10px 14px; border-top:1px solid #2a2a24; background:#1c1c18; flex-shrink:0; display:flex; justify-content:space-between; align-items:center; }
+.df-footer { padding:10px 14px; border-top:1px solid #e8e7e0; background:#faf9f5; flex-shrink:0; display:flex; justify-content:space-between; align-items:center; }
 .df-footer__counts { display:flex; gap:12px; }
 .df-footer__count { display:flex; align-items:center; gap:5px; }
 .df-footer__count-dot { width:7px; height:7px; border-radius:1px; }
 .df-footer__count-label { font-family:var(--font-mono); font-size:10px; color:#6a6660; letter-spacing:0.5px; }
 .df-footer__count-num { font-family:var(--font-mono); font-size:11px; font-weight:700; color:#9e9a92; }
-.df-review-btn { padding:9px 22px; font-family:var(--font-mono); font-size:12px; font-weight:700; letter-spacing:1.2px; border:1px solid #2a2a24; cursor:default; color:#6a6660; background:transparent; opacity:0.4; transition:background 0.12s, transform 0.08s; }
+.df-review-btn { padding:9px 22px; font-family:var(--font-mono); font-size:12px; font-weight:700; letter-spacing:1.2px; border:1px solid #e8e7e0; cursor:default; color:#6a6660; background:transparent; opacity:0.4; transition:background 0.12s, transform 0.08s; }
 .df-review-btn.active { color:#000; background:#8b9a6b; border-color:#8b9a6b; cursor:pointer; opacity:1; }
 .df-review-btn.active:hover { background:#9aa97a; }
 .df-review-btn.active:active { transform:scale(0.97); }
 .df-new-dot { position:absolute; left:4px; top:50%; transform:translateY(-50%); width:6px; height:6px; border-radius:50%; background:#c8a832; }
 
 /* Active Portfolio container */
-.ap-container { width:380px; height:450px; background:#1a1a16; border:1px solid #2a2a24; display:flex; flex-direction:column; overflow:hidden; }
-.ap-summary { display:flex; border-bottom:1px solid #2a2a24; background:#1c1c18; flex-shrink:0; }
+.ap-container { width:380px; height:450px; background:#f8f7f2; border:1px solid #e8e7e0; display:flex; flex-direction:column; overflow:hidden; }
+.ap-summary { display:flex; border-bottom:1px solid #e8e7e0; background:#faf9f5; flex-shrink:0; }
 .ap-summary__cell { padding:6px 14px; }
-.ap-summary__cell + .ap-summary__cell { border-left:1px solid #2a2a24; }
+.ap-summary__cell + .ap-summary__cell { border-left:1px solid #e8e7e0; }
 .ap-summary__label { font-family:var(--font-mono); font-size:7px; color:#6a6660; letter-spacing:0.8px; }
 .ap-summary__value { font-family:var(--font-mono); font-weight:700; margin-top:1px; }
 .ap-list { flex:1; overflow-y:auto; }
-.ap-deal { border-bottom:1px solid #2a2a24; border-left:2px solid transparent; cursor:pointer; }
+.ap-deal { border-bottom:1px solid #e8e7e0; border-left:2px solid transparent; cursor:pointer; }
 .ap-deal:hover { background:rgba(255,255,255,0.01); }
 .ap-deal.alert-orange { border-left-color:#c84; }
 .ap-deal.alert-red { border-left-color:#c55; }
 .ap-deal.alert-yellow { border-left-color:#ca5; }
 .ap-deal__inner { padding:7px 14px; }
 .ap-deal__alert { margin-top:4px; padding:4px 6px; font-size:9px; line-height:1.4; }
-.ap-deal__expanded { margin-top:6px; padding:6px 8px; background:#121210; border:1px solid #2a2a24; }
+.ap-deal__expanded { margin-top:6px; padding:6px 8px; background:#ffffff; border:1px solid #e8e7e0; }
 .ap-detail-row { display:flex; justify-content:space-between; padding:2px 0; }
-.ap-detail-row + .ap-detail-row { border-top:1px solid #2a2a24; }
+.ap-detail-row + .ap-detail-row { border-top:1px solid #e8e7e0; }
 .ap-detail-label { font-family:var(--font-mono); font-size:7px; color:#6a6660; }
 .ap-detail-value { font-family:var(--font-mono); font-size:9px; font-weight:700; }
 .ap-actions { display:flex; gap:4px; margin-top:6px; }
@@ -194,39 +194,39 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 .ap-empty { padding:30px 20px; text-align:center; font-family:var(--font-mono); font-size:12px; color:#6a6660; line-height:1.6; }
 
 /* Reserves & Risk container */
-.rr-container { width:380px; height:450px; background:#1a1a16; border:1px solid #2a2a24; display:flex; flex-direction:column; overflow:hidden; }
-.rr-section-bar { padding:6px 14px; border-bottom:1px solid #2a2a24; background:#1c1c18; font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:1.5px; color:#a3b07e; text-transform:uppercase; }
-.rr-section { padding:8px 14px; border-bottom:1px solid #2a2a24; }
+.rr-container { width:380px; height:450px; background:#f8f7f2; border:1px solid #e8e7e0; display:flex; flex-direction:column; overflow:hidden; }
+.rr-section-bar { padding:6px 14px; border-bottom:1px solid #e8e7e0; background:#faf9f5; font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:1.5px; color:#a3b07e; text-transform:uppercase; }
+.rr-section { padding:8px 14px; border-bottom:1px solid #e8e7e0; }
 .rr-seg-bar { width:100%; display:flex; overflow:hidden; }
 .rr-seg-legend { display:flex; justify-content:space-between; margin-top:4px; }
 .rr-seg-legend-item { display:flex; align-items:center; gap:4px; font-family:var(--font-mono); font-size:8px; color:#9e9a92; }
 .rr-seg-legend-dot { width:6px; height:6px; }
-.rr-reserve-cells { display:flex; gap:0; margin-top:8px; background:#1c1c18; border:1px solid #2a2a24; }
+.rr-reserve-cells { display:flex; gap:0; margin-top:8px; background:#faf9f5; border:1px solid #e8e7e0; }
 .rr-reserve-cell { flex:1; padding:4px 8px; }
-.rr-reserve-cell + .rr-reserve-cell { border-left:1px solid #2a2a24; }
+.rr-reserve-cell + .rr-reserve-cell { border-left:1px solid #e8e7e0; }
 .rr-type-row { display:flex; align-items:center; padding:3px 0; }
-.rr-type-row + .rr-type-row { border-top:1px solid #2a2a24; }
+.rr-type-row + .rr-type-row { border-top:1px solid #e8e7e0; }
 .rr-conc-row { display:flex; align-items:center; padding:3px 0; }
-.rr-conc-row + .rr-conc-row { border-top:1px solid #2a2a24; }
-.rr-warning { padding:6px 14px; border-bottom:1px solid #2a2a24; background:rgba(204,85,85,0.03); font-size:9px; color:#c84; line-height:1.5; }
+.rr-conc-row + .rr-conc-row { border-top:1px solid #e8e7e0; }
+.rr-warning { padding:6px 14px; border-bottom:1px solid #e8e7e0; background:rgba(204,85,85,0.03); font-size:9px; color:#c84; line-height:1.5; }
 
 /* Collections container */
-.cc-container { width:380px; height:450px; background:#1a1a16; border:1px solid #2a2a24; display:flex; flex-direction:column; overflow:hidden; }
-.cc-scorecard { display:flex; border-bottom:1px solid #2a2a24; background:#1c1c18; flex-shrink:0; }
+.cc-container { width:380px; height:450px; background:#f8f7f2; border:1px solid #e8e7e0; display:flex; flex-direction:column; overflow:hidden; }
+.cc-scorecard { display:flex; border-bottom:1px solid #e8e7e0; background:#faf9f5; flex-shrink:0; }
 .cc-scorecard__cell { flex:1; padding:6px 14px; }
-.cc-scorecard__cell + .cc-scorecard__cell { border-left:1px solid #2a2a24; }
+.cc-scorecard__cell + .cc-scorecard__cell { border-left:1px solid #e8e7e0; }
 .cc-scorecard__label { font-family:var(--font-mono); font-size:7px; color:#6a6660; letter-spacing:0.8px; }
 .cc-scorecard__value { font-family:var(--font-mono); font-size:13px; font-weight:700; margin-top:1px; }
-.cc-winloss { padding:5px 14px; border-bottom:1px solid #2a2a24; display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.cc-winloss { padding:5px 14px; border-bottom:1px solid #e8e7e0; display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .cc-winloss__bar { flex:1; display:flex; height:4px; }
 .cc-winloss__stat { font-family:var(--font-mono); font-size:8px; font-weight:700; }
 .cc-list { flex:1; overflow-y:auto; }
-.cc-deal { border-bottom:1px solid #2a2a24; cursor:pointer; }
+.cc-deal { border-bottom:1px solid #e8e7e0; cursor:pointer; }
 .cc-deal:hover { background:rgba(255,255,255,0.01); }
 .cc-deal__inner { padding:7px 14px; }
-.cc-deal__expanded { margin-top:6px; background:#121210; border:1px solid #2a2a24; padding:6px 8px; }
+.cc-deal__expanded { margin-top:6px; background:#ffffff; border:1px solid #e8e7e0; padding:6px 8px; }
 .cc-detail-row { display:flex; justify-content:space-between; padding:2px 0; }
-.cc-detail-row + .cc-detail-row { border-top:1px solid #2a2a24; }
+.cc-detail-row + .cc-detail-row { border-top:1px solid #e8e7e0; }
 .cc-empty { padding:30px 20px; text-align:center; font-family:var(--font-mono); font-size:9px; color:#6a6660; line-height:1.6; }
 
 /* Content layout */
@@ -241,49 +241,49 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
   .rd-modal { width:95vw !important; max-height:none !important; }
   .rd-body { flex-direction:column !important; overflow:visible !important; }
   .rd-left { overflow-y:visible !important; }
-  .rd-right { width:100% !important; border-left:none !important; border-top:1px solid #2a2a24; overflow-y:visible !important; }
+  .rd-right { width:100% !important; border-left:none !important; border-top:1px solid #e8e7e0; overflow-y:visible !important; }
 }
 
 /* Review Deal Modal */
 .rd-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:500; align-items:center; justify-content:center; }
 .rd-overlay.open { display:flex; }
-.rd-modal { width:680px; max-height:92vh; background:#1a1a16; border:1px solid #2a2a24; display:flex; flex-direction:column; overflow-y:auto; }
-.rd-header { padding:10px 16px; border-bottom:1px solid #2a2a24; background:#1c1c18; flex-shrink:0; }
+.rd-modal { width:680px; max-height:92vh; background:#f8f7f2; border:1px solid #e8e7e0; display:flex; flex-direction:column; overflow-y:auto; }
+.rd-header { padding:10px 16px; border-bottom:1px solid #e8e7e0; background:#faf9f5; flex-shrink:0; }
 .rd-tabs { display:flex; gap:4px; margin-top:8px; }
-.rd-tab { flex:1; text-align:center; padding:4px 0; font-family:var(--font-mono); font-size:8px; font-weight:700; cursor:pointer; border:1px solid #2a2a24; border-bottom:2px solid transparent; color:#6a6660; background:transparent; }
+.rd-tab { flex:1; text-align:center; padding:4px 0; font-family:var(--font-mono); font-size:8px; font-weight:700; cursor:pointer; border:1px solid #e8e7e0; border-bottom:2px solid transparent; color:#6a6660; background:transparent; }
 .rd-tab.active-loan { color:#000; background:#5a8aaa; border-color:#5a8aaa; border-bottom-color:#5a8aaa; }
 .rd-tab.active-insure { color:#000; background:#aa7a5a; border-color:#aa7a5a; border-bottom-color:#aa7a5a; }
 .rd-tab.active-bond { color:#000; background:#8a6aaa; border-color:#8a6aaa; border-bottom-color:#8a6aaa; }
 .rd-body { flex:1; display:flex; overflow:hidden; min-height:0; }
-.rd-left { flex:1; border-right:1px solid #2a2a24; overflow-y:auto; }
+.rd-left { flex:1; border-right:1px solid #e8e7e0; overflow-y:auto; }
 .rd-right { width:260px; display:flex; flex-direction:column; overflow-y:auto; }
-.rd-section-bar { padding:6px 14px; border-bottom:1px solid #2a2a24; background:#1c1c18; font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; }
-.rd-applicant { padding:8px 14px; border-bottom:1px solid #2a2a24; }
-.rd-applicant__stats { display:flex; gap:0; background:#1c1c18; border:1px solid #2a2a24; }
+.rd-section-bar { padding:6px 14px; border-bottom:1px solid #e8e7e0; background:#faf9f5; font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; }
+.rd-applicant { padding:8px 14px; border-bottom:1px solid #e8e7e0; }
+.rd-applicant__stats { display:flex; gap:0; background:#faf9f5; border:1px solid #e8e7e0; }
 .rd-applicant__stat { flex:1; padding:4px 8px; text-align:center; }
-.rd-applicant__stat + .rd-applicant__stat { border-left:1px solid #2a2a24; }
+.rd-applicant__stat + .rd-applicant__stat { border-left:1px solid #e8e7e0; }
 .rd-applicant__stat-label { font-family:var(--font-mono); font-size:7px; color:#6a6660; letter-spacing:0.5px; }
 .rd-applicant__stat-value { font-family:var(--font-mono); font-size:11px; font-weight:700; margin-top:1px; }
-.rd-control { padding:10px 14px; border-bottom:1px solid #2a2a24; }
+.rd-control { padding:10px 14px; border-bottom:1px solid #e8e7e0; }
 .rd-control__header { display:flex; justify-content:space-between; margin-bottom:4px; }
 .rd-control__label { font-family:var(--font-mono); font-size:9px; color:#6a6660; letter-spacing:0.8px; }
 .rd-control__value { font-family:var(--font-mono); font-weight:700; }
 .rd-control__range { width:100%; height:4; -webkit-appearance:none; appearance:none; background:transparent; outline:none; cursor:pointer; }
-.rd-control__range::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#e8e4dc; border:2px solid #2a2a24; cursor:pointer; margin-top:-4px; }
+.rd-control__range::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#e8e4dc; border:2px solid #e8e7e0; cursor:pointer; margin-top:-4px; }
 .rd-control__range::-webkit-slider-runnable-track { height:4px; border-radius:2px; }
 .rd-control__hints { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:7px; color:#6a6660; margin-top:2px; }
 .rd-presets { display:flex; gap:3px; }
-.rd-preset { flex:1; text-align:center; padding:3px 0; font-family:var(--font-mono); font-size:8px; font-weight:700; cursor:pointer; border:1px solid #2a2a24; color:#6a6660; background:transparent; }
-.rd-risk-row { display:flex; justify-content:space-between; padding:4px 14px; border-bottom:1px solid #2a2a24; }
+.rd-preset { flex:1; text-align:center; padding:3px 0; font-family:var(--font-mono); font-size:8px; font-weight:700; cursor:pointer; border:1px solid #e8e7e0; color:#6a6660; background:transparent; }
+.rd-risk-row { display:flex; justify-content:space-between; padding:4px 14px; border-bottom:1px solid #e8e7e0; }
 .rd-risk-label { font-family:var(--font-mono); font-size:8px; color:#6a6660; letter-spacing:0.5px; }
 .rd-risk-value { font-family:var(--font-mono); font-size:10px; font-weight:700; }
-.rd-bar { width:100%; height:4px; background:#2a2a24; }
+.rd-bar { width:100%; height:4px; background:#e8e7e0; }
 .rd-bar__fill { height:100%; transition:width 0.2s; }
-.rd-expected { display:flex; justify-content:space-between; padding:6px 14px; border-bottom:1px solid #2a2a24; background:rgba(92,204,92,0.03); }
+.rd-expected { display:flex; justify-content:space-between; padding:6px 14px; border-bottom:1px solid #e8e7e0; background:rgba(92,204,92,0.03); }
 .rd-expected.negative { background:rgba(204,85,85,0.03); }
-.rd-formula { padding:3px 14px; border-bottom:1px solid #2a2a24; font-family:var(--font-mono); font-size:7px; color:#6a6660; }
+.rd-formula { padding:3px 14px; border-bottom:1px solid #e8e7e0; font-family:var(--font-mono); font-size:7px; color:#6a6660; }
 .rd-nation-stat { display:flex; align-items:center; gap:6px; padding:2px 0; }
-.rd-footer { padding:10px 16px; border-top:1px solid #2a2a24; background:#1c1c18; flex-shrink:0; display:flex; justify-content:space-between; align-items:center; }
+.rd-footer { padding:10px 16px; border-top:1px solid #e8e7e0; background:#faf9f5; flex-shrink:0; display:flex; justify-content:space-between; align-items:center; }
 .rd-footer__metric { }
 .rd-footer__metric-label { font-family:var(--font-mono); font-size:7px; color:#6a6660; letter-spacing:0.8px; }
 .rd-footer__metric-value { font-family:var(--font-mono); font-size:12px; font-weight:700; }
@@ -312,7 +312,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 }
 </style>
 </head>
-<body>
+<body class="light-mode">
   <!-- Shared top bar + nav (rendered by corp-topbar.js) -->
   <div id="corp-topbar-container"></div>
 
@@ -587,7 +587,7 @@ function renderDealFlow() {
     for (const f of filters) {
         html += `<span class="df-pill${dfFilter === f.id ? ' ' + f.activeClass : ''}" onclick="dfSetFilter('${f.id}')">${f.label}</span>`;
     }
-    html += `<span style="margin-left:auto;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;cursor:pointer;padding:6px 10px;border:1px solid ${dfNationFilter === 'mine' ? '#5c544' : '#2a2a24'};color:${dfNationFilter === 'mine' ? '#5c5' : '#6a6660'};background:${dfNationFilter === 'mine' ? 'rgba(92,204,92,0.06)' : 'transparent'};" onclick="dfToggleNation()">${dfNationFilter === 'mine' ? 'MY NATION' : 'ALL NATIONS'}</span>`;
+    html += `<span style="margin-left:auto;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;cursor:pointer;padding:6px 10px;border:1px solid ${dfNationFilter === 'mine' ? '#5c544' : '#e8e7e0'};color:${dfNationFilter === 'mine' ? '#5c5' : '#6a6660'};background:${dfNationFilter === 'mine' ? 'rgba(92,204,92,0.06)' : 'transparent'};" onclick="dfToggleNation()">${dfNationFilter === 'mine' ? 'MY NATION' : 'ALL NATIONS'}</span>`;
     html += '</div>';
 
     // Deal list
@@ -651,7 +651,7 @@ function renderDealFlow() {
 
             if (!canReview) {
                 const neededSub = d.type === 'LOAN' ? 'Banking' : d.type === 'INSURE' ? 'Insurance' : 'Investment';
-                html += `<div style="padding:8px 10px;background:rgba(106,102,96,0.06);border:1px solid #2a2a24;font-family:var(--font-mono);font-size:11px;color:#6a6660;line-height:1.5;">
+                html += `<div style="padding:8px 10px;background:rgba(106,102,96,0.06);border:1px solid #e8e7e0;font-family:var(--font-mono);font-size:11px;color:#6a6660;line-height:1.5;">
                     &#128274; Requires <span style="color:#e8e4dc;font-weight:700;">${neededSub}</span> subsector to underwrite.
                     ${faction?.corp_subsector ? 'Your subsector: <span style="color:#aa7a5a;">' + escapeHtml(faction.corp_subsector) + '</span>.' : ''}
                     Establish a subsidiary with this subsector to access these deals.
@@ -857,11 +857,11 @@ function renderActivePortfolio() {
         const rateColor = tm.class === 'loan' ? '#5a8aaa' : tm.class === 'insure' ? '#aa7a5a' : '#8a6aaa';
 
         html += `<div class="df-metrics" style="margin-top:4px;">
-            <div style="flex:1;padding:3px 6px;border-right:1px solid #2a2a24;">
+            <div style="flex:1;padding:3px 6px;border-right:1px solid #e8e7e0;">
                 <div style="font-family:var(--font-mono);font-size:6px;color:#6a6660;letter-spacing:0.5px;">${exposureLabel}</div>
                 <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#e8e4dc;margin-top:1px;">${fmtMoney(exposureVal)}</div>
             </div>
-            <div style="flex:0.8;padding:3px 6px;text-align:center;border-right:1px solid #2a2a24;">
+            <div style="flex:0.8;padding:3px 6px;text-align:center;border-right:1px solid #e8e7e0;">
                 <div style="font-family:var(--font-mono);font-size:6px;color:#6a6660;letter-spacing:0.5px;">${rateLabel}</div>
                 <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${rateColor};margin-top:1px;">${rateVal}%</div>
             </div>
@@ -951,7 +951,7 @@ function renderActivePortfolio() {
             ${['LOAN', 'INSURE', 'BOND'].map(t => {
                 const color = t === 'LOAN' ? '#5a8aaa' : t === 'INSURE' ? '#aa7a5a' : '#8a6aaa';
                 const count = apPortfolio.filter(p => p.type === t).length;
-                return `<div style="text-align:center;padding:1px 6px;border:1px solid ${count > 0 ? color + '33' : '#2a2a24'};background:${count > 0 ? color + '0a' : 'transparent'};"><div style="font-family:var(--font-mono);font-size:6px;color:${color};">${t}</div><div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${count > 0 ? '#e8e4dc' : '#6a6660'};">${count}</div></div>`;
+                return `<div style="text-align:center;padding:1px 6px;border:1px solid ${count > 0 ? color + '33' : '#e8e7e0'};background:${count > 0 ? color + '0a' : 'transparent'};"><div style="font-family:var(--font-mono);font-size:6px;color:${color};">${t}</div><div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${count > 0 ? '#e8e4dc' : '#6a6660'};">${count}</div></div>`;
             }).join('')}
         </div>
     </div>`;
@@ -1185,7 +1185,7 @@ window.apSellPosition = apSellPosition;
 
 function rrSegBar(segments, h) {
     const total = segments.reduce((a, s) => a + s.value, 0);
-    if (total === 0) return `<div class="rr-seg-bar" style="height:${h}px;background:#2a2a24;"></div>`;
+    if (total === 0) return `<div class="rr-seg-bar" style="height:${h}px;background:#e8e7e0;"></div>`;
     return `<div class="rr-seg-bar" style="height:${h}px;">${segments.map(s =>
         `<div style="width:${(s.value / total * 100).toFixed(1)}%;height:100%;background:${s.color};"></div>`
     ).join('')}</div>`;
@@ -1399,7 +1399,7 @@ function renderReservesRisk() {
     html += `<div style="margin-top:4px;display:flex;gap:3px;">
         ${['Reserves', 'Diversified', 'No Defaults', 'Scale'].map((label, i) => {
             const passed = healthFactors.length > i && healthFactors.includes(['reserves', 'diversified', 'no_delinquent', 'scale'][i]);
-            return `<span style="flex:1;text-align:center;padding:2px 0;font-family:var(--font-mono);font-size:6px;font-weight:700;color:${passed ? '#5c5' : '#6a6660'};border:1px solid ${passed ? 'rgba(92,204,92,0.2)' : '#2a2a24'};background:${passed ? 'rgba(92,204,92,0.04)' : 'transparent'};">${passed ? '✓' : '✗'} ${label}</span>`;
+            return `<span style="flex:1;text-align:center;padding:2px 0;font-family:var(--font-mono);font-size:6px;font-weight:700;color:${passed ? '#5c5' : '#6a6660'};border:1px solid ${passed ? 'rgba(92,204,92,0.2)' : '#e8e7e0'};background:${passed ? 'rgba(92,204,92,0.04)' : 'transparent'};">${passed ? '✓' : '✗'} ${label}</span>`;
         }).join('')}
     </div>`;
 
@@ -1528,17 +1528,17 @@ function renderCollections() {
             <div class="df-metrics__label">PRINCIPAL</div>
             <div class="df-metrics__value" style="font-size:10px;color:#e8e4dc;margin-top:1px;">${fmtMoney(d.principal || 0)}</div>
         </div>`;
-        html += `<div style="flex:0.8;padding:3px 8px;text-align:center;border-left:1px solid #2a2a24;">
+        html += `<div style="flex:0.8;padding:3px 8px;text-align:center;border-left:1px solid #e8e7e0;">
             <div class="df-metrics__label">EARNED</div>
             <div class="df-metrics__value" style="font-size:10px;color:#5c5;margin-top:1px;">${fmtMoney(d.earned || 0)}</div>
         </div>`;
         if (d.lost > 0) {
-            html += `<div style="flex:0.8;padding:3px 8px;text-align:center;border-left:1px solid #2a2a24;">
+            html += `<div style="flex:0.8;padding:3px 8px;text-align:center;border-left:1px solid #e8e7e0;">
                 <div class="df-metrics__label">LOST</div>
                 <div class="df-metrics__value" style="font-size:10px;color:#c55;margin-top:1px;">${fmtMoney(d.lost)}</div>
             </div>`;
         }
-        html += `<div style="flex:1;padding:3px 8px;text-align:right;border-left:1px solid #2a2a24;background:${isProfitable ? 'rgba(92,204,92,0.03)' : 'rgba(204,85,85,0.03)'};">
+        html += `<div style="flex:1;padding:3px 8px;text-align:right;border-left:1px solid #e8e7e0;background:${isProfitable ? 'rgba(92,204,92,0.03)' : 'rgba(204,85,85,0.03)'};">
             <div class="df-metrics__label">NET</div>
             <div class="df-metrics__value" style="font-size:11px;color:${isProfitable ? '#5c5' : '#c55'};margin-top:1px;">${isProfitable ? '+' : ''}${fmtMoney(d.net || 0)}</div>
         </div>`;
@@ -1797,7 +1797,7 @@ function renderReviewDeal() {
             </div>
             <input type="range" class="rd-control__range" min="3" max="18" step="0.5" value="${rdLoanRate}"
                 oninput="rdSetLoanRate(this.value)"
-                style="background:linear-gradient(90deg,#5a8aaa ${ratePct}%,#2a2a24 ${ratePct}%);">
+                style="background:linear-gradient(90deg,#5a8aaa ${ratePct}%,#e8e7e0 ${ratePct}%);">
             <div class="rd-control__hints"><span>3% (generous)</span><span>18% (predatory)</span></div>
         </div>`;
 
@@ -1819,7 +1819,7 @@ function renderReviewDeal() {
                     flex:1;padding:6px 4px;text-align:center;
                     font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.3px;
                     background:${rdLoanCollateral === c.id || (collateralDisplayMap[rdLoanCollateral] || rdLoanCollateral) === c.id ? 'rgba(90,138,170,0.12)' : 'transparent'};
-                    border:1px solid ${rdLoanCollateral === c.id || (collateralDisplayMap[rdLoanCollateral] || rdLoanCollateral) === c.id ? 'rgba(90,138,170,0.3)' : '#2a2a24'};
+                    border:1px solid ${rdLoanCollateral === c.id || (collateralDisplayMap[rdLoanCollateral] || rdLoanCollateral) === c.id ? 'rgba(90,138,170,0.3)' : '#e8e7e0'};
                     color:${rdLoanCollateral === c.id || (collateralDisplayMap[rdLoanCollateral] || rdLoanCollateral) === c.id ? '#5a8aaa' : '#6a6660'};
                     cursor:pointer;
                 ">${c.label}</div>`).join('')}
@@ -1838,7 +1838,7 @@ function renderReviewDeal() {
             </div>
             <textarea id="rd-loan-terms" maxlength="500" rows="3" placeholder="e.g. Early repayment penalty of 2%. Quarterly reporting required..." oninput="rdSetLoanTermsText(this.value)" style="
                 width:100%;margin-top:6px;padding:8px 10px;
-                background:#1a1a16;border:1px solid #2a2a24;color:#e8e4dc;
+                background:#f8f7f2;border:1px solid #e8e7e0;color:#e8e4dc;
                 font-family:var(--font-sans);font-size:11px;line-height:1.5;
                 resize:vertical;outline:none;box-sizing:border-box;
             ">${escapeHtml(rdLoanTermsText)}</textarea>
@@ -1890,7 +1890,7 @@ function renderReviewDeal() {
             </div>
             <input type="range" class="rd-control__range" min="${premMin}" max="${premMax}" step="${premStep}" value="${rdInsurePremium}"
                 oninput="rdSetInsurePremium(this.value)"
-                style="background:linear-gradient(90deg,#aa7a5a ${premPct}%,#2a2a24 ${premPct}%);">
+                style="background:linear-gradient(90deg,#aa7a5a ${premPct}%,#e8e7e0 ${premPct}%);">
             <div class="rd-control__hints"><span>${premMin}% (competitive)</span><span>${premMax}% (expensive)</span></div>
         </div>`;
 
@@ -1905,7 +1905,7 @@ function renderReviewDeal() {
             </div>
             <input type="range" class="rd-control__range" min="${minCoverage}" max="${maxCoverage}" step="1000000" value="${rdInsureCoverage}"
                 oninput="rdSetInsureCoverage(this.value)"
-                style="background:linear-gradient(90deg,#aa7a5a ${covPct}%,#2a2a24 ${covPct}%);">
+                style="background:linear-gradient(90deg,#aa7a5a ${covPct}%,#e8e7e0 ${covPct}%);">
             <div class="rd-control__hints"><span>${fmtMoney(minCoverage)} (partial)</span><span>${fmtMoney(maxCoverage)} (max)</span></div>
         </div>`;
 
@@ -1930,7 +1930,7 @@ function renderReviewDeal() {
                 <span class="rd-control__label">WHAT WE AGREE TO COVER</span>
             </div>
             <textarea id="rd-policy-terms" rows="3" placeholder="e.g., Covers weather delays, material damage, and labor disputes. Excludes negligence and acts of war. Maximum payout per claim: 50% of coverage."
-                style="width:100%;box-sizing:border-box;padding:6px 8px;font-family:var(--font-mono);font-size:9px;color:#e8e4dc;background:#1a1a16;border:1px solid #2a2a24;resize:vertical;line-height:1.5;"
+                style="width:100%;box-sizing:border-box;padding:6px 8px;font-family:var(--font-mono);font-size:9px;color:#e8e4dc;background:#f8f7f2;border:1px solid #e8e7e0;resize:vertical;line-height:1.5;"
                 oninput="rdPolicyTerms=this.value">${rdPolicyTerms || ''}</textarea>
         </div>`;
     }
@@ -1964,7 +1964,7 @@ function renderReviewDeal() {
             </div>
             <input type="range" class="rd-control__range" min="${bondMin}" max="${bondMax}" step="5000000" value="${rdBondAmount}"
                 oninput="rdSetBondAmount(this.value)"
-                style="background:linear-gradient(90deg,#8a6aaa ${bondPct}%,#2a2a24 ${bondPct}%);">
+                style="background:linear-gradient(90deg,#8a6aaa ${bondPct}%,#e8e7e0 ${bondPct}%);">
             <div class="rd-control__hints"><span>${fmtMoney(bondMin)} (small position)</span><span>${fmtMoney(bondMax)} (full issuance)</span></div>
             <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;margin-top:6px;">Coupon rate and term are set by issuer. You choose how much to buy.</div>
         </div>`;
@@ -2554,14 +2554,6 @@ function switchFaction(factionId) {
     }
 }
 
-function toggleTheme() {
-    document.body.classList.toggle('light-mode');
-    const isLight = document.body.classList.contains('light-mode');
-    localStorage.setItem('theme', isLight ? 'light' : 'dark');
-    const toggleBtn = document.getElementById('theme-toggle');
-    if (toggleBtn) toggleBtn.textContent = isLight ? 'Dark' : 'Light';
-}
-
 async function doLogout() {
     await _supabase.auth.signOut();
     window.location.href = 'login.html';
@@ -2582,16 +2574,8 @@ function startCountdown(nextTickAt) {
     setInterval(update, 1000);
 }
 
-// Theme on load
-if (localStorage.getItem('theme') === 'light') {
-    document.body.classList.add('light-mode');
-    const toggleBtn = document.getElementById('theme-toggle');
-    if (toggleBtn) toggleBtn.textContent = 'Dark';
-}
-
 window.toggleCorpDropdown = toggleCorpDropdown;
 window.switchFaction = switchFaction;
-window.toggleTheme = toggleTheme;
 window.doLogout = doLogout;
 window.switchToExpansion = switchToExpansion;
 window.switchToActions = switchToActions;

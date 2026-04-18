@@ -63,7 +63,7 @@ body {
 }
 .top-bar-left { display: flex; align-items: center; gap: 0; }
 .top-bar-sep {
-  width: 1px; height: 31px; background: rgba(255,255,255,0.08);
+  width: 1px; height: 31px; background: var(--border-1);
   margin: 0 16px; flex-shrink: 0;
 }
 .corp-badge {
@@ -869,7 +869,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
 }
 </style>
 </head>
-<body>
+<body class="light-mode">
 
 <div id="loading" class="loading-msg">LOADING CORPORATION...</div>
 
@@ -2408,19 +2408,6 @@ function updateCountdown() {
     el.textContent = h + 'h ' + m + 'm ' + s + 's';
 }
 
-// ── Theme toggle ──
-function toggleTheme() {
-    document.body.classList.toggle('light-mode');
-    const btn = document.getElementById('theme-toggle');
-    btn.textContent = document.body.classList.contains('light-mode') ? 'Dark' : 'Light';
-    localStorage.setItem('nationhood_theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
-}
-// Restore theme on load
-if (localStorage.getItem('nationhood_theme') === 'light') {
-    document.body.classList.add('light-mode');
-    const btn = document.getElementById('theme-toggle');
-    if (btn) btn.textContent = 'Dark';
-}
 
 async function saveSlogan() {
     const input = document.getElementById('slogan-input');
@@ -2486,7 +2473,6 @@ document.addEventListener('click', (e) => {
 });
 
 window.doLogout = doLogout;
-window.toggleTheme = toggleTheme;
 async function handleCorpLogoUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;

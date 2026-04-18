@@ -51,6 +51,39 @@
   --font-serif: 'IBM Plex Serif', Georgia, serif;
 }
 
+/* ═══════ LIGHT MODE PALETTE (always on; toggle removed) ═══════ */
+body.light-mode {
+  --bg-0: #f4f3ef;
+  --bg-1: #eae9e4;
+  --bg-2: #ffffff;
+  --bg-3: #f0efeb;
+  --bg-4: #e8e7e2;
+  --bg-5: #dddcd7;
+  --bg-hover: #e8e7e2;
+  --text-bright: #1a1a17;
+  --text-primary: #333;
+  --text-secondary: #666;
+  --text-muted: #888;
+  --text-dim: #aaa;
+  --text-ghost: #ccc;
+  --border-hair: rgba(0,0,0,0.04);
+  --border-0: rgba(0,0,0,0.08);
+  --border-1: rgba(0,0,0,0.12);
+  --border-2: rgba(0,0,0,0.16);
+  --border-main: rgba(0,0,0,0.12);
+  --bg-card: #ffffff;
+  --bg-panel: #faf9f5;
+  --green: #2d8a2d; --green-faint: rgba(45,138,45,0.08); --green-border: rgba(45,138,45,0.2);
+  --red: #c0392b; --red-faint: rgba(192,57,43,0.08); --red-border: rgba(192,57,43,0.2);
+  --amber: #b8860b; --amber-faint: rgba(184,134,11,0.08); --amber-border: rgba(184,134,11,0.2);
+  --blue: #2874a6; --blue-faint: rgba(40,116,166,0.08); --blue-border: rgba(40,116,166,0.2);
+  --teal: #1a8a7d; --teal-faint: rgba(26,138,125,0.08); --teal-border: rgba(26,138,125,0.2);
+  --orange: #d35400; --orange-faint: rgba(211,84,0,0.08); --orange-border: rgba(211,84,0,0.2);
+  --purple: #6a4c93; --purple-faint: rgba(106,76,147,0.08); --purple-border: rgba(106,76,147,0.2);
+  --gold: #a88520; --gold-faint: rgba(168,133,32,0.08); --gold-border: rgba(168,133,32,0.2);
+}
+
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
   background: var(--bg-0);
@@ -75,7 +108,7 @@ body {
 }
 .top-bar-left { display: flex; align-items: center; gap: 0; }
 .top-bar-sep {
-  width: 1px; height: 31px; background: rgba(255,255,255,0.08);
+  width: 1px; height: 31px; background: var(--border-1);
   margin: 0 16px; flex-shrink: 0;
 }
 .corp-badge { display: flex; align-items: center; gap: 8px; }
@@ -2119,7 +2152,7 @@ body.light-mode .av-empty__text { color: #1a1a17; }
     width: 100% !important;
     max-height: 200px !important;
     border-right: none !important;
-    border-bottom: 1px solid #2a2a24 !important;
+    border-bottom: 1px solid #e8e7e0 !important;
   }
   #lr-overlay > div {
     width: 95vw !important;
@@ -2386,7 +2419,7 @@ body.light-mode .av-empty__text { color: #1a1a17; }
 <link rel="stylesheet" href="css/corp-auto-services.css">
 <link rel="stylesheet" href="css/corp-sub-dashboard.css">
 </head>
-<body>
+<body class="light-mode">
 
 <div id="loading" class="loading-msg">LOADING OPERATIONS...</div>
 
@@ -2702,21 +2735,21 @@ body.light-mode .av-empty__text { color: #1a1a17; }
 
 <!-- Loan Request Modal -->
 <div id="lr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
-  <div style="width:520px;max-height:94vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+  <div style="width:520px;max-height:94vh;background:#f8f7f2;border:1px solid #e8e7e0;display:flex;flex-direction:column;overflow:hidden;">
     <div id="lr-modal-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
   </div>
 </div>
 
 <!-- Executive Search Modal -->
 <div id="exec-search-overlay" onclick="closeExecSearch()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
-  <div onclick="event.stopPropagation()" style="width:850px;max-height:94vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+  <div onclick="event.stopPropagation()" style="width:850px;max-height:94vh;background:#f8f7f2;border:1px solid #e8e7e0;display:flex;flex-direction:column;overflow:hidden;">
     <div id="exec-search-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
   </div>
 </div>
 
 <!-- Commission Vessel Modal -->
 <div id="comm-overlay" onclick="smCloseCommission()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
-  <div onclick="event.stopPropagation()" style="width:420px;max-height:94vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
+  <div onclick="event.stopPropagation()" style="width:420px;max-height:94vh;background:#f8f7f2;border:1px solid #e8e7e0;display:flex;flex-direction:column;overflow:hidden;">
     <div id="comm-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
   </div>
 </div>
@@ -2879,13 +2912,6 @@ function startTickCountdown() {
         const s = Math.floor((diff % 60000) / 1000);
         document.getElementById('tick-countdown').textContent = h + 'h ' + m + 'm ' + s + 's';
     }, 1000);
-}
-
-// ── Theme toggle ──
-function toggleTheme() {
-    document.body.classList.toggle('light-mode');
-    const btn = document.getElementById('theme-toggle');
-    btn.textContent = document.body.classList.contains('light-mode') ? 'Dark' : 'Light';
 }
 
 // ── Filter logic ──
@@ -7522,7 +7548,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 window.doLogout = doLogout;
-window.toggleTheme = toggleTheme;
 window.toggleCorpDropdown = toggleCorpDropdown;
 window.switchToFaction = switchToFaction;
 window.setFilter = setFilter;
@@ -8068,8 +8093,8 @@ function actOpenStatement() {
     const ceo = getExecForRole('CEO');
     const ceoName = ceo ? `${ceo.first_name} ${ceo.last_name}` : 'CEO';
 
-    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:480px;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
-        <div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;">
+    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:480px;background:#f8f7f2;border:1px solid #e8e7e0;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 16px;border-bottom:1px solid #e8e7e0;background:#faf9f5;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div style="display:flex;align-items:center;gap:8px;">
                     <span style="font-size:8px;color:#c8a832;">&#9679;</span>
@@ -8087,20 +8112,20 @@ function actOpenStatement() {
         <div style="padding:12px 16px;">
             <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:6px;">PRESS RELEASE</div>
             <textarea id="stmt-text" rows="4" maxlength="500" placeholder="Type your public statement here. All players will see this in the events feed."
-                style="width:100%;padding:8px 10px;font-family:var(--font-ui);font-size:11px;color:#e8e4dc;background:#1c1c18;border:1px solid #2a2a24;outline:none;resize:none;box-sizing:border-box;line-height:1.5;"></textarea>
+                style="width:100%;padding:8px 10px;font-family:var(--font-ui);font-size:11px;color:#e8e4dc;background:#faf9f5;border:1px solid #e8e7e0;outline:none;resize:none;box-sizing:border-box;line-height:1.5;"></textarea>
             <div style="display:flex;justify-content:space-between;margin-top:4px;">
                 <span style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">Visible to all players in all nations</span>
                 <span id="stmt-chars" style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">0/500</span>
             </div>
         </div>
-        <div style="padding:8px 16px;border-top:1px solid #2a2a24;">
+        <div style="padding:8px 16px;border-top:1px solid #e8e7e0;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div style="display:flex;gap:12px;">
                     <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">COST</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#5cb85c;">$20k</div></div>
                     <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">CASH</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${cash < 20000 ? '#c55' : '#e8e4dc'};">${hfFmtBig(cash)}</div></div>
                 </div>
                 <div style="display:flex;gap:6px;">
-                    <div onclick="actCloseStatement()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+                    <div onclick="actCloseStatement()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #e8e7e0;cursor:pointer;">CANCEL</div>
                     <div id="stmt-submit-btn" onclick="actSubmitStatement()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#c8a832;cursor:pointer;">PUBLISH</div>
                 </div>
             </div>
@@ -8422,7 +8447,7 @@ function renderLoanModal() {
     let html = '';
 
     // Header
-    html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;">
+    html += `<div style="padding:10px 16px;border-bottom:1px solid #e8e7e0;background:#faf9f5;flex-shrink:0;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
             <div style="display:flex;align-items:center;gap:8px;">
                 <span style="font-size:8px;color:#5a8aaa;">&#9679;</span>
@@ -8441,15 +8466,15 @@ function renderLoanModal() {
     html += '<div style="flex:1;overflow-y:auto;">';
 
     // Financial Snapshot
-    html += `<div style="padding:6px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;">
+    html += `<div style="padding:6px 16px;border-bottom:1px solid #e8e7e0;background:#faf9f5;">
         <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;">Your Financials (visible to lenders)</span>
     </div>
-    <div style="display:flex;gap:0;border-bottom:1px solid #2a2a24;">
-        <div style="flex:1;padding:6px 10px;text-align:center;border-right:1px solid #2a2a24;">
+    <div style="display:flex;gap:0;border-bottom:1px solid #e8e7e0;">
+        <div style="flex:1;padding:6px 10px;text-align:center;border-right:1px solid #e8e7e0;">
             <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">CASH</div>
             <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#e8e4dc;margin-top:1px;">${hfFmtBig(cash)}</div>
         </div>
-        <div style="flex:1;padding:6px 10px;text-align:center;border-right:1px solid #2a2a24;">
+        <div style="flex:1;padding:6px 10px;text-align:center;border-right:1px solid #e8e7e0;">
             <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">CURRENT DEBT</div>
             <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#c84;margin-top:1px;">${hfFmtBig(debt)}</div>
         </div>
@@ -8460,7 +8485,7 @@ function renderLoanModal() {
     </div>`;
 
     // Loan Amount
-    html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:10px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
             <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">LOAN AMOUNT</span>
             <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:#5a8aaa;">${hfFmtBig(lrAmount)}</span>
@@ -8470,12 +8495,12 @@ function renderLoanModal() {
     </div>`;
 
     // Purpose
-    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:6px;">PURPOSE</div>
         <div style="display:flex;flex-direction:column;gap:3px;">`;
     for (const p of LR_PURPOSES) {
         const active = lrPurpose === p.id;
-        html += `<div onclick="lrSetPurpose('${p.id}')" style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;background:${active ? 'rgba(90,138,170,0.06)' : 'transparent'};border:1px solid ${active ? '#5a8aaa44' : '#2a2a24'};border-left:2px solid ${active ? '#5a8aaa' : 'transparent'};">
+        html += `<div onclick="lrSetPurpose('${p.id}')" style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;background:${active ? 'rgba(90,138,170,0.06)' : 'transparent'};border:1px solid ${active ? '#5a8aaa44' : '#e8e7e0'};border-left:2px solid ${active ? '#5a8aaa' : 'transparent'};">
             <span style="font-family:var(--font-mono);font-size:10px;color:${active ? '#5a8aaa' : '#6a6660'};width:14px;text-align:center;">${p.icon}</span>
             <div><div style="font-size:11px;font-weight:600;color:${active ? '#e8e4dc' : '#9e9a92'};">${p.label}</div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">${p.desc}</div></div>
         </div>`;
@@ -8483,7 +8508,7 @@ function renderLoanModal() {
     html += '</div></div>';
 
     // Term
-    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
             <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">PREFERRED TERM</span>
             <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#e8e4dc;">${lrTerm} months</span>
@@ -8491,17 +8516,17 @@ function renderLoanModal() {
         <div style="display:flex;gap:3px;">`;
     for (const t of [12, 24, 36, 48, 60, 84, 120]) {
         const active = lrTerm === t;
-        html += `<span onclick="lrSetTerm(${t})" style="flex:1;text-align:center;padding:4px 0;font-family:var(--font-mono);font-size:9px;font-weight:700;cursor:pointer;color:${active ? '#000' : '#6a6660'};background:${active ? '#5a8aaa' : 'transparent'};border:1px solid ${active ? '#5a8aaa' : '#2a2a24'};">${t}</span>`;
+        html += `<span onclick="lrSetTerm(${t})" style="flex:1;text-align:center;padding:4px 0;font-family:var(--font-mono);font-size:9px;font-weight:700;cursor:pointer;color:${active ? '#000' : '#6a6660'};background:${active ? '#5a8aaa' : 'transparent'};border:1px solid ${active ? '#5a8aaa' : '#e8e7e0'};">${t}</span>`;
     }
     html += `</div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Lenders may offer different terms. This is your preference, not a guarantee.</div></div>`;
 
     // Collateral
-    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:6px;">COLLATERAL OFFERED</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">`;
     for (const c of LR_COLLATERAL) {
         const active = lrCollateral === c.id;
-        html += `<div onclick="lrSetCollateral('${c.id}')" style="padding:6px 8px;cursor:pointer;background:${active ? 'rgba(90,138,170,0.06)' : 'transparent'};border:1px solid ${active ? '#5a8aaa44' : '#2a2a24'};">
+        html += `<div onclick="lrSetCollateral('${c.id}')" style="padding:6px 8px;cursor:pointer;background:${active ? 'rgba(90,138,170,0.06)' : 'transparent'};border:1px solid ${active ? '#5a8aaa44' : '#e8e7e0'};">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${active ? '#5a8aaa' : '#6a6660'};">${c.label}</span>
                 <span style="font-family:var(--font-mono);font-size:7px;color:${c.riskColor};">${c.risk} RISK</span>
@@ -8512,26 +8537,26 @@ function renderLoanModal() {
     html += '</div></div>';
 
     // Note
-    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:4px;">NOTE TO LENDERS (OPTIONAL)</div>
         <textarea id="lr-note" rows="2" maxlength="300" onchange="lrNote=this.value"
             placeholder="e.g., Expanding into Heavy Infrastructure. Equipment purchase will generate $12M+ in annual contract revenue."
-            style="width:100%;padding:6px 8px;font-family:var(--font-ui);font-size:10px;color:#e8e4dc;background:#1c1c18;border:1px solid #2a2a24;outline:none;resize:none;box-sizing:border-box;line-height:1.5;">${escapeHtml(lrNote)}</textarea>
+            style="width:100%;padding:6px 8px;font-family:var(--font-ui);font-size:10px;color:#e8e4dc;background:#faf9f5;border:1px solid #e8e7e0;outline:none;resize:none;box-sizing:border-box;line-height:1.5;">${escapeHtml(lrNote)}</textarea>
     </div>`;
 
     // Debt Impact
-    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">Debt Impact Preview</div>
-        <div style="background:#1c1c18;border:1px solid #2a2a24;padding:6px 10px;">
-            <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+        <div style="background:#faf9f5;border:1px solid #e8e7e0;padding:6px 10px;">
+            <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e8e7e0;">
                 <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">CURRENT DEBT</span>
                 <span style="font-family:var(--font-mono);font-size:9px;color:#9e9a92;">${hfFmtBig(debt)}</span>
             </div>
-            <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+            <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e8e7e0;">
                 <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">+ THIS LOAN</span>
                 <span style="font-family:var(--font-mono);font-size:9px;color:#5a8aaa;">+${hfFmtBig(lrAmount)}</span>
             </div>
-            <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+            <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e8e7e0;">
                 <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:#e8e4dc;">NEW TOTAL DEBT</span>
                 <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c55;">${hfFmtBig(newDebt)}</span>
             </div>
@@ -8543,13 +8568,13 @@ function renderLoanModal() {
     </div>`;
 
     // Broadcast
-    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">This request will be sent to</div>`;
     if (lrFinanceCorps.length > 0) {
         html += '<div style="display:flex;flex-direction:column;gap:3px;">';
         for (const fc of lrFinanceCorps) {
             const typeColor = (fc.corp_company_type || '').toLowerCase() === 'state' ? '#c84' : (fc.corp_company_type || '').toLowerCase() === 'public' ? '#5c5' : '#c8a832';
-            html += `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#1c1c18;border:1px solid #2a2a24;">
+            html += `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#faf9f5;border:1px solid #e8e7e0;">
                 <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c8a832;">${escapeHtml((fc.abbreviation || fc.corp_ticker || '??').toUpperCase())}</span>
                 <span style="font-size:10px;color:#e8e4dc;flex:1;">${escapeHtml(fc.faction_name)}</span>
                 ${fc.corp_company_type ? `<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:0 4px;line-height:12px;color:${typeColor};background:${typeColor}12;border:1px solid ${typeColor}25;">${escapeHtml(fc.corp_company_type.toUpperCase())}</span>` : ''}
@@ -8576,14 +8601,14 @@ function renderLoanModal() {
     html += '</div>'; // close scrollable
 
     // Footer
-    html += `<div style="padding:10px 16px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+    html += `<div style="padding:10px 16px;border-top:1px solid #e8e7e0;background:#faf9f5;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
         <div style="display:flex;gap:12px;">
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">REQUESTING</div><div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#5a8aaa;">${hfFmtBig(lrAmount)}</div></div>
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">COLLATERAL</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#e8e4dc;">${collObj.label}</div></div>
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">SENT TO</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#9e9a92;">${lrFinanceCorps.length} lender${lrFinanceCorps.length !== 1 ? 's' : ''}</div></div>
         </div>
         <div style="display:flex;gap:6px;">
-            <div onclick="lrClose()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+            <div onclick="lrClose()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #e8e7e0;cursor:pointer;">CANCEL</div>
             <div id="lr-submit-btn" onclick="lrSubmit()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#5a8aaa;cursor:pointer;">SUBMIT REQUEST</div>
         </div>
     </div>`;
@@ -8677,8 +8702,8 @@ function actOpenRestructure() {
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:600;display:flex;align-items:center;justify-content:center;';
     overlay.onclick = function(e) { if (e.target === overlay) actCloseRestructure(); };
 
-    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:440px;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
-        <div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;">
+    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:440px;background:#f8f7f2;border:1px solid #e8e7e0;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 16px;border-bottom:1px solid #e8e7e0;background:#faf9f5;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div style="display:flex;align-items:center;gap:8px;">
                     <span style="font-size:8px;color:#8b9a6b;">&#9679;</span>
@@ -8689,24 +8714,24 @@ function actOpenRestructure() {
         </div>
         <div style="padding:12px 16px;">
             <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:8px;">Impact Preview</div>
-            <div style="background:#1c1c18;border:1px solid #2a2a24;padding:8px 12px;">
-                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+            <div style="background:#faf9f5;border:1px solid #e8e7e0;padding:8px 12px;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e8e7e0;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">WORKFORCE REDUCTION</span>
                     <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">-${layoffCount} employees (${layoffPct}%)</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e8e7e0;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">General: ${gen} &rarr; ${gen - genCut}</span>
                     <span style="font-family:var(--font-mono);font-size:8px;color:#c84;">-${genCut}</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e8e7e0;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">Skilled: ${skl} &rarr; ${skl - sklCut}</span>
                     <span style="font-family:var(--font-mono);font-size:8px;color:#c84;">-${sklCut}</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e8e7e0;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">Innovative: ${inn} &rarr; ${inn - innCut}</span>
                     <span style="font-family:var(--font-mono);font-size:8px;color:#c84;">-${innCut}</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e8e7e0;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">DEBT REDUCTION (~7%)</span>
                     <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#5cb85c;">-${hfFmtBig(debtCut)}</span>
                 </div>
@@ -8717,8 +8742,8 @@ function actOpenRestructure() {
             </div>
             <div style="font-family:var(--font-mono);font-size:7px;color:#c84;margin-top:6px;">&#9888; This action cannot be undone. Laid-off workers must be re-hired.</div>
         </div>
-        <div style="padding:8px 16px;border-top:1px solid #2a2a24;display:flex;justify-content:flex-end;gap:6px;">
-            <div onclick="actCloseRestructure()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+        <div style="padding:8px 16px;border-top:1px solid #e8e7e0;display:flex;justify-content:flex-end;gap:6px;">
+            <div onclick="actCloseRestructure()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #e8e7e0;cursor:pointer;">CANCEL</div>
             <div id="restr-btn" onclick="actSubmitRestructure(${layoffPct},${debtCut},${repLoss},${genCut},${sklCut},${innCut})" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#8b9a6b;cursor:pointer;">RESTRUCTURE</div>
         </div>
         <div id="restr-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>
@@ -8805,8 +8830,8 @@ function actOpenRebrand() {
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:600;display:flex;align-items:center;justify-content:center;';
     overlay.onclick = function(e) { if (e.target === overlay) actCloseRebrand(); };
 
-    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:440px;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">
-        <div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;">
+    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:440px;background:#f8f7f2;border:1px solid #e8e7e0;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 16px;border-bottom:1px solid #e8e7e0;background:#faf9f5;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div style="display:flex;align-items:center;gap:8px;">
                     <span style="font-size:8px;color:#c84;">&#9679;</span>
@@ -8818,22 +8843,22 @@ function actOpenRebrand() {
         <div style="padding:12px 16px;">
             <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:6px;">NEW CORPORATION NAME</div>
             <input id="rebrand-name" type="text" maxlength="40" value="${escapeHtml(corpName)}" placeholder="Corporation name"
-                style="width:100%;padding:6px 10px;font-family:var(--font-ui);font-size:12px;color:#e8e4dc;background:#1c1c18;border:1px solid #2a2a24;outline:none;box-sizing:border-box;" />
+                style="width:100%;padding:6px 10px;font-family:var(--font-ui);font-size:12px;color:#e8e4dc;background:#faf9f5;border:1px solid #e8e7e0;outline:none;box-sizing:border-box;" />
             <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-top:10px;margin-bottom:6px;">NEW ABBREVIATION / TICKER</div>
-            <input id="rebrand-abbr" type="text" maxlength="5" value="${escapeHtml(ticker)}" placeholder="e.g. SZC" style="width:100px;padding:6px 10px;font-family:var(--font-mono);font-size:12px;font-weight:700;color:#c8a832;background:#1c1c18;border:1px solid #2a2a24;outline:none;text-transform:uppercase;" />
+            <input id="rebrand-abbr" type="text" maxlength="5" value="${escapeHtml(ticker)}" placeholder="e.g. SZC" style="width:100px;padding:6px 10px;font-family:var(--font-mono);font-size:12px;font-weight:700;color:#c8a832;background:#faf9f5;border:1px solid #e8e7e0;outline:none;text-transform:uppercase;" />
         </div>
-        <div style="padding:8px 16px;border-top:1px solid #2a2a24;">
+        <div style="padding:8px 16px;border-top:1px solid #e8e7e0;">
             <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">Impact</div>
-            <div style="background:#1c1c18;border:1px solid #2a2a24;padding:6px 10px;">
-                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+            <div style="background:#faf9f5;border:1px solid #e8e7e0;padding:6px 10px;">
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e8e7e0;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">COST</span>
                     <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;">${hfFmtBig(rebrandCost)}</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e8e7e0;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">REPUTATION</span>
                     <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">-${rebrandRepLoss} (${rep} &rarr; ${Math.max(0, rep - rebrandRepLoss)})</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e8e7e0;">
                     <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">SKILL MODIFIER</span>
                     <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${cmoMod <= 1 ? '#5cb85c' : '#c84'};">&times;${cmoMod.toFixed(2)}</span>
                 </div>
@@ -8843,8 +8868,8 @@ function actOpenRebrand() {
                 </div>
             </div>
         </div>
-        <div style="padding:8px 16px;border-top:1px solid #2a2a24;display:flex;justify-content:flex-end;gap:6px;">
-            <div onclick="actCloseRebrand()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
+        <div style="padding:8px 16px;border-top:1px solid #e8e7e0;display:flex;justify-content:flex-end;gap:6px;">
+            <div onclick="actCloseRebrand()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #e8e7e0;cursor:pointer;">CANCEL</div>
             <div id="rebrand-btn" onclick="actSubmitRebrand(${rebrandCost},${rebrandRepLoss})" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#c84;cursor:${cash >= rebrandCost ? 'pointer' : 'not-allowed'};${cash < rebrandCost ? 'opacity:0.4;pointer-events:none;' : ''}">REBRAND</div>
         </div>
         <div id="rebrand-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>
@@ -9003,10 +9028,10 @@ function renderDonationModal() {
     const sel = _donateSelected >= 0 ? _donateParties[_donateSelected] : null;
     const canAfford = cash >= donateCost;
 
-    let html = `<div onclick="event.stopPropagation()" style="width:540px;max-height:80vh;background:#1a1a16;border:1px solid #2a2a24;display:flex;flex-direction:column;overflow:hidden;">`;
+    let html = `<div onclick="event.stopPropagation()" style="width:540px;max-height:80vh;background:#f8f7f2;border:1px solid #e8e7e0;display:flex;flex-direction:column;overflow:hidden;">`;
 
     // Header
-    html += `<div style="padding:14px 20px;border-bottom:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;">
+    html += `<div style="padding:14px 20px;border-bottom:1px solid #e8e7e0;background:#faf9f5;flex-shrink:0;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="font-size:10px;color:#8a6aaa;">&#9679;</span>
@@ -9039,7 +9064,7 @@ function renderDonationModal() {
 
         html += `<div onclick="donateSelectParty(${i})" style="
             padding:10px 20px;
-            border-bottom:1px solid #2a2a24;
+            border-bottom:1px solid #e8e7e0;
             border-left:3px solid ${isSel ? color : 'transparent'};
             background:${isSel ? color + '08' : 'transparent'};
             cursor:pointer;
@@ -9070,15 +9095,15 @@ function renderDonationModal() {
     html += '</div>';
 
     // Footer
-    html += `<div style="padding:12px 20px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+    html += `<div style="padding:12px 20px;border-top:1px solid #e8e7e0;background:#faf9f5;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
         <div style="display:flex;gap:16px;">
             <div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">COST</div><div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#ca5;">${hfFmtBig(donateCost)}</div></div>
             <div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">CASH</div><div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${canAfford ? '#e8e4dc' : '#c55'};">${hfFmtBig(cash)}</div></div>
             ${sel ? `<div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">RECIPIENT</div><div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#e8e4dc;">${escapeHtml(sel.abbreviation || sel.faction_name)}</div></div>` : ''}
         </div>
         <div style="display:flex;gap:8px;">
-            <div onclick="actCloseDonation()" style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
-            <div id="donate-btn" onclick="actSubmitDonation()" style="padding:8px 24px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:${sel && canAfford ? '#000' : '#6a6660'};background:${sel && canAfford ? '#8a6aaa' : '#2a2a24'};cursor:${sel && canAfford ? 'pointer' : 'not-allowed'};${!sel || !canAfford ? 'opacity:0.4;pointer-events:none;' : ''}">DONATE</div>
+            <div onclick="actCloseDonation()" style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #e8e7e0;cursor:pointer;">CANCEL</div>
+            <div id="donate-btn" onclick="actSubmitDonation()" style="padding:8px 24px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:${sel && canAfford ? '#000' : '#6a6660'};background:${sel && canAfford ? '#8a6aaa' : '#e8e7e0'};cursor:${sel && canAfford ? 'pointer' : 'not-allowed'};${!sel || !canAfford ? 'opacity:0.4;pointer-events:none;' : ''}">DONATE</div>
         </div>
     </div>`;
     html += '<div id="donate-error" style="padding:6px 20px;font-family:var(--font-mono);font-size:10px;color:#c55;display:none;"></div>';
@@ -9327,7 +9352,7 @@ function renderExecSearchModal() {
     let html = '';
 
     // ── Header ──
-    html += `<div style="padding:12px 20px;border-bottom:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;">
+    html += `<div style="padding:12px 20px;border-bottom:1px solid #e8e7e0;background:#faf9f5;flex-shrink:0;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="font-size:10px;color:${meta.color};">&#9679;</span>
@@ -9346,7 +9371,7 @@ function renderExecSearchModal() {
     html += '<div style="display:flex;flex:1;min-height:0;overflow:hidden;">';
 
     // ═══ LEFT: Candidate list ═══
-    html += '<div style="width:300px;border-right:1px solid #2a2a24;overflow-y:auto;flex-shrink:0;">';
+    html += '<div style="width:300px;border-right:1px solid #e8e7e0;overflow-y:auto;flex-shrink:0;">';
 
     if (candidates.length === 0) {
         html += `<div style="padding:30px 20px;text-align:center;">
@@ -9361,7 +9386,7 @@ function renderExecSearchModal() {
 
         html += `<div onclick="esSelectCandidate(${i})" style="
             padding:10px 14px;
-            border-bottom:1px solid #2a2a24;
+            border-bottom:1px solid #e8e7e0;
             border-left:3px solid ${isSel ? meta.color : 'transparent'};
             background:${isSel ? meta.color + '08' : 'transparent'};
             cursor:pointer;
@@ -9372,7 +9397,7 @@ function renderExecSearchModal() {
                     <div style="font-size:13px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : '#9e9a92'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</div>
                     <div style="display:flex;align-items:center;gap:8px;margin-top:3px;">
                         <div style="display:flex;align-items:center;gap:4px;flex:1;">
-                            <div style="flex:1;height:3px;background:#2a2a24;">
+                            <div style="flex:1;height:3px;background:#e8e7e0;">
                                 <div style="width:${c.skill}%;height:100%;background:${skC};"></div>
                             </div>
                             <span style="font-family:var(--font-mono);font-size:9px;color:${skC};width:18px;text-align:right;">${c.skill}</span>
@@ -9399,7 +9424,7 @@ function renderExecSearchModal() {
         const skC = skillColor(sel.skill);
 
         // Identity header
-        html += `<div style="padding:20px;border-bottom:1px solid #2a2a24;">
+        html += `<div style="padding:20px;border-bottom:1px solid #e8e7e0;">
             <div style="display:flex;align-items:center;gap:14px;">
                 <div style="width:64px;height:64px;background:${meta.color}12;border:1px solid ${meta.color}28;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:20px;font-weight:700;color:${meta.color};">${escapeHtml(getInitials(sel.first_name, sel.last_name))}</div>
                 <div>
@@ -9410,17 +9435,17 @@ function renderExecSearchModal() {
         </div>`;
 
         // Stats row
-        html += `<div style="display:flex;gap:0;border-bottom:1px solid #2a2a24;">
-            <div style="flex:1;padding:12px 14px;text-align:center;border-right:1px solid #2a2a24;">
+        html += `<div style="display:flex;gap:0;border-bottom:1px solid #e8e7e0;">
+            <div style="flex:1;padding:12px 14px;text-align:center;border-right:1px solid #e8e7e0;">
                 <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.5px;">SKILL</div>
                 <div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:5px;">
-                    <div style="width:60px;height:4px;background:#2a2a24;">
+                    <div style="width:60px;height:4px;background:#e8e7e0;">
                         <div style="width:${sel.skill}%;height:100%;background:${skC};"></div>
                     </div>
                     <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${skC};">${sel.skill}</span>
                 </div>
             </div>
-            <div style="flex:1;padding:12px 14px;text-align:center;border-right:1px solid #2a2a24;">
+            <div style="flex:1;padding:12px 14px;text-align:center;border-right:1px solid #e8e7e0;">
                 <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.5px;">AGE</div>
                 <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--text-bright,#f0efe6);margin-top:5px;">${sel.age}</div>
             </div>
@@ -9431,7 +9456,7 @@ function renderExecSearchModal() {
         </div>`;
 
         // Specializations
-        html += `<div style="padding:12px 20px;border-bottom:1px solid #2a2a24;">
+        html += `<div style="padding:12px 20px;border-bottom:1px solid #e8e7e0;">
             <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:8px;">Role Specializations</div>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">`;
         for (const spec of (sel.specializations || [])) {
@@ -9442,14 +9467,14 @@ function renderExecSearchModal() {
         html += '</div></div>';
 
         // Compensation breakdown
-        html += `<div style="padding:12px 20px;border-bottom:1px solid #2a2a24;">
+        html += `<div style="padding:12px 20px;border-bottom:1px solid #e8e7e0;">
             <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:8px;">Contract Terms</div>
-            <div style="background:#1c1c18;border:1px solid #2a2a24;padding:10px 14px;">
-                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+            <div style="background:#faf9f5;border:1px solid #e8e7e0;padding:10px 14px;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e8e7e0;">
                     <span style="font-family:var(--font-mono);font-size:10px;color:#6a6660;">CONTRACT LENGTH</span>
                     <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-bright,#f0efe6);">${sel.required_years} years</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+                <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e8e7e0;">
                     <span style="font-family:var(--font-mono);font-size:10px;color:#6a6660;">ANNUAL SALARY</span>
                     <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:#c84;">${actFmtSalary(sel.required_salary)}/yr</span>
                 </div>
@@ -9476,7 +9501,7 @@ function renderExecSearchModal() {
     html += '</div>'; // close two-panel body
 
     // ── Footer ──
-    html += `<div style="padding:12px 20px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+    html += `<div style="padding:12px 20px;border-top:1px solid #e8e7e0;background:#faf9f5;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
         <div style="display:flex;gap:14px;">`;
     if (sel) {
         html += `<div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">CANDIDATE</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(sel.first_name)} ${escapeHtml(sel.last_name)}</div></div>
@@ -9487,8 +9512,8 @@ function renderExecSearchModal() {
     }
     html += `</div>
         <div style="display:flex;gap:8px;">
-            <div onclick="closeExecSearch()" style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
-            <div id="es-hire-btn" onclick="esHireCandidate()" style="padding:8px 24px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:${sel ? '#000' : '#6a6660'};background:${sel ? meta.color : '#2a2a24'};cursor:${sel ? 'pointer' : 'not-allowed'};${sel ? '' : 'opacity:0.4;pointer-events:none;'}">HIRE</div>
+            <div onclick="closeExecSearch()" style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #e8e7e0;cursor:pointer;">CANCEL</div>
+            <div id="es-hire-btn" onclick="esHireCandidate()" style="padding:8px 24px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:${sel ? '#000' : '#6a6660'};background:${sel ? meta.color : '#e8e7e0'};cursor:${sel ? 'pointer' : 'not-allowed'};${sel ? '' : 'opacity:0.4;pointer-events:none;'}">HIRE</div>
         </div>
     </div>`;
 
@@ -9602,7 +9627,7 @@ function renderHireFireCard() {
     if (!container) return;
 
     const mono = "'JetBrains Mono', monospace";
-    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+    const C = { bg: '#ffffff', surface: '#f8f7f2', card: '#faf9f5', border: '#e8e7e0',
         accent: '#8b9a6b', gold: '#c8a832', orange: '#c84',
         greenBright: '#5c5', red: '#c55', redDim: '#a44',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
@@ -9748,7 +9773,7 @@ function renderWorkforceSummary() {
     if (!container) return;
 
     const mono = "'JetBrains Mono', monospace";
-    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+    const C = { bg: '#ffffff', surface: '#f8f7f2', card: '#faf9f5', border: '#e8e7e0',
         accent: '#8b9a6b', gold: '#c8a832', orange: '#c84', blue: '#5a9abf',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660', red: '#c55' };
 
@@ -9859,7 +9884,7 @@ function renderPropertyCard() {
     if (!container) return;
 
     const mono = "'JetBrains Mono', monospace";
-    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+    const C = { bg: '#ffffff', surface: '#f8f7f2', card: '#faf9f5', border: '#e8e7e0',
         accent: '#8b9a6b', green: '#4a8', red: '#c55', gold: '#c8a832', orange: '#c84',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
 
@@ -10008,7 +10033,7 @@ function renderNewPropertyCard() {
     if (!container) return;
 
     const mono = "'JetBrains Mono', monospace";
-    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+    const C = { bg: '#ffffff', surface: '#f8f7f2', card: '#faf9f5', border: '#e8e7e0',
         accent: '#8b9a6b', gold: '#c8a832', orange: '#c84',
         greenBright: '#5c5', red: '#c55', redDim: '#a44', yellow: '#ca5',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
@@ -10325,7 +10350,7 @@ function renderConstructionModal() {
     if (!_cpModal) return;
 
     const mono = "'JetBrains Mono', monospace";
-    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+    const C = { bg: '#ffffff', surface: '#f8f7f2', card: '#faf9f5', border: '#e8e7e0',
         accent: '#8b9a6b', gold: '#c8a832', orange: '#c84',
         greenBright: '#5c5', red: '#c55', redDim: '#a44', yellow: '#ca5',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
@@ -10694,7 +10719,7 @@ function renderManageSubsidiariesCard() {
     if (!container) return;
 
     const mono = "'JetBrains Mono', monospace";
-    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+    const C = { bg: '#ffffff', surface: '#f8f7f2', card: '#faf9f5', border: '#e8e7e0',
         accent: '#8b9a6b', accentBright: '#a3b07e', blue: '#5a9abf', gold: '#c8a832', orange: '#c84',
         greenBright: '#5c5', greenDark: '#2a5a3a', red: '#c55', redDim: '#a44', yellow: '#ca5',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
@@ -11033,7 +11058,24 @@ function renderSubsidiaryMarketplaceCard() {
     const myListings = _marketplaceListings.filter(l => l.seller_faction_id === faction?.id);
 
     const mono = "'JetBrains Mono',monospace";
-    const C = { surface: '#1a1a17', card: '#1c1c18', border: 'rgba(255,255,255,0.06)', dim: '#4a4940', muted: '#666', text: '#c4c2b8', bright: '#f0efe6', orange: '#c84', green: '#5cb85c', blue: '#5a8aaa', red: '#d9534f', gold: '#c8a832' };
+    // Palette drawn from computed CSS vars so this panel follows the page's
+    // light-mode palette instead of the hardcoded dark values.
+    const cs = getComputedStyle(document.body);
+    const cv = (name, fallback) => (cs.getPropertyValue(name).trim() || fallback);
+    const C = {
+        surface: cv('--bg-2', '#ffffff'),
+        card:    cv('--bg-3', '#f0efeb'),
+        border:  cv('--border-0', 'rgba(0,0,0,0.08)'),
+        dim:     cv('--text-dim', '#aaa'),
+        muted:   cv('--text-muted', '#888'),
+        text:    cv('--text-primary', '#333'),
+        bright:  cv('--text-bright', '#1a1a17'),
+        orange:  cv('--orange', '#d35400'),
+        green:   cv('--green', '#2d8a2d'),
+        blue:    cv('--blue', '#2874a6'),
+        red:     cv('--red', '#c0392b'),
+        gold:    cv('--gold', '#a88520'),
+    };
 
     let html = `<div style="width:760px;background:${C.surface};border:1px solid ${C.border};font-family:'IBM Plex Sans',sans-serif;">
         <div style="padding:10px 14px;border-bottom:1px solid ${C.border};display:flex;align-items:center;gap:8px;">
@@ -11644,7 +11686,7 @@ function renderCreateSubsidiaryCard() {
     if (!container) return;
 
     const mono = "'JetBrains Mono', monospace";
-    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+    const C = { bg: '#ffffff', surface: '#f8f7f2', card: '#faf9f5', border: '#e8e7e0',
         accent: '#8b9a6b', accentBright: '#a3b07e', blue: '#5a9abf', gold: '#c8a832', orange: '#c84',
         greenBright: '#5c5', greenDark: '#2a5a3a', red: '#c55',
         yellow: '#ca5', text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
@@ -11948,7 +11990,7 @@ function renderCorporationsCard() {
     if (!container) return;
 
     const mono = "'JetBrains Mono', monospace";
-    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+    const C = { bg: '#ffffff', surface: '#f8f7f2', card: '#faf9f5', border: '#e8e7e0',
         accent: '#8b9a6b', blue: '#5a8aaa', gold: '#c8a832', orange: '#c84',
         greenBright: '#5c5', red: '#c55', yellow: '#ca5',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
@@ -12235,7 +12277,7 @@ function renderBidAssembly() {
     if (!_bidContract) return;
 
     const mono = "'JetBrains Mono', monospace";
-    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+    const C = { bg: '#ffffff', surface: '#f8f7f2', card: '#faf9f5', border: '#e8e7e0',
         accent: '#8b9a6b', accentBright: '#a3b07e', gold: '#c8a832', orange: '#c84',
         greenBright: '#5c5', greenDark: '#2a5a3a', red: '#c55', redDim: '#a44', yellow: '#ca5',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660', blue: '#5a8aaa' };
@@ -12867,7 +12909,7 @@ function renderBidReview() {
     if (!_reviewContract || _reviewBids.length === 0) return;
 
     const mono = "'JetBrains Mono', monospace";
-    const C = { bg: '#121210', surface: '#1a1a16', card: '#1c1c18', border: '#2a2a24',
+    const C = { bg: '#ffffff', surface: '#f8f7f2', card: '#faf9f5', border: '#e8e7e0',
         accent: '#8b9a6b', accentBright: '#a3b07e', gold: '#c8a832', orange: '#c84', blue: '#5a8aaa',
         greenBright: '#5c5', red: '#c55', redDim: '#a44', yellow: '#ca5',
         text: '#e8e4dc', muted: '#9e9a92', dim: '#6a6660' };
@@ -14156,7 +14198,7 @@ function renderCommissionModal() {
     let html = '';
 
     // Header
-    html += `<div style="padding:10px 16px;border-bottom:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;">
+    html += `<div style="padding:10px 16px;border-bottom:1px solid #e8e7e0;background:#faf9f5;flex-shrink:0;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
             <div style="display:flex;align-items:center;gap:6px;">
                 <span style="font-size:8px;color:#c8a832;">&#9679;</span>
@@ -14169,14 +14211,14 @@ function renderCommissionModal() {
     html += '<div style="flex:1;overflow-y:auto;">';
 
     // Vessel Type
-    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Vessel Type</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;">`;
     for (const v of COMM_VESSEL_TYPES) {
         const vcm = FL_CLASS_META[v.cls] || { color: '#666', label: '?' };
         const active = _commClass === v.cls;
         const allowed = allowedClasses.includes(v.cls);
-        html += `<div onclick="${allowed ? "commSetClass('" + v.cls + "')" : ''}" style="padding:5px 4px;text-align:center;cursor:${allowed ? 'pointer' : 'not-allowed'};background:${active ? vcm.color + '18' : 'transparent'};border:1px solid ${active ? vcm.color + '44' : '#2a2a24'};opacity:${allowed ? 1 : 0.3};">
+        html += `<div onclick="${allowed ? "commSetClass('" + v.cls + "')" : ''}" style="padding:5px 4px;text-align:center;cursor:${allowed ? 'pointer' : 'not-allowed'};background:${active ? vcm.color + '18' : 'transparent'};border:1px solid ${active ? vcm.color + '44' : '#e8e7e0'};opacity:${allowed ? 1 : 0.3};">
             <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${active ? vcm.color : '#6a6660'};">${vcm.label}</div>
             <div style="font-family:var(--font-mono);font-size:6px;color:#6a6660;margin-top:2px;">${hfFmtBig(v.baseCost)} base</div>
         </div>`;
@@ -14186,14 +14228,14 @@ function renderCommissionModal() {
     html += '</div>';
 
     // Origin Shipyard
-    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Origin Shipyard</div>`;
     for (let ni = 0; ni < _commNations.length; ni++) {
         const n = _commNations[ni];
         const active = _commNationIdx === ni;
         const costColor = n.costMod > 1 ? '#c84' : n.costMod < 1 ? '#5c5' : '#6a6660';
         const buildColor = n.buildMod > 1 ? '#c84' : n.buildMod < 1 ? '#5c5' : '#6a6660';
-        html += `<div onclick="commSetNation(${ni})" style="display:flex;align-items:center;padding:5px 8px;margin-bottom:2px;cursor:pointer;background:${active ? 'rgba(139,154,107,0.04)' : 'transparent'};border:1px solid ${active ? '#8b9a6b44' : '#2a2a24'};border-left:2px solid ${active ? '#8b9a6b' : 'transparent'};">
+        html += `<div onclick="commSetNation(${ni})" style="display:flex;align-items:center;padding:5px 8px;margin-bottom:2px;cursor:pointer;background:${active ? 'rgba(139,154,107,0.04)' : 'transparent'};border:1px solid ${active ? '#8b9a6b44' : '#e8e7e0'};border-left:2px solid ${active ? '#8b9a6b' : 'transparent'};">
             <div style="flex:1;">
                 <div style="display:flex;align-items:center;gap:6px;">
                     <span style="font-size:11px;font-weight:600;color:${active ? '#e8e4dc' : '#9e9a92'};">${escapeHtml(n.name)}</span>
@@ -14211,15 +14253,15 @@ function renderCommissionModal() {
     html += '</div>';
 
     // Vessel Name
-    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Vessel Name</div>
-        <input id="comm-name-input" value="${escapeHtml(_commName)}" oninput="commSetName(this.value)" placeholder="e.g., MV 'Sierra Nevada'" style="width:100%;padding:6px 10px;font-family:var(--font-mono);font-size:11px;color:#e8e4dc;background:#1c1c18;border:1px solid #2a2a24;outline:none;box-sizing:border-box;" />
+        <input id="comm-name-input" value="${escapeHtml(_commName)}" oninput="commSetName(this.value)" placeholder="e.g., MV 'Sierra Nevada'" style="width:100%;padding:6px 10px;font-family:var(--font-mono);font-size:11px;color:#e8e4dc;background:#faf9f5;border:1px solid #e8e7e0;outline:none;box-sizing:border-box;" />
     </div>`;
 
     // Build Summary
-    html += `<div style="padding:8px 16px;border-bottom:1px solid #2a2a24;">
+    html += `<div style="padding:8px 16px;border-bottom:1px solid #e8e7e0;">
         <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Build Summary</div>
-        <div style="background:#1c1c18;border:1px solid #2a2a24;padding:6px 10px;">`;
+        <div style="background:#faf9f5;border:1px solid #e8e7e0;padding:6px 10px;">`;
     const summaryRows = [
         { label: 'VESSEL CLASS', value: _commClass, color: cm.color },
         { label: 'SHIPYARD', value: nation.name, color: '#9e9a92' },
@@ -14228,17 +14270,17 @@ function renderCommissionModal() {
         { label: 'COMPLETION', value: '~Tick ' + deliveryTick, color: '#9e9a92' },
     ];
     for (const r of summaryRows) {
-        html += `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+        html += `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e8e7e0;">
             <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">${r.label}</span>
             <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${r.color};">${r.value}</span>
         </div>`;
     }
     // Total cost hero
-    html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #2a2a24;">
+    html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e8e7e0;">
         <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#e8e4dc;">TOTAL COST</span>
         <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#c8a832;">${hfFmtBig(totalCost)}</span>
     </div>`;
-    html += `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a24;">
+    html += `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e8e7e0;">
         <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">DEPOSIT (50% NOW)</span>
         <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">${hfFmtBig(deposit)}</span>
     </div>`;
@@ -14260,14 +14302,14 @@ function renderCommissionModal() {
 
     // Footer
     const nameOk = _commName.trim().length >= 2;
-    html += `<div style="padding:10px 16px;border-top:1px solid #2a2a24;background:#1c1c18;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+    html += `<div style="padding:10px 16px;border-top:1px solid #e8e7e0;background:#faf9f5;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
         <div>
             <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">DEPOSIT DUE NOW</div>
             <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#c55;">${hfFmtBig(deposit)}</div>
         </div>
         <div style="display:flex;gap:6px;">
-            <div onclick="smCloseCommission()" style="padding:5px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #2a2a24;cursor:pointer;">CANCEL</div>
-            <div id="comm-order-btn" onclick="${nameOk ? 'smPlaceOrder()' : ''}" style="padding:5px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:${nameOk ? '#000' : '#6a6660'};background:${nameOk ? '#c8a832' : 'transparent'};border:1px solid ${nameOk ? '#c8a832' : '#2a2a24'};cursor:${nameOk ? 'pointer' : 'default'};opacity:${nameOk ? 1 : 0.4};">PLACE ORDER</div>
+            <div onclick="smCloseCommission()" style="padding:5px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid #e8e7e0;cursor:pointer;">CANCEL</div>
+            <div id="comm-order-btn" onclick="${nameOk ? 'smPlaceOrder()' : ''}" style="padding:5px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:${nameOk ? '#000' : '#6a6660'};background:${nameOk ? '#c8a832' : 'transparent'};border:1px solid ${nameOk ? '#c8a832' : '#e8e7e0'};cursor:${nameOk ? 'pointer' : 'default'};opacity:${nameOk ? 1 : 0.4};">PLACE ORDER</div>
         </div>
     </div>`;
 
