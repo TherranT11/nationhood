@@ -7,6 +7,7 @@ import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, checkOpposition
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
 import { getNationNames, resignPM } from './game/political-actions.js';
 import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM } from './game/government-types.js';
+import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
 import { callEarlyElectionsAction } from './game/elections.js';
@@ -309,8 +310,9 @@ export async function initPartyActions(supabase, state) {
         console.warn('[PartyActions] faction refresh failed, using cached state:', err);
     }
 
-    // Fetch platforms + agitator + opposition status + electoral standing + fundraise count
-    const [myPlat, nationPlat, agitatorResult, oppositionResult, standingResult] = await Promise.all([
+    // Fetch platforms + agitator + opposition status + electoral standing +
+    // fundraise count + active coalition (for caretaker gating on PM actions)
+    const [myPlat, nationPlat, agitatorResult, oppositionResult, standingResult, coalition] = await Promise.all([
         _supabase.from('faction_platforms').select('*').eq('faction_id', faction.id).order('slot'),
         _supabase.from('faction_platforms').select('*').eq('nation_id', state.nation?.id),
         fetchActiveAgitator(_supabase, faction.id),
@@ -320,7 +322,14 @@ export async function initPartyActions(supabase, state) {
             .eq('faction_id', faction.id)
             .eq('nation_id', state.nation?.id)
             .maybeSingle(),
+        fetchActiveCoalition(_supabase, state.nation?.id),
     ]);
+    // Populate caretaker flag on the nation so the action-locking check at
+    // render time (Call Early Elections / Resign as PM) sees it. Without
+    // this, both actions stayed clickable after the legislature dissolved.
+    if (state.nation) {
+        state.nation.__coalition_status = coalition?.status || null;
+    }
     if (myPlat.error) console.error('[PartyActions] Failed to load faction platforms:', myPlat.error.message);
     if (nationPlat.error) console.error('[PartyActions] Failed to load nation platforms:', nationPlat.error.message);
     _myPlatforms = myPlat.data || [];
