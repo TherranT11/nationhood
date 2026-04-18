@@ -2660,7 +2660,7 @@ body.light-mode .vi-empty__text { color: #1a1a17; }
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
-import { computePropertyValue, computeCorpValuation } from './js/game/corp-valuation.js';
+import { computePropertyValue, computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
 import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
@@ -12008,7 +12008,7 @@ let _corpSortBy = 'REPUTATION';
 async function loadAllCorporations() {
     const [corpsRes, subsRes] = await Promise.all([
         _supabase.from('factions')
-            .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_company_type, corp_ticker, corp_cash_reserves, corp_reputation, nation_id, nation, linked_user_id')
+            .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_company_type, corp_ticker, corp_cash_reserves, corp_loans, corp_reputation, nation_id, nation, linked_user_id')
             .eq('faction_type', 'corporation')
             .is('abandoned_at', null)
             .order('faction_name'),
@@ -12022,10 +12022,26 @@ async function loadAllCorporations() {
     const parentMap = {};
     for (const c of (corpsRes.data || [])) parentMap[c.id] = c;
 
+    const corpIds = (corpsRes.data || []).map(c => c.id).filter(Boolean);
+    const receivablesByCorp = {};
+    if (corpIds.length) {
+        const { data: financePositions } = await _supabase.from('finance_active_loans')
+            .select('lender_faction_id, principal, remaining_principal, finance_loan_requests!inner(request_type)')
+            .in('lender_faction_id', corpIds)
+            .in('status', ['current', 'late', 'delinquent']);
+        for (const row of (financePositions || [])) {
+            const lenderId = row.lender_faction_id;
+            if (!receivablesByCorp[lenderId]) receivablesByCorp[lenderId] = [];
+            receivablesByCorp[lenderId].push(row);
+        }
+    }
+
     // Map corporations
     const corps = (corpsRes.data || []).map(c => {
         const status = (c.corp_company_type || 'Private').toUpperCase();
         const cash = Number(c.corp_cash_reserves || 0);
+        const loans = Number(c.corp_loans || 0);
+        const receivables = computeFinanceReceivableValue(receivablesByCorp[c.id] || []).total;
         return {
             ...c,
             abbr: c.corp_ticker || c.abbreviation || c.faction_name?.slice(0,4).toUpperCase() || '???',
@@ -12033,7 +12049,7 @@ async function loadAllCorporations() {
             isPlayer: !!c.linked_user_id,
             reputation: Math.round(Number(c.corp_reputation ?? 50)),
             revenue: Math.round(cash * 0.1),
-            valuation: Math.round(cash * 3),
+            valuation: computeCorpValuation({ cash, loans, financeReceivables: receivables }),
             _isSub: false,
         };
     });
@@ -12097,9 +12113,20 @@ async function corpInvestigate(targetCorpId) {
         if (corp) {
             Object.assign(corp, fullCorpData);
             const cash = Number(fullCorpData.corp_cash_reserves || 0);
+            const loans = Number(fullCorpData.corp_loans || 0);
+            let receivables = 0;
+            try {
+                const { data: financePositions } = await _supabase.from('finance_active_loans')
+                    .select('principal, remaining_principal, finance_loan_requests!inner(request_type)')
+                    .eq('lender_faction_id', targetCorpId)
+                    .in('status', ['current', 'late', 'delinquent']);
+                receivables = computeFinanceReceivableValue(financePositions || []).total;
+            } catch (err) {
+                console.warn('[corpInvestigate] receivable lookup failed:', err);
+            }
             corp.reputation = Math.round(Number(fullCorpData.corp_reputation ?? 50));
             corp.revenue = Math.round(cash * 0.1);
-            corp.valuation = Math.round(cash * 3);
+            corp.valuation = computeCorpValuation({ cash, loans, financeReceivables: receivables });
         }
     }
 
