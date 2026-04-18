@@ -3891,6 +3891,21 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // own scope.
             for (const corp of corps) {
             try {
+                const { data: corpCashRow, error: corpCashErr } = await supabase.from('factions')
+                    .select('corp_cash_reserves')
+                    .eq('id', corp.id)
+                    .single();
+                if (corpCashErr) {
+                    console.warn(`[advance-corp-tick] Failed to fetch fresh corp cash for ${corp.faction_name}:`, corpCashErr.message);
+                }
+                let corpCashRunning = Number(corpCashRow?.corp_cash_reserves ?? corp.corp_cash_reserves ?? 0);
+                console.log('[advance-corp-tick] corp_cash_tick_start', {
+                    faction_id: corp.id,
+                    faction_name: corp.faction_name,
+                    tick: currentTick,
+                    before_balance: corpCashRunning,
+                });
+
                 const { data: vessels } = await supabase.from('corp_vessels')
                     .select('id, vessel_name, vessel_class, condition, fuel, status, base_maintenance, drydock_until_tick, active_claim_id, current_port_nation_id')
                     .eq('faction_id', corp.id);
@@ -3971,10 +3986,27 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 }
 
                                 // Deduct repair cost
-                                const corpCashForRepair = Number(corp.corp_cash_reserves ?? 0);
-                                await supabase.from('factions').update({
-                                    corp_cash_reserves: Math.max(0, corpCashForRepair - repairCost),
+                                const beforeRepairCash = corpCashRunning;
+                                const afterRepairCash = Math.max(0, beforeRepairCash - repairCost);
+                                const { error: repairCashErr } = await supabase.from('factions').update({
+                                    corp_cash_reserves: afterRepairCash,
                                 }).eq('id', corp.id);
+                                if (repairCashErr) {
+                                    console.warn(`[advance-corp-tick] Forced dry dock repair deduction failed for ${corp.faction_name}:`, repairCashErr.message);
+                                } else {
+                                    corpCashRunning = afterRepairCash;
+                                    console.log('[advance-corp-tick] corp_cash_update', {
+                                        faction_id: corp.id,
+                                        faction_name: corp.faction_name,
+                                        tick: currentTick,
+                                        reason: 'forced_dry_dock_repair',
+                                        vessel_id: v.id,
+                                        vessel_name: v.vessel_name,
+                                        amount_delta: -repairCost,
+                                        before_balance: beforeRepairCash,
+                                        after_balance: corpCashRunning,
+                                    });
+                                }
 
                                 updates.status = 'dry_dock';
                                 updates.drydock_until_tick = currentTick + repairTicks;
@@ -4196,13 +4228,32 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
                     // Deduct total fleet maintenance from corp cash
                     if (totalMaintenance > 0) {
-                        const corpCash = Number(corp.corp_cash_reserves ?? 0);
+                        const beforeMaintenanceCash = corpCashRunning;
+                        const afterMaintenanceCash = Math.max(0, beforeMaintenanceCash - totalMaintenance);
                         const { error: maintErr } = await supabase.from('factions').update({
-                            corp_cash_reserves: Math.max(0, corpCash - totalMaintenance),
+                            corp_cash_reserves: afterMaintenanceCash,
                         }).eq('id', corp.id);
                         if (maintErr) console.warn(`[advance-corp-tick] Fleet maintenance deduction failed for ${corp.faction_name}:`, maintErr.message);
+                        if (!maintErr) {
+                            corpCashRunning = afterMaintenanceCash;
+                            console.log('[advance-corp-tick] corp_cash_update', {
+                                faction_id: corp.id,
+                                faction_name: corp.faction_name,
+                                tick: currentTick,
+                                reason: 'fleet_maintenance',
+                                amount_delta: -totalMaintenance,
+                                before_balance: beforeMaintenanceCash,
+                                after_balance: corpCashRunning,
+                            });
+                        }
                     }
                 }
+                console.log('[advance-corp-tick] corp_cash_tick_end', {
+                    faction_id: corp.id,
+                    faction_name: corp.faction_name,
+                    tick: currentTick,
+                    after_balance: corpCashRunning,
+                });
             } catch (vesselErr) {
                 console.error(`[advance-corp-tick] Vessel decay failed for ${corp.faction_name} (non-fatal):`, vesselErr);
             }
