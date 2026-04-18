@@ -6358,6 +6358,28 @@ async function _fetchDepotForNation(nationId) {
     return { tier: 'state', cost: STATE_COST, ownerFactionId: null, ownerName: null };
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Trip economics — single source of truth for the per-trip projection
+// that the Route Application modal shows. Replaces the old inline
+// "fuel = 15% of annual revenue, maint = 8%" estimate that had no
+// connection to what the tick actually charges. Now:
+//
+//   revenue         = bid × tierMult         (0.7 organic, 1.2 agreement)
+//   fuelPerTrip     = destDepot.cost         (real $50k / $57.5k / $150k)
+//   netPerTrip      = revenue − fuel
+//
+// Maintenance is DELIBERATELY not subtracted here — it's a per-tick
+// fleet-wide cost, not a per-trip expense. The modal surfaces it as a
+// separate informational line so the player can still reason about
+// fleet overhead without mixing time scales.
+function computeTripEconomics({ proposedRate, tierMult, depotCost }) {
+    const bid         = Number(proposedRate) || 0;
+    const revenue     = Math.round(bid * (Number(tierMult) || 1));
+    const fuelPerTrip = Math.round(Number(depotCost) || 0);
+    const netPerTrip  = revenue - fuelPerTrip;
+    return { bid, revenue, fuelPerTrip, netPerTrip };
+}
+
 async function arApplyToService() {
     if (arSelected < 0 || !faction || !shard) return;
     var filtered = arGetFiltered();
@@ -6400,22 +6422,30 @@ function renderRouteApplicationModal() {
 
     const r = _raRoute;
     const sm = AR_SCOPE_META[r.scope] || AR_SCOPE_META.INTERNATIONAL;
-    const baseRev = Number(r.estimated_revenue || 0);
     const appFee = 50000;
-    const fuelCostEst = Math.round(baseRev * 0.15);
-    const maintCostEst = Math.round(baseRev * 0.08);
     // Tier multiplier on the realized contract value. Must match the server
     // side in diplomacy.html's approveShippingApp.
     const tierMult = r.trade_agreement_id ? 1.2 : 0.7;
-    const effectiveRate = Math.round(_raProposedRate * tierMult);
-    const netProfit = effectiveRate - fuelCostEst - maintCostEst;
-    const profitColor = netProfit > 0 ? C.green : netProfit < 0 ? C.red : C.dim;
+    const depotCost = Number(r.destDepot?.cost) || 150000; // fallback to state-depot rate
 
     // Available vessels (in_port, matching class, not assigned)
     const availableVessels = _fleetVessels.filter(v =>
         v.status === 'in_port' && !v.active_claim_id && v.condition >= 20);
     const selectedVessel = availableVessels.find(v => v.id === _raVesselId);
     const canSubmit = !!selectedVessel && _raProposedRate > 0;
+
+    // Per-trip projection — single source of truth, same helper any
+    // future caller would use. Maintenance is ONLY surfaced as a
+    // separate ongoing-overhead line below; it's per-tick per-vessel,
+    // not a per-trip expense.
+    const econ = computeTripEconomics({ proposedRate: _raProposedRate, tierMult, depotCost });
+    const profitColor = econ.netPerTrip > 0 ? C.green : econ.netPerTrip < 0 ? C.red : C.dim;
+    const vesselMaintPerTick = Number(selectedVessel?.base_maintenance) || 0;
+    // Transit ticks × maint gives a break-even hint for the current trip:
+    // how much fleet overhead accrues during this one trip's travel window.
+    const transitTicks = Number(r.transit_ticks) || 0;
+    const maintDuringTrip = vesselMaintPerTick * transitTicks;
+    const tripCoversMaint = econ.netPerTrip >= maintDuringTrip;
 
     let html = `
     <div style="width:520px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;max-height:90vh;">
@@ -6550,31 +6580,57 @@ function renderRouteApplicationModal() {
                 </div>
             </div>`;
 
-    // Profit estimation
+    // Per-trip economics — bid, tier-scaled revenue, real destination
+    // fuel cost, and net. Maintenance is NOT in this block; it's per-tick
+    // fleet overhead, not a per-trip expense. A separate Fleet Overhead
+    // row below quantifies it honestly so the player can still reason
+    // about break-even.
+    const depotTierLabel = r.destDepot?.tier === 'own'
+        ? 'own depot'
+        : r.destDepot?.tier === 'other'
+        ? 'other corp\'s depot +15%'
+        : 'state depot 3×';
     html += `
             <div style="margin-bottom:14px;">
                 <div style="font-family:${M};font-size:10px;color:${C.dim};letter-spacing:1px;margin-bottom:6px;">ESTIMATED ECONOMICS (PER TRIP)</div>
                 <div style="background:${C.card};border:1px solid ${C.border};padding:8px 10px;">
                     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
                         <span style="font-family:${M};font-size:9px;color:${C.dim};">Bid</span>
-                        <span style="font-family:${M};font-size:10px;color:${C.text};">${fmtBig(_raProposedRate)}</span>
+                        <span style="font-family:${M};font-size:10px;color:${C.text};">${fmtBig(econ.bid)}</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
-                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Revenue ${r.trade_agreement_id ? `\u00D7${tierMult} (agreement)` : `\u00D7${tierMult} (organic)`}</span>
-                        <span style="font-family:${M};font-size:10px;font-weight:700;color:${C.green};">${fmtBig(effectiveRate)}</span>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;padding:3px 0;">
-                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Est. Fuel Cost (~15%)</span>
-                        <span style="font-family:${M};font-size:10px;color:${C.red};">-${fmtBig(fuelCostEst)}</span>
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Revenue \u00D7${tierMult} (${r.trade_agreement_id ? 'agreement' : 'organic'})</span>
+                        <span style="font-family:${M};font-size:10px;font-weight:700;color:${C.green};">${fmtBig(econ.revenue)}</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
-                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Est. Maintenance (~8%)</span>
-                        <span style="font-family:${M};font-size:10px;color:${C.red};">-${fmtBig(maintCostEst)}</span>
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Fuel at destination (${depotTierLabel})</span>
+                        <span style="font-family:${M};font-size:10px;color:${C.red};">-${fmtBig(econ.fuelPerTrip)}</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;padding:5px 0;">
-                        <span style="font-family:${M};font-size:10px;font-weight:700;color:${C.text};">NET PROFIT</span>
-                        <span style="font-family:${M};font-size:14px;font-weight:700;color:${profitColor};">${netProfit >= 0 ? '+' : ''}${fmtBig(netProfit)}</span>
+                        <span style="font-family:${M};font-size:10px;font-weight:700;color:${C.text};">NET PER TRIP</span>
+                        <span style="font-family:${M};font-size:14px;font-weight:700;color:${profitColor};">${econ.netPerTrip >= 0 ? '+' : ''}${fmtBig(econ.netPerTrip)}</span>
                     </div>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${M};font-size:10px;color:${C.dim};letter-spacing:1px;margin-bottom:6px;">FLEET OVERHEAD (ONGOING)</div>
+                <div style="background:${C.card};border:1px solid ${C.border};padding:8px 10px;">
+                    ${selectedVessel
+                        ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                              <span style="font-family:${M};font-size:9px;color:${C.dim};">Vessel maintenance · ${escapeHtml(selectedVessel.vessel_class || '?')}</span>
+                              <span style="font-family:${M};font-size:10px;color:${C.text};">${fmtBig(vesselMaintPerTick)} / tick</span>
+                           </div>
+                           <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                              <span style="font-family:${M};font-size:9px;color:${C.dim};">Accrues during ${transitTicks}-tick transit</span>
+                              <span style="font-family:${M};font-size:10px;color:${C.text};">${fmtBig(maintDuringTrip)}</span>
+                           </div>
+                           <div style="display:flex;justify-content:space-between;padding:5px 0;">
+                              <span style="font-family:${M};font-size:9px;color:${C.dim};">Net per trip vs. maint accrued</span>
+                              <span style="font-family:${M};font-size:10px;font-weight:700;color:${tripCoversMaint ? C.green : C.red};">${tripCoversMaint ? 'covers' : 'short by ' + fmtBig(Math.max(0, maintDuringTrip - econ.netPerTrip))}</span>
+                           </div>`
+                        : `<div style="font-family:${M};font-size:9px;color:${C.dim};line-height:1.5;">Select a vessel to see its per-tick maintenance cost. Maintenance is charged on every corp tick to every vessel regardless of activity, so higher-class ships need higher-paying routes to break even.</div>`
+                    }
                 </div>
             </div>
 
@@ -14132,12 +14188,16 @@ async function smPurchase(listingId, totalPrice) {
 
     const currentTick = shard.current_tick || 0;
     const specs = {
-        Coastal:   { capacity_dwt: 14000, capacity_unit: 'DWT', base_maintenance: 180000, fuel_capacity: 800,  purchase_price: 3000000 },
-        Container: { capacity_dwt: 4800,  capacity_unit: 'TEU', base_maintenance: 290000, fuel_capacity: 2100, purchase_price: 65000000 },
-        Bulk:      { capacity_dwt: 28000, capacity_unit: 'DWT', base_maintenance: 350000, fuel_capacity: 1800, purchase_price: 3000000 },
-        Tanker:    { capacity_dwt: 42000, capacity_unit: 'DWT', base_maintenance: 380000, fuel_capacity: 2400, purchase_price: 53000000 },
-        Reefer:    { capacity_dwt: 12000, capacity_unit: 'DWT', base_maintenance: 280000, fuel_capacity: 1600, purchase_price: 6000000 },
-        LNG:       { capacity_dwt: 18000, capacity_unit: 'DWT', base_maintenance: 580000, fuel_capacity: 1400, purchase_price: 78000000 },
+        // Halved from the original table — mirrors the canonical copy in
+        // supabase/functions/advance-corp-tick/index.ts. Keeping the four
+        // copies aligned is on us; a drift here means client quotes don't
+        // match what the edge function actually charges.
+        Coastal:   { capacity_dwt: 14000, capacity_unit: 'DWT', base_maintenance:  90000, fuel_capacity: 800,  purchase_price: 3000000 },
+        Container: { capacity_dwt: 4800,  capacity_unit: 'TEU', base_maintenance: 145000, fuel_capacity: 2100, purchase_price: 65000000 },
+        Bulk:      { capacity_dwt: 28000, capacity_unit: 'DWT', base_maintenance: 175000, fuel_capacity: 1800, purchase_price: 3000000 },
+        Tanker:    { capacity_dwt: 42000, capacity_unit: 'DWT', base_maintenance: 190000, fuel_capacity: 2400, purchase_price: 53000000 },
+        Reefer:    { capacity_dwt: 12000, capacity_unit: 'DWT', base_maintenance: 140000, fuel_capacity: 1600, purchase_price: 6000000 },
+        LNG:       { capacity_dwt: 18000, capacity_unit: 'DWT', base_maintenance: 290000, fuel_capacity: 1400, purchase_price: 78000000 },
     };
     const s = specs[listing.vessel_class] || specs.Coastal;
 
