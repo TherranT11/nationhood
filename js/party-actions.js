@@ -5,10 +5,11 @@ import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo }
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, checkOppositionStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
-import { getNationNames } from './game/political-actions.js';
+import { getNationNames, resignPM } from './game/political-actions.js';
 import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM } from './game/government-types.js';
-import { GAME_CONFIG } from './game/config.js';
+import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
+import { callEarlyElectionsAction } from './game/elections.js';
 
 let _supabase = null;
 let _state = null;
@@ -143,6 +144,26 @@ const LEADER_ACTIONS = [
         costColor: '#c8a832',
         moneyCost: 120000,
         tags: ['STRATEGIC'],
+        locked: false,
+    },
+    {
+        id: 'call_early_elections',
+        name: 'Call Early Elections',
+        desc: 'Dissolve the legislature and call snap elections. PM-only. Government enters caretaker status; election fires after a short formation window. Momentum impact is tiered by Gov. Approval: >50 boosts PM party (+3), <35 boosts opposition (+5 each) and +3 stability, 35\u201350 is neutral.',
+        cost: '$0',
+        costColor: 'var(--text-dim)',
+        moneyCost: 0,
+        tags: ['LEGISLATIVE', 'PM ONLY'],
+        locked: false,
+    },
+    {
+        id: 'resign_as_pm',
+        name: 'Resign as Prime Minister',
+        desc: 'Step down from the Prime Minister seat. PM-only. Coalition enters caretaker status and has a 3-tick window to nominate a successor via the cabinet panel. If a new PM is installed the administration continues under new leadership; otherwise a snap election fires. Cost: \u22123 Momentum, \u22120.05 Credibility, \u22123 Stability, 12-tick bar from PM on your party.',
+        cost: '$0',
+        costColor: 'var(--text-dim)',
+        moneyCost: 0,
+        tags: ['GOVERNMENT', 'PM ONLY'],
         locked: false,
     },
     {
@@ -492,6 +513,10 @@ function renderPage(root) {
             openRebrandModal(root);
         } else if (actionId === 'no_confidence') {
             triggerNoConfidence();
+        } else if (actionId === 'call_early_elections') {
+            triggerCallEarlyElections();
+        } else if (actionId === 'resign_as_pm') {
+            triggerResignAsPM();
         }
     });
 
@@ -736,6 +761,27 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             } else if (!_administration || !_administration.pm_party_id) {
                 isDisabled = true;
                 action.lockReason = 'No active Prime Minister to file against.';
+            } else {
+                action.lockReason = '';
+            }
+        } else if (action.id === 'call_early_elections' || action.id === 'resign_as_pm') {
+            // Both are PM-only tools for a parliamentary PM. Presidential systems
+            // don't have a PM-dissolution mechanic (they run on fixed terms via
+            // impeachment), so hide the actions there too by keeping them locked.
+            const nation = _state.nation;
+            const isParliamentaryPM = hasParliamentaryPM(nation);
+            const isPMParty = !!_administration && _administration.pm_party_id === faction.id;
+            if (!isParliamentaryPM) {
+                isDisabled = true;
+                action.lockReason = 'Only parliamentary and semi-presidential systems have a PM seat.';
+            } else if (!isPMParty) {
+                isDisabled = true;
+                action.lockReason = 'Prime Minister\u2019s party only.';
+            } else if (_state.nation && _state.nation.__coalition_status === 'caretaker') {
+                // Optional guard: if the coalition already flipped to caretaker
+                // (e.g. another action just fired) the buttons should be inert.
+                isDisabled = true;
+                action.lockReason = 'Government is already in caretaker mode.';
             } else {
                 action.lockReason = '';
             }
@@ -2830,6 +2876,112 @@ async function openRevokeSeatsModal(root) {
 // Files a no_confidence bill against the current PM and writes the cooldown
 // row in campaign_actions. Same backend shape as government.html's
 // fileNoConfidence() so the bill resolves through the same tick path.
+
+// ════════════════════════ CALL EARLY ELECTIONS (PM-ONLY) ════════════════════════
+// Thin wrapper around elections.callEarlyElectionsAction. The server-side helper
+// handles cooldowns (6 ticks since last election, 2-tick guard on next scheduled),
+// sets the government to caretaker, schedules the election at
+// currentTick + EARLY_ELECTION_TICKS, and applies tiered momentum based on
+// gov_approval. All we add here is a PM-party + confirm + lock guard.
+
+let _callEarlyElectionsSubmitting = false;
+
+async function triggerCallEarlyElections() {
+    if (_callEarlyElectionsSubmitting) return;
+    if (!_state?.faction?.id || !_state?.nation?.id) return;
+    if (!hasParliamentaryPM(_state.nation)) { alert('Early elections are only available in parliamentary and semi-presidential systems.'); return; }
+    const pmPartyId = _administration?.pm_party_id;
+    if (!pmPartyId || pmPartyId !== _state.faction.id) { alert('Prime Minister\u2019s party only.'); return; }
+
+    if (!confirm(
+        '\u26A1 CALL EARLY ELECTIONS?\n\n' +
+        'Dissolves the legislature and puts the government into caretaker status.\n' +
+        'Election fires after a short formation window.\n\n' +
+        'Momentum effect depends on Gov. Approval:\n' +
+        '\u2022 >50  \u2192 PM party +3 Momentum (fresh mandate)\n' +
+        '\u2022 35\u201350 \u2192 neutral\n' +
+        '\u2022 <35  \u2192 opposition +5 Momentum each, +3 Stability\n\n' +
+        'Proceed?'
+    )) return;
+
+    _callEarlyElectionsSubmitting = true;
+    try {
+        // Reuse the administration's coalition party list if present so the tiered
+        // momentum code can target opposition correctly. Falls back to an empty
+        // array if unknown (server-side logic still runs with the PM-party delta).
+        const coalitionIds = Array.isArray(_administration?.party_ids)
+            ? _administration.party_ids
+            : (_administration?.pm_party_id ? [_administration.pm_party_id] : []);
+        const result = await callEarlyElectionsAction(
+            _supabase,
+            _state.nation.id,
+            pmPartyId,
+            coalitionIds
+        );
+        if (result && result.success === false) {
+            alert('Could not call early elections: ' + (result.error || 'unknown error'));
+            return;
+        }
+        alert('\u26A1 Early elections called. Government is now in caretaker status.');
+        window.location.reload();
+    } catch (err) {
+        console.error('[PartyActions] Call early elections failed:', err);
+        alert('Failed to call early elections: ' + (err?.message || 'unknown error'));
+    } finally {
+        _callEarlyElectionsSubmitting = false;
+    }
+}
+
+// ════════════════════════ RESIGN AS PM (PM-ONLY) ════════════════════════
+// Thin wrapper around political-actions.resignPM. Server-side applies the
+// fixed penalties (\u22123 momentum, \u22120.05 credibility, \u22123 stability, 12-tick
+// PM ban), vacates the PM seat, puts the coalition into caretaker, and
+// schedules a snap election at currentTick + FORMATION_DEADLINE_TICKS so
+// the coalition has a window to nominate a successor before the fallback
+// election fires.
+
+let _resignPMSubmitting = false;
+
+async function triggerResignAsPM() {
+    if (_resignPMSubmitting) return;
+    if (!_state?.faction?.id || !_state?.nation?.id) return;
+    if (!hasParliamentaryPM(_state.nation)) { alert('Resignation is only available in parliamentary and semi-presidential systems.'); return; }
+    const pmPartyId = _administration?.pm_party_id;
+    if (!pmPartyId || pmPartyId !== _state.faction.id) { alert('Prime Minister\u2019s party only.'); return; }
+
+    if (!confirm(
+        '\u26A0 RESIGN AS PRIME MINISTER?\n\n' +
+        'The PM seat vacates immediately. Coalition enters caretaker status with\n' +
+        `a ${FORMATION_DEADLINE_TICKS}-tick window to nominate a successor via the cabinet panel.\n` +
+        'If a new PM is installed, the administration continues under new leadership.\n' +
+        'If the window expires, a snap election is called.\n\n' +
+        'Cost to your party:\n' +
+        '\u2022 \u22123 Momentum\n' +
+        '\u2022 \u22120.05 Credibility\n' +
+        '\u2022 Nation: \u22123 Stability\n' +
+        '\u2022 12-tick bar from the PM seat on your party\n\n' +
+        'Proceed?'
+    )) return;
+
+    _resignPMSubmitting = true;
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shard?.current_tick || _state.shard?.current_tick || 0;
+        const result = await resignPM(_supabase, _state.nation.id, _state.faction.id, tick);
+        // resignPM returns { result: 'election_called'|'succession_window', ... }
+        if (result?.result === 'election_called') {
+            alert('You have resigned. Snap election scheduled as fallback if no successor is nominated.');
+        } else {
+            alert('You have resigned. Coalition has a short window to nominate a successor before a snap election fires.');
+        }
+        window.location.reload();
+    } catch (err) {
+        console.error('[PartyActions] Resign PM failed:', err);
+        alert('Failed to resign: ' + (err?.message || 'unknown error'));
+    } finally {
+        _resignPMSubmitting = false;
+    }
+}
 
 let _noConfidenceSubmitting = false;
 
