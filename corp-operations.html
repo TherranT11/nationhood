@@ -8307,9 +8307,10 @@ async function actDeclareBankruptcy() {
         }
 
         // Bankruptcy GDP_Growth shock — one-time penalty: HQ nation -0.2, each
-        // non-HQ nation hosting a regional HQ or subsidiary property -0.1.
+        // non-HQ nation hosting a regional HQ (a.k.a. subsidiary) -0.1.
         const hqNationId = corp.nation_id || null;
         const subsidiaryNationIds = [...new Set((props || [])
+            .filter(p => p.type === 'regional_hq')
             .map(p => p.nation_id)
             .filter(nid => nid && nid !== hqNationId))];
         const gdpPenalties = [];

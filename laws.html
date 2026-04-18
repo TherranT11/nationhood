@@ -2056,16 +2056,18 @@ window.addTariffArticle = addTariffArticle;
 let _bailoutCorps = [];
 
 async function _loadBailoutCorps() {
-    const { data: corps } = await _supabase.from('factions')
+    const { data: corps, error: corpsErr } = await _supabase.from('factions')
         .select('id, faction_name, corp_cash_reserves, corp_loans')
         .eq('faction_type', 'corporation')
         .eq('nation_id', currentNation.id)
         .is('abandoned_at', null);
+    if (corpsErr) throw corpsErr;
     const list = corps || [];
     const results = [];
     for (const c of list) {
-        const { data: props } = await _supabase.from('corp_properties')
+        const { data: props, error: propsErr } = await _supabase.from('corp_properties')
             .select('purchase_price, condition').eq('faction_id', c.id);
+        if (propsErr) throw propsErr;
         let propertyValue = 0;
         for (const p of (props || [])) {
             propertyValue += Math.round(Number(p.purchase_price || 0) * (Number(p.condition || 0) / 100));
@@ -2085,7 +2087,16 @@ async function showBailoutForm() {
     const sel = document.getElementById('bailout-corp-select');
     sel.innerHTML = '<option value="">-- Loading... --</option>';
     sel.disabled = true;
-    const corps = await _loadBailoutCorps();
+    let corps = [];
+    try {
+        corps = await _loadBailoutCorps();
+    } catch (e) {
+        console.error('[Bailout] Failed to load corporations:', e?.message || e);
+        sel.innerHTML = '<option value="">-- Failed to load corporations --</option>';
+        sel.disabled = false;
+        alert('Failed to load corporations for bailout. Please try again.');
+        return;
+    }
     if (corps.length === 0) {
         sel.innerHTML = '<option value="">-- No corporations headquartered here --</option>';
     } else {
@@ -2103,26 +2114,39 @@ function hideBailoutForm() {
     _showAllArticleButtons(); _hideAllArticleForms();
 }
 
+function _bailoutCapM(corp) {
+    if (!corp) return 0;
+    return Math.max(0, Math.floor((corp.valuation * 3) / 1_000_000));
+}
+
 function onBailoutCorpChange() {
     const corpId = document.getElementById('bailout-corp-select').value;
     const corp = _bailoutCorps.find(c => c.id === corpId);
     const valEl = document.getElementById('bailout-valuation');
     if (!corp) { valEl.textContent = ''; document.getElementById('add-bailout-btn').disabled = true; return; }
     const valM = Math.round(corp.valuation / 1_000_000);
-    const capM = Math.max(0, valM * 3);
-    valEl.textContent = `Market valuation: $${valM.toLocaleString()}M  ·  Max bailout: $${capM.toLocaleString()}M (3× valuation)`;
+    const capM = _bailoutCapM(corp);
+    if (capM <= 0) {
+        valEl.innerHTML = `<span style="color:var(--red);">Not eligible — market valuation is $${valM.toLocaleString()}M (zero or negative).</span>`;
+    } else {
+        valEl.textContent = `Market valuation: $${valM.toLocaleString()}M  ·  Max bailout: $${capM.toLocaleString()}M (3× valuation)`;
+    }
     onBailoutAmountChange();
 }
 
 function onBailoutAmountChange() {
     const corpId = document.getElementById('bailout-corp-select').value;
     const corp = _bailoutCorps.find(c => c.id === corpId);
-    const amountM = Number(document.getElementById('bailout-amount').value);
+    const amountM = Math.floor(Number(document.getElementById('bailout-amount').value));
     const warnEl = document.getElementById('bailout-cap-warning');
     const btn = document.getElementById('add-bailout-btn');
-    if (!corp || !amountM || amountM < 1) { btn.disabled = true; warnEl.style.display = 'none'; return; }
-    const capM = Math.max(0, Math.round((corp.valuation * 3) / 1_000_000));
-    if (amountM > capM) {
+    if (!corp || !Number.isFinite(amountM) || amountM < 1) { btn.disabled = true; warnEl.style.display = 'none'; return; }
+    const capM = _bailoutCapM(corp);
+    if (capM <= 0) {
+        warnEl.textContent = 'Corporation is not eligible for a bailout (valuation ≤ 0).';
+        warnEl.style.display = 'block';
+        btn.disabled = true;
+    } else if (amountM > capM) {
         warnEl.textContent = `Amount exceeds 3× market valuation ($${capM.toLocaleString()}M).`;
         warnEl.style.display = 'block';
         btn.disabled = true;
@@ -2136,10 +2160,10 @@ function addBailoutArticle() {
     if (_draftArticleLock) return;
     const corpId = document.getElementById('bailout-corp-select').value;
     const corp = _bailoutCorps.find(c => c.id === corpId);
-    const amountM = Number(document.getElementById('bailout-amount').value);
-    if (!corp || !amountM || amountM < 1) return;
-    const capM = Math.max(0, Math.round((corp.valuation * 3) / 1_000_000));
-    if (amountM > capM) return;
+    const amountM = Math.floor(Number(document.getElementById('bailout-amount').value));
+    if (!corp || !Number.isFinite(amountM) || amountM < 1) return;
+    const capM = _bailoutCapM(corp);
+    if (capM <= 0 || amountM > capM) return;
     _draftArticleLock = true;
     try {
         const articleNum = draftArticles.length + 2;

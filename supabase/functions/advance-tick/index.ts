@@ -10368,7 +10368,7 @@ async function enactBill(supabase, bill, currentTick) {
                 if (tariffWriteErr) console.error('[enactBill] Failed to write sector_tariffs:', tariffWriteErr.message);
                 else console.log(`[enactBill] Sector tariff: ${effect.sector} → ${tariffRate}%`);
             }
-        } else if (effect.type === 'gov_bailout' && effect.corp_faction_id && typeof effect.amount === 'number') {
+        } else if (effect.type === 'gov_bailout' && effect.corp_faction_id && Number.isFinite(effect.amount) && effect.amount > 0) {
             // Government Bailout: single-source-of-truth is effect_data { corp_faction_id, amount }.
             // Re-validate corp, recompute valuation, fund from reserves → debt, +0.1 gdp_growth,
             // then apply -50 momentum and -20 gov_approval event per yes voter.
