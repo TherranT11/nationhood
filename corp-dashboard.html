@@ -950,6 +950,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
+import { computeEquipmentValue } from './js/game/corp-valuation.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -1163,19 +1164,21 @@ async function init() {
         execCompensation = (execRows || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
     }
 
-    // Load fleet maintenance (shipping corps)
+    // Load fleet maintenance + equipment value (shipping corps)
     let fleetMaint = 0;
+    let equipmentValue = 0;
     if (faction?.id && faction.corp_sector === 'Shipping') {
         const { data: vessels } = await _supabase
             .from('corp_vessels')
-            .select('base_maintenance')
+            .select('base_maintenance, purchase_price, condition, built_at_tick, status')
             .eq('faction_id', faction.id)
             .neq('status', 'for_sale');
         fleetMaint = (vessels || []).reduce((sum, v) => sum + (Number(v.base_maintenance) || 0), 0);
+        equipmentValue = computeEquipmentValue(vessels, currentTick);
     }
 
     await renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation, propData, fleetMaint);
-    await renderValuation(nationStats, nationName, faction, wfData, propData);
+    await renderValuation(nationStats, nationName, faction, wfData, propData, equipmentValue);
 
     // Messaging bubble
     initMessaging(faction, nationStats, shard);
@@ -2346,7 +2349,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
     return { propertyValue: totalValue, propertyMaintenance: totalMaint, totalCapacity, propertyRevBonus };
 }
 
-async function renderValuation(nation, nationName, faction, wfData, propData) {
+async function renderValuation(nation, nationName, faction, wfData, propData, equipmentValue = 0) {
     const s = (key) => getNationStat(nation, key);
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
     const companyType = faction.corp_company_type || 'Private';
@@ -2354,7 +2357,6 @@ async function renderValuation(nation, nationName, faction, wfData, propData) {
     // Assets — read from DB columns (set at corp creation, scaled by currency strength)
     const cashReserves = Number(faction.corp_cash_reserves) || 0;
     const propertyValue = propData?.propertyValue || 0;
-    const equipmentValue = 0;
     // Active Contracts: principal value of commercial instruments the corp
     // holds as receivables. Today this is loan principal outstanding for
     // Finance corps; Construction/Shipping stay at 0 until we decide how to

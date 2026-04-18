@@ -2948,9 +2948,11 @@ export async function enactBill(supabase, bill, currentTick) {
                 } else {
                     const { data: props } = await supabase.from('corp_properties')
                         .select('purchase_price, condition').eq('faction_id', corpId);
+                    const { data: vessels } = await supabase.from('corp_vessels')
+                        .select('purchase_price, condition, built_at_tick, status').eq('faction_id', corpId);
                     const corpCash = Number(corp.corp_cash_reserves || 0);
                     const corpLoans = Number(corp.corp_loans || 0);
-                    const valuation = computeCorpValuation({ cash: corpCash, loans: corpLoans, properties: props });
+                    const valuation = computeCorpValuation({ cash: corpCash, loans: corpLoans, properties: props, vessels, currentTick });
                     const cap = Math.max(0, 3 * valuation);
                     const payout = Math.min(requested, cap);
                     if (payout > 0) {
