@@ -4877,11 +4877,44 @@ function selectPMCandidate(card) {
 async function confirmPMNomination() {
     if (!_pmNomineeSelected || !currentFaction || !currentNation) return;
     try {
-        // Auto-generate PM name from nation name pool (PM is an NPC, not the party leader)
-        const { firstNames, lastNames } = getNationNames(currentNation.name);
-        const genFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
-        const genLast = lastNames[Math.floor(Math.random() * lastNames.length)];
-        const genAge = 40 + Math.floor(Math.random() * 20);
+        // Prefer the party's Deputy Leader for the PM slot.
+        //
+        // Before this change: we invented an NPC name from the nation's
+        // name pool. If the selected party was also the President's
+        // party, the player saw a random "Paloma Vásquez" pop up with
+        // no tie to any faction member, while the party leader — who
+        // IS the president — still showed as PM on the admin card
+        // because of a stale-HOG path elsewhere. The player's ask:
+        // when same-party-as-president, use the Deputy Party Leader so
+        // PM and President are distinct people the player actually
+        // hired via the Party Actions screen.
+        //
+        // Deputy fallback chain:
+        //   1. faction_deputies row for the selected party (active)
+        //   2. invented NPC name (prior behavior) — only fires when
+        //      the party hasn't hired a deputy yet, or when the
+        //      lookup errors.
+        let genFirst, genLast, genAge;
+        try {
+            const { data: deputy } = await _supabase.from('faction_deputies')
+                .select('first_name, last_name, age')
+                .eq('faction_id', _pmNomineeSelected.partyId)
+                .eq('status', 'active')
+                .maybeSingle();
+            if (deputy?.first_name && deputy?.last_name) {
+                genFirst = deputy.first_name;
+                genLast  = deputy.last_name;
+                genAge   = Number(deputy.age) || 45;
+            }
+        } catch (depErr) {
+            console.warn('[Nominate PM] Deputy lookup failed, falling back to generated NPC:', depErr?.message || depErr);
+        }
+        if (!genFirst || !genLast) {
+            const { firstNames, lastNames } = getNationNames(currentNation.name);
+            genFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
+            genLast  = lastNames[Math.floor(Math.random() * lastNames.length)];
+            genAge   = 40 + Math.floor(Math.random() * 20);
+        }
         const nominee = {
             partyId: _pmNomineeSelected.partyId,
             partyName: _pmNomineeSelected.partyName,
