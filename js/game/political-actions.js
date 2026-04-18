@@ -2944,10 +2944,36 @@ export function weightedRandomPick(weightedItems) {
 export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick, opts) {
     // When called from coalition formation flow, skip the coalition check
     // (the formation was JUST set to 'formed' and cache may be stale)
+    let _coalitionAtEntry = null;
     if (!opts?.skipCoalitionCheck) {
-        const coalition = await fetchActiveCoalition(supabase, nationId);
-        if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'active' && coalition.status !== 'caretaker')) {
+        _coalitionAtEntry = await fetchActiveCoalition(supabase, nationId);
+        if (!_coalitionAtEntry || (_coalitionAtEntry.status !== 'formed' && _coalitionAtEntry.status !== 'active' && _coalitionAtEntry.status !== 'caretaker')) {
             throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
+        }
+    }
+
+    // Detect whether this install is filling a vacant PM seat (which is the
+    // signal for resignation-succession: PM resigned, HOG was deactivated,
+    // coalition went to caretaker, and we're now installing the successor
+    // before the fallback snap election fires). If any HOG is still active
+    // at entry, this is NOT a succession install — it's a normal PM swap or
+    // a formation-time install — and we must NOT cancel the pending election
+    // (that would undo a Call-Early-Elections caretaker by accident).
+    let _isSuccessionInstall = false;
+    if (!opts?.skipCoalitionCheck && _coalitionAtEntry && _coalitionAtEntry.status === 'caretaker') {
+        const { data: existingActiveHog, error: hogLookupErr } = await supabase
+            .from('head_of_government')
+            .select('id')
+            .eq('nation_id', nationId)
+            .eq('active', true)
+            .maybeSingle();
+        // Bail to "not a succession" if the lookup itself failed — better to
+        // leave a pending fallback election in place than to cancel one we
+        // shouldn't have cancelled based on a transient DB error.
+        if (hogLookupErr) {
+            console.warn('[autoAppointPartyLeaderAsPM] HOG lookup failed during succession check (assuming non-succession):', hogLookupErr.message);
+        } else {
+            _isSuccessionInstall = !existingActiveHog;
         }
     }
 
@@ -3076,6 +3102,43 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     } catch (e) { console.warn('PM appointed event fire failed (non-blocking):', e); }
 
     console.log(`Auto-appointed party leader as PM: ${pmFullName} (${traitKey}) for faction ${factionId}`);
+
+    // Succession-window cleanup: if this install filled the vacant PM seat
+    // left by a resignation (see resignPM), roll the coalition back to
+    // 'formed' and cancel the fallback snap election that resignPM
+    // scheduled. The _isSuccessionInstall check above guarantees we only
+    // run this when there was no active HOG at entry, so a Call-Early-
+    // Elections caretaker (HOG still active, going to voters) is safely
+    // excluded.
+    if (_isSuccessionInstall) {
+        try {
+            await supabase.from('active_coalitions')
+                .update({ status: 'formed' })
+                .eq('id', _coalitionAtEntry.id);
+            await supabase.from('government_formations')
+                .update({ status: 'formed' })
+                .eq('nation_id', nationId)
+                .eq('status', 'caretaker');
+            const { error: elDelErr } = await supabase.from('elections')
+                .delete()
+                .eq('nation_id', nationId)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'parliamentary');
+            if (elDelErr) {
+                console.warn('[autoAppointPartyLeaderAsPM] succession-install: election delete failed (non-fatal):', elDelErr.message);
+            }
+            // NOTE: bills that were frozen by resignPM stay frozen. The
+            // original committee-vs-floor split is lost (both collapsed to
+            // 'frozen') so blanket-unfreezing would wrongly promote committee
+            // bills to the floor. Leaving them frozen is safe but means a
+            // small UX gap — bills in flight when the PM resigned need to be
+            // re-introduced by the successor. Intentional, not a landmine.
+            console.log(`[autoAppointPartyLeaderAsPM] succession complete: coalition -> formed, fallback election cancelled.`);
+        } catch (cancelErr) {
+            console.warn('[autoAppointPartyLeaderAsPM] succession-window cleanup failed (non-fatal):', cancelErr);
+        }
+    }
+
     return { first_name: faction.leader_first_name, last_name: faction.leader_last_name, age: leaderAge, ideology: ideology.tag, trait_key: traitKey };
 }
 
@@ -3245,39 +3308,53 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
         .update({ pm_cooldown_until: currentTick + 12 })
         .eq('id', factionId);
 
-    // 4. Always dissolve the coalition — PM resignation triggers immediate elections
-    console.log('PM resignation — dissolving coalition and scheduling immediate election');
-    try {
-        const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-        const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-        if (fullNation) {
-            await closeAdministration(supabase, nationId, fullNation, 'pm_resignation', currentTick, shard?.current_date || _tickToDate(currentTick), null);
-        }
-    } catch (adminErr) { console.warn('Could not close administration on PM resignation:', adminErr); }
-    await dissolveCoalition(supabase, nationId);
+    // 4. Put the coalition into caretaker status and keep it intact for the
+    //    succession window. The existing appoint-PM / nominate flow lets a
+    //    coalition partner install a new PM during this window; if they do
+    //    the snap election scheduled below can be cancelled at that point.
+    //    Otherwise the snap election fires after FORMATION_DEADLINE_TICKS.
+    //    (Previously this dissolved the coalition + scheduled an immediate
+    //    election, which made Resign functionally indistinguishable from
+    //    a more punitive Call-Early-Elections — the succession path is what
+    //    gives the two actions distinct use-cases.)
+    await supabase
+        .from('active_coalitions')
+        .update({ status: 'caretaker' })
+        .eq('nation_id', nationId)
+        .is('dissolved_at', null);
+    await supabase
+        .from('government_formations')
+        .update({ status: 'caretaker' })
+        .eq('nation_id', nationId)
+        .in('status', ['formed', 'active']);
 
-    // 5. Freeze all active bills
+    // 5. Freeze all active bills (same as early elections / no-confidence)
     await supabase
         .from('bills')
         .update({ status: 'frozen' })
         .eq('nation_id', nationId)
         .in('status', ['committee', 'floor']);
 
-    // 6. Cancel any existing scheduled elections and schedule immediate one
+    // 6. Schedule a fallback snap election one formation-window out. If the
+    //    coalition installs a new PM before this tick, downstream logic can
+    //    cancel the election and restore coalition status to 'formed'. If
+    //    the window expires, the scheduled row fires normally.
     await supabase
         .from('elections')
         .delete()
         .eq('nation_id', nationId)
-        .eq('status', 'scheduled');
+        .eq('status', 'scheduled')
+        .eq('election_type', 'parliamentary');
 
+    const fallbackTick = currentTick + FORMATION_DEADLINE_TICKS;
     await supabase.from('elections').insert({
         nation_id: nationId,
-        election_tick: currentTick,
+        election_tick: fallbackTick,
         status: 'scheduled',
         election_type: 'parliamentary'
     });
 
-    console.log(`  Scheduled immediate election for tick ${currentTick}`);
+    console.log(`PM resignation: coalition \u2192 caretaker, succession window until tick ${fallbackTick}`);
 
     // Fire timeline event
     try {
@@ -3289,7 +3366,7 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
         });
     } catch (e) { /* non-blocking */ }
 
-    return { result: 'election_called', reason: hog.trait_key === 'iron_will' ? 'iron_will' : 'pm_resignation' };
+    return { result: 'succession_window', reason: hog.trait_key === 'iron_will' ? 'iron_will' : 'pm_resignation', fallbackTick };
 }
 
 

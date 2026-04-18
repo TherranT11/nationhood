@@ -1965,31 +1965,12 @@ function renderAdminActions() {
 
     let html = `<div class="ga-panel" style="text-align:center;padding:12px;">`;
 
-    // Call Early Elections — hidden for presidential, greyed for monarchy, active for parliamentary PM
-    const isMonarchyForElections = (nation.government_type || '').toLowerCase().includes('monarchy');
+    // CALL EARLY ELECTIONS + RESIGN AS PM were previously rendered here. Both
+    // now live under Actions \u2192 Party Actions (Leader tab) above Vote of No
+    // Confidence, where they sit alongside the other PM-only tools. The
+    // caretaker notice and collapse warning below still render on the admin
+    // tab since they surface state rather than actions.
     const isPresidentialForElections = isPresidential;
-
-    if (!isPresidentialForElections && isPM && !isCaretaker) {
-        if (isMonarchyForElections) {
-            html += `<div class="ga-early-election-btn" style="opacity:0.3;cursor:not-allowed;pointer-events:none;">
-                <span style="font-size:12px;">&#9889;</span> CALL EARLY ELECTIONS
-            </div>
-            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">
-                The monarch does not permit early elections.
-            </div>`;
-        } else {
-            const tierHint = approval > 50 ? 'Calling from strength — your party gains +3 momentum'
-                : approval < 35 ? 'Opposition gains +5 momentum each — orderly transition'
-                : 'Neutral call — no momentum changes';
-
-            html += `<div class="ga-early-election-btn" onclick="callEarlyElections()">
-                <span style="font-size:12px;">&#9889;</span> CALL EARLY ELECTIONS
-            </div>
-            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">
-                PM only — dissolve the legislature · ${escapeHtml(tierHint)}
-            </div>`;
-        }
-    }
 
     // Caretaker notice
     if (isCaretaker) {
@@ -2000,16 +1981,6 @@ function renderAdminActions() {
             <div>
                 <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--amber);">CARETAKER GOVERNMENT</div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Election in ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} · Legislation frozen</div>
-            </div>
-        </div>`;
-    }
-
-    // PM Resign (PM only, not caretaker, not presidential)
-    if (isPM && !isCaretaker && !isPresidentialForElections) {
-        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border-main);">
-            <span class="ga-resign-btn" onclick="resignPMAction()">RESIGN AS PRIME MINISTER</span>
-            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:3px;">
-                -5 approval · -3 stability · barred from PM for 12 ticks
             </div>
         </div>`;
     }
