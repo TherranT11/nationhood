@@ -24,21 +24,21 @@ export const DOCTRINES = {
         sector: 'army',
         name: 'Active Defense',
         desc: 'Forward-positioned defensive posture that intercepts threats before they reach home territory.',
-        apCost: 3
+        apCost: 0
     },
     counterinsurgency: {
         id: 'counterinsurgency',
         sector: 'army',
         name: 'Counterinsurgency',
         desc: 'Optimises the army for suppressing internal threats, civil unrest, and irregular forces.',
-        apCost: 4
+        apCost: 0
     },
     asymmetric_warfare: {
         id: 'asymmetric_warfare',
         sector: 'army',
         name: 'Asymmetric Warfare',
         desc: 'Unconventional guerrilla tactics designed to counter larger or better-equipped adversaries.',
-        apCost: 4
+        apCost: 0
     },
     praetorian_doctrine: {
         id: 'praetorian_doctrine',
@@ -55,14 +55,14 @@ export const DOCTRINES = {
         sector: 'army',
         name: 'Combined Battle',
         desc: 'Integrated multi-domain warfare with army units operating jointly across air and naval assets.',
-        apCost: 6
+        apCost: 0
     },
     joint_command_operations: {
         id: 'joint_command_operations',
         sector: 'army',
         name: 'Joint Command Operations',
         desc: 'Centralised command architecture across all branches enabling coordinated rapid response.',
-        apCost: 8
+        apCost: 0
     },
 
     // ── NAVY ──
@@ -71,35 +71,35 @@ export const DOCTRINES = {
         sector: 'navy',
         name: 'Near Seas Defense',
         desc: 'Prioritises control of coastal waters and adjacent seas close to national territory.',
-        apCost: 3
+        apCost: 0
     },
     trade_interdiction: {
         id: 'trade_interdiction',
         sector: 'navy',
         name: 'Trade Interdiction',
         desc: 'Aggressively controls sea lanes to protect friendly commerce and disrupt rival shipping.',
-        apCost: 5
+        apCost: 0
     },
     submarine_deterrent: {
         id: 'submarine_deterrent',
         sector: 'navy',
         name: 'Submarine Deterrent',
         desc: 'Maintains a hidden undersea strike capability whose location is never publicly confirmed.',
-        apCost: 6
+        apCost: 0
     },
     autonomous_power_projection: {
         id: 'autonomous_power_projection',
         sector: 'navy',
         name: 'Autonomous Power Projection',
         desc: 'Independent deep-water strike capability allowing the nation to project force globally without allied support.',
-        apCost: 6
+        apCost: 0
     },
     blue_water_fleet: {
         id: 'blue_water_fleet',
         sector: 'navy',
         name: 'Blue Water Fleet',
         desc: 'Maintains a large capable open-ocean surface fleet able to sustain operations across international waters.',
-        apCost: 8
+        apCost: 0
     },
 
     // ── AIR FORCE ──
@@ -108,35 +108,35 @@ export const DOCTRINES = {
         sector: 'air_force',
         name: 'Airlift & Logistics',
         desc: 'Prioritises strategic transport and supply chain operations over combat capability.',
-        apCost: 3
+        apCost: 0
     },
     close_air_support: {
         id: 'close_air_support',
         sector: 'air_force',
         name: 'Close Air Support',
         desc: 'Optimises aircraft for supporting ground troops in tactical operations rather than independent missions.',
-        apCost: 4
+        apCost: 0
     },
     air_superiority: {
         id: 'air_superiority',
         sector: 'air_force',
         name: 'Air Superiority',
         desc: 'Focuses the air force on dominating the skies and denying enemy air operations.',
-        apCost: 5
+        apCost: 0
     },
     drone_warfare: {
         id: 'drone_warfare',
         sector: 'air_force',
         name: 'Drone Warfare',
         desc: 'Builds a doctrine around unmanned systems for persistent surveillance and low-casualty strike operations.',
-        apCost: 6
+        apCost: 0
     },
     strategic_bombing: {
         id: 'strategic_bombing',
         sector: 'air_force',
         name: 'Strategic Bombing',
         desc: 'Develops long-range offensive strike capability for deep penetration missions against distant targets.',
-        apCost: 8
+        apCost: 0
     },
 
     // ── INTELLIGENCE ──
@@ -145,42 +145,42 @@ export const DOCTRINES = {
         sector: 'intelligence',
         name: 'Counterintelligence',
         desc: 'Defensive posture focused on protecting the nation against foreign infiltration and internal corruption.',
-        apCost: 3
+        apCost: 0
     },
     domestic_surveillance: {
         id: 'domestic_surveillance',
         sector: 'intelligence',
         name: 'Domestic Surveillance',
         desc: 'Monitors internal dissidents, opposition movements, and civil society for threats to stability.',
-        apCost: 3
+        apCost: 0
     },
     signal_intelligence: {
         id: 'signal_intelligence',
         sector: 'intelligence',
         name: 'Signal Intelligence',
         desc: 'Intercepts and analyses foreign communications to build diplomatic and military awareness.',
-        apCost: 4
+        apCost: 0
     },
     cybersecurity: {
         id: 'cybersecurity',
         sector: 'intelligence',
         name: 'Cybersecurity',
         desc: 'Develops both defensive network protection and offensive digital operations capability.',
-        apCost: 5
+        apCost: 0
     },
     foreign_intelligence: {
         id: 'foreign_intelligence',
         sector: 'intelligence',
         name: 'Foreign Intelligence',
         desc: 'Runs external espionage operations and signals collection against rival nations.',
-        apCost: 6
+        apCost: 0
     },
     covert_operations: {
         id: 'covert_operations',
         sector: 'intelligence',
         name: 'Covert Operations',
         desc: 'Maintains a deniable black ops capability for interference in foreign nations and actors.',
-        apCost: 8
+        apCost: 0
     },
 
     // ── NUCLEAR (single-select) ──
@@ -197,7 +197,7 @@ export const DOCTRINES = {
         sector: 'nuclear',
         name: 'Non-Proliferation',
         desc: 'Commits to actively opposing the spread of nuclear weapons while maintaining existing capability.',
-        apCost: 4,
+        apCost: 0,
         requiresNuclearCapability: true
     },
     deterrence: {
@@ -205,7 +205,7 @@ export const DOCTRINES = {
         sector: 'nuclear',
         name: 'Deterrence',
         desc: 'Matches rival nuclear capability without escalating, seeking a stable deterrence equilibrium.',
-        apCost: 4,
+        apCost: 0,
         requiresNuclearCapability: true
     },
     mutually_assured_destruction: {
@@ -213,7 +213,7 @@ export const DOCTRINES = {
         sector: 'nuclear',
         name: 'Mutually Assured Destruction',
         desc: 'Maintains a credible retaliatory second-strike capability that makes nuclear war unwinnable for all parties.',
-        apCost: 6,
+        apCost: 0,
         requiresNuclearCapability: true
     },
     first_strike_doctrine: {
@@ -221,7 +221,7 @@ export const DOCTRINES = {
         sector: 'nuclear',
         name: 'First Strike Doctrine',
         desc: 'Signals willingness to use nuclear weapons preemptively, maximising deterrence through aggression.',
-        apCost: 8,
+        apCost: 0,
         requiresNuclearCapability: true
     }
 };

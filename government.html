@@ -132,7 +132,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_enforce_public_order',
                 name: 'Enforce Public Order',
                 desc: 'Deploy law enforcement to suppress crime and unrest. Effective but politically costly.',
-                apCosts: [2, 3, 5, 8],
+                apCosts: [0, 0, 0, 0],
                 budgetPerCapita: 1000000 / 4000000, // $1M per 4M pop per tick
                 delay: 1, duration: 4,
                 decayTicks: 3,
@@ -157,7 +157,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_community_outreach',
                 name: 'Community Outreach',
                 desc: 'Grassroots engagement to build trust and improve quality of life. Slow but sustainable.',
-                apCosts: [1, 2, 3, 4],
+                apCosts: [0, 0, 0, 0],
                 budgetPerCapita: 1000000 / 20000000, // $1M per 20M pop per tick
                 delay: 3, duration: 8,
                 decayTicks: 4,
@@ -178,7 +178,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_surveillance_expansion',
                 name: 'Surveillance Expansion',
                 desc: 'Expand digital monitoring infrastructure. Permanent residue penalties compound with each use.',
-                apCosts: [2, 4, 7, 11],
+                apCosts: [0, 0, 0, 0],
                 budgetPerCapita: 1000000 / 10000000, // $1M per 10M pop per tick
                 delay: 2, duration: 10,
                 decayTicks: 5,
@@ -205,7 +205,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_stimulus_package',
                 name: 'Stimulus Package',
                 desc: 'Inject government spending into the economy to boost short-term growth and employment.',
-                apCosts: [2, 3, 5, 8],
+                apCosts: [0, 0, 0, 0],
                 budgetPerCapita: 1000000 / 8000000, // $1M per 8M pop per tick
                 delay: 1, duration: 6,
                 decayTicks: 4,
@@ -228,7 +228,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_austerity_measures',
                 name: 'Austerity Measures',
                 desc: 'Cut government expenditure to reduce deficit and stabilise long-term fiscal health.',
-                apCosts: [2, 3, 5, 8],
+                apCosts: [0, 0, 0, 0],
                 budgetPerCapita: 0, // saves money, not draws
                 budgetSavesPerCapita: 1000000 / 8000000, // $1M per 8M pop per tick
                 delay: 2, duration: 8,
@@ -254,7 +254,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_issue_bonds',
                 name: 'Issue Government Bonds',
                 desc: 'Raise capital by issuing bonds to investment banks. Banks set purchase amounts; government pays coupon interest.',
-                apCosts: [2],
+                apCosts: [0],
                 budgetPerCapita: 0,
                 delay: 0, duration: 0,
                 decayTicks: 0,
@@ -272,7 +272,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_debt_restructuring',
                 name: 'Debt Restructuring',
                 desc: 'Renegotiate debt terms with international creditors. Outcome depends on Credit score.',
-                apCosts: [3, 5, 8, 12],
+                apCosts: [0, 0, 0, 0],
                 budgetPerCapita: 0, // no tick cost — one-time resolution
                 delay: 3, duration: 1, // 3-tick negotiation, then 1-tick resolution
                 decayTicks: 0,
@@ -301,7 +301,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_preventative_care',
                 name: 'Preventative Care Programme',
                 desc: 'Shift healthcare spending from treatment to prevention, investing in early intervention and population health outcomes.',
-                apCosts: [2, 3, 5, 7],
+                apCosts: [0, 0, 0, 0],
                 oneTimeCostPerMillion: 10_000_000, // $10M per 1M population
                 delay: 4, duration: 8,
                 decayTicks: 4,
@@ -326,7 +326,7 @@ const MINISTRY_ACTIONS = {
                 id: 'pharmaceuticalRegulation',
                 name: 'Pharmaceutical Regulation',
                 desc: 'Adjust the regulatory framework governing drug pricing, approval processes, and market access.',
-                apCosts: [2, 3, 5, 7],
+                apCosts: [0, 0, 0, 0],
                 delay: 2, duration: 8,
                 decayTicks: 3,
                 useResetInterval: 15,
@@ -385,7 +385,7 @@ const MINISTRY_ACTIONS = {
                 id: 'laborPolicy',
                 name: 'Labor Policy',
                 desc: 'Set the government\'s regulatory stance on labor relations — either strengthening worker protections or reducing employer constraints.',
-                apCosts: [2, 3, 5, 7],
+                apCosts: [0, 0, 0, 0],
                 delay: 2, duration: 8,
                 decayTicks: 4,
                 useResetInterval: 15,
@@ -437,7 +437,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_workforce_development',
                 name: 'Workforce Development Programme',
                 desc: 'Fund national retraining and skills development programmes for unemployed and underemployed workers.',
-                apCosts: [2, 3, 5, 7],
+                apCosts: [0, 0, 0, 0],
                 oneTimeCostPerMillion: 6_000_000,
                 delay: 2, duration: 8,
                 decayTicks: 4,
@@ -471,7 +471,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_standardised_curriculum',
                 name: 'Standardised Curriculum',
                 desc: 'Set the national curriculum to reflect a specific ideological orientation, shaping the values of future voters.',
-                apCosts: [6, 6, 6, 6], // flat 6 AP
+                apCosts: [0, 0, 0, 0],
                 budgetPerCapita: 0,
                 delay: 0, duration: 12,
                 decayTicks: 0,
@@ -490,7 +490,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_private_education_incentives',
                 name: 'Private Education Incentives',
                 desc: 'Offer tax breaks and regulatory relief to attract private school investment and reduce the state education burden.',
-                apCosts: [2, 3, 5, 7],
+                apCosts: [0, 0, 0, 0],
                 budgetPerCapita: 0,
                 budgetSavesPerCapita: 1000000 / 12000000, // $1M per 12M pop per tick
                 delay: 2, duration: 10,
@@ -529,7 +529,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_expand_infrastructure',
                 name: 'Expand Infrastructure',
                 desc: 'Fund construction and expansion of major transport infrastructure including highways, rail, and ports.',
-                apCosts: [3, 4, 6, 8],
+                apCosts: [0, 0, 0, 0],
                 oneTimeCostPerMillion: 15_000_000,
                 delay: 3,
                 duration: 12,
@@ -542,7 +542,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_public_transit',
                 name: 'Public Transit Investment',
                 desc: 'Fund buses, metro, and rail systems to improve urban and intercity movement.',
-                apCosts: [2, 3, 5, 7],
+                apCosts: [0, 0, 0, 0],
                 oneTimeCostPerMillion: 10_000_000,
                 delay: 2,
                 duration: 10,
@@ -569,7 +569,7 @@ const MINISTRY_ACTIONS = {
                 triggerKey: 'ministry_road_maintenance',
                 name: 'Road & Highway Maintenance Programme',
                 desc: 'Fund the repair, resurfacing, and upkeep of existing road and highway networks nationally.',
-                apCosts: [2, 3, 5, 7],
+                apCosts: [0, 0, 0, 0],
                 oneTimeCostPerMillion: 6_000_000,
                 // Dynamic cost: road-heavy nations (high physical_infrastructure, low rail_network) pay more
                 dynamicCostFn: function(pop) {
@@ -667,7 +667,7 @@ async function handleMinistryConflict(action, ministryKey) {
         const conflictUseCount = ministryActionUseCounts[conflictCountKey] || 0;
         const conflictApCost = conflictConfig?.apCosts[Math.min(conflictUseCount, 3)] || 2;
         if (conflictBtns) {
-            conflictBtns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${conflictActionId}')">▶ ${conflictApCost} AP</div>`;
+            conflictBtns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${conflictActionId}')">▶ FREE</div>`;
         }
     }
 
@@ -775,7 +775,7 @@ async function deductDiscretionaryFund(ministryKey, localMData, currentBalance, 
 
 // ==================== CANCEL ACTIVE MINISTRY ACTION ====================
 async function cancelMinistryAction(actionId, actionName) {
-    if (!confirm('Cancel ' + actionName + '? Remaining effects will stop. No AP refund.')) return;
+    if (!confirm('Cancel ' + actionName + '? Remaining effects will stop.')) return;
 
     const [ministryKey, actId] = actionId.split('-');
 
@@ -1752,7 +1752,7 @@ function renderMinistryExpandedContent(ministry, partyColor) {
                 html += `<div class="ga-action-card${isActive ? ' active' : ''}" id="${actionId}"${canExecute ? ` onclick="event.stopPropagation();ministryActionSelect('${actionId}')" style="cursor:pointer;"` : ''}>
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
                         <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${isActive ? 'var(--green)' : 'var(--text-bright)'};">${escapeHtml(action.name)}${isActive ? ' <span style="font-size:7px;">ACTIVE</span>' : ''}</span>
-                        ${canExecute ? `<span class="ga-ap-badge" style="cursor:pointer;">&#9654; ${apCost} AP</span>` : `<span class="ga-ap-badge">${apCost} AP</span>`}
+                        ${canExecute ? `<span class="ga-ap-badge" style="cursor:pointer;">&#9654; FREE</span>` : `<span class="ga-ap-badge">FREE</span>`}
                     </div>
                     <div style="font-size:8px;color:var(--text-dim);line-height:1.4;margin-bottom:4px;">${escapeHtml(action.desc)}</div>
                     ${effectTags.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;">${effectTags.join('')}</div>` : ''}
@@ -1779,7 +1779,7 @@ function renderMinistryExpandedContent(ministry, partyColor) {
             mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--red);border-color:var(--red)44;"
                 onclick="event.stopPropagation();fireMinister('${escapeHtml(key)}')">DISMISS</div>`;
         } else {
-            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--red);border-color:var(--red)44;opacity:0.4;cursor:not-allowed;" title="Need 1 AP">DISMISS</div>`;
+            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--red);border-color:var(--red)44;opacity:0.4;cursor:not-allowed;">DISMISS</div>`;
         }
     }
 
@@ -3351,14 +3351,14 @@ function renderParliamentaryEmergency(activeHOG) {
                 Declare a national emergency to bypass legislative votes on bills. While active: stability -1/tick, freedom index -0.5/tick, judicial independence -0.5/tick.
             </div>
             <button class="ministry-btn${canDeclare ? '' : ' disabled'}" style="padding:8px 20px;font-size:0.75rem;" onclick="${canDeclare ? 'declareParliamentaryEmergency()' : ''}" id="declare-emergency-btn" ${canDeclare ? '' : 'disabled'}>
-                Declare Emergency <span class="ap-cost">${cost} AP</span>
+                Declare Emergency 
             </button>
         </div>
     `;
 }
 
 window.declareParliamentaryEmergency = async function() {
-    if (!confirm(`Declare a National Emergency?\n\nWhile active:\n• Bills bypass legislative votes\n• Stability -1/tick\n• Freedom Index -0.5/tick\n• Judicial Independence -0.5/tick\n\nCost: ${EO_CONFIG.NATIONAL_EMERGENCY_AP || 4} AP`)) return;
+    if (!confirm(`Declare a National Emergency?\n\nWhile active:\n• Bills bypass legislative votes\n• Stability -1/tick\n• Freedom Index -0.5/tick\n• Judicial Independence -0.5/tick\n\n`)) return;
 
     const btn = document.getElementById('declare-emergency-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Declaring...'; }
@@ -3369,11 +3369,11 @@ window.declareParliamentaryEmergency = async function() {
             location.reload();
         } else {
             alert(result?.error || 'Failed to declare emergency.');
-            if (btn) { btn.disabled = false; btn.innerHTML = `Declare Emergency <span class="ap-cost">${EO_CONFIG.NATIONAL_EMERGENCY_AP || 4} AP</span>`; }
+            if (btn) { btn.disabled = false; btn.innerHTML = `Declare Emergency `; }
         }
     } catch (err) {
         alert('Error: ' + (err.message || err));
-        if (btn) { btn.disabled = false; btn.innerHTML = `Declare Emergency <span class="ap-cost">${EO_CONFIG.NATIONAL_EMERGENCY_AP || 4} AP</span>`; }
+        if (btn) { btn.disabled = false; btn.innerHTML = `Declare Emergency `; }
     }
 };
 
@@ -5849,9 +5849,9 @@ function buildMgmtButtons(key, ministry, govContext) {
         }
         if (govContext.isPMParty && !govContext.isCaretaker && !govContext.isMyMinistry && isFilled) {
             if (noAP) {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle} title="Need 1 AP">DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle}>DISMISS</div>`;
             } else {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS</div>`;
             }
         }
         if (!isFilled && govContext.canAppoint) {
@@ -5863,9 +5863,9 @@ function buildMgmtButtons(key, ministry, govContext) {
         }
         if (govContext.isPMParty && isFilled) {
             if (noAP) {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle} title="Need 1 AP">DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle}>DISMISS</div>`;
             } else {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS</div>`;
             }
         }
         if (!isFilled && govContext.isPMParty) {
@@ -5877,9 +5877,9 @@ function buildMgmtButtons(key, ministry, govContext) {
         }
         if (govContext.isPresidentParty && isFilled) {
             if (noAP) {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle} title="Need 1 AP">DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle}>DISMISS</div>`;
             } else {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS<span class="ministry-card__mgmt-ap">1 AP</span></div>`;
+                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS</div>`;
             }
         }
         if (!isFilled && govContext.isPresidentParty) {
@@ -6031,9 +6031,9 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
             btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="${escapeHtml(blockReason)}">🔒</div>`;
         } else if (isDisabled) {
             stateClass = ' disabled';
-            btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${apCost} AP">▶ ${apCost} AP</div>`;
+            btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
         } else {
-            btnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+            btnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ FREE</div>`;
         }
 
         // For Debt Restructuring, show credit-based chance when not blocked
@@ -6050,11 +6050,11 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         html += `<div class="ministry-action${stateClass}" id="${actionId}" ${canUse && !isActive && !isDisabled ? `onclick="ministryActionSelect('${actionId}')"` : ''}>
             <div class="ministry-action__top">
                 <span class="ministry-action__name">${escapeHtml(action.name)}</span>
-                <span class="ministry-action__ap-cost">${apCost} AP${useCount > 0 ? ' (use ' + (useCount + 1) + ')' : ''}</span>
+                <span class="ministry-action__ap-cost">FREE${useCount > 0 ? ' (use ' + (useCount + 1) + ')' : ''}</span>
             </div>
             <div class="ministry-action__desc">${escapeHtml(action.desc)}${extraInfoHtml}</div>
             <div class="ministry-action__bottom">
-                <div class="ministry-action__tags">${tagsHtml}${budgetTagHtml}${isActive && (action.id === 'austerityMeasures' || action.id === 'stimulusPackage') ? '<span class="tag tag--negative">−1 AP/TICK</span>' : ''}</div>
+                <div class="ministry-action__tags">${tagsHtml}${budgetTagHtml}${isActive && (action.id === 'austerityMeasures' || action.id === 'stimulusPackage') ? '' : ''}</div>
                 <div id="${actionId}-btns">${btnHtml}</div>
             </div>
         </div>`;
@@ -6090,7 +6090,7 @@ function buildDefenseActionRows(isMyMinistry) {
     html += `<div class="ministry-action" onclick="openDoctrinePanel()" style="cursor:pointer;">
         <div class="ministry-action__top">
             <span class="ministry-action__name">Declare Doctrine</span>
-            <span class="ministry-action__ap-cost">3–8 AP</span>
+            <span class="ministry-action__ap-cost">FREE</span>
         </div>
         <div class="ministry-action__desc">Announce or renounce military doctrine across five sectors.</div>
         <div class="ministry-action__bottom">
@@ -6123,7 +6123,7 @@ function buildExpandInfrastructureActionRow({ ministryKey, action, canUse, ap, p
     const isActive = activeMinistryActions[actionId] || false;
     const countKey = `${ministryKey}:expandInfrastructure`;
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCosts = Array.isArray(action.apCosts) && action.apCosts.length ? action.apCosts : [3, 4, 6, 8];
+    const apCosts = Array.isArray(action.apCosts) && action.apCosts.length ? action.apCosts : [0, 0, 0, 0];
     const apCost = apCosts[Math.min(useCount, apCosts.length - 1)];
     const tagsHtml = (action.tags || []).map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
 
@@ -6167,15 +6167,15 @@ function buildExpandInfrastructureActionRow({ ministryKey, action, canUse, ap, p
         btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Insufficient discretionary funds">🔒</div>`;
     } else if (ap < apCost) {
         stateClass = ' disabled';
-        btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${apCost} AP">▶ ${apCost} AP</div>`;
+        btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
-        btnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+        btnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ FREE</div>`;
     }
 
     return `<div class="ministry-action${stateClass}" id="${actionId}" ${!isDisabled ? `onclick="ministryActionSelect('${actionId}')"` : ''}>
         <div class="ministry-action__top">
             <span class="ministry-action__name">${escapeHtml(action.name)}</span>
-            <span class="ministry-action__ap-cost">${apCost} AP${useCount > 0 ? ' (use ' + (useCount + 1) + ')' : ''}</span>
+            <span class="ministry-action__ap-cost">FREE${useCount > 0 ? ' (use ' + (useCount + 1) + ')' : ''}</span>
         </div>
         <div class="ministry-action__desc">${escapeHtml(action.desc)}${extraInfoHtml}</div>
         <div class="ministry-action__bottom">
@@ -6268,9 +6268,9 @@ function buildEducationActionRows(isMyMinistry) {
     } else if (!canUse) {
         currBtnHtml = '';
     } else if (ap < currApCost) {
-        currBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${currApCost} AP">▶ ${currApCost} AP</div>`;
+        currBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
-        currBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openCurriculumModal()">▶ ${currApCost} AP</div>`;
+        currBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openCurriculumModal()">▶ FREE</div>`;
     }
 
     const currStateClass = (currActive || _activeCurriculumDrift) ? ' active' : (inCooldown || !canUse || ap < currApCost) ? ' disabled' : '';
@@ -6278,7 +6278,7 @@ function buildEducationActionRows(isMyMinistry) {
     html += `<div class="ministry-action${currStateClass}" id="${currActionId}">
         <div class="ministry-action__top">
             <span class="ministry-action__name">Standardised Curriculum</span>
-            <span class="ministry-action__ap-cost">${currApCost} AP</span>
+            <span class="ministry-action__ap-cost">FREE</span>
         </div>
         <div class="ministry-action__desc">${escapeHtml(currAction.desc)}${currDescExtra}</div>
         <div class="ministry-action__bottom">
@@ -6309,15 +6309,15 @@ function buildEducationActionRows(isMyMinistry) {
         privStateClass = ' disabled';
     } else if (ap < privApCost) {
         privStateClass = ' disabled';
-        privBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${privApCost} AP">▶ ${privApCost} AP</div>`;
+        privBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
-        privBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${privActionId}')">▶ ${privApCost} AP</div>`;
+        privBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${privActionId}')">▶ FREE</div>`;
     }
 
     html += `<div class="ministry-action${privStateClass}" id="${privActionId}" ${!privActive && canUse && ap >= privApCost ? `onclick="ministryActionSelect('${privActionId}')"` : ''}>
         <div class="ministry-action__top">
             <span class="ministry-action__name">Private Education Incentives</span>
-            <span class="ministry-action__ap-cost">${privApCost} AP${privUseCount > 0 ? ' (use ' + (privUseCount + 1) + ')' : ''}</span>
+            <span class="ministry-action__ap-cost">FREE${privUseCount > 0 ? ' (use ' + (privUseCount + 1) + ')' : ''}</span>
         </div>
         <div class="ministry-action__desc">${escapeHtml(privAction.desc)}</div>
         <div class="ministry-action__bottom">
@@ -6385,15 +6385,15 @@ function buildHealthcareActionRows(isMyMinistry) {
         prevExtraHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">Insufficient discretionary funds.</div>`;
     } else if (ap < prevApCost) {
         prevStateClass = ' disabled';
-        prevBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${prevApCost} AP">▶ ${prevApCost} AP</div>`;
+        prevBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
-        prevBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${prevActionId}')">▶ ${prevApCost} AP</div>`;
+        prevBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${prevActionId}')">▶ FREE</div>`;
     }
 
     html += `<div class="ministry-action${prevStateClass}" id="${prevActionId}" ${!prevActive && canUse && prevCanAfford && ap >= prevApCost ? `onclick="healthcareActionSelect('${prevActionId}')"` : ''}>
         <div class="ministry-action__top">
             <span class="ministry-action__name">Preventative Care Programme</span>
-            <span class="ministry-action__ap-cost">${prevApCost} AP${prevUseCount > 0 ? ' (use ' + (prevUseCount + 1) + ')' : ''}</span>
+            <span class="ministry-action__ap-cost">FREE${prevUseCount > 0 ? ' (use ' + (prevUseCount + 1) + ')' : ''}</span>
         </div>
         <div class="ministry-action__desc">${escapeHtml(prevAction.desc)}${prevExtraHtml}</div>
         <div class="ministry-action__bottom">
@@ -6439,15 +6439,15 @@ function buildHealthcareActionRows(isMyMinistry) {
         pharmaStateClass = ' disabled';
     } else if (ap < pharmaApCost) {
         pharmaStateClass = ' disabled';
-        pharmaBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${pharmaApCost} AP">▶ ${pharmaApCost} AP</div>`;
+        pharmaBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
-        pharmaBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openPharmaceuticalSelector()">▶ ${pharmaApCost} AP</div>`;
+        pharmaBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openPharmaceuticalSelector()">▶ FREE</div>`;
     }
 
     html += `<div class="ministry-action${pharmaStateClass}" id="${pharmaActionId}">
         <div class="ministry-action__top">
             <span class="ministry-action__name">Pharmaceutical Regulation</span>
-            <span class="ministry-action__ap-cost">${pharmaApCost} AP${pharmaUseCount > 0 ? ' (use ' + (pharmaUseCount + 1) + ')' : ''}</span>
+            <span class="ministry-action__ap-cost">FREE${pharmaUseCount > 0 ? ' (use ' + (pharmaUseCount + 1) + ')' : ''}</span>
         </div>
         <div class="ministry-action__desc">${escapeHtml(pharmaAction.desc)}</div>
         <div class="ministry-action__bottom">
@@ -6498,9 +6498,9 @@ function renderPharmaSelectorUI(container) {
         const canAfford = cost <= 0 || discretionaryBalance >= cost;
         const costLabel = cost > 0 ? formatUpfrontCost(cost) : 'No Fund Draw';
         if (!canAfford) {
-            confirmHtml = `<div class="ministry-action__btn-confirm" style="opacity:0.4;cursor:not-allowed;margin-top:6px;">Confirm — ${pharmaApCost} AP · Insufficient funds</div>`;
+            confirmHtml = `<div class="ministry-action__btn-confirm" style="opacity:0.4;cursor:not-allowed;margin-top:6px;">Confirm — Insufficient funds</div>`;
         } else {
-            confirmHtml = `<div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmPharmaceuticalAction('${selDir}')" style="margin-top:6px;">Confirm — ${pharmaApCost} AP · ${costLabel}</div>`;
+            confirmHtml = `<div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmPharmaceuticalAction('${selDir}')" style="margin-top:6px;">Confirm — ${costLabel}</div>`;
         }
     }
 
@@ -6674,7 +6674,7 @@ async function confirmPharmaceuticalAction(direction) {
     } catch (e) {
         // Revert optimistic UI — only reached if RPC itself failed
         row.classList.remove('active');
-        if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openPharmaceuticalSelector()">▶ ${apCost} AP</div>`;
+        if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openPharmaceuticalSelector()">▶ FREE</div>`;
         alert('Action failed: ' + (e.message || 'Unknown error'));
     } finally {
         _ministryActionConfirming = false;
@@ -6707,7 +6707,7 @@ function healthcareActionSelect(actionId) {
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
         btns.innerHTML = `<div style="display:flex;gap:4px;">
-            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmHealthcareAction('${actionId}')">Confirm — ${apCost} AP · ${costLabel}</div>
+            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmHealthcareAction('${actionId}')">Confirm — ${costLabel}</div>
             <div class="ministry-action__btn-cancel" onclick="event.stopPropagation();healthcareActionDeselect('${actionId}')">✕</div>
         </div>`;
     }
@@ -6726,7 +6726,7 @@ function healthcareActionDeselect(actionId) {
 
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
-        btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+        btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${actionId}')">▶ FREE</div>`;
     }
 }
 
@@ -6817,7 +6817,7 @@ async function confirmHealthcareAction(actionId) {
         // Revert optimistic UI
         row.classList.remove('active');
         if (btns) {
-            btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+            btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${actionId}')">▶ FREE</div>`;
         }
         alert('Action failed: ' + (e.message || 'Unknown error'));
     } finally {
@@ -6891,15 +6891,15 @@ function buildLaborActionRows(isMyMinistry) {
         laborStateClass = ' disabled';
     } else if (ap < laborApCost) {
         laborStateClass = ' disabled';
-        laborBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${laborApCost} AP">▶ ${laborApCost} AP</div>`;
+        laborBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
-        laborBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openLaborPolicySelector()">▶ ${laborApCost} AP</div>`;
+        laborBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openLaborPolicySelector()">▶ FREE</div>`;
     }
 
     html += `<div class="ministry-action${laborStateClass}" id="${laborActionId}">
         <div class="ministry-action__top">
             <span class="ministry-action__name">Labor Policy</span>
-            <span class="ministry-action__ap-cost">${laborApCost} AP${laborUseCount > 0 ? ' (use ' + (laborUseCount + 1) + ')' : ''}</span>
+            <span class="ministry-action__ap-cost">FREE${laborUseCount > 0 ? ' (use ' + (laborUseCount + 1) + ')' : ''}</span>
         </div>
         <div class="ministry-action__desc">${escapeHtml(laborAction.desc)}</div>
         <div class="ministry-action__bottom">
@@ -6936,15 +6936,15 @@ function buildLaborActionRows(isMyMinistry) {
         wfExtraHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">Insufficient discretionary funds.</div>`;
     } else if (ap < wfApCost) {
         wfStateClass = ' disabled';
-        wfBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${wfApCost} AP">▶ ${wfApCost} AP</div>`;
+        wfBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
-        wfBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();laborActionSelect('${wfActionId}')">▶ ${wfApCost} AP</div>`;
+        wfBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();laborActionSelect('${wfActionId}')">▶ FREE</div>`;
     }
 
     html += `<div class="ministry-action${wfStateClass}" id="${wfActionId}" ${!wfActive && canUse && wfCanAfford && ap >= wfApCost ? `onclick="laborActionSelect('${wfActionId}')"` : ''}>
         <div class="ministry-action__top">
             <span class="ministry-action__name">Workforce Development Programme</span>
-            <span class="ministry-action__ap-cost">${wfApCost} AP${wfUseCount > 0 ? ' (use ' + (wfUseCount + 1) + ')' : ''}</span>
+            <span class="ministry-action__ap-cost">FREE${wfUseCount > 0 ? ' (use ' + (wfUseCount + 1) + ')' : ''}</span>
         </div>
         <div class="ministry-action__desc">${escapeHtml(wfAction.desc)}${wfExtraHtml}</div>
         <div class="ministry-action__bottom">
@@ -6994,9 +6994,9 @@ function renderLaborSelectorUI(container) {
         const canAfford = cost <= 0 || discretionaryBalance >= cost;
         const costLabel = cost > 0 ? formatUpfrontCost(cost) : 'No Fund Draw';
         if (!canAfford) {
-            confirmHtml = `<div class="ministry-action__btn-confirm" style="opacity:0.4;cursor:not-allowed;margin-top:6px;">Confirm — ${laborApCost} AP · Insufficient funds</div>`;
+            confirmHtml = `<div class="ministry-action__btn-confirm" style="opacity:0.4;cursor:not-allowed;margin-top:6px;">Confirm — Insufficient funds</div>`;
         } else {
-            confirmHtml = `<div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmLaborPolicyAction('${selDir}')" style="margin-top:6px;">Confirm — ${laborApCost} AP · ${costLabel}</div>`;
+            confirmHtml = `<div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmLaborPolicyAction('${selDir}')" style="margin-top:6px;">Confirm — ${costLabel}</div>`;
         }
     }
 
@@ -7169,7 +7169,7 @@ async function confirmLaborPolicyAction(direction) {
     } catch (e) {
         // Revert optimistic UI — only reached if RPC itself failed
         row.classList.remove('active');
-        if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openLaborPolicySelector()">▶ ${apCost} AP</div>`;
+        if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openLaborPolicySelector()">▶ FREE</div>`;
         alert('Action failed: ' + (e.message || 'Unknown error'));
     } finally {
         _ministryActionConfirming = false;
@@ -7202,7 +7202,7 @@ function laborActionSelect(actionId) {
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
         btns.innerHTML = `<div style="display:flex;gap:4px;">
-            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmLaborWorkforceAction('${actionId}')">Confirm — ${apCost} AP · ${costLabel}</div>
+            <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();confirmLaborWorkforceAction('${actionId}')">Confirm — ${costLabel}</div>
             <div class="ministry-action__btn-cancel" onclick="event.stopPropagation();laborActionDeselect('${actionId}')">✕</div>
         </div>`;
     }
@@ -7221,7 +7221,7 @@ function laborActionDeselect(actionId) {
 
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
-        btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();laborActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+        btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();laborActionSelect('${actionId}')">▶ FREE</div>`;
     }
 }
 
@@ -7312,7 +7312,7 @@ async function confirmLaborWorkforceAction(actionId) {
         // Revert optimistic UI
         row.classList.remove('active');
         if (btns) {
-            btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();laborActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+            btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();laborActionSelect('${actionId}')">▶ FREE</div>`;
         }
         alert('Action failed: ' + (e.message || 'Unknown error'));
     } finally {
@@ -7365,7 +7365,7 @@ function buildEnergyActionRows(isMyMinistry) {
     const capRemaining = Math.max(0, reserveCap - reserveMb);
 
     let buildDesc = 'Divert domestic oil supply into strategic government reserves. Reduces export supply by 3% for 6 ticks.';
-    let buildApLabel = `${buildApCost} AP${buildUseCount > 0 ? ' (use ' + (buildUseCount + 1) + ')' : ''}`;
+    let buildApLabel = `FREE${buildUseCount > 0 ? ' (use ' + (buildUseCount + 1) + ')' : ''}`;
     let buildStateClass = '';
     let buildBtnHtml = '';
 
@@ -7381,20 +7381,20 @@ function buildEnergyActionRows(isMyMinistry) {
         buildApLabel = `<span style="color:#5cb85c;">BUILDING</span>`;
         // Can still stack another cycle
         if (canUse && ap >= buildApCost) {
-            buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openBuildOilReserves()">▶ +${buildApCost} AP</div>`;
+            buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openBuildOilReserves()">▶ FREE</div>`;
         } else if (!canUse) {
             buildBtnHtml = '';
         } else {
-            buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${buildApCost} AP">▶ ${buildApCost} AP</div>`;
+            buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
         }
     } else if (!canUse) {
         buildStateClass = ' disabled';
         buildBtnHtml = '';
     } else if (ap < buildApCost) {
         buildStateClass = ' disabled';
-        buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${buildApCost} AP">▶ ${buildApCost} AP</div>`;
+        buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
-        buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openBuildOilReserves()">▶ ${buildApCost} AP</div>`;
+        buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openBuildOilReserves()">▶ FREE</div>`;
     }
 
     const buildTagsHtml = `<span class="tag tag--positive" style="color:#c8a64e;border-color:#c8a64e44;">RESERVE +${buildRate} Mb/TICK</span>`
@@ -7427,7 +7427,7 @@ function buildEnergyActionRows(isMyMinistry) {
     const releaseActive = activeMinistryActions?.['energy-releaseOilReserves'] || false;
 
     let releaseDesc = 'Deploy strategic oil reserves into the domestic market to stabilise fuel prices and ease energy costs.';
-    let releaseApLabelText = `${releaseApCost} AP`;
+    let releaseApLabelText = `FREE`;
     let releaseStateClass = '';
     let releaseBtnHtml = '';
 
@@ -7444,15 +7444,15 @@ function buildEnergyActionRows(isMyMinistry) {
     } else if (tooLow) {
         releaseStateClass = ' disabled';
         releaseDesc = `Reserve too low for release. Minimum 10 Mb required. Current: ${reserveMb} Mb.`;
-        releaseBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Minimum release is 10 Mb">▶ ${releaseApCost} AP</div>`;
+        releaseBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Minimum release is 10 Mb">▶ FREE</div>`;
     } else if (!canUse) {
         releaseStateClass = ' disabled';
         releaseBtnHtml = '';
     } else if (ap < releaseApCost) {
         releaseStateClass = ' disabled';
-        releaseBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${releaseApCost} AP">▶ ${releaseApCost} AP</div>`;
+        releaseBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
-        releaseBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openReleaseOilReserves()">▶ ${releaseApCost} AP</div>`;
+        releaseBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openReleaseOilReserves()">▶ FREE</div>`;
     }
 
     const releaseTagsHtml = `<span class="tag tag--positive">FUEL PRICES ↓</span>`
@@ -7520,7 +7520,7 @@ function openBuildOilReserves() {
         </div>
         <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px;">
             <div class="ministry-action__btn-cancel" onclick="closeBuildOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Cancel</div>
-            <div class="ministry-action__btn-confirm" onclick="confirmBuildOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Confirm — ${apCost} AP</div>
+            <div class="ministry-action__btn-confirm" onclick="confirmBuildOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Confirm</div>
         </div>
     </div>`;
 }
@@ -7540,7 +7540,7 @@ async function confirmBuildOilReserves() {
     const useCount = _energyBuildUseCount ?? 0;
     const apCost = buildApCosts[Math.min(useCount, 3)];
     const ap = currentFaction?.action_points ?? 0;
-    if (ap < apCost) { alert('Insufficient AP.'); return; }
+    if (ap < apCost) { alert('Unexpected error.'); return; }
 
     const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     const pop = currentNation?.population ?? 20000000;
@@ -7696,7 +7696,7 @@ function renderReleaseConfirmPanel() {
 
         <div style="display:flex;gap:6px;justify-content:flex-end;">
             <div class="ministry-action__btn-cancel" onclick="closeReleaseOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Cancel</div>
-            <div class="ministry-action__btn-confirm" onclick="confirmReleaseOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Confirm — 2 AP</div>
+            <div class="ministry-action__btn-confirm" onclick="confirmReleaseOilReserves()" style="padding:4px 10px;font-size:8px;cursor:pointer;">Confirm</div>
         </div>
     </div>`;
 }
@@ -7709,7 +7709,7 @@ async function confirmReleaseOilReserves() {
 
     const releaseApCost = 2;
     const ap = currentFaction?.action_points ?? 0;
-    if (ap < releaseApCost) { alert('Insufficient AP.'); return; }
+    if (ap < releaseApCost) { alert('Unexpected error.'); return; }
 
     const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     const amount = _energyReleaseAmount;
@@ -7871,12 +7871,12 @@ function renderCurriculumModal() {
     if (selCount === 0) {
         confirmHtml = `
             <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:var(--text-muted);margin-bottom:8px;">Select up to 2 ideology directions from different axes.</div>
-            <div style="padding:8px 12px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--bg-card);border:1px solid var(--border-0);color:var(--text-dim);cursor:not-allowed;">CONFIRM — 6 AP</div>`;
+            <div style="padding:8px 12px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--bg-card);border:1px solid var(--border-0);color:var(--text-dim);cursor:not-allowed;">CONFIRM</div>`;
     } else {
         const descriptions = sels.map(s => `<span style="color:var(--accent);">${escapeHtml(s.label)}</span> on ${escapeHtml(_curriculumAxisLabel(s.axisId))}`);
         confirmHtml = `
             <div style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:var(--text-muted);margin-bottom:8px;">Curriculum will drift toward ${descriptions.join(' and ')}.<br>+0.1 per tick for 12 ticks. Cost: ${budgetFmt}/tick.</div>
-            <div onclick="confirmCurriculum()" style="padding:8px 12px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#c8a64e;border:1px solid rgba(200,166,78,0.5);color:#1a0808;cursor:pointer;">CONFIRM — 6 AP · ${budgetFmt}/TICK</div>`;
+            <div onclick="confirmCurriculum()" style="padding:8px 12px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#c8a64e;border:1px solid rgba(200,166,78,0.5);color:#1a0808;cursor:pointer;">CONFIRM — ${budgetFmt}/TICK</div>`;
     }
 
     overlay.innerHTML = `
@@ -7901,10 +7901,10 @@ async function confirmCurriculum() {
     if (!_curriculumSelections || _curriculumSelections.length === 0) { _confirmCurriculumLock = false; return; }
     if (!isMyMinistryByKey('education')) { _confirmCurriculumLock = false; return; }
     const sels = [..._curriculumSelections]; // 1 or 2 selections
-    const apCost = 6;
+    const apCost = 0;
 
     if ((currentFaction?.action_points || 0) < apCost) {
-        alert('Not enough AP.');
+        alert('Unexpected error.');
         _confirmCurriculumLock = false;
         return;
     }
@@ -8254,7 +8254,7 @@ function renderDoctrineCard(def, state, isMine) {
         buttonHtml = '';
     }
 
-    const apText = def.apCost > 0 ? `${def.apCost} AP` : (def.startingDoctrine ? 'DEFAULT' : 'NO COST');
+    const apText = def.startingDoctrine ? 'DEFAULT' : 'FREE';
 
     return `<div class="${cardClass}" id="doctrine-card-${def.id}">
         <div class="doctrine-card__top">
@@ -8327,7 +8327,7 @@ function beginDoctrineAnnounce(doctrineId) {
     // AP check
     const ap = currentFaction?.action_points || 0;
     if (def.apCost > 0 && ap < def.apCost) {
-        showDoctrineAlert(doctrineId, `Insufficient AP. Need ${def.apCost}, have ${ap}.`);
+        showDoctrineAlert(doctrineId, 'Unexpected error.');
         return;
     }
 
@@ -8339,7 +8339,7 @@ function beginDoctrineAnnounce(doctrineId) {
         <div class="doctrine-confirm doctrine-confirm--announce">
             <div class="doctrine-confirm__text">Announce ${escapeHtml(def.name)}? This declaration is public.</div>
             <div class="doctrine-confirm__btns">
-                <div class="doctrine-card__btn doctrine-card__btn--announce" onclick="event.stopPropagation();confirmDoctrineAnnounce('${doctrineId}')">Confirm — ${def.apCost} AP</div>
+                <div class="doctrine-card__btn doctrine-card__btn--announce" onclick="event.stopPropagation();confirmDoctrineAnnounce('${doctrineId}')">Confirm</div>
                 <div class="doctrine-card__btn doctrine-card__btn--cancel" onclick="event.stopPropagation();cancelDoctrineAction('${doctrineId}')">Cancel</div>
             </div>
         </div>`;
@@ -8389,7 +8389,7 @@ async function confirmDoctrineAnnounce(doctrineId) {
         if (def.apCost > 0) {
             const apResult = await deductAP(_supabase, currentFaction.id, def.apCost);
             if (!apResult.success) {
-                showDoctrineAlert(doctrineId, apResult.error || 'Failed to deduct AP.');
+                showDoctrineAlert(doctrineId, apResult.error || 'Unexpected error.');
                 _doctrineConfirmingId = null;
                 return;
             }
@@ -8602,7 +8602,7 @@ function ministryActionSelect(actionId) {
             const cUseCount = ministryActionUseCounts[cCountKey] || 0;
             const cApCost = cAction.apCosts[Math.min(cUseCount, 3)];
             const cFmt = cCost >= 1e9 ? '$' + (cCost/1e9).toFixed(1) + 'B' : cCost >= 1e6 ? '$' + Math.round(cCost/1e6) + 'M' : '$' + Math.round(cCost).toLocaleString();
-            confirmLabel = `✓ ${cApCost} AP · ${cFmt}`;
+            confirmLabel = `✓ ${cFmt}`;
         }
         btns.innerHTML = `<div style="display:flex;gap:4px;">
             <div class="ministry-action__btn-confirm" onclick="event.stopPropagation();ministryActionConfirm('${actionId}')">${confirmLabel}</div>
@@ -8634,7 +8634,7 @@ function ministryActionDeselect(actionId) {
 
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
-        btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+        btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ FREE</div>`;
     }
 }
 
@@ -8669,7 +8669,7 @@ function refreshMinistryActionStates(ministryKey) {
         const isDisabled = !canUse || ap < apCost || isBlocked;
         const btns = document.getElementById(actionId + '-btns');
         const apLabel = row.querySelector('.ministry-action__ap-cost');
-        if (apLabel) apLabel.textContent = apCost + ' AP' + (useCount > 0 ? ' (use ' + (useCount + 1) + ')' : '');
+        if (apLabel) apLabel.textContent = 'FREE';
 
         if (!canUse) {
             row.classList.add('disabled');
@@ -8685,11 +8685,11 @@ function refreshMinistryActionStates(ministryKey) {
             row.classList.add('disabled');
             row.classList.remove('selected');
             row.removeAttribute('onclick');
-            if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Need ${apCost} AP">▶ ${apCost} AP</div>`;
+            if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
         } else {
             row.classList.remove('disabled');
             row.setAttribute('onclick', `ministryActionSelect('${actionId}')`);
-            if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+            if (btns) btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ FREE</div>`;
         }
     });
 }
@@ -8774,7 +8774,7 @@ async function ministryActionConfirm(actionId) {
     if (action.conflictsWith && activeMinistryActions[ministryKey + '-' + action.conflictsWith]) {
         const opposingConfig = MINISTRY_ACTIONS[ministryKey]?.actions.find(a => a.id === action.conflictsWith);
         const opposingName = opposingConfig?.name || action.conflictsWith;
-        if (!confirm(`This will immediately cancel your active ${opposingName} with no AP refund. Continue?`)) {
+        if (!confirm(`This will immediately cancel your active ${opposingName}. Continue?`)) {
             _ministryActionConfirming = false;
             ministryActionDeselect(actionId);
             return;
@@ -8866,7 +8866,7 @@ async function ministryActionConfirm(actionId) {
         // Revert optimistic UI
         row.classList.remove('active');
         if (btns) {
-            btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ ${apCost} AP</div>`;
+            btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ FREE</div>`;
         }
         alert('Action failed: ' + (e.message || 'Unknown error'));
     } finally {
@@ -8915,18 +8915,18 @@ function renderProtestCrisisCard() {
         ? Math.max(0, PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN - (currentTick - p.public_address_last_tick))
         : 0;
     // Only PM/President can issue a Public Address
-    const paDisabled = !isLeadParty || ap < PROTEST_CONFIG.PUBLIC_ADDRESS_AP || paCooldownRemaining > 0;
+    const paDisabled = !isLeadParty || paCooldownRemaining > 0;
     const paLabel = paCooldownRemaining > 0
         ? `PUBLIC ADDRESS (${paCooldownRemaining} TICK CD)`
         : 'PUBLIC ADDRESS';
-    const paCostLabel = `${PROTEST_CONFIG.PUBLIC_ADDRESS_AP} AP`;
+    const paCostLabel = 'FREE';
 
     // EPO: only on T6, only Interior owner
-    const epoDisabled = !ownsInterior || ap < 2 || isTier7;
+    const epoDisabled = !ownsInterior || isTier7;
     const epoNote = isTier7 ? 'T6 only' : '33% resolve / 66% escalate to T7';
 
-    // National Emergency: only lead party, 5 AP
-    const neDisabled = !isLeadParty || ap < 5;
+    // National Emergency: only lead party
+    const neDisabled = !isLeadParty;
 
     let actionsHtml = `<div class="protest-crisis-card__actions">`;
 
@@ -8940,13 +8940,13 @@ function renderProtestCrisisCard() {
     // EPO button
     actionsHtml += `<div class="protest-crisis-btn protest-crisis-btn--danger${epoDisabled ? ' disabled' : ''}" onclick="${epoDisabled ? '' : `protestCrisisAction('epo')`}">
         <span>ENFORCE PUBLIC ORDER</span>
-        <span>2 AP <span class="protest-crisis-btn__note">${epoNote}</span></span>
+        <span><span class="protest-crisis-btn__note">${epoNote}</span></span>
     </div>`;
 
     // National Emergency button
     actionsHtml += `<div class="protest-crisis-btn protest-crisis-btn--danger${neDisabled ? ' disabled' : ''}" onclick="${neDisabled ? '' : `protestCrisisAction('national_emergency')`}">
         <span>NATIONAL EMERGENCY</span>
-        <span>5 AP <span class="protest-crisis-btn__note">ends crisis — severe penalties</span></span>
+        <span><span class="protest-crisis-btn__note">ends crisis — severe penalties</span></span>
     </div>`;
 
     actionsHtml += '</div>';
@@ -9096,7 +9096,7 @@ function openBondIssuanceModal(ministryKey, apCost) {
 
         <div style="display:flex;gap:8px;justify-content:flex-end;">
             <button onclick="closeBondModal()" style="padding:6px 14px;font-family:var(--font-mono);font-size:9px;background:transparent;border:1px solid var(--border-0);color:var(--text-muted);cursor:pointer;">CANCEL</button>
-            <button onclick="submitBondIssuance(${apCost})" id="bond-submit-btn" style="padding:6px 14px;font-family:var(--font-mono);font-size:9px;font-weight:700;background:#8a6aaa;border:1px solid #8a6aaa;color:#000;cursor:pointer;">ISSUE BONDS (${apCost} AP)</button>
+            <button onclick="submitBondIssuance(${apCost})" id="bond-submit-btn" style="padding:6px 14px;font-family:var(--font-mono);font-size:9px;font-weight:700;background:#8a6aaa;border:1px solid #8a6aaa;color:#000;cursor:pointer;">ISSUE BONDS</button>
         </div>
     </div>`;
     document.body.appendChild(overlay);
@@ -9151,7 +9151,7 @@ async function submitBondIssuance(apCost) {
         // Deduct AP
         const apResult = await deductAP(_supabase, currentFaction.id, apCost);
         if (!apResult.success) {
-            alert('Not enough AP (' + apCost + ' required). Current: ' + (apResult.currentAp ?? '?'));
+            alert('Unexpected error issuing bonds.');
             return;
         }
         currentFaction.action_points = apResult.newAp;
@@ -9733,8 +9733,7 @@ async function purgeMinister(ministryKey) {
 
     if (!confirm(
         '⛔ PURGE ' + ministerName + ' from ' + (MINISTRY_NAMES[ministryKey] || ministryKey) + '?\n\n' +
-        'Cost: 1 AP\n\n' +
-        'Scapegoat Effects:\n' +
+        ''Scapegoat Effects:\n' +
         '• ' + partyName + ' loses 2–4 Loyalty and 1–2 Approval\n' +
         '• Your faction gains +4–5 Approval (decays over time)\n' +
         '• Nation: +1 Corruption, Stability shifts ±1–2\n\n' +
@@ -9745,7 +9744,7 @@ async function purgeMinister(ministryKey) {
     const apResult = await deductAP(_supabase, currentFaction.id, 1);
     if (!apResult.success) {
         if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-        alert('Not enough AP (need 1). Current AP: ' + (apResult.currentAp ?? '?'));
+        alert('Unexpected error.');
         return;
     }
     currentFaction.action_points = apResult.newAp;
@@ -9883,7 +9882,7 @@ async function requestMinistry(ministryKey) {
     const apResult = await deductAP(_supabase, currentFaction.id, 1);
     if (!apResult.success) {
         if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-        alert('Not enough AP (need 1). Current AP: ' + (apResult.currentAp ?? '?'));
+        alert('Unexpected error.');
         return;
     }
     currentFaction.action_points = apResult.newAp;
@@ -9948,7 +9947,7 @@ function renderSemiPresNoConfidenceButton() {
     return `
         <div id="no-confidence" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
             <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileNoConfidence()" id="no-confidence-btn">
-                ⚡ Vote of No Confidence (PM) <span class="ap-cost">${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP</span>
+                ⚡ Vote of No Confidence (PM) 
             </button>
             <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Remove the PM — President must re-nominate</div>
         </div>`;
@@ -9976,7 +9975,7 @@ function renderNoConfidenceButton(coalition) {
     return `
         <div id="no-confidence" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
             <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileNoConfidence()" id="no-confidence-btn">
-                ⚡ Vote of No Confidence <span class="ap-cost">${GAME_CONFIG.NO_CONFIDENCE_AP_COST} AP</span>
+                ⚡ Vote of No Confidence 
             </button>
             <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">Opposition only — topple the government</div>
         </div>`;
@@ -10190,7 +10189,7 @@ function renderImpeachmentButton() {
     return `
         <div id="impeachment" style="text-align:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-main);">
             <button class="ministry-btn purge" style="padding:10px 24px;font-size:0.8rem;" onclick="fileImpeachment()" id="impeach-btn" ${disabledAttr}>
-                ⚖ Impeach President <span class="ap-cost">${effectiveAPCost} AP</span>
+                ⚖ Impeach President 
             </button>
             <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:6px;">File articles of impeachment against the President</div>
             ${disabledNote}
@@ -10311,7 +10310,7 @@ async function openEOModal() {
         },
         {
             type: 'national_emergency', name: 'National Emergency',
-            desc: 'Declare emergency powers. +1 AP/tick, advance bills. Lasts until ended.',
+            desc: 'Declare emergency powers.  advance bills. Lasts until ended.',
             info: eoAvailability.national_emergency
         },
         {
@@ -10338,7 +10337,7 @@ async function openEOModal() {
                     <div class="eo-card-desc">${escapeHtml(o.desc)}</div>
                 </div>
                 <div class="eo-card-right">
-                    <div class="eo-card-cost">${o.info.apCost} AP</div>
+                    
                     <div class="eo-card-status ${statusClass}">${escapeHtml(statusLabel)}</div>
                 </div>
             </div>`;
@@ -10401,7 +10400,7 @@ function renderActingMinisterConfirm(panel) {
         <div class="eo-confirm-title">Appoint Acting Minister</div>
         <div class="eo-confirm-desc">
             Select a ministry to fill with an acting appointment. This bypasses legislative confirmation
-            but costs ${EO_CONFIG.ACTING_MINISTER_AP} AP and -4 government approval.
+            but  and -4 government approval.
         </div>
         <select class="eo-select" id="eo-acting-ministry" onchange="eoParamChanged()">
             <option value="">-- Select Ministry --</option>
@@ -10427,7 +10426,7 @@ function renderTaxAdjustmentConfirm(panel) {
     panel.innerHTML = `
         <div class="eo-confirm-title">Tax Adjustment</div>
         <div class="eo-confirm-desc">
-            Adjust a tax rate by \u00B1${EO_CONFIG.TAX_ADJUSTMENT_DELTA}%. Costs ${EO_CONFIG.TAX_ADJUSTMENT_BASE_AP}+ AP.
+            Adjust a tax rate by \u00B1${EO_CONFIG.TAX_ADJUSTMENT_DELTA}%.
             Tax increases cost -3 approval; decreases cost -5 approval.
         </div>
         <div class="eo-option-group" id="eo-tax-types">${taxBtns}</div>
@@ -10455,8 +10454,7 @@ function renderPriceControlsConfirm(panel) {
         <div class="eo-confirm-title">Price Controls</div>
         <div class="eo-confirm-desc">
             Freeze a stat at its current value for ${EO_CONFIG.PRICE_CONTROLS_DURATION} ticks.
-            When controls expire, suppressed pressure releases at 2x magnitude.
-            Costs ${EO_CONFIG.PRICE_CONTROLS_AP} AP and -3 approval.
+            When controls expire, suppressed pressure releases at 2x magnitude. and -3 approval.
         </div>
         <div class="eo-option-group">${statBtns}</div>
         <div class="eo-preview" id="eo-pc-preview" style="display:none;"></div>`;
@@ -10467,7 +10465,7 @@ function renderEmergencyConfirm(panel) {
         <div class="eo-confirm-title">Declare National Emergency</div>
         <div class="eo-warning">
             <strong>Warning:</strong> Emergency powers are significant.
-            <br>• +1 AP per tick to presidential faction
+            <br>
             <br>• Can advance bills without votes
             <br>• +8 initial approval boost (crisis rally)
             <br>• -4 approval per tick after first tick
@@ -10476,8 +10474,7 @@ function renderEmergencyConfirm(panel) {
             <br>• Ending starts a ${EO_CONFIG.EMERGENCY_COOLDOWN}-tick cooldown
             <br>• Lasts until manually ended, president removed, or impeached
         </div>
-        <div class="eo-confirm-desc">
-            Cost: ${EO_CONFIG.NATIONAL_EMERGENCY_AP} AP. This cannot be undone without consequences.
+        <div class="eo-confirm-desc">. This cannot be undone without consequences.
         </div>`;
     document.getElementById('eo-confirm-btn').disabled = false;
 }
@@ -10499,7 +10496,7 @@ function renderCensureConfirm(panel) {
     panel.innerHTML = `
         <div class="eo-confirm-title">Censure a Rival Faction</div>
         <div class="eo-confirm-desc">
-            Censure costs ${EO_CONFIG.CENSURE_AP} AP and -3 approval.
+            Censure  and -3 approval.
             Target loses -4 momentum but gains sympathy (+${EO_CONFIG.CENSURE_BASE_MOMENTUM} momentum).
             Repeat censures within ${EO_CONFIG.CENSURE_REPEAT_WINDOW} ticks give +${EO_CONFIG.CENSURE_REPEAT_MOMENTUM} sympathy.
         </div>
@@ -10551,7 +10548,7 @@ function renderStimulusPanel(panel) {
     let html = `
         <div class="eo-confirm-title">Stimulate the Economy</div>
         <div class="eo-confirm-desc">
-            Issue ideology-flavored economic stimulus orders. Each costs ${EO_CONFIG.STIMULATE_ECONOMY_AP} AP.
+            Issue ideology-flavored economic stimulus orders. Each .
             Once used, an order cannot be reissued during the same presidential term.
         </div>
         <div class="eo-stimulus-back" onclick="backToEOList()">&#8592; Back to Executive Orders</div>
@@ -10632,8 +10629,7 @@ function selectStimulusOrder(stimulusKey) {
             ${increases ? `<div style="margin-bottom:4px;">Increases: ${increases}</div>` : ''}
             ${decreases ? `<div>Decreases: ${decreases}</div>` : ''}
         </div>
-        <div class="eo-confirm-desc" style="font-size:0.8rem;">
-            Cost: ${EO_CONFIG.STIMULATE_ECONOMY_AP} AP. This order cannot be reissued this term.
+        <div class="eo-confirm-desc" style="font-size:0.8rem;">. This order cannot be reissued this term.
         </div>`;
     confirmBtn.style.display = 'inline-block';
     confirmBtn.disabled = false;
@@ -10963,7 +10959,7 @@ async function fileImpeachment() {
             <div style="font-size:0.8rem;color:var(--text-primary);margin-bottom:12px;">Select at least one charge:</div>
             <div id="impeach-charges-list">${chargeCheckboxes}</div>
             <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-hair);font-size:0.75rem;color:var(--text-secondary);line-height:1.5;">
-                <div>Cost: <strong style="color:var(--amber);">${effectiveAPCost} AP</strong>${effectiveAPCost !== GAME_CONFIG.IMPEACHMENT_AP_COST ? ` <span style="font-size:0.65rem;">(base ${GAME_CONFIG.IMPEACHMENT_AP_COST}, modified by leader traits)</span>` : ''}</div>
+                <div>Cost: <strong style="color:var(--amber);">FREE</strong></div>
                 <div>Committee debate: ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS} ticks → Floor vote: ${GAME_CONFIG.IMPEACHMENT_MOTION_VOTING_TICKS} ticks</div>
                 <div>Requires <strong style="color:var(--green);">simple majority</strong> (50%+1 of all seats) to impeach</div>
                 <div style="margin-top:6px;">If impeached → Trial: ${GAME_CONFIG.IMPEACHMENT_TRIAL_TICKS}-tick conviction vote (⅔ supermajority)</div>
@@ -11007,7 +11003,7 @@ async function fileImpeachment() {
         const apResult = await deductAP(_supabase, currentFaction.id, effectiveAPCost);
         if (!apResult.success) {
             if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-            alert('Not enough AP. Need ' + effectiveAPCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
+            alert('Unexpected error.');
             _govActionLock = false;
             return;
         }
@@ -11453,7 +11449,8 @@ async function refreshGovernmentUI() {
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
     const ministryName = MINISTRY_NAMES[ministryKey] || ministry.ministry_name || ministryKey;
-    if (!confirm('Dismiss ' + ministerName + ' from ' + ministryName + '?\n\nCosts 1 AP. A replacement will need to be appointed.\nThe new minister starts at 50% approval.\nNote: The underlying national stats will not change.')) return;
+    if (!confirm('Dismiss ' + ministerName + ' from ' + ministryName + '?\n
+A replacement will need to be appointed.\nThe new minister starts at 50% approval.\nNote: The underlying national stats will not change.')) return;
     _govActionLock = true;
 
     try {
@@ -11461,7 +11458,7 @@ async function refreshGovernmentUI() {
         const apResult = await deductAP(_supabase, currentFaction.id, 1);
         if (!apResult.success) {
             if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-            alert('Not enough AP (need 1). Current AP: ' + (apResult.currentAp ?? '?'));
+            alert('Unexpected error.');
             return;
         }
         currentFaction.action_points = apResult.newAp;
