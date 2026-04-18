@@ -2673,6 +2673,7 @@ let _execSearchSelected = -1;
 
 // Fleet state
 let _fleetVessels = [];
+let _vesselOrders = [];
 let _fleetSelectedIdx = null;
 let _vesselInsuranceMap = {};   // { vesselId: true } — vessels with active insurance
 let _vesselInsurancePending = {}; // { vesselId: true } — vessels with pending insurance requests
@@ -12933,6 +12934,16 @@ async function loadFleet() {
     _fleetVessels = data || [];
     _fleetSelectedIdx = null;
 
+    // Pending commissions — vessels currently being built at a shipyard.
+    // Rendered alongside the delivered fleet with a live build-progress bar.
+    const { data: orderData, error: orderErr } = await _supabase.from('vessel_orders')
+        .select('id, vessel_name, vessel_class, shipyard_nation, ordered_at_tick, delivery_tick, build_ticks, balance_due')
+        .eq('faction_id', faction.id)
+        .eq('status', 'building')
+        .order('delivery_tick', { ascending: true });
+    if (orderErr) console.warn('Failed to load vessel orders:', orderErr.message);
+    _vesselOrders = orderData || [];
+
     // Load insurance status for fleet vessels
     _vesselInsuranceMap = {};
     _vesselInsurancePending = {};
@@ -12979,8 +12990,11 @@ function renderFleetCard() {
     const footerEl = document.getElementById('fl-footer');
     if (!countEl || !listEl) return;
 
-    const ships = _fleetVessels;
-    countEl.textContent = ships.length + ' VESSEL' + (ships.length !== 1 ? 'S' : '');
+    const ships  = _fleetVessels;
+    const orders = _vesselOrders || [];
+    const orderCount = orders.length;
+    countEl.textContent = ships.length + ' VESSEL' + (ships.length !== 1 ? 'S' : '')
+        + (orderCount > 0 ? ' \u00B7 ' + orderCount + ' BUILDING' : '');
 
     // Summary bar
     const inTransit = ships.filter(s => s.status === 'in_transit').length;
@@ -12988,21 +13002,71 @@ function renderFleetCard() {
     const inDock = ships.filter(s => s.status === 'dry_dock').length;
     const totalMaint = ships.reduce((s, v) => s + (v.base_maintenance || 0), 0);
 
-    summaryEl.innerHTML = [
-        { label: 'TRANSIT', value: inTransit, color: '#5a8aaa' },
-        { label: 'IN PORT', value: inPort, color: '#8b9a6b' },
-        { label: 'DRY DOCK', value: inDock, color: '#c84' },
-        { label: 'MAINT/TICK', value: hfFmtBig(totalMaint), color: '#a44' },
-    ].map((s, i) => `<div style="flex:1;padding:5px 8px;text-align:center;${i < 3 ? 'border-right:1px solid var(--border-0);' : ''}">
+    // BUILDING column only appears when there are pending orders so the summary
+    // stays four-wide for the common "no commissions" case.
+    const summaryCells = orderCount > 0
+        ? [
+            { label: 'TRANSIT',    value: inTransit,           color: '#5a8aaa' },
+            { label: 'IN PORT',    value: inPort,              color: '#8b9a6b' },
+            { label: 'BUILDING',   value: orderCount,          color: 'var(--amber)' },
+            { label: 'DRY DOCK',   value: inDock,              color: '#c84' },
+            { label: 'MAINT/TICK', value: hfFmtBig(totalMaint),color: '#a44' },
+          ]
+        : [
+            { label: 'TRANSIT',    value: inTransit,           color: '#5a8aaa' },
+            { label: 'IN PORT',    value: inPort,              color: '#8b9a6b' },
+            { label: 'DRY DOCK',   value: inDock,              color: '#c84' },
+            { label: 'MAINT/TICK', value: hfFmtBig(totalMaint),color: '#a44' },
+          ];
+    summaryEl.innerHTML = summaryCells.map((s, i) => `<div style="flex:1;padding:5px 8px;text-align:center;${i < summaryCells.length - 1 ? 'border-right:1px solid var(--border-0);' : ''}">
         <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.5px;">${s.label}</div>
         <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${s.color};margin-top:1px;">${s.value}</div>
     </div>`).join('');
 
+    // Pending commissions render at the top of the list so the corp sees what's
+    // on the way in before scrolling through delivered ships.
+    const currentTick = shard?.current_tick || 0;
+    let orderHtml = '';
+    for (const o of orders) {
+        const buildTicks = Math.max(1, Number(o.build_ticks) || 1);
+        const delivery   = Number(o.delivery_tick) || 0;
+        const ordered    = Number(o.ordered_at_tick) || 0;
+        const ticksLeft  = Math.max(0, delivery - currentTick);
+        const elapsed    = Math.max(0, Math.min(buildTicks, currentTick - ordered));
+        const pct        = Math.max(0, Math.min(100, Math.round((elapsed / buildTicks) * 100)));
+        const cm         = FL_CLASS_META[o.vessel_class] || { color: '#9e9a92', label: (o.vessel_class || '?').toUpperCase() };
+        const deliveryLabel = ticksLeft === 0
+            ? 'Delivering this tick'
+            : `Delivery in ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''}`;
+        orderHtml += `<div style="border-bottom:1px solid var(--border-0);border-left:2px solid var(--amber);">
+            <div style="padding:7px 14px;">
+                <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
+                    <span style="font-size:11px;font-weight:600;color:var(--text-bright);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.vessel_name || 'Unnamed Vessel')}</span>
+                    <span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:0 4px;line-height:11px;color:${cm.color};background:${cm.color}12;border:1px solid ${cm.color}25;">${cm.label}</span>
+                    <span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:0 4px;line-height:11px;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);">BUILDING</span>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-bottom:5px;">
+                    Shipyard: ${escapeHtml(o.shipyard_nation || '—')} \u00B7 ${escapeHtml(deliveryLabel)} \u00B7 Balance $${Math.round(Number(o.balance_due) || 0).toLocaleString()} due on delivery
+                </div>
+                <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-bottom:2px;">
+                    <span>BUILD PROGRESS</span>
+                    <span style="color:var(--amber);font-weight:700;">${pct}%</span>
+                </div>
+                <div style="height:5px;background:var(--bg-3);border:1px solid var(--border-0);">
+                    <div style="width:${pct}%;height:100%;background:var(--amber);transition:width 0.3s;"></div>
+                </div>
+            </div>
+        </div>`;
+    }
+
     // Vessel list
-    if (ships.length === 0) {
+    if (ships.length === 0 && orders.length === 0) {
         listEl.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);text-align:center;line-height:1.8;">No vessels in fleet.<br>Purchase ships to begin operations.</div>';
+    } else if (ships.length === 0) {
+        listEl.innerHTML = orderHtml;
     } else {
-        listEl.innerHTML = ships.map((v, i) => {
+        // Pending-order cards render first, then the delivered-fleet rows.
+        listEl.innerHTML = orderHtml + ships.map((v, i) => {
             const isSel = _fleetSelectedIdx === i;
             const cm = FL_CLASS_META[v.vessel_class] || { color: '#666', label: '?' };
             const lm = FL_LOC_META[v.status] || { color: '#666', label: '?' };
