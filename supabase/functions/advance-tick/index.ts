@@ -7471,9 +7471,23 @@ function computePropertyValue(properties) {
     return total;
 }
 
-function computeCorpValuation({ cash, loans, properties, propertyValue }) {
+function computeEquipmentValue(vessels, currentTick) {
+    let total = 0;
+    const tick = Number(currentTick || 0);
+    for (const v of (vessels || [])) {
+        if (v.status === 'for_sale') continue;
+        const years = Math.max(0, Math.floor((tick - Number(v.built_at_tick || 0)) / 12));
+        const ageFactor = Math.max(0.2, 1 - 0.05 * years);
+        const condition = Number(v.condition || 0) / 100;
+        total += Math.round(Number(v.purchase_price || 0) * ageFactor * condition);
+    }
+    return total;
+}
+
+function computeCorpValuation({ cash, loans, properties, propertyValue, vessels, equipmentValue, currentTick }) {
     const propVal = propertyValue != null ? Number(propertyValue) : computePropertyValue(properties);
-    return Math.round((Number(cash || 0) + propVal - Number(loans || 0)) * 1.30);
+    const equipVal = equipmentValue != null ? Number(equipmentValue) : computeEquipmentValue(vessels, currentTick);
+    return Math.round((Number(cash || 0) + propVal + equipVal - Number(loans || 0)) * 1.30);
 }
 
 // ────────── bills ──────────
@@ -10408,9 +10422,11 @@ async function enactBill(supabase, bill, currentTick) {
                 } else {
                     const { data: props } = await supabase.from('corp_properties')
                         .select('purchase_price, condition').eq('faction_id', corpId);
+                    const { data: vessels } = await supabase.from('corp_vessels')
+                        .select('purchase_price, condition, built_at_tick, status').eq('faction_id', corpId);
                     const corpCash = Number(corp.corp_cash_reserves || 0);
                     const corpLoans = Number(corp.corp_loans || 0);
-                    const valuation = computeCorpValuation({ cash: corpCash, loans: corpLoans, properties: props });
+                    const valuation = computeCorpValuation({ cash: corpCash, loans: corpLoans, properties: props, vessels, currentTick });
                     const cap = Math.max(0, 3 * valuation);
                     const payout = Math.min(requested, cap);
                     if (payout > 0) {
