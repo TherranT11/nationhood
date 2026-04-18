@@ -60,6 +60,7 @@ import { initPage, qCacheBust } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, deductAP } from './js/game/config.js';
 import { fileNoConfidenceMotion } from './js/game/no-confidence.js';
+import { RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
 import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
@@ -2647,47 +2648,70 @@ function renderBillEffectChips(bill, withLabel = true) {
     return html;
 }
 
-function readCostNumber(value) {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string') {
-        const parsed = Number(value.replace(/[^0-9.-]/g, ''));
-        return Number.isFinite(parsed) ? parsed : 0;
-    }
-    return 0;
+/**
+ * Per-policy cost scaling — mirrors bill.html's scalePolicyCost() so the
+ * parliament-overview total matches the detailed bill view exactly.
+ */
+function _scalePolicyCost(baseCost, scalingStat, nation) {
+    if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
+    const statVal = Number(nation[scalingStat]) || 1;
+    const divisor = RAW_SCALING_DIVISORS?.[scalingStat] || 50;
+    return baseCost * (statVal / divisor);
 }
 
-function sumCostKeysDeep(node, keys) {
-    if (!node) return 0;
-    if (Array.isArray(node)) return node.reduce((sum, v) => sum + sumCostKeysDeep(v, keys), 0);
-    if (typeof node !== 'object') return 0;
-    let total = 0;
-    for (const [k, v] of Object.entries(node)) {
-        if (keys.includes(k)) total += readCostNumber(v);
-        if (v && typeof v === 'object') total += sumCostKeysDeep(v, keys);
-    }
-    return total;
-}
-
+/**
+ * Sum upfront + ongoing cost across a bill's articles. `ongoingMonthly` is
+ * per-tick (1 tick = 1 month); yearly is ×12. Matches the algorithm used by
+ * bill.html so the Parliament overview reconciles with the full bill page.
+ *
+ * Sources, in order:
+ *   1. Funding-data articles (BUDGET): fd.discretionary as one-time,
+ *      Σ institutions[].base_cost × (toPct-fromPct)/100 as monthly ongoing.
+ *   2. Repeal articles: negate the repealed policy's ongoing cost
+ *      (repealing saves what the law was spending).
+ *   3. Policy articles: upfront_cost + (ongoing_cost_per_tick ||
+ *      ongoing_base_cost), both scaled by their *_scaling_stat.
+ *   4. Text / entrenchment articles: zero cost.
+ */
 function computeBillCostTotals(bill) {
     const articles = bill.bill_articles || [];
     let upfront = 0;
-    let ongoingYearly = 0;
-    const upfrontKeys = ['upfront_cost', 'one_time_cost', 'one_time', 'initial_cost', 'startup_cost', 'capex_cost', 'fund_draw'];
-    const annualKeys = ['ongoing_cost', 'annual_cost', 'yearly_cost', 'recurring_cost', 'per_year', 'cost_per_year'];
-    const monthlyKeys = ['monthly_cost', 'cost_per_month', 'per_month'];
+    let ongoingMonthly = 0;
 
     for (const art of articles) {
-        const sources = [art.funding_data, art.effect_data?.funding_data, art.effect_data, art.policies];
-        for (const src of sources) {
-            upfront += sumCostKeysDeep(src, upfrontKeys);
-            ongoingYearly += sumCostKeysDeep(src, annualKeys);
-            ongoingYearly += sumCostKeysDeep(src, monthlyKeys) * 12;
+        // (1) Funding-data article
+        const fd = art.funding_data;
+        if (fd) {
+            upfront += Number(fd.discretionary || 0);
+            for (const inst of (fd.institutions || [])) {
+                const fromPct = Number(inst.current_pct || 0);
+                const toPct = Number(inst.proposed_pct || 0);
+                if (fromPct === toPct) continue;
+                const baseCost = Number(inst.base_cost || 0);
+                ongoingMonthly += ((toPct - fromPct) / 100) * baseCost;
+            }
+            continue;
         }
+
+        const p = art.policies;
+        if (!p) continue; // text-only / entrenchment
+
+        // (2) Repeal article — saves the repealed law's ongoing cost
+        if (art.repeal_active_law_id) {
+            const onCost = _scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
+            ongoingMonthly -= onCost;
+            continue;
+        }
+
+        // (3) Policy article
+        upfront += _scalePolicyCost(p.upfront_cost || 0, p.upfront_scaling_stat, currentNation);
+        ongoingMonthly += _scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
     }
 
     return {
-        upfront: Math.max(0, upfront),
-        ongoingYearly: Math.max(0, ongoingYearly)
+        upfront,
+        ongoingMonthly,
+        ongoingYearly: ongoingMonthly * 12,
     };
 }
 
@@ -2783,15 +2807,21 @@ function renderBillCard(bill, stageColor) {
 
     // Always-visible effect chips, cost summary, and vote actions
     const totals = computeBillCostTotals(bill);
-    const ongoingMonthly = totals.ongoingYearly / 12;
+    const ongoingMonthly = totals.ongoingMonthly;
     const effectChips = renderBillEffectChips(bill, false);
     const inlineVotes = renderBillVoteButtons(bill);
     html += `<div style="padding:0 14px 8px;">`;
     if (effectChips) {
         html += `<div style="margin-bottom:6px;">${effectChips}</div>`;
     }
+    // Clamp repeal-heavy negatives to 0 on the summary card so a small
+    // save-only bill doesn't read as a confusing "−$Xm/yr"; the detail view
+    // still shows the signed savings line.
+    const upfrontDisplay = formatCostCompact(Math.max(0, totals.upfront));
+    const ongoingYearlyDisplay = formatCostCompact(Math.max(0, totals.ongoingYearly));
+    const ongoingMonthlyDisplay = formatCostCompact(Math.max(0, ongoingMonthly));
     html += `<div style="font-family:var(--font-mono);font-size:calc(8px * var(--leg-scale, 1.755));color:var(--text-dim);margin-bottom:${inlineVotes ? '6px' : '0'};">
-        UPFRONT COST: ${formatCostCompact(totals.upfront)} | ONGOING COST: ${formatCostCompact(totals.ongoingYearly)} / YEAR (${formatCostCompact(ongoingMonthly)} / MONTH)
+        UPFRONT COST: ${upfrontDisplay} | ONGOING COST: ${ongoingYearlyDisplay} / YEAR (${ongoingMonthlyDisplay} / MONTH)
     </div>`;
     if (inlineVotes) {
         html += inlineVotes;
