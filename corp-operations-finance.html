@@ -391,8 +391,20 @@ function computeDeployable(cash, portfolio, branchCount, hasDeregulation) {
     const requiredReserve = Math.round(totalExposure * reserveReqPct);
     const reserveAvail    = Math.max(0, cash - requiredReserve);
 
+    // Lending cap is a fraction of TOTAL CAPITAL (cash + deployed), not
+    // just cash. Prior code used `cash × pct`, but the server deducts
+    // loan principal from the lender's cash the moment a borrower
+    // accepts (see corp-dashboard.html acceptOffer). Cash shrinks and
+    // deployed grows by the same amount, so the old formula's cap
+    // shrank alongside every loan — a single leveraged origination
+    // could trap the corp below its own cap until repayments
+    // rebuilt cash. Summing cash + totalDeployed makes the base
+    // invariant across a loan origination (it's a zero-sum shift on the
+    // balance sheet), so the cap reflects the corp's true capacity to
+    // underwrite rather than eating itself every time a loan goes out.
+    const totalCapital    = cash + totalDeployed;
     const lendingCapPct   = Math.min(100, 50 + (branchCount || 0) * 15);
-    const lendingCap      = Math.round(cash * lendingCapPct / 100);
+    const lendingCap      = Math.round(totalCapital * lendingCapPct / 100);
     const capAvail        = Math.max(0, lendingCap - totalDeployed);
 
     const deployable      = Math.min(reserveAvail, capAvail);
@@ -1361,7 +1373,7 @@ function renderReservesRisk() {
     // they expected.
     {
         const noteText = limiter === 'lending_cap'
-            ? `Capped at ${lendingCapPct}% of cash (branch offices: ${_branchCount}). Deployed ${fmtMoney(totalDeployed)} of ${fmtMoney(lendingCap)}.`
+            ? `Capped at ${lendingCapPct}% of total capital (branch offices: ${_branchCount}). Deployed ${fmtMoney(totalDeployed)} of ${fmtMoney(lendingCap)}.`
             : `Reserve requirement binds (${minRatioPct}% of exposure).`;
         html += `<div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:6px;letter-spacing:0.02em;">${noteText}</div>`;
     }
@@ -2266,7 +2278,7 @@ async function rdSubmitOffer() {
         const cap = computeDeployable(cash, livePortfolio, _branchCount, _hasDeregulation);
         if (rdDeal.amount > cap.deployable) {
             const why = cap.limiter === 'lending_cap'
-                ? `Lending cap (${cap.lendingCapPct}% of cash = ${fmtMoney(cap.lendingCap)}). Already deployed ${fmtMoney(cap.totalDeployed)}.`
+                ? `Lending cap (${cap.lendingCapPct}% of total capital = ${fmtMoney(cap.lendingCap)}). Already deployed ${fmtMoney(cap.totalDeployed)}.`
                 : `Reserve requirement (${Math.round(cap.reserveReqPct * 100)}% of exposure = ${fmtMoney(cap.requiredReserve)}). Cash ${fmtMoney(cap.cash)}.`;
             alert(
                 `Insufficient deployable capital.\n${why}\n` +
