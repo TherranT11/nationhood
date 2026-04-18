@@ -315,6 +315,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
+import { computeCorpValuation } from './js/game/corp-valuation.js';
 import { GAME_CONFIG, initGameConfigForNation, deductAP } from './js/game/config.js';
 import { isGovernmentPresidential, hasElectedPresident, getCurrentConstitutionalSystem, getConstitutionalSystemLabel } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
@@ -2068,13 +2069,11 @@ async function _loadBailoutCorps() {
         const { data: props, error: propsErr } = await _supabase.from('corp_properties')
             .select('purchase_price, condition').eq('faction_id', c.id);
         if (propsErr) throw propsErr;
-        let propertyValue = 0;
-        for (const p of (props || [])) {
-            propertyValue += Math.round(Number(p.purchase_price || 0) * (Number(p.condition || 0) / 100));
-        }
-        const cash = Number(c.corp_cash_reserves || 0);
-        const loans = Number(c.corp_loans || 0);
-        const valuation = Math.round((cash + propertyValue - loans) * 1.30);
+        const valuation = computeCorpValuation({
+            cash: c.corp_cash_reserves,
+            loans: c.corp_loans,
+            properties: props,
+        });
         results.push({ id: c.id, faction_name: c.faction_name, valuation });
     }
     _bailoutCorps = results;

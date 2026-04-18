@@ -2764,6 +2764,7 @@ body.light-mode .av-empty__text { color: #1a1a17; }
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
+import { computePropertyValue, computeCorpValuation } from './js/game/corp-valuation.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
 import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
@@ -8280,14 +8281,9 @@ async function actDeclareBankruptcy() {
 
         const cashReserves = Number(corp.corp_cash_reserves) || 0;
         const { data: props } = await _supabase.from('corp_properties').select('purchase_price, condition, nation_id, type').eq('faction_id', factionId);
-        let propertyValue = 0;
-        for (const p of (props || [])) {
-            propertyValue += Math.round(Number(p.purchase_price || 0) * (Number(p.condition || 0) / 100));
-        }
-        const totalAssets = cashReserves + propertyValue;
+        const propertyValue = computePropertyValue(props);
         const outstandingLoans = Number(corp.corp_loans) || 0;
-        const netWorth = totalAssets - outstandingLoans;
-        const valuation = Math.round(netWorth * 1.30);
+        const valuation = computeCorpValuation({ cash: cashReserves, propertyValue, loans: outstandingLoans });
         const loanPaybackCap = Math.max(0, Math.round(valuation * LOAN_PAYBACK_CEILING));
 
         const { data: activeLoans } = await _supabase.from('finance_active_loans').select('*')
