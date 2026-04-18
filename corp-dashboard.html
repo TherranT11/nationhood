@@ -1495,12 +1495,42 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const debtService = outstandingDebt > 0
         ? Math.round((outstandingDebt * (LOAN_ANNUAL_RATE / 12)) / (1 - Math.pow(1 + LOAN_ANNUAL_RATE / 12, -LOAN_TERM_MONTHS)))
         : 0;
+
+    // Borrower-side obligations on finance_active_loans. The server
+    // (advance-corp-tick:2881-3005) iterates these rows every tick and
+    // deducts either the full monthly loan payment OR the insurance
+    // premium from the borrower/policyholder's cash — completely separate
+    // from the `corp_loans` debt service above. Without these two lines
+    // the Net Profit card was missing a significant monthly outflow for
+    // any corp that had taken a corp-to-corp loan or held insurance
+    // policies, which is why Montequilla Contructions saw +$1.2M/tick
+    // profit while cash actually grew only ~$300-400k/tick.
+    let corpLoanService = 0;
+    let insurancePremiums = 0;
+    if (faction?.id) {
+        try {
+            const { data: borrowerLiabilities } = await _supabase.from('finance_active_loans')
+                .select('monthly_payment, finance_loan_requests(request_type)')
+                .eq('borrower_faction_id', faction.id)
+                .in('status', ['current', 'late', 'delinquent']);
+            for (const row of (borrowerLiabilities || [])) {
+                const reqType = row.finance_loan_requests?.request_type || 'loan';
+                const pmt = Number(row.monthly_payment || 0);
+                if (pmt <= 0) continue;
+                if (reqType === 'insurance') insurancePremiums += pmt;
+                else corpLoanService += pmt; // loan, bond, or default
+            }
+        } catch (err) {
+            console.warn('[Finances] borrower finance_active_loans lookup failed:', err);
+        }
+    }
+
     const execSalaries = Math.round((execCompensation || 0) / 12);
     const fleet = fleetMaint || 0;
     const FIXED_OVERHEAD = 75000; // minimum operating costs (matches tick processor)
     // Corporate tax: applied to positive income (matches tick processor formula)
     const corpTaxRate = Math.max(0, Math.min(1, (Number(nation?.corporate_tax ?? 0) / 100) || 0));
-    const preExpenses = wages + execSalaries + materials + properties + equipment + fleet + debtService + projectCosts + FIXED_OVERHEAD;
+    const preExpenses = wages + execSalaries + materials + properties + equipment + fleet + debtService + corpLoanService + insurancePremiums + projectCosts + FIXED_OVERHEAD;
     const taxableIncome = Math.max(0, totalRevenue - preExpenses);
     const taxes = Math.round(taxableIncome * corpTaxRate);
 
@@ -1590,6 +1620,8 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
             ${fleet > 0 ? `<div class="fin-row"><span class="fin-row__label">Fleet Maintenance</span><span class="fin-row__value" style="color:#a44">${fmtMoney(fleet)}</span></div>` : ''}
             ${projectCosts > 0 ? `<div class="fin-row"><span class="fin-row__label">Project Build Costs</span><span class="fin-row__value" style="color:#a44">${fmtMoney(projectCosts)}</span></div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Debt Service</span><span class="fin-row__value" style="color:#a44">${fmtMoney(debtService)}</span></div>
+            ${corpLoanService > 0 ? `<div class="fin-row"><span class="fin-row__label">Loan Repayments</span><span class="fin-row__value" style="color:#a44">${fmtMoney(corpLoanService)}</span></div>` : ''}
+            ${insurancePremiums > 0 ? `<div class="fin-row"><span class="fin-row__label">Insurance Premiums</span><span class="fin-row__value" style="color:#a44">${fmtMoney(insurancePremiums)}</span></div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Taxes</span><span class="fin-row__value" style="color:#a44">${fmtMoney(taxes)}</span></div>
             ${taxBreakdownHtml ? `<div style="padding:2px 12px 6px 20px;border-bottom:1px solid var(--border-hair);">${taxBreakdownHtml}</div>` : ''}
             <div class="fin-total">
