@@ -85,18 +85,16 @@ export function clampServiceRate(value, ceiling) {
 }
 
 /**
- * Tier multipliers — applied to the corp's clamped bid when the shipping
- * claim is created (and to the displayed estimated_revenue on route cards
- * so what the corp sees matches what they'll earn). Agreement-backed lanes
- * pay more (formal bilateral trade = higher stakes for both nations);
- * organic lanes pay less (free-market spillover, smaller cargo commitments).
- * Organic was 0.7 — bumped to 0.85 because at 0.7 even ceiling-bid organic
- * routes couldn't clear 4-tick Container maintenance.
+ * Tier multipliers — applied post-bid when the shipping claim is created.
+ * Agreement-backed lanes get a bonus (formal bilateral trade = higher stakes
+ * for both nations). Organic lanes are neutral here (1.0); their discount is
+ * applied pre-bid during route generation via ORGANIC_REVENUE_MULTIPLIER.
  */
 export var AGREEMENT_REVENUE_MULTIPLIER = 1.2;
-export var ORGANIC_REVENUE_MULTIPLIER_POST = 0.85;
+export var ORGANIC_REVENUE_MULTIPLIER_POST = 1.0; // post-bid: no extra organic penalty; pre-bid 0.35 handles discount
 
 export function revenueTierMultiplier(route) {
+    // post-bid: agreement lanes get a bonus; organic lanes keep the clamped bid unchanged.
     return route && route.trade_agreement_id ? AGREEMENT_REVENUE_MULTIPLIER : ORGANIC_REVENUE_MULTIPLIER_POST;
 }
 
@@ -312,7 +310,7 @@ export async function generateShippingRoutes(supabase, currentTick) {
  * Revenue multiplier for organic routes vs agreement-backed routes.
  * Organic routes pay less to incentivize real trade deals.
  */
-var ORGANIC_REVENUE_MULTIPLIER = 0.35; // 35% of normal rate
+var ORGANIC_REVENUE_MULTIPLIER = 0.35; // pre-bid: organic routes are generated at 35% of normal lane economics
 
 /**
  * Minimum proximity to generate organic routes between nations.
@@ -484,9 +482,8 @@ export async function generateOrganicRoutes(supabase, currentTick) {
                 var baseVolume = popFactor * gdpFactor * closeness * 30000000; // ~$30M base scaled
                 var volume = Math.round(Math.max(5000000, baseVolume * (0.7 + seededRandom(seed + 999) * 0.6)));
                 var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
-                // Organic lanes still pay 35% of the normal rate before clamping.
-                // Ceiling is based on the organic (post-0.35) volume share so the
-                // route card shows what the corp can actually bid to.
+                // pre-bid: route-card estimate is discounted to 35% before clamp/ceiling.
+                // post-bid organic multiplier is 1.0, so approved claims earn off this same base.
                 var estRevenue = clampServiceRate(
                     volume * revenueRate * ORGANIC_REVENUE_MULTIPLIER / MONTHS_PER_YEAR,
                     computeServiceRateCeiling(volume * ORGANIC_REVENUE_MULTIPLIER, sectorMeta.subsector)
