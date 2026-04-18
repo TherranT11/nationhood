@@ -1986,8 +1986,19 @@ async function renderProperty(nation, nationName, factionData, shard) {
                    + Number(factionData?.corp_skilled_workforce ?? 0)
                    + Number(factionData?.corp_innovative_workforce ?? 0);
     const hqCapacity = 500;
-    const totalCapacity = hqCapacity + ownedProps.reduce((sum, p) => sum + Number(p.capacity || 0), 0);
-    const hqAllocated = totalCapacity > 0 ? Math.round(totalWf * (hqCapacity / totalCapacity)) : totalWf;
+    // Per-building workforce allocation must use EFFECTIVE (condition-scaled)
+    // capacity, not raw. Otherwise a refurb at 74% condition still shows up
+    // as "500 capacity" in the denominator, and its reduced workforce cap
+    // gets spread evenly across every building — making the HQ look
+    // undersupplied when it's actually full and the refurb is the real
+    // bottleneck. Matches hfGetCapacity() in corp-operations.html:9487.
+    const propEffectiveCaps = ownedProps.map(p => {
+        const cap = Number(p.capacity || 0);
+        const cond = Number(p.condition || 0) / 100;
+        return Math.floor(cap * cond);
+    });
+    const totalCapacity = hqCapacity + propEffectiveCaps.reduce((sum, c) => sum + c, 0);
+    const hqAllocated = totalCapacity > 0 ? Math.min(totalWf, Math.round(totalWf * (hqCapacity / totalCapacity))) : totalWf;
 
     // National HQ always present — value scales with nation stats
     const hqBaseCost = 50000000; // $50M base for a 500 capacity HQ
@@ -2028,13 +2039,18 @@ async function renderProperty(nation, nationName, factionData, shard) {
     </div>`;
 
     let allocatedSoFar = hqAllocated;
-    for (const prop of ownedProps) {
+    for (let i = 0; i < ownedProps.length; i++) {
+        const prop = ownedProps[i];
         const sm = NP_STYLE_META[prop.style] || NP_STYLE_META.Basic;
         totalValue += Number(prop.purchase_price || 0);
         totalMaint += Number(prop.monthly_maintenance || 0);
         const condColor = prop.condition >= 75 ? 'var(--green)' : prop.condition >= 50 ? 'var(--amber)' : 'var(--orange)';
         const propCap = Number(prop.capacity || 0);
-        const propAllocated = totalCapacity > 0 ? Math.min(totalWf - allocatedSoFar, Math.round(totalWf * (propCap / totalCapacity))) : 0;
+        // Allocation uses EFFECTIVE (condition-scaled) capacity so a refurb
+        // at 74% shows a reduced workforce share and the HQ gets its full
+        // slice. See the effective-cap comment above on totalCapacity.
+        const propEffective = propEffectiveCaps[i] || 0;
+        const propAllocated = totalCapacity > 0 ? Math.min(totalWf - allocatedSoFar, Math.round(totalWf * (propEffective / totalCapacity))) : 0;
         allocatedSoFar += propAllocated;
 
         propsHtml += `
