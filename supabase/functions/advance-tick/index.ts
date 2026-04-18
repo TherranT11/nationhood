@@ -7471,6 +7471,11 @@ function computePropertyValue(properties) {
     return total;
 }
 
+// Ships depreciate by age and condition. Straight-line 5%/yr, floors at 20%
+// scrap value; 12 ticks = 1 year. Vessels with status 'for_sale' are excluded
+// (listed for disposal, not operating equipment). Ships still under
+// construction live in vessel_orders, not corp_vessels, so they are naturally
+// excluded until delivery.
 function computeEquipmentValue(vessels, currentTick) {
     let total = 0;
     const tick = Number(currentTick || 0);
@@ -27086,8 +27091,12 @@ var SHIPPING_SECTOR_MAP = {
 var SHIPPING_ROUTE_THRESHOLD = 50000000; // $50M
 
 /**
- * Annual revenue fraction. Mirror copy of js/game/shipping.js — keep values in
- * sync if the client version changes.
+ * Annual revenue fraction — shipping corps earn this share of the trade value
+ * they move, expressed as an ANNUAL rate. Per-transit revenue divides by
+ * MONTHS_PER_YEAR so the corp earns the monthly slice of that annual total
+ * per completed trip, regardless of how many trips a route can fit per year.
+ *
+ * Bulk cargo: lower margin. Container freight: medium. Specialized: highest.
  */
 var SHIPPING_REVENUE_RATES = {
     bulk_cargo: 0.010,            // 1.0% of annual trade value
@@ -27099,19 +27108,36 @@ var SHIPPING_REVENUE_RATES = {
 var MONTHS_PER_YEAR = 12;
 
 /**
- * Service-rate band. Floor is flat; ceiling scales with lane volume (capped
- * at HARD_CEILING_PER_TRIP) so big lanes can actually pay fleet overhead.
+ * Service-rate band. Floor is flat so small lanes still have enough margin
+ * to cover fuel + a coastal-class ship. Ceiling scales with the lane's
+ * trade volume (capped at HARD_CEILING_PER_TRIP) so $6B+ lanes can actually
+ * pay for the Container/Tanker ships they demand — a flat $750k ceiling
+ * used to leave every big lane unprofitable against fleet maintenance.
+ * MIN_CEILING_PER_TRIP preserves the pre-scaling $750k as a soft floor on
+ * the ceiling so small lanes see the familiar "$250k–$750k" band.
  */
 var MIN_REVENUE_PER_TRIP = 250000;
 var MIN_CEILING_PER_TRIP = 750000;
 var HARD_CEILING_PER_TRIP = 5000000;
 
+/**
+ * Compute the per-trip revenue ceiling for a specific route. The uncapped
+ * target is tradeVolume × subsector_rate / 12 (i.e. the monthly slice of the
+ * annual revenue share). We floor that at MIN_CEILING_PER_TRIP so small
+ * lanes still have a $750k ceiling to aim at, and cap it at
+ * HARD_CEILING_PER_TRIP so $15B mega-lanes don't uncork runaway rates.
+ */
 function computeServiceRateCeiling(tradeVolume, subsector) {
     var rate = SHIPPING_REVENUE_RATES[subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
     var uncapped = (Number(tradeVolume) || 0) * rate / MONTHS_PER_YEAR;
     return Math.round(Math.min(HARD_CEILING_PER_TRIP, Math.max(MIN_CEILING_PER_TRIP, uncapped)));
 }
 
+/**
+ * Clamp a candidate per-trip revenue into the service-rate band for a route.
+ * Ceiling may be passed directly (e.g. from computeServiceRateCeiling) or
+ * defaults to MIN_CEILING_PER_TRIP for callers that don't know the lane.
+ */
 function clampServiceRate(value, ceiling) {
     var v = Number(value) || 0;
     var top = Number(ceiling) || MIN_CEILING_PER_TRIP;
@@ -27122,8 +27148,13 @@ function clampServiceRate(value, ceiling) {
 }
 
 /**
- * Tier multipliers. Organic was 0.7 — bumped to 0.85 so ceiling-bid organic
- * lanes can clear fleet overhead on mid-size cargoes.
+ * Tier multipliers — applied to the corp's clamped bid when the shipping
+ * claim is created (and to the displayed estimated_revenue on route cards
+ * so what the corp sees matches what they'll earn). Agreement-backed lanes
+ * pay more (formal bilateral trade = higher stakes for both nations);
+ * organic lanes pay less (free-market spillover, smaller cargo commitments).
+ * Organic was 0.7 — bumped to 0.85 because at 0.7 even ceiling-bid organic
+ * routes couldn't clear 4-tick Container maintenance.
  */
 var AGREEMENT_REVENUE_MULTIPLIER = 1.2;
 var ORGANIC_REVENUE_MULTIPLIER_POST = 0.85;
@@ -27266,7 +27297,8 @@ async function generateShippingRoutes(supabase, currentTick) {
         var demandLevel = getDemandLevel(tp.trade_volume);
         var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
         // Annual rate × monthly volume / 12 months = candidate payout; clamp
-        // into the per-route band (ceiling scales with the lane size).
+        // into the per-route band. Ceiling scales with the lane size so big
+        // lanes can actually pay fleet overhead; small lanes still see $250k–$750k.
         var estRevenue = clampServiceRate(
             tp.trade_volume * revenueRate / MONTHS_PER_YEAR,
             computeServiceRateCeiling(tp.trade_volume, sectorMeta.subsector)
@@ -27516,6 +27548,8 @@ async function generateOrganicRoutes(supabase, currentTick) {
                 var volume = Math.round(Math.max(5000000, baseVolume * (0.7 + seededRandom(seed + 999) * 0.6)));
                 var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
                 // Organic lanes still pay 35% of the normal rate before clamping.
+                // Ceiling is based on the organic (post-0.35) volume share so the
+                // route card shows what the corp can actually bid to.
                 var estRevenue = clampServiceRate(
                     volume * revenueRate * ORGANIC_REVENUE_MULTIPLIER / MONTHS_PER_YEAR,
                     computeServiceRateCeiling(volume * ORGANIC_REVENUE_MULTIPLIER, sectorMeta.subsector)
