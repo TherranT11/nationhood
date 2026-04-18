@@ -3158,7 +3158,10 @@ async function generateShippingRoutes(supabase, currentTick) {
 }
 
 const ORGANIC_REVENUE_MULT = 0.35;
-const ORGANIC_MAX_PROX = 70;
+// Proximity cap tightened from 70 → 30: only close-neighbor pairs get
+// organic spot-market lanes. Cuts organic route count ~80% and pushes
+// long-haul traffic toward formal trade agreements.
+const ORGANIC_MAX_PROX = 30;
 const ORGANIC_LIFETIME = 8;
 const ORGANIC_SECTORS = ['fuel_energy','minerals','grains_staples','livestock_dairy','cash_crops','manufactured_goods','technology','fruits_vegetables'];
 
