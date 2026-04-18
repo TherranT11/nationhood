@@ -2110,7 +2110,11 @@ body.light-mode .vi-empty__text { color: #1a1a17; }
   .top-bar-right { gap: 6px; flex-wrap: wrap; }
   .corp-name-badge { font-size: 10px; }
   .content { flex-direction: column; align-items: center; padding: 12px 8px; }
-  .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card, .pm-card, .dl-card, .ar-card, .av-card, .fl-card, .sm-card { width: 100%; max-width: 420px; height: auto; min-height: 380px; }
+  /* Available Routes stays locked at 380x450 on every breakpoint so the APPLY
+     button remains visible without page-scroll; internal .ar-list handles the
+     overflow via its own scrollbar. */
+  .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card, .pm-card, .dl-card, .av-card, .fl-card, .sm-card { width: 100%; max-width: 420px; height: auto; min-height: 380px; }
+  .ar-card { width: 380px; max-width: 380px; height: 450px; min-height: 450px; }
 }
 @media (max-width: 820px) {
   .corp-hamburger { display: block; }
@@ -2127,7 +2131,10 @@ body.light-mode .vi-empty__text { color: #1a1a17; }
   .tick-label { font-size: 8px; }
   .tick-value { font-size: 11px; }
   .corp-name-badge { font-size: 9px; padding: 2px 6px; }
-  .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card, .pm-card, .dl-card, .ar-card, .av-card, .fl-card, .sm-card { max-width: 100%; }
+  /* Available Routes explicitly excluded — stays 380x450 on the smallest
+     breakpoint too per UX request. Every other shipping card goes full-
+     width for readability. */
+  .oc-card, .ap-card, .wh-card, .pr-card, .eq-card, .em-card, .pm-card, .dl-card, .av-card, .fl-card, .sm-card { max-width: 100%; }
 }
 
 /* ── Actions tab mobile ── */

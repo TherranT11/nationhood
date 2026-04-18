@@ -24744,39 +24744,54 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
         .update({ pm_cooldown_until: currentTick + 12 })
         .eq('id', factionId);
 
-    // 4. Always dissolve the coalition — PM resignation triggers immediate elections
-    console.log('PM resignation — dissolving coalition and scheduling immediate election');
-    try {
-        const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-        const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-        if (fullNation) {
-            await closeAdministration(supabase, nationId, fullNation, 'pm_resignation', currentTick, shard?.current_date || '', null);
-        }
-    } catch (adminErr) { console.warn('Could not close administration on PM resignation:', adminErr); }
-    await dissolveCoalition(supabase, nationId);
+    // 4. Put the coalition into caretaker status and keep it intact for the
+    //    succession window. Previously this function called dissolveCoalition
+    //    which also NULL-ed minister_first_name / minister_last_name /
+    //    party_id on every active ministry row for the nation — that's the
+    //    bug behind reports of "all ministries go vacant at random times
+    //    across several nations". The trigger was inactivity-auto-disband
+    //    (processInactivity at ~33077 calls disbandParty, which invokes
+    //    resignPM when the disbanding party held the PM seat). Synced to
+    //    match js/game/political-actions.js:resignPM — caretaker + fallback
+    //    election so the coalition's ministers persist through the window.
+    await supabase
+        .from('active_coalitions')
+        .update({ status: 'caretaker' })
+        .eq('nation_id', nationId)
+        .is('dissolved_at', null);
+    await supabase
+        .from('government_formations')
+        .update({ status: 'caretaker' })
+        .eq('nation_id', nationId)
+        .in('status', ['formed', 'active']);
 
-    // 5. Freeze all active bills
+    // 5. Freeze all active bills (same as early elections / no-confidence)
     await supabase
         .from('bills')
         .update({ status: 'frozen' })
         .eq('nation_id', nationId)
         .in('status', ['committee', 'floor']);
 
-    // 6. Cancel any existing scheduled elections and schedule immediate one
+    // 6. Cancel any existing scheduled parliamentary election and schedule
+    //    the fallback snap one formation-window out. If a successor is
+    //    installed via autoAppointPartyLeaderAsPM during the window, that
+    //    function's succession-cancellation code will delete this row.
     await supabase
         .from('elections')
         .delete()
         .eq('nation_id', nationId)
-        .eq('status', 'scheduled');
+        .eq('status', 'scheduled')
+        .eq('election_type', 'parliamentary');
 
+    const fallbackTick = currentTick + FORMATION_DEADLINE_TICKS;
     await supabase.from('elections').insert({
         nation_id: nationId,
-        election_tick: currentTick,
+        election_tick: fallbackTick,
         status: 'scheduled',
         election_type: 'parliamentary'
     });
 
-    console.log(`  Scheduled immediate election for tick ${currentTick}`);
+    console.log(`PM resignation: coalition -> caretaker, succession window until tick ${fallbackTick}`);
 
     // Fire timeline event
     try {
