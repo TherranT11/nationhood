@@ -2881,40 +2881,44 @@ function renderBillCard(bill, stageColor) {
 
 let _presidentialActionLock = false;
 
-async function signBillFromLegislature(billId) {
+// Shared runner for Sign / Veto — splits "action failed" from "refresh
+// failed" so a successful DB write never shows an error toast just because
+// the re-render hit a transient issue.
+async function _runPresidentialAction(actionName, actionFn) {
     if (_presidentialActionLock || !isPresidentParty || !currentFaction) return;
-    if (!confirm('Sign this bill into law?')) return;
     _presidentialActionLock = true;
     try {
-        await signPresidentialBill(_supabase, billId, currentFaction.id);
-        await loadLegislatureData();
-        const content = document.getElementById('gov-content');
-        if (content) renderLegislatureTab(content);
-    } catch (err) {
-        console.error('[Legislature] Sign failed:', err);
-        alert('Error signing bill: ' + (err?.message || 'Unknown error'));
+        try {
+            await actionFn();
+        } catch (err) {
+            console.error(`[Legislature] ${actionName} failed:`, err);
+            alert(`Error ${actionName.toLowerCase()}: ` + (err?.message || 'Unknown error'));
+            return;
+        }
+        try {
+            await loadLegislatureData();
+            const content = document.getElementById('gov-content');
+            if (content) renderLegislatureTab(content);
+        } catch (refreshErr) {
+            // Action committed server-side; refresh stumbled. Log, don't
+            // mislead the user — they can refresh manually if needed.
+            console.warn(`[Legislature] ${actionName} succeeded but refresh failed:`, refreshErr);
+        }
     } finally {
         _presidentialActionLock = false;
     }
 }
+
+async function signBillFromLegislature(billId) {
+    if (!confirm('Sign this bill into law?')) return;
+    return _runPresidentialAction('Sign', () => signPresidentialBill(_supabase, billId, currentFaction.id));
+}
 window.signBillFromLegislature = signBillFromLegislature;
 
 async function vetoBillFromLegislature(billId) {
-    if (_presidentialActionLock || !isPresidentParty || !currentFaction) return;
     const overrideSeats = Math.ceil((currentNation?.total_seats || GAME_CONFIG.TOTAL_SEATS) * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
     if (!confirm(`VETO this bill?\n\nA veto override bill will be automatically created requiring ${overrideSeats} seats (\u2154 supermajority).\n\nProceed?`)) return;
-    _presidentialActionLock = true;
-    try {
-        await vetoPresidentialBill(_supabase, billId, currentFaction.id);
-        await loadLegislatureData();
-        const content = document.getElementById('gov-content');
-        if (content) renderLegislatureTab(content);
-    } catch (err) {
-        console.error('[Legislature] Veto failed:', err);
-        alert('Error vetoing bill: ' + (err?.message || 'Unknown error'));
-    } finally {
-        _presidentialActionLock = false;
-    }
+    return _runPresidentialAction('Veto', () => vetoPresidentialBill(_supabase, billId, currentFaction.id));
 }
 window.vetoBillFromLegislature = vetoBillFromLegislature;
 

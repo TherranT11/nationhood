@@ -1936,7 +1936,6 @@ function renderRatificationBill() {
             .map(a => Number(a?.data?.duration) || 0)
             .filter(v => v > 0);
         const maxArticleDur = perArticleDurations.length ? Math.max(...perArticleDurations) : 0;
-        const hasPerArticleDurations = perArticleDurations.length > 0;
 
         let durLabel;
         if (isPerm) {
@@ -1949,8 +1948,10 @@ function renderRatificationBill() {
             durLabel = 'Up to ' + (maxArticleDur >= 12
                 ? (maxArticleDur / 12).toFixed(1).replace(/\.0$/, '') + ' year(s)'
                 : maxArticleDur + ' month(s)') + ' (per-article)';
-        } else {
+        } else if (articles.length > 0) {
             durLabel = 'Per-article (see provisions)';
+        } else {
+            durLabel = 'Unspecified';
         }
 
         const typeLabel = typeInfo.label || neg.agreement_type || 'Trade Agreement';
