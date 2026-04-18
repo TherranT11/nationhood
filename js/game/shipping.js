@@ -297,12 +297,13 @@ var ORGANIC_REVENUE_MULTIPLIER = 0.35; // 35% of normal rate
 /**
  * Minimum proximity to generate organic routes between nations.
  * Nations further apart than this don't have enough natural commerce.
- * Tightened from 70 to 30 — only true neighbors get organic lanes now,
- * which (combined with 1 route per pair, below) cuts the organic-route
- * population roughly 80% and pushes shippers toward formal trade
- * agreements for anything long-haul.
+ * Tightened in two passes: 70 → 30 → 20. The active generator is the TS
+ * copy in advance-corp-tick/index.ts; this constant is kept in sync for any
+ * client-side consumers / debug tooling. Combined with the 1 route-per-pair
+ * rule and the $50M volume gate in the TS path, the organic-route list is
+ * roughly 80% smaller than with the 30 cap alone.
  */
-var ORGANIC_MIN_PROXIMITY = 30; // 0 = bordering, 100 = far — lower = closer
+var ORGANIC_MIN_PROXIMITY = 20; // 0 = bordering, 100 = far — lower = closer
 
 /**
  * Max organic routes per nation pair per tick.

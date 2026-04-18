@@ -3158,10 +3158,18 @@ async function generateShippingRoutes(supabase, currentTick) {
 }
 
 const ORGANIC_REVENUE_MULT = 0.35;
-// Proximity cap tightened from 70 → 30: only close-neighbor pairs get
-// organic spot-market lanes. Cuts organic route count ~80% and pushes
-// long-haul traffic toward formal trade agreements.
-const ORGANIC_MAX_PROX = 30;
+// Proximity cap tightened 30 → 20 (second pass). The first pass took the cap
+// from 70 → 30, which still left the available-routes list flooded with
+// hundreds of near-neighbor spot lanes. 20 narrows it to true short-haul
+// pairs; combined with the one-route-per-pair rule and the volume gate
+// below, this cuts the organic-route count roughly 80% from the post-30
+// baseline.
+const ORGANIC_MAX_PROX = 20;
+// Minimum realized volume for a route to even be inserted. Below this the
+// revenue is noise and the route just clutters the UI. Applied AFTER the
+// popF/gdpF/close/random calculation so small-economy pairs fall out
+// naturally rather than being gated purely by nation-level population.
+const ORGANIC_MIN_VOLUME = 50_000_000;
 const ORGANIC_LIFETIME = 8;
 const ORGANIC_SECTORS = ['fuel_energy','minerals','grains_staples','livestock_dairy','cash_crops','manufactured_goods','technology','fruits_vegetables'];
 
@@ -3193,7 +3201,11 @@ async function generateOrganicRoutes(supabase, currentTick) {
             const popF = Math.sqrt((nA.population || 1e6) * (nB.population || 1e6)) / 1e7;
             const gdpF = ((Number(nA.gdp_growth) || 50) + (Number(nB.gdp_growth) || 50)) / 100;
             const close = 1 - (prox / 100);
-            const routeCount = close > 0.7 ? 2 : 1;
+            // One route per pair, always. Previously close-neighbor pairs
+            // (close > 0.7 → prox < 30) got a bonus second route; that rule
+            // layered duplicate sectors on the same pair and roughly doubled
+            // the list for every short-haul lane.
+            const routeCount = 1;
 
             const mfg = ((Number(nA.manufacturing_output) || 50) + (Number(nB.manufacturing_output) || 50)) / 100;
             const weights = ORGANIC_SECTORS.map(s => {
@@ -3219,6 +3231,12 @@ async function generateOrganicRoutes(supabase, currentTick) {
                 const sm = SHIPPING_SECTOR_MAP[chosen];
                 if (!sm) continue;
                 const vol = Math.round(Math.max(5e6, popF * gdpF * close * 3e7 * (0.7 + sRand(seed + 999) * 0.6)));
+                // Volume gate: drop routes that would land below ORGANIC_MIN_VOLUME.
+                // Small-economy and low-gdp pairs still calculate a floor of $5M;
+                // this additional check filters them out so they don't clutter
+                // the Available Routes list. Agreement-backed routes are
+                // unaffected — this path only generates organic spot lanes.
+                if (vol < ORGANIC_MIN_VOLUME) continue;
                 const rev = _clampServiceRate(vol * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) * ORGANIC_REVENUE_MULT / SHIPPING_MONTHS_PER_YEAR);
 
                 rows.push({
