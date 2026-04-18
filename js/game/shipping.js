@@ -70,6 +70,21 @@ export function clampServiceRate(value) {
 }
 
 /**
+ * Tier multipliers — applied to the corp's clamped bid when the shipping
+ * claim is created (and to the displayed estimated_revenue on route cards
+ * so what the corp sees matches what they'll earn). Agreement-backed lanes
+ * pay more (formal bilateral trade = higher stakes for both nations);
+ * organic lanes pay less (free-market spillover, smaller cargo commitments).
+ * Corps still see the same $250k–$750k bid slider regardless of tier.
+ */
+export var AGREEMENT_REVENUE_MULTIPLIER = 1.2;
+export var ORGANIC_REVENUE_MULTIPLIER_POST = 0.7;
+
+export function revenueTierMultiplier(route) {
+    return route && route.trade_agreement_id ? AGREEMENT_REVENUE_MULTIPLIER : ORGANIC_REVENUE_MULTIPLIER_POST;
+}
+
+/**
  * Calculate transit time in ticks based on proximity (0-100).
  * 0-70 proximity → 0 ticks (instant). 71+ → 1 tick.
  * @param {number} proximity - 0 (bordering) to 100 (far)
@@ -282,14 +297,19 @@ var ORGANIC_REVENUE_MULTIPLIER = 0.35; // 35% of normal rate
 /**
  * Minimum proximity to generate organic routes between nations.
  * Nations further apart than this don't have enough natural commerce.
+ * Tightened from 70 to 30 — only true neighbors get organic lanes now,
+ * which (combined with 1 route per pair, below) cuts the organic-route
+ * population roughly 80% and pushes shippers toward formal trade
+ * agreements for anything long-haul.
  */
-var ORGANIC_MIN_PROXIMITY = 70; // 0 = bordering, 100 = far — lower = closer
+var ORGANIC_MIN_PROXIMITY = 30; // 0 = bordering, 100 = far — lower = closer
 
 /**
  * Max organic routes per nation pair per tick.
- * Keeps the market from being flooded.
+ * One per pair so each near-neighbor spot-market lane is distinct, not
+ * duplicated two-ways with two cargo picks.
  */
-var ORGANIC_MAX_ROUTES_PER_PAIR = 2;
+var ORGANIC_MAX_ROUTES_PER_PAIR = 1;
 
 /**
  * Organic route expiry in ticks. Routes regenerate with potentially different goods.
