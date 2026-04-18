@@ -3095,11 +3095,20 @@ const SHIPPING_ROUTE_THRESHOLD = 50000000;
 const SHIPPING_REVENUE_RATES = { bulk_cargo: 0.010, container_freight: 0.012, specialized_transport: 0.016 };
 const SHIPPING_MONTHS_PER_YEAR = 12;
 const SHIPPING_MIN_PER_TRIP = 250000;
-const SHIPPING_MAX_PER_TRIP = 750000;
-function _clampServiceRate(v) {
+const SHIPPING_MIN_CEILING = 750000;
+const SHIPPING_HARD_CEILING = 5000000;
+function _computeServiceRateCeiling(tradeVolume, subsector) {
+    const rate = SHIPPING_REVENUE_RATES[subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
+    const uncapped = (Number(tradeVolume) || 0) * rate / SHIPPING_MONTHS_PER_YEAR;
+    return Math.round(Math.min(SHIPPING_HARD_CEILING, Math.max(SHIPPING_MIN_CEILING, uncapped)));
+}
+function _clampServiceRate(v, ceiling) {
     const n = Number(v) || 0;
+    let top = Number(ceiling) || SHIPPING_MIN_CEILING;
+    if (top < SHIPPING_MIN_CEILING) top = SHIPPING_MIN_CEILING;
+    if (top > SHIPPING_HARD_CEILING) top = SHIPPING_HARD_CEILING;
     if (n <= 0) return SHIPPING_MIN_PER_TRIP;
-    return Math.round(Math.min(SHIPPING_MAX_PER_TRIP, Math.max(SHIPPING_MIN_PER_TRIP, n)));
+    return Math.round(Math.min(top, Math.max(SHIPPING_MIN_PER_TRIP, n)));
 }
 
 function _shipTransitTicks(prox) { return (Number(prox) || 0) >= 71 ? 1 : 0; }
@@ -3142,7 +3151,7 @@ async function generateShippingRoutes(supabase, currentTick) {
             trade_sector: tp.sector, cargo_category: sm.category, shipping_subsector: sm.subsector,
             scope: _shipScope(prox, tp.sector === 'arms'),
             goods_name: sm.goods, goods_description: sm.goodsSub, vessel_class: sm.vessel, vessel_note: sm.vesselNote,
-            trade_volume: Math.round(tp.trade_volume), estimated_revenue: _clampServiceRate(tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) / SHIPPING_MONTHS_PER_YEAR),
+            trade_volume: Math.round(tp.trade_volume), estimated_revenue: _clampServiceRate(tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) / SHIPPING_MONTHS_PER_YEAR, _computeServiceRateCeiling(tp.trade_volume, sm.subsector)),
             volume_physical: Math.round(tp.trade_volume / 100), volume_unit: sm.unit,
             transit_ticks: _shipTransitTicks(prox), proximity: prox, tariff_rate: tariffMap[tp.importer_nation_id] || 0,
             demand_level: _shipDemand(tp.trade_volume),
@@ -3246,7 +3255,7 @@ async function generateOrganicRoutes(supabase, currentTick) {
                 // the Available Routes list. Agreement-backed routes are
                 // unaffected — this path only generates organic spot lanes.
                 if (vol < ORGANIC_MIN_VOLUME) continue;
-                const rev = _clampServiceRate(vol * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) * ORGANIC_REVENUE_MULT / SHIPPING_MONTHS_PER_YEAR);
+                const rev = _clampServiceRate(vol * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) * ORGANIC_REVENUE_MULT / SHIPPING_MONTHS_PER_YEAR, _computeServiceRateCeiling(vol * ORGANIC_REVENUE_MULT, sm.subsector));
 
                 rows.push({
                     origin_nation_id: originId, destination_nation_id: destId,

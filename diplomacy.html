@@ -130,6 +130,7 @@ import { DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, TRADE_AGREEMENT_T
 import { syncVoteTallies } from './js/game/bills.js';
 import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, SECTOR_DISPLAY_UNITS } from './js/game/trade-constants.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
+import { clampServiceRate, computeServiceRateCeiling, revenueTierMultiplier } from './js/game/shipping.js';
 import { getNationNames } from './js/game/political-actions.js';
 /**
  * Diplomacy Page
@@ -786,18 +787,16 @@ async function _doApproveShippingApp(appId, routeId, corpFactionId) {
     }
 
     if (claimData?.claim_id) {
-        // Bid becomes the per-transit payout, clamped to the service-rate band
-        // and then multiplied by a tier bonus: active trade agreement lanes pay
-        // 1.2× the clamped bid, organic lanes pay 0.7×. Corps see the same
-        // $250k–$750k bid slider regardless of tier; this is the reward for
-        // bidding on a formal bilateral trade lane over a spot-market one.
+        // Bid becomes the per-transit payout, clamped to the route's service-rate
+        // band (ceiling scales with lane size) then multiplied by the tier bonus.
+        // Constants live in js/game/shipping.js so corps, diplomats, and the
+        // edge function all evaluate bids against the same numbers.
         if (proposedRate > 0) {
-            const MIN_RATE = 250000, MAX_RATE = 750000;
-            const AGREEMENT_MULT = 1.2, ORGANIC_MULT = 0.7;
-            const clamped = Math.round(Math.min(MAX_RATE, Math.max(MIN_RATE, proposedRate)));
-            const share   = Number(claimData.market_share) || 100;
-            const route   = (_allShippingRoutes || []).find(r => r.id === routeId);
-            const tierMult = route && route.trade_agreement_id ? AGREEMENT_MULT : ORGANIC_MULT;
+            const share  = Number(claimData.market_share) || 100;
+            const route  = (_allShippingRoutes || []).find(r => r.id === routeId);
+            const ceiling = route ? computeServiceRateCeiling(route.trade_volume, route.shipping_subsector) : undefined;
+            const clamped = clampServiceRate(proposedRate, ceiling);
+            const tierMult = revenueTierMultiplier(route);
             const revPerT = Math.round(clamped * tierMult * (share / 100));
             const { error: rateErr } = await _supabase.from('shipping_claims')
                 .update({ revenue_per_transit: revPerT })
