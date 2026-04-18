@@ -3677,11 +3677,21 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // ── Shipping Sector — Transit Cycles & Revenue ───────────────
             // Process active shipping claims: advance vessel status, collect
             // revenue on completed transits, restart transit cycles.
+            //
+            // Prior bug: this block referenced `corp.X` throughout, but the
+            // `for (const corp of corps)` loop that originally held it
+            // closed back at the reputation-decay catch (~line 3617). In
+            // strict-mode ESM (which edge runtime uses), `corp` was out of
+            // scope here → every tick `corp.id` on the vessels fetch threw
+            // a ReferenceError that the surrounding try/catch swallowed
+            // silently. Result: ships sat on LOADING forever. Fixed by
+            // (a) fetching vessels via active_claim_id rather than
+            // faction_id (claim id is the precise link, no corp ref
+            // needed) and (b) resolving the per-claim corp from the
+            // in-scope `corps` array inside the claim loop.
             try {
-                // Fetch vessels for fuel checks during transit
-                const { data: corpVesselsForTransit } = await supabase.from('corp_vessels')
-                    .select('id, vessel_name, fuel, condition, status, active_claim_id')
-                    .eq('faction_id', corp.id);
+                const corpById = {};
+                for (const c of corps) corpById[c.id] = c;
 
                 const { data: activeClaims } = await supabase
                     .from('shipping_claims')
@@ -3689,11 +3699,25 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     .eq('status', 'active')
                     .eq('nation_id', nation.id);
 
+                // Fetch vessels keyed by claim id instead of corp id — covers
+                // every claim in activeClaims regardless of which corp owns it.
+                const claimIds = (activeClaims || []).map(c => c.id);
+                const { data: corpVesselsForTransit } = claimIds.length > 0
+                    ? await supabase.from('corp_vessels')
+                        .select('id, vessel_name, fuel, condition, status, active_claim_id, faction_id')
+                        .in('active_claim_id', claimIds)
+                    : { data: [] };
+
                 if (activeClaims && activeClaims.length > 0) {
                     let revenueCollected = 0;
                     let transitsCompleted = 0;
 
                     for (const claim of activeClaims) {
+                        // Resolve the owning corp for this specific claim.
+                        // Downstream code in this loop uses corp.* for cash
+                        // deductions, event-log messages, and fleet bookkeeping.
+                        const corp = corpById[claim.faction_id];
+                        if (!corp) continue;
                         // Skip if route expired — release claim and free vessel
                         if (claim.shipping_routes?.status !== 'active') {
                             await supabase.from('shipping_claims').update({
@@ -3844,6 +3868,15 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // Fuel degrades 1d10+5% for vessels in transit.
             // Maintenance deducted from corp cash.
             // Dry dock completion restores condition.
+            //
+            // Same out-of-scope-corp bug as the transit block above — this
+            // try used `corp.id` / `corp.corp_cash_reserves` / `corp.faction_name`
+            // without being inside a `for (const corp of corps)`, so every
+            // tick the vessels fetch threw silently and maintenance never
+            // ran, condition never decayed, incidents never fired. Wrapped
+            // in a per-corp loop so each corp's fleet is processed in its
+            // own scope.
+            for (const corp of corps) {
             try {
                 const { data: vessels } = await supabase.from('corp_vessels')
                     .select('id, vessel_name, vessel_class, condition, fuel, status, base_maintenance, drydock_until_tick, active_claim_id, current_port_nation_id')
@@ -4160,6 +4193,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (vesselErr) {
                 console.error(`[advance-corp-tick] Vessel decay failed for ${corp.faction_name} (non-fatal):`, vesselErr);
             }
+            } // end for (const corp of corps) — vessel decay/maintenance per-corp
 
             // ── Specialty Building Effects ────────────────────────────────
             try {
