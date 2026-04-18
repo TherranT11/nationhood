@@ -1134,11 +1134,20 @@ async function confirmNation() {
     confirmBtn.textContent = 'CONTINUE';
   }
 
-  // Block if player's corporation is in the same nation
+  // Block if player's corporation is in the same nation.
+  //
+  // Prior bug: this filtered solely on linked_user_id, but when a user
+  // creates a corporation FIRST (no prior faction), the corp row has
+  // id = user.id and NO linked_user_id (see corp-nation-select.html
+  // line 810-811). The same-user-owned check missed corp-first
+  // accounts entirely, letting those players plant a party in the
+  // same nation as their corp. Match either ownership pattern:
+  // `id.eq.user` (primary faction) OR `linked_user_id.eq.user`
+  // (linked secondary faction).
   const { data: corpInSameNation } = await _supabase
       .from('factions')
       .select('id, faction_name')
-      .eq('linked_user_id', currentUser.id)
+      .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
       .eq('faction_type', 'corporation')
       .eq('nation_id', selectedNationId)
       .is('abandoned_at', null)

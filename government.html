@@ -2330,6 +2330,19 @@ function renderBudgetTab(container) {
     const balNeg = balanceYr < 0;
     const balSign = balanceYr >= 0 ? '+' : '-';
 
+    // GDP card values. nation.gdp_growth is a 0-100 stat that maps
+    // linearly to ±1% per month at the extremes (stat 50 = 0%, stat
+    // 100 = +1%/mo, stat 0 = −1%/mo) — same formula budget.js uses to
+    // drift GDP each tick. Expected yearly growth compounds monthly
+    // so 12 months at +0.5%/mo ≈ +6.17%/yr.
+    const gdpNow = Number(currentNation?.gdp) || 0;
+    const gdpGrowthStat = Number(currentNation?.gdp_growth ?? 50);
+    const gdpMonthlyPct = ((gdpGrowthStat - 50) / 50) * 1.0;   // signed %
+    const gdpYearlyPct  = (Math.pow(1 + gdpMonthlyPct / 100, 12) - 1) * 100;
+    const gdpMonthlySign = gdpMonthlyPct >= 0 ? '+' : '';
+    const gdpYearlySign  = gdpYearlyPct  >= 0 ? '+' : '';
+    const gdpGrowthColor = gdpMonthlyPct >= 0 ? '#9ac89e' : '#d88d82';
+
     container.innerHTML = `
         <div class="gb-page">
             <div class="gb-head">
@@ -2338,6 +2351,18 @@ function renderBudgetTab(container) {
                 <div class="gb-sub">Fiscal Year Overview · ${nationName}</div>
             </div>
             <div class="gb-stats">
+                <div class="gb-stat is-gdp">
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>GDP</div>
+                    <div class="gb-stat__primary">${_gbFmtCurrency(gdpNow)}</div>
+                    <div class="gb-stat__secondary">
+                        <span class="gb-stat__secondary-k">Monthly</span>
+                        <span style="color:${gdpGrowthColor};">${gdpMonthlySign}${gdpMonthlyPct.toFixed(2)}%</span>
+                    </div>
+                    <div class="gb-stat__secondary" style="border-top:none;padding-top:0;">
+                        <span class="gb-stat__secondary-k">Yearly (est.)</span>
+                        <span style="color:${gdpGrowthColor};">${gdpYearlySign}${gdpYearlyPct.toFixed(1)}%</span>
+                    </div>
+                </div>
                 <div class="gb-stat is-rev">
                     <div class="gb-stat__label"><span class="gb-stat__dot"></span>Revenue</div>
                     <div class="gb-stat__primary">${_gbFmtCurrency(revenueYr / 12)}<span class="gb-stat__per"> / month</span></div>
@@ -2529,6 +2554,19 @@ async function _gbSelectCategory(container, row, kind) {
         </div>
     `).join('');
 
+    // Surface the policy rate for the three tax categories players
+    // actually tune — lets them read Revenue ↔ Rate at a glance
+    // without tabbing to Economy.
+    const rateByDescKey = {
+        incomeTax: currentNation?.income_tax,
+        corpTax:   currentNation?.corporate_tax,
+        salesTax:  currentNation?.sales_tax,
+    };
+    const currentRate = rateByDescKey[row.descKey];
+    const rateCell = (currentRate != null)
+        ? `<div><span class="gb-deep__stat-k">Current Rate</span><span class="gb-deep__stat-v">${Number(currentRate).toFixed(1)}%</span></div>`
+        : '';
+
     body.innerHTML = `
         <div>
             <div class="gb-deep__kicker">${escapeHtml(kicker)}</div>
@@ -2537,6 +2575,7 @@ async function _gbSelectCategory(container, row, kind) {
         <div class="gb-deep__stats">
             <div><span class="gb-deep__stat-k">Monthly</span><span class="gb-deep__stat-v">${_gbFmtCurrency(mo)}</span></div>
             <div><span class="gb-deep__stat-k">Yearly</span><span class="gb-deep__stat-v">${_gbFmtCurrency(row.yr)}</span></div>
+            ${rateCell}
         </div>
         <p class="gb-deep__desc">${escapeHtml(desc)}</p>
         ${subRows.length ? `
