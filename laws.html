@@ -208,7 +208,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-            <button class="btn-submit" id="submit-bill-btn" disabled onclick="submitToCommittee()">Submit to Committee — $50k</button>
+            <button class="btn-submit" id="submit-bill-btn" disabled onclick="submitToCommittee()">Submit Bill to Committee — $50k</button>
         </div>
     </div>
 </div>
@@ -1518,47 +1518,19 @@ async function refundArticleAP() {
     } catch (e) { console.error('AP refund error:', e); }
 }
 
-/** Compute the base AP cost for submitting a bill, including all leader trait modifiers.
- *  Shared by the display label and the actual submit path to prevent mismatches. */
-function computeBillApCost() {
-    let cost = GAME_CONFIG.DRAFT_BILL_AP_COST;
-    if (currentFaction) {
-        if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) cost -= 1;
-        if ((currentFaction.leader_negative_traits || []).includes('micromanager')) cost += 1;
-        // single_issue: Bills outside leader's ideology axis cost +2 AP
-        if ((currentFaction.leader_negative_traits || []).includes('single_issue') && currentFaction.leader_ideology) {
-            const leaderIdeo = currentFaction.leader_ideology.toUpperCase();
-            const IDEO_AXIS_MAP = {
-                'LIBERTY': 'liberty_equality', 'EQUALITY': 'liberty_equality',
-                'TRADITION': 'tradition_progress', 'PROGRESS': 'tradition_progress',
-                'SECURITY': 'security_freedom', 'FREEDOM': 'security_freedom',
-                'GLOBALISM': 'globalism_nationalism', 'NATIONALISM': 'globalism_nationalism',
-                'INDIVIDUALISM': 'individualism_collectivism', 'COLLECTIVISM': 'individualism_collectivism',
-            };
-            const leaderAxis = IDEO_AXIS_MAP[leaderIdeo];
-            const articleIdeos = draftArticles.flatMap(a => {
-                const ideologies = a.ideologies || (a.ideology ? [a.ideology] : []);
-                return ideologies.map(i => i.toUpperCase());
-            });
-            const matchesAxis = articleIdeos.some(i => IDEO_AXIS_MAP[i] === leaderAxis);
-            if (!matchesAxis && articleIdeos.length > 0) cost += 2;
-        }
-        cost = Math.max(1, cost);
-    }
-    return cost;
-}
-
-/** Update the submit button text to show total AP cost. */
+/** Update the submit button text to show the total cash cost ($50k base +
+ *  $20k per article — matches the deduction in submitToCommittee()). */
 function updateSubmitButtonCost() {
     const btn = document.getElementById('submit-bill-btn');
     if (!btn) return;
-    const billableCount = countBillableArticles(draftArticles);
-    const extraArticles = Math.max(0, billableCount - FREE_ARTICLE_LIMIT);
-    const baseCost = computeBillApCost();
-    const totalPaid = extraArticles; // already paid per-article
-    const termBill = 'Bill';
-    const costLabel = baseCost + ' AP' + (totalPaid > 0 ? ' (+' + totalPaid + ' AP paid for extra articles)' : '');
-    btn.textContent = `Submit ${termBill} to Committee — ${costLabel}`;
+    const base = 50000;
+    const perArticle = 20000;
+    const total = base + draftArticles.length * perArticle;
+    const fmt = (n) => '$' + Math.round(n / 1000) + 'k';
+    const breakdown = draftArticles.length > 0
+        ? ` (${fmt(base)} + ${draftArticles.length} × ${fmt(perArticle)})`
+        : '';
+    btn.textContent = `Submit Bill to Committee \u2014 ${fmt(total)}${breakdown}`;
 }
 
 function openDraftModal() {
