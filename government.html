@@ -66,7 +66,7 @@ import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statD
 import { formatStatName, autoAppointPartyLeaderAsPM, getNationNames, resignPM } from './js/game/political-actions.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
 import { callEarlyElectionsAction, closeAdministration, rolloverAdministration, dissolveCoalition, dissolveParliament } from './js/game/elections.js';
-import { nominateMinister, nominatePMCandidate } from './js/game/presidential.js';
+import { nominateMinister, nominatePMCandidate, signPresidentialBill, vetoPresidentialBill } from './js/game/presidential.js';
 import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder } from './js/game/executive-orders.js';
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
@@ -2320,7 +2320,7 @@ async function loadLegislatureData() {
     const nid = currentNation.id;
 
     try {
-        const [committeeRes, floorRes, frozenRes, resolvedRes, lawsRes, partiesRes] = await Promise.all([
+        const [committeeRes, floorRes, frozenRes, deskRes, resolvedRes, lawsRes, partiesRes] = await Promise.all([
             _supabase.from('bills')
                 .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
                 .eq('nation_id', nid).eq('status', 'committee'),
@@ -2330,6 +2330,14 @@ async function loadLegislatureData() {
             _supabase.from('bills')
                 .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*))')
                 .eq('nation_id', nid).eq('status', 'frozen'),
+            // Presidential systems only: bills that passed the floor and are
+            // waiting for the president to sign or veto. Without this, presidents
+            // were being routed to laws.html just to find the sign/veto UI.
+            isPresidential
+                ? _supabase.from('bills')
+                    .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*))')
+                    .eq('nation_id', nid).eq('status', 'president_desk')
+                : Promise.resolve({ data: [] }),
             _supabase.from('bills')
                 .select('*, factions(faction_name, party_color, abbreviation)')
                 .eq('nation_id', nid).in('status', ['enacted', 'passed', 'failed', 'rejected'])
@@ -2346,6 +2354,7 @@ async function loadLegislatureData() {
         const committee = committeeRes.data || [];
         const floor = floorRes.data || [];
         const frozen = frozenRes.data || [];
+        const presidentDesk = deskRes.data || [];
         const resolved = resolvedRes.data || [];
         const activeLaws = lawsRes.data || [];
         const parties = partiesRes.data || [];
@@ -2375,6 +2384,7 @@ async function loadLegislatureData() {
             committee,
             floor,
             frozen,
+            presidentDesk,
             resolved,
             activeLaws,
             parties,
@@ -2383,7 +2393,7 @@ async function loadLegislatureData() {
         };
     } catch (err) {
         console.error('[Legislature] loadLegislatureData failed:', err);
-        _legData = { committee: [], floor: [], frozen: [], resolved: [], activeLaws: [], parties: [], totalSeats: 120, majority: 61 };
+        _legData = { committee: [], floor: [], frozen: [], presidentDesk: [], resolved: [], activeLaws: [], parties: [], totalSeats: 120, majority: 61 };
     }
 }
 
@@ -2845,9 +2855,68 @@ function renderBillCard(bill, stageColor) {
         html += `<div style="padding:0 14px 8px;font-family:var(--font-mono);font-size:calc(7px * var(--leg-scale, 1.755));color:var(--text-dim);">&#9656; ${articles.length} article${articles.length !== 1 ? 's' : ''} \u00B7 click to expand details</div>`;
     }
 
+    // President's Desk: sign/veto controls inline so the president doesn't
+    // have to detour to laws.html to act on a bill that passed the floor.
+    if (bill.status === 'president_desk') {
+        const deadlineTick = bill.president_desk_deadline || '?';
+        if (isPresidentParty) {
+            html += `<div class="leg-vote-row" style="border-top:1px solid var(--border-main);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--blue);">
+                    The President must sign or veto this bill
+                    <span style="color:var(--text-dim);margin-left:6px;">Auto-signs at tick ${deadlineTick} if no action taken</span>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <div class="leg-vote-btn leg-vote-btn--yes" onclick="event.stopPropagation();signBillFromLegislature('${bill.id}')">SIGN INTO LAW</div>
+                    <div class="leg-vote-btn leg-vote-btn--no" onclick="event.stopPropagation();vetoBillFromLegislature('${bill.id}')">VETO</div>
+                </div>
+            </div>`;
+        } else {
+            html += `<div style="padding:8px 14px;font-family:var(--font-mono);font-size:10px;color:var(--blue);">Awaiting presidential action \u2014 auto-signs at tick ${deadlineTick}</div>`;
+        }
+    }
+
     html += `</div>`;
     return html;
 }
+
+let _presidentialActionLock = false;
+
+async function signBillFromLegislature(billId) {
+    if (_presidentialActionLock || !isPresidentParty || !currentFaction) return;
+    if (!confirm('Sign this bill into law?')) return;
+    _presidentialActionLock = true;
+    try {
+        await signPresidentialBill(_supabase, billId, currentFaction.id);
+        await loadLegislatureData();
+        const content = document.getElementById('gov-content');
+        if (content) renderLegislatureTab(content);
+    } catch (err) {
+        console.error('[Legislature] Sign failed:', err);
+        alert('Error signing bill: ' + (err?.message || 'Unknown error'));
+    } finally {
+        _presidentialActionLock = false;
+    }
+}
+window.signBillFromLegislature = signBillFromLegislature;
+
+async function vetoBillFromLegislature(billId) {
+    if (_presidentialActionLock || !isPresidentParty || !currentFaction) return;
+    const overrideSeats = Math.ceil((currentNation?.total_seats || GAME_CONFIG.TOTAL_SEATS) * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
+    if (!confirm(`VETO this bill?\n\nA veto override bill will be automatically created requiring ${overrideSeats} seats (\u2154 supermajority).\n\nProceed?`)) return;
+    _presidentialActionLock = true;
+    try {
+        await vetoPresidentialBill(_supabase, billId, currentFaction.id);
+        await loadLegislatureData();
+        const content = document.getElementById('gov-content');
+        if (content) renderLegislatureTab(content);
+    } catch (err) {
+        console.error('[Legislature] Veto failed:', err);
+        alert('Error vetoing bill: ' + (err?.message || 'Unknown error'));
+    } finally {
+        _presidentialActionLock = false;
+    }
+}
+window.vetoBillFromLegislature = vetoBillFromLegislature;
 
 function renderBillExpandedContent(bill) {
     const articles = (bill.bill_articles || []).sort((a, b) => (a.article_number || 0) - (b.article_number || 0));
@@ -2958,8 +3027,8 @@ window.legCastVote = legCastVote;
 function renderBillsList() {
     const el = document.getElementById('leg-right');
     if (!el || !_legData) return;
-    const { committee, floor, frozen, resolved, activeLaws, totalSeats, majority } = _legData;
-    const totalActive = committee.length + floor.length + frozen.length;
+    const { committee, floor, frozen, presidentDesk = [], resolved, activeLaws, totalSeats, majority } = _legData;
+    const totalActive = committee.length + floor.length + frozen.length + presidentDesk.length;
     const nationName = currentNation?.name || 'Nation';
 
     let html = '';
@@ -2986,6 +3055,14 @@ function renderBillsList() {
     </div></div>`;
 
     if (_legFilter === 'active') {
+        // PRESIDENT'S DESK (presidential systems only) — surface at the top so
+        // the president sees what's waiting for their signature without leaving
+        // this page.
+        if (presidentDesk.length > 0) {
+            html += `<div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--blue);padding:4px 0;">PRESIDENT'S DESK</div>`;
+            for (const bill of presidentDesk) html += renderBillCard(bill, 'var(--blue)');
+        }
+
         // IN COMMITTEE
         if (committee.length > 0) {
             html += `<div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--orange);padding:4px 0;">IN COMMITTEE</div>`;
