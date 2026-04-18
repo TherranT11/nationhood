@@ -8748,9 +8748,55 @@ async function resolveExpiredVotes(supabase, nationId) {
                         stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {}
                     }).eq('id', ministry.id);
 
-                    // If confirming a PM, update government_formations so lead_party_id stays correct
+                    // If confirming a PM, activate head_of_government, update the
+                    // administration record, and sync government_formations so the
+                    // admin banner reads hog correctly and shows the new PM.
+                    //
+                    // Prior bug (Avelia, Paloma Lucero confirmation at tick 9):
+                    // the ministries row got populated but head_of_government
+                    // stayed empty, so renderAdminBanner's `if (hog && ...)`
+                    // gate kept rendering "Vacant — awaiting nomination". The
+                    // nomination had actually succeeded; only HOG activation
+                    // and the administration PM-name write were missing.
                     if (mKey === 'prime_minister') {
                         try {
+                            // 1. Deactivate any current HOG
+                            await supabase.from('head_of_government')
+                                .update({ active: false })
+                                .eq('nation_id', bill.nation_id).eq('active', true);
+
+                            // 2. Upsert new HOG from the confirmed pending_minister.
+                            //    Fields match autoAppointPartyLeaderAsPM's shape so
+                            //    downstream readers don't need to care which path
+                            //    installed the PM.
+                            const { error: hogErr } = await supabase
+                                .from('head_of_government')
+                                .upsert({
+                                    nation_id: bill.nation_id,
+                                    faction_id: pm.party_id,
+                                    candidate_id: null,
+                                    first_name: pm.first_name,
+                                    last_name: pm.last_name,
+                                    age: pm.age,
+                                    ideology: pm.ideology || null,
+                                    trait_key: pm.trait_key || null,
+                                    appointed_tick: currentTick,
+                                    active: true
+                                }, { onConflict: 'nation_id' });
+                            if (hogErr) console.warn('[resolveExpiredVotes] HOG upsert failed:', hogErr.message);
+
+                            // 3. Update administration record with new PM name.
+                            const pmFullName = `${pm.first_name} ${pm.last_name}`;
+                            const { error: adminErr } = await supabase.from('administrations').update({
+                                prime_minister: pmFullName,
+                                admin_name: `${pm.last_name} Administration`,
+                                updated_at: new Date().toISOString()
+                            }).eq('nation_id', bill.nation_id).is('ended_at_tick', null);
+                            if (adminErr) console.warn('[resolveExpiredVotes] administrations update failed:', adminErr.message);
+
+                            // 4. Sync government_formations ministry_assignments so
+                            //    coalition lead/assignment queries return the new PM's
+                            //    party.
                             const { data: activeGovFormation } = await supabase.from('government_formations')
                                 .select('id, ministry_assignments')
                                 .eq('nation_id', bill.nation_id)
@@ -8763,9 +8809,9 @@ async function resolveExpiredVotes(supabase, nationId) {
                                 await supabase.from('government_formations')
                                     .update({ ministry_assignments: updatedAssignments })
                                     .eq('id', activeGovFormation.id);
-                                console.log(`[resolveExpiredVotes] Updated government_formations PM assignment to ${pm.party_id}`);
                             }
-                        } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
+                            console.log(`[resolveExpiredVotes] PM confirmed: ${pmFullName} (party ${pm.party_id}) installed in ${bill.nation_id}`);
+                        } catch (gfErr) { console.warn('[resolveExpiredVotes] PM install failed:', gfErr); }
                     }
                 }
 
