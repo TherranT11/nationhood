@@ -1597,9 +1597,11 @@ function _renderShippingBidModalOverlay() {
             <!-- Footer -->
             <div style="padding:14px 22px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
                 <div style="display:flex;gap:22px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">
-                    <span><span style="color:var(--text-muted);letter-spacing:1px;">SELECTED</span> <span style="color:var(--text-bright);font-weight:600;">${selectedApp ? escapeHtml(selectedApp.factions?.faction_name || 'Corp') : 'NONE'}</span></span>
-                    <span><span style="color:var(--text-muted);letter-spacing:1px;">CONTRACT VALUE</span> <span style="color:var(--text-bright);font-weight:600;">${selectedApp ? fmt(contractValue) : '—'}</span></span>
-                    <span><span style="color:var(--text-muted);letter-spacing:1px;">TERM</span> <span style="color:var(--text-bright);font-weight:600;">${contractTermTicks} TICKS</span></span>
+                    ${canAct
+                        ? `<span><span style="color:var(--text-muted);letter-spacing:1px;">SELECTED</span> <span style="color:var(--text-bright);font-weight:600;">${selectedApp ? escapeHtml(selectedApp.factions?.faction_name || 'Corp') : 'NONE'}</span></span>
+                           <span><span style="color:var(--text-muted);letter-spacing:1px;">CONTRACT VALUE</span> <span style="color:var(--text-bright);font-weight:600;">${selectedApp ? fmt(contractValue) : '—'}</span></span>
+                           <span><span style="color:var(--text-muted);letter-spacing:1px;">TERM</span> <span style="color:var(--text-bright);font-weight:600;">${contractTermTicks} TICKS</span></span>`
+                        : `<span style="color:var(--amber);">\u26A0 Read-only \u2014 only the Minister of Trade${motName && motName !== '\u2014' ? ' (' + escapeHtml(motName) + ')' : ''} can award or reject these bids.</span>`}
                 </div>
                 <div style="display:flex;gap:8px;">
                     <button
