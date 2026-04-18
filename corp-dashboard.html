@@ -1174,7 +1174,7 @@ async function init() {
     }
 
     await renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation, propData, fleetMaint);
-    renderValuation(nationStats, nationName, faction, wfData, propData);
+    await renderValuation(nationStats, nationName, faction, wfData, propData);
 
     // Messaging bubble
     initMessaging(faction, nationStats, shard);
@@ -2264,7 +2264,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
     return { propertyValue: totalValue, propertyMaintenance: totalMaint, totalCapacity, propertyRevBonus };
 }
 
-function renderValuation(nation, nationName, faction, wfData, propData) {
+async function renderValuation(nation, nationName, faction, wfData, propData) {
     const s = (key) => getNationStat(nation, key);
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
     const companyType = faction.corp_company_type || 'Private';
@@ -2273,7 +2273,32 @@ function renderValuation(nation, nationName, faction, wfData, propData) {
     const cashReserves = Number(faction.corp_cash_reserves) || 0;
     const propertyValue = propData?.propertyValue || 0;
     const equipmentValue = 0;
-    const activeContracts = 0;
+    // Active Contracts: principal value of commercial instruments the corp
+    // holds as receivables. Today this is loan principal outstanding for
+    // Finance corps; Construction/Shipping stay at 0 until we decide how to
+    // capitalise work-in-progress / shipping claims on the balance sheet.
+    let activeContracts = 0;
+    if (faction?.id && faction.corp_sector === 'Finance') {
+        try {
+            const { data: finLoans } = await _supabase.from('finance_active_loans')
+                .select('principal, total_paid, finance_loan_requests(request_type)')
+                .eq('lender_faction_id', faction.id)
+                .in('status', ['current', 'late', 'delinquent']);
+            for (const loan of (finLoans || [])) {
+                const reqType = loan.finance_loan_requests?.request_type || 'loan';
+                // Loans: outstanding principal owed to us is the asset value.
+                // Bonds: face value outstanding is the asset. Insurance policies
+                // are written as a contingent liability for the insurer, so they
+                // don't count here.
+                if (reqType === 'loan' || reqType === 'bond') {
+                    const remaining = Math.max(0, Number(loan.principal || 0) - Number(loan.total_paid || 0));
+                    activeContracts += remaining;
+                }
+            }
+        } catch (err) {
+            console.warn('[Valuation] finance_active_loans lookup failed:', err);
+        }
+    }
     const totalAssets = cashReserves + propertyValue + equipmentValue + activeContracts;
 
     // Liabilities
