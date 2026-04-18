@@ -6,7 +6,9 @@ import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, checkOppositionStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
 import { getNationNames } from './game/political-actions.js';
-import { isAbsoluteMonarchy } from './game/government-types.js';
+import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM } from './game/government-types.js';
+import { GAME_CONFIG } from './game/config.js';
+import { loadSeats } from './game/government-structure.js';
 
 let _supabase = null;
 let _state = null;
@@ -51,6 +53,8 @@ const FUNDRAISE_TIERS = [
     { perSeat: 1000, momDivisor: 5 },  // Use 5+: $1k/seat, -1 mom per 5 seats
 ];
 let _fundraiseUseCount = 0; // loaded from DB on init, not just session state
+let _noConfidenceCooldownTicks = 0; // ticks remaining before another vonc can be filed against the current PM party
+let _noConfidencePending = false;   // there's already a pending no_confidence bill in this nation
 
 async function loadFundraiseCount() {
     if (!_supabase || !_state?.faction?.id || !_state?.shard?.current_tick) return;
@@ -60,6 +64,47 @@ async function loadFundraiseCount() {
         .eq('action_type', 'fundraise')
         .eq('tick_performed', _state.shard.current_tick);
     _fundraiseUseCount = (!error && count != null) ? count : 0;
+}
+
+// Pulls the per-targeted-PM-party cooldown for vote of no confidence + checks
+// for an already-pending motion in this nation. Both feed the lock state on the
+// "Vote of No Confidence" leader action so the button reflects reality.
+async function loadNoConfidenceState() {
+    _noConfidenceCooldownTicks = 0;
+    _noConfidencePending = false;
+    if (!_supabase || !_state?.nation?.id || !_state?.shard?.current_tick) return;
+    const tick   = _state.shard.current_tick;
+    const pmId   = _administration?.pm_party_id;
+    try {
+        // Pending motion (committee or floor)?
+        const { data: pendBills } = await _supabase.from('bills')
+            .select('id')
+            .eq('nation_id', _state.nation.id)
+            .eq('bill_type', 'no_confidence')
+            .in('status', ['committee', 'floor'])
+            .limit(1);
+        _noConfidencePending = !!(pendBills && pendBills.length);
+
+        // Cooldown against the current PM party (not the filing party).
+        if (pmId) {
+            const { data: lastFiled } = await _supabase.from('campaign_actions')
+                .select('tick_performed')
+                .eq('nation_id', _state.nation.id)
+                .eq('action_type', 'no_confidence_filed')
+                .eq('target_id', pmId)
+                .order('tick_performed', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (lastFiled) {
+                const elapsed = tick - Number(lastFiled.tick_performed || 0);
+                const cooldown = (typeof GAME_CONFIG !== 'undefined' && GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS) || 12;
+                _noConfidenceCooldownTicks = Math.max(0, cooldown - elapsed);
+            }
+        }
+    } catch (e) {
+        // Non-fatal: action defaults to unlocked if we can't determine state.
+        console.warn('[PartyActions] loadNoConfidenceState failed:', e?.message || e);
+    }
 }
 
 function getFundraiseInfo(seats, useCount) {
@@ -98,6 +143,16 @@ const LEADER_ACTIONS = [
         costColor: '#c8a832',
         moneyCost: 120000,
         tags: ['STRATEGIC'],
+        locked: false,
+    },
+    {
+        id: 'no_confidence',
+        name: 'Vote of No Confidence',
+        desc: 'File a motion of no confidence against the Prime Minister. If a simple majority votes YES, the government falls and snap elections are triggered. PASS: +15 Momentum to you, -10 Momentum + -10 Governance to the PM\u2019s party. FAIL: -10 Momentum to you. 12-tick cooldown on the targeted PM party.',
+        cost: '$0',
+        costColor: 'var(--text-dim)',
+        moneyCost: 0,
+        tags: ['LEGISLATIVE', 'OPPOSITION'],
         locked: false,
     },
 ];
@@ -225,6 +280,7 @@ export async function initPartyActions(supabase, state) {
             .maybeSingle(),
     ]);
     await loadFundraiseCount();
+    await loadNoConfidenceState();
 
     if (myPlat.error) console.error('[PartyActions] Failed to load faction platforms:', myPlat.error.message);
     if (nationPlat.error) console.error('[PartyActions] Failed to load nation platforms:', nationPlat.error.message);
@@ -405,6 +461,8 @@ function renderPage(root) {
             openModernizeModal(root);
         } else if (actionId === 'rebrand') {
             openRebrandModal(root);
+        } else if (actionId === 'no_confidence') {
+            triggerNoConfidence();
         }
     });
 
@@ -630,7 +688,29 @@ function renderActionsPanel(leaderName, partyColor, faction) {
         let costDisplay = action.cost;
         let costColor = action.costColor;
         let isDisabled = action.locked;
-        if (action.id === 'fundraise') {
+        // Vote of No Confidence — gated on three things:
+        //   1. We must be opposition (PM party can't file against itself)
+        //   2. No motion already pending in this nation
+        //   3. 12-tick per-PM-party cooldown (loaded into _noConfidenceCooldownTicks)
+        if (action.id === 'no_confidence') {
+            const isPMParty = !!_administration && _administration.pm_party_id === faction.id;
+            if (isPMParty) {
+                isDisabled = true;
+                action.lockReason = 'Your party is the Prime Minister — file from another party.';
+            } else if (_noConfidencePending) {
+                isDisabled = true;
+                action.lockReason = 'A motion of no confidence is already pending in Parliament.';
+            } else if (_noConfidenceCooldownTicks > 0) {
+                isDisabled = true;
+                const t = _noConfidenceCooldownTicks;
+                action.lockReason = `Cooldown: ${t} tick${t !== 1 ? 's' : ''} remaining before another motion can be filed against this PM party.`;
+            } else if (!_administration || !_administration.pm_party_id) {
+                isDisabled = true;
+                action.lockReason = 'No active Prime Minister to file against.';
+            } else {
+                action.lockReason = '';
+            }
+        } else if (action.id === 'fundraise') {
             const fi = getFundraiseInfo(seats, _fundraiseUseCount);
             costDisplay = `-${fi.momCost} MOM`;
             costColor = '#c84';
@@ -2715,6 +2795,128 @@ async function openRevokeSeatsModal(root) {
 
     overlay.classList.add('active');
     render();
+}
+
+// ════════════════════════ VOTE OF NO CONFIDENCE ════════════════════════
+// Files a no_confidence bill against the current PM and writes the cooldown
+// row in campaign_actions. Same backend shape as government.html's
+// fileNoConfidence() so the bill resolves through the same tick path.
+
+let _noConfidenceSubmitting = false;
+
+async function triggerNoConfidence() {
+    if (_noConfidenceSubmitting) return;
+    if (!_state?.faction?.id || !_state?.nation?.id) return;
+
+    const faction     = _state.faction;
+    const nation      = _state.nation;
+    const isSemiPres  = isSemiPresidential(nation);
+
+    if (!hasParliamentaryPM(nation)) {
+        alert('A vote of no confidence is only possible in a parliamentary or semi-presidential system.');
+        return;
+    }
+
+    // Resolve the active PM's faction id and last name. The lock state already
+    // checked the PM-party / cooldown / pending guards; we re-verify here in
+    // case state drifted between render and click.
+    const { data: hog } = await _supabase.from('head_of_government')
+        .select('faction_id, last_name').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+    const pmFactionId = hog?.faction_id || nation.ruling_faction_id || null;
+    const pmLastName  = hog?.last_name || null;
+
+    if (!pmFactionId) { alert('No active Prime Minister to file against.'); return; }
+    if (pmFactionId === faction.id) { alert('Your party is the Prime Minister — you cannot file a vote of no confidence against yourself.'); return; }
+
+    const mySeats = (_state.faction?.seats != null ? Number(_state.faction.seats) : 0);
+    if (mySeats < 1) { alert('Your party needs at least 1 seat in the legislature to file a motion.'); return; }
+
+    const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+    const tick = shard?.current_tick || _state.shard?.current_tick || 0;
+
+    // Re-check pending + cooldown at click time (race with another opposition party).
+    const { data: pendBills } = await _supabase.from('bills')
+        .select('id').eq('nation_id', nation.id).eq('bill_type', 'no_confidence').in('status', ['committee', 'floor']).limit(1);
+    if (pendBills && pendBills.length > 0) { alert('A motion of no confidence is already pending.'); return; }
+
+    const { data: lastFiled } = await _supabase.from('campaign_actions')
+        .select('tick_performed').eq('nation_id', nation.id).eq('action_type', 'no_confidence_filed').eq('target_id', pmFactionId)
+        .order('tick_performed', { ascending: false }).limit(1).maybeSingle();
+    if (lastFiled) {
+        const elapsed = tick - Number(lastFiled.tick_performed || 0);
+        if (elapsed < GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS) {
+            const remaining = GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS - elapsed;
+            alert(`Cooldown: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining before another motion can be filed against this PM party.`);
+            return;
+        }
+    }
+
+    const motionName = pmLastName
+        ? (isSemiPres ? `Motion of No Confidence in PM ${pmLastName}` : `Motion of No Confidence in the ${pmLastName} Government`)
+        : `Motion of No Confidence in the Government`;
+
+    const passConsequences = isSemiPres
+        ? `IF IT PASSES:\n\u2022 PM removed \u2014 President must nominate a new PM\n\u2022 Your party: +15 Momentum\n\u2022 PM's party: -10 Momentum, -10 Governance`
+        : `IF IT PASSES:\n\u2022 Coalition dissolved, PM removed, all ministries vacated\n\u2022 Snap elections scheduled\n\u2022 Your party: +15 Momentum\n\u2022 PM's party: -10 Momentum, -10 Governance`;
+
+    if (!confirm(
+        `\u26a1 FILE VOTE OF NO CONFIDENCE?\n\n"${motionName}"\n\n` +
+        `Cost: $0 \u2014 free to file\n` +
+        `Voting period: ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks\n` +
+        `Needs simple majority (YES > NO) to pass.\n\n${passConsequences}\n\n` +
+        `IF IT FAILS:\n\u2022 Your party: -10 Momentum\n` +
+        `\u2022 ${GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS}-tick cooldown on this PM party\n\nProceed?`
+    )) return;
+
+    _noConfidenceSubmitting = true;
+    try {
+        const { data: bill, error: billErr } = await _supabase.from('bills').insert({
+            nation_id: nation.id,
+            proposed_by: faction.id,
+            proposed_tick: tick,
+            bill_name: motionName,
+            bill_type: 'no_confidence',
+            status: 'floor',
+            floor_tick: tick,
+            voting_ends_tick: tick + GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS,
+            proposer_name: faction.faction_name,
+            proposer_color: faction.party_color,
+            preamble: isSemiPres
+                ? `This motion, filed by the ${faction.faction_name}, calls for a vote of no confidence in the Prime Minister. If passed by simple majority, the PM will be removed and the President must nominate a replacement.`
+                : `This motion, filed by the ${faction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`,
+        }).select('id').single();
+
+        if (billErr) { alert('Failed to file motion: ' + billErr.message); return; }
+
+        // Auto-cast the filer's YES vote.
+        await _supabase.from('bill_support').upsert({
+            bill_id: bill.id,
+            faction_id: faction.id,
+            stance: 'yes',
+            seat_count: mySeats,
+        }, { onConflict: 'bill_id,faction_id' });
+
+        // Cooldown row keyed on the targeted PM party (single source of truth
+        // for the per-target 12-tick lockout). Mirrors government.html.
+        await _supabase.from('campaign_actions').insert({
+            party_id: faction.id,
+            nation_id: nation.id,
+            target_id: pmFactionId,
+            action_type: 'no_confidence_filed',
+            ap_cost: 0,
+            money_cost: 0,
+            tick_performed: tick,
+            result: { bill_id: bill.id, pm_last_name: pmLastName },
+        });
+
+        alert(`\u26a1 "${motionName}" has been filed!\n\nVoting is now open for ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks.`);
+        window.location.href = `bill.html?id=${bill.id}`;
+    } catch (e) {
+        console.error('[PartyActions] No confidence file failed:', e);
+        alert('Failed to file motion: ' + (e?.message || 'unknown error'));
+    } finally {
+        _noConfidenceSubmitting = false;
+    }
 }
 
 // ════════════════════════ FUNDRAISE ════════════════════════

@@ -69,9 +69,9 @@ const GAME_CONFIG = {
     DRAFT_BILL_AP_COST: 2,
     FREE_BILL_ARTICLES: 4,         // First 4 non-text articles are free; article 5+ costs 1 AP each
     VETO_APPROVAL_COST: 3,
-    NO_CONFIDENCE_AP_COST: 5,
+    NO_CONFIDENCE_AP_COST: 0,                 // free to file (party-action redesign)
     NO_CONFIDENCE_VOTING_TICKS: 6,
-    NO_CONFIDENCE_COOLDOWN_TICKS: 6,
+    NO_CONFIDENCE_COOLDOWN_TICKS: 12,         // per TARGETED PM party (was 6 on caller)
     FOUNDATIONAL_AP_COST: 3,
     FOUNDATIONAL_VOTING_TICKS: 6,
     SUPERMAJORITY_THRESHOLD: 2/3,
@@ -12746,17 +12746,18 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
                 .update({ active: false })
                 .eq('nation_id', nationId).eq('active', true);
 
-            // Calling party gets approval boost
-            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 4, p_label: 'No confidence called (+4)', p_tick: currentTick });
+            // Calling party: +15 momentum (party-action redesign — was +4)
+            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 15, p_label: 'No confidence passed (+15)', p_tick: currentTick });
 
-            // PM's party takes hit
+            // PM's party: -10 momentum (was -3)
             if (pmFactionId) {
-                await supabase.rpc('adjust_momentum', { p_faction_id: pmFactionId, p_delta: -3, p_label: 'No confidence — PM party (-3)', p_tick: currentTick });
+                await supabase.rpc('adjust_momentum', { p_faction_id: pmFactionId, p_delta: -10, p_label: 'No confidence passed — PM party (-10)', p_tick: currentTick });
                 await adjustCredibility(supabase, pmFactionId, nationId, -0.05);
             }
-            await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
+            // Government approval / "Governance" -10 (was -5)
+            await adjustGovernmentApprovalEvent(supabase, nationId, -10, 'no_confidence:success');
 
-            // If PM was from president's party, president's party takes additional approval hit
+            // If PM was from president's party, president's party takes additional momentum hit
             const { data: president } = await supabase.from('presidents')
                 .select('faction_id').eq('nation_id', nationId).eq('is_active', true).maybeSingle();
             if (president && pmFactionId && president.faction_id === pmFactionId) {
@@ -12772,7 +12773,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
                 fired_at_tick: currentTick,
                 category: 'government',
                 description_chosen: `Prime Minister ${pmLastName} has been removed by a vote of no confidence (${votesFor} to ${votesAgainst}). The President must nominate a new PM.`,
-                effects_applied: { pm_removed: true, president_survives: true, caller_approval: +2, pm_party_approval: samePartyPenalty ? -6 : -3, gov_approval: -5, same_party_penalty: samePartyPenalty }
+                effects_applied: { pm_removed: true, president_survives: true, caller_momentum: +15, pm_party_momentum: -10, gov_approval: -10, same_party_penalty: samePartyPenalty }
             });
             return;
         }
@@ -12798,15 +12799,23 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             // Dissolve coalition
             await dissolveCoalition(supabase, nationId);
 
-            // Calling party gets approval boost
-            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 4, p_label: 'No confidence called (+4)', p_tick: currentTick });
+            // Calling party: +15 momentum (party-action redesign — was +4)
+            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 15, p_label: 'No confidence passed (+15)', p_tick: currentTick });
 
-            // All coalition parties take approval & credibility hit
+            // PM's party specifically: -10 momentum + credibility hit (was -3 across the whole coalition).
+            // Other coalition parties still take a -3 momentum hit so the cabinet collapse hurts everyone
+            // who was holding the bag, but the headline penalty lands on the PM.
+            if (pmFactionId) {
+                await supabase.rpc('adjust_momentum', { p_faction_id: pmFactionId, p_delta: -10, p_label: 'No confidence passed — PM party (-10)', p_tick: currentTick });
+                await adjustCredibility(supabase, pmFactionId, nationId, -0.05);
+            }
             for (const partyId of coalitionPartyIds) {
-                await supabase.rpc('adjust_momentum', { p_faction_id: partyId, p_delta: -3, p_label: 'No confidence — gov party (-3)', p_tick: currentTick });
+                if (partyId === pmFactionId) continue; // already hit above
+                await supabase.rpc('adjust_momentum', { p_faction_id: partyId, p_delta: -3, p_label: 'No confidence — coalition partner (-3)', p_tick: currentTick });
                 await adjustCredibility(supabase, partyId, nationId, -0.05);
             }
-            await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
+            // Government approval / "Governance" -10 (was -5)
+            await adjustGovernmentApprovalEvent(supabase, nationId, -10, 'no_confidence:success');
 
             // Schedule snap election (same pattern as early elections)
             // Only cancel parliamentary elections (preserve presidential for semi-pres safety)
@@ -12838,24 +12847,13 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
         } // end else (coalition not already dissolved)
 
     } else {
-        // FAILED: calling party takes approval & credibility hit
-        await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: -3, p_label: 'No confidence failed — caller (-3)', p_tick: currentTick });
+        // FAILED: caller eats -10 momentum (was -3); PM party no longer
+        // gets a +momentum gift on a defeated motion (party-action redesign).
+        await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: -10, p_label: 'No confidence failed — caller (-10)', p_tick: currentTick });
         await adjustCredibility(supabase, callingPartyId, nationId, -0.05);
 
-        // PM's party gets approval & credibility boost
-        if (pmFactionId) {
-            await supabase.rpc('adjust_momentum', { p_faction_id: pmFactionId, p_delta: 2, p_label: 'No confidence defeated (+2)', p_tick: currentTick });
-            await adjustCredibility(supabase, pmFactionId, nationId, 0.03);
-        }
-
-        // Record cooldown: store the tick when the no-confidence failed
-        await supabase.from('campaign_actions').insert({
-            party_id: callingPartyId,
-            nation_id: nationId,
-            action_type: 'no_confidence_failed',
-            tick_performed: currentTick,
-            result: { votes_for: votesFor, votes_against: votesAgainst, pm_last_name: pmLastName }
-        });
+        // Cooldown is recorded at FILE time on the targeted PM party (not here),
+        // so a failed motion no longer needs a separate failed-cooldown row.
 
         // Log event
         await supabase.from('event_log').insert({
@@ -12865,7 +12863,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
             fired_at_tick: currentTick,
             category: 'government',
             description_chosen: `Motion of no confidence against the ${pmLastName} Government failed ${votesFor} to ${votesAgainst}.`,
-            effects_applied: { caller_approval: -5, pm_approval: +3 }
+            effects_applied: { caller_momentum: -10 }
         });
     }
 }

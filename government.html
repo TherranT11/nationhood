@@ -10036,67 +10036,58 @@ async function fileNoConfidence() {
         return;
     }
 
-    // Check: 6-tick cooldown since last failed no-confidence (per-party)
-    const { data: lastFailed } = await _supabase
-        .from('campaign_actions')
-        .select('tick_performed')
-        .eq('nation_id', currentNation.id)
-        .eq('party_id', currentFaction.id)
-        .eq('action_type', 'no_confidence_failed')
-        .order('tick_performed', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (lastFailed) {
-        const ticksSince = currentTick - lastFailed.tick_performed;
-        if (ticksSince < GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS) {
-            const remaining = GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS - ticksSince;
-            alert(`Cooldown: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining before another no-confidence vote can be filed.`);
-            return;
-        }
-    }
-
-    // Get PM's last name for the motion title
+    // Resolve the PM's faction id once — needed for the cooldown check (per
+    // targeted PM party) and for the motion title.
     const { data: hog } = await _supabase
         .from('head_of_government')
-        .select('last_name')
+        .select('last_name, faction_id')
         .eq('nation_id', currentNation.id)
         .eq('active', true)
         .maybeSingle();
 
-    const pmLastName = hog?.last_name || null;
+    const pmLastName  = hog?.last_name || null;
+    const pmFactionId = hog?.faction_id || currentNation.ruling_faction_id || null;
+
+    // Cooldown is per TARGETED PM party (was: per FILER, only after a failed motion).
+    // 12 ticks since the last filing against this PM party regardless of outcome.
+    if (pmFactionId) {
+        const { data: lastFiled } = await _supabase
+            .from('campaign_actions')
+            .select('tick_performed')
+            .eq('nation_id', currentNation.id)
+            .eq('action_type', 'no_confidence_filed')
+            .eq('target_id', pmFactionId)
+            .order('tick_performed', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (lastFiled) {
+            const ticksSince = currentTick - lastFiled.tick_performed;
+            if (ticksSince < GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS) {
+                const remaining = GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS - ticksSince;
+                alert(`Cooldown: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining before another no-confidence vote can be filed against this PM party.`);
+                return;
+            }
+        }
+    }
+
     const motionName = pmLastName
         ? (isSemiPresNation ? `Motion of No Confidence in PM ${pmLastName}` : `Motion of No Confidence in the ${pmLastName} Government`)
         : `Motion of No Confidence in the Government`;
 
-    // Pre-calculate trait-modified AP cost for display in confirm dialog
-    let voncDisplayCost = GAME_CONFIG.NO_CONFIDENCE_AP_COST;
-    try {
-        const pmPartyId = currentNation.ruling_faction_id;
-        if (pmPartyId) {
-            const { data: pmParty } = await _supabase.from('factions')
-                .select('leader_positive_traits, leader_negative_traits').eq('id', pmPartyId).single();
-            if (pmParty?.leader_positive_traits?.includes('constitutional_scholar')) voncDisplayCost += 3;
-            if (pmParty?.leader_negative_traits?.includes('paper_thin_mandate')) voncDisplayCost -= 2;
-            voncDisplayCost = Math.max(1, voncDisplayCost);
-        }
-    } catch (_) { /* use base cost */ }
-
     const passConsequences = isSemiPresNation
-        ? `IF IT PASSES:\n• PM removed — President must nominate a new PM\n• Your party: +2 Momentum\n• PM's party: -3 Momentum, -5 Government Approval`
-        : `IF IT PASSES:\n• Coalition dissolved, PM removed, all ministries vacated\n• Your party: +3 Approval\n• Coalition parties: -5 Approval each`;
+        ? `IF IT PASSES:\n• PM removed — President must nominate a new PM\n• Your party: +15 Momentum\n• PM's party: -10 Momentum, -10 Governance`
+        : `IF IT PASSES:\n• Coalition dissolved, PM removed, all ministries vacated\n• Snap elections scheduled\n• Your party: +15 Momentum\n• PM's party: -10 Momentum, -10 Governance`;
 
     if (!confirm(
         `⚡ FILE VOTE OF NO CONFIDENCE?\n\n` +
         `"${motionName}"\n\n` +
-        `Cost: ${voncDisplayCost} AP${voncDisplayCost !== GAME_CONFIG.NO_CONFIDENCE_AP_COST ? ' (modified by PM traits)' : ''}\n` +
+        `Cost: $0 — free to file\n` +
         `Voting period: ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks\n` +
         `Needs simple majority (YES > NO) to pass.\n\n` +
         `${passConsequences}\n\n` +
         `IF IT FAILS:\n` +
-        `• Your party: -5 Approval\n` +
-        `• PM's party: +3 Approval\n` +
-        `• ${GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS}-tick cooldown\n\n` +
+        `• Your party: -10 Momentum\n` +
+        `• ${GAME_CONFIG.NO_CONFIDENCE_COOLDOWN_TICKS}-tick cooldown on this PM party\n\n` +
         `Proceed?`
     )) return;
     _govActionLock = true;
@@ -10137,16 +10128,7 @@ async function fileNoConfidence() {
             return;
         }
 
-        // Deduct AP only after bill creation succeeds (cost pre-calculated above with trait modifiers)
-        const apResult = await deductAP(_supabase, currentFaction.id, voncDisplayCost);
-        if (!apResult.success) {
-            // Roll back the bill — player can't afford it
-            await _supabase.from('bills').delete().eq('id', bill.id);
-            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-            alert('Not enough AP. Need ' + GAME_CONFIG.NO_CONFIDENCE_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
-            return;
-        }
-        currentFaction.action_points = apResult.newAp;
+        // No AP / cash deduction — filing a vote of no confidence is free.
 
         // Auto-cast the filer's own vote as YES
         const seatData = await loadSeats(_supabase, currentNation.id, allParties, currentFaction.id);
@@ -10157,6 +10139,23 @@ async function fileNoConfidence() {
             stance: 'yes',
             seat_count: mySeats
         }, { onConflict: 'bill_id,faction_id' });
+
+        // Record the file event so the per-targeted-PM-party cooldown
+        // applies whether the motion passes or fails. The tick-side
+        // resolveNoConfidence no longer writes a 'no_confidence_failed'
+        // row — this insert is the single source of cooldown truth.
+        if (pmFactionId) {
+            await _supabase.from('campaign_actions').insert({
+                party_id: currentFaction.id,
+                nation_id: currentNation.id,
+                target_id: pmFactionId,
+                action_type: 'no_confidence_filed',
+                ap_cost: 0,
+                money_cost: 0,
+                tick_performed: tick,
+                result: { bill_id: bill.id, pm_last_name: pmLastName },
+            });
+        }
 
 
 
