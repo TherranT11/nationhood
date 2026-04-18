@@ -1323,6 +1323,45 @@ function renderWorkforce(nation, nationName, factionData) {
     return { totalWages, generalTotal, skilledTotal, innovativeTotal, monthlyWages: Math.round(totalWages / 12) };
 }
 
+/**
+ * Shared finance deal metric contract (tick-level):
+ * - cashInflowThisTick: gross incoming cash this tick (payment/premium/coupon)
+ * - interestIncomeThisTick: interest (loan) or coupon/premium income this tick
+ * - principalRecoveredThisTick: principal returned this tick (loan/bond only)
+ * - outstandingExposure: currently at-risk outstanding notional
+ */
+function getFinanceDealMetrics({
+    requestType = 'loan',
+    monthlyPayment = 0,
+    interestRate = 0,
+    principal = 0,
+    totalPaid = 0,
+    claimsPaid = 0,
+}) {
+    const type = String(requestType || 'loan');
+    const payment = Math.max(0, Number(monthlyPayment) || 0);
+    const principalAmt = Math.max(0, Number(principal) || 0);
+    const principalPaid = Math.max(0, Number(totalPaid) || 0);
+    const remainingPrincipal = Math.max(0, principalAmt - principalPaid);
+    const monthlyRate = Math.max(0, Number(interestRate) || 0) / 100 / 12;
+    const rawInterest = remainingPrincipal * monthlyRate;
+    const interestIncomeThisTick = type === 'loan'
+        ? Math.min(payment, Math.round(rawInterest))
+        : payment;
+    const principalRecoveredThisTick = (type === 'loan' || type === 'bond')
+        ? Math.max(0, payment - interestIncomeThisTick)
+        : 0;
+    const outstandingExposure = type === 'insurance'
+        ? Math.max(0, principalAmt - (Number(claimsPaid) || 0))
+        : remainingPrincipal;
+    return {
+        cashInflowThisTick: payment,
+        interestIncomeThisTick,
+        principalRecoveredThisTick,
+        outstandingExposure,
+    };
+}
+
 async function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint, execCompensation, propData, fleetMaint) {
     const currentTick = shard?.current_tick || 0;
     document.getElementById('fin-tick').textContent = 'TICK ' + currentTick;
@@ -1361,22 +1400,21 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     if (faction?.id) {
         const sector = faction.corp_sector || '';
         if (sector === 'Finance') {
-            // Finance: interest + premiums earned from active loans/policies
+            // Finance KPI contract: Private Contracts = gross inflow this tick.
             const { data: finLoans } = await _supabase.from('finance_active_loans')
-                .select('monthly_payment, interest_rate, principal, total_paid, finance_loan_requests(request_type)')
+                .select('monthly_payment, interest_rate, principal, total_paid, claims_paid, finance_loan_requests(request_type)')
                 .eq('lender_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
             for (const loan of (finLoans || [])) {
-                const reqType = loan.finance_loan_requests?.request_type || 'loan';
-                if (reqType === 'insurance') {
-                    pvtContracts += Number(loan.monthly_payment || 0);
-                } else if (reqType === 'loan') {
-                    const remaining = loan.principal - (loan.total_paid || 0);
-                    const monthlyRate = (loan.interest_rate / 100) / 12;
-                    pvtContracts += Math.round(remaining * monthlyRate);
-                } else if (reqType === 'bond') {
-                    pvtContracts += Number(loan.monthly_payment || 0);
-                }
+                const metrics = getFinanceDealMetrics({
+                    requestType: loan.finance_loan_requests?.request_type || 'loan',
+                    monthlyPayment: loan.monthly_payment,
+                    interestRate: loan.interest_rate,
+                    principal: loan.principal,
+                    totalPaid: loan.total_paid,
+                    claimsPaid: loan.claims_paid,
+                });
+                pvtContracts += metrics.cashInflowThisTick;
             }
         } else if (sector === 'Construction') {
             // Construction: revenue from in-progress contracts this corp is building
@@ -1611,7 +1649,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                 <div class="seg-legend__item"><div class="seg-legend__dot" style="background:var(--text-dim)"></div><span class="seg-legend__label">Market</span></div>
             </div>
             <div class="fin-row"><span class="fin-row__label">Government Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(govContracts)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Private Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Private Contracts<span class="fin-row__badge">GROSS INFLOW</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(marketRev - propertyRevBonus)}</span></div>
             ${propertyRevBonus > 0 ? `<div class="fin-row"><span class="fin-row__label">Property Revenue<span class="fin-row__badge">BUILDINGS</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(propertyRevBonus)}</span></div>` : ''}
             ${depotRevenueRows.map(d => `<div class="fin-row"><span class="fin-row__label">Fuel Depot (${d.nation})<span class="fin-row__badge">${d.visitors} visitor${d.visitors !== 1 ? 's' : ''}</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(d.revenue)}</span></div>`).join('')}
