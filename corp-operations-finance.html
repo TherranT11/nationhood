@@ -436,6 +436,45 @@ const DF_TYPE_META = {
     INSURE: { class: 'insure', label: 'INSURE' },
     BOND:   { class: 'bond',   label: 'BOND' },
 };
+
+/**
+ * Shared finance deal metric contract (tick-level):
+ * - cashInflowThisTick: gross incoming cash this tick (payment/premium/coupon)
+ * - interestIncomeThisTick: interest (loan) or coupon/premium income this tick
+ * - principalRecoveredThisTick: principal returned this tick (loan/bond only)
+ * - outstandingExposure: currently at-risk outstanding notional
+ */
+function getFinanceDealMetrics({
+    requestType = 'loan',
+    monthlyPayment = 0,
+    interestRate = 0,
+    principal = 0,
+    totalPaid = 0,
+    claimsPaid = 0,
+}) {
+    const type = String(requestType || 'loan');
+    const payment = Math.max(0, Number(monthlyPayment) || 0);
+    const principalAmt = Math.max(0, Number(principal) || 0);
+    const principalPaid = Math.max(0, Number(totalPaid) || 0);
+    const remainingPrincipal = Math.max(0, principalAmt - principalPaid);
+    const monthlyRate = Math.max(0, Number(interestRate) || 0) / 100 / 12;
+    const rawInterest = remainingPrincipal * monthlyRate;
+    const interestIncomeThisTick = type === 'loan'
+        ? Math.min(payment, Math.round(rawInterest))
+        : payment;
+    const principalRecoveredThisTick = (type === 'loan' || type === 'bond')
+        ? Math.max(0, payment - interestIncomeThisTick)
+        : 0;
+    const outstandingExposure = type === 'insurance'
+        ? Math.max(0, principalAmt - (Number(claimsPaid) || 0))
+        : remainingPrincipal;
+    return {
+        cashInflowThisTick: payment,
+        interestIncomeThisTick,
+        principalRecoveredThisTick,
+        outstandingExposure,
+    };
+}
 const DF_RISK_META = {
     LOW:      { class: 'df-risk-low',      label: 'LOW RISK' },
     MODERATE: { class: 'df-risk-moderate',  label: 'MODERATE' },
@@ -843,7 +882,7 @@ function renderActivePortfolio() {
 
     const deals = apFilter === 'ALL' ? apPortfolio : apPortfolio.filter(d => d.type === apFilter);
     const totalExposure = apPortfolio.reduce((s, p) => s + (p.remaining || p.coverage || p.faceValue || 0), 0);
-    const totalEarned = apPortfolio.reduce((s, p) => s + (p.earned || p.premiumsCollected || p.couponsReceived || 0), 0);
+    const totalInflowReceived = apPortfolio.reduce((s, p) => s + (p.inflowReceived || 0), 0);
     const alertCount = apPortfolio.filter(p => p.alert).length;
 
     // Header
@@ -865,8 +904,8 @@ function renderActivePortfolio() {
             <div class="ap-summary__value" style="font-size:14px;color:#c55;">${fmtMoney(totalExposure)}</div>
         </div>
         <div class="ap-summary__cell" style="flex:1;">
-            <div class="ap-summary__label">TOTAL EARNED</div>
-            <div class="ap-summary__value" style="font-size:14px;color:#5c5;">${fmtMoney(totalEarned)}</div>
+            <div class="ap-summary__label">TOTAL INFLOW RECEIVED</div>
+            <div class="ap-summary__value" style="font-size:14px;color:#5c5;">${fmtMoney(totalInflowReceived)}</div>
         </div>
         <div class="ap-summary__cell" style="flex:0.6;">
             <div class="ap-summary__label">DEALS</div>
@@ -936,10 +975,8 @@ function renderActivePortfolio() {
         const exposureVal = d.remaining || d.coverage || d.faceValue || 0;
         const rateLabel = d.type === 'LOAN' ? 'RATE' : d.type === 'INSURE' ? 'PREMIUM' : 'COUPON';
         const rateVal = d.rate || d.premiumRate || d.coupon || 0;
-        const earnedVal = d.earned || d.premiumsCollected || d.couponsReceived || 0;
-        // Per-type label so lenders don't read "EARNED" as gross cashflow: for
-        // loans it's the interest portion only, not principal repayment.
-        const earnedLabel = d.type === 'LOAN' ? 'INTEREST EARNED' : d.type === 'INSURE' ? 'PREMIUMS EARNED' : 'COUPONS EARNED';
+        const earnedVal = d.inflowReceived || 0;
+        const earnedLabel = d.type === 'LOAN' ? 'INFLOW RECEIVED' : d.type === 'INSURE' ? 'PREMIUMS RECEIVED' : 'COUPONS RECEIVED';
         const rateColor = tm.class === 'loan' ? '#5a8aaa' : tm.class === 'insure' ? '#aa7a5a' : '#8a6aaa';
 
         html += `<div class="df-metrics" style="margin-top:4px;">
@@ -967,6 +1004,13 @@ function renderActivePortfolio() {
             html += '<div class="ap-deal__expanded">';
 
             if (d.type === 'LOAN') {
+                const tickMetrics = getFinanceDealMetrics({
+                    requestType: 'loan',
+                    monthlyPayment: d.monthlyPayment,
+                    interestRate: d.rate,
+                    principal: d.principal,
+                    totalPaid: d.totalPaid,
+                });
                 const rows = [
                     { label: 'PRINCIPAL', value: fmtMoney(d.principal || 0) },
                     { label: 'REMAINING', value: fmtMoney(d.remaining || 0), color: 'var(--panel-text)' },
@@ -977,6 +1021,7 @@ function renderActivePortfolio() {
                 for (const r of rows) {
                     html += `<div class="ap-detail-row"><span class="ap-detail-label">${r.label}</span><span class="ap-detail-value" style="color:${r.color || '#9e9a92'};">${r.value}</span></div>`;
                 }
+                html += `<div class="ap-detail-row"><span class="ap-detail-label">LOAN FLOW CHECK</span><span class="ap-detail-value" style="color:#6a6660;">${fmtMoney(tickMetrics.cashInflowThisTick)} = ${fmtMoney(tickMetrics.interestIncomeThisTick)} + ${fmtMoney(tickMetrics.principalRecoveredThisTick)}</span></div>`;
                 if (d.status !== 'CURRENT') {
                     html += `<div class="ap-actions"><div class="ap-action-btn green" onclick="apRestructure('${d.id}')">RESTRUCTURE</div><div class="ap-action-btn orange" onclick="apCallLoan('${d.id}')">CALL LOAN</div><div class="ap-action-btn red" onclick="apForeclose('${d.id}')">FORECLOSE</div></div>`;
                 }
@@ -1017,7 +1062,7 @@ function renderActivePortfolio() {
 
     // ROI metrics
     const totalDeployed = apPortfolio.reduce((s, p) => s + (p.principal || p.coverage || p.faceValue || 0), 0);
-    const roiPct = totalDeployed > 0 ? Math.round((totalEarned / totalDeployed) * 10000) / 100 : 0;
+    const roiPct = totalDeployed > 0 ? Math.round((totalInflowReceived / totalDeployed) * 10000) / 100 : 0;
     const avgRate = apPortfolio.length > 0
         ? Math.round(apPortfolio.reduce((s, p) => s + (p.rate || 0), 0) / apPortfolio.length * 10) / 10
         : 0;
@@ -1028,7 +1073,7 @@ function renderActivePortfolio() {
     html += `<div class="df-footer" style="flex-direction:column;gap:6px;">
         <div style="display:flex;gap:8px;justify-content:space-between;width:100%;">
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">EXPOSURE</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c55;">${fmtMoney(totalExposure)}</div></div>
-            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">EARNED</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#5c5;">${fmtMoney(totalEarned)}</div></div>
+            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">INFLOW</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#5c5;">${fmtMoney(totalInflowReceived)}</div></div>
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">ROI</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${roiPct >= 0 ? '#5c5' : '#c55'};">${roiPct}%</div></div>
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">AVG RATE</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#ca5;">${avgRate}%</div></div>
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">RISK</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${defaultRate > 20 ? '#c55' : defaultRate > 0 ? '#ca5' : '#5c5'};">${defaultRate}%</div></div>
@@ -2485,7 +2530,10 @@ async function loadActivePortfolio() {
         nation: loan.loan_nation?.name || loan.borrower?.nation || 'Unknown',
         remaining: isInsurance(loan) ? 0 : loan.principal - loan.total_paid,
         principal: loan.principal,
-        earned: isInsurance(loan) ? ((loan.monthly_payment || 0) * (loan.payments_made || 0)) : (loan.total_interest_paid || 0),
+        totalPaid: Number(loan.total_paid || 0),
+        inflowReceived: isInsurance(loan)
+            ? ((loan.monthly_payment || 0) * (loan.payments_made || 0))
+            : ((loan.total_paid || 0) + (loan.total_interest_paid || 0)),
         rate: loan.interest_rate,
         term: loan.term_months,
         paymentsMade: loan.payments_made,
