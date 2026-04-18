@@ -43,6 +43,7 @@ const MODULE_FILES = [
     'caucus.js',
     'repeal-helper.js',
     'event-helpers.js',
+    'corp-valuation.js',
     'bills.js',
     'elections.js',
     'presidential.js',

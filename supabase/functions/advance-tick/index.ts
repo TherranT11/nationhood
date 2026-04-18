@@ -7451,6 +7451,31 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
     } catch (e) { /* non-blocking */ }
 }
 
+// ────────── corp-valuation ──────────
+
+// Shared corporation-valuation math.
+// Single source of truth for: bankruptcy (corp-operations.html,
+// corp-operations-shipping.html), Government Bailout authoring
+// (laws.html), and bill enactment (bills.js).
+//
+// The matching server-side copy lives in supabase/functions/advance-tick/
+// index.ts — kept inline there because the Deno edge runtime does not
+// share the browser module graph. Keep that copy in sync if the formula
+// changes here.
+
+function computePropertyValue(properties) {
+    let total = 0;
+    for (const p of (properties || [])) {
+        total += Math.round(Number(p.purchase_price || 0) * (Number(p.condition || 0) / 100));
+    }
+    return total;
+}
+
+function computeCorpValuation({ cash, loans, properties, propertyValue }) {
+    const propVal = propertyValue != null ? Number(propertyValue) : computePropertyValue(properties);
+    return Math.round((Number(cash || 0) + propVal - Number(loans || 0)) * 1.30);
+}
+
 // ────────── bills ──────────
 
 
@@ -10383,13 +10408,9 @@ async function enactBill(supabase, bill, currentTick) {
                 } else {
                     const { data: props } = await supabase.from('corp_properties')
                         .select('purchase_price, condition').eq('faction_id', corpId);
-                    let propertyValue = 0;
-                    for (const p of (props || [])) {
-                        propertyValue += Math.round(Number(p.purchase_price || 0) * (Number(p.condition || 0) / 100));
-                    }
                     const corpCash = Number(corp.corp_cash_reserves || 0);
                     const corpLoans = Number(corp.corp_loans || 0);
-                    const valuation = Math.round((corpCash + propertyValue - corpLoans) * 1.30);
+                    const valuation = computeCorpValuation({ cash: corpCash, loans: corpLoans, properties: props });
                     const cap = Math.max(0, 3 * valuation);
                     const payout = Math.min(requested, cap);
                     if (payout > 0) {
@@ -10412,14 +10433,14 @@ async function enactBill(supabase, bill, currentTick) {
                     } else {
                         console.log(`[enactBill] gov_bailout: payout capped to 0 (valuation $${Math.round(valuation / 1e6)}M)`);
                     }
-                    const yesVoters = (bill.bill_support || []).filter((s: any) => s.stance === 'accept' || s.stance === 'yes');
+                    const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'accept' || s.stance === 'yes');
                     for (const v of yesVoters) {
                         await supabase.rpc('adjust_momentum', { p_faction_id: v.faction_id, p_delta: -50 });
                         await adjustGovernmentApprovalEvent(supabase, bill.nation_id, -20, 'gov_bailout');
                     }
                 }
             } catch (e) {
-                console.error('[enactBill] gov_bailout failed:', (e as any)?.message || e);
+                console.error('[enactBill] gov_bailout failed:', e?.message || e);
             }
         } else if (typeof effect.target_stat === 'string' && typeof effect.delta === 'number') {
             // Backward compatibility: parse legacy stat_effect-like payloads
