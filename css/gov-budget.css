@@ -74,11 +74,13 @@
 
 .gb-stat {
     /* Background flush with the page — the box is expressed by its
-       section-colored outline, not by a raised surface. Per-section
-       border color is set by the .is-rev / .is-exp / .is-bal / .is-sur
-       / .is-debt rules below. */
+       section-colored outline, not by a raised surface. Border is
+       declared via the full shorthand on each .is-* rule below rather
+       than a shared base `border` — shared-base + color-only overrides
+       silently rendered as invisible for the Income / Costs panels,
+       so mirroring the shape that worked for .gb-deep (full shorthand
+       per rule) everywhere. */
     background: transparent;
-    border: 2px solid var(--border-2);
     border-radius: 4px;
     padding: 18px 20px 20px;
     position: relative;
@@ -87,18 +89,15 @@
     gap: 10px;
     min-height: 150px;
 }
-/* Per-section colored outlines — explicit bright hex values rather
-   than the muted --green/--red/--blue/--amber vars, which at 2px on
-   a dark background still read as subdued. GDP uses a muted-purple
-   accent distinct from the 4 fiscal-cycle colors since it's the
-   economic base the fiscal cycle rides on top of, not a fiscal-cycle
-   line itself. */
-.gb-stat.is-gdp  { border-color: #9a8fb0; }
-.gb-stat.is-rev  { border-color: #6fa472; }
-.gb-stat.is-exp  { border-color: #c26b5e; }
-.gb-stat.is-bal  { border-color: #6f94b4; }
-.gb-stat.is-sur  { border-color: #c79a5c; }
-.gb-stat.is-debt { border-color: #c26b5e; }
+/* Per-section colored outlines. GDP gets a muted-purple accent
+   distinct from the 4 fiscal-cycle colors since it's the economic
+   base the cycle rides on, not a cycle line itself. */
+.gb-stat.is-gdp  { border: 2px solid #9a8fb0; }
+.gb-stat.is-rev  { border: 2px solid #6fa472; }
+.gb-stat.is-exp  { border: 2px solid #c26b5e; }
+.gb-stat.is-bal  { border: 2px solid #6f94b4; }
+.gb-stat.is-sur  { border: 2px solid #c79a5c; }
+.gb-stat.is-debt { border: 2px solid #c26b5e; }
 .gb-stat::before {
     content: "";
     position: absolute;
@@ -213,18 +212,19 @@
 }
 
 /* ── Panels (Income / Costs) ─────────────────────────────── */
+/* Match the .gb-deep style: each kind-specific rule declares the full
+   border shorthand, no shared base `border` declaration. Earlier pass
+   used `.gb-panel { border: 2px solid var(--border-2) }` + sub-rules
+   overriding only `border-color` — the user reported the panels still
+   rendered with no visible outline while .gb-deep (written as a single
+   shorthand) worked. Going with the shape that works everywhere. */
 .gb-panel {
-    /* Flush-black treatment; bright explicit colors keyed per section
-       rather than the muted --green / --red vars, which on a large
-       panel read as near-invisible next to the thicker stat-card
-       outlines. 2px weight matches the visual heft of the stat cards. */
     background: transparent;
-    border: 2px solid var(--border-2);
     border-radius: 4px;
     overflow: hidden;
 }
-.gb-panel.is-income { border-color: #6fa472; }
-.gb-panel.is-costs  { border-color: #c26b5e; }
+.gb-panel.is-income { border: 2px solid #6fa472; }
+.gb-panel.is-costs  { border: 2px solid #c26b5e; }
 .gb-panel__head {
     padding: 13px 18px 11px;
     display: grid;
