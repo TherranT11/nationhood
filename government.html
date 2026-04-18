@@ -1655,8 +1655,8 @@ function renderAdminCabinet() {
             //                       domain constraint is enforced inside
             //                       openNominateModal).
             //   Parliamentary     → PM's party APPOINTs directly.
-            // Mirrors the button logic that was only wired into the legacy
-            // buildMinistryManagementButtons() ministry card.
+            // Mirrors the branching in the legacy buildMgmtButtons()
+            // ministry card so both UIs expose the same flow.
             const isCaretaker = coalitionData?.status === 'caretaker';
             const isSemiPres = isSemiPresidential(currentNation);
             let actionBtn = '';
@@ -9493,8 +9493,13 @@ function openNominateModal(ministryKey) {
     document.getElementById('assign-modal').classList.add('active');
 }
 
+let _presidentialNominationSubmitting = false;
 async function confirmPresidentialNomination() {
+    if (_presidentialNominationSubmitting) return;
     if (!selectedCandidate || !assignMinistryKey) return;
+    _presidentialNominationSubmitting = true;
+    const confirmBtn = document.getElementById('assign-confirm-btn');
+    if (confirmBtn) confirmBtn.disabled = true;
     try {
         await nominateMinister(_supabase, currentNation.id, currentFaction.id, assignMinistryKey, selectedCandidate);
         closeAssignModal();
@@ -9503,6 +9508,11 @@ async function confirmPresidentialNomination() {
     } catch (e) {
         console.error('Nomination error:', e);
         alert('Error: ' + e.message);
+        // Only re-enable on error — on success the modal is closed above and
+        // a fresh openNominateModal() resets the button state.
+        if (confirmBtn) confirmBtn.disabled = false;
+    } finally {
+        _presidentialNominationSubmitting = false;
     }
 }
 
