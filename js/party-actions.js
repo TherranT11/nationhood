@@ -2467,6 +2467,25 @@ async function openAppointPMModal(root) {
                     }, { onConflict: 'nation_id' });
                 if (hogErr) throw hogErr;
 
+                // Legitimacy effects (monarchy only).
+                // Dismissing a non-monarch PM costs -4. Appointing a non-monarch
+                // PM grants +3. Replacing one non-monarch PM with another nets -1.
+                let legitimacyDelta = 0;
+                const monarchPartyId = nation.monarch_faction_id;
+                const prevPmPartyId = currentHog?.faction_id || null;
+                const dismissingNonMonarchPm = prevPmPartyId && prevPmPartyId !== monarchPartyId && prevPmPartyId !== selectedPartyId;
+                const appointingNonMonarchPm = selectedPartyId !== monarchPartyId && selectedPartyId !== prevPmPartyId;
+                if (dismissingNonMonarchPm) legitimacyDelta -= 4;
+                if (appointingNonMonarchPm) legitimacyDelta += 3;
+                if (legitimacyDelta !== 0) {
+                    const currentLeg = Number(nation.legitimacy ?? 50);
+                    const newLeg = Math.max(0, Math.min(100, currentLeg + legitimacyDelta));
+                    try {
+                        await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
+                        nation.legitimacy = newLeg;
+                    } catch (_) { /* non-blocking */ }
+                }
+
                 // Log event (non-blocking)
                 try {
                     await _supabase.from('event_log').insert({
@@ -2479,7 +2498,12 @@ async function openAppointPMModal(root) {
                 } catch (_) { /* non-blocking */ }
 
                 close();
-                alert(`${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} has been appointed Prime Minister.`);
+                const legSuffix = legitimacyDelta > 0
+                    ? `\n\nLegitimacy +${legitimacyDelta}.`
+                    : legitimacyDelta < 0
+                        ? `\n\nLegitimacy ${legitimacyDelta}.`
+                        : '';
+                alert(`${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} has been appointed Prime Minister.${legSuffix}`);
                 renderPage(root);
             } catch (err) {
                 alert('Failed to appoint PM: ' + (err.message || 'Error'));
