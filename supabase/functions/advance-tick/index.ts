@@ -7489,10 +7489,49 @@ function computeEquipmentValue(vessels, currentTick) {
     return total;
 }
 
-function computeCorpValuation({ cash, loans, properties, propertyValue, vessels, equipmentValue, currentTick }) {
+function computeFinanceReceivableValue(positions) {
+    const breakdown = { loans: 0, bonds: 0, insurance: 0, total: 0 };
+    for (const p of (positions || [])) {
+        const reqType = (p?.finance_loan_requests?.request_type || p?.request_type || 'loan').toLowerCase();
+        const principal = Math.max(0, Number(p?.principal || 0));
+        const remainingPrincipal = Math.max(0, Number(p?.remaining_principal || 0));
+        if (reqType === 'insurance') {
+            // Insurance "coverage" is contingent risk, not a receivable asset.
+            breakdown.insurance += principal;
+            continue;
+        }
+        if (reqType === 'bond') {
+            // Some bond lifecycles track remaining principal amortization; some
+            // carry face principal until maturity.
+            breakdown.bonds += remainingPrincipal > 0 ? remainingPrincipal : principal;
+            continue;
+        }
+        // Default to loan logic: outstanding principal is the receivable.
+        breakdown.loans += remainingPrincipal;
+    }
+    breakdown.total = breakdown.loans + breakdown.bonds;
+    return breakdown;
+}
+
+function computeCorpValuationBreakdown({ cash, loans, properties, propertyValue, vessels, equipmentValue, financeReceivables, currentTick }) {
     const propVal = propertyValue != null ? Number(propertyValue) : computePropertyValue(properties);
     const equipVal = equipmentValue != null ? Number(equipmentValue) : computeEquipmentValue(vessels, currentTick);
-    return Math.round((Number(cash || 0) + propVal + equipVal - Number(loans || 0)) * 1.30);
+    const receivables = Math.max(0, Number(financeReceivables || 0));
+    const liabilities = Number(loans || 0);
+    const valuationBasis = Number(cash || 0) + propVal + equipVal + receivables - liabilities;
+    return {
+        cash: Number(cash || 0),
+        propertyValue: propVal,
+        equipmentValue: equipVal,
+        financeReceivables: receivables,
+        liabilities,
+        valuationBasis,
+        valuation: Math.round(valuationBasis * 1.30),
+    };
+}
+
+function computeCorpValuation({ cash, loans, properties, propertyValue, vessels, equipmentValue, financeReceivables, currentTick }) {
+    return computeCorpValuationBreakdown({ cash, loans, properties, propertyValue, vessels, equipmentValue, financeReceivables, currentTick }).valuation;
 }
 
 // ────────── bills ──────────
