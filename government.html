@@ -1647,11 +1647,33 @@ function renderAdminCabinet() {
                 </div>
             </div>`;
         } else {
+            // Vacant ministry controls depend on government type:
+            //   Presidential      → President's party NOMINATEs; nomination
+            //                       goes to the floor for a confirmation vote.
+            //   Semi-presidential → PM's party NOMINATEs (president nominates
+            //                       presidential-domain ministries; that
+            //                       domain constraint is enforced inside
+            //                       openNominateModal).
+            //   Parliamentary     → PM's party APPOINTs directly.
+            // Mirrors the button logic that was only wired into the legacy
+            // buildMinistryManagementButtons() ministry card.
             const isCaretaker = coalitionData?.status === 'caretaker';
-            const canAppoint = isPMParty && !isCaretaker;
+            const isSemiPres = isSemiPresidential(currentNation);
+            let actionBtn = '';
+            if (isPresidential && !isSemiPres) {
+                if (isPresidentParty) {
+                    actionBtn = `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openNominateModal('${escapeHtml(m.ministry_key)}')">NOMINATE</button>`;
+                }
+            } else if (isSemiPres) {
+                if (isPMParty) {
+                    actionBtn = `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openNominateModal('${escapeHtml(m.ministry_key)}')">NOMINATE</button>`;
+                }
+            } else if (isPMParty && !isCaretaker) {
+                actionBtn = `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openAssignModal('${escapeHtml(m.ministry_key)}')">APPOINT</button>`;
+            }
             html += `<div class="ga-vacant-row">
                 <span class="ga-vacant-label">Vacant</span>
-                ${canAppoint ? `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openAssignModal('${escapeHtml(m.ministry_key)}')">APPOINT</button>` : ''}
+                ${actionBtn}
             </div>`;
         }
 
