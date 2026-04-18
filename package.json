@@ -12,6 +12,7 @@
     "snapshot:restore": "node scripts/snapshot.js restore",
     "lint:inline-scripts": "node scripts/check-inline-script-globals.js",
     "sync:edge-function": "node scripts/sync-edge-function.js",
+    "check:edge-function-sync": "node scripts/sync-edge-function.js && git diff --exit-code -- supabase/functions/advance-tick/index.ts",
     "test:repeal-helper": "node scripts/test-repeal-helper.mjs",
     "test:endorsement-window": "node scripts/test-endorsement-window.mjs",
     "migrate:shipping": "node scripts/apply-shipping-migrations.js"
