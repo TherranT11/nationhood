@@ -1061,7 +1061,7 @@ async function apRestructure(loanId) {
 
     const newTerm = loan.term_months + 12;
     const monthlyRate = rate / 100 / 12;
-    const remaining = Number(loan.remaining_principal ?? Math.max(0, Number(loan.principal || 0) - Number(loan.total_paid || 0)));
+    const remaining = Number(loan.principal) - Number(loan.total_paid || 0) + Number(loan.total_interest_paid || 0);
     const newPayment = monthlyRate > 0
         ? Math.round(remaining * (monthlyRate * Math.pow(1 + monthlyRate, newTerm)) / (Math.pow(1 + monthlyRate, newTerm) - 1))
         : Math.round(remaining / newTerm);
@@ -1102,7 +1102,7 @@ async function apForeclose(loanId) {
     const { data: loan } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
     if (!loan) { alert('Loan not found.'); return; }
 
-    const remaining = Number(loan.remaining_principal ?? Math.max(0, Number(loan.principal || 0) - Number(loan.total_paid || 0)));
+    const remaining = Math.max(0, Number(loan.principal) - Number(loan.total_paid || 0));
     let recovery = 0;
     if (loan.collateral_type === 'equipment') recovery = 0.6;
     else if (loan.collateral_type === 'property') recovery = 0.75;
@@ -1236,7 +1236,7 @@ async function apSellPosition(loanId) {
     const { data: position } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
     if (!position) { alert('Position not found.'); return; }
 
-    const remaining = Number(position.remaining_principal ?? Math.max(0, Number(position.principal || 0) - Number(position.total_paid || 0)));
+    const remaining = Number(position.principal || 0) - Number(position.total_paid || 0);
     const marketValue = Math.round(remaining * 0.85); // 15% discount for secondary market
 
     if (!confirm(`SELL POSITION\n\nRemaining value: ${fmtMoney(remaining)}\nMarket price (85%): ${fmtMoney(marketValue)}\n\nYou receive ${fmtMoney(marketValue)} immediately.\nThe position is removed from your portfolio.`)) return;
