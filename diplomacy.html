@@ -786,12 +786,19 @@ async function _doApproveShippingApp(appId, routeId, corpFactionId) {
     }
 
     if (claimData?.claim_id) {
-        // Bid becomes the per-transit payout, clamped to the service-rate band.
+        // Bid becomes the per-transit payout, clamped to the service-rate band
+        // and then multiplied by a tier bonus: active trade agreement lanes pay
+        // 1.2× the clamped bid, organic lanes pay 0.7×. Corps see the same
+        // $250k–$750k bid slider regardless of tier; this is the reward for
+        // bidding on a formal bilateral trade lane over a spot-market one.
         if (proposedRate > 0) {
             const MIN_RATE = 250000, MAX_RATE = 750000;
+            const AGREEMENT_MULT = 1.2, ORGANIC_MULT = 0.7;
             const clamped = Math.round(Math.min(MAX_RATE, Math.max(MIN_RATE, proposedRate)));
             const share   = Number(claimData.market_share) || 100;
-            const revPerT = Math.round(clamped * (share / 100));
+            const route   = (_allShippingRoutes || []).find(r => r.id === routeId);
+            const tierMult = route && route.trade_agreement_id ? AGREEMENT_MULT : ORGANIC_MULT;
+            const revPerT = Math.round(clamped * tierMult * (share / 100));
             const { error: rateErr } = await _supabase.from('shipping_claims')
                 .update({ revenue_per_transit: revPerT })
                 .eq('id', claimData.claim_id);

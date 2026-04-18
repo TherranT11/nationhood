@@ -5977,9 +5977,30 @@ function arSetFilter(scope) {
     renderAvailableRoutes();
 }
 
+// Tier multipliers — must match the values in diplomacy.html's
+// approveShippingApp (which applies them to revenue_per_transit on claim
+// creation). Kept here so the available-routes list can preview the
+// tier-adjusted EST. REV the corp will actually earn.
+const AR_AGREEMENT_MULT = 1.2;
+const AR_ORGANIC_MULT   = 0.7;
+
+function arTierMult(route) {
+    return route && route.trade_agreement_id ? AR_AGREEMENT_MULT : AR_ORGANIC_MULT;
+}
+function arEffectiveRevenue(route) {
+    return Math.round(Number(route?.estimated_revenue || 0) * arTierMult(route));
+}
+
 function arGetFiltered() {
-    if (arFilter === 'ALL') return arRoutes;
-    return arRoutes.filter(r => r.scope === arFilter);
+    let list = arFilter === 'ALL' ? arRoutes : arRoutes.filter(r => r.scope === arFilter);
+    // Agreement-backed routes float to the top (higher revenue + formal
+    // framework makes them strictly better than equivalent organic lanes).
+    // Within each tier, preserve the underlying order the loader returned.
+    return list.slice().sort((a, b) => {
+        const aAg = a.trade_agreement_id ? 0 : 1;
+        const bAg = b.trade_agreement_id ? 0 : 1;
+        return aAg - bAg;
+    });
 }
 
 async function loadAvailableRoutes() {
@@ -6114,9 +6135,17 @@ function renderAvailableRoutes() {
             html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
                 + 'color:#5c5;background:rgba(92,204,92,0.06);border:1px solid rgba(92,204,92,0.15)">NO COMPETITION</span>';
         }
-        if (!route.trade_agreement_id && !isGov) {
+        // Trade-tier badge — agreement routes pay 1.2× the bid, organic 0.7×
+        // per the revenueTierMultiplier contract in js/game/shipping.js.
+        if (route.trade_agreement_id && !isGov) {
+            const agName = route.trade_agreement_name
+                ? ' \u00B7 ' + escapeHtml(String(route.trade_agreement_name).slice(0, 28))
+                : '';
             html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
-                + 'color:#9e9a92;background:rgba(158,154,146,0.06);border:1px solid rgba(158,154,146,0.15)">OPEN MARKET</span>';
+                + 'color:#5c5;background:rgba(92,204,92,0.1);border:1px solid rgba(92,204,92,0.3)">ACTIVE AGREEMENT \u00D71.2' + agName + '</span>';
+        } else if (!route.trade_agreement_id && !isGov) {
+            html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
+                + 'color:#9e9a92;background:rgba(158,154,146,0.06);border:1px solid rgba(158,154,146,0.15)">OPEN MARKET \u00D70.7</span>';
         }
         // Show application status for this route
         var myApp = _myShippingApps.find(function(a) { return a.route_id === route.id; });
@@ -6150,7 +6179,7 @@ function renderAvailableRoutes() {
                 + '</div>';
             html += '<div style="flex:1;padding:3px 8px;text-align:right">'
                 + '<div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.5px">EST. REV</div>'
-                + '<div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#5c5;margin-top:1px">' + fmtBig(Number(route.estimated_revenue || 0)) + '</div>'
+                + '<div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:' + (route.trade_agreement_id ? '#5c5' : '#b0aa9a') + ';margin-top:1px">' + fmtBig(arEffectiveRevenue(route)) + '</div>'
                 + '</div>';
         } else {
             // Government route: CONTRACT | VESSEL | CONTRACT VALUE
@@ -6357,7 +6386,11 @@ function renderRouteApplicationModal() {
     const appFee = 50000;
     const fuelCostEst = Math.round(baseRev * 0.15);
     const maintCostEst = Math.round(baseRev * 0.08);
-    const netProfit = _raProposedRate - fuelCostEst - maintCostEst;
+    // Tier multiplier on the realized contract value. Must match the server
+    // side in diplomacy.html's approveShippingApp.
+    const tierMult = r.trade_agreement_id ? 1.2 : 0.7;
+    const effectiveRate = Math.round(_raProposedRate * tierMult);
+    const netProfit = effectiveRate - fuelCostEst - maintCostEst;
     const profitColor = netProfit > 0 ? C.green : netProfit < 0 ? C.red : C.dim;
 
     // Available vessels (in_port, matching class, not assigned)
@@ -6431,6 +6464,25 @@ function renderRouteApplicationModal() {
                 </div>`;
             })()}
 
+            ${(() => {
+                // Trade-tier panel — reminds the bidder that agreement lanes
+                // pay 1.2× their clamped bid and organic lanes 0.7×. Same
+                // multiplier numbers applied in diplomacy.html's approveShippingApp.
+                const isAgreement = !!r.trade_agreement_id;
+                const tierMult    = isAgreement ? 1.2 : 0.7;
+                const stripe      = isAgreement ? C.green : C.dim;
+                const header      = isAgreement
+                    ? `ACTIVE TRADE AGREEMENT${r.trade_agreement_name ? ' \u00B7 ' + escapeHtml(r.trade_agreement_name) : ''}`
+                    : 'OPEN-MARKET ROUTE';
+                const copy        = isAgreement
+                    ? `Revenue = your bid \u00D7 ${tierMult.toFixed(1)} (agreement bonus).`
+                    : `Revenue = your bid \u00D7 ${tierMult.toFixed(1)} (organic route penalty). Agreement-backed lanes pay more.`;
+                return `<div style="padding:7px 10px;margin-bottom:14px;background:${C.card};border:1px solid ${C.border};border-left:2px solid ${stripe};font-family:${M};font-size:9px;color:${C.text};line-height:1.5;">
+                    <span style="color:${C.dim};font-size:7px;font-weight:700;letter-spacing:0.5px;">${header}</span><br>
+                    ${copy}
+                </div>`;
+            })()}
+
             <div style="font-family:${M};font-size:10px;color:${C.dim};letter-spacing:1px;margin-bottom:6px;">SELECT VESSEL</div>`;
 
     if (availableVessels.length === 0) {
@@ -6486,8 +6538,12 @@ function renderRouteApplicationModal() {
                 <div style="font-family:${M};font-size:10px;color:${C.dim};letter-spacing:1px;margin-bottom:6px;">ESTIMATED ECONOMICS (PER TRIP)</div>
                 <div style="background:${C.card};border:1px solid ${C.border};padding:8px 10px;">
                     <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
-                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Revenue</span>
-                        <span style="font-family:${M};font-size:10px;font-weight:700;color:${C.green};">${fmtBig(_raProposedRate)}</span>
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Bid</span>
+                        <span style="font-family:${M};font-size:10px;color:${C.text};">${fmtBig(_raProposedRate)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Revenue ${r.trade_agreement_id ? `\u00D7${tierMult} (agreement)` : `\u00D7${tierMult} (organic)`}</span>
+                        <span style="font-family:${M};font-size:10px;font-weight:700;color:${C.green};">${fmtBig(effectiveRate)}</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;padding:3px 0;">
                         <span style="font-family:${M};font-size:9px;color:${C.dim};">Est. Fuel Cost (~15%)</span>

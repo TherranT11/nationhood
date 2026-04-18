@@ -70,6 +70,21 @@ export function clampServiceRate(value) {
 }
 
 /**
+ * Tier multipliers — applied to the corp's clamped bid when the shipping
+ * claim is created (and to the displayed estimated_revenue on route cards
+ * so what the corp sees matches what they'll earn). Agreement-backed lanes
+ * pay more (formal bilateral trade = higher stakes for both nations);
+ * organic lanes pay less (free-market spillover, smaller cargo commitments).
+ * Corps still see the same $250k–$750k bid slider regardless of tier.
+ */
+export var AGREEMENT_REVENUE_MULTIPLIER = 1.2;
+export var ORGANIC_REVENUE_MULTIPLIER_POST = 0.7;
+
+export function revenueTierMultiplier(route) {
+    return route && route.trade_agreement_id ? AGREEMENT_REVENUE_MULTIPLIER : ORGANIC_REVENUE_MULTIPLIER_POST;
+}
+
+/**
  * Calculate transit time in ticks based on proximity (0-100).
  * 0-70 proximity → 0 ticks (instant). 71+ → 1 tick.
  * @param {number} proximity - 0 (bordering) to 100 (far)
