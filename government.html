@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="css/government.css">
     <link rel="stylesheet" href="css/gov-admin.css">
     <link rel="stylesheet" href="css/gov-legislature.css">
+    <link rel="stylesheet" href="css/gov-budget.css">
 </head>
 <body>
 
@@ -71,6 +72,9 @@ import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinis
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
 import { calculateBillSupport, computeBillCostTotals } from './js/game/bills.js';
+import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_TO_MINISTRY_KEY, FISCAL_CATEGORIES } from './js/game/budget.js';
+import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
+import { RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -1052,6 +1056,8 @@ function renderGovContent() {
         renderLegislatureTab(content);
     } else if (_govActiveSubtab === 'laws') {
         renderLawsTab(content);
+    } else if (_govActiveSubtab === 'budget') {
+        renderBudgetTab(content);
     } else {
         const label = GOV_SUBTABS.find(t => t.id === _govActiveSubtab)?.label || _govActiveSubtab;
         content.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;text-align:center;color:var(--text-dim);">
@@ -2052,6 +2058,471 @@ async function loadLawsData() {
         console.error('[Laws] Load failed:', err);
         _lawsData = [];
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUDGET SUBTAB
+// ═══════════════════════════════════════════════════════════════
+//
+// Mirrors the standalone "Government Budget" design: 4 headline stat
+// cards (Revenue / Expenditures / Balance / Surplus), an Income panel
+// and Costs panel stacked on the left, and a sticky Deep Dive panel on
+// the right that populates inline when the user clicks a row.
+//
+// Revenue breakdown comes from calculateNationalBudget() in budget.js
+// (same source the Economy page uses). Expenditure breakdown mirrors
+// economy.html's loadExpenditureData but trimmed to totals-only since
+// the Budget tab doesn't need per-policy detail — the Deep Dive
+// surfaces the same institution-level breakdowns live.
+
+let _budgetData = null;      // { revenue, expenditures, inflationMult, tariffSource, aid }
+let _budgetLoading = false;
+let _budgetSelectedKey = null; // selected income/cost row key
+
+function _gbScaleCost(baseCost, scalingStat, nation) {
+    if (!scalingStat || !baseCost) return baseCost || 0;
+    const statVal = Number(nation[scalingStat]) || 1;
+    const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
+    return baseCost * (statVal / divisor);
+}
+
+// Format a raw-dollar annual value. Matches economy.html's formatBudgetCurrency
+// output shape so this page reads consistently with the Economy page.
+function _gbFmtCurrency(val) {
+    if (val == null || !isFinite(val)) return '$0';
+    const v = Number(val);
+    const sign = v < 0 ? '-' : '';
+    const abs = Math.abs(v);
+    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(2) + 'T';
+    if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1)  + 'B';
+    if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(0)  + 'M';
+    if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1)  + 'K';
+    return sign + '$' + Math.round(abs);
+}
+
+async function loadBudgetData() {
+    if (!currentNation) { _budgetData = null; return; }
+    const nation = currentNation;
+
+    // 1. Revenue — the calculator does the heavy lifting. Apply the real
+    //    capped tariff override if a trade_summary row exists (same rule
+    //    the Economy page uses so the two pages can't disagree).
+    const budget = calculateNationalBudget(nation);
+
+    // Lazy-fetch the most recent trade_summary row for capped tariff revenue.
+    // Non-fatal: if the fetch fails or the row doesn't exist we keep the
+    // formula-based estimate.
+    try {
+        const { data: tsRow } = await _supabase.from('trade_summary')
+            .select('tariff_revenue')
+            .eq('nation_id', nation.id)
+            .order('tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        const raw = Number(tsRow?.tariff_revenue) || 0;
+        if (raw > 0) applyTradeTariffOverride(budget, raw, Number(nation.gdp ?? nation.GDP ?? 0));
+    } catch (_) { /* keep formula estimate on error */ }
+
+    // 2. Aid flows — Economy page uses the same aid_agreement_state view,
+    //    joined to trade_agreements to filter on the economic_aid type and
+    //    suspension flag. Recipient rows add to income, donor rows to
+    //    expenditures. current_annual_amount is already the annualized flow.
+    let aidReceived = 0;
+    let aidGiven = 0;
+    try {
+        const { data: aidStates } = await _supabase.from('aid_agreement_state')
+            .select('donor_nation_id, recipient_nation_id, current_annual_amount, trade_agreements!inner(status, agreement_type)')
+            .or(`donor_nation_id.eq.${nation.id},recipient_nation_id.eq.${nation.id}`)
+            .eq('trade_agreements.status', 'active')
+            .eq('trade_agreements.agreement_type', 'economic_aid')
+            .eq('is_suspended', false);
+        for (const row of (aidStates || [])) {
+            const amt = Number(row.current_annual_amount) || 0;
+            if (!amt) continue;
+            if (row.recipient_nation_id === nation.id) aidReceived += amt;
+            if (row.donor_nation_id === nation.id)     aidGiven    += amt;
+        }
+    } catch (_) { /* aid stays 0 */ }
+
+    // 3. Expenditures by fiscal category — replicates economy.html's
+    //    loadExpenditureData, totals only. We need annualized dollars.
+    const yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
+    const inflationMult = getInflationMultiplier(nation.inflation);
+    const expenditures = {};
+
+    try {
+        const lawsRes = await _supabase.from('active_laws')
+            .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, policy_type)')
+            .eq('nation_id', nation.id)
+            .eq('is_reversal', false);
+        for (const law of (lawsRes.data || [])) {
+            if (law.is_reversal) continue;
+            const p = law.policies;
+            if (!p || !p.fiscal_category || p.policy_type === 'lever') continue;
+            let cost = 0;
+            const ongoingBase = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
+            if (ongoingBase > 0) {
+                cost += _gbScaleCost(ongoingBase, p.ongoing_scaling_stat, nation) * GAME_CONFIG.TICKS_PER_YEAR * 1_000_000;
+            }
+            if (law.passed_tick >= yearStartTick) {
+                const upfront = p.upfront_cost || 0;
+                if (upfront > 0) {
+                    cost += _gbScaleCost(upfront, p.upfront_scaling_stat, nation) * 1_000_000;
+                }
+            }
+            cost *= inflationMult;
+            expenditures[p.fiscal_category] = (expenditures[p.fiscal_category] || 0) + cost;
+        }
+    } catch (_) { /* policy costs stay 0 for failed fetch */ }
+
+    try {
+        const [cfgRes, allocRes] = await Promise.all([
+            _supabase.from('ministry_institution_config').select('*'),
+            _supabase.from('budget_item_allocations')
+                .select('item_id, item_type, allocation_amount, needed_amount')
+                .eq('nation_id', nation.id)
+                .eq('item_type', 'institution'),
+        ]);
+        const allocMap = buildFundingPctMap(allocRes.data);
+        const population = Number(nation.population || 0);
+        const gdp = Number(nation.gdp || 0);
+        for (const cfg of (cfgRes.data || [])) {
+            let fCat = null;
+            for (const fc in FISCAL_TO_MINISTRY_KEY) {
+                if (FISCAL_TO_MINISTRY_KEY[fc] === cfg.ministry_key) { fCat = fc; break; }
+            }
+            if (!fCat) continue;
+            const baseVal = Number(cfg.base_cost_per_capita || 0);
+            let needed = cfg.scaling_type === 'gdp' ? (baseVal / 100) * gdp : baseVal * population;
+            needed *= inflationMult;
+            const fundPct = getInstFundingPct(allocMap, cfg.id);
+            const cost = needed * (fundPct / 100);
+            expenditures[fCat] = (expenditures[fCat] || 0) + cost;
+        }
+    } catch (_) { /* institution costs stay 0 for failed fetch */ }
+
+    _budgetData = {
+        budget,
+        expenditures,
+        inflationMult,
+        aidReceived,
+        aidGiven,
+        debtService: Number(budget.debtService || 0),
+        gdp: Number(nation.gdp || 0),
+        debt: Number(nation.debt || 0),
+    };
+}
+
+// Build the Income line items from the revenue breakdown. Per-tick values
+// in calculateNationalBudget are annualized by multiplying in the caller
+// (grossRevenue is already annual since GDP is annual and tax rates are
+// a fraction of GDP) — the source code comments in budget.js treat these
+// values as annual. We surface both /mo (÷12) and /yr in the UI.
+function _gbBuildIncomeRows(d) {
+    const b = d.budget;
+    const rows = [
+        { key: 'income_tax',   name: 'Income Tax',       yr: Number(b.incomeRevenue  || 0), descKey: 'incomeTax' },
+        { key: 'corporate_tax',name: 'Corporate Tax',    yr: Number(b.corpRevenue    || 0), descKey: 'corpTax'   },
+        { key: 'sales_tax',    name: 'Sales Tax',        yr: Number(b.salesRevenue   || 0), descKey: 'salesTax'  },
+        { key: 'oil_gas',      name: 'Oil & Gas',        yr: Number(b.oilRevenue     || 0), descKey: 'oilGas'    },
+        { key: 'trade_agrs',   name: 'Trade Agreements', yr: Number(d.aidReceived    || 0), descKey: 'tradeAgr'  },
+        { key: 'tariffs',      name: 'Tariffs',          yr: Number(b.tariffRevenue  || 0), descKey: 'tariffs'   },
+    ];
+    // Hide oil & gas row if the nation isn't a producer (matches
+    // calculateNationalBudget's gate: oil_and_gas must exceed 30).
+    return rows.filter(r => r.key !== 'oil_gas' || r.yr > 0);
+}
+
+// Cost line items: ministries (from expenditures), plus the financial
+// overhead buckets (debt interest, bonds approx, government admin) that
+// don't live in fiscal_category. Bonds are shown as a placeholder since
+// the game doesn't yet split principal vs. interest — the whole debt
+// service annual is represented under Interest on Debt.
+function _gbBuildCostRows(d) {
+    const ministryMeta = [
+        { key: 'Interior',        label: 'Ministry of the Interior' },
+        { key: 'Foreign Ministry',label: 'Ministry of Foreign Affairs' },
+        { key: 'Defense',         label: 'Ministry of Defense' },
+        { key: 'Finance',         label: 'Ministry of Finance' },
+        { key: 'Healthcare',      label: 'Ministry of Healthcare' },
+        { key: 'Education',       label: 'Ministry of Education' },
+        { key: 'Labor',           label: 'Ministry of Labor' },
+        { key: 'Transportation',  label: 'Ministry of Transportation' },
+        { key: 'Trade',           label: 'Ministry of Trade' },
+        { key: 'Justice',         label: 'Ministry of Justice' },
+        { key: 'Energy',          label: 'Ministry of Energy' },
+    ];
+    const rows = [
+        { key: 'debt_interest', name: 'Interest on Debt', yr: Number(d.debtService || 0), descKey: 'debtInterest' },
+    ];
+    if (d.aidGiven > 0) {
+        rows.push({ key: 'aid_given', name: 'Foreign Aid (Given)', yr: Number(d.aidGiven), descKey: 'aidGiven' });
+    }
+    for (const m of ministryMeta) {
+        rows.push({
+            key: 'min_' + FISCAL_TO_MINISTRY_KEY[m.key],
+            name: m.label,
+            yr: Number(d.expenditures[m.key] || 0),
+            descKey: 'ministry_' + FISCAL_TO_MINISTRY_KEY[m.key],
+        });
+    }
+    return rows;
+}
+
+function renderBudgetTab(container) {
+    if (!container) return;
+    if (!_budgetData && !_budgetLoading) {
+        _budgetLoading = true;
+        container.innerHTML = '<div class="gb-loading">Loading budget…</div>';
+        loadBudgetData().then(() => {
+            _budgetLoading = false;
+            renderBudgetTab(container);
+        }).catch(err => {
+            _budgetLoading = false;
+            console.error('[Budget] Load failed:', err);
+            container.innerHTML = `<div class="gb-error">Budget failed to load: ${escapeHtml(err.message || String(err))}</div>`;
+        });
+        return;
+    }
+    if (_budgetLoading) {
+        container.innerHTML = '<div class="gb-loading">Loading budget…</div>';
+        return;
+    }
+    if (!_budgetData) {
+        container.innerHTML = '<div class="gb-error">Budget data unavailable.</div>';
+        return;
+    }
+
+    const d = _budgetData;
+    const incomeRows = _gbBuildIncomeRows(d);
+    const costRows = _gbBuildCostRows(d);
+    const revenueYr = incomeRows.reduce((s, r) => s + r.yr, 0);
+    const expenditureYr = costRows.reduce((s, r) => s + r.yr, 0);
+    const balanceYr = revenueYr - expenditureYr;
+    const surplusReserves = Math.max(0, -Number(d.debt)); // positive debt => reserves = 0
+
+    const nationName = escapeHtml(currentNation?.name || 'Nation');
+    const year = (() => {
+        // tickToDate returns a "Month YYYY" string; pluck the year if present
+        try {
+            const dateStr = tickToDate(currentTick);
+            const m = /\b(\d{4})\b/.exec(String(dateStr || ''));
+            return m ? m[1] : '';
+        } catch (_) { return ''; }
+    })();
+
+    const balNeg = balanceYr < 0;
+    const balSign = balanceYr >= 0 ? '+' : '-';
+
+    container.innerHTML = `
+        <div class="gb-page">
+            <div class="gb-head">
+                <div class="gb-kicker">— Ministry of Finance —</div>
+                <h1>Government Budget<span class="gb-year">${escapeHtml(year)}</span></h1>
+                <div class="gb-sub">Fiscal Year Overview · ${nationName}</div>
+            </div>
+            <div class="gb-stats">
+                <div class="gb-stat is-rev">
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Revenue</div>
+                    <div class="gb-stat__primary">${_gbFmtCurrency(revenueYr / 12)}<span class="gb-stat__per"> / month</span></div>
+                    <div class="gb-stat__secondary"><span class="gb-stat__secondary-k">Annualized</span><span>${_gbFmtCurrency(revenueYr)} / year</span></div>
+                </div>
+                <div class="gb-stat is-exp">
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Expenditures</div>
+                    <div class="gb-stat__primary">${_gbFmtCurrency(expenditureYr / 12)}<span class="gb-stat__per"> / month</span></div>
+                    <div class="gb-stat__secondary"><span class="gb-stat__secondary-k">Annualized</span><span>${_gbFmtCurrency(expenditureYr)} / year</span></div>
+                </div>
+                <div class="gb-stat is-bal${balNeg ? ' is-negative' : ''}">
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Balance</div>
+                    <div class="gb-stat__primary">${balSign}${_gbFmtCurrency(Math.abs(balanceYr / 12))}<span class="gb-stat__per"> / month</span></div>
+                    <div class="gb-stat__secondary"><span class="gb-stat__secondary-k">Annualized</span><span>${balSign}${_gbFmtCurrency(Math.abs(balanceYr))} / year</span></div>
+                </div>
+                <div class="gb-stat is-sur">
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Surplus</div>
+                    <div class="gb-stat__primary">${_gbFmtCurrency(surplusReserves)}</div>
+                    <div class="gb-stat__secondary"><span class="gb-stat__secondary-hint">${d.debt > 0 ? 'Net Debt: ' + _gbFmtCurrency(d.debt) : 'Accumulated Reserves'}</span></div>
+                </div>
+            </div>
+            <div class="gb-wrap">
+                <div class="gb-breakdown">
+                    ${_gbRenderPanel('income', 'Income', incomeRows, revenueYr)}
+                    ${_gbRenderPanel('costs',  'Costs',  costRows,  expenditureYr)}
+                </div>
+                <aside class="gb-deep" id="gb-deep">
+                    <div class="gb-deep__head">
+                        <div class="gb-deep__title"><span class="gb-deep__title-dot"></span>Deep Dive</div>
+                        <span class="gb-deep__status" id="gb-deep-status">Awaiting selection</span>
+                    </div>
+                    <div class="gb-deep__empty" id="gb-deep-empty">
+                        <div class="gb-deep__empty-icon">◎</div>
+                        <div class="gb-deep__empty-line1">Select a Category</div>
+                        <div class="gb-deep__empty-line2">Click any income or cost line to see its composition, sub-allocations, and annualized flow.</div>
+                    </div>
+                    <div class="gb-deep__body" id="gb-deep-body" style="display:none;"></div>
+                </aside>
+            </div>
+        </div>
+    `;
+
+    _gbWireRows(container, incomeRows, costRows);
+    // Re-open the previously selected row after a re-render so the Deep
+    // Dive doesn't blank out when the subtab refreshes.
+    if (_budgetSelectedKey) {
+        const all = [...incomeRows.map(r => ({...r, kind:'income'})), ...costRows.map(r => ({...r, kind:'cost'}))];
+        const hit = all.find(r => r.key === _budgetSelectedKey);
+        if (hit) _gbSelectCategory(container, hit, hit.kind);
+    }
+}
+
+function _gbRenderPanel(kind, title, rows, totalYr) {
+    const esc = escapeHtml;
+    const rowsHtml = rows.map(r => {
+        const mo = r.yr / 12;
+        const zeroCls = r.yr <= 0 ? ' is-zero' : '';
+        return `
+            <div class="gb-panel__row" data-key="${esc(r.key)}" data-kind="${esc(kind)}">
+                <div class="gb-panel__row-name"><span class="gb-panel__row-dash">—</span><span class="gb-panel__row-lbl">${esc(r.name)}</span></div>
+                <span class="gb-panel__row-num${zeroCls}">${_gbFmtCurrency(mo)}</span>
+                <span class="gb-panel__row-num is-yr${zeroCls}">${_gbFmtCurrency(r.yr)}</span>
+            </div>
+        `;
+    }).join('');
+    return `
+        <div class="gb-panel is-${kind}">
+            <div class="gb-panel__head">
+                <div class="gb-panel__title"><span class="gb-panel__title-dot"></span>${esc(title)}</div>
+                <span class="gb-panel__col">Monthly</span>
+                <span class="gb-panel__col">Yearly</span>
+            </div>
+            <div class="gb-panel__list">${rowsHtml}</div>
+            <div class="gb-panel__footer">
+                <span class="gb-panel__footer-k">Total ${esc(title)}</span>
+                <span class="gb-panel__footer-v">${_gbFmtCurrency(totalYr / 12)}</span>
+                <span class="gb-panel__footer-v">${_gbFmtCurrency(totalYr)}</span>
+            </div>
+        </div>
+    `;
+}
+
+function _gbWireRows(container, incomeRows, costRows) {
+    const rowsByKey = {};
+    for (const r of incomeRows) rowsByKey['income:' + r.key] = { row: r, kind: 'income' };
+    for (const r of costRows)   rowsByKey['cost:' + r.key]   = { row: r, kind: 'cost'   };
+    container.querySelectorAll('.gb-panel__row').forEach(el => {
+        el.addEventListener('click', () => {
+            const key = el.dataset.key;
+            const kind = el.dataset.kind === 'income' ? 'income' : 'cost';
+            const entry = rowsByKey[kind + ':' + key];
+            if (!entry) return;
+            _gbSelectCategory(container, entry.row, entry.kind);
+        });
+    });
+}
+
+// Sub-allocation + description lookup for the Deep Dive. Keyed by the
+// same `descKey` set on each row. Data here is descriptive (pulled from
+// what the game already models); sub-allocations for ministries fall
+// back to the fiscal_category's policy + institution mix at render time.
+const _GB_DEEP_COPY = {
+    incomeTax:   { desc: 'Progressive tax on household income. Scales with GDP and tax rate; collection rate is a blend of efficiency and (inverse) corruption.' },
+    corpTax:     { desc: 'Corporate income tax on registered businesses. Same efficiency/corruption collection rate applies; base share of GDP is ~15%.' },
+    salesTax:    { desc: 'Consumption tax levied at point of sale. Base share of GDP is ~35% since it lands on a much wider base than income.' },
+    oilGas:      { desc: 'Resource revenue, only active when the nation\'s oil_and_gas stat exceeds 30. Scales with both GDP and the resource stat.' },
+    tradeAgr:    { desc: 'Net recurring financial aid received from accepted trade agreements. Agreements structured as "give" flow out on the Costs side.' },
+    tariffs:     { desc: 'Import duties. Capped at 0.2% of GDP to avoid dwarfing structural tax revenue; real capped value is preferred over the formula estimate when trade_summary data exists.' },
+    debtInterest:{ desc: 'Interest service on sovereign debt. Effective coupon = 15% − (credit × 0.13%), clamped to 2–18%.' },
+    aidGiven:    { desc: 'Outgoing financial aid under accepted trade agreements. Offsets inbound trade-agreement income on the Revenue side.' },
+    // ministries fall through to a shared template, filled with
+    // funding-pct / institution count at render time
+};
+
+async function _gbSelectCategory(container, row, kind) {
+    _budgetSelectedKey = row.key;
+    container.querySelectorAll('.gb-panel__row').forEach(el => el.classList.remove('is-selected'));
+    const el = container.querySelector(`.gb-panel__row[data-key="${CSS.escape(row.key)}"][data-kind="${kind}"]`);
+    if (el) el.classList.add('is-selected');
+
+    const empty = container.querySelector('#gb-deep-empty');
+    const body = container.querySelector('#gb-deep-body');
+    const status = container.querySelector('#gb-deep-status');
+    if (!empty || !body || !status) return;
+    empty.style.display = 'none';
+    body.style.display = 'flex';
+    status.textContent = 'Generated';
+    status.classList.add('is-live');
+
+    const kicker = kind === 'income' ? 'Income Category' : 'Cost Category';
+    const mo = row.yr / 12;
+    let desc = (_GB_DEEP_COPY[row.descKey] || {}).desc
+        || 'Detailed breakdown not yet modeled for this line item.';
+    let subRows = [];
+
+    // Ministries: fetch the institution mix for that fiscal_category on
+    // the fly so the Deep Dive shows which underlying programs add up to
+    // the total. We run this only when a ministry row is clicked so the
+    // initial load stays fast.
+    if (row.descKey && row.descKey.startsWith('ministry_')) {
+        const ministryKey = row.descKey.slice('ministry_'.length);
+        desc = `Annual expenditure across programs, institutions, and active policies under the ${row.name}. Institution funding levels are set by funding bills; policy costs are continuous until repealed.`;
+        try {
+            const fCat = Object.keys(FISCAL_TO_MINISTRY_KEY).find(k => FISCAL_TO_MINISTRY_KEY[k] === ministryKey);
+            const nation = currentNation;
+            if (fCat && nation) {
+                const [cfgRes, allocRes] = await Promise.all([
+                    _supabase.from('ministry_institution_config').select('*').eq('ministry_key', ministryKey),
+                    _supabase.from('budget_item_allocations')
+                        .select('item_id, item_type, allocation_amount, needed_amount')
+                        .eq('nation_id', nation.id)
+                        .eq('item_type', 'institution'),
+                ]);
+                const allocMap = buildFundingPctMap(allocRes.data);
+                const inflationMult = getInflationMultiplier(nation.inflation);
+                const population = Number(nation.population || 0);
+                const gdp = Number(nation.gdp || 0);
+                for (const cfg of (cfgRes.data || [])) {
+                    const baseVal = Number(cfg.base_cost_per_capita || 0);
+                    let needed = cfg.scaling_type === 'gdp' ? (baseVal / 100) * gdp : baseVal * population;
+                    needed *= inflationMult;
+                    const fundPct = getInstFundingPct(allocMap, cfg.id);
+                    const cost = needed * (fundPct / 100);
+                    if (cost > 0) subRows.push({ k: cfg.institution_name, v: cost });
+                }
+            }
+        } catch (err) {
+            console.warn('[Budget] Deep-dive institution fetch failed:', err.message);
+        }
+    }
+
+    const colors = ['#7a9a5b', '#b09a5b', '#6b8cae', '#a65d5d', '#9a8fb0', '#7aa29c', '#d48a3c', '#5bc0de'];
+    const subTotal = subRows.reduce((s, r) => s + r.v, 0) || row.yr;
+    const barSegs = subRows.map((s, i) => `<div class="gb-deep__bar-seg" style="width:${subTotal > 0 ? (s.v / subTotal * 100).toFixed(2) : 0}%;background:${colors[i % colors.length]}"></div>`).join('');
+    const legend = subRows.map((s, i) => `<span class="gb-deep__legend-item"><span class="gb-deep__legend-dot" style="background:${colors[i % colors.length]}"></span>${escapeHtml(s.k)}</span>`).join('');
+    const lines = subRows.map(s => `
+        <div class="gb-deep__line">
+            <span class="gb-deep__line-k">${escapeHtml(s.k)}</span>
+            <span class="gb-deep__line-v">${_gbFmtCurrency(s.v)}<span class="gb-deep__line-pct">${subTotal > 0 ? ((s.v / subTotal) * 100).toFixed(1) : '0.0'}%</span></span>
+        </div>
+    `).join('');
+
+    body.innerHTML = `
+        <div>
+            <div class="gb-deep__kicker">${escapeHtml(kicker)}</div>
+            <h2 class="gb-deep__title-big">${escapeHtml(row.name)}</h2>
+        </div>
+        <div class="gb-deep__stats">
+            <div><span class="gb-deep__stat-k">Monthly</span><span class="gb-deep__stat-v">${_gbFmtCurrency(mo)}</span></div>
+            <div><span class="gb-deep__stat-k">Yearly</span><span class="gb-deep__stat-v">${_gbFmtCurrency(row.yr)}</span></div>
+        </div>
+        <p class="gb-deep__desc">${escapeHtml(desc)}</p>
+        ${subRows.length ? `
+        <div class="gb-deep__bar-wrap">
+            <div class="gb-deep__bar-lbl">Composition · Annual</div>
+            <div class="gb-deep__bar">${barSegs}</div>
+            <div class="gb-deep__legend">${legend}</div>
+        </div>
+        <div class="gb-deep__lines">${lines}</div>
+        ` : ''}
+    `;
 }
 
 function renderLawsTab(container) {
@@ -3162,6 +3633,9 @@ async function loadGovData() {
         ]);
         if (freshNationRes.data) currentNation = freshNationRes.data;
         if (shardRes.data?.current_tick) currentTick = shardRes.data.current_tick;
+
+        // Invalidate subtab-local caches so a fresh gov load re-computes them.
+        _budgetData = null;
 
         // Bust coalition cache to get fresh status
         qCacheBust('coalition_');
