@@ -373,14 +373,38 @@ function computeDeployable(cash, portfolio, branchCount, hasDeregulation) {
     const insureExposure  = portfolio.filter(p => p.type === 'INSURE').reduce((s, p) => s + (p.coverage  || 0), 0);
     const bondExposure    = portfolio.filter(p => p.type === 'BOND')  .reduce((s, p) => s + (p.faceValue || 0), 0);
     const totalExposure   = loanExposure + insureExposure + bondExposure;
-    const totalDeployed   = portfolio.reduce((s, p) => s + (p.principal || p.coverage || p.faceValue || 0), 0);
+    // Deployed capital for the lending-cap check uses the CURRENTLY
+    // outstanding figure per position — principal minus repayments for
+    // loans, current coverage for insurance, face value for bonds. Prior
+    // code used p.principal here, which counted the ORIGINAL loan amount
+    // forever; a $50M loan repaid down to $10M was still taking $50M of
+    // cap, so partial repayments never freed any headroom. Borrowers
+    // paying down = both cash-in AND exposure-out; both now flow through.
+    const totalDeployed   = portfolio.reduce((s, p) => {
+        if (p.type === 'LOAN')   return s + (Number(p.remaining) || 0);
+        if (p.type === 'INSURE') return s + (Number(p.coverage)  || 0);
+        if (p.type === 'BOND')   return s + (Number(p.faceValue) || Number(p.principal) || 0);
+        return s;
+    }, 0);
 
     const reserveReqPct   = hasDeregulation ? 0.12 : 0.15;
     const requiredReserve = Math.round(totalExposure * reserveReqPct);
     const reserveAvail    = Math.max(0, cash - requiredReserve);
 
+    // Lending cap is a fraction of TOTAL CAPITAL (cash + deployed), not
+    // just cash. Prior code used `cash × pct`, but the server deducts
+    // loan principal from the lender's cash the moment a borrower
+    // accepts (see corp-dashboard.html acceptOffer). Cash shrinks and
+    // deployed grows by the same amount, so the old formula's cap
+    // shrank alongside every loan — a single leveraged origination
+    // could trap the corp below its own cap until repayments
+    // rebuilt cash. Summing cash + totalDeployed makes the base
+    // invariant across a loan origination (it's a zero-sum shift on the
+    // balance sheet), so the cap reflects the corp's true capacity to
+    // underwrite rather than eating itself every time a loan goes out.
+    const totalCapital    = cash + totalDeployed;
     const lendingCapPct   = Math.min(100, 50 + (branchCount || 0) * 15);
-    const lendingCap      = Math.round(cash * lendingCapPct / 100);
+    const lendingCap      = Math.round(totalCapital * lendingCapPct / 100);
     const capAvail        = Math.max(0, lendingCap - totalDeployed);
 
     const deployable      = Math.min(reserveAvail, capAvail);
@@ -1349,7 +1373,7 @@ function renderReservesRisk() {
     // they expected.
     {
         const noteText = limiter === 'lending_cap'
-            ? `Capped at ${lendingCapPct}% of cash (branch offices: ${_branchCount}). Deployed ${fmtMoney(totalDeployed)} of ${fmtMoney(lendingCap)}.`
+            ? `Capped at ${lendingCapPct}% of total capital (branch offices: ${_branchCount}). Deployed ${fmtMoney(totalDeployed)} of ${fmtMoney(lendingCap)}.`
             : `Reserve requirement binds (${minRatioPct}% of exposure).`;
         html += `<div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:6px;letter-spacing:0.02em;">${noteText}</div>`;
     }
@@ -2200,20 +2224,61 @@ async function rdSubmitOffer() {
     _submittingOffer = true;
 
     const currentTick = shard.current_tick || 0;
-    const cash = Number(faction.corp_cash_reserves) || 0;
+
+    // Re-fetch live cash + active positions at submit time so the cap
+    // check reflects anything the tick has changed since the page
+    // loaded: loan repayments crediting cash, bond coupons landing,
+    // insurance premiums collected, other loans paid down. The
+    // module-level faction.corp_cash_reserves + apPortfolio can be
+    // many minutes stale, which is exactly the state a player hits
+    // right after a tick processes — cash in their "bank" goes up,
+    // deployed principal goes down, but the cached numbers said the
+    // cap was still blown from the old snapshot.
+    const [cashRes, liveLoansRes] = await Promise.all([
+        _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single(),
+        _supabase.from('finance_active_loans')
+            .select('principal, total_paid, collateral_type, finance_loan_requests!inner(request_type)')
+            .eq('lender_faction_id', faction.id)
+            .in('status', ['current', 'late', 'delinquent']),
+    ]);
+    if (cashRes.error || liveLoansRes.error) {
+        alert('Could not verify current cash or portfolio. Try again.');
+        _submittingOffer = false;
+        return;
+    }
+    const cash = Number(cashRes.data?.corp_cash_reserves) || 0;
+    // Mirror the shape apPortfolio uses so computeDeployable sees the
+    // same fields it was designed for — principal / remaining /
+    // coverage / faceValue / type.
+    const livePortfolio = (liveLoansRes.data || []).map(l => {
+        const req = l.finance_loan_requests?.request_type;
+        const type = req === 'insurance' ? 'INSURE' : req === 'bond' ? 'BOND' : 'LOAN';
+        const principal = Number(l.principal) || 0;
+        const totalPaid = Number(l.total_paid) || 0;
+        return {
+            type,
+            principal,
+            remaining: type === 'INSURE' ? 0 : Math.max(0, principal - totalPaid),
+            coverage:  type === 'INSURE' ? principal : 0,
+            faceValue: type === 'BOND'   ? principal : 0,
+        };
+    });
+    // Keep the in-memory caches aligned with what we just read so the
+    // Reserves & Risk card (re-rendered after this submit) doesn't lag.
+    if (faction) faction.corp_cash_reserves = cash;
 
     if (rdDeal.type === 'LOAN') {
         const rate = rdLoanRate;
         if (rate < 1 || rate > 20) { alert('Interest rate must be 1-20%.'); _submittingOffer = false; return; }
 
-        // Same helper the Reserves & Risk card uses — no separate DB
-        // fetch for branches / existing loans; apPortfolio + _branchCount
-        // were loaded at init. Prevents the card/validator disagreement
-        // where the card claimed $152.3M while the validator said $0.
-        const cap = computeDeployable(cash, apPortfolio, _branchCount, _hasDeregulation);
+        // Use the live portfolio + live cash we just fetched, not the
+        // module caches. Same helper the Reserves & Risk card calls
+        // on render, so what the card shows and what the validator
+        // enforces stay in sync once the cache catches up post-submit.
+        const cap = computeDeployable(cash, livePortfolio, _branchCount, _hasDeregulation);
         if (rdDeal.amount > cap.deployable) {
             const why = cap.limiter === 'lending_cap'
-                ? `Lending cap (${cap.lendingCapPct}% of cash = ${fmtMoney(cap.lendingCap)}). Already deployed ${fmtMoney(cap.totalDeployed)}.`
+                ? `Lending cap (${cap.lendingCapPct}% of total capital = ${fmtMoney(cap.lendingCap)}). Already deployed ${fmtMoney(cap.totalDeployed)}.`
                 : `Reserve requirement (${Math.round(cap.reserveReqPct * 100)}% of exposure = ${fmtMoney(cap.requiredReserve)}). Cash ${fmtMoney(cap.cash)}.`;
             alert(
                 `Insufficient deployable capital.\n${why}\n` +
@@ -2378,7 +2443,12 @@ async function rdSubmitOffer() {
 
     rdClose();
     dfSelected = -1;
-    await loadDealFlow();
+    // Refresh portfolio too so the Reserves & Risk card reflects the new
+    // BOND / INSURANCE position immediately (LOAN offers are still
+    // pending acceptance so apPortfolio is unchanged for that path, but
+    // running the reload unconditionally is a single SELECT and keeps
+    // the two caches aligned post-submit).
+    await Promise.all([loadDealFlow(), loadActivePortfolio()]);
     _submittingOffer = false;
 }
 

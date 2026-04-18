@@ -78,7 +78,7 @@
        border color is set by the .is-rev / .is-exp / .is-bal / .is-sur
        / .is-debt rules below. */
     background: transparent;
-    border: 1.5px solid var(--border-2);
+    border: 2px solid var(--border-2);
     border-radius: 4px;
     padding: 18px 20px 20px;
     position: relative;
@@ -87,16 +87,18 @@
     gap: 10px;
     min-height: 150px;
 }
-/* Per-section colored outlines — matches the left stripe so the box
-   and the stripe read as one identity. GDP uses a muted-purple accent
-   distinct from the 4 fiscal-cycle colors since it's the economic base
-   the fiscal cycle rides on top of, not a fiscal-cycle line itself. */
+/* Per-section colored outlines — explicit bright hex values rather
+   than the muted --green/--red/--blue/--amber vars, which at 2px on
+   a dark background still read as subdued. GDP uses a muted-purple
+   accent distinct from the 4 fiscal-cycle colors since it's the
+   economic base the fiscal cycle rides on top of, not a fiscal-cycle
+   line itself. */
 .gb-stat.is-gdp  { border-color: #9a8fb0; }
-.gb-stat.is-rev  { border-color: var(--green); }
-.gb-stat.is-exp  { border-color: var(--red);   }
-.gb-stat.is-bal  { border-color: var(--blue);  }
-.gb-stat.is-sur  { border-color: var(--amber); }
-.gb-stat.is-debt { border-color: var(--red);   }
+.gb-stat.is-rev  { border-color: #6fa472; }
+.gb-stat.is-exp  { border-color: #c26b5e; }
+.gb-stat.is-bal  { border-color: #6f94b4; }
+.gb-stat.is-sur  { border-color: #c79a5c; }
+.gb-stat.is-debt { border-color: #c26b5e; }
 .gb-stat::before {
     content: "";
     position: absolute;
@@ -212,15 +214,17 @@
 
 /* ── Panels (Income / Costs) ─────────────────────────────── */
 .gb-panel {
-    /* Same flush-black treatment as the stat cards. Per-section color
-       comes from .is-income / .is-costs below. */
+    /* Flush-black treatment; bright explicit colors keyed per section
+       rather than the muted --green / --red vars, which on a large
+       panel read as near-invisible next to the thicker stat-card
+       outlines. 2px weight matches the visual heft of the stat cards. */
     background: transparent;
-    border: 1.5px solid var(--border-2);
+    border: 2px solid var(--border-2);
     border-radius: 4px;
     overflow: hidden;
 }
-.gb-panel.is-income { border-color: var(--green); }
-.gb-panel.is-costs  { border-color: var(--red);   }
+.gb-panel.is-income { border-color: #6fa472; }
+.gb-panel.is-costs  { border-color: #c26b5e; }
 .gb-panel__head {
     padding: 13px 18px 11px;
     display: grid;
@@ -327,11 +331,13 @@
 
 /* ── Deep Dive panel ─────────────────────────────────────── */
 .gb-deep {
-    /* Amber outline keys it to the Deep Dive identity color already
-       used for the header dot, and matches the stat-card / panel
-       colored-outline treatment. */
+    /* Amber (explicit bright #c79a5c, not the muted var(--amber)
+       #b09a5b which read as near-white/faint at 1.5px) matches the
+       amber header dot. 2px weight aligns with the Income / Costs
+       panels so all three breakdown-row containers have the same
+       visual heft. */
     background: transparent;
-    border: 1.5px solid var(--amber);
+    border: 2px solid #c79a5c;
     border-radius: 4px;
     overflow: hidden;
     position: sticky;
