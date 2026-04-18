@@ -352,6 +352,48 @@ let faction = null;
 let nationStats = null;
 let shard = null;
 let _hasDeregulation = false; // Financial Sector Deregulation Act active
+let _branchCount = 0;         // active branch_office properties owned by this corp
+
+// ──────────────────────────────────────────────────────────────
+// Deployable capital — single source of truth.
+//
+// Two gates both have to clear before the corp can underwrite more:
+//   1. Reserve gate: cash must stay ≥ reserveReqPct × exposure
+//      (15%, or 12% under Financial Sector Deregulation).
+//   2. Lending-cap gate: the lender can only deploy a capped fraction
+//      of cash — 50% base + 15% per branch_office, max 100%.
+//
+// Previously the Reserves & Risk card used the reserve gate alone
+// while the loan validator used the lending-cap gate alone. A corp
+// that looked like it had headroom on the card could still get
+// blocked at offer time. Both callers now route through this helper,
+// so the card and the validator can't disagree.
+function computeDeployable(cash, portfolio, branchCount, hasDeregulation) {
+    const loanExposure    = portfolio.filter(p => p.type === 'LOAN')  .reduce((s, p) => s + (p.remaining || 0), 0);
+    const insureExposure  = portfolio.filter(p => p.type === 'INSURE').reduce((s, p) => s + (p.coverage  || 0), 0);
+    const bondExposure    = portfolio.filter(p => p.type === 'BOND')  .reduce((s, p) => s + (p.faceValue || 0), 0);
+    const totalExposure   = loanExposure + insureExposure + bondExposure;
+    const totalDeployed   = portfolio.reduce((s, p) => s + (p.principal || p.coverage || p.faceValue || 0), 0);
+
+    const reserveReqPct   = hasDeregulation ? 0.12 : 0.15;
+    const requiredReserve = Math.round(totalExposure * reserveReqPct);
+    const reserveAvail    = Math.max(0, cash - requiredReserve);
+
+    const lendingCapPct   = Math.min(100, 50 + (branchCount || 0) * 15);
+    const lendingCap      = Math.round(cash * lendingCapPct / 100);
+    const capAvail        = Math.max(0, lendingCap - totalDeployed);
+
+    const deployable      = Math.min(reserveAvail, capAvail);
+    const limiter         = capAvail < reserveAvail ? 'lending_cap' : 'reserve_ratio';
+
+    return {
+        cash, totalExposure, totalDeployed,
+        loanExposure, insureExposure, bondExposure,
+        reserveReqPct, requiredReserve, reserveAvail,
+        lendingCapPct, lendingCap, capAvail,
+        deployable, limiter,
+    };
+}
 
 function fmtMoney(n) {
     if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M';
@@ -1211,22 +1253,22 @@ function renderReservesRisk() {
     const container = document.getElementById('rr-container');
     if (!container) return;
 
-    // Compute from portfolio + faction cash
+    // One source of truth — same helper the loan-offer validator uses, so
+    // the card can't claim headroom the validator will reject.
     const cash = Number(faction?.corp_cash_reserves) || 0;
-    const loanExposure = apPortfolio.filter(p => p.type === 'LOAN').reduce((s, p) => s + (p.remaining || 0), 0);
-    const insureExposure = apPortfolio.filter(p => p.type === 'INSURE').reduce((s, p) => s + (p.coverage || 0), 0);
-    const bondExposure = apPortfolio.filter(p => p.type === 'BOND').reduce((s, p) => s + (p.faceValue || 0), 0);
-    const totalExposure = loanExposure + insureExposure + bondExposure;
+    const cap = computeDeployable(cash, apPortfolio, _branchCount, _hasDeregulation);
+    const {
+        totalExposure, requiredReserve, reserveReqPct,
+        loanExposure, insureExposure, bondExposure,
+        lendingCapPct, lendingCap, totalDeployed,
+        deployable: availableCapital, limiter,
+    } = cap;
     const deployed = totalExposure;
     const totalAssets = cash + deployed;
-
-    const reserveReqPct = _hasDeregulation ? 0.12 : 0.15; // Deregulation: 15% → 12%
-    const requiredReserve = Math.round(totalExposure * reserveReqPct);
     const reserveRatio = totalExposure > 0 ? Math.round((cash / totalExposure) * 100) : 100;
     const minRatioPct = Math.round(reserveReqPct * 100);
     const reserveHealth = reserveRatio >= 30 ? 'HEALTHY' : reserveRatio >= 20 ? 'ADEQUATE' : reserveRatio >= minRatioPct ? 'THIN' : 'CRITICAL';
     const reserveColor = reserveRatio >= 30 ? '#5c5' : reserveRatio >= 20 ? '#ca5' : reserveRatio >= minRatioPct ? '#c84' : '#c55';
-    const availableCapital = Math.max(0, cash - requiredReserve);
 
     // Concentration by nation
     const nationMap = {};
@@ -1302,6 +1344,15 @@ function renderReservesRisk() {
         <div class="rr-reserve-cell"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">REQUIRED (${minRatioPct}%)</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;margin-top:1px;">${fmtMoney(requiredReserve)}</div></div>
         <div class="rr-reserve-cell"><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">AVAILABLE TO DEPLOY</div><div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${availableCapital > 0 ? '#5c5' : '#c55'};margin-top:1px;">${fmtMoney(availableCapital)}</div></div>
     </div>`;
+    // Show which gate is the binding constraint so the user can read the
+    // Available To Deploy figure without wondering why it's lower than
+    // they expected.
+    {
+        const noteText = limiter === 'lending_cap'
+            ? `Capped at ${lendingCapPct}% of cash (branch offices: ${_branchCount}). Deployed ${fmtMoney(totalDeployed)} of ${fmtMoney(lendingCap)}.`
+            : `Reserve requirement binds (${minRatioPct}% of exposure).`;
+        html += `<div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:6px;letter-spacing:0.02em;">${noteText}</div>`;
+    }
     html += '</div>';
 
     // ── Exposure by Type ──
@@ -2155,31 +2206,23 @@ async function rdSubmitOffer() {
         const rate = rdLoanRate;
         if (rate < 1 || rate > 20) { alert('Interest rate must be 1-20%.'); _submittingOffer = false; return; }
 
-        // Branch Office lending cap: 50% base + 15% per branch office
-        const { data: branchOffices } = await _supabase
-            .from('corp_properties')
-            .select('id')
-            .eq('faction_id', faction.id)
-            .eq('type', 'branch_office')
-            .eq('is_active', true);
-        const branchCount = branchOffices?.length || 0;
-        const lendingCapPct = Math.min(100, 50 + branchCount * 15);
-        const lendingCap = Math.round(cash * lendingCapPct / 100);
-        // Check total deployed capital
-        const { data: existingLoans } = await _supabase
-            .from('finance_active_loans')
-            .select('principal')
-            .eq('lender_faction_id', faction.id)
-            .in('status', ['current', 'late', 'delinquent']);
-        const totalDeployed = (existingLoans || []).reduce((sum, l) => sum + Number(l.principal || 0), 0);
-        const availableToLend = Math.max(0, lendingCap - totalDeployed);
-
-        if (rdDeal.amount > availableToLend) {
-            alert(`Lending cap reached. You can deploy ${Math.round(lendingCapPct)}% of cash ($${(lendingCap / 1e6).toFixed(1)}M).` +
-                `\nAlready deployed: $${(totalDeployed / 1e6).toFixed(1)}M` +
-                `\nAvailable: $${(availableToLend / 1e6).toFixed(1)}M` +
-                `\nThis loan: $${(rdDeal.amount / 1e6).toFixed(1)}M` +
-                (branchCount === 0 ? '\n\nBuild a Branch Office to increase your lending cap (+15% each).' : ''));
+        // Same helper the Reserves & Risk card uses — no separate DB
+        // fetch for branches / existing loans; apPortfolio + _branchCount
+        // were loaded at init. Prevents the card/validator disagreement
+        // where the card claimed $152.3M while the validator said $0.
+        const cap = computeDeployable(cash, apPortfolio, _branchCount, _hasDeregulation);
+        if (rdDeal.amount > cap.deployable) {
+            const why = cap.limiter === 'lending_cap'
+                ? `Lending cap (${cap.lendingCapPct}% of cash = ${fmtMoney(cap.lendingCap)}). Already deployed ${fmtMoney(cap.totalDeployed)}.`
+                : `Reserve requirement (${Math.round(cap.reserveReqPct * 100)}% of exposure = ${fmtMoney(cap.requiredReserve)}). Cash ${fmtMoney(cap.cash)}.`;
+            alert(
+                `Insufficient deployable capital.\n${why}\n` +
+                `Available: ${fmtMoney(cap.deployable)}\n` +
+                `This loan: ${fmtMoney(rdDeal.amount)}` +
+                (cap.limiter === 'lending_cap' && _branchCount === 0
+                    ? '\n\nBuild a Branch Office to raise your lending cap (+15% each).'
+                    : '')
+            );
             _submittingOffer = false;
             return;
         }
@@ -2521,6 +2564,19 @@ async function init() {
             .eq('nation_id', faction.nation_id).limit(100);
         _hasDeregulation = (laws || []).some(l =>
             l.policy?.policy_key?.startsWith('financial_sector_deregulation'));
+    }
+
+    // Fetch active branch office count once — feeds computeDeployable for
+    // both the Reserves & Risk card and the loan-offer validator so the
+    // two stay aligned.
+    {
+        const { data: branches } = await _supabase
+            .from('corp_properties')
+            .select('id')
+            .eq('faction_id', faction.id)
+            .eq('type', 'branch_office')
+            .eq('is_active', true);
+        _branchCount = branches?.length || 0;
     }
 
     // Load data and render containers
