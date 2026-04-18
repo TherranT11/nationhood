@@ -48,6 +48,25 @@
   --font-mono: 'JetBrains Mono', monospace;
   --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
   --font-serif: 'IBM Plex Serif', Georgia, serif;
+  /* Panel palette — flips under body.light-mode. Dark defaults here, light
+     overrides in body.light-mode block below. */
+  --bg-card: #1a1a17;
+  --bg-panel: #252525;
+  --panel-main: #1f1f1a;
+  --panel-border: rgba(255,255,255,0.08);
+  --panel-text: #c4c2b8;
+  --panel-muted: #888;
+  --border-main: rgba(255,255,255,0.12);
+}
+/* Light-mode panel palette — preserves the exact original hex values so light
+   mode renders identically to before the var conversion. */
+body.light-mode {
+  --bg-card: #ffffff;
+  --bg-panel: #faf9f5;
+  --panel-main: #f8f7f2;
+  --panel-border: #e8e7e0;
+  --panel-text: #e8e4dc;
+  --panel-muted: #6a6660;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2111,7 +2130,7 @@ body.light-mode .av-empty__text { color: #1a1a17; }
     width: 100% !important;
     max-height: 200px !important;
     border-right: none !important;
-    border-bottom: 1px solid #e8e7e0 !important;
+    border-bottom: 1px solid var(--panel-border) !important;
   }
   #lr-overlay > div {
     width: 95vw !important;
@@ -2375,7 +2394,7 @@ body.light-mode .av-empty__text { color: #1a1a17; }
   .pm-metrics { grid-template-columns:1fr 1fr; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/corp-operations-bidgAjvF.js"></script>
+  <script type="module" crossorigin src="/assets/corp-operations-a47fo4Do.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
   <link rel="modulepreload" crossorigin href="/assets/corp-shipping-data-CcJ84lK3.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
@@ -2392,7 +2411,8 @@ body.light-mode .av-empty__text { color: #1a1a17; }
   <link rel="stylesheet" crossorigin href="/assets/corp-topbar-Do50UtYN.css">
   <link rel="stylesheet" crossorigin href="/assets/corp-light-theme-l9hU6ojy.css">
 </head>
-<body class="light-mode">
+<body>
+<script src="js/corp-theme-init.js"></script>
 
 <div id="loading" class="loading-msg">LOADING OPERATIONS...</div>
 
@@ -2708,21 +2728,21 @@ body.light-mode .av-empty__text { color: #1a1a17; }
 
 <!-- Loan Request Modal -->
 <div id="lr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
-  <div style="width:520px;max-height:94vh;background:#f8f7f2;border:1px solid #e8e7e0;display:flex;flex-direction:column;overflow:hidden;">
+  <div style="width:520px;max-height:94vh;background:var(--panel-main);border:1px solid var(--panel-border);display:flex;flex-direction:column;overflow:hidden;">
     <div id="lr-modal-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
   </div>
 </div>
 
 <!-- Executive Search Modal -->
 <div id="exec-search-overlay" onclick="closeExecSearch()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
-  <div onclick="event.stopPropagation()" style="width:850px;max-height:94vh;background:#f8f7f2;border:1px solid #e8e7e0;display:flex;flex-direction:column;overflow:hidden;">
+  <div onclick="event.stopPropagation()" style="width:850px;max-height:94vh;background:var(--panel-main);border:1px solid var(--panel-border);display:flex;flex-direction:column;overflow:hidden;">
     <div id="exec-search-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
   </div>
 </div>
 
 <!-- Commission Vessel Modal -->
 <div id="comm-overlay" onclick="smCloseCommission()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
-  <div onclick="event.stopPropagation()" style="width:420px;max-height:94vh;background:#f8f7f2;border:1px solid #e8e7e0;display:flex;flex-direction:column;overflow:hidden;">
+  <div onclick="event.stopPropagation()" style="width:420px;max-height:94vh;background:var(--panel-main);border:1px solid var(--panel-border);display:flex;flex-direction:column;overflow:hidden;">
     <div id="comm-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
   </div>
 </div>
