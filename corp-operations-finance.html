@@ -848,6 +848,9 @@ function renderActivePortfolio() {
         const rateLabel = d.type === 'LOAN' ? 'RATE' : d.type === 'INSURE' ? 'PREMIUM' : 'COUPON';
         const rateVal = d.rate || d.premiumRate || d.coupon || 0;
         const earnedVal = d.earned || d.premiumsCollected || d.couponsReceived || 0;
+        // Per-type label so lenders don't read "EARNED" as gross cashflow: for
+        // loans it's the interest portion only, not principal repayment.
+        const earnedLabel = d.type === 'LOAN' ? 'INTEREST EARNED' : d.type === 'INSURE' ? 'PREMIUMS EARNED' : 'COUPONS EARNED';
         const rateColor = tm.class === 'loan' ? '#5a8aaa' : tm.class === 'insure' ? '#aa7a5a' : '#8a6aaa';
 
         html += `<div class="df-metrics" style="margin-top:4px;">
@@ -860,7 +863,7 @@ function renderActivePortfolio() {
                 <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${rateColor};margin-top:1px;">${rateVal}%</div>
             </div>
             <div style="flex:1;padding:3px 6px;text-align:right;">
-                <div style="font-family:var(--font-mono);font-size:6px;color:#6a6660;letter-spacing:0.5px;">EARNED</div>
+                <div style="font-family:var(--font-mono);font-size:6px;color:#6a6660;letter-spacing:0.5px;">${earnedLabel}</div>
                 <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#5c5;margin-top:1px;">${fmtMoney(earnedVal)}</div>
             </div>
         </div>`;
