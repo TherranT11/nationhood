@@ -1633,8 +1633,16 @@ function renderAdminCabinet() {
         // Minister info
         html += `<div class="ga-ministry-body">`;
         if (isFilled) {
+            // Party logo replaces minister initials in the cabinet avatar —
+            // the identifying affiliation at a glance is the minister's
+            // party, not their personal monogram. Falls back to the shared
+            // getPartyIconSVG default when a party has neither a custom
+            // logo nor a chosen icon.
+            const avatarContent = party
+                ? getPartyLogoHTML({ customLogoUrl: party.custom_logo_url, iconKey: party.party_logo, size: 22, color: pColor })
+                : escapeHtml(initials);
             html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                <div class="ga-leader-avatar" style="width:28px;height:28px;font-size:9px;background:${pColor}15;border-color:${pColor}33;color:${pColor};">${escapeHtml(initials)}</div>
+                <div class="ga-leader-avatar" style="width:28px;height:28px;font-size:9px;background:${pColor}15;border-color:${pColor}33;color:${pColor};display:flex;align-items:center;justify-content:center;">${avatarContent}</div>
                 <div style="flex:1;">
                     <div style="font-size:11px;font-weight:700;color:var(--text-bright);">${escapeHtml(ministerName)}</div>
                     <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Age ${m.minister_age || '?'} · <span style="color:${pColor};">${escapeHtml(pAbbr)}</span> · Appointed T${m.appointed_tick ?? '?'}</div>
@@ -2301,7 +2309,13 @@ function renderBudgetTab(container) {
     const revenueYr = incomeRows.reduce((s, r) => s + r.yr, 0);
     const expenditureYr = costRows.reduce((s, r) => s + r.yr, 0);
     const balanceYr = revenueYr - expenditureYr;
-    const surplusReserves = Math.max(0, -Number(d.debt)); // positive debt => reserves = 0
+    // 4th stat card flips on the sign of nation.debt. Net-debt nations
+    // see "Debt $X" as the primary figure (no redundant "Net Debt: $X"
+    // hint underneath). Net-surplus nations see "Surplus $X" with the
+    // "Accumulated Reserves" kicker.
+    const debtAmount = Number(d.debt) || 0;
+    const isDebt = debtAmount > 0;
+    const surplusReserves = isDebt ? 0 : Math.max(0, -debtAmount);
 
     const nationName = escapeHtml(currentNation?.name || 'Nation');
     const year = (() => {
@@ -2339,10 +2353,13 @@ function renderBudgetTab(container) {
                     <div class="gb-stat__primary">${balSign}${_gbFmtCurrency(Math.abs(balanceYr / 12))}<span class="gb-stat__per"> / month</span></div>
                     <div class="gb-stat__secondary"><span class="gb-stat__secondary-k">Annualized</span><span>${balSign}${_gbFmtCurrency(Math.abs(balanceYr))} / year</span></div>
                 </div>
-                <div class="gb-stat is-sur">
-                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Surplus</div>
-                    <div class="gb-stat__primary">${_gbFmtCurrency(surplusReserves)}</div>
-                    <div class="gb-stat__secondary"><span class="gb-stat__secondary-hint">${d.debt > 0 ? 'Net Debt: ' + _gbFmtCurrency(d.debt) : 'Accumulated Reserves'}</span></div>
+                <div class="gb-stat ${isDebt ? 'is-debt' : 'is-sur'}">
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>${isDebt ? 'Debt' : 'Surplus'}</div>
+                    <div class="gb-stat__primary">${_gbFmtCurrency(isDebt ? debtAmount : surplusReserves)}</div>
+                    ${isDebt
+                        ? ''
+                        : `<div class="gb-stat__secondary"><span class="gb-stat__secondary-hint">Accumulated Reserves</span></div>`
+                    }
                 </div>
             </div>
             <div class="gb-wrap">
@@ -3016,42 +3033,39 @@ function renderParliamentPanel() {
         <span>GOVERNING COALITION</span>
         <span style="color:var(--text-bright);">${govSeats} seats</span>
     </div>`;
-    for (const p of govParties) {
-        const isYou = currentFaction && p.id === currentFaction.id;
-        const govDotContent = p.custom_logo_url
-            ? `<img src="${p.custom_logo_url}" alt="">`
-            : p.party_logo
-            ? `<span style="font-size:16px;">${p.party_logo}</span>`
-            : escapeHtml(p.abbreviation || p.faction_name.slice(0, 3));
-        html += `<div class="leg-party-row">
+    // Party-row renderer — single source of truth for both Governing and
+    // Opposition lists. Dot shows the party logo via getPartyLogoHTML
+    // (shared with the Cabinet avatar and every other party-icon site in
+    // the app); the prior inline custom_logo_url / party_logo /
+    // abbreviation ternary was a drifted duplicate that rendered emojis
+    // as text instead of using the SVG icon set.
+    const renderPartyRow = (p, { opposition = false } = {}) => {
+        const isYou = !opposition && currentFaction && p.id === currentFaction.id;
+        const color = p.party_color || '#888';
+        const logoHtml = getPartyLogoHTML({
+            customLogoUrl: p.custom_logo_url, iconKey: p.party_logo,
+            size: 18, color,
+        });
+        const nameColor = opposition ? 'var(--text-dim)' : 'var(--text-bright)';
+        const seatColor = opposition && p.seats === 0 ? 'var(--text-dim)' : 'var(--text-bright)';
+        const rowOpacity = opposition && p.seats === 0 ? '0.5' : '1';
+        return `<div class="leg-party-row" style="opacity:${rowOpacity};">
             <div style="display:flex;align-items:center;gap:10px;">
-                <div class="leg-party-dot" style="background:${p.party_color || '#888'}20;border-color:${p.party_color || '#888'};color:${p.party_color || '#888'};">${govDotContent}</div>
-                <span style="font-size:14px;font-weight:600;color:var(--text-bright);">${escapeHtml(p.faction_name)}</span>
+                <div class="leg-party-dot" style="background:${color}20;border-color:${color};color:${color};display:flex;align-items:center;justify-content:center;">${logoHtml}</div>
+                <span style="font-size:14px;${opposition ? '' : 'font-weight:600;'}color:${nameColor};">${escapeHtml(p.faction_name)}</span>
                 ${isYou ? '<span class="ga-badge ga-badge--green">YOU</span>' : ''}
             </div>
-            <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-bright);">${p.seats}</span>
+            <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${seatColor};">${p.seats}</span>
         </div>`;
-    }
+    };
+    for (const p of govParties) html += renderPartyRow(p);
 
     // Opposition
     html += `<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-top:10px;margin-bottom:4px;display:flex;justify-content:space-between;">
         <span>OPPOSITION</span>
         <span style="color:var(--text-dim);">${oppSeats} seats</span>
     </div>`;
-    for (const p of oppParties) {
-        const oppDotContent = p.custom_logo_url
-            ? `<img src="${p.custom_logo_url}" alt="">`
-            : p.party_logo
-            ? `<span style="font-size:16px;">${p.party_logo}</span>`
-            : escapeHtml(p.abbreviation || p.faction_name.slice(0, 3));
-        html += `<div class="leg-party-row" style="opacity:${p.seats === 0 ? '0.5' : '1'};">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <div class="leg-party-dot" style="background:${p.party_color || '#888'}20;border-color:${p.party_color || '#888'};color:${p.party_color || '#888'};">${oppDotContent}</div>
-                <span style="font-size:14px;color:var(--text-dim);">${escapeHtml(p.faction_name)}</span>
-            </div>
-            <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${p.seats > 0 ? 'var(--text-bright)' : 'var(--text-dim)'};">${p.seats}</span>
-        </div>`;
-    }
+    for (const p of oppParties) html += renderPartyRow(p, { opposition: true });
 
     // Majority indicator
     html += `<div style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px;">
