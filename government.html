@@ -59,6 +59,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, deductAP } from './js/game/config.js';
+import { fileNoConfidenceMotion } from './js/game/no-confidence.js';
 import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
@@ -10096,71 +10097,25 @@ async function fileNoConfidence() {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = shard?.current_tick || 0;
 
-        // Create the no-confidence bill — goes directly to floor vote (no committee)
-        const { data: bill, error: billError } = await _supabase.from('bills').insert({
-            nation_id: currentNation.id,
-            proposed_by: currentFaction.id,
-            proposed_tick: tick,
-            bill_name: motionName,
-            bill_type: 'no_confidence',
-            status: 'floor',
-            floor_tick: tick,
-            voting_ends_tick: tick + GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS,
-            proposer_name: currentFaction.faction_name,
-            proposer_color: currentFaction.party_color,
-            preamble: isSemiPresNation
-                ? `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the Prime Minister. If passed by simple majority, the PM will be removed and the President must nominate a replacement.`
-                : `This motion, filed by the ${currentFaction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`
-        }).select().single();
+        const seatData = await loadSeats(_supabase, currentNation.id, allParties, currentFaction.id);
+        const mySeats = seatData.allPartySeats[currentFaction.id] || 0;
 
-        if (billError) throw billError;
-
-        // Post-insert guard: verify no duplicate no-confidence motions were created concurrently
-        const { count: ncCount } = await _supabase.from('bills')
-            .select('id', { count: 'exact', head: true })
-            .eq('nation_id', currentNation.id)
-            .eq('bill_type', 'no_confidence')
-            .in('status', ['committee', 'floor']);
-        if (ncCount > 1) {
-            // Another motion was filed at the same time — delete ours
-            await _supabase.from('bills').delete().eq('id', bill.id);
-            alert('Another motion of no confidence was just filed. Please refresh.');
+        const result = await fileNoConfidenceMotion(_supabase, {
+            faction: currentFaction,
+            nation: currentNation,
+            pmFactionId,
+            pmLastName,
+            isSemiPres: isSemiPresNation,
+            tick,
+            mySeats,
+        });
+        if (!result.ok) {
+            alert('Error: ' + result.error);
             return;
         }
 
-        // No AP / cash deduction — filing a vote of no confidence is free.
-
-        // Auto-cast the filer's own vote as YES
-        const seatData = await loadSeats(_supabase, currentNation.id, allParties, currentFaction.id);
-        const mySeats = seatData.allPartySeats[currentFaction.id] || 0;
-        await _supabase.from('bill_support').upsert({
-            bill_id: bill.id,
-            faction_id: currentFaction.id,
-            stance: 'yes',
-            seat_count: mySeats
-        }, { onConflict: 'bill_id,faction_id' });
-
-        // Record the file event so the per-targeted-PM-party cooldown
-        // applies whether the motion passes or fails. The tick-side
-        // resolveNoConfidence no longer writes a 'no_confidence_failed'
-        // row — this insert is the single source of cooldown truth.
-        if (pmFactionId) {
-            await _supabase.from('campaign_actions').insert({
-                party_id: currentFaction.id,
-                nation_id: currentNation.id,
-                target_id: pmFactionId,
-                action_type: 'no_confidence_filed',
-                ap_cost: 0,
-                money_cost: 0,
-                tick_performed: tick,
-                result: { bill_id: bill.id, pm_last_name: pmLastName },
-            });
-        }
-
-
-
-        alert(`⚡ "${motionName}" has been filed!\n\nVoting is now open for ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks. All parties will vote.`);
-        window.location.href = `bill.html?id=${bill.id}`;
+        alert(`⚡ "${result.motionName}" has been filed!\n\nVoting is now open for ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks. All parties will vote.`);
+        window.location.href = `bill.html?id=${result.billId}`;
     } catch (e) {
         console.error('No confidence error:', e);
         alert('Error: ' + e.message);

@@ -8,7 +8,7 @@ import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsui
 import { getNationNames } from './game/political-actions.js';
 import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM } from './game/government-types.js';
 import { GAME_CONFIG } from './game/config.js';
-import { loadSeats } from './game/government-structure.js';
+import { fileNoConfidenceMotion } from './game/no-confidence.js';
 
 let _supabase = null;
 let _state = null;
@@ -279,9 +279,6 @@ export async function initPartyActions(supabase, state) {
             .eq('nation_id', state.nation?.id)
             .maybeSingle(),
     ]);
-    await loadFundraiseCount();
-    await loadNoConfidenceState();
-
     if (myPlat.error) console.error('[PartyActions] Failed to load faction platforms:', myPlat.error.message);
     if (nationPlat.error) console.error('[PartyActions] Failed to load nation platforms:', nationPlat.error.message);
     _myPlatforms = myPlat.data || [];
@@ -290,6 +287,11 @@ export async function initPartyActions(supabase, state) {
     _isOpposition = oppositionResult.isOpposition;
     _administration = oppositionResult.administration;
     _standing = standingResult.data || null;
+
+    // loadNoConfidenceState reads _administration.pm_party_id — must run after
+    // _administration is set above, otherwise cooldown silently skips on first load.
+    await loadFundraiseCount();
+    await loadNoConfidenceState();
 
     // Fetch deputy leader
     const { data: deputyData } = await _supabase.from('faction_deputies')
@@ -2870,47 +2872,22 @@ async function triggerNoConfidence() {
 
     _noConfidenceSubmitting = true;
     try {
-        const { data: bill, error: billErr } = await _supabase.from('bills').insert({
-            nation_id: nation.id,
-            proposed_by: faction.id,
-            proposed_tick: tick,
-            bill_name: motionName,
-            bill_type: 'no_confidence',
-            status: 'floor',
-            floor_tick: tick,
-            voting_ends_tick: tick + GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS,
-            proposer_name: faction.faction_name,
-            proposer_color: faction.party_color,
-            preamble: isSemiPres
-                ? `This motion, filed by the ${faction.faction_name}, calls for a vote of no confidence in the Prime Minister. If passed by simple majority, the PM will be removed and the President must nominate a replacement.`
-                : `This motion, filed by the ${faction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`,
-        }).select('id').single();
-
-        if (billErr) { alert('Failed to file motion: ' + billErr.message); return; }
-
-        // Auto-cast the filer's YES vote.
-        await _supabase.from('bill_support').upsert({
-            bill_id: bill.id,
-            faction_id: faction.id,
-            stance: 'yes',
-            seat_count: mySeats,
-        }, { onConflict: 'bill_id,faction_id' });
-
-        // Cooldown row keyed on the targeted PM party (single source of truth
-        // for the per-target 12-tick lockout). Mirrors government.html.
-        await _supabase.from('campaign_actions').insert({
-            party_id: faction.id,
-            nation_id: nation.id,
-            target_id: pmFactionId,
-            action_type: 'no_confidence_filed',
-            ap_cost: 0,
-            money_cost: 0,
-            tick_performed: tick,
-            result: { bill_id: bill.id, pm_last_name: pmLastName },
+        const result = await fileNoConfidenceMotion(_supabase, {
+            faction,
+            nation,
+            pmFactionId,
+            pmLastName,
+            isSemiPres,
+            tick,
+            mySeats,
         });
+        if (!result.ok) {
+            alert('Failed to file motion: ' + result.error);
+            return;
+        }
 
-        alert(`\u26a1 "${motionName}" has been filed!\n\nVoting is now open for ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks.`);
-        window.location.href = `bill.html?id=${bill.id}`;
+        alert(`\u26a1 "${result.motionName}" has been filed!\n\nVoting is now open for ${GAME_CONFIG.NO_CONFIDENCE_VOTING_TICKS} ticks.`);
+        window.location.href = `bill.html?id=${result.billId}`;
     } catch (e) {
         console.error('[PartyActions] No confidence file failed:', e);
         alert('Failed to file motion: ' + (e?.message || 'unknown error'));

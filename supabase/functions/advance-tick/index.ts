@@ -12842,7 +12842,7 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
                 fired_at_tick: currentTick,
                 category: 'government',
                 description_chosen: `The ${pmLastName} Government has fallen. A motion of no confidence passed ${votesFor} to ${votesAgainst}. Snap elections scheduled.`,
-                effects_applied: { coalition_dissolved: true, caller_approval: +3, coalition_approval: -5, election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS, bills_frozen: true }
+                effects_applied: { coalition_dissolved: true, caller_momentum: +15, pm_party_momentum: -10, coalition_partner_momentum: -3, gov_approval: -10, election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS, bills_frozen: true }
             });
         } // end else (coalition not already dissolved)
 
