@@ -70,14 +70,13 @@
 }
 
 .gb-stat {
-    background: var(--bg-2);
-    /* Defined box: --border-2 (0.12 alpha) was still near-invisible on
-       the dark page background. Dropped to an explicit strong rgba so
-       the card outline reads at arm's length, plus a quiet shadow so
-       the cards sit slightly off the page instead of melting into it. */
-    border: 1px solid rgba(255,255,255,0.22);
+    /* Background flush with the page — the box is expressed by its
+       section-colored outline, not by a raised surface. Per-section
+       border color is set by the .is-rev / .is-exp / .is-bal / .is-sur
+       / .is-debt rules below. */
+    background: transparent;
+    border: 1.5px solid var(--border-2);
     border-radius: 4px;
-    box-shadow: 0 2px 0 rgba(0,0,0,0.25);
     padding: 18px 20px 20px;
     position: relative;
     display: flex;
@@ -85,13 +84,13 @@
     gap: 10px;
     min-height: 150px;
 }
-/* Light-mode override — flip the border to a dark rgba and keep the
-   shadow subtle so the defined-box effect persists under body.light-mode
-   without looking heavy. */
-body.light-mode .gb-stat {
-    border-color: rgba(0,0,0,0.22);
-    box-shadow: 0 2px 0 rgba(0,0,0,0.08);
-}
+/* Per-section colored outlines — matches the left stripe so the box
+   and the stripe read as one identity. */
+.gb-stat.is-rev  { border-color: var(--green); }
+.gb-stat.is-exp  { border-color: var(--red);   }
+.gb-stat.is-bal  { border-color: var(--blue);  }
+.gb-stat.is-sur  { border-color: var(--amber); }
+.gb-stat.is-debt { border-color: var(--red);   }
 .gb-stat::before {
     content: "";
     position: absolute;
@@ -204,18 +203,15 @@ body.light-mode .gb-stat {
 
 /* ── Panels (Income / Costs) ─────────────────────────────── */
 .gb-panel {
-    background: var(--bg-2);
-    /* Matches the stat-card box weight + shadow so the three panels on
-       the Breakdown column read as a set of defined peers. */
-    border: 1px solid rgba(255,255,255,0.22);
+    /* Same flush-black treatment as the stat cards. Per-section color
+       comes from .is-income / .is-costs below. */
+    background: transparent;
+    border: 1.5px solid var(--border-2);
     border-radius: 4px;
-    box-shadow: 0 2px 0 rgba(0,0,0,0.25);
     overflow: hidden;
 }
-body.light-mode .gb-panel {
-    border-color: rgba(0,0,0,0.22);
-    box-shadow: 0 2px 0 rgba(0,0,0,0.08);
-}
+.gb-panel.is-income { border-color: var(--green); }
+.gb-panel.is-costs  { border-color: var(--red);   }
 .gb-panel__head {
     padding: 13px 18px 11px;
     display: grid;
@@ -322,22 +318,18 @@ body.light-mode .gb-panel {
 
 /* ── Deep Dive panel ─────────────────────────────────────── */
 .gb-deep {
-    background: var(--bg-2);
-    /* Same defined-box treatment as the stat cards + breakdown panels so
-       the Deep Dive doesn't disappear into the page at rest. */
-    border: 1px solid rgba(255,255,255,0.22);
+    /* Amber outline keys it to the Deep Dive identity color already
+       used for the header dot, and matches the stat-card / panel
+       colored-outline treatment. */
+    background: transparent;
+    border: 1.5px solid var(--amber);
     border-radius: 4px;
-    box-shadow: 0 2px 0 rgba(0,0,0,0.25);
     overflow: hidden;
     position: sticky;
     top: 20px;
     min-height: 400px;
     display: flex;
     flex-direction: column;
-}
-body.light-mode .gb-deep {
-    border-color: rgba(0,0,0,0.22);
-    box-shadow: 0 2px 0 rgba(0,0,0,0.08);
 }
 .gb-deep__head {
     padding: 13px 18px 11px;
