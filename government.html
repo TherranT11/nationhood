@@ -2301,7 +2301,13 @@ function renderBudgetTab(container) {
     const revenueYr = incomeRows.reduce((s, r) => s + r.yr, 0);
     const expenditureYr = costRows.reduce((s, r) => s + r.yr, 0);
     const balanceYr = revenueYr - expenditureYr;
-    const surplusReserves = Math.max(0, -Number(d.debt)); // positive debt => reserves = 0
+    // 4th stat card flips on the sign of nation.debt. Net-debt nations
+    // see "Debt $X" as the primary figure (no redundant "Net Debt: $X"
+    // hint underneath). Net-surplus nations see "Surplus $X" with the
+    // "Accumulated Reserves" kicker.
+    const debtAmount = Number(d.debt) || 0;
+    const isDebt = debtAmount > 0;
+    const surplusReserves = isDebt ? 0 : Math.max(0, -debtAmount);
 
     const nationName = escapeHtml(currentNation?.name || 'Nation');
     const year = (() => {
@@ -2339,10 +2345,13 @@ function renderBudgetTab(container) {
                     <div class="gb-stat__primary">${balSign}${_gbFmtCurrency(Math.abs(balanceYr / 12))}<span class="gb-stat__per"> / month</span></div>
                     <div class="gb-stat__secondary"><span class="gb-stat__secondary-k">Annualized</span><span>${balSign}${_gbFmtCurrency(Math.abs(balanceYr))} / year</span></div>
                 </div>
-                <div class="gb-stat is-sur">
-                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Surplus</div>
-                    <div class="gb-stat__primary">${_gbFmtCurrency(surplusReserves)}</div>
-                    <div class="gb-stat__secondary"><span class="gb-stat__secondary-hint">${d.debt > 0 ? 'Net Debt: ' + _gbFmtCurrency(d.debt) : 'Accumulated Reserves'}</span></div>
+                <div class="gb-stat ${isDebt ? 'is-debt' : 'is-sur'}">
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>${isDebt ? 'Debt' : 'Surplus'}</div>
+                    <div class="gb-stat__primary">${_gbFmtCurrency(isDebt ? debtAmount : surplusReserves)}</div>
+                    ${isDebt
+                        ? ''
+                        : `<div class="gb-stat__secondary"><span class="gb-stat__secondary-hint">Accumulated Reserves</span></div>`
+                    }
                 </div>
             </div>
             <div class="gb-wrap">

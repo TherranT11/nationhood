@@ -71,7 +71,10 @@
 
 .gb-stat {
     background: var(--bg-2);
-    border: 1px solid var(--border-1);
+    /* Visible box: --border-1 (0.08 alpha) disappears on dark backgrounds.
+       Bumped to --border-2 so each card reads as a distinct tile at a
+       glance, matching the handoff-bundle design's visual weight. */
+    border: 1px solid var(--border-2);
     border-radius: 4px;
     padding: 18px 20px 20px;
     position: relative;
@@ -89,10 +92,11 @@
     width: 2px;
     background: var(--border-2);
 }
-.gb-stat.is-rev::before { background: var(--green); }
-.gb-stat.is-exp::before { background: var(--red); }
-.gb-stat.is-bal::before { background: var(--blue); }
-.gb-stat.is-sur::before { background: var(--amber); }
+.gb-stat.is-rev::before  { background: var(--green); }
+.gb-stat.is-exp::before  { background: var(--red); }
+.gb-stat.is-bal::before  { background: var(--blue); }
+.gb-stat.is-sur::before  { background: var(--amber); }
+.gb-stat.is-debt::before { background: var(--red); }
 
 .gb-stat__label {
     display: flex;
@@ -110,10 +114,11 @@
     height: 7px;
     border-radius: 1px;
 }
-.gb-stat.is-rev .gb-stat__dot { background: var(--green); box-shadow: 0 0 8px rgba(122,154,91,0.35); }
-.gb-stat.is-exp .gb-stat__dot { background: var(--red);   box-shadow: 0 0 8px rgba(166,93,93,0.35); }
-.gb-stat.is-bal .gb-stat__dot { background: var(--blue);  box-shadow: 0 0 8px rgba(107,140,174,0.35); }
-.gb-stat.is-sur .gb-stat__dot { background: var(--amber); box-shadow: 0 0 8px rgba(176,154,91,0.35); }
+.gb-stat.is-rev  .gb-stat__dot { background: var(--green); box-shadow: 0 0 8px rgba(122,154,91,0.35); }
+.gb-stat.is-exp  .gb-stat__dot { background: var(--red);   box-shadow: 0 0 8px rgba(166,93,93,0.35); }
+.gb-stat.is-bal  .gb-stat__dot { background: var(--blue);  box-shadow: 0 0 8px rgba(107,140,174,0.35); }
+.gb-stat.is-sur  .gb-stat__dot { background: var(--amber); box-shadow: 0 0 8px rgba(176,154,91,0.35); }
+.gb-stat.is-debt .gb-stat__dot { background: var(--red);   box-shadow: 0 0 8px rgba(166,93,93,0.35); }
 
 .gb-stat__primary {
     font-family: var(--font-mono);
@@ -124,11 +129,12 @@
     font-variant-numeric: tabular-nums;
     line-height: 1.1;
 }
-.gb-stat.is-rev .gb-stat__primary { color: #9ac89e; }
-.gb-stat.is-exp .gb-stat__primary { color: #d88d82; }
-.gb-stat.is-bal .gb-stat__primary { color: #9cb8d2; }
+.gb-stat.is-rev  .gb-stat__primary { color: #9ac89e; }
+.gb-stat.is-exp  .gb-stat__primary { color: #d88d82; }
+.gb-stat.is-bal  .gb-stat__primary { color: #9cb8d2; }
 .gb-stat.is-bal.is-negative .gb-stat__primary { color: #d88d82; }
-.gb-stat.is-sur .gb-stat__primary { color: #dcb884; }
+.gb-stat.is-sur  .gb-stat__primary { color: #dcb884; }
+.gb-stat.is-debt .gb-stat__primary { color: #d88d82; }
 
 .gb-stat__per {
     font-family: var(--font-mono);
@@ -190,7 +196,9 @@
 /* ── Panels (Income / Costs) ─────────────────────────────── */
 .gb-panel {
     background: var(--bg-2);
-    border: 1px solid var(--border-1);
+    /* Matches the stat-card box weight so the three panels on the
+       Breakdown column read as a set of peers. */
+    border: 1px solid var(--border-2);
     border-radius: 4px;
     overflow: hidden;
 }
@@ -301,7 +309,9 @@
 /* ── Deep Dive panel ─────────────────────────────────────── */
 .gb-deep {
     background: var(--bg-2);
-    border: 1px solid var(--border-1);
+    /* Same visible-border bump as the stat cards + breakdown panels so
+       the Deep Dive doesn't disappear into the page at rest. */
+    border: 1px solid var(--border-2);
     border-radius: 4px;
     overflow: hidden;
     position: sticky;
