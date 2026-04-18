@@ -2450,22 +2450,21 @@ async function openAppointPMModal(root) {
             try {
                 const currentTick = _state.shard?.current_tick || 0;
 
-                // Deactivate current PM
-                await _supabase.from('head_of_government')
-                    .update({ active: false })
-                    .eq('nation_id', nation.id).eq('active', true);
-
-                // Insert new PM record
-                const { error: hogErr } = await _supabase.from('head_of_government').insert({
-                    nation_id: nation.id,
-                    faction_id: selectedPartyId,
-                    first_name: party.leader_first_name || 'Unknown',
-                    last_name: party.leader_last_name || 'Unknown',
-                    age: party.leader_age || 50,
-                    ideology: 'Centrist',
-                    active: true,
-                    appointed_tick: currentTick,
-                });
+                // Upsert the PM record. head_of_government has a UNIQUE(nation_id)
+                // constraint, so a prior inactive row (e.g. from a previous PM who
+                // resigned or was fired) would collide with a plain INSERT and
+                // leave Appoint PM stuck. Mirrors political-actions.appointPM.
+                const { error: hogErr } = await _supabase.from('head_of_government')
+                    .upsert({
+                        nation_id: nation.id,
+                        faction_id: selectedPartyId,
+                        first_name: party.leader_first_name || 'Unknown',
+                        last_name: party.leader_last_name || 'Unknown',
+                        age: party.leader_age || 50,
+                        ideology: 'Centrist',
+                        active: true,
+                        appointed_tick: currentTick,
+                    }, { onConflict: 'nation_id' });
                 if (hogErr) throw hogErr;
 
                 // Log event (non-blocking)
