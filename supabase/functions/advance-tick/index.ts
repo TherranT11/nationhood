@@ -8846,6 +8846,58 @@ async function resolveMinisterConfirmationBill(supabase, bill, ctx) {
     };
 }
 
+/**
+ * Resolve a passed/failed ambassador confirmation bill.
+ *
+ * Force-fails (overrides ctx.passed) when the nominee's own party voted NO.
+ * On pass: activates the ambassador row (status='active', is_active=true,
+ * appointed_at_tick).
+ * On fail: rejects the ambassador row (status='rejected', is_active=false).
+ */
+async function resolveAmbassadorConfirmationBill(supabase, bill, ctx) {
+    const { currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+    let passed = ctx.passed;
+
+    // Resolve the nominee's party for the auto-fail vote check.
+    const { data: ambRow } = await supabase.from('ambassadors')
+        .select('faction_id')
+        .eq('id', bill.ambassador_id)
+        .maybeSingle();
+    const ambNomineeId = ambRow?.faction_id;
+    const nomineeVotedNo = ambNomineeId && (bill.bill_support || []).some(s => {
+        const st = s.stance === 'reject' ? 'no' : s.stance;
+        return s.faction_id === ambNomineeId && st === 'no';
+    });
+    if (nomineeVotedNo) passed = false;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        await supabase.from('ambassadors').update({
+            status: 'active',
+            is_active: true,
+            appointed_at_tick: currentTick,
+        }).eq('id', bill.ambassador_id);
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
+    } else {
+        await failBill(supabase, bill);
+        await supabase.from('ambassadors').update({
+            status: 'rejected',
+            is_active: false,
+        }).eq('id', bill.ambassador_id);
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'confirmation',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
 
 async function resolveExpiredVotes(supabase, nationId) {
     const { data: shard } = await supabase
@@ -9081,35 +9133,10 @@ async function resolveExpiredVotes(supabase, nationId) {
             await fireBillEvent(supabase, passed ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'default_resolution', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
-            // Ambassador confirmation bill
-            // Check if nominee voted NO — auto-fail (withdrawal of nomination)
-            const { data: ambRow } = await supabase.from('ambassadors').select('faction_id').eq('id', bill.ambassador_id).maybeSingle();
-            const ambNomineeId = ambRow?.faction_id;
-            const nomineeVotedNo = ambNomineeId && (bill.bill_support || []).some(s => {
-                const st = s.stance === 'reject' ? 'no' : s.stance;
-                return s.faction_id === ambNomineeId && st === 'no';
+            const entry = await resolveAmbassadorConfirmationBill(supabase, bill, {
+                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
             });
-            if (nomineeVotedNo) passed = false;
-
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                // Activate the ambassador — term starts now
-                await supabase.from('ambassadors').update({
-                    status: 'active',
-                    is_active: true,
-                    appointed_at_tick: currentTick
-                }).eq('id', bill.ambassador_id);
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
-            } else {
-                await failBill(supabase, bill);
-                // Reject the ambassador
-                await supabase.from('ambassadors').update({
-                    status: 'rejected',
-                    is_active: false
-                }).eq('id', bill.ambassador_id);
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-            }
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'confirmation', earlyResolution: bill.early_resolution_status || null });
+            results.push(entry);
         } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
             const entry = await resolveMinisterConfirmationBill(supabase, bill, {
                 passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,

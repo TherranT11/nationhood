@@ -9,63 +9,7 @@
 
 import assert from 'node:assert/strict';
 import { resolveMinisterConfirmationBill } from '../js/game/bills.js';
-
-// ─── Recording Supabase mock ────────────────────────────────────────────────
-// Records every call chain. Responses for specific operations can be
-// pre-seeded via the `responses` map keyed by "table.rootOp" (e.g.
-// "ministries.select", "nations.select"); both single/maybeSingle variants
-// resolve to the same entry, and update/insert/delete fall through to
-// { data: null, error: null } unless overridden.
-function createSupabaseMock(responses = {}) {
-    const calls = [];
-
-    function makeChain(table) {
-        const chain = [];
-
-        function resolveResponse() {
-            const rootOp = chain[0]?.method;
-            const key = `${table}.${rootOp}`;
-            return responses[key] || { data: null, error: null };
-        }
-
-        const builder = new Proxy({}, {
-            get(_, prop) {
-                if (prop === 'then') {
-                    return (onFulfilled, onRejected) => {
-                        const response = resolveResponse();
-                        calls.push({ table, chain: chain.slice(), response });
-                        return Promise.resolve(response).then(onFulfilled, onRejected);
-                    };
-                }
-                return (...args) => {
-                    chain.push({ method: prop, args });
-                    if (prop === 'single' || prop === 'maybeSingle') {
-                        const response = resolveResponse();
-                        calls.push({ table, chain: chain.slice(), response });
-                        return Promise.resolve(response);
-                    }
-                    return builder;
-                };
-            },
-        });
-        return builder;
-    }
-
-    return {
-        from(table) { return makeChain(table); },
-        rpc() { return Promise.resolve({ data: null, error: null }); },
-        _calls: calls,
-    };
-}
-
-// Helpers to query the recorded calls.
-function callsFor(supabase, table, rootOp) {
-    return supabase._calls.filter(c => c.table === table && c.chain[0]?.method === rootOp);
-}
-function firstArg(call, method) {
-    const step = call.chain.find(s => s.method === method);
-    return step?.args[0];
-}
+import { createSupabaseMock, callsFor, firstArg } from './support/test-supabase-mock.mjs';
 
 // Minimal bill + context factory.
 function makeBill(overrides = {}) {
