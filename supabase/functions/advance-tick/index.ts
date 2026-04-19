@@ -9951,6 +9951,38 @@ async function resolveOrdinaryBill(supabase, bill, ctx) {
 }
 
 
+// ─── Bill resolver dispatch ─────────────────────────────────────────────────
+//
+// Single source of truth for "which resolver handles which bill_type".
+// Each entry is a selector (bill) → resolver | null. A null return means
+// the bill_type is recognized but the specific sub-shape isn't — fall back
+// to resolveOrdinaryBill.
+//
+// This mirrors BILL_TYPE_SPECS (threshold side, R2) on the dispatch side.
+const BILL_RESOLVERS = Object.freeze({
+    no_confidence:          ()  => resolveNoConfidenceBill,
+    foundational:           ()  => resolveFoundationalBill,
+    default_resolution:     ()  => resolveDefaultResolutionBill,
+    confirmation:           (b) => b.ambassador_id      ? resolveAmbassadorConfirmationBill : null,
+    minister_confirmation:  (b) => b.ministry_key       ? resolveMinisterConfirmationBill   : null,
+    veto_override:          (b) => b.original_bill_id   ? resolveVetoOverrideBill           : null,
+    impeachment_motion:     (b) => b.impeachment_id     ? resolveImpeachmentMotionBill      : null,
+    impeachment_conviction: (b) => b.impeachment_id     ? resolveImpeachmentConvictionBill  : null,
+    ratification:           (b) => {
+        if (b.diplomatic_proposal_id)                              return resolveDiplomaticRatificationBill;
+        if (b.trade_negotiation_id)                                return resolveTradeRatificationBill;
+        if (b.trade_agreement_data?.type === 'retaliatory_tariff') return resolveRetaliatoryTariffRatificationBill;
+        if (b.trade_agreement_data?.type === 'impose_embargo')     return resolveEmbargoRatificationBill;
+        return null;
+    },
+});
+
+function selectBillResolver(bill) {
+    const selector = BILL_RESOLVERS[bill?.bill_type];
+    const resolver = selector ? selector(bill) : null;
+    return resolver || resolveOrdinaryBill;
+}
+
 async function resolveExpiredVotes(supabase, nationId) {
     const { data: shard } = await supabase
         .from('shard')
@@ -10133,75 +10165,14 @@ async function resolveExpiredVotes(supabase, nationId) {
             continue; // skip normal enactment — monarch decides
         }
 
-        if (isNoConfidence) {
-            const entry = await resolveNoConfidenceBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        } else if (isFoundational) {
-            const entry = await resolveFoundationalBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        } else if (bill.bill_type === 'default_resolution') {
-            const entry = await resolveDefaultResolutionBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
-            const entry = await resolveAmbassadorConfirmationBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
-            const entry = await resolveMinisterConfirmationBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        } else if (bill.bill_type === 'veto_override' && bill.original_bill_id) {
-            const entry = await resolveVetoOverrideBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        } else if (bill.bill_type === 'ratification' && bill.diplomatic_proposal_id) {
-            const entry = await resolveDiplomaticRatificationBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        } else if (bill.bill_type === 'ratification' && bill.trade_negotiation_id) {
-            const entry = await resolveTradeRatificationBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'retaliatory_tariff') {
-            const entry = await resolveRetaliatoryTariffRatificationBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'impose_embargo') {
-            const entry = await resolveEmbargoRatificationBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        } else if (bill.bill_type === 'impeachment_motion' && bill.impeachment_id) {
-            const entry = await resolveImpeachmentMotionBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain, totalSeats,
-            });
-            results.push(entry);
-
-        } else if (bill.bill_type === 'impeachment_conviction' && bill.impeachment_id) {
-            const entry = await resolveImpeachmentConvictionBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain, totalSeats,
-            });
-            results.push(entry);
-
-        } else {
-            // Catch-all: ordinary bills (regular + repeal), passed or failed.
-            const entry = await resolveOrdinaryBill(supabase, bill, {
-                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
-            });
-            results.push(entry);
-        }
+        // Dispatch to the per-bill-type resolver. BILL_RESOLVERS is the single
+        // source of truth for routing; selectBillResolver falls back to
+        // resolveOrdinaryBill for unknown types or sub-shapes that don't match.
+        const resolver = selectBillResolver(bill);
+        const entry = await resolver(supabase, bill, {
+            passed, currentTick, nation, votesFor, votesAgainst, votesAbstain, totalSeats,
+        });
+        results.push(entry);
 
         // ── Bill momentum: award momentum to YES/NO voters based on outcome ──
         // Sponsor: +1 on passage. YES voters: +2/article on pass, -1 on fail.
