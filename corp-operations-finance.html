@@ -1041,7 +1041,7 @@ function renderActivePortfolio() {
 
         // Row 2: nation + progress
         const progressText = d.type === 'EQUITY'
-            ? `SERIES ${d.series || '?'} — ${elapsed} DIVIDEND${elapsed === 1 ? '' : 'S'} PAID`
+            ? `SERIES ${escapeHtml(d.series || '?')} — ${elapsed} DIVIDEND${elapsed === 1 ? '' : 'S'} PAID`
             : `${elapsed}/${term}mo — ${pctComplete}%`;
         html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
             <span class="df-badge df-badge-nation" style="line-height:12px;">${escapeHtml((d.nation || '').toUpperCase())}</span>
@@ -1158,7 +1158,7 @@ function renderActivePortfolio() {
                 const rows = [
                     { label: 'CAPITAL DEPLOYED', value: fmtMoney(d.principal || 0) },
                     { label: 'STAKE', value: (d.equityPct || 0) + '%', color: '#c89a4a' },
-                    { label: 'SERIES', value: d.series || '?', color: '#c89a4a' },
+                    { label: 'SERIES', value: escapeHtml(d.series || '?'), color: '#c89a4a' },
                     { label: 'DIVIDENDS RECEIVED', value: fmtMoney(d.dividendsReceived || 0), color: '#5c5', title: 'Cumulative dividends since buy-in.' },
                     { label: 'AVG DIVIDEND / TICK', value: fmtMoney(avgPerTick), title: 'Dividends paid divided by ticks processed. $0 ticks (loss months) drag this down.' },
                     { label: 'TICKS PROCESSED', value: String(d.paymentsMade || 0) },
@@ -2737,7 +2737,6 @@ async function loadActivePortfolio() {
         series: isEquity(loan) ? (loan.series || '?') : undefined,
         dividendsReceived: isEquity(loan) ? Number(loan.total_paid || 0) : undefined,
         lastDividendTick: isEquity(loan) ? loan.last_payment_tick : undefined,
-        borrowerFactionId: isEquity(loan) ? loan.borrower_faction_id : undefined,
     }));
 
     renderActivePortfolio();
