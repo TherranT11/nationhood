@@ -2938,11 +2938,15 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
         .from('finance_active_loans')
         .select('*, finance_loan_requests!inner(request_type, issuer_nation_id)')
         .eq('nation_id', nationId)
-        .in('status', ['current', 'late', 'delinquent']);
+        .in('status', ['current', 'late', 'delinquent'])
+        .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
 
     if (!activeLoans || activeLoans.length === 0) return results;
 
     for (const loan of activeLoans) {
+        // Idempotency guard: do not process the same loan twice in one tick.
+        if (Number(loan.last_payment_tick) === Number(currentTick)) continue;
+
         const requestType = loan.finance_loan_requests?.request_type || 'loan';
 
         // Insurance: collect premium from policyholder, credit to insurer
@@ -2950,36 +2954,48 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             const premium = Number(loan.monthly_payment) || 0;
             if (premium <= 0) continue;
 
-            // Deduct premium from policyholder (borrower)
+            // Deduct premium from policyholder (borrower) only when full premium is affordable.
             const { data: holder } = await supabase.from('factions')
                 .select('corp_cash_reserves').eq('id', loan.borrower_faction_id).single();
-            if (holder) {
-                var holderCash = Number(holder.corp_cash_reserves || 0);
+            const holderCash = Number(holder?.corp_cash_reserves || 0);
+
+            if (holderCash >= premium) {
                 var { error: holderErr } = await supabase.from('factions').update({
-                    corp_cash_reserves: Math.max(0, holderCash - premium),
+                    corp_cash_reserves: holderCash - premium,
                 }).eq('id', loan.borrower_faction_id);
                 if (holderErr) console.warn('[Insurance] Premium deduction failed:', holderErr.message);
+
+                // Credit premium to insurer (lender)
+                const { data: insurer } = await supabase.from('factions')
+                    .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
+                if (insurer) {
+                    var { error: insurerErr } = await supabase.from('factions').update({
+                        corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium,
+                    }).eq('id', loan.lender_faction_id);
+                    if (insurerErr) console.warn('[Insurance] Premium credit failed:', insurerErr.message);
+                }
+
+                // Update payment tracking (once per tick).
+                var { error: trackErr } = await supabase.from('finance_active_loans').update({
+                    payments_made: (loan.payments_made || 0) + 1,
+                    total_paid: (Number(loan.total_paid) || 0) + premium,
+                    total_interest_paid: (Number(loan.total_interest_paid) || 0) + premium,
+                    payments_missed: 0,
+                    status: 'current',
+                    last_payment_tick: currentTick,
+                }).eq('id', loan.id);
+                if (trackErr) console.warn('[Insurance] Payment tracking update failed:', trackErr.message);
+
+                results.payments++;
+            } else {
+                const newMissed = (loan.payments_missed || 0) + 1;
+                const newStatus = newMissed >= 3 ? 'delinquent' : 'late';
+                const { error: missErr } = await supabase.from('finance_active_loans').update({
+                    payments_missed: newMissed,
+                    status: newStatus,
+                }).eq('id', loan.id);
+                if (missErr) console.warn('[Insurance] Missed premium update failed:', missErr.message);
             }
-
-            // Credit premium to insurer (lender)
-            const { data: insurer } = await supabase.from('factions')
-                .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
-            if (insurer) {
-                var { error: insurerErr } = await supabase.from('factions').update({
-                    corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium,
-                }).eq('id', loan.lender_faction_id);
-                if (insurerErr) console.warn('[Insurance] Premium credit failed:', insurerErr.message);
-            }
-
-            // Update payment tracking
-            var { error: trackErr } = await supabase.from('finance_active_loans').update({
-                payments_made: (loan.payments_made || 0) + 1,
-                total_paid: (Number(loan.total_paid) || 0) + premium,
-                last_payment_tick: currentTick,
-            }).eq('id', loan.id);
-            if (trackErr) console.warn('[Insurance] Payment tracking update failed:', trackErr.message);
-
-            results.payments++;
             continue;
         }
 
@@ -3545,61 +3561,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 const expiredResults = await resolveExpiredEvents(supabase, nation.id, currentTick);
                 if (expiredResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'expired_events', data: expiredResults });
-                }
-
-                // ── Insurance Premium Collection ─────────────────────────
-                try {
-                    const { data: activePolicies } = await supabase
-                        .from('finance_active_loans')
-                        .select('id, borrower_faction_id, lender_faction_id, monthly_payment, payments_made, total_paid, total_interest_paid, request_id, finance_loan_requests!inner(request_type, insured_contract_id)')
-                        .eq('status', 'current')
-                        .eq('nation_id', nation.id)
-                        .eq('finance_loan_requests.request_type', 'insurance');
-
-                    for (const policy of (activePolicies || [])) {
-                        const premium = policy.monthly_payment || 0;
-                        if (premium <= 0) continue;
-
-                        // Find the insured corp (the one who requested insurance)
-                        const contractId = policy.finance_loan_requests?.insured_contract_id;
-                        if (!contractId) continue;
-
-                        const { data: insReq } = await supabase
-                            .from('finance_loan_requests')
-                            .select('requesting_faction_id')
-                            .eq('id', policy.request_id)
-                            .single();
-                        if (!insReq) continue;
-
-                        const insuredFactionId = insReq.requesting_faction_id;
-
-                        // Deduct premium from insured corp
-                        const { data: insured } = await supabase.from('factions')
-                            .select('corp_cash_reserves').eq('id', insuredFactionId).single();
-                        if (insured) {
-                            await supabase.from('factions').update({
-                                corp_cash_reserves: Math.max(0, Number(insured.corp_cash_reserves || 0) - premium)
-                            }).eq('id', insuredFactionId);
-                        }
-
-                        // Credit premium to insurer
-                        const { data: insurer } = await supabase.from('factions')
-                            .select('corp_cash_reserves').eq('id', policy.lender_faction_id).single();
-                        if (insurer) {
-                            await supabase.from('factions').update({
-                                corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium
-                            }).eq('id', policy.lender_faction_id);
-                        }
-
-                        // Track premium payment on the policy record
-                        await supabase.from('finance_active_loans').update({
-                            payments_made: (policy.payments_made || 0) + 1,
-                            total_paid: (policy.total_paid || 0) + premium,
-                            total_interest_paid: (policy.total_interest_paid || 0) + premium,
-                        }).eq('id', policy.id);
-                    }
-                } catch (insErr) {
-                    console.warn(`[Insurance] Premium collection error for ${nation.name}:`, insErr.message);
                 }
 
                 // ── Permit Lifecycle (pending→active, expiry) ─────────────
