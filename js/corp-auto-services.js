@@ -33,6 +33,59 @@ function computeFlatLoanMonthlyPayment(principal, annualRatePct, termMonths) {
     return Math.round(monthlyInterest + monthlyPrincipal);
 }
 
+function computeAmortizedLoanMonthlyPayment(principal, annualRatePct, termMonths) {
+    const safePrincipal = Math.max(0, Number(principal) || 0);
+    const safeRate = Math.max(0, Number(annualRatePct) || 0);
+    const safeTerm = Math.max(1, Number(termMonths) || 1);
+    const monthlyRate = safeRate / 100 / 12;
+
+    if (monthlyRate <= 0) {
+        return Math.round(safePrincipal / safeTerm);
+    }
+
+    const rawPayment = safePrincipal * (monthlyRate / (1 - Math.pow(1 + monthlyRate, -safeTerm)));
+    return Math.round(rawPayment);
+}
+
+function normalizeLoanInterestModel(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw === 'amortized' || raw === 'amortising' || raw === 'amortizing') return 'amortized';
+    if (raw === 'flat' || raw === 'simple' || raw === 'flat_interest') return 'flat';
+    return 'flat';
+}
+
+function getLoanInterestModel(source) {
+    return normalizeLoanInterestModel(
+        source?.loan_interest_model || source?.interest_model || source?.loan_interest_type,
+    );
+}
+
+function getLoanFundingModel(source) {
+    const raw = String(source?.loan_funding_model || '').trim().toLowerCase();
+    return raw === 'parent_corp' ? 'parent_corp' : (raw === 'subsidiary_cash' ? 'subsidiary_cash' : null);
+}
+
+function computeLoanPreview(principal, annualRatePct, termMonths, interestModel) {
+    const safePrincipal = Math.max(0, Number(principal) || 0);
+    const safeRate = Math.max(0, Number(annualRatePct) || 0);
+    const safeTerm = Math.max(1, Number(termMonths) || 1);
+    const monthlyRate = safeRate / 100 / 12;
+
+    if (interestModel === 'amortized') {
+        const monthlyPayment = computeAmortizedLoanMonthlyPayment(safePrincipal, safeRate, safeTerm);
+        const month1Interest = Math.round(safePrincipal * monthlyRate);
+        const month1Principal = Math.max(0, monthlyPayment - month1Interest);
+        const totalInterest = Math.max(0, Math.round((monthlyPayment * safeTerm) - safePrincipal));
+        return { monthlyPayment, month1Interest, month1Principal, totalInterest };
+    }
+
+    const month1Interest = Math.round((safePrincipal * safeRate / 100) / 12);
+    const month1Principal = Math.round(safePrincipal / safeTerm);
+    const monthlyPayment = Math.round(month1Interest + month1Principal);
+    const totalInterest = Math.round(month1Interest * safeTerm);
+    return { monthlyPayment, month1Interest, month1Principal, totalInterest };
+}
+
 // ═══════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════
@@ -137,6 +190,8 @@ function renderRateCard(rate, serviceType) {
     const color = isInsurance ? '#c84' : '#5a8aaa';
     const label = isInsurance ? 'INSURANCE' : 'CREDIT';
     const rateLabel = isInsurance ? 'Annual Premium' : 'Annual Interest';
+    const interestModel = getLoanInterestModel(rate);
+    const fundingModel = getLoanFundingModel(rate);
 
     // Check if we already have a policy from this rate
     const hasPolicy = _myPolicies.some(p => p.rate_id === rate.id && p.status === 'active');
@@ -148,6 +203,8 @@ function renderRateCard(rate, serviceType) {
                     <span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;"></span>
                     <span style="font-size:11px;font-weight:700;color:#f0efe6;">${esc(subName)}</span>
                     <span class="cas-badge" style="color:${color};border-color:${color}44;background:${color}0a;">${label}</span>
+                    ${!isInsurance ? `<span class="cas-badge" style="color:#8ab0c7;border-color:#8ab0c744;background:#8ab0c70f;">${interestModel === 'amortized' ? 'AMORTIZED' : 'FLAT'}</span>` : ''}
+                    ${!isInsurance && fundingModel ? `<span class="cas-badge" style="color:#b9a46a;border-color:#b9a46a44;background:#b9a46a0f;">${fundingModel === 'parent_corp' ? 'PARENT FUNDED' : 'SUB FUNDED'}</span>` : ''}
                 </div>
                 <span style="font-family:monospace;font-size:8px;color:#666;">${rate.policies_issued || 0} policies issued</span>
             </div>
@@ -187,6 +244,8 @@ function renderPolicyCard(policy) {
     const isInsurance = policy.service_type === 'insurance';
     const color = isInsurance ? '#c84' : '#5a8aaa';
     const statusColor = policy.status === 'active' ? '#5cb85c' : policy.status === 'lapsed' ? '#d9534f' : '#666';
+    const interestModel = getLoanInterestModel(policy);
+    const fundingModel = getLoanFundingModel(policy);
 
     return `
         <div class="cas-policy-card">
@@ -194,6 +253,8 @@ function renderPolicyCard(policy) {
                 <div style="display:flex;align-items:center;gap:6px;">
                     <span class="cas-badge" style="color:${color};border-color:${color}44;background:${color}0a;">${isInsurance ? 'INSURANCE' : 'LOAN'}</span>
                     <span style="font-size:10px;font-weight:600;color:#c4c2b8;">${policy.rate_at_issue}% rate</span>
+                    ${!isInsurance ? `<span class="cas-badge" style="color:#8ab0c7;border-color:#8ab0c744;background:#8ab0c70f;">${interestModel === 'amortized' ? 'AMORTIZED' : 'FLAT'}</span>` : ''}
+                    ${!isInsurance && fundingModel ? `<span class="cas-badge" style="color:#b9a46a;border-color:#b9a46a44;background:#b9a46a0f;">${fundingModel === 'parent_corp' ? 'PARENT FUNDED' : 'SUB FUNDED'}</span>` : ''}
                 </div>
                 <span class="cas-badge" style="color:${statusColor};border-color:${statusColor}44;background:${statusColor}0a;">${policy.status.toUpperCase()}</span>
             </div>
@@ -220,6 +281,7 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
     const color = isInsurance ? '#c84' : '#5a8aaa';
     const subName = rate.corp_properties?.name || 'Unknown';
     const maxAmount = rate.coverage_limit || 0;
+    const loanInterestModel = getLoanInterestModel(rate);
 
     // Create overlay
     let overlay = document.getElementById('cas-accept-overlay');
@@ -269,6 +331,24 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
                         <span style="font-family:monospace;font-size:8px;color:#888;">Monthly ${isInsurance ? 'Premium' : 'Payment'}</span>
                         <span style="font-family:monospace;font-size:9px;font-weight:700;color:#c4c2b8;" id="cas-monthly">—</span>
                     </div>
+                    ${!isInsurance ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.08);font-family:monospace;font-size:8px;color:#9d9b91;">
+                        ${loanInterestModel === 'amortized'
+                            ? 'Amortized loan: interest is charged on remaining principal each month.'
+                            : 'Flat loan: interest is charged on original principal each month.'
+                        }
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:6px;">
+                        <span style="font-family:monospace;font-size:8px;color:#888;">Month 1 Interest</span>
+                        <span style="font-family:monospace;font-size:9px;color:#c4c2b8;" id="cas-month1-interest">—</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
+                        <span style="font-family:monospace;font-size:8px;color:#888;">Month 1 Principal</span>
+                        <span style="font-family:monospace;font-size:9px;color:#c4c2b8;" id="cas-month1-principal">—</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
+                        <span style="font-family:monospace;font-size:8px;color:#888;">Total Interest (term)</span>
+                        <span style="font-family:monospace;font-size:9px;color:#c4c2b8;" id="cas-total-interest">—</span>
+                    </div>` : ''}
                 </div>
             </div>
             <div style="padding:10px 16px;border-top:1px solid rgba(255,255,255,0.06);background:#1c1c18;display:flex;justify-content:flex-end;gap:6px;">
@@ -291,6 +371,9 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
         const amount = Number(document.getElementById('cas-amount')?.value) || 0;
         const term = Number(document.getElementById('cas-term')?.value) || rate.min_term_months;
         const monthlyEl = document.getElementById('cas-monthly');
+        const month1InterestEl = document.getElementById('cas-month1-interest');
+        const month1PrincipalEl = document.getElementById('cas-month1-principal');
+        const totalInterestEl = document.getElementById('cas-total-interest');
         const submitBtn = document.getElementById('cas-submit');
 
         if (amount > 0 && term > 0) {
@@ -299,13 +382,19 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
                 // Premium = (amount × rate%) / 12 per month
                 monthly = Math.round((amount * rate.effective_rate / 100) / 12);
             } else {
-                // Flat-interest loan payment
-                monthly = computeFlatLoanMonthlyPayment(amount, rate.effective_rate, term);
+                const preview = computeLoanPreview(amount, rate.effective_rate, term, loanInterestModel);
+                monthly = preview.monthlyPayment;
+                if (month1InterestEl) month1InterestEl.textContent = fmtMoney(preview.month1Interest);
+                if (month1PrincipalEl) month1PrincipalEl.textContent = fmtMoney(preview.month1Principal);
+                if (totalInterestEl) totalInterestEl.textContent = fmtMoney(preview.totalInterest);
             }
             if (monthlyEl) monthlyEl.textContent = fmtMoney(monthly);
             if (submitBtn) submitBtn.disabled = amount <= 0 || amount > maxAmount;
         } else {
             if (monthlyEl) monthlyEl.textContent = '\u2014';
+            if (month1InterestEl) month1InterestEl.textContent = '\u2014';
+            if (month1PrincipalEl) month1PrincipalEl.textContent = '\u2014';
+            if (totalInterestEl) totalInterestEl.textContent = '\u2014';
             if (submitBtn) submitBtn.disabled = true;
         }
     };
@@ -330,7 +419,7 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
             if (isInsurance) {
                 monthly = Math.round((amount * rate.effective_rate / 100) / 12);
             } else {
-                monthly = computeFlatLoanMonthlyPayment(amount, rate.effective_rate, term);
+                monthly = computeLoanPreview(amount, rate.effective_rate, term, loanInterestModel).monthlyPayment;
             }
 
             const { data, error } = await _supabase.rpc('accept_subsidiary_auto_policy_txn', {
