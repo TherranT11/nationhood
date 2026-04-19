@@ -84,6 +84,54 @@ export const MINISTRY_DOMAINS = Object.freeze({
 
 export const PRESIDENTIAL_DOMAIN_MINISTRIES = Object.freeze(['foreign', 'defense', 'trade']);
 
+/** Canonical list of cabinet ministry keys (PM seat first, then domestic +
+ *  presidential-domain seats). Single source of truth for "what counts as a
+ *  cabinet slot" — both formation UI and tick code iterate this. */
+export const CABINET_MINISTRY_KEYS = Object.freeze([
+    'prime_minister',
+    'interior', 'foreign', 'defense', 'finance',
+    'education', 'healthcare', 'labor', 'justice',
+    'trade', 'energy', 'transportation',
+    // 'security' is referenced in MINISTRY_DOMAINS but not yet a default cabinet seat.
+]);
+
+/** Office display name (e.g. "Ministry of the Interior").
+ *  Used for the ministries.ministry_name column and any UI labelling the
+ *  *office* (not the person). */
+export const MINISTRY_OFFICE_NAMES = Object.freeze({
+    prime_minister: 'Prime Minister',
+    interior:       'Ministry of the Interior',
+    foreign:        'Foreign Ministry',
+    defense:        'Ministry of Defense',
+    finance:        'Ministry of Finance',
+    education:      'Ministry of Education',
+    healthcare:     'Ministry of Healthcare',
+    labor:          'Ministry of Labor',
+    justice:        'Ministry of Justice',
+    trade:          'Ministry of Trade',
+    energy:         'Ministry of Energy',
+    transportation: 'Ministry of Transportation',
+    security:       'Ministry of Security',
+});
+
+/** Person's title (e.g. "Minister of the Interior"). Used for nominee
+ *  display, confirmation bill names, modal headings. */
+export const MINISTER_TITLES = Object.freeze({
+    prime_minister: 'Prime Minister',
+    interior:       'Minister of the Interior',
+    foreign:        'Minister of Foreign Affairs',
+    defense:        'Minister of Defense',
+    finance:        'Minister of Finance',
+    education:      'Minister of Education',
+    healthcare:     'Minister of Healthcare',
+    labor:          'Minister of Labor',
+    justice:        'Minister of Justice',
+    trade:          'Minister of Trade',
+    energy:         'Minister of Energy',
+    transportation: 'Minister of Transportation',
+    security:       'Minister of Security',
+});
+
 /** Executive order domain: which branch controls each EO type in semi-presidential.
  *  'president' = only the president's party can issue.
  *  'pm' = only the PM's party can issue.
