@@ -176,6 +176,66 @@ function getDeliveredPropertyMeta(contract, fallbackPaidPrice) {
     return null;
 }
 
+function resolveIncidentNationId(vessel, corpNationId, claimRouteMap) {
+    const destinationNationId = vessel?.active_claim_id
+        ? claimRouteMap?.get(vessel.active_claim_id)?.shipping_routes?.destination_nation_id
+        : null;
+    return destinationNationId || vessel?.current_port_nation_id || corpNationId || null;
+}
+
+// ── Shipping margin model helpers ─────────────────────────────────────────────
+const INCIDENT_RESERVE_RATE = 0.06; // Hold back 6% of modeled gross for incident/insurance shock
+const MAINTENANCE_MULTIPLIER_BY_STATUS = {
+    in_port: 0.55,     // idle in port: crew+systems still cost, but lower than sailing
+    loading: 0.85,     // active handling/turnaround in port
+    in_transit: 1.25,  // sustained sea operation wear
+    anchored: 0.65,
+    dry_dock: 1.15,
+};
+const VESSEL_FUEL_CLASS_FACTOR = {
+    Coastal: 0.82,
+    Container: 1.18,
+    Bulk: 1.00,
+    Tanker: 1.28,
+    Reefer: 1.12,
+    LNG: 1.34,
+};
+
+function maintenanceMultiplierForStatus(status) {
+    return MAINTENANCE_MULTIPLIER_BY_STATUS[status] ?? 1.0;
+}
+
+function computeFuelCostForTransit({ route, vesselClass, depotTier }) {
+    const baseFuelCost = 50000;
+    const proximity = Math.max(0, Math.min(100, Number(route?.proximity) || 50));
+    const scope = String(route?.scope || '').toUpperCase();
+    const classFactor = VESSEL_FUEL_CLASS_FACTOR[vesselClass] || 1.0;
+
+    // Route factor keeps lane length meaningful without making long lanes impossible.
+    const proximityFactor = 0.75 + (proximity / 100) * 0.9; // 0.75x … 1.65x
+    const scopeFactor = scope === 'COASTAL' ? 0.92 : scope === 'GOVERNMENT' ? 1.05 : 1.0;
+    const routeFuelBase = Math.round(baseFuelCost * classFactor * proximityFactor * scopeFactor);
+
+    if (depotTier === 'own') return routeFuelBase;
+    if (depotTier === 'other') return Math.round(routeFuelBase * 1.15);
+    // State fallback remains punitive but is capped below the old hard 3x markup.
+    return Math.round(routeFuelBase * 1.65);
+}
+
+function estimateMonthlyClaimMargin({ route, claim, vessel, fuelCostPerTransit }) {
+    const transitTicks = Math.max(1, Number(route?.transit_ticks) || 2);
+    // Each claim alternates load + transit; monthly cycle ≈ 2*transit ticks.
+    const transitsPerMonth = Math.max(1, 12 / (transitTicks * 2));
+    const grossRevenue = Math.round((Number(claim?.revenue_per_transit) || 0) * transitsPerMonth);
+    const fuelCost = Math.round((Number(fuelCostPerTransit) || 0) * transitsPerMonth);
+    const maintenanceCost = Math.round(
+        (Number(vessel?.base_maintenance) || 0) * maintenanceMultiplierForStatus(vessel?.status)
+    );
+    const incidentReserve = Math.round(grossRevenue * INCIDENT_RESERVE_RATE);
+    const netMargin = grossRevenue - fuelCost - maintenanceCost - incidentReserve;
+    return { grossRevenue, fuelCost, maintenanceCost, incidentReserve, netMargin };
+}
+
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION EVENTS — Templates
 //
@@ -2995,8 +3055,9 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
         const borrowerCash = Number(borrower?.corp_cash_reserves) || 0;
         const payment = loan.monthly_payment;
         const monthlyRate = (loan.interest_rate / 100) / 12;
+        const originalPrincipal = Math.max(0, Number(loan.original_principal ?? loan.principal ?? 0));
         const remainingPrincipal = Math.max(0, Number(loan.remaining_principal) || 0);
-        const interestPortion = Math.round(remainingPrincipal * monthlyRate);
+        const interestPortion = Math.round(originalPrincipal * monthlyRate);
         const principalPortion = Math.max(0, payment - interestPortion);
         const newRemainingPrincipal = Math.max(0, remainingPrincipal - principalPortion);
 
@@ -3023,7 +3084,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + lenderReceives
             }).eq('id', loan.lender_faction_id);
 
-            await supabase.from('finance_active_loans').update({
+            const loanUpdate = {
                 total_paid: newTotalPaid,
                 total_interest_paid: newInterestPaid,
                 remaining_principal: newRemainingPrincipal,
@@ -3032,7 +3093,12 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 last_payment_tick: currentTick,
                 status: isRepaid ? 'repaid' : 'current',
                 completed_tick: isRepaid ? currentTick : null,
-            }).eq('id', loan.id);
+            };
+            if (loan.original_principal == null && originalPrincipal > 0) {
+                loanUpdate.original_principal = originalPrincipal;
+            }
+
+            await supabase.from('finance_active_loans').update(loanUpdate).eq('id', loan.id);
 
             results.payments++;
         } else {
@@ -3097,6 +3163,10 @@ const SHIPPING_MONTHS_PER_YEAR = 12;
 const SHIPPING_MIN_PER_TRIP = 250000;
 const SHIPPING_MIN_CEILING = 750000;
 const SHIPPING_HARD_CEILING = 5000000;
+const GOV_CONTRACT_VALUE_MIN = 1000000;
+const GOV_CONTRACT_VALUE_MAX = 18000000;
+const GOV_CONTRACT_DURATION_FLOOR = 2;
+const GOV_CONTRACT_PREMIUM_MULT = 1.35;
 function _computeServiceRateCeiling(tradeVolume, subsector) {
     const rate = SHIPPING_REVENUE_RATES[subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
     const uncapped = (Number(tradeVolume) || 0) * rate / SHIPPING_MONTHS_PER_YEAR;
@@ -3114,6 +3184,20 @@ function _clampServiceRate(v, ceiling) {
 function _shipTransitTicks(prox) { return (Number(prox) || 0) >= 71 ? 1 : 0; }
 function _shipDemand(vol) { return vol >= 500000000 ? 'CRITICAL' : vol >= 200000000 ? 'HIGH' : vol >= 100000000 ? 'MODERATE' : 'LOW'; }
 function _shipScope(prox, isGov) { return isGov ? 'GOVERNMENT' : (prox <= 15 ? 'COASTAL' : 'INTERNATIONAL'); }
+function _clampGovContractValue(v) {
+    const n = Number(v) || 0;
+    return Math.round(Math.min(GOV_CONTRACT_VALUE_MAX, Math.max(GOV_CONTRACT_VALUE_MIN, n)));
+}
+function _computeGovContractTerms(tradeVolume, subsector, transitTicks, estimatedRevenue) {
+    const safeTransitTicks = Math.max(1, Number(transitTicks) || 1);
+    const contractDuration = Math.max(GOV_CONTRACT_DURATION_FLOOR, safeTransitTicks);
+    const perTransitEstimate = _clampServiceRate(
+        Number(estimatedRevenue) || 0,
+        _computeServiceRateCeiling(tradeVolume, subsector),
+    );
+    const contractValue = _clampGovContractValue(perTransitEstimate * contractDuration * GOV_CONTRACT_PREMIUM_MULT);
+    return { contractDuration, contractValue };
+}
 
 async function generateShippingRoutes(supabase, currentTick) {
     const { data: tradePartners } = await supabase.from('trade_partners')
@@ -3145,17 +3229,30 @@ async function generateShippingRoutes(supabase, currentTick) {
         if (!oPort || !dPort) continue;
         const prox = proxMap[tp.exporter_nation_id + '|' + tp.importer_nation_id] ?? 50;
         const ag = agMap[tp.exporter_nation_id + '|' + tp.importer_nation_id] || null;
+        const tradeVolume = Math.round(tp.trade_volume);
+        const transitTicks = _shipTransitTicks(prox);
+        const estimatedRevenue = _clampServiceRate(
+            tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) / SHIPPING_MONTHS_PER_YEAR,
+            _computeServiceRateCeiling(tp.trade_volume, sm.subsector),
+        );
+        const isGovRoute = tp.sector === 'arms';
+        const govTerms = isGovRoute
+            ? _computeGovContractTerms(tradeVolume, sm.subsector, transitTicks, estimatedRevenue)
+            : null;
         routeRows.push({
             origin_nation_id: tp.exporter_nation_id, destination_nation_id: tp.importer_nation_id,
             origin_port: oPort, destination_port: dPort,
             trade_sector: tp.sector, cargo_category: sm.category, shipping_subsector: sm.subsector,
-            scope: _shipScope(prox, tp.sector === 'arms'),
+            scope: _shipScope(prox, isGovRoute),
             goods_name: sm.goods, goods_description: sm.goodsSub, vessel_class: sm.vessel, vessel_note: sm.vesselNote,
-            trade_volume: Math.round(tp.trade_volume), estimated_revenue: _clampServiceRate(tp.trade_volume * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) / SHIPPING_MONTHS_PER_YEAR, _computeServiceRateCeiling(tp.trade_volume, sm.subsector)),
+            trade_volume: tradeVolume, estimated_revenue: estimatedRevenue,
             volume_physical: Math.round(tp.trade_volume / 100), volume_unit: sm.unit,
-            transit_ticks: _shipTransitTicks(prox), proximity: prox, tariff_rate: tariffMap[tp.importer_nation_id] || 0,
+            transit_ticks: transitTicks, proximity: prox, tariff_rate: tariffMap[tp.importer_nation_id] || 0,
             demand_level: _shipDemand(tp.trade_volume),
             trade_agreement_id: ag?.id || null, trade_agreement_name: ag?.agreement_name || null,
+            gov_issuer: isGovRoute ? 'Ministry of Defense' : null,
+            gov_contract_duration: govTerms?.contractDuration ?? null,
+            gov_contract_value: govTerms?.contractValue ?? null,
             status: 'active', generated_at_tick: currentTick, last_refreshed_tick: currentTick,
         });
     }
@@ -3174,7 +3271,7 @@ async function generateShippingRoutes(supabase, currentTick) {
     return { generated: routeRows.length, expired: expired?.length || 0, total: routeRows.length };
 }
 
-const ORGANIC_REVENUE_MULT = 0.35;
+const ORGANIC_REVENUE_MULT = 0.35; // pre-bid: organic routes are generated at 35% of normal lane economics
 // Proximity cap removed (third pass). Player feedback: long-haul lanes
 // are fine, the problem was LOW-volume clutter, not geography. Kept as
 // a null check only so pairs with no diplomatic_relations row still
@@ -3185,6 +3282,9 @@ const ORGANIC_MIN_VOLUME = 5_000_000_000;
 // $50M → $5B to target roughly a 90% cut from the ~370-route baseline,
 // leaving only the top-tier cross-border flows. Filters the long tail
 // of small-economy / low-gdp pairs regardless of how close they sit.
+const ORGANIC_MAX_INSERTS_PER_TICK = 140;
+// Second safeguard: global insert cap per tick. Candidates are sorted by
+// realized trade_volume descending before insert so highest-impact lanes win.
 const ORGANIC_LIFETIME = 8;
 const ORGANIC_SECTORS = ['fuel_energy','minerals','grains_staples','livestock_dairy','cash_crops','manufactured_goods','technology','fruits_vegetables'];
 
@@ -3255,6 +3355,8 @@ async function generateOrganicRoutes(supabase, currentTick) {
                 // the Available Routes list. Agreement-backed routes are
                 // unaffected — this path only generates organic spot lanes.
                 if (vol < ORGANIC_MIN_VOLUME) continue;
+                // pre-bid: card/tick baseline for organic routes is discounted before clamp/ceiling.
+                // post-bid organic multiplier is 1.0 (client approval path), so this base carries through.
                 const rev = _clampServiceRate(vol * (SHIPPING_REVENUE_RATES[sm.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo) * ORGANIC_REVENUE_MULT / SHIPPING_MONTHS_PER_YEAR, _computeServiceRateCeiling(vol * ORGANIC_REVENUE_MULT, sm.subsector));
 
                 rows.push({
@@ -3273,9 +3375,14 @@ async function generateOrganicRoutes(supabase, currentTick) {
         }
     }
 
-    if (rows.length > 0) {
-        for (let i = 0; i < rows.length; i += 50) {
-            const { error } = await supabase.from('shipping_routes').upsert(rows.slice(i, i + 50), { onConflict: 'origin_nation_id,destination_nation_id,trade_sector,status' });
+    const prioritizedRows = rows
+        .sort((a, b) => Number(b.trade_volume || 0) - Number(a.trade_volume || 0))
+        .slice(0, ORGANIC_MAX_INSERTS_PER_TICK);
+    const cappedOut = Math.max(0, rows.length - prioritizedRows.length);
+
+    if (prioritizedRows.length > 0) {
+        for (let i = 0; i < prioritizedRows.length; i += 50) {
+            const { error } = await supabase.from('shipping_routes').upsert(prioritizedRows.slice(i, i + 50), { onConflict: 'origin_nation_id,destination_nation_id,trade_sector,status' });
             if (error) console.error('[Shipping] Organic route upsert error:', error.message);
         }
     }
@@ -3283,7 +3390,27 @@ async function generateOrganicRoutes(supabase, currentTick) {
     const { data: expOrganic } = await supabase.from('shipping_routes').update({ status: 'expired' })
         .eq('status', 'active').is('trade_agreement_id', null).lt('last_refreshed_tick', currentTick - ORGANIC_LIFETIME).select('id');
 
-    return { generated: rows.length, expired: expOrganic?.length || 0 };
+    return { generated: prioritizedRows.length, expired: expOrganic?.length || 0, capped_out: cappedOut };
+}
+
+async function captureShippingRouteTelemetry(supabase, currentTick) {
+    const { data: routes, error } = await supabase
+        .from('shipping_routes')
+        .select('scope, trade_agreement_id')
+        .eq('status', 'active')
+        .eq('generated_at_tick', currentTick);
+    if (error) {
+        console.warn('[advance-corp-tick] Shipping telemetry query failed:', error.message);
+        return null;
+    }
+
+    const telemetry = { agreement: 0, organic: 0, government: 0 };
+    for (const route of (routes || [])) {
+        if (route.scope === 'GOVERNMENT') telemetry.government++;
+        else if (route.trade_agreement_id) telemetry.agreement++;
+        else telemetry.organic++;
+    }
+    return telemetry;
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -3659,7 +3786,12 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     const organicResult = await generateOrganicRoutes(supabase, currentTick);
                     if (organicResult.generated > 0 || organicResult.expired > 0) {
                         summary.organicShipping = organicResult;
-                        console.log(`[advance-corp-tick] Organic routes: ${organicResult.generated} generated, ${organicResult.expired} expired`);
+                        console.log(`[advance-corp-tick] Organic routes: ${organicResult.generated} generated, ${organicResult.expired} expired, ${organicResult.capped_out || 0} capped`);
+                    }
+                    const shippingTelemetry = await captureShippingRouteTelemetry(supabase, currentTick);
+                    if (shippingTelemetry) {
+                        summary.shippingTelemetry = shippingTelemetry;
+                        console.log(`[advance-corp-tick] Shipping telemetry @ tick ${currentTick}: agreement=${shippingTelemetry.agreement}, organic=${shippingTelemetry.organic}, government=${shippingTelemetry.government}`);
                     }
                     summary._shippingRoutesGenerated = true;
                 }
@@ -3717,13 +3849,14 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 const claimIds = (activeClaims || []).map(c => c.id);
                 const { data: corpVesselsForTransit } = claimIds.length > 0
                     ? await supabase.from('corp_vessels')
-                        .select('id, vessel_name, fuel, condition, status, active_claim_id, faction_id')
+                        .select('id, vessel_name, vessel_class, fuel, condition, status, base_maintenance, active_claim_id, faction_id')
                         .in('active_claim_id', claimIds)
                     : { data: [] };
 
                 if (activeClaims && activeClaims.length > 0) {
                     let revenueCollected = 0;
                     let transitsCompleted = 0;
+                    const routeMarginRows = [];
 
                     for (const claim of activeClaims) {
                         // Resolve the owning corp for this specific claim.
@@ -3827,14 +3960,25 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 }
                             }
 
-                            const baseFuelCost = 50000;
-                            let fuelCost;
-                            if (fuelDepot && fuelDepot.faction_id === claim.faction_id) {
-                                fuelCost = baseFuelCost; // Own depot
-                            } else if (fuelDepot) {
-                                fuelCost = Math.round(baseFuelCost * 1.15); // Other corp's depot (+15%)
-                                // Pay revenue to depot owner
-                                const depotRevenue = fuelCost - baseFuelCost;
+                            const depotTier = fuelDepot && fuelDepot.faction_id === claim.faction_id
+                                ? 'own'
+                                : fuelDepot
+                                ? 'other'
+                                : 'state';
+                            const assignedVesselForArrival = (corpVesselsForTransit || []).find(v => v.active_claim_id === claim.id);
+                            const fuelCost = computeFuelCostForTransit({
+                                route: claim.shipping_routes,
+                                vesselClass: assignedVesselForArrival?.vessel_class,
+                                depotTier,
+                            });
+                            if (depotTier === 'other') {
+                                // Pay premium margin to depot owner
+                                const ownEquivalentFuel = computeFuelCostForTransit({
+                                    route: claim.shipping_routes,
+                                    vesselClass: assignedVesselForArrival?.vessel_class,
+                                    depotTier: 'own',
+                                });
+                                const depotRevenue = Math.max(0, fuelCost - ownEquivalentFuel);
                                 const { data: depotOwner } = await supabase.from('factions')
                                     .select('corp_cash_reserves').eq('id', fuelDepot.faction_id).single();
                                 if (depotOwner) {
@@ -3842,8 +3986,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                         corp_cash_reserves: Number(depotOwner.corp_cash_reserves || 0) + depotRevenue,
                                     }).eq('id', fuelDepot.faction_id);
                                 }
-                            } else {
-                                fuelCost = baseFuelCost * 3; // State fuel (3x markup)
                             }
 
                             // Deduct fuel cost from shipping corp
@@ -3866,6 +4008,44 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             transitsCompleted++;
                         }
                         // 'in_transit' but not yet arrived — no action needed
+
+                        // Persist per-tick route margin diagnostics (active claims).
+                        const diagVessel = (corpVesselsForTransit || []).find(v => v.active_claim_id === claim.id);
+                        const diagDepotTier = 'state'; // structural baseline (no private depot guarantee)
+                        const diagFuelPerTransit = computeFuelCostForTransit({
+                            route: claim.shipping_routes,
+                            vesselClass: diagVessel?.vessel_class,
+                            depotTier: diagDepotTier,
+                        });
+                        const diagMargin = estimateMonthlyClaimMargin({
+                            route: claim.shipping_routes,
+                            claim,
+                            vessel: diagVessel,
+                            fuelCostPerTransit: diagFuelPerTransit,
+                        });
+                        routeMarginRows.push({
+                            tick: currentTick,
+                            route_id: claim.route_id,
+                            corp_id: claim.faction_id,
+                            claim_id: claim.id,
+                            vessel_id: diagVessel?.id || null,
+                            vessel_class: diagVessel?.vessel_class || null,
+                            vessel_status: claim.vessel_status || diagVessel?.status || null,
+                            gross_revenue: diagMargin.grossRevenue,
+                            fuel_cost: diagMargin.fuelCost,
+                            maintenance_cost: diagMargin.maintenanceCost,
+                            incident_reserve: diagMargin.incidentReserve,
+                            net_margin: diagMargin.netMargin,
+                        });
+                    }
+
+                    if (routeMarginRows.length > 0) {
+                        const { error: marginErr } = await supabase
+                            .from('shipping_route_margin_ticks')
+                            .upsert(routeMarginRows, { onConflict: 'tick,route_id,corp_id' });
+                        if (marginErr) {
+                            console.warn('[advance-corp-tick] Route margin diagnostics upsert failed:', marginErr.message);
+                        }
                     }
 
                     if (revenueCollected > 0 || transitsCompleted > 0) {
@@ -3891,6 +4071,21 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // own scope.
             for (const corp of corps) {
             try {
+                const { data: corpCashRow, error: corpCashErr } = await supabase.from('factions')
+                    .select('corp_cash_reserves')
+                    .eq('id', corp.id)
+                    .single();
+                if (corpCashErr) {
+                    console.warn(`[advance-corp-tick] Failed to fetch fresh corp cash for ${corp.faction_name}:`, corpCashErr.message);
+                }
+                let corpCashRunning = Number(corpCashRow?.corp_cash_reserves ?? corp.corp_cash_reserves ?? 0);
+                console.log('[advance-corp-tick] corp_cash_tick_start', {
+                    faction_id: corp.id,
+                    faction_name: corp.faction_name,
+                    tick: currentTick,
+                    before_balance: corpCashRunning,
+                });
+
                 const { data: vessels } = await supabase.from('corp_vessels')
                     .select('id, vessel_name, vessel_class, condition, fuel, status, base_maintenance, drydock_until_tick, active_claim_id, current_port_nation_id')
                     .eq('faction_id', corp.id);
@@ -3914,6 +4109,52 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         } catch (routeFetchErr) {
                             console.warn('[advance-corp-tick] Transit-route fetch for incidents failed:', routeFetchErr?.message || routeFetchErr);
                         }
+                    }
+
+                    // Profitability checkpoint: expected monthly revenue per active ship
+                    // vs expected monthly direct ops (fuel + state-adjusted maintenance
+                    // + incident reserve). Logs warnings for structurally negative lanes.
+                    try {
+                        const activeClaimIdsForCorp = vessels.filter(v => v.active_claim_id).map(v => v.active_claim_id);
+                        if (activeClaimIdsForCorp.length > 0) {
+                            const { data: activeClaimsForCorp } = await supabase.from('shipping_claims')
+                                .select('id, route_id, revenue_per_transit, vessel_status, shipping_routes!inner(id, transit_ticks, scope, proximity)')
+                                .in('id', activeClaimIdsForCorp)
+                                .eq('faction_id', corp.id)
+                                .eq('status', 'active');
+                            for (const claim of (activeClaimsForCorp || [])) {
+                                const vessel = vessels.find(v => v.active_claim_id === claim.id);
+                                const fuelPerTransit = computeFuelCostForTransit({
+                                    route: claim.shipping_routes,
+                                    vesselClass: vessel?.vessel_class,
+                                    depotTier: 'state',
+                                });
+                                const m = estimateMonthlyClaimMargin({
+                                    route: claim.shipping_routes,
+                                    claim,
+                                    vessel,
+                                    fuelCostPerTransit: fuelPerTransit,
+                                });
+                                const checkpoint = {
+                                    faction_id: corp.id,
+                                    faction_name: corp.faction_name,
+                                    claim_id: claim.id,
+                                    route_id: claim.route_id,
+                                    vessel_id: vessel?.id || null,
+                                    vessel_name: vessel?.vessel_name || null,
+                                    expected_monthly_revenue: m.grossRevenue,
+                                    expected_monthly_direct_cost: m.fuelCost + m.maintenanceCost + m.incidentReserve,
+                                    expected_monthly_net: m.netMargin,
+                                };
+                                if (m.netMargin < 0) {
+                                    console.warn('[advance-corp-tick] shipping_profitability_checkpoint_negative', checkpoint);
+                                } else {
+                                    console.log('[advance-corp-tick] shipping_profitability_checkpoint', checkpoint);
+                                }
+                            }
+                        }
+                    } catch (profitErr) {
+                        console.warn('[advance-corp-tick] Shipping profitability checkpoint failed:', profitErr?.message || profitErr);
                     }
 
                     for (const v of vessels) {
@@ -3971,10 +4212,27 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 }
 
                                 // Deduct repair cost
-                                const corpCashForRepair = Number(corp.corp_cash_reserves ?? 0);
-                                await supabase.from('factions').update({
-                                    corp_cash_reserves: Math.max(0, corpCashForRepair - repairCost),
+                                const beforeRepairCash = corpCashRunning;
+                                const afterRepairCash = Math.max(0, beforeRepairCash - repairCost);
+                                const { error: repairCashErr } = await supabase.from('factions').update({
+                                    corp_cash_reserves: afterRepairCash,
                                 }).eq('id', corp.id);
+                                if (repairCashErr) {
+                                    console.warn(`[advance-corp-tick] Forced dry dock repair deduction failed for ${corp.faction_name}:`, repairCashErr.message);
+                                } else {
+                                    corpCashRunning = afterRepairCash;
+                                    console.log('[advance-corp-tick] corp_cash_update', {
+                                        faction_id: corp.id,
+                                        faction_name: corp.faction_name,
+                                        tick: currentTick,
+                                        reason: 'forced_dry_dock_repair',
+                                        vessel_id: v.id,
+                                        vessel_name: v.vessel_name,
+                                        amount_delta: -repairCost,
+                                        before_balance: beforeRepairCash,
+                                        after_balance: corpCashRunning,
+                                    });
+                                }
 
                                 updates.status = 'dry_dock';
                                 updates.drydock_until_tick = currentTick + repairTicks;
@@ -3996,6 +4254,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             const scope     = route?.scope || 'INTERNATIONAL';
                             const cargo     = route?.trade_sector || '';
                             const prox      = Number(route?.proximity) || 0;
+                            const incidentNationId = resolveIncidentNationId(v, corp.nation_id, claimRouteMap);
                             const firedIncidents = [];
                             const R = () => Math.random();
 
@@ -4086,7 +4345,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                     const { error: incErr } = await supabase.from('vessel_incidents').insert({
                                         faction_id:    corp.id,
                                         vessel_id:     v.id,
-                                        nation_id:     route?.destination_nation_id || v.current_port_nation_id || null,
+                                        nation_id:     incidentNationId,
                                         incident_type: inc.type,
                                         incident_tick: currentTick,
                                         description:   inc.description,
@@ -4099,7 +4358,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 }
                                 try {
                                     await supabase.from('event_log').insert({
-                                        nation_id:          route?.destination_nation_id || v.current_port_nation_id || corp.nation_id,
+                                        nation_id:          incidentNationId,
                                         faction_id:         corp.id,
                                         event_name:         `${corp.faction_name || 'A corporation'}: ${inc.type.replace(/_/g, ' ')} on ${v.vessel_name}`,
                                         category:           'corporate',
@@ -4151,9 +4410,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 // The corp decides from their Shipping Operations view whether to
                                 // FILE CLAIM (spawns an insurance_claims row) or DISMISS the
                                 // incident. No auto-file.
-                                const strandNationId = claim?.shipping_routes?.destination_nation_id
-                                    || v.current_port_nation_id
-                                    || null;
+                                const strandNationId = resolveIncidentNationId(v, corp.nation_id, claimRouteMap);
                                 const strandDescription = `Vessel ${v.vessel_name} stranded at sea — fuel depleted mid-transit.`;
                                 try {
                                     const { error: incErr } = await supabase.from('vessel_incidents').insert({
@@ -4171,7 +4428,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 }
                                 try {
                                     await supabase.from('event_log').insert({
-                                        nation_id:          strandNationId || corp.nation_id,
+                                        nation_id:          strandNationId,
                                         faction_id:         corp.id,
                                         event_name:         `${corp.faction_name || 'A corporation'} vessel stranded at sea`,
                                         category:           'corporate',
@@ -4184,8 +4441,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             }
                         }
 
-                        // Maintenance cost (all vessels, even dry dock)
-                        totalMaintenance += v.base_maintenance;
+                        // Maintenance cost by vessel activity state (idle in-port is cheaper;
+                        // in-transit is higher wear).
+                        const maintenanceMultiplier = maintenanceMultiplierForStatus(updates.status || v.status);
+                        totalMaintenance += Math.round((Number(v.base_maintenance) || 0) * maintenanceMultiplier);
 
                         // Apply updates
                         if (Object.keys(updates).length > 0) {
@@ -4196,13 +4455,32 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
                     // Deduct total fleet maintenance from corp cash
                     if (totalMaintenance > 0) {
-                        const corpCash = Number(corp.corp_cash_reserves ?? 0);
+                        const beforeMaintenanceCash = corpCashRunning;
+                        const afterMaintenanceCash = Math.max(0, beforeMaintenanceCash - totalMaintenance);
                         const { error: maintErr } = await supabase.from('factions').update({
-                            corp_cash_reserves: Math.max(0, corpCash - totalMaintenance),
+                            corp_cash_reserves: afterMaintenanceCash,
                         }).eq('id', corp.id);
                         if (maintErr) console.warn(`[advance-corp-tick] Fleet maintenance deduction failed for ${corp.faction_name}:`, maintErr.message);
+                        if (!maintErr) {
+                            corpCashRunning = afterMaintenanceCash;
+                            console.log('[advance-corp-tick] corp_cash_update', {
+                                faction_id: corp.id,
+                                faction_name: corp.faction_name,
+                                tick: currentTick,
+                                reason: 'fleet_maintenance',
+                                amount_delta: -totalMaintenance,
+                                before_balance: beforeMaintenanceCash,
+                                after_balance: corpCashRunning,
+                            });
+                        }
                     }
                 }
+                console.log('[advance-corp-tick] corp_cash_tick_end', {
+                    faction_id: corp.id,
+                    faction_name: corp.faction_name,
+                    tick: currentTick,
+                    after_balance: corpCashRunning,
+                });
             } catch (vesselErr) {
                 console.error(`[advance-corp-tick] Vessel decay failed for ${corp.faction_name} (non-fatal):`, vesselErr);
             }

@@ -6395,7 +6395,7 @@ let arRoutes = [];
 let _myShippingApps = []; // current corp's pending/approved applications
 let _arLoadState = 'ready';
 let _arLoadError = null;
-let arFilter = 'ALL';
+let arFilter = 'ORGANIC';
 let arSelected = -1;
 
 const AR_SCOPE_META = {
@@ -6405,19 +6405,39 @@ const AR_SCOPE_META = {
 };
 
 function arSetFilter(scope) {
-    arFilter = scope;
+    const normalized = scope === 'COASTAL'
+        ? 'ORGANIC'
+        : scope === 'INTERNATIONAL'
+            ? 'AGREEMENT'
+            : scope;
+    arFilter = normalized;
     arSelected = -1;
     // Update pill active states
     document.querySelectorAll('.ar-pill').forEach(p => {
-        const f = p.getAttribute('data-ar-filter');
-        p.className = 'ar-pill' + (f === scope ? (' active-' + (scope === 'ALL' ? 'all' : scope === 'COASTAL' ? 'coastal' : scope === 'INTERNATIONAL' ? 'intl' : 'gov')) : '');
+        const raw = p.getAttribute('data-ar-filter');
+        const f = raw === 'COASTAL' ? 'ORGANIC' : raw === 'INTERNATIONAL' ? 'AGREEMENT' : raw;
+        p.className = 'ar-pill' + (f === normalized ? (' active-' + (normalized === 'ORGANIC' ? 'coastal' : normalized === 'AGREEMENT' ? 'intl' : normalized === 'GOVERNMENT' ? 'gov' : 'all')) : '');
     });
     renderAvailableRoutes();
 }
 
 function arGetFiltered() {
-    if (arFilter === 'ALL') return arRoutes;
-    return arRoutes.filter(r => r.scope === arFilter);
+    if (arFilter === 'GOVERNMENT') return arRoutes.filter(r => r.scope === 'GOVERNMENT');
+    if (arFilter === 'AGREEMENT') return arRoutes.filter(r => r.scope !== 'GOVERNMENT' && !!r.trade_agreement_id);
+    if (arFilter === 'ORGANIC') return arRoutes.filter(r => r.scope !== 'GOVERNMENT' && !r.trade_agreement_id);
+    return arRoutes;
+}
+
+function arGetDefaultFilter() {
+    const focus = String(
+        faction?.shipping_route_focus
+        || faction?.shipping_focus
+        || faction?.corp_strategy
+        || ''
+    ).toLowerCase();
+    if (focus.includes('agreement')) return 'AGREEMENT';
+    if (focus.includes('government') || focus.includes('gov')) return 'GOVERNMENT';
+    return 'ORGANIC';
 }
 
 async function loadAvailableRoutes() {
@@ -6433,6 +6453,9 @@ async function loadAvailableRoutes() {
         console.warn('Failed to load available routes:', _arLoadError.message);
     }
 
+    // Default to organic-origin lanes unless corp metadata explicitly
+    // indicates another preferred route origin.
+    arSetFilter(arGetDefaultFilter());
     arSelected = -1;
     renderAvailableRoutes();
 }
@@ -6476,14 +6499,21 @@ function renderAvailableRoutes() {
     // Header count
     document.getElementById('ar-count').textContent = arRoutes.length + ' ROUTES';
 
-    // Footer scope counts (single pass)
-    var counts = { COASTAL: 0, INTERNATIONAL: 0, GOVERNMENT: 0 };
-    arRoutes.forEach(function(r) { if (counts[r.scope] !== undefined) counts[r.scope]++; });
-    var coastal = counts.COASTAL, intl = counts.INTERNATIONAL, gov = counts.GOVERNMENT;
+    // Footer origin counts (single pass)
+    var counts = { ORGANIC: 0, AGREEMENT: 0, GOVERNMENT: 0 };
+    arRoutes.forEach(function(r) {
+        if (r.scope === 'GOVERNMENT') {
+            counts.GOVERNMENT++;
+        } else if (r.trade_agreement_id) {
+            counts.AGREEMENT++;
+        } else {
+            counts.ORGANIC++;
+        }
+    });
     document.getElementById('ar-footer-counts').innerHTML =
-        '<div class="ar-footer__count"><div class="ar-footer__count-dot" style="background:#8b9a6b"></div><span class="ar-footer__count-label">COASTAL</span><span class="ar-footer__count-num">' + coastal + '</span></div>'
-        + '<div class="ar-footer__count"><div class="ar-footer__count-dot" style="background:#5a8aaa"></div><span class="ar-footer__count-label">INTL</span><span class="ar-footer__count-num">' + intl + '</span></div>'
-        + '<div class="ar-footer__count"><div class="ar-footer__count-dot" style="background:#c8a832"></div><span class="ar-footer__count-label">GOV</span><span class="ar-footer__count-num">' + gov + '</span></div>';
+        '<div class="ar-footer__count"><div class="ar-footer__count-dot" style="background:#8b9a6b"></div><span class="ar-footer__count-label">ORGANIC</span><span class="ar-footer__count-num">' + counts.ORGANIC + '</span></div>'
+        + '<div class="ar-footer__count"><div class="ar-footer__count-dot" style="background:#5a8aaa"></div><span class="ar-footer__count-label">AGREEMENT</span><span class="ar-footer__count-num">' + counts.AGREEMENT + '</span></div>'
+        + '<div class="ar-footer__count"><div class="ar-footer__count-dot" style="background:#c8a832"></div><span class="ar-footer__count-label">GOV</span><span class="ar-footer__count-num">' + counts.GOVERNMENT + '</span></div>';
 
     // Claim button state
     const claimBtn = document.getElementById('ar-claim-btn');
@@ -6498,11 +6528,12 @@ function renderAvailableRoutes() {
         return;
     }
 
+    var filterLabel = arFilter === 'ORGANIC' ? 'organic' : arFilter === 'AGREEMENT' ? 'agreement-backed' : arFilter === 'GOVERNMENT' ? 'government' : arFilter.toLowerCase();
     if (filtered.length === 0) {
         listEl.innerHTML = '<div class="ar-empty"><div class="ar-empty__text">'
             + (arRoutes.length === 0
                 ? 'No routes available.<br>Routes are generated from bilateral<br>trade each tick. Check back after<br>the next corp tick fires.'
-                : 'No ' + arFilter.toLowerCase() + ' routes available.')
+                : 'No ' + filterLabel + ' routes available.')
             + '</div></div>';
         return;
     }
@@ -6596,7 +6627,7 @@ function renderAvailableRoutes() {
                 + '</div>';
             html += '<div style="flex:1;padding:3px 8px;text-align:right">'
                 + '<div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.5px">CONTRACT VALUE</div>'
-                + '<div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-top:1px">' + fmtBig(Number(route.gov_contract_value || route.estimated_revenue || 0)) + '</div>'
+                + '<div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-top:1px">' + fmtBig(Number(route.display_contract_value || route.gov_contract_value || route.estimated_revenue || 0)) + '</div>'
                 + '</div>';
         }
         html += '</div>';

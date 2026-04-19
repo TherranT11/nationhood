@@ -796,7 +796,7 @@ async function _doApproveShippingApp(appId, routeId, corpFactionId) {
             const route  = (_allShippingRoutes || []).find(r => r.id === routeId);
             const ceiling = route ? computeServiceRateCeiling(route.trade_volume, route.shipping_subsector) : undefined;
             const clamped = clampServiceRate(proposedRate, ceiling);
-            const tierMult = revenueTierMultiplier(route);
+            const tierMult = revenueTierMultiplier(route); // post-bid: agreement bonus only; organic path is neutral (1.0)
             const revPerT = Math.round(clamped * tierMult * (share / 100));
             const { error: rateErr } = await _supabase.from('shipping_claims')
                 .update({ revenue_per_transit: revPerT })

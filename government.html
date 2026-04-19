@@ -1309,7 +1309,7 @@ async function loadTimelineData() {
                 .order('fired_at_tick', { ascending: false })
                 .limit(80),
             _supabase.from('campaign_actions')
-                .select('id, action_type, tick_performed, result, action_data')
+                .select('id, action_type, tick_performed, result')
                 .eq('nation_id', nationId)
                 .gte('tick_performed', startTick)
                 .order('tick_performed', { ascending: false })
@@ -1350,11 +1350,11 @@ async function loadTimelineData() {
             if (aType === 'assign_minister') {
                 type = 'appointment';
                 title = 'Minister Appointed';
-                desc = ca.action_data?.minister_name ? `${ca.action_data.minister_name} appointed to ${ca.action_data.ministry_key || 'ministry'}.` : '';
+                desc = ca.result?.minister_name ? `${ca.result.minister_name} appointed to ${ca.result.ministry_key || 'ministry'}.` : '';
             } else if (aType === 'fire_minister' || aType === 'purge_minister') {
                 type = 'reshuffle';
                 title = aType === 'purge_minister' ? 'Minister Purged' : 'Minister Dismissed';
-                desc = ca.action_data?.minister_name ? `${ca.action_data.minister_name} removed from ${ca.action_data.ministry_key || 'ministry'}.` : '';
+                desc = ca.result?.minister_name ? `${ca.result.minister_name} removed from ${ca.result.ministry_key || 'ministry'}.` : '';
             } else if (aType === 'set_platform' || aType === 'adopt_platform') {
                 type = 'policy';
                 title = 'Platform Set';
@@ -1362,7 +1362,7 @@ async function loadTimelineData() {
             } else if (aType === 'issue_statement') {
                 type = 'policy';
                 title = 'Statement Issued';
-                desc = ca.result?.statement || ca.action_data?.statement || '';
+                desc = ca.result?.statement || '';
             } else if (aType === 'strongman_death') {
                 type = 'crisis';
                 title = 'Leader Succession';
@@ -6112,6 +6112,9 @@ async function formGovernment() {
     if (!confirm('Form this government? This will finalize all ministry assignments.')) return;
     _formingInProgress = true;
     try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const authoritativeTick = shard?.current_tick || currentTick || 0;
+
         // First call the existing form_government RPC to validate and set status
         const { data: formResult, error: formError } = await _supabase.rpc('form_government', {
             p_formation_id: activeFormationId, p_caller_faction_id: currentFaction.id
@@ -6150,10 +6153,24 @@ async function formGovernment() {
             // Fall back to sequential client-side operations on ANY RPC error
             // (covers both "RPC not deployed" and runtime SQL errors like uuid[] cast failures)
             console.warn('finalize_government_formation RPC failed; falling back to sequential operations:', finalizeError.message);
-            await formGovernmentFallback(ministryBaselines);
+            await formGovernmentFallback(ministryBaselines, authoritativeTick);
         } else if (finalizeResult && !finalizeResult.success) {
             alert(finalizeResult.message);
             return;
+        }
+
+        const { data: formedFormation } = await _supabase.from('government_formations')
+            .select('party_ids, ministry_assignments')
+            .eq('id', activeFormationId)
+            .maybeSingle();
+        const relevantFactionIds = Array.from(new Set([
+            ...(formedFormation?.party_ids || []),
+            ...Object.values(formedFormation?.ministry_assignments || {}).filter(Boolean),
+            currentFaction?.id
+        ].filter(Boolean)));
+        if (relevantFactionIds.length) {
+            // Prevents false inactivity disband for active governing parties.
+            await _supabase.from('factions').update({ last_seen_tick: authoritativeTick }).in('id', relevantFactionIds);
         }
 
         alert(finalizeResult?.message || formResult.message);
@@ -6165,7 +6182,7 @@ async function formGovernment() {
 }
 
 // Fallback for when finalize_government_formation RPC is not deployed
-async function formGovernmentFallback(ministryBaselines) {
+async function formGovernmentFallback(ministryBaselines, authoritativeTick) {
     await dissolveCoalition(_supabase, currentNation.id, activeFormationId);
 
     await _supabase.from('nations')
@@ -6204,13 +6221,14 @@ async function formGovernmentFallback(ministryBaselines) {
 
     const { data: formation } = await _supabase
         .from('government_formations')
-        .select('ministry_assignments, minister_names')
+        .select('party_ids, ministry_assignments, minister_names')
         .eq('id', activeFormationId)
         .single();
 
     const assignments = formation?.ministry_assignments || {};
     const ministerNames = formation?.minister_names || {};
     const pmPartyId = assignments.prime_minister;
+    const fallbackTick = authoritativeTick || 0;
 
     for (const [ministryKey, partyId] of Object.entries(assignments)) {
         if (!partyId || ministryKey === 'prime_minister') continue;
@@ -6293,13 +6311,23 @@ async function formGovernmentFallback(ministryBaselines) {
                 : null;
 
             try {
-                await rolloverAdministration(_supabase, currentNation.id, fullNation, endReason, newFormation, allFactions || [], shard?.current_tick || 0, shard?.current_date || '', govApproval);
+                await rolloverAdministration(_supabase, currentNation.id, fullNation, endReason, newFormation, allFactions || [], fallbackTick || shard?.current_tick || 0, shard?.current_date || '', govApproval);
             } catch (adminErr) { console.error('Administration lifecycle error (non-fatal):', adminErr); }
         }
 
         try {
-            await autoAppointPartyLeaderAsPM(_supabase, currentNation.id, pmPartyId, shard?.current_tick || 0);
+            await autoAppointPartyLeaderAsPM(_supabase, currentNation.id, pmPartyId, fallbackTick || shard?.current_tick || 0);
         } catch (pmErr) { console.error('Auto-appoint PM failed:', pmErr); }
+    }
+
+    const fallbackFactionIds = Array.from(new Set([
+        ...Object.values(assignments || {}).filter(Boolean),
+        ...(formation?.party_ids || []),
+        currentFaction?.id
+    ].filter(Boolean)));
+    if (fallbackFactionIds.length) {
+        // Prevents false inactivity disband for active governing parties.
+        await _supabase.from('factions').update({ last_seen_tick: fallbackTick }).in('id', fallbackFactionIds);
     }
 }
 
@@ -10219,6 +10247,9 @@ function selectCandidate(index) {
 async function confirmAssign() {
     if (!selectedCandidate || !assignMinistryKey) return;
     try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const authoritativeTick = shard?.current_tick || currentTick || 0;
+
         // Validate vacancy before executing (prevents double-click / race condition)
         const { data: freshMinistry } = await _supabase.from('ministries')
             .select('minister_first_name')
@@ -10261,7 +10292,10 @@ async function confirmAssign() {
         }
 
         // +3% approval to the receiving party
-        await _supabase.rpc('adjust_momentum', { p_faction_id: selectedCandidate.partyId, p_delta: 3, p_label: 'Minister appointed (+3)', p_tick: currentTick });
+        await _supabase.rpc('adjust_momentum', { p_faction_id: selectedCandidate.partyId, p_delta: 3, p_label: 'Minister appointed (+3)', p_tick: authoritativeTick });
+
+        // Prevents false inactivity disband for active governing parties.
+        await _supabase.from('factions').update({ last_seen_tick: authoritativeTick }).in('id', Array.from(new Set([selectedCandidate.partyId, currentFaction?.id].filter(Boolean))));
 
         await _supabase.from('ministry_requests').delete()
             .eq('nation_id', currentNation.id).eq('ministry_key', assignMinistryKey);
@@ -10271,7 +10305,7 @@ async function confirmAssign() {
             party_id: currentFaction.id,
             nation_id: currentNation.id,
             action_type: 'assign_minister',
-            tick_performed: currentTick,
+            tick_performed: authoritativeTick,
             result: {
                 minister_name: `${selectedCandidate.firstName} ${selectedCandidate.lastName}`,
                 ministry_key: assignMinistryKey,
@@ -10328,7 +10362,7 @@ async function confirmAssign() {
                         'pm_replaced',
                         coalition,
                         allParties,
-                        currentTick,
+                        authoritativeTick,
                         '',
                         null
                     );
@@ -10351,6 +10385,9 @@ async function confirmAssign() {
 async function confirmAppointment() {
     if (!selectedCandidate || !assignMinistryKey) return;
     try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const authoritativeTick = shard?.current_tick || currentTick || 0;
+
         const { data: fresh } = await _supabase.from('ministries')
             .select('id, minister_first_name')
             .eq('nation_id', currentNation.id)
@@ -10370,14 +10407,17 @@ async function confirmAppointment() {
         }).eq('id', fresh.id);
         if (error) throw error;
 
-        await _supabase.rpc('adjust_momentum', { p_faction_id: selectedCandidate.partyId, p_delta: 3, p_label: 'PM selected (+3)', p_tick: currentTick || 0 });
+        await _supabase.rpc('adjust_momentum', { p_faction_id: selectedCandidate.partyId, p_delta: 3, p_label: 'PM selected (+3)', p_tick: authoritativeTick });
+
+        // Prevents false inactivity disband for active governing parties.
+        await _supabase.from('factions').update({ last_seen_tick: authoritativeTick }).in('id', Array.from(new Set([selectedCandidate.partyId, currentFaction?.id].filter(Boolean))));
 
         // Log minister appointment for Regime Log
         await _supabase.from('campaign_actions').insert({
             party_id: currentFaction.id,
             nation_id: currentNation.id,
             action_type: 'assign_minister',
-            tick_performed: currentTick,
+            tick_performed: authoritativeTick,
             result: {
                 minister_name: `${selectedCandidate.firstName} ${selectedCandidate.lastName}`,
                 ministry_key: assignMinistryKey,
