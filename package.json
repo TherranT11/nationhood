@@ -24,6 +24,7 @@
     "test:resolve-ordinary": "node scripts/test-resolve-ordinary.mjs",
     "test:resolve-foundational": "node scripts/test-resolve-foundational.mjs",
     "test:bills-dispatch": "node scripts/test-bills-dispatch.mjs",
+    "test:foundational-reforms": "node scripts/test-foundational-reforms.mjs",
     "migrate:shipping": "node scripts/apply-shipping-migrations.js"
   },
   "devDependencies": {
