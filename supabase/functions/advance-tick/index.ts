@@ -15624,15 +15624,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         age: nominee.age
     };
 
-    const ministryDisplayName = {
-        prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
-        foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
-        finance: 'Ministry of Finance', education: 'Ministry of Education',
-        healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-        justice: 'Ministry of Justice', trade: 'Ministry of Trade',
-        energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
-        security: 'Ministry of Security'
-    }[ministryKey] || ministryKey;
+    const ministryDisplayName = MINISTRY_OFFICE_NAMES[ministryKey] || ministryKey;
 
     if (existingMinistry) {
         const { error: updErr } = await supabase.from('ministries').update({
@@ -15653,15 +15645,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
     }
 
     // Create confirmation bill (goes straight to floor vote)
-    const ministerTitle = {
-        prime_minister: 'Prime Minister', interior: 'Minister of the Interior',
-        foreign: 'Minister of Foreign Affairs', defense: 'Minister of Defense',
-        finance: 'Minister of Finance', education: 'Minister of Education',
-        healthcare: 'Minister of Healthcare', labor: 'Minister of Labor',
-        justice: 'Minister of Justice', trade: 'Minister of Trade',
-        energy: 'Minister of Energy', transportation: 'Minister of Transportation',
-        security: 'Minister of Security'
-    }[ministryKey] || ministryDisplayName;
+    const ministerTitle = MINISTER_TITLES[ministryKey] || ministryDisplayName;
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
     const majoritySeats = Math.ceil(nationTotalSeats * 0.5) + 1;

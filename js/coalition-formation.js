@@ -5,6 +5,7 @@
 import { buildMinistryBaselines } from './game/stats.js';
 import { autoAppointPartyLeaderAsPM, getNationNames } from './game/political-actions.js';
 import { rolloverAdministration } from './game/elections.js';
+import { MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS } from './game/government-types.js';
 
 let _supabase = null;
 let _state = null;
@@ -156,19 +157,14 @@ export async function initCoalitionFormation(supabase, state) {
                     // slots start empty. The President nominates each minister;
                     // Semi-Presidential also leaves the PM seat vacant until the
                     // President nominates a PM. Nothing is auto-populated.
-                    const CABINET_MINISTRIES = [
-                        ['interior', 'Minister of the Interior'], ['foreign', 'Minister of Foreign Affairs'],
-                        ['defense', 'Minister of Defense'], ['finance', 'Minister of Finance'],
-                        ['education', 'Minister of Education'], ['healthcare', 'Minister of Health'],
-                        ['labor', 'Minister of Labor'], ['justice', 'Minister of Justice'],
-                        ['trade', 'Minister of Trade'], ['energy', 'Minister of Energy'],
-                        ['transportation', 'Minister of Transportation'],
-                    ];
-                    if (isSemiPres) {
-                        CABINET_MINISTRIES.unshift(['prime_minister', 'Prime Minister']);
-                    }
-                    const rows = CABINET_MINISTRIES.map(([key, name]) => ({
-                        nation_id: nation.id, ministry_key: key, ministry_name: name,
+                    // Pure presidential omits the prime_minister seat entirely.
+                    const cabinetKeys = isSemiPres
+                        ? CABINET_MINISTRY_KEYS
+                        : CABINET_MINISTRY_KEYS.filter(k => k !== 'prime_minister');
+                    const rows = cabinetKeys.map(key => ({
+                        nation_id: nation.id,
+                        ministry_key: key,
+                        ministry_name: MINISTRY_OFFICE_NAMES[key] || key,
                         party_id: null,
                         is_active: true,
                     }));
@@ -490,17 +486,9 @@ const MINISTRY_NAMES = {
     labor: 'Labor', justice: 'Justice', trade: 'Trade',
     energy: 'Energy', transportation: 'Transportation', security: 'Security',
 };
-const MINISTRY_FULL_NAMES = {
-    prime_minister: 'Prime Minister',
-    interior: 'Ministry of the Interior', foreign: 'Foreign Ministry',
-    defense: 'Ministry of Defense', finance: 'Ministry of Finance',
-    education: 'Ministry of Education', healthcare: 'Ministry of Healthcare',
-    labor: 'Ministry of Labor', justice: 'Ministry of Justice',
-    trade: 'Ministry of Trade', energy: 'Ministry of Energy',
-    transportation: 'Ministry of Transportation', security: 'Ministry of Security',
-};
-const MINISTRY_KEYS = ['prime_minister', 'interior', 'foreign', 'defense', 'finance',
-    'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
+// MINISTRY_NAMES (short labels) is the only locally-defined ministry map
+// — the office-name and key-list maps are the shared exports from
+// government-types.js (MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS).
 
 function getExpectedCabinetMinistryKeys(nation) {
     const governmentType = (nation?.government_type || '').toLowerCase();
@@ -536,7 +524,7 @@ function renderMinistryAssignment(formation) {
         <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--accent);margin-bottom:10px;">CONFIGURE GOVERNMENT</div>
         <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">All coalition members can assign ministries. The party selected as Prime Minister clicks Form Government.</div>`;
 
-    for (const key of MINISTRY_KEYS) {
+    for (const key of CABINET_MINISTRY_KEYS) {
         const label = MINISTRY_NAMES[key] || key;
         const isPM = key === 'prime_minister';
         const assignedId = _ministryAssignments[key];
@@ -762,23 +750,8 @@ async function formGovernmentFallback(formation) {
 
 async function createMinistriesFromAssignments(nationId) {
     // Upsert ministry rows — update if they exist, insert if they don't.
-    // Also update the cabinet_members table for the government display.
-    const MINISTRY_DISPLAY_NAMES = {
-        prime_minister: 'Prime Minister',
-        interior: 'Minister of the Interior',
-        foreign: 'Minister of Foreign Affairs',
-        defense: 'Minister of Defense',
-        finance: 'Minister of Finance',
-        education: 'Minister of Education',
-        healthcare: 'Minister of Health',
-        labor: 'Minister of Labor',
-        justice: 'Minister of Justice',
-        trade: 'Minister of Trade',
-        energy: 'Minister of Energy',
-        transportation: 'Minister of Transportation',
-        security: 'Minister of Security',
-    };
-
+    // ministry_name uses the shared MINISTRY_OFFICE_NAMES map so this stays
+    // aligned with bills.js, executive-orders.js, presidential.js, etc.
     let updated = 0;
     for (const [key, partyId] of Object.entries(_ministryAssignments)) {
         if (!partyId) continue;
@@ -789,7 +762,6 @@ async function createMinistriesFromAssignments(nationId) {
         const lastName = lastPool[Math.floor(Math.random() * lastPool.length)];
         const age = 35 + Math.floor(Math.random() * 25);
         const baselines = buildMinistryBaselines ? buildMinistryBaselines(key, _state.nation) : {};
-        const displayName = MINISTRY_DISPLAY_NAMES[key] || key;
 
         // Try update first
         const { data: updatedRows, error: minErr } = await _supabase.from('ministries').update({
@@ -809,7 +781,7 @@ async function createMinistriesFromAssignments(nationId) {
             const { error: insErr } = await _supabase.from('ministries').insert({
                 nation_id: nationId,
                 ministry_key: key,
-                ministry_name: displayName,
+                ministry_name: MINISTRY_OFFICE_NAMES[key] || key,
                 party_id: partyId,
                 minister_first_name: firstName,
                 minister_last_name: lastName,
@@ -826,14 +798,6 @@ async function createMinistriesFromAssignments(nationId) {
         } else {
             updated++;
         }
-
-        // Also update cabinet_members if the table has rows for this nation
-        const position = displayName;
-        const { error: cabErr } = await _supabase.from('cabinet_members').update({
-            party_id: partyId,
-            person_name: firstName + ' ' + lastName,
-        }).eq('nation_id', nationId).eq('position', position).eq('is_active', true);
-        if (cabErr) console.warn(`[Coalition] cabinet_members update failed for ${position}:`, cabErr.message);
     }
     console.log(`[Coalition] Updated ${updated} ministries for nation ${nationId}`);
 }

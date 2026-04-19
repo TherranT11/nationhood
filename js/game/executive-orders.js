@@ -14,7 +14,7 @@
 
 import { GAME_CONFIG, deductAP } from './config.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
-import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, EO_DOMAIN, getMinistryDomain } from './government-types.js';
+import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, EO_DOMAIN, getMinistryDomain, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { getNationNames } from './political-actions.js';
 import { enactBill } from './bills.js';
@@ -990,22 +990,13 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
         if (ministry?.pending_minister) {
             const pm = ministry.pending_minister;
             const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-            const ministryNames = {
-                prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
-                foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
-                finance: 'Ministry of Finance', education: 'Ministry of Education',
-                healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-                justice: 'Ministry of Justice', trade: 'Ministry of Trade',
-                energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
-                security: 'Ministry of Security'
-            };
             const { error: minErr } = await supabase.from('ministries').update({
                 party_id: pm.party_id,
                 minister_first_name: pm.first_name,
                 minister_last_name: pm.last_name,
                 minister_age: pm.age,
                 minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
-                ministry_name: ministryNames[mKey] || mKey,
+                ministry_name: MINISTRY_OFFICE_NAMES[mKey] || mKey,
                 confirmation_status: 'confirmed',
                 pending_minister: null,
                 stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {}
