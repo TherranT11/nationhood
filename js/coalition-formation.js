@@ -157,19 +157,32 @@ async function buildElectionHeader() {
     const govType = (nation.government_type || '').toLowerCase();
     if (govType.includes('absolute') && govType.includes('monarchy')) return '';
 
-    // Next scheduled election (any type — earliest wins for semi-pres dual-track)
+    // Fetch all scheduled elections; parse by type. Presidential = "General"
+    // (picks the head of state). Parliamentary = "Midterm" (picks the chamber).
+    // Semi-presidential has both tracks; pure types have only one.
     const { data: scheduled } = await _supabase.from('elections')
-        .select('election_tick')
+        .select('election_tick, election_type')
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
-        .order('election_tick', { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .order('election_tick', { ascending: true });
 
-    const electionTick = scheduled?.election_tick ?? null;
-    const nextDate = electionTick != null ? tickToDate(electionTick) : 'TBD';
-    const monthsRemaining = electionTick != null ? Math.max(0, electionTick - _currentTick) : null;
-    const remainingLabel = monthsRemaining == null ? '—' : `${monthsRemaining} Month${monthsRemaining === 1 ? '' : 's'}`;
+    const byType = { presidential: null, parliamentary: null };
+    for (const row of (scheduled || [])) {
+        const t = row.election_type || 'parliamentary';
+        if (byType[t] == null) byType[t] = row.election_tick;
+    }
+
+    function statBlock(label, tick) {
+        if (tick == null) return '';
+        const months = Math.max(0, tick - _currentTick);
+        const monthLabel = `${months} Month${months === 1 ? '' : 's'}`;
+        return `<div class="cf-eh-stat">
+            <div class="cf-eh-stat-label">${esc(label)}</div>
+            <div class="cf-eh-stat-value cf-eh-stat-value--accent">${esc(tickToDate(tick))}</div>
+            <div class="cf-eh-stat-sub">${esc(monthLabel)}</div>
+        </div>`;
+    }
+
     const totalSeats = Number(nation.total_seats) || 0;
     const nationName = nation.name || 'Unknown';
     const flagSrc = nation.flag_url || `assets/flags/${nationName}.png`;
@@ -183,14 +196,8 @@ async function buildElectionHeader() {
             </div>
         </div>
         <div class="cf-eh-stats">
-            <div class="cf-eh-stat">
-                <div class="cf-eh-stat-label">NEXT ELECTION</div>
-                <div class="cf-eh-stat-value cf-eh-stat-value--accent">${esc(nextDate)}</div>
-            </div>
-            <div class="cf-eh-stat">
-                <div class="cf-eh-stat-label">REMAINING</div>
-                <div class="cf-eh-stat-value">${esc(remainingLabel)}</div>
-            </div>
+            ${statBlock('NEXT GENERAL', byType.presidential)}
+            ${statBlock('NEXT MIDTERM', byType.parliamentary)}
             <div class="cf-eh-stat">
                 <div class="cf-eh-stat-label">TOTAL SEATS</div>
                 <div class="cf-eh-stat-value">${totalSeats}</div>
