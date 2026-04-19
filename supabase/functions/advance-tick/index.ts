@@ -14754,11 +14754,9 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
         await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
         await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, completedElection.id);
-    } else if (isPresidential && normalizedElectionType === 'parliamentary') {
-        // Midterm parliamentary election — seats reshuffled, president stays
-        console.log(`Manual midterm parliamentary election for ${nation.name} — president stays in office`);
     } else {
-        // Parliamentary democracy: dissolve existing government after election
+        // Parliamentary dissolution — covers pure parliamentary systems AND
+        // semi-presidential midterms (parliament dissolved; president untouched).
         const { data: frozenBills } = await supabase.from('bills')
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
@@ -15070,11 +15068,10 @@ async function processElections(supabase, nation, currentTick) {
             }
 
             await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, election.id);
-        } else if (isPresidential && electionType === 'parliamentary') {
-            // Midterm parliamentary election — seats reshuffled, president stays, desk bills remain
-            console.log(`Midterm parliamentary election for ${nation.name} — president stays in office`);
         } else {
-            // === PARLIAMENTARY DEMOCRACY: dissolve existing government after election ===
+            // === PARLIAMENTARY DISSOLUTION: covers pure parliamentary systems AND
+            // semi-presidential midterms (parliament is dissolved; president stays —
+            // the president row is not touched anywhere in this branch).
             // After any election, the old government (whether 'formed' or 'caretaker')
             // must be dissolved so that processGovernmentVacancy can apply -2 approval
             // penalties until a new coalition is formed.
