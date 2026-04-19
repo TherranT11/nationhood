@@ -239,7 +239,8 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
         status: 'floor',
         voting_ends_tick: currentTick + GAME_CONFIG.MINISTER_CONFIRMATION_VOTING_TICKS,
         ministry_key: ministryKey,
-        preamble
+        preamble,
+        metadata: { pending_minister: pendingData }
     }).select().single();
 
     if (billErr) throw billErr;

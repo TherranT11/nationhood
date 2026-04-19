@@ -152,9 +152,10 @@ export async function initCoalitionFormation(supabase, state) {
                     await supabase.from('ministries').delete()
                         .eq('nation_id', nation.id).eq('is_active', true);
 
-                    // Semi-Presidential: ALL slots vacant (including PM) — President nominates PM,
-                    // then PM appoints cabinet after parliamentary confirmation
-                    // Pure Presidential: slots assigned to president's party (no PM)
+                    // Presidential systems (both pure and semi): all cabinet
+                    // slots start empty. The President nominates each minister;
+                    // Semi-Presidential also leaves the PM seat vacant until the
+                    // President nominates a PM. Nothing is auto-populated.
                     const CABINET_MINISTRIES = [
                         ['interior', 'Minister of the Interior'], ['foreign', 'Minister of Foreign Affairs'],
                         ['defense', 'Minister of Defense'], ['finance', 'Minister of Finance'],
@@ -168,7 +169,7 @@ export async function initCoalitionFormation(supabase, state) {
                     }
                     const rows = CABINET_MINISTRIES.map(([key, name]) => ({
                         nation_id: nation.id, ministry_key: key, ministry_name: name,
-                        party_id: isSemiPres ? null : presPartyId,
+                        party_id: null,
                         is_active: true,
                     }));
                     await supabase.from('ministries').insert(rows);

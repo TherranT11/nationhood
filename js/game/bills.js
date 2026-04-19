@@ -1364,10 +1364,40 @@ export async function resolveExpiredVotes(supabase, nationId) {
         } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
             // Minister confirmation bill (Presidential systems)
             const mKey = bill.ministry_key;
-            const { data: ministry } = await supabase.from('ministries')
+            let { data: ministry } = await supabase.from('ministries')
                 .select('id, pending_minister, is_acting')
                 .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
                 .maybeSingle();
+
+            // Recover missing ministry row using bill.metadata.pending_minister
+            // as the authoritative nominee snapshot (persisted at nomination
+            // time). Without this, a wiped/deleted ministry row would cause
+            // the confirmation to be marked passed with no minister actually
+            // installed.
+            if (!ministry) {
+                const fallbackPending = bill.metadata?.pending_minister || null;
+                if (fallbackPending) {
+                    console.warn(`[resolveExpiredVotes] Ministry row missing for ${mKey} in nation ${bill.nation_id}. Recovering from bill.metadata.`);
+                    const { data: createdMinistry, error: createErr } = await supabase.from('ministries').insert({
+                        nation_id: bill.nation_id,
+                        ministry_key: mKey,
+                        ministry_name: mKey,
+                        is_active: true,
+                        confirmation_status: 'pending',
+                        pending_minister: fallbackPending,
+                    }).select('id, pending_minister, is_acting').single();
+                    if (createErr) {
+                        console.error(`[resolveExpiredVotes] Failed to create missing ministry row for ${mKey}:`, createErr.message);
+                        passed = false;
+                    } else {
+                        ministry = createdMinistry;
+                    }
+                } else {
+                    // No fallback data — refuse to install a phantom minister.
+                    console.error(`[resolveExpiredVotes] Ministry row missing and no bill.metadata.pending_minister for ${mKey} in nation ${bill.nation_id}. Failing the bill.`);
+                    passed = false;
+                }
+            }
 
             // Check if nominee voted NO — auto-fail (withdrawal of nomination)
             const minNomineeId = ministry?.pending_minister?.party_id;
@@ -1379,25 +1409,6 @@ export async function resolveExpiredVotes(supabase, nationId) {
 
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-                if (!ministry) {
-                    // Ministry row doesn't exist — create it so the confirmation can proceed
-                    console.warn(`Minister confirmation passed but ministry row missing for ${mKey} in nation ${bill.nation_id}. Creating it.`);
-                    const { data: createdMinistry } = await supabase.from('ministries').insert({
-                        nation_id: bill.nation_id,
-                        ministry_key: mKey,
-                        ministry_name: mKey,
-                        is_active: true,
-                        confirmation_status: 'pending',
-                        pending_minister: null
-                    }).select('id, pending_minister').single();
-                    // Use the bill's metadata as fallback for pending_minister
-                    if (createdMinistry && bill.metadata?.pending_minister) {
-                        await supabase.from('ministries').update({
-                            pending_minister: bill.metadata.pending_minister
-                        }).eq('id', createdMinistry.id);
-                    }
-                }
 
                 if (ministry?.pending_minister) {
                     const pm = ministry.pending_minister;
