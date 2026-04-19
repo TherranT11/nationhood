@@ -2697,7 +2697,10 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
         const newCash = Math.max(0, currentCash + netChange);
         const newLoans = Math.max(0, currentLoans - principalPaid);
 
-        const updateFields = { corp_cash_reserves: newCash };
+        // monthly_profit is the dividend base for equity positions (Phase 4).
+        // Stored as netChange (post-debt, post-tax cash flow) so equity holders
+        // share in what's actually left after the corp's own obligations.
+        const updateFields = { corp_cash_reserves: newCash, monthly_profit: netChange };
         if (principalPaid > 0) updateFields.corp_loans = newLoans;
 
         const { error: updateErr } = await supabase.from('factions')
@@ -2980,6 +2983,56 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             if (trackErr) console.warn('[Insurance] Payment tracking update failed:', trackErr.message);
 
             results.payments++;
+            continue;
+        }
+
+        // Equity: pay dividend = equity_pct × target.monthly_profit (if profit > 0).
+        // Losses don't flow to the investor — equity can't go negative, they just
+        // earn nothing that tick. monthly_profit was written above by
+        // processCorpMonthlyIncome for this same tick.
+        if (requestType === 'equity') {
+            const { data: target } = await supabase.from('factions')
+                .select('corp_cash_reserves, monthly_profit')
+                .eq('id', loan.borrower_faction_id).single();
+            if (!target) {
+                console.warn(`[Equity] Target ${loan.borrower_faction_id} not found; skipping`);
+                continue;
+            }
+
+            const profit = Number(target.monthly_profit || 0);
+            const stakePct = Number(loan.equity_pct || 0);
+            const dividendDue = profit > 0 ? Math.floor(profit * stakePct / 100) : 0;
+            const targetCash = Number(target.corp_cash_reserves || 0);
+            // Clamp to cash on hand — a corp with a paper profit but empty till
+            // pays what it can. No "missed payment" concept for equity.
+            const actualPayout = Math.max(0, Math.min(dividendDue, targetCash));
+
+            if (actualPayout > 0) {
+                var { error: debitErr } = await supabase.from('factions').update({
+                    corp_cash_reserves: targetCash - actualPayout,
+                }).eq('id', loan.borrower_faction_id);
+                if (debitErr) console.warn('[Equity] Target debit failed:', debitErr.message);
+
+                const { data: lender } = await supabase.from('factions')
+                    .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
+                if (lender) {
+                    var { error: creditErr } = await supabase.from('factions').update({
+                        corp_cash_reserves: Number(lender.corp_cash_reserves || 0) + actualPayout,
+                    }).eq('id', loan.lender_faction_id);
+                    if (creditErr) console.warn('[Equity] Investor credit failed:', creditErr.message);
+                }
+            }
+
+            // Always tick the counters, even on a $0 dividend, so the position
+            // reflects that a tick was processed.
+            var { error: equityTrackErr } = await supabase.from('finance_active_loans').update({
+                total_paid: (Number(loan.total_paid) || 0) + actualPayout,
+                payments_made: (loan.payments_made || 0) + 1,
+                last_payment_tick: currentTick,
+            }).eq('id', loan.id);
+            if (equityTrackErr) console.warn('[Equity] Position tracking update failed:', equityTrackErr.message);
+
+            if (actualPayout > 0) results.payments++;
             continue;
         }
 
