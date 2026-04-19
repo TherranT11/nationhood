@@ -15,6 +15,9 @@ import {
     computeBillCostTotals,
     calculateIdeologyPenalty,
     isSimpleMajorityBill,
+    isSupermajorityBill,
+    isAbsoluteMajorityBill,
+    getBillTypeSpec,
     getRequiredSeats,
     evaluateBillVote,
     resolveBillVote,
@@ -43,6 +46,64 @@ function suite(name, fn) {
     const ran = passed + failed - before;
     console.log(`    ${ran} test${ran !== 1 ? 's' : ''}`);
 }
+
+// ─── getBillTypeSpec (R2) ───────────────────────────────────────────────────
+suite('getBillTypeSpec', () => {
+    test('foundational → supermajority', () => assert.equal(getBillTypeSpec('foundational').threshold, 'supermajority'));
+    test('default_resolution → supermajority', () => assert.equal(getBillTypeSpec('default_resolution').threshold, 'supermajority'));
+    test('impeachment_conviction → supermajority', () => assert.equal(getBillTypeSpec('impeachment_conviction').threshold, 'supermajority'));
+    test('veto_override → veto_override (distinct from supermajority)', () => assert.equal(getBillTypeSpec('veto_override').threshold, 'veto_override'));
+    test('no_confidence → absolute', () => assert.equal(getBillTypeSpec('no_confidence').threshold, 'absolute'));
+    test('impeachment_motion → absolute', () => assert.equal(getBillTypeSpec('impeachment_motion').threshold, 'absolute'));
+    test('ordinary → simple', () => assert.equal(getBillTypeSpec('ordinary').threshold, 'simple'));
+    test('ratification → simple', () => assert.equal(getBillTypeSpec('ratification').threshold, 'simple'));
+    test('minister_confirmation → simple', () => assert.equal(getBillTypeSpec('minister_confirmation').threshold, 'simple'));
+    test('confirmation → simple', () => assert.equal(getBillTypeSpec('confirmation').threshold, 'simple'));
+    test('unknown type → simple (safe default)', () => assert.equal(getBillTypeSpec('fake_type_xyz').threshold, 'simple'));
+    test('undefined/null → simple (safe default)', () => {
+        assert.equal(getBillTypeSpec(undefined).threshold, 'simple');
+        assert.equal(getBillTypeSpec(null).threshold, 'simple');
+    });
+});
+
+// ─── isSupermajorityBill (R2) ───────────────────────────────────────────────
+suite('isSupermajorityBill', () => {
+    test('foundational is supermajority', () => assert.equal(isSupermajorityBill('foundational'), true));
+    test('default_resolution is supermajority', () => assert.equal(isSupermajorityBill('default_resolution'), true));
+    test('veto_override is supermajority (grouped with 2/3 bills)', () => assert.equal(isSupermajorityBill('veto_override'), true));
+    test('impeachment_conviction is supermajority', () => assert.equal(isSupermajorityBill('impeachment_conviction'), true));
+    test('no_confidence is NOT supermajority', () => assert.equal(isSupermajorityBill('no_confidence'), false));
+    test('impeachment_motion is NOT supermajority', () => assert.equal(isSupermajorityBill('impeachment_motion'), false));
+    test('ordinary is NOT supermajority', () => assert.equal(isSupermajorityBill('ordinary'), false));
+    test('ratification is NOT supermajority', () => assert.equal(isSupermajorityBill('ratification'), false));
+});
+
+// ─── isAbsoluteMajorityBill (R2) ────────────────────────────────────────────
+suite('isAbsoluteMajorityBill', () => {
+    test('no_confidence is absolute', () => assert.equal(isAbsoluteMajorityBill('no_confidence'), true));
+    test('impeachment_motion is absolute', () => assert.equal(isAbsoluteMajorityBill('impeachment_motion'), true));
+    test('foundational is NOT absolute', () => assert.equal(isAbsoluteMajorityBill('foundational'), false));
+    test('veto_override is NOT absolute', () => assert.equal(isAbsoluteMajorityBill('veto_override'), false));
+    test('impeachment_conviction is NOT absolute', () => assert.equal(isAbsoluteMajorityBill('impeachment_conviction'), false));
+    test('ordinary is NOT absolute', () => assert.equal(isAbsoluteMajorityBill('ordinary'), false));
+});
+
+// ─── the three predicates partition cleanly ─────────────────────────────────
+suite('predicate partition (exactly one of the three is true)', () => {
+    const types = [
+        'foundational', 'default_resolution', 'veto_override', 'impeachment_conviction',
+        'no_confidence', 'impeachment_motion',
+        'ordinary', 'ratification', 'confirmation', 'minister_confirmation',
+        'ambassador_confirmation', 'fake_type',
+    ];
+    for (const t of types) {
+        test(`${t}: exactly one of super/absolute/simple`, () => {
+            const trueCount = [isSupermajorityBill(t), isAbsoluteMajorityBill(t), isSimpleMajorityBill(t)]
+                .filter(Boolean).length;
+            assert.equal(trueCount, 1, `expected exactly one true, got ${trueCount}`);
+        });
+    }
+});
 
 // ─── isSimpleMajorityBill ───────────────────────────────────────────────────
 suite('isSimpleMajorityBill', () => {
