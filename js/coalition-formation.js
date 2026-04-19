@@ -62,7 +62,7 @@ export async function initCoalitionFormation(supabase, state) {
         supabase.from('government_formations')
             .select('id, status, election_id, formed_at, created_at')
             .eq('nation_id', nation.id)
-            .in('status', ['formed', 'active'])
+            .eq('status', 'formed')
             .order('formed_at', { ascending: false, nullsFirst: false })
             .limit(1)
             .maybeSingle(),
@@ -220,9 +220,13 @@ export async function renderFormationTab(root) {
             .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
 
         if (vacantCount && vacantCount >= 5) {
-            // Find any formation with saved assignments (regardless of status)
+            // Only auto-repair cabinets for formations that are currently 'formed'.
+            // Without the status filter, a dissolved formation (e.g. post-election
+            // during caretaker / pre-formation) gets revived and its old cabinet
+            // restored, blocking the new formation flow.
             const { data: govWithAssignments } = await _supabase.from('government_formations')
                 .select('*').eq('nation_id', nationId)
+                .eq('status', 'formed')
                 .not('ministry_assignments', 'eq', '{}')
                 .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
