@@ -20,10 +20,21 @@ const SECTOR_OPS_PAGE = {
     Finance: 'corp-operations-finance.html',
 };
 
-function buildNavTabs(corpSector) {
+// Corps with access to the Home2 test dashboard (Chairman's Desk redesign).
+// Temporary allowlist — swap for a feature-flag column before broader rollout.
+const HOME2_TEST_CORP_IDS = new Set([
+    'a0f36506-f14e-4304-946c-ecb802e61adf', // Compañía Transoceánica de San Estrella
+]);
+
+function buildNavTabs(corpSector, factionId) {
     const opsPage = SECTOR_OPS_PAGE[corpSector] || 'corp-operations.html';
-    return [
+    const tabs = [
         { id: 'home', label: 'HOME', href: 'corp-dashboard.html' },
+    ];
+    if (factionId && HOME2_TEST_CORP_IDS.has(factionId)) {
+        tabs.push({ id: 'home2', label: 'HOME2', href: 'corp-dashboard-home2.html' });
+    }
+    tabs.push(
         { id: 'operations', label: 'OPERATIONS', href: opsPage },
         { id: 'expansion', label: 'EXPANSION', href: opsPage + '?tab=expansion', samePageAction: 'expansion' },
         { id: 'actions', label: 'ACTIONS', href: opsPage + '?tab=actions', samePageAction: 'actions' },
@@ -31,7 +42,8 @@ function buildNavTabs(corpSector) {
         { id: 'nations', label: 'NATIONS', href: 'corp-nations.html' },
         { id: 'news', label: 'NEWS', href: 'news.html' },
         { id: 'wiki', label: 'WIKI', href: 'wiki.html' },
-    ];
+    );
+    return tabs;
 }
 
 function escHtml(str) {
@@ -77,7 +89,7 @@ export function renderCorpTopBar(container, opts = {}) {
     const opsPage = SECTOR_OPS_PAGE[corpSector] || 'corp-operations.html';
     const isOnOperations = currentPage === opsPage || currentPage === 'corp-operations.html' || currentPage === 'corp-operations-shipping.html' || currentPage === 'corp-operations-finance.html';
 
-    const CORP_NAV_TABS = buildNavTabs(corpSector);
+    const CORP_NAV_TABS = buildNavTabs(corpSector, faction?.id);
     const tabsHtml = CORP_NAV_TABS.map(t => {
         const isActive = t.id === activeTab;
         if (t.disabled) {
@@ -145,6 +157,7 @@ export function renderCorpTopBar(container, opts = {}) {
                     <div class="corp-topbar__dropdown" id="corp-faction-dropdown">${dropdownHtml}</div>
                 </div>
                 <button class="corp-topbar__btn" onclick="window._corpTopbarToggleTheme()" id="theme-toggle">${isLightMode ? 'Dark' : 'Light'}</button>
+                ${activeTab === 'home2' ? `<button class="corp-topbar__btn" onclick="window._corpHome2ToggleMode()" id="home2-mode-toggle" title="Home2 paper/dark mode">${(document.documentElement.getAttribute('data-mode') === 'paper') ? 'Dark' : 'Paper'}</button>` : ''}
                 <button class="corp-topbar__btn corp-topbar__btn--logout" onclick="window._corpTopbarLogout()">Logout</button>
             </div>
         </div>
@@ -230,6 +243,17 @@ window._corpTopbarToggleTheme = function() {
     try { localStorage.setItem(THEME_STORAGE_KEY, nowLight ? 'light' : 'dark'); } catch (e) {}
     const btn = document.getElementById('theme-toggle');
     if (btn) btn.textContent = nowLight ? 'Dark' : 'Light';
+};
+
+// Home2-only paper/dark mode (independent of the global light/dark theme).
+// Sets data-mode on <html>; Phase 2+ CSS reads --h2-* vars scoped to that attribute.
+window._corpHome2ToggleMode = function() {
+    const current = document.documentElement.getAttribute('data-mode') === 'paper' ? 'paper' : 'dark';
+    const next = current === 'paper' ? 'dark' : 'paper';
+    document.documentElement.setAttribute('data-mode', next);
+    try { localStorage.setItem('corp_home2_mode', next); } catch (e) {}
+    const btn = document.getElementById('home2-mode-toggle');
+    if (btn) btn.textContent = next === 'paper' ? 'Dark' : 'Paper';
 };
 
 window._corpTopbarLogout = async function() {
