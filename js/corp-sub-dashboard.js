@@ -24,6 +24,18 @@ function fmtMoney(n) {
     return '$' + n;
 }
 
+function normalizeLoanInterestModel(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw === 'amortized' || raw === 'amortising' || raw === 'amortizing') return 'amortized';
+    if (raw === 'flat' || raw === 'simple' || raw === 'flat_interest') return 'flat';
+    return 'flat';
+}
+
+function getLoanFundingModel(source) {
+    const raw = String(source?.loan_funding_model || '').trim().toLowerCase();
+    return raw === 'parent_corp' ? 'parent_corp' : (raw === 'subsidiary_cash' ? 'subsidiary_cash' : null);
+}
+
 // ═══════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════
@@ -94,6 +106,8 @@ function renderDashboard(container) {
 
     const policyRows = policies.slice(0, 20).map(p => {
         const statusColor = p.status === 'active' ? '#5cb85c' : p.status === 'defaulted' ? '#d9534f' : p.status === 'repaid' ? '#5a8aaa' : '#666';
+        const loanInterestModel = normalizeLoanInterestModel(p.loan_interest_model || p.interest_model || p.loan_interest_type);
+        const fundingModel = getLoanFundingModel(p);
         return `
             <div class="csd-policy-row">
                 <span class="csd-policy-status" style="color:${statusColor};">\u25CF</span>
@@ -102,6 +116,8 @@ function renderDashboard(container) {
                 <span class="csd-policy-principal">${fmtMoney(p.principal)}</span>
                 <span class="csd-policy-payment">${fmtMoney(p.monthly_payment)}/mo</span>
                 <span class="csd-policy-paid">${fmtMoney(p.total_paid)} paid</span>
+                ${p.service_type === 'loan' ? `<span class="csd-policy-type" style="color:#8ab0c7;">${loanInterestModel === 'amortized' ? 'AMORTIZED' : 'FLAT'}</span>` : ''}
+                ${p.service_type === 'loan' && fundingModel ? `<span class="csd-policy-type" style="color:#b9a46a;">${fundingModel === 'parent_corp' ? 'PARENT' : 'SUB CASH'}</span>` : ''}
                 <span class="csd-policy-badge" style="color:${statusColor};border-color:${statusColor}44;background:${statusColor}0a;">${p.status.toUpperCase()}</span>
             </div>
         `;
