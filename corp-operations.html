@@ -2771,6 +2771,7 @@ import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecu
 import { initAutoServices } from './js/corp-auto-services.js';
 import { initSubDashboard } from './js/corp-sub-dashboard.js';
 import { loadShippingRoutesSafe, loadActiveVoyagesSafe, loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
+import { applyForEquity } from './js/equity-apply.js';
 import { VESSEL_SPECS } from './js/game/vessels.js';
 
 let allUserFactions = [];
@@ -7827,6 +7828,7 @@ const EXEC_ACTIONS = {
     ],
     CFO: [
         { id: 'loan', name: 'Request Loan', desc: 'Submit a loan application to all finance corporations. Set amount, purpose, term, and collateral. Receive competing offers.', cost: 'FREE', costColor: '#5cb85c', tags: ['FINANCIAL'] },
+        { id: 'equity', name: 'Apply for Equity', desc: 'Raise capital by offering Investment corps a stake in your monthly profits. Series (A/B/C…) is auto-assigned by your prior funded raise count. No repayment — investors get a percentage of profit each tick going forward.', cost: 'FREE', costColor: '#c89a4a', tags: ['FINANCIAL', 'STRUCTURAL'], hideForSector: 'Finance' },
     ],
     COO: [
         { id: 'restructure', name: 'Restructure Operations', desc: 'Lay off 10-20% of workforce, cut ~7% of debt. Reputation hit scales with COO skill — high skill minimizes damage.', cost: 'FREE', costColor: '#5cb85c', tags: ['OPERATIONAL'], cooldown: 'once/tick' },
@@ -7870,7 +7872,9 @@ function renderActionsRightPanel() {
     const role = EXEC_ROLES[_selectedExecIdx];
     const meta = EXEC_ROLE_META[role];
     const exec = getExecForRole(role);
-    const actions = EXEC_ACTIONS[role] || [];
+    const actions = (EXEC_ACTIONS[role] || []).filter(a =>
+        !a.hideForSector || (faction?.corp_sector || '') !== a.hideForSector
+    );
 
     // ── Vacant state ──
     if (!exec) {
@@ -8078,6 +8082,7 @@ function actExecute(actionId, role) {
     switch (actionId) {
         case 'statement': return actOpenStatement();
         case 'loan': return lrOpen();
+        case 'equity': return applyForEquity(faction, shard, _supabase);
         case 'restructure': return actOpenRestructure();
         case 'rebrand': return actOpenRebrand();
         case 'donate': return actOpenDonation();
