@@ -572,42 +572,86 @@ export async function processIdeologyDecay(supabase, nationId, currentTick) {
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
- * Returns true if this bill type uses quorum + simple majority (YES > NO of
- * votes cast) rather than an absolute seat threshold.
+ * Single source of truth for bill-type threshold categorization.
  *
- * Absolute-threshold types (return false):
- *   - foundational / veto_override: 67% of total seats
- *   - no_confidence / impeachment_motion: 50%+1 of total seats
- *   - impeachment_conviction: 67% of total seats
+ * Every path that asks "is this bill type X/Y/Z?" — getRequiredSeats,
+ * isSimpleMajorityBill, evaluateBillVote, resolveBillVote, resolveExpiredVotes,
+ * and any future resolver — routes through getBillTypeSpec() and the named
+ * predicates below. Bill types not listed here (ordinary, ratification,
+ * confirmation, minister_confirmation, etc.) fall through to 'simple'
+ * threshold with quorum.
+ *
+ * Kinds:
+ *   'supermajority' — 2/3 of TOTAL_SEATS (foundational, default_resolution,
+ *                     impeachment_conviction). Nation flags may raise/lower
+ *                     this in the evaluate/resolve functions; the registry
+ *                     owns the default.
+ *   'veto_override' — VETO_OVERRIDE_THRESHOLD of TOTAL_SEATS (currently 2/3
+ *                     but kept distinct from 'supermajority' so the two can
+ *                     diverge without a registry rewrite).
+ *   'absolute'      — Math.floor(TOTAL_SEATS / 2) + 1 (no_confidence,
+ *                     impeachment_motion). No quorum. Nation flags may raise.
+ *   'simple'        — YES > NO of votes cast, with 50% participation quorum.
+ *                     Default for unlisted bill types.
+ */
+const BILL_TYPE_SPECS = Object.freeze({
+    foundational:           { threshold: 'supermajority' },
+    default_resolution:     { threshold: 'supermajority' },
+    veto_override:          { threshold: 'veto_override' },
+    impeachment_conviction: { threshold: 'supermajority' },
+    no_confidence:          { threshold: 'absolute' },
+    impeachment_motion:     { threshold: 'absolute' },
+});
+
+/**
+ * Look up the threshold spec for a bill type. Unlisted types return
+ * { threshold: 'simple' } — covers ordinary, ratification, confirmation,
+ * minister_confirmation, etc.
+ */
+export function getBillTypeSpec(billType) {
+    return BILL_TYPE_SPECS[billType] || { threshold: 'simple' };
+}
+
+/** foundational / default_resolution / veto_override / impeachment_conviction */
+export function isSupermajorityBill(billType) {
+    const k = getBillTypeSpec(billType).threshold;
+    return k === 'supermajority' || k === 'veto_override';
+}
+
+/** no_confidence / impeachment_motion */
+export function isAbsoluteMajorityBill(billType) {
+    return getBillTypeSpec(billType).threshold === 'absolute';
+}
+
+/**
+ * Returns true if this bill type uses quorum + simple majority (YES > NO of
+ * votes cast) rather than an absolute seat threshold. Default for every
+ * bill type not in BILL_TYPE_SPECS.
  */
 export function isSimpleMajorityBill(billType) {
-    return billType !== 'foundational'
-        && billType !== 'default_resolution'
-        && billType !== 'veto_override'
-        && billType !== 'no_confidence'
-        && billType !== 'impeachment_motion'
-        && billType !== 'impeachment_conviction';
+    return getBillTypeSpec(billType).threshold === 'simple';
 }
 
 /**
  * Get the number of YES seats required for a bill to pass.
  *
- * For supermajority bills (foundational, veto_override) the threshold is a
- * fixed fraction of TOTAL_SEATS.
- *
- * For all other bills the rule is simple majority: YES > NO.  When
- * `votesAgainst` is provided, we return `votesAgainst + 1` so the display
- * updates dynamically as votes come in.  Without it we fall back to the
- * absolute half-chamber number for backward compat.
+ * For supermajority / veto_override bills the threshold is a fixed
+ * fraction of TOTAL_SEATS.
+ * For absolute-majority bills (no_confidence, impeachment_motion) the
+ * threshold is floor(TOTAL_SEATS / 2) + 1.
+ * For simple-majority bills the rule is YES > NO — with votesAgainst
+ * supplied we return votesAgainst + 1 so the display updates live; without
+ * it we fall back to MAJORITY_SEATS for backward compat.
  */
 export function getRequiredSeats(billType, votesAgainst) {
-    if (billType === 'foundational' || billType === 'default_resolution' || billType === 'impeachment_conviction')
+    const spec = getBillTypeSpec(billType);
+    if (spec.threshold === 'supermajority')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
-    if (billType === 'veto_override')
+    if (spec.threshold === 'veto_override')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
-    if (billType === 'no_confidence' || billType === 'impeachment_motion')
+    if (spec.threshold === 'absolute')
         return Math.floor(GAME_CONFIG.TOTAL_SEATS / 2) + 1;
-    // Ordinary bills: simple majority of votes cast
+    // simple majority of votes cast
     if (votesAgainst != null) return votesAgainst + 1;
     return GAME_CONFIG.MAJORITY_SEATS;
 }
@@ -659,7 +703,7 @@ export function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
     }
 
     // ── Foundational / default_resolution / veto_override / impeachment_conviction: supermajority, no quorum ──
-    if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+    if (isSupermajorityBill(bill.bill_type)) {
         // Determine supermajority ratio:
         // - Impeachment conviction + judicial politicization: 75%
         // - Foundational + constitutional streamlining active (but NOT the streamlining bill itself): 55%
@@ -682,7 +726,7 @@ export function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
     }
 
     // ── Impeachment motion / no confidence: absolute majority, no quorum ──
-    if (bill.bill_type === 'impeachment_motion' || bill.bill_type === 'no_confidence') {
+    if (isAbsoluteMajorityBill(bill.bill_type)) {
         // No confidence: 60% if courts are captured, otherwise 50%+1
         const threshold = (bill.bill_type === 'no_confidence' && judicialPoliticized)
             ? Math.ceil(totalSeats * 0.6)
@@ -751,7 +795,7 @@ export function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     }
 
     // Foundational / default_resolution / veto_override / impeachment_conviction: supermajority
-    if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+    if (isSupermajorityBill(bill.bill_type)) {
         let ratio = 2 / 3;
         if (bill.bill_type === 'impeachment_conviction' && judicialPoliticized) {
             ratio = 0.75;
@@ -764,7 +808,7 @@ export function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     }
 
     // No-confidence / impeachment_motion: absolute majority
-    if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
+    if (isAbsoluteMajorityBill(bill.bill_type)) {
         const threshold = (bill.bill_type === 'no_confidence' && judicialPoliticized)
             ? Math.ceil(totalSeats * 0.6)
             : Math.floor(totalSeats / 2) + 1;
@@ -898,7 +942,7 @@ export async function checkEarlyMajority(supabase, nationId) {
         const undeclaredSeats = Math.max(0, effectiveTotalSeats - participating);
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
-        if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+        if (isSupermajorityBill(bill.bill_type)) {
             // Supermajority threshold — must match resolveBillVote logic:
             // - Veto override uses VETO_OVERRIDE_THRESHOLD
             // - Foundational + streamlining active (not the streamlining bill itself): 55%
@@ -915,7 +959,7 @@ export async function checkEarlyMajority(supabase, nationId) {
             } else if (effectiveYes + undeclaredSeats < requiredSeats) {
                 earlyStatus = 'majority_opposed';
             }
-        } else if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
+        } else if (isAbsoluteMajorityBill(bill.bill_type)) {
             // Absolute majority: 50%+1 of total seats, no quorum
             const threshold = Math.floor(effectiveTotalSeats / 2) + 1;
             if (effectiveYes >= threshold) {
