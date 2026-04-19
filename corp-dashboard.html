@@ -1538,7 +1538,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     if (faction?.id) {
         try {
             const { data: borrowerLiabilities } = await _supabase.from('finance_active_loans')
-                .select('monthly_payment, equity_pct, series, total_paid, lender_faction_id, finance_loan_requests(request_type), lender:factions!lender_faction_id(faction_name, abbreviation, corp_ticker)')
+                .select('monthly_payment, equity_pct, series, total_paid, finance_loan_requests(request_type), lender:factions!lender_faction_id(faction_name)')
                 .eq('borrower_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
             // Equity dividends are computed from last tick's monthly_profit ×
@@ -1555,7 +1555,6 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                     equityDividends += dividend;
                     capTable.push({
                         investor: row.lender?.faction_name || 'Unknown',
-                        ticker: row.lender?.abbreviation || row.lender?.corp_ticker || '??',
                         stakePct: stake,
                         series: row.series || '?',
                         paidToDate: Number(row.total_paid || 0),
