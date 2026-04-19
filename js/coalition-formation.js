@@ -16,6 +16,10 @@ let _electionId = null;
 let _allParties = [];
 let _formations = [];
 let _totalSeats = 0;
+// Scheduled elections for the current nation, ascending by tick. One source
+// of truth for the election header AND the pre-election render branch — both
+// derive what they need (earliest-by-type / earliest-overall) from this array.
+let _scheduledElections = [];
 let _majoritySeats = 0;
 let _lastElectionTick = null;
 let _currentTick = 0;
@@ -52,7 +56,7 @@ export async function initCoalitionFormation(supabase, state) {
     // ministries as "government exists", so the Election tab must agree —
     // otherwise we'd flash "No Government — Snap Election Imminent" while a
     // full cabinet is live one tab over.
-    const [electionResult, shardResult, activeCoalition, partiesResult, hogResult] = await Promise.all([
+    const [electionResult, shardResult, activeCoalition, partiesResult, hogResult, scheduledResult] = await Promise.all([
         supabase.from('elections')
             .select('id, election_type, election_tick, status')
             .eq('nation_id', nation.id)
@@ -78,12 +82,18 @@ export async function initCoalitionFormation(supabase, state) {
             .eq('active', true)
             .limit(1)
             .maybeSingle(),
+        supabase.from('elections')
+            .select('election_tick, election_type')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .order('election_tick', { ascending: true }),
     ]);
 
     _currentTick = shardResult.data?.current_tick ?? 0;
     _allParties = partiesResult.data || [];
     _totalSeats = _allParties.reduce((s, p) => s + (p.seats || 0), 0);
     _majoritySeats = Math.ceil(_totalSeats / 2) + 1;
+    _scheduledElections = scheduledResult?.data || [];
 
     const election = electionResult.data;
     // activeCoalition is either null or the canonical SSoT result from
@@ -150,36 +160,20 @@ export function isFormationNeeded() {
 // and chamber seat count. Returns an HTML string to prepend to each render
 // path; returns '' when the nation is an absolute monarchy (caller skips).
 // ═══════════════════════════════════════════════════════════════════════════
-async function buildElectionHeader() {
+function buildElectionHeader() {
     const nation = _state?.nation;
     if (!nation) return '';
 
     const govType = (nation.government_type || '').toLowerCase();
     if (govType.includes('absolute') && govType.includes('monarchy')) return '';
 
-    // Fetch all scheduled elections; parse by type. Presidential = "General"
-    // (picks the head of state). Parliamentary = "Midterm" (picks the chamber).
-    // Semi-presidential has both tracks; pure types have only one.
-    // Wrapped in try/catch — a network failure here must not break the entire
-    // Election tab render. Returning '' drops the header only.
+    // Parse scheduled elections from the one source of truth. Presidential =
+    // "General" (picks the head of state). Parliamentary = "Midterm" (picks the
+    // chamber). Semi-presidential has both tracks; pure types have only one.
     const byType = { presidential: null, parliamentary: null };
-    try {
-        const { data: scheduled, error } = await _supabase.from('elections')
-            .select('election_tick, election_type')
-            .eq('nation_id', nation.id)
-            .eq('status', 'scheduled')
-            .order('election_tick', { ascending: true });
-        if (error) {
-            console.warn('[ElectionHeader] scheduled-elections fetch failed:', error.message);
-            return '';
-        }
-        for (const row of (scheduled || [])) {
-            const t = row.election_type || 'parliamentary';
-            if (byType[t] == null) byType[t] = row.election_tick;
-        }
-    } catch (e) {
-        console.warn('[ElectionHeader] fetch threw:', e?.message || e);
-        return '';
+    for (const row of _scheduledElections) {
+        const t = row.election_type || 'parliamentary';
+        if (byType[t] == null) byType[t] = row.election_tick;
     }
 
     const currentTick = Number(_currentTick) || 0;
@@ -297,7 +291,7 @@ export async function renderFormationTab(root) {
 
     // All other systems (parliamentary, presidential, semi-presidential) get
     // the election header at the top of every render path.
-    const header = await buildElectionHeader();
+    const header = buildElectionHeader();
 
     // Presidential systems — no coalition formation
     const isPresidentialRender = (_state.nation?.government_type || '').toLowerCase().includes('presidential')
@@ -330,22 +324,12 @@ export async function renderFormationTab(root) {
         return;
     }
 
-    // Pre-election state: no completed election yet, but one is scheduled
+    // Pre-election state: no completed election yet, but one is scheduled.
+    // Reads the earliest scheduled election from _scheduledElections — same
+    // source the header derives its dates from, one fetch at init.
     if (!_electionId) {
-        const nationId = _state.nation?.id;
-        let ticksUntil = '?';
-        if (nationId) {
-            const { data: scheduled } = await _supabase.from('elections')
-                .select('election_tick')
-                .eq('nation_id', nationId)
-                .eq('status', 'scheduled')
-                .order('election_tick', { ascending: true })
-                .limit(1)
-                .maybeSingle();
-            if (scheduled) {
-                ticksUntil = Math.max(0, scheduled.election_tick - _currentTick);
-            }
-        }
+        const nextTick = _scheduledElections[0]?.election_tick;
+        const ticksUntil = nextTick != null ? Math.max(0, nextTick - _currentTick) : '?';
         root.innerHTML = `<div class="cf-page">
             ${header}
             <div class="cf-no-formation">
