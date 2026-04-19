@@ -4,7 +4,7 @@
  */
 
 import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
-import { hasElectedPresident, getCurrentConstitutionalSystem } from './government-types.js';
+import { hasElectedPresident, getCurrentConstitutionalSystem, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology, loadNationIdeologies } from './ideology.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
@@ -13,7 +13,7 @@ import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
-import { getNationNames, isFemaleName } from './political-actions.js';
+import { getNationNames, isFemaleName, installHOG } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
 import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
@@ -1396,15 +1396,6 @@ export async function resolveExpiredVotes(supabase, nationId) {
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
 
-                const ministryNames = {
-                    prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
-                    foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
-                    finance: 'Ministry of Finance', education: 'Ministry of Education',
-                    healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-                    justice: 'Ministry of Justice', trade: 'Ministry of Trade',
-                    energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
-                    security: 'Ministry of Security'
-                };
                 const { data: fullNation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
                 const ministryFields = {
                     party_id: pm.party_id,
@@ -1412,7 +1403,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                     minister_last_name: pm.last_name,
                     minister_age: pm.age,
                     minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
-                    ministry_name: ministryNames[mKey] || mKey,
+                    ministry_name: MINISTRY_OFFICE_NAMES[mKey] || mKey,
                     confirmation_status: 'confirmed',
                     pending_minister: null,
                     stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {},
@@ -1452,46 +1443,26 @@ export async function resolveExpiredVotes(supabase, nationId) {
                         }
                     } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
 
-                    // Install the confirmed PM into head_of_government immediately.
-                    // The UI (and many server-side flows) read head_of_government,
-                    // not ministries.prime_minister. Without this, the PM vanishes
-                    // until the next-tick processParliamentaryPMTimeout safety net
-                    // fires — and that safety net won't run if coalition status is
-                    // 'caretaker', and even when it does it installs the party
-                    // leader, not the nominee confirmed by parliament.
+                    // Install the confirmed PM into head_of_government immediately
+                    // (single source of truth — see installHOG). The UI and many
+                    // server-side flows read head_of_government, not ministries.
+                    // Without this, the PM vanishes until the next-tick
+                    // processParliamentaryPMTimeout safety net fires — and that
+                    // safety net won't run if coalition status is 'caretaker',
+                    // and even when it does it installs the party leader, not
+                    // the nominee confirmed by parliament.
                     try {
-                        await supabase.from('head_of_government')
-                            .update({ active: false })
-                            .eq('nation_id', bill.nation_id)
-                            .eq('active', true);
-                        // Pull the party's canonical leader_ideology rather than
-                        // hardcoding 'Centrist' — head_of_government.ideology is
-                        // read by downstream stat code.
-                        let pmIdeology = 'CENTRIST';
-                        try {
-                            const { data: pmFaction } = await supabase.from('factions')
-                                .select('leader_ideology').eq('id', pm.party_id).maybeSingle();
-                            if (pmFaction?.leader_ideology) pmIdeology = String(pmFaction.leader_ideology).toUpperCase();
-                        } catch (_) { /* fall back to CENTRIST */ }
-
-                        const { error: hogUpsertErr } = await supabase.from('head_of_government')
-                            .upsert({
-                                nation_id: bill.nation_id,
-                                faction_id: pm.party_id,
-                                first_name: pm.first_name,
-                                last_name: pm.last_name,
-                                age: pm.age || 50,
-                                ideology: pmIdeology,
-                                active: true,
-                                appointed_tick: currentTick,
-                            }, { onConflict: 'nation_id' });
-                        if (hogUpsertErr) {
-                            console.error('[resolveExpiredVotes] Failed to install HOG for confirmed PM:', hogUpsertErr.message);
-                        } else {
-                            console.log(`[resolveExpiredVotes] Installed HOG for confirmed PM ${pm.first_name} ${pm.last_name} (party ${pm.party_id})`);
-                        }
+                        await installHOG(supabase, {
+                            nationId: bill.nation_id,
+                            factionId: pm.party_id,
+                            firstName: pm.first_name,
+                            lastName: pm.last_name,
+                            age: pm.age,
+                            currentTick,
+                        });
+                        console.log(`[resolveExpiredVotes] Installed HOG for confirmed PM ${pm.first_name} ${pm.last_name} (party ${pm.party_id})`);
                     } catch (hogErr) {
-                        console.error('[resolveExpiredVotes] HOG install threw:', hogErr);
+                        console.error('[resolveExpiredVotes] HOG install failed:', hogErr.message || hogErr);
                     }
                 }
 

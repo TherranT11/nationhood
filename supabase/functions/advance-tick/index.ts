@@ -8923,15 +8923,6 @@ async function resolveExpiredVotes(supabase, nationId) {
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
 
-                const ministryNames = {
-                    prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
-                    foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
-                    finance: 'Ministry of Finance', education: 'Ministry of Education',
-                    healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-                    justice: 'Ministry of Justice', trade: 'Ministry of Trade',
-                    energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
-                    security: 'Ministry of Security'
-                };
                 const { data: fullNation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
                 const ministryFields = {
                     party_id: pm.party_id,
@@ -8939,7 +8930,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                     minister_last_name: pm.last_name,
                     minister_age: pm.age,
                     minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
-                    ministry_name: ministryNames[mKey] || mKey,
+                    ministry_name: MINISTRY_OFFICE_NAMES[mKey] || mKey,
                     confirmation_status: 'confirmed',
                     pending_minister: null,
                     stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {},
@@ -8979,46 +8970,26 @@ async function resolveExpiredVotes(supabase, nationId) {
                         }
                     } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
 
-                    // Install the confirmed PM into head_of_government immediately.
-                    // The UI (and many server-side flows) read head_of_government,
-                    // not ministries.prime_minister. Without this, the PM vanishes
-                    // until the next-tick processParliamentaryPMTimeout safety net
-                    // fires — and that safety net won't run if coalition status is
-                    // 'caretaker', and even when it does it installs the party
-                    // leader, not the nominee confirmed by parliament.
+                    // Install the confirmed PM into head_of_government immediately
+                    // (single source of truth — see installHOG). The UI and many
+                    // server-side flows read head_of_government, not ministries.
+                    // Without this, the PM vanishes until the next-tick
+                    // processParliamentaryPMTimeout safety net fires — and that
+                    // safety net won't run if coalition status is 'caretaker',
+                    // and even when it does it installs the party leader, not
+                    // the nominee confirmed by parliament.
                     try {
-                        await supabase.from('head_of_government')
-                            .update({ active: false })
-                            .eq('nation_id', bill.nation_id)
-                            .eq('active', true);
-                        // Pull the party's canonical leader_ideology rather than
-                        // hardcoding 'Centrist' — head_of_government.ideology is
-                        // read by downstream stat code.
-                        let pmIdeology = 'CENTRIST';
-                        try {
-                            const { data: pmFaction } = await supabase.from('factions')
-                                .select('leader_ideology').eq('id', pm.party_id).maybeSingle();
-                            if (pmFaction?.leader_ideology) pmIdeology = String(pmFaction.leader_ideology).toUpperCase();
-                        } catch (_) { /* fall back to CENTRIST */ }
-
-                        const { error: hogUpsertErr } = await supabase.from('head_of_government')
-                            .upsert({
-                                nation_id: bill.nation_id,
-                                faction_id: pm.party_id,
-                                first_name: pm.first_name,
-                                last_name: pm.last_name,
-                                age: pm.age || 50,
-                                ideology: pmIdeology,
-                                active: true,
-                                appointed_tick: currentTick,
-                            }, { onConflict: 'nation_id' });
-                        if (hogUpsertErr) {
-                            console.error('[resolveExpiredVotes] Failed to install HOG for confirmed PM:', hogUpsertErr.message);
-                        } else {
-                            console.log(`[resolveExpiredVotes] Installed HOG for confirmed PM ${pm.first_name} ${pm.last_name} (party ${pm.party_id})`);
-                        }
+                        await installHOG(supabase, {
+                            nationId: bill.nation_id,
+                            factionId: pm.party_id,
+                            firstName: pm.first_name,
+                            lastName: pm.last_name,
+                            age: pm.age,
+                            currentTick,
+                        });
+                        console.log(`[resolveExpiredVotes] Installed HOG for confirmed PM ${pm.first_name} ${pm.last_name} (party ${pm.party_id})`);
                     } catch (hogErr) {
-                        console.error('[resolveExpiredVotes] HOG install threw:', hogErr);
+                        console.error('[resolveExpiredVotes] HOG install failed:', hogErr.message || hogErr);
                     }
                 }
 
@@ -24973,6 +24944,79 @@ function weightedRandomPick(weightedItems) {
 
 
 /**
+ * Single source of truth for installing a Head of Government row.
+ *
+ * Every PM-install path (parliamentary auto-appoint, presidential PM
+ * confirmation, monarchy royal appointment) routes through this helper so
+ * the upsert columns, ideology lookup, and unique(nation_id) handling stay
+ * identical across paths.
+ *
+ * @param {object} supabase
+ * @param {object} opts
+ * @param {string} opts.nationId
+ * @param {string} opts.factionId           party that the new PM belongs to
+ * @param {string} opts.firstName
+ * @param {string} opts.lastName
+ * @param {number} [opts.age]               defaults to 50 if unset
+ * @param {number} opts.currentTick
+ * @param {string} [opts.traitKey]          leader trait, optional
+ * @param {string} [opts.candidateId]       presidential candidate row id, optional
+ * @param {string} [opts.ideology]          uppercase tag; if omitted, loaded
+ *                                          from factions.leader_ideology with
+ *                                          a CENTRIST fallback
+ * @returns {Promise<{ ideologyTag: string }>}
+ */
+async function installHOG(supabase, opts) {
+    if (!opts?.nationId || !opts?.factionId) {
+        throw new Error('installHOG: nationId and factionId are required');
+    }
+    const {
+        nationId, factionId, firstName, lastName, age,
+        currentTick, traitKey = null, candidateId = null,
+    } = opts;
+
+    let ideologyTag = opts.ideology;
+    if (!ideologyTag) {
+        try {
+            const { data: f } = await supabase
+                .from('factions')
+                .select('leader_ideology')
+                .eq('id', factionId)
+                .maybeSingle();
+            if (f?.leader_ideology) ideologyTag = String(f.leader_ideology).toUpperCase();
+        } catch (_) { /* fall through to CENTRIST */ }
+    }
+    if (!ideologyTag) ideologyTag = 'CENTRIST';
+
+    // head_of_government has UNIQUE(nation_id), so a stale inactive row from
+    // a previous PM would block a plain insert. Deactivate first, then upsert
+    // — the upsert overwrites the just-deactivated row in the same tx.
+    await supabase.from('head_of_government')
+        .update({ active: false })
+        .eq('nation_id', nationId)
+        .eq('active', true);
+
+    const { error: hogErr } = await supabase
+        .from('head_of_government')
+        .upsert({
+            nation_id: nationId,
+            faction_id: factionId,
+            candidate_id: candidateId,
+            first_name: firstName,
+            last_name: lastName,
+            age: age || 50,
+            ideology: ideologyTag,
+            trait_key: traitKey,
+            appointed_tick: currentTick,
+            active: true,
+        }, { onConflict: 'nation_id' });
+
+    if (hogErr) throw hogErr;
+    return { ideologyTag };
+}
+
+
+/**
  * Auto-appoint the party leader as Prime Minister without candidate selection.
  * Used for parliamentary systems — the party leader becomes PM immediately
  * when their party receives the PM role during coalition formation.
@@ -25048,27 +25092,17 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
 
     const leaderAge = faction.leader_age || (35 + Math.floor(Math.random() * 16));
 
-    // Deactivate any current HOG
-    await supabase.from('head_of_government')
-        .update({ active: false })
-        .eq('nation_id', nationId).eq('active', true);
-
-    // Create HOG record
-    const { error: hogErr } = await supabase
-        .from('head_of_government')
-        .upsert({
-            nation_id: nationId,
-            faction_id: factionId,
-            candidate_id: null,
-            first_name: faction.leader_first_name,
-            last_name: faction.leader_last_name,
-            age: leaderAge,
-            ideology: ideology.tag,
-            trait_key: traitKey,
-            appointed_tick: currentTick,
-            active: true
-        }, { onConflict: 'nation_id' });
-    if (hogErr) throw hogErr;
+    // Single source of truth — see installHOG above.
+    await installHOG(supabase, {
+        nationId,
+        factionId,
+        firstName: faction.leader_first_name,
+        lastName: faction.leader_last_name,
+        age: leaderAge,
+        currentTick,
+        traitKey,
+        ideology: ideology.tag,
+    });
 
     // Update administration record
     const pmFullName = `${faction.leader_first_name} ${faction.leader_last_name}`;
