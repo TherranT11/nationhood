@@ -110,7 +110,11 @@ BEGIN
       AND status IN ('current', 'late', 'delinquent');
 
     IF v_existing_pct + v_request.equity_pct > 100 THEN
-        RAISE EXCEPTION 'Total outside equity would exceed 100%% (existing: %%, this raise: %%)',
+        -- %% emits a literal "%"; % substitutes the next argument. Previously
+        -- all three were %% (escaped literals), which left the two args
+        -- unconsumed and tripped PostgreSQL's "too many parameters" error
+        -- instead of surfacing the cap message to the client.
+        RAISE EXCEPTION 'Total outside equity would exceed 100%% (existing: %, this raise: %)',
             v_existing_pct, v_request.equity_pct;
     END IF;
 
