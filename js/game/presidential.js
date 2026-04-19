@@ -4,11 +4,10 @@
  */
 
 import { GAME_CONFIG, getPresidentialTermLimit } from './config.js';
-import { hasElectedPresident, hasParliamentaryPM, isSemiPresidential, isPresidentialDomainMinistry, MINISTRY_OFFICE_NAMES, MINISTER_TITLES } from './government-types.js';
+import { hasElectedPresident, isSemiPresidential, isPresidentialDomainMinistry, MINISTRY_OFFICE_NAMES, MINISTER_TITLES } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
 import { getWeightedIdeologies, weightedRandomPick } from './political-actions.js';
-import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fireBillEvent } from './event-helpers.js';
 
