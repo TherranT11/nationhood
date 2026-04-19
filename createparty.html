@@ -649,7 +649,10 @@ async function init() {
   if (!user) { window.location.href = 'login.html'; return; }
   currentUser = user;
 
-  // Check if user already has a party
+  // Check if user already has a primary party (legacy short-circuit —
+  // bounces them straight to the dashboard). Doesn't catch same-nation
+  // corp conflicts; the nation-level check happens in proceed() before
+  // the INSERT, after the pending-nation session value is in hand.
   const { data: faction } = await _supabase
     .from('factions').select('id, nation_id').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
   if (faction && faction.nation_id) {
@@ -854,8 +857,28 @@ async function proceed() {
       age: 35 + Math.floor(Math.random() * 20)
     };
 
-    // Check if user already has a primary faction (e.g. a corporation)
-    // If so, create the party as a linked faction to avoid overwriting the corp
+    // One faction per user per nation. If the user already has an active
+    // faction (party or corp, primary or linked) in this nation, refuse
+    // to create another. DB-side backstop is the
+    // idx_factions_one_per_user_per_nation partial unique index.
+    const { data: existingInNation } = await _supabase
+      .from('factions')
+      .select('id, faction_type, faction_name')
+      .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
+      .eq('nation_id', nationData.id)
+      .is('abandoned_at', null)
+      .maybeSingle();
+    if (existingInNation) {
+      const what = existingInNation.faction_type === 'party' ? 'political party' : 'corporation';
+      alert(`You already have a ${what} ("${existingInNation.faction_name}") in ${nationData.name}. One faction per nation.`);
+      btn.disabled = false;
+      btn.textContent = 'CREATE PARTY \u25B6';
+      return;
+    }
+
+    // Check if user already has a primary faction (e.g. a corporation in
+    // a DIFFERENT nation). If so, create the party as a linked faction to
+    // avoid overwriting the corp.
     const { data: existingPrimary } = await _supabase
       .from('factions')
       .select('id, faction_type')

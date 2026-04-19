@@ -764,17 +764,20 @@ async function confirmNation() {
             return;
         }
 
-        // Block if player's political party is in the same nation
-        const { data: partyInSameNation } = await _supabase
+        // One faction per user per nation. Catches a party (primary or
+        // linked) or an existing corp in this nation — same user cannot
+        // stack factions in a single nation. DB-side backstop is the
+        // idx_factions_one_per_user_per_nation partial unique index.
+        const { data: existingInNation } = await _supabase
             .from('factions')
-            .select('id, faction_name')
-            .eq('id', currentUser.id)
-            .eq('faction_type', 'party')
+            .select('id, faction_type, faction_name')
+            .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
             .eq('nation_id', selectedNationId)
             .is('abandoned_at', null)
             .maybeSingle();
-        if (partyInSameNation) {
-            errEl.textContent = `Your political party "${partyInSameNation.faction_name}" is in ${nation.name}. Corporations cannot operate in the same nation as your party.`;
+        if (existingInNation) {
+            const what = existingInNation.faction_type === 'party' ? 'political party' : 'corporation';
+            errEl.textContent = `You already have a ${what} ("${existingInNation.faction_name}") in ${nation.name}. One faction per nation.`;
             btn.disabled = false;
             btn.textContent = 'Confirm ▶';
             return;
