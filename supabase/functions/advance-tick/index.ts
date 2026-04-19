@@ -6294,6 +6294,26 @@ async function detectHeadFaction(supabase, nationId, allParties, allPartySeats, 
 
 // ==================== COALITION FETCHING ====================
 
+// ==================== ACTIVE-GOVERNMENT GATE ====================
+//
+// Single source of truth for the question "does this nation have an active
+// government?" — one helper, one answer, regardless of system type.
+//
+// Delegates to fetchActiveCoalition which already routes per government_type:
+//   - Presidential:          `presidents.is_active = true`
+//   - Parliamentary / CM:    `government_formations.status = 'formed' or 'caretaker'`
+//   - Absolute monarchy:     ministries-derived (always governed in practice)
+//
+// Callers that previously counted `government_formations.status='formed'` rows
+// directly broke for presidential systems (no coalitions exist there) and
+// required a lazy-init stub row to paper over the schema mismatch. Route them
+// through hasActiveGovernment() instead.
+async function hasActiveGovernment(supabase, nation) {
+    if (!nation) return false;
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    return !!coalition && (coalition.status === 'formed' || coalition.status === 'caretaker');
+}
+
 async function fetchActiveCoalition(supabase, nationId) {
     const cacheKey = 'coalition_' + nationId;
     if (typeof qCache === 'function') {

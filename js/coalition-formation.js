@@ -5,6 +5,7 @@
 import { buildMinistryBaselines } from './game/stats.js';
 import { autoAppointPartyLeaderAsPM, getNationNames } from './game/political-actions.js';
 import { rolloverAdministration } from './game/elections.js';
+import { fetchActiveCoalition } from './game/government-structure.js';
 import { MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS } from './game/government-types.js';
 
 let _supabase = null;
@@ -50,7 +51,7 @@ export async function initCoalitionFormation(supabase, state) {
     // ministries as "government exists", so the Election tab must agree —
     // otherwise we'd flash "No Government — Snap Election Imminent" while a
     // full cabinet is live one tab over.
-    const [electionResult, shardResult, coalitionResult, partiesResult, hogResult] = await Promise.all([
+    const [electionResult, shardResult, activeCoalition, partiesResult, hogResult] = await Promise.all([
         supabase.from('elections')
             .select('id, election_type, election_tick, status')
             .eq('nation_id', nation.id)
@@ -59,13 +60,11 @@ export async function initCoalitionFormation(supabase, state) {
             .limit(1)
             .maybeSingle(),
         supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
-        supabase.from('government_formations')
-            .select('id, status, election_id, formed_at, created_at')
-            .eq('nation_id', nation.id)
-            .eq('status', 'formed')
-            .order('formed_at', { ascending: false, nullsFirst: false })
-            .limit(1)
-            .maybeSingle(),
+        // fetchActiveCoalition is the SSoT — it reads the canonical source
+        // per government_type (presidents for presidential, government_formations
+        // for parliamentary/CM, ministries for absolute monarchy). No stub rows
+        // required; no per-caller government_type branching needed here.
+        fetchActiveCoalition(supabase, nation.id),
         supabase.from('factions')
             .select('id, faction_name, abbreviation, party_color, seats')
             .eq('nation_id', nation.id)
@@ -86,100 +85,37 @@ export async function initCoalitionFormation(supabase, state) {
     _majoritySeats = Math.ceil(_totalSeats / 2) + 1;
 
     const election = electionResult.data;
-    const formedGov = coalitionResult.data || null;
+    // activeCoalition is either null or the canonical SSoT result from
+    // fetchActiveCoalition. For presidential systems it's virtualized from the
+    // presidents table (_source='presidential'); for parliamentary it's a
+    // real government_formations row. No stub rows anywhere.
+    const formedGov = activeCoalition || null;
     const hasActiveHoG = !!hogResult.data;
 
-    // Cycle-anchored check: is the formation row tied to the LATEST election?
-    // This stops a stale 1995 formation from masking the need for a new
-    // government after a 2000 election.
+    // Cycle-anchored check: is this formation tied to the LATEST election?
+    // Virtualized presidential coalitions always count as current — the
+    // active president IS the government.
     const hasCurrentCycleFormedGov = (() => {
         if (!formedGov) return false;
-        if (!election) return true; // no completed election to anchor against
-
-        // Primary check: the formed government is explicitly tied to the latest completed election.
+        if (formedGov._source === 'presidential') return true;
+        if (!election) return true;
         if (formedGov.election_id && formedGov.election_id === election.id) return true;
-
-        // Fallback check: treat as current-cycle only when formation tick is at/after election tick.
-        const candidateTicks = [
-            formedGov.formed_tick,
-            formedGov.created_tick,
-        ].map((v) => Number(v)).filter((v) => Number.isFinite(v));
-
-        if (candidateTicks.length > 0 && Number.isFinite(election.election_tick)) {
-            return Math.max(...candidateTicks) >= election.election_tick;
-        }
-
         return false;
     })();
 
     // A government effectively exists if either:
-    //   1. A formation row is current-cycle and in formed/active status, OR
-    //   2. An active head_of_government row exists (canonical "PM is sitting"
-    //      signal — used by the Administrative tab; covers fallback paths
-    //      that never wrote a formation row).
-    // Without (2), the Election tab would falsely claim "No Government" while
-    // a full cabinet renders one tab over.
+    //   1. The SSoT returned a formed/caretaker coalition for the current cycle, OR
+    //   2. An active head_of_government row exists (fallback for legacy data
+    //      or paths that never wrote a formation row).
     const hasFormedGov = hasCurrentCycleFormedGov || hasActiveHoG;
 
-    // Presidential systems don't use coalition formation — the president governs directly
+    // Presidential / semi-presidential systems don't use coalition formation —
+    // the president governs (or nominates the PM). The Election tab renders a
+    // system-specific blurb via the early return below.
     const isPresidentialSystem = (nation.government_type || '').toLowerCase().includes('presidential')
         || nation.hos_election_method === 'direct_vote';
     if (isPresidentialSystem) {
         _formationNeeded = false;
-
-        // If an election just happened and no government exists, auto-create one for the president's party
-        if (election && !hasCurrentCycleFormedGov) {
-            try {
-                const currentTick = shardResult.data?.current_tick ?? 0;
-                // Find the president's party (active president row or largest party)
-                const { data: activePresident } = await supabase.from('presidents')
-                    .select('faction_id').eq('nation_id', nation.id).eq('is_active', true).maybeSingle();
-                const presPartyId = activePresident?.faction_id || (_allParties[0]?.id);
-
-                if (presPartyId) {
-                    const isSemiPres = (nation.government_type || '').toLowerCase().includes('semi');
-
-                    // Create government formation
-                    await supabase.from('government_formations').insert({
-                        nation_id: nation.id,
-                        proposed_by: presPartyId,
-                        status: 'formed',
-                        party_ids: [presPartyId],
-                        formation_type: 'coalition',
-                        formed_at: new Date().toISOString(),
-                    });
-
-                    // Delete existing ministries to avoid duplicates
-                    await supabase.from('ministries').delete()
-                        .eq('nation_id', nation.id).eq('is_active', true);
-
-                    // Presidential systems (both pure and semi): all cabinet
-                    // slots start empty. The President nominates each minister;
-                    // Semi-Presidential also leaves the PM seat vacant until the
-                    // President nominates a PM. Nothing is auto-populated.
-                    // Pure presidential omits the prime_minister seat entirely.
-                    const cabinetKeys = isSemiPres
-                        ? CABINET_MINISTRY_KEYS
-                        : CABINET_MINISTRY_KEYS.filter(k => k !== 'prime_minister');
-                    const rows = cabinetKeys.map(key => ({
-                        nation_id: nation.id,
-                        ministry_key: key,
-                        ministry_name: MINISTRY_OFFICE_NAMES[key] || key,
-                        party_id: null,
-                        is_active: true,
-                    }));
-                    await supabase.from('ministries').insert(rows);
-
-                    // Semi-Presidential: ensure no HOG row exists (PM is vacant)
-                    if (isSemiPres) {
-                        await supabase.from('head_of_government').delete().eq('nation_id', nation.id);
-                    }
-                }
-            } catch (presGovErr) {
-                console.warn('[Coalition] Presidential auto-gov failed:', presGovErr.message);
-            }
-        }
-
         return { needed: false };
     }
 
