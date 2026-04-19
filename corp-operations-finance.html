@@ -978,9 +978,9 @@ function renderActivePortfolio() {
         <div class="ap-summary__cell" style="flex:0.6;">
             <div class="ap-summary__label">DEALS</div>
             <div style="display:flex;gap:4px;margin-top:3px;">
-                ${['LOAN', 'INSURE', 'BOND'].map(t => {
+                ${['LOAN', 'INSURE', 'BOND', 'EQUITY'].map(t => {
                     const count = apPortfolio.filter(p => p.type === t).length;
-                    const color = t === 'LOAN' ? '#5a8aaa' : t === 'INSURE' ? '#aa7a5a' : '#8a6aaa';
+                    const color = t === 'LOAN' ? '#5a8aaa' : t === 'INSURE' ? '#aa7a5a' : t === 'BOND' ? '#8a6aaa' : '#c89a4a';
                     return `<div style="display:flex;align-items:center;gap:2px;"><div style="width:4px;height:4px;background:${color};border-radius:1px;"></div><span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:#9e9a92;">${count}</span></div>`;
                 }).join('')}
             </div>
@@ -1004,6 +1004,7 @@ function renderActivePortfolio() {
         { id: 'LOAN', label: 'Loans', activeClass: 'active-loan' },
         { id: 'INSURE', label: 'Policies', activeClass: 'active-insure' },
         { id: 'BOND', label: 'Bonds', activeClass: 'active-bond' },
+        { id: 'EQUITY', label: 'Equity', activeClass: 'active-equity' },
     ]) {
         html += `<span class="df-pill${apFilter === f.id ? ' ' + f.activeClass : ''}" onclick="apSetFilter('${f.id}')">${f.label}</span>`;
     }
@@ -1039,28 +1040,45 @@ function renderActivePortfolio() {
         </div>`;
 
         // Row 2: nation + progress
+        const progressText = d.type === 'EQUITY'
+            ? `SERIES ${d.series || '?'} — ${elapsed} DIVIDEND${elapsed === 1 ? '' : 'S'} PAID`
+            : `${elapsed}/${term}mo — ${pctComplete}%`;
         html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
             <span class="df-badge df-badge-nation" style="line-height:12px;">${escapeHtml((d.nation || '').toUpperCase())}</span>
-            <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">${elapsed}/${term}mo — ${pctComplete}%</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">${progressText}</span>
         </div>`;
 
-        // Progress bar
-        const barColor = hasAlert ? sm.color : (tm.class === 'loan' ? '#5a8aaa' : tm.class === 'insure' ? '#aa7a5a' : '#8a6aaa');
-        html += `<div class="rd-bar"><div class="rd-bar__fill" style="width:${Math.min(pctComplete, 100)}%;background:${barColor};"></div></div>`;
+        // Progress bar. Equity is perpetual (no term), so the bar is always
+        // full — it's a visual marker, not a progress indicator.
+        const barBaseColor = tm.class === 'loan' ? '#5a8aaa' : tm.class === 'insure' ? '#aa7a5a' : tm.class === 'bond' ? '#8a6aaa' : '#c89a4a';
+        const barColor = hasAlert ? sm.color : barBaseColor;
+        const barWidth = d.type === 'EQUITY' ? 100 : Math.min(pctComplete, 100);
+        html += `<div class="rd-bar"><div class="rd-bar__fill" style="width:${barWidth}%;background:${barColor};"></div></div>`;
 
         // Row 3: metrics
-        const exposureLabel = d.type === 'LOAN' ? 'REMAINING' : d.type === 'INSURE' ? 'COVERAGE' : 'FACE VALUE';
+        const exposureLabel = d.type === 'LOAN' ? 'REMAINING'
+            : d.type === 'INSURE' ? 'COVERAGE'
+            : d.type === 'EQUITY' ? 'CAPITAL DEPLOYED'
+            : 'FACE VALUE';
         const exposureVal = d.remaining || d.coverage || d.faceValue || 0;
-        const rateLabel = d.type === 'LOAN' ? 'RATE' : d.type === 'INSURE' ? 'PREMIUM' : 'COUPON';
+        const rateLabel = d.type === 'LOAN' ? 'RATE'
+            : d.type === 'INSURE' ? 'PREMIUM'
+            : d.type === 'EQUITY' ? 'STAKE'
+            : 'COUPON';
         const rateVal = d.rate || d.premiumRate || d.coupon || 0;
         const earnedVal = d.earned || d.premiumsCollected || d.couponsReceived || 0;
         // Per-type label so lenders don't read "EARNED" as gross cashflow: for
         // loans it's the interest portion only, not principal repayment.
-        const earnedLabel = d.type === 'LOAN' ? 'INTEREST REVENUE (P&L)' : d.type === 'INSURE' ? 'PREMIUMS EARNED' : 'COUPONS EARNED';
+        const earnedLabel = d.type === 'LOAN' ? 'INTEREST REVENUE (P&L)'
+            : d.type === 'INSURE' ? 'PREMIUMS EARNED'
+            : d.type === 'EQUITY' ? 'DIVIDENDS RECEIVED'
+            : 'COUPONS EARNED';
         const earnedTooltip = d.type === 'LOAN'
             ? 'Loan monthly cash = interest + principal. This metric tracks interest revenue only; principal is asset repayment.'
+            : d.type === 'EQUITY'
+            ? 'Cumulative dividends paid by the target corp. Each tick = equity_pct × their monthly profit (losses pay $0).'
             : '';
-        const rateColor = tm.class === 'loan' ? '#5a8aaa' : tm.class === 'insure' ? '#aa7a5a' : '#8a6aaa';
+        const rateColor = barBaseColor;
 
         html += `<div class="df-metrics" style="margin-top:4px;">
             <div style="flex:1;padding:3px 6px;border-right:1px solid var(--panel-border);">
@@ -1130,6 +1148,29 @@ function renderActivePortfolio() {
                     html += `<div class="ap-detail-row"><span class="ap-detail-label">${r.label}</span><span class="ap-detail-value" style="color:${r.color || '#9e9a92'};">${r.value}</span></div>`;
                 }
                 html += `<div class="ap-actions"><div class="ap-action-btn purple" onclick="apSellPosition('${d.id}')">SELL POSITION</div><div class="ap-action-btn olive">HOLD</div></div>`;
+            } else if (d.type === 'EQUITY') {
+                const avgPerTick = (d.paymentsMade || 0) > 0
+                    ? Math.round((d.dividendsReceived || 0) / d.paymentsMade)
+                    : 0;
+                const roiPct = (d.principal || 0) > 0
+                    ? Math.round(((d.dividendsReceived || 0) / d.principal) * 10000) / 100
+                    : 0;
+                const rows = [
+                    { label: 'CAPITAL DEPLOYED', value: fmtMoney(d.principal || 0) },
+                    { label: 'STAKE', value: (d.equityPct || 0) + '%', color: '#c89a4a' },
+                    { label: 'SERIES', value: d.series || '?', color: '#c89a4a' },
+                    { label: 'DIVIDENDS RECEIVED', value: fmtMoney(d.dividendsReceived || 0), color: '#5c5', title: 'Cumulative dividends since buy-in.' },
+                    { label: 'AVG DIVIDEND / TICK', value: fmtMoney(avgPerTick), title: 'Dividends paid divided by ticks processed. $0 ticks (loss months) drag this down.' },
+                    { label: 'TICKS PROCESSED', value: String(d.paymentsMade || 0) },
+                    { label: 'LAST DIVIDEND TICK', value: d.lastDividendTick != null ? 'Tick ' + d.lastDividendTick : '—' },
+                    { label: 'ROI TO DATE', value: roiPct + '%', color: roiPct >= 0 ? '#5c5' : '#c55', title: 'Cumulative dividends / capital deployed. Equity is perpetual — no principal return expected; ROI accumulates indefinitely.' },
+                ];
+                for (const r of rows) {
+                    html += `<div class="ap-detail-row"><span class="ap-detail-label" title="${r.title || ''}">${r.label}</span><span class="ap-detail-value" style="color:${r.color || '#9e9a92'};">${r.value}</span></div>`;
+                }
+                // No actions yet: exit/secondary market is Phase 8. Show the
+                // stake as hold-only so players aren't confused by silence.
+                html += `<div class="ap-actions"><div class="ap-action-btn olive" title="Secondary market coming in a later phase.">HOLD</div></div>`;
             }
 
             html += '</div>'; // close expanded
@@ -1159,8 +1200,8 @@ function renderActivePortfolio() {
             <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">RISK</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${defaultRate > 20 ? '#c55' : defaultRate > 0 ? '#ca5' : '#5c5'};">${defaultRate}%</div></div>
         </div>
         <div style="display:flex;gap:6px;">
-            ${['LOAN', 'INSURE', 'BOND'].map(t => {
-                const color = t === 'LOAN' ? '#5a8aaa' : t === 'INSURE' ? '#aa7a5a' : '#8a6aaa';
+            ${['LOAN', 'INSURE', 'BOND', 'EQUITY'].map(t => {
+                const color = t === 'LOAN' ? '#5a8aaa' : t === 'INSURE' ? '#aa7a5a' : t === 'BOND' ? '#8a6aaa' : '#c89a4a';
                 const count = apPortfolio.filter(p => p.type === t).length;
                 return `<div style="text-align:center;padding:1px 6px;border:1px solid ${count > 0 ? color + '33' : 'var(--panel-border)'};background:${count > 0 ? color + '0a' : 'transparent'};"><div style="font-family:var(--font-mono);font-size:6px;color:${color};">${t}</div><div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${count > 0 ? 'var(--panel-text)' : '#6a6660'};">${count}</div></div>`;
             }).join('')}
@@ -2613,8 +2654,9 @@ async function loadActivePortfolio() {
         .in('status', ['current', 'late', 'delinquent'])
         .order('started_tick', { ascending: false });
 
-    const TYPE_MAP = { loan: 'LOAN', bond: 'BOND', insurance: 'INSURE' };
+    const TYPE_MAP = { loan: 'LOAN', bond: 'BOND', insurance: 'INSURE', equity: 'EQUITY' };
     const isInsurance = (loan) => loan.finance_loan_requests?.request_type === 'insurance';
+    const isEquity = (loan) => loan.finance_loan_requests?.request_type === 'equity';
     const loanCashCollected = (loan) => {
         const monthlyPayment = Number(loan.monthly_payment || 0);
         const paymentsMade = Number(loan.payments_made || 0);
@@ -2655,13 +2697,21 @@ async function loadActivePortfolio() {
         counterparty: loan.borrower?.faction_name || 'Unknown',
         abbr: loan.borrower?.abbreviation || loan.borrower?.corp_ticker || '??',
         nation: loan.loan_nation?.name || loan.borrower?.nation || 'Unknown',
-        remaining: isInsurance(loan) ? 0 : Math.max(0, Number(loan.remaining_principal || 0)),
+        // Equity is perpetual — principal stays fully deployed as "exposure".
+        // Insurance has no principal exposure (it's a service contract).
+        remaining: isInsurance(loan) ? 0
+            : isEquity(loan) ? Number(loan.principal || 0)
+            : Math.max(0, Number(loan.remaining_principal || 0)),
         principal: loan.principal,
-        earned: isInsurance(loan) ? ((loan.monthly_payment || 0) * (loan.payments_made || 0)) : loanInterestRevenue(loan),
-        cashCollected: isInsurance(loan) ? undefined : loanCashCollected(loan),
-        interestRevenue: isInsurance(loan) ? undefined : loanInterestRevenue(loan),
-        principalRepaid: isInsurance(loan) ? undefined : loanPrincipalRepaid(loan),
-        rate: loan.interest_rate,
+        // EARNED for equity = cumulative dividends (total_paid is pure dividend since monthly_payment=0).
+        earned: isInsurance(loan) ? ((loan.monthly_payment || 0) * (loan.payments_made || 0))
+            : isEquity(loan) ? Number(loan.total_paid || 0)
+            : loanInterestRevenue(loan),
+        cashCollected: (isInsurance(loan) || isEquity(loan)) ? undefined : loanCashCollected(loan),
+        interestRevenue: (isInsurance(loan) || isEquity(loan)) ? undefined : loanInterestRevenue(loan),
+        principalRepaid: (isInsurance(loan) || isEquity(loan)) ? undefined : loanPrincipalRepaid(loan),
+        // For equity, rate = equity_pct (stake %) so AVG RATE in the footer is meaningful.
+        rate: isEquity(loan) ? Number(loan.equity_pct || 0) : loan.interest_rate,
         term: loan.term_months,
         paymentsMade: loan.payments_made,
         paymentsMissed: loan.payments_missed,
@@ -2682,6 +2732,12 @@ async function loadActivePortfolio() {
         paidOut: isInsurance(loan) ? (loan.claims_paid || 0) : undefined,
         claims: isInsurance(loan) ? (loan.claims_count || 0) : undefined,
         deductible: isInsurance(loan) ? (loan.deductible_pct || 0) : undefined,
+        // Equity-specific fields
+        equityPct: isEquity(loan) ? Number(loan.equity_pct || 0) : undefined,
+        series: isEquity(loan) ? (loan.series || '?') : undefined,
+        dividendsReceived: isEquity(loan) ? Number(loan.total_paid || 0) : undefined,
+        lastDividendTick: isEquity(loan) ? loan.last_payment_tick : undefined,
+        borrowerFactionId: isEquity(loan) ? loan.borrower_faction_id : undefined,
     }));
 
     renderActivePortfolio();
