@@ -841,7 +841,7 @@ function renderDealFlow() {
             // isn't wired yet (Phase 3). Lock REVIEW DEAL for EQUITY with a
             // distinct tooltip so testers know it's intentional.
             if (canRev && selDeal.type === 'EQUITY') {
-                return `<div class="df-review-btn" style="opacity:0.4;cursor:not-allowed;" title="Equity Buy-In coming soon">&#128274; VIEW ONLY</div>`;
+                return `<div class="df-review-btn active" style="background:#c89a4a;color:#000;" onclick="dfBuyEquityStake(${dfSelected})" title="Purchase this equity stake">BUY STAKE</div>`;
             }
             if (canRev) {
                 return `<div class="df-review-btn active" onclick="rdOpen(${dfSelected})">REVIEW DEAL</div>`;
@@ -861,9 +861,120 @@ function dfToggleNation() {
     dfSelected = -1;
     renderDealFlow();
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// Equity Buy-In (Phase 3). Investment corps purchase a stake at the
+// terms offered by the raiser. Counter-offers and partial fills are
+// later phases; for now the investor either accepts the full stake as
+// posted or walks away.
+//
+// Flow:
+//   1. Self-dealing + cash-sufficiency checks.
+//   2. Player-facing confirm with the exact terms.
+//   3. Insert offer row (status='accepted', mirrors bond pattern).
+//   4. Insert finance_active_loans position with equity_pct + series.
+//      term_months uses the 120 sentinel from Phase 1; monthly_payment
+//      stays 0 because Phase 4's tick branch computes the dividend from
+//      target.monthly_profit × equity_pct — there's no fixed coupon.
+//   5. Move cash: investor cash DOWN by amount, target cash UP by amount.
+//   6. Mark request 'funded' so it leaves Deal Flow.
+//
+// Partial failures: the sequence isn't transactional (Supabase has no
+// client-side transactions). If step 5 fails after step 4, an orphan
+// position exists without cash movement — surface the error loudly so
+// it can be reconciled. Phase 10 can harden this via a server-side RPC.
+// ────────────────────────────────────────────────────────────────────────
+async function dfBuyEquityStake(dealIdx) {
+    if (_submittingOffer) return;
+    const deal = dfDeals[dealIdx];
+    if (!deal || deal.type !== 'EQUITY' || !faction || !shard) return;
+
+    if (deal.requestingFactionId === faction.id) {
+        alert('Cannot buy a stake in your own corp.');
+        return;
+    }
+
+    const cash = Number(faction.corp_cash_reserves || 0);
+    if (cash < deal.amount) {
+        alert('Insufficient cash reserves. Need ' + fmtMoney(deal.amount) + ', have ' + fmtMoney(cash) + '.');
+        return;
+    }
+
+    const confirmText = 'Purchase ' + deal.equityPct + '% stake in ' + deal.applicant + ' for ' + fmtMoney(deal.amount) + '?\n\n'
+        + 'This will send ' + fmtMoney(deal.amount) + ' to ' + deal.applicant
+        + ' and give you a ' + deal.equityPct + '% share of their monthly profits going forward.';
+    if (!confirm(confirmText)) return;
+
+    _submittingOffer = true;
+    const currentTick = shard.current_tick;
+
+    try {
+        const { data: offerRow, error: offerErr } = await _supabase.from('finance_loan_offers').insert({
+            request_id: deal.requestId,
+            offering_faction_id: faction.id,
+            interest_rate: deal.equityPct,
+            collateral_type: 'unsecured',
+            status: 'accepted',
+            created_tick: currentTick,
+        }).select('id').single();
+        if (offerErr) throw new Error('Offer insert failed: ' + offerErr.message);
+
+        const { error: posErr } = await _supabase.from('finance_active_loans').insert({
+            request_id: deal.requestId,
+            offer_id: offerRow.id,
+            borrower_faction_id: deal.requestingFactionId,
+            lender_faction_id: faction.id,
+            nation_id: deal.nation_id || faction.nation_id,
+            principal: deal.amount,
+            interest_rate: deal.equityPct,
+            term_months: deal.term || 120,
+            collateral_type: 'unsecured',
+            purpose: deal.purpose,
+            monthly_payment: 0,
+            equity_pct: deal.equityPct,
+            series: deal.series,
+            started_tick: currentTick,
+        });
+        if (posErr) throw new Error('Position insert failed: ' + posErr.message);
+
+        const { error: invErr } = await _supabase.from('factions').update({
+            corp_cash_reserves: cash - deal.amount,
+        }).eq('id', faction.id);
+        if (invErr) throw new Error('Investor cash deduction failed: ' + invErr.message);
+        faction.corp_cash_reserves = cash - deal.amount;
+
+        const { data: target } = await _supabase.from('factions')
+            .select('corp_cash_reserves')
+            .eq('id', deal.requestingFactionId)
+            .single();
+        if (target) {
+            const { error: tErr } = await _supabase.from('factions').update({
+                corp_cash_reserves: Number(target.corp_cash_reserves || 0) + deal.amount,
+            }).eq('id', deal.requestingFactionId);
+            if (tErr) console.warn('[Equity] Target cash credit failed:', tErr.message);
+        }
+
+        const { error: reqErr } = await _supabase.from('finance_loan_requests').update({
+            status: 'funded',
+            accepted_offer_id: offerRow.id,
+            funded_tick: currentTick,
+        }).eq('id', deal.requestId);
+        if (reqErr) console.warn('[Equity] Request status update failed:', reqErr.message);
+
+        dfSelected = -1;
+        alert('Purchased ' + deal.equityPct + '% stake in ' + deal.applicant + '. Dividends accumulate monthly.');
+        await Promise.all([loadDealFlow(), loadActivePortfolio()]);
+    } catch (e) {
+        alert('Equity purchase failed: ' + (e.message || e));
+    } finally {
+        _submittingOffer = false;
+    }
+}
+
 window.dfSetFilter = dfSetFilter;
 window.dfToggleNation = dfToggleNation;
 window.dfSelectDeal = dfSelectDeal;
+window.dfBuyEquityStake = dfBuyEquityStake;
 
 // ==================== ACTIVE PORTFOLIO ====================
 
