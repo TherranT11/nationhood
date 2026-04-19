@@ -13619,9 +13619,11 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
 /**
  * Dissolve the current coalition government.
  * - Sets government_formations status to 'dissolved'
+ * - Dissolves legacy active_coalitions
  * - Deactivates PM in head_of_government
- * - Vacates all ministries
- * Nation enters formation period (processGovernmentVacancy handles penalties).
+ * Ministries are NOT cleared — the cabinet persists as caretaker until the
+ * next election. Nation enters formation period (processGovernmentVacancy
+ * handles penalties).
  */
 async function dissolveCoalition(supabase, nationId, excludeFormationId) {
     // Bust coalition cache so pages immediately see the dissolved state
@@ -13653,18 +13655,12 @@ async function dissolveCoalition(supabase, nationId, excludeFormationId) {
         .eq('active', true);
     if (pmErr) console.warn('dissolveCoalition: PM deactivation failed:', pmErr);
 
-    // Vacate all ministries
-    const { error: minErr } = await supabase
-        .from('ministries')
-        .update({
-            minister_first_name: null,
-            minister_last_name: null,
-            minister_age: null,
-            party_id: null
-        })
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-    if (minErr) console.warn('dissolveCoalition: ministry vacating failed:', minErr);
+    // NOTE: ministries are NOT vacated here. Cabinet members persist as a
+    // caretaker government through the dissolution / snap-election window.
+    // Ministries are cleared exactly once per cycle — inside the parliamentary
+    // branch of election resolution (processScheduledElections /
+    // processManualElection). See design rule: ministers are only auto-
+    // removed after a government election.
 }
 
 
@@ -13674,7 +13670,8 @@ async function dissolveCoalition(supabase, nationId, excludeFormationId) {
  * Resolve a passed or failed vote of no confidence.
  *
  * PASSED:
- *   - Coalition immediately dissolved (all ministries vacated, PM removed)
+ *   - Coalition immediately dissolved (PM deactivated; ministries stay populated
+ *     as caretaker cabinet until the snap election vacates them)
  *   - Calling party gets +3 approval
  *   - All coalition parties get -5 approval
  *   - Event logged
@@ -16502,34 +16499,14 @@ async function autoSelectPresidentialCandidates(supabase, nation, currentTick) {
 }
 
 /**
- * Safety net for parliamentary systems: if no active HOG exists after coalition
- * formation, auto-appoint the PM party's leader.
+ * (removed) processParliamentaryPMTimeout
+ *
+ * Previously a tick-level safety net that auto-installed the PM party leader
+ * if a coalition was formed but head_of_government was missing. Removed per
+ * design philosophy: ministers (including the PM seat) are never auto-
+ * installed without explicit player action. If the coalition says "formed"
+ * but no PM sits, the player sees the mismatch and takes action.
  */
-async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
-    if (!hasParliamentaryPM(nation)) return;
-
-    const coalition = await fetchActiveCoalition(supabase, nation.id);
-    if (!coalition || coalition.status !== 'formed') return;
-
-    const { data: existingHOG } = await supabase
-        .from('head_of_government')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('active', true)
-        .limit(1)
-        .maybeSingle();
-    if (existingHOG) return;
-
-    const pmPartyId = coalition.ministry_assignments?.prime_minister || coalition.lead_party_id;
-    if (!pmPartyId) return;
-
-    try {
-        await autoAppointPartyLeaderAsPM(supabase, nation.id, pmPartyId, currentTick);
-        console.log(`Auto-appointed party leader as PM for ${nation.name} (tick timeout recovery)`);
-    } catch (e) {
-        console.error(`Error auto-appointing parliamentary PM for ${nation.name}:`, e);
-    }
-}
 
 // ==================== NOMINEE SELF-REJECTION ====================
 
@@ -35700,10 +35677,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
         }
 
-        // Presidential pre-election candidate generation, term end safety net, + selection timeout
+        // Presidential pre-election candidate generation + term end safety net.
+        // (processParliamentaryPMTimeout removed — PM is never auto-installed.)
         await triggerPresidentialCandidateSelection(supabase, nation, newTick);
         await processPresidentialTermEnd(supabase, nation, newTick);
-        await processParliamentaryPMTimeout(supabase, nation, newTick);
 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
         await processIncumbentCampaignBonuses(supabase, nation, newTick);

@@ -47,7 +47,7 @@ import { RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
 import { FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, applyGdpGrowth, calculateNationalBudget } from './js/game/budget.js';
 import { processElections, processGovernmentVacancy, resolveNoConfidence, runManualElectionByGovernmentType } from './js/game/elections.js';
 import { processEvents, processCrises, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, processPMTraitEffects, formatStatName } from './js/game/political-actions.js';
-import { processPresidentDesk, processPresidentialTermEnd, processParliamentaryPMTimeout, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates } from './js/game/presidential.js';
+import { processPresidentDesk, processPresidentialTermEnd, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates } from './js/game/presidential.js';
 import { processIdeologyShifts, recalcDerivedApproval, resolveExpiredVotes } from './js/game/bills.js';
 import { IDEOLOGY_AXES } from './js/game/ideology.js';
 import { NATION_STAT_COLUMNS, STAT_DECAY_CONFIG, normalizeNationStatKey, buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';

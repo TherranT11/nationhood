@@ -718,9 +718,11 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
 /**
  * Dissolve the current coalition government.
  * - Sets government_formations status to 'dissolved'
+ * - Dissolves legacy active_coalitions
  * - Deactivates PM in head_of_government
- * - Vacates all ministries
- * Nation enters formation period (processGovernmentVacancy handles penalties).
+ * Ministries are NOT cleared — the cabinet persists as caretaker until the
+ * next election. Nation enters formation period (processGovernmentVacancy
+ * handles penalties).
  */
 export async function dissolveCoalition(supabase, nationId, excludeFormationId) {
     // Bust coalition cache so pages immediately see the dissolved state
@@ -752,18 +754,12 @@ export async function dissolveCoalition(supabase, nationId, excludeFormationId) 
         .eq('active', true);
     if (pmErr) console.warn('dissolveCoalition: PM deactivation failed:', pmErr);
 
-    // Vacate all ministries
-    const { error: minErr } = await supabase
-        .from('ministries')
-        .update({
-            minister_first_name: null,
-            minister_last_name: null,
-            minister_age: null,
-            party_id: null
-        })
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-    if (minErr) console.warn('dissolveCoalition: ministry vacating failed:', minErr);
+    // NOTE: ministries are NOT vacated here. Cabinet members persist as a
+    // caretaker government through the dissolution / snap-election window.
+    // Ministries are cleared exactly once per cycle — inside the parliamentary
+    // branch of election resolution (processScheduledElections /
+    // processManualElection). See design rule: ministers are only auto-
+    // removed after a government election.
 }
 
 
@@ -773,7 +769,8 @@ export async function dissolveCoalition(supabase, nationId, excludeFormationId) 
  * Resolve a passed or failed vote of no confidence.
  *
  * PASSED:
- *   - Coalition immediately dissolved (all ministries vacated, PM removed)
+ *   - Coalition immediately dissolved (PM deactivated; ministries stay populated
+ *     as caretaker cabinet until the snap election vacates them)
  *   - Calling party gets +3 approval
  *   - All coalition parties get -5 approval
  *   - Event logged
