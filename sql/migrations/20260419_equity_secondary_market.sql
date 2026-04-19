@@ -55,7 +55,7 @@ SET search_path = public
 AS $$
 DECLARE
     v_caller_uid   UUID := auth.uid();
-    v_position     public.finance_active_loans%ROWTYPE;
+    v_position     RECORD;
     v_buyer_cash   BIGINT;
     v_seller_cash  BIGINT;
     v_current_tick INT;

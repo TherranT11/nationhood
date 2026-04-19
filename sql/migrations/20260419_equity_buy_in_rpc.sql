@@ -49,7 +49,7 @@ SET search_path = public
 AS $$
 DECLARE
     v_caller_uid   UUID := auth.uid();
-    v_request      public.finance_loan_requests%ROWTYPE;
+    v_request      RECORD;
     v_buyer_cash   BIGINT;
     v_target_cash  BIGINT;
     v_current_tick INT;
