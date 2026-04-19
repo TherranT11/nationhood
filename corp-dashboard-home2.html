@@ -2660,6 +2660,38 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const netProfit = totalRevenue - totalExpenses;
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const debt = outstandingDebt;
+    let previousTickCash = null;
+    let cashDelta = null;
+    let nonPnlCashMovements = null;
+    let cashBridgeDisclaimer = 'Does not include all capital/financing cash transfers.';
+    if (faction?.id) {
+        try {
+            const { data: cashHistoryRows } = await _supabase.from('corp_cash_history')
+                .select('tick, cash_start, cash_end, cash_delta, non_pnl_cash_movements')
+                .eq('faction_id', faction.id)
+                .lte('tick', currentTick)
+                .order('tick', { ascending: false })
+                .limit(2);
+            const currentRow = (cashHistoryRows || []).find(r => Number(r.tick) === Number(currentTick)) || (cashHistoryRows || [])[0] || null;
+            const priorRow = (cashHistoryRows || []).find(r => Number(r.tick) < Number(currentRow?.tick ?? currentTick)) || null;
+            if (currentRow) {
+                previousTickCash = currentRow.cash_start != null
+                    ? Number(currentRow.cash_start)
+                    : (priorRow?.cash_end != null ? Number(priorRow.cash_end) : null);
+                cashDelta = currentRow.cash_delta != null
+                    ? Number(currentRow.cash_delta)
+                    : (previousTickCash != null ? cash - previousTickCash : null);
+                nonPnlCashMovements = currentRow.non_pnl_cash_movements != null
+                    ? Number(currentRow.non_pnl_cash_movements)
+                    : (cashDelta != null ? cashDelta - netProfit : null);
+            } else {
+                cashBridgeDisclaimer = 'Does not include all capital/financing cash transfers. Cash history snapshot not yet available.';
+            }
+        } catch (cashHistErr) {
+            console.warn('[Finances] corp_cash_history lookup failed:', cashHistErr);
+            cashBridgeDisclaimer = 'Does not include all capital/financing cash transfers. Cash history snapshot unavailable.';
+        }
+    }
 
     // Home2: push revenue + net to the KPI strip.
     h2SetKPIRevenue(totalRevenue, netProfit);
@@ -2735,8 +2767,20 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         </div>
         <!-- Net Profit -->
         <div class="fin-net" style="background:${netProfit >= 0 ? 'rgba(92,204,92,0.02)' : 'rgba(204,85,85,0.02)'}">
-            <span class="fin-net__label">Net Profit</span>
+            <span class="fin-net__label">Net Profit (P&amp;L)</span>
             <span class="fin-net__value" style="color:${netProfit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtMoney(netProfit)}</span>
+        </div>
+        <div style="padding:2px 14px 8px 14px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.2px;">${cashBridgeDisclaimer}</div>
+        <!-- Cash Reconciliation -->
+        <div class="fin-section">
+            <div class="fin-section__title" style="color:var(--text-bright);">Cash Change This Tick</div>
+            <div class="fin-row"><span class="fin-row__label">Net Profit (P&amp;L)</span><span class="fin-row__value" style="color:${netProfit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtMoney(netProfit)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">+/- Non-P&amp;L cash movements</span><span class="fin-row__value" style="color:var(--text-bright)">${nonPnlCashMovements == null ? '—' : fmtMoney(nonPnlCashMovements)}</span></div>
+            <div class="fin-total">
+                <span class="fin-total__label">= Actual Cash Change</span>
+                <span class="fin-total__value" style="color:${(cashDelta || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${cashDelta == null ? '—' : fmtMoney(cashDelta)}</span>
+            </div>
+            <div style="padding:2px 12px 4px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.2px;">Computed from cash snapshots: current cash (${fmtMoney(cash)}) ${previousTickCash == null ? 'with no prior snapshot' : '- previous tick cash (' + fmtMoney(previousTickCash) + ')' }.</div>
         </div>
         <!-- Cash & Debt -->
         <div class="fin-cash-debt">

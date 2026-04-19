@@ -4040,6 +4040,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     console.warn(`[advance-corp-tick] Failed to fetch fresh corp cash for ${corp.faction_name}:`, corpCashErr.message);
                 }
                 let corpCashRunning = Number(corpCashRow?.corp_cash_reserves ?? corp.corp_cash_reserves ?? 0);
+                const cashAtTickStart = corpCashRunning;
                 console.log('[advance-corp-tick] corp_cash_tick_start', {
                     faction_id: corp.id,
                     faction_name: corp.faction_name,
@@ -4442,6 +4443,21 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     tick: currentTick,
                     after_balance: corpCashRunning,
                 });
+                const cashDelta = corpCashRunning - cashAtTickStart;
+                const nonPnlCashMovements = null;
+                const { error: cashHistoryErr } = await supabase
+                    .from('corp_cash_history')
+                    .upsert({
+                        faction_id: corp.id,
+                        tick: currentTick,
+                        cash_start: cashAtTickStart,
+                        cash_end: corpCashRunning,
+                        cash_delta: cashDelta,
+                        non_pnl_cash_movements: nonPnlCashMovements,
+                    }, { onConflict: 'faction_id,tick' });
+                if (cashHistoryErr) {
+                    console.warn(`[advance-corp-tick] corp_cash_history upsert failed for ${corp.faction_name}:`, cashHistoryErr.message);
+                }
             } catch (vesselErr) {
                 console.error(`[advance-corp-tick] Vessel decay failed for ${corp.faction_name} (non-fatal):`, vesselErr);
             }
