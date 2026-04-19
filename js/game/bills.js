@@ -473,16 +473,29 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
         }
 
         if (hasChanges) {
-            const { error: updateErr } = await supabase
-                .from('faction_ideology')
-                .update(updateObj)
-                .eq('faction_id', factionId);
+            try {
+                const { error: updateErr } = await supabase
+                    .from('faction_ideology')
+                    .update(updateObj)
+                    .eq('faction_id', factionId);
 
-            if (updateErr) {
-                console.error(`[processIdeologyShifts] update failed for faction ${factionId}`, {
-                    faction_id: factionId,
-                    payload: updateObj,
-                    error: updateErr.message
+                if (updateErr) {
+                    console.error('[processIdeologyShifts] faction_ideology update failed', {
+                        factionId,
+                        nationId,
+                        currentTick,
+                        attemptedAxisUpdates: updateObj,
+                        error: updateErr.message
+                    });
+                    continue;
+                }
+            } catch (err) {
+                console.error('[processIdeologyShifts] faction_ideology update threw', {
+                    factionId,
+                    nationId,
+                    currentTick,
+                    attemptedAxisUpdates: updateObj,
+                    error: err?.message || String(err)
                 });
                 continue;
             }
@@ -510,7 +523,12 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
             .from('ideology_history')
             .insert(historyRows);
         if (histErr) {
-            console.warn('[processIdeologyShifts] ideology_history insert failed (table may not exist yet):', histErr.message);
+            console.warn('[processIdeologyShifts] ideology_history insert failed (table may not exist yet)', {
+                nationId,
+                currentTick,
+                affectedFactionIds: historyRows.map(row => row.faction_id),
+                error: histErr.message
+            });
         }
     }
 }
