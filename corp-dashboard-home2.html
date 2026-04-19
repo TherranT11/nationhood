@@ -1042,16 +1042,187 @@ body.h2-edit-open .id-card { display: block !important; }
   .h2-plate-r { align-items: flex-start; text-align: left; }
   .h2-title { font-size: 30px; }
 }
+
+/* ===========================================================================
+   HOME2 — PHASE 3: 3-COLUMN GRID + LEFT RAIL
+   =========================================================================== */
+body.h2-page {
+  background: var(--h2-bg);
+}
+body.h2-page .content {
+  display: block;
+  padding: 18px 22px;
+  max-width: 1680px;
+  margin: 0 auto;
+  gap: 0;
+  justify-content: initial;
+  flex-wrap: initial;
+}
+.h2-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+  margin-top: 0;
+}
+.h2-left-col {
+  position: sticky; top: 18px;
+  background: var(--h2-panel);
+  border: 1px solid var(--h2-line);
+  border-radius: 3px;
+  overflow: hidden;
+  font-family: var(--h2-sans);
+  color: var(--h2-body-ink);
+}
+.h2-rail-h {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--h2-line);
+  background: var(--h2-panel-2);
+  font-family: var(--h2-mono); font-size: 9.5px; letter-spacing: 0.28em;
+  color: var(--h2-accent); text-transform: uppercase; font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+}
+.h2-rail-h::before {
+  content: ""; width: 7px; height: 7px;
+  background: var(--h2-accent); border-radius: 1px; flex-shrink: 0;
+}
+.h2-rail-section-h {
+  padding: 16px 16px 8px;
+  font-family: var(--h2-mono); font-size: 9.5px; letter-spacing: 0.28em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase; font-weight: 700;
+  border-top: 1px solid var(--h2-line-2);
+}
+
+/* C-Suite */
+.h2-divisions { padding: 6px 10px 10px; display: flex; flex-direction: column; gap: 1px; }
+.h2-division {
+  display: grid; grid-template-columns: 36px 1fr 10px;
+  gap: 10px; padding: 8px; align-items: center;
+  border-radius: 2px;
+}
+.h2-division:hover { background: var(--h2-panel-2); }
+.h2-portrait {
+  width: 36px; height: 36px; border-radius: 2px;
+  background: var(--h2-panel-3); border: 1px solid var(--h2-line-2);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--h2-mono); font-size: 10px; font-weight: 700;
+  color: var(--h2-body-ink-dim); letter-spacing: 0.1em;
+}
+.h2-portrait.warn { border-color: var(--h2-gold-deep); color: var(--h2-gold); }
+.h2-portrait.bad { border-color: var(--h2-red-deep); color: var(--h2-red); }
+.h2-division .nm {
+  display: block;
+  font-family: var(--h2-sans); font-size: 13px; font-weight: 600;
+  color: var(--h2-body-ink); line-height: 1.2;
+}
+.h2-division .role {
+  display: block;
+  font-family: var(--h2-mono); font-size: 9px; letter-spacing: 0.14em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase; margin-top: 2px;
+}
+.h2-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--h2-body-ink-faint);
+}
+.h2-dot.ok { background: var(--h2-green); }
+.h2-dot.warn { background: var(--h2-gold); }
+.h2-dot.bad { background: var(--h2-red); }
+
+/* Nav */
+.h2-nav { padding: 6px 10px 10px; display: flex; flex-direction: column; gap: 1px; }
+.h2-nav a {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-left: 2px solid transparent;
+  font-family: var(--h2-mono); font-size: 11px; letter-spacing: 0.12em;
+  color: var(--h2-body-ink-dim); text-transform: uppercase; font-weight: 600;
+  text-decoration: none; cursor: pointer;
+  transition: color 120ms, background 120ms, border-color 120ms, padding 120ms;
+}
+.h2-nav a:hover {
+  color: var(--h2-body-ink); background: var(--h2-panel-2);
+  border-left-color: var(--h2-accent); padding-left: 14px;
+}
+.h2-nav a.active {
+  color: var(--h2-accent); background: var(--h2-panel-3);
+  border-left-color: var(--h2-accent);
+}
+.h2-nav a.disabled {
+  opacity: 0.4; pointer-events: none;
+}
+.h2-nav .b {
+  font-family: var(--h2-mono); font-size: 9px; font-weight: 700;
+  background: var(--h2-panel-3); border: 1px solid var(--h2-line-2);
+  color: var(--h2-body-ink-dim); padding: 1px 6px; border-radius: 10px;
+}
+.h2-nav .b.ok {
+  background: rgba(74, 154, 90, 0.15); border-color: var(--h2-green);
+  color: var(--h2-green);
+}
+
+/* Left rail footer (logout + standard home) */
+.h2-rail-footer {
+  padding: 10px 14px; border-top: 1px solid var(--h2-line-2);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--h2-panel-2);
+}
+.h2-rail-footer a, .h2-rail-footer button {
+  font-family: var(--h2-mono); font-size: 9.5px; letter-spacing: 0.18em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase; font-weight: 600;
+  text-decoration: none; cursor: pointer; background: none; border: none;
+  padding: 0;
+}
+.h2-rail-footer a:hover, .h2-rail-footer button:hover {
+  color: var(--h2-accent);
+}
+
+/* Center column — hosts existing cards until later phases replace them */
+.h2-center {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  min-width: 0; justify-content: center; align-items: flex-start;
+}
+
+/* Right column (Phase 4+ — Net Worth, Treasury) */
+.h2-right-col {
+  display: flex; flex-direction: column; gap: 14px;
+  min-height: 1px;
+}
+.h2-right-col:empty::before {
+  content: ""; display: block; height: 0;
+}
+
+/* Paper-mode refinements */
+:root[data-mode="paper"] .h2-left-col {
+  background: var(--h2-paper);
+  border-color: var(--h2-paper-line);
+  color: var(--h2-ink);
+}
+:root[data-mode="paper"] .h2-rail-h {
+  background: var(--h2-paper-2);
+  color: var(--h2-accent);
+  border-bottom-color: var(--h2-paper-line);
+}
+:root[data-mode="paper"] .h2-division .nm { color: var(--h2-ink); }
+:root[data-mode="paper"] .h2-rail-footer { background: var(--h2-paper-2); }
+
+/* Responsive */
+@media (max-width: 1280px) {
+  .h2-layout { grid-template-columns: 220px minmax(0, 1fr); }
+  .h2-right-col { display: none; }
+}
+@media (max-width: 900px) {
+  .h2-layout { grid-template-columns: 1fr; }
+  .h2-left-col { position: static; }
+}
 </style>
 </head>
-<body>
+<body class="h2-page">
 <script src="js/corp-theme-init.js"></script>
 
 <div id="loading" class="loading-msg">LOADING CORPORATION...</div>
 
 <div id="page-content" style="display:none;">
-  <!-- Shared top bar + nav (rendered by corp-topbar.js) -->
-  <div id="corp-topbar-container"></div>
+  <!-- Home2 intentionally omits the shared top bar. Navigation lives in
+       the left rail; the masthead plate carries tick/date/CEO context. -->
 
   <div class="content">
     <!-- Home2 Masthead Plate (Phase 2) — populated in init() -->
@@ -1081,7 +1252,81 @@ body.h2-edit-open .id-card { display: block !important; }
       </div>
     </section>
 
-    <div class="id-card">
+    <!-- Home2 Phase 3: 3-column grid (left rail / center / right rail) -->
+    <div class="h2-layout">
+
+      <!-- LEFT RAIL -->
+      <aside class="h2-left-col">
+        <div class="h2-rail-h">The C-Suite</div>
+        <div class="h2-divisions">
+          <div class="h2-division" data-role="ops">
+            <div class="h2-portrait">COO</div>
+            <div>
+              <span class="nm">Operations</span>
+              <span class="role" id="h2-csuite-ops">Efficiency · —</span>
+            </div>
+            <span class="h2-dot" id="h2-csuite-ops-dot"></span>
+          </div>
+          <div class="h2-division" data-role="fin">
+            <div class="h2-portrait">CFO</div>
+            <div>
+              <span class="nm">Finance</span>
+              <span class="role" id="h2-csuite-fin">Net margin · —</span>
+            </div>
+            <span class="h2-dot" id="h2-csuite-fin-dot"></span>
+          </div>
+          <div class="h2-division" data-role="commercial">
+            <div class="h2-portrait">CCO</div>
+            <div>
+              <span class="nm">Commercial</span>
+              <span class="role" id="h2-csuite-commercial">Loads · —</span>
+            </div>
+            <span class="h2-dot" id="h2-csuite-commercial-dot"></span>
+          </div>
+          <div class="h2-division" data-role="people">
+            <div class="h2-portrait">CHRO</div>
+            <div>
+              <span class="nm">People</span>
+              <span class="role" id="h2-csuite-people">Wages · —</span>
+            </div>
+            <span class="h2-dot" id="h2-csuite-people-dot"></span>
+          </div>
+          <div class="h2-division" data-role="prop">
+            <div class="h2-portrait">CPO</div>
+            <div>
+              <span class="nm">Properties</span>
+              <span class="role" id="h2-csuite-prop">Efficiency · —</span>
+            </div>
+            <span class="h2-dot" id="h2-csuite-prop-dot"></span>
+          </div>
+        </div>
+
+        <div class="h2-rail-section-h">The Company</div>
+        <nav class="h2-nav" id="h2-nav-company">
+          <a class="active" aria-current="page">Desk (Today)</a>
+          <a href="corp-operations.html" data-nav="operations">Operations</a>
+          <a href="corp-operations.html?tab=expansion" data-nav="expansion">Expansion</a>
+          <a href="corp-operations.html?tab=actions" data-nav="actions">Actions<span class="b" id="h2-nav-actions-badge" style="display:none;"></span></a>
+          <a class="disabled" title="Not yet implemented">Innovation</a>
+        </nav>
+
+        <div class="h2-rail-section-h">The Nation</div>
+        <nav class="h2-nav">
+          <a href="corp-nations.html">Nations</a>
+          <a href="news.html">News</a>
+          <a class="disabled" title="Not yet implemented">Politics</a>
+          <a class="disabled" title="Not yet implemented">Markets</a>
+        </nav>
+
+        <div class="h2-rail-footer">
+          <a href="corp-dashboard.html" title="Return to the standard Home view">Standard Home</a>
+          <button type="button" id="h2-logout-btn" title="Sign out">Logout</button>
+        </div>
+      </aside>
+
+      <!-- CENTER -->
+      <div class="h2-center">
+        <div class="id-card">
       <div class="id-card__header">
         <div class="id-card__header-left">
           <div class="id-card__dot"></div>
@@ -1187,9 +1432,15 @@ body.h2-edit-open .id-card { display: block !important; }
       </div>
       <div class="val-card__scroll" id="val-body"></div>
     </div>
-  </div>
+      </div><!-- /.h2-center -->
 
-</div>
+      <!-- RIGHT RAIL (Phase 4+ will fill this with Net Worth + Treasury cards) -->
+      <aside class="h2-right-col"></aside>
+
+    </div><!-- /.h2-layout -->
+  </div><!-- /.content -->
+
+</div><!-- /#page-content -->
 
 <!-- Property Sell/Refurbish Modal Overlay -->
 <div id="prop-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;justify-content:center;align-items:center;">
@@ -1288,18 +1539,9 @@ async function init() {
         }
     }
 
-    // Render shared top bar
-    const topBarContainer = document.getElementById('corp-topbar-container');
-    if (topBarContainer) {
-        const { renderCorpTopBar } = await import('./js/corp-topbar.js');
-        const badges = {};
-        if (pendingBidCount > 0) {
-            badges.home = { color: '#c8a832', title: pendingBidCount + ' pending bid' + (pendingBidCount !== 1 ? 's' : '') + ' on your projects' };
-        }
-        renderCorpTopBar(topBarContainer, {
-            faction, shard, activeTab: 'home2', allUserFactions, badges,
-        });
-    }
+    // Home2 omits the shared top bar — no renderCorpTopBar call.
+    // pendingBidCount is still computed so the left-rail "Actions" link
+    // can surface its count as a badge.
 
     // ── Populate Home2 masthead plate ──
     (function populateH2Plate() {
@@ -1395,6 +1637,29 @@ async function init() {
                 editBtn.classList.toggle('on', open);
                 editBtn.textContent = open ? 'Close ✕' : 'Logo';
             });
+        }
+    })();
+
+    // ── Wire Home2 left rail (logout + nav badges) ──
+    (function wireH2LeftRail() {
+        const logoutBtn = document.getElementById('h2-logout-btn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', async () => {
+                try {
+                    sessionStorage.clear();
+                    await _supabase.auth.signOut();
+                } catch (e) { /* non-blocking */ }
+                window.location.href = 'login.html';
+            });
+        }
+
+        if (pendingBidCount > 0) {
+            const badge = document.getElementById('h2-nav-actions-badge');
+            if (badge) {
+                badge.textContent = pendingBidCount;
+                badge.style.display = '';
+                badge.classList.add('ok');
+            }
         }
     })();
 
@@ -2807,13 +3072,25 @@ function startTickCountdown() {
 
 function updateCountdown() {
     const el = document.getElementById('tick-countdown');
-    if (!el || !nextTickAt) { if (el) el.textContent = '—'; return; }
+    const plateEl = document.getElementById('h2-next-close');
+    if (!nextTickAt) {
+        if (el) el.textContent = '—';
+        if (plateEl) plateEl.textContent = 'Next close —';
+        return;
+    }
     const diff = nextTickAt - Date.now();
-    if (diff <= 0) { el.textContent = 'Tick due...'; clearInterval(tickInterval); return; }
+    if (diff <= 0) {
+        if (el) el.textContent = 'Tick due...';
+        if (plateEl) plateEl.textContent = 'Next close — tick due';
+        clearInterval(tickInterval);
+        return;
+    }
     const h = Math.floor(diff / 3600000);
     const m = Math.floor((diff % 3600000) / 60000);
     const s = Math.floor((diff % 60000) / 1000);
-    el.textContent = h + 'h ' + m + 'm ' + s + 's';
+    const short = h + 'h ' + m + 'm ' + s + 's';
+    if (el) el.textContent = short;
+    if (plateEl) plateEl.textContent = 'Next close in ' + short;
 }
 
 
