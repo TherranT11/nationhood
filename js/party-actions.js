@@ -5,7 +5,7 @@ import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo }
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, checkOppositionStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
-import { getNationNames, resignPM } from './game/political-actions.js';
+import { getNationNames, resignPM, installHOG } from './game/political-actions.js';
 import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM } from './game/government-types.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
@@ -2450,22 +2450,17 @@ async function openAppointPMModal(root) {
             try {
                 const currentTick = _state.shard?.current_tick || 0;
 
-                // Upsert the PM record. head_of_government has a UNIQUE(nation_id)
-                // constraint, so a prior inactive row (e.g. from a previous PM who
-                // resigned or was fired) would collide with a plain INSERT and
-                // leave Appoint PM stuck. Mirrors political-actions.appointPM.
-                const { error: hogErr } = await _supabase.from('head_of_government')
-                    .upsert({
-                        nation_id: nation.id,
-                        faction_id: selectedPartyId,
-                        first_name: party.leader_first_name || 'Unknown',
-                        last_name: party.leader_last_name || 'Unknown',
-                        age: party.leader_age || 50,
-                        ideology: 'Centrist',
-                        active: true,
-                        appointed_tick: currentTick,
-                    }, { onConflict: 'nation_id' });
-                if (hogErr) throw hogErr;
+                // Single source of truth — installHOG handles dedup (UNIQUE
+                // nation_id), the canonical leader_ideology lookup, and the
+                // upsert shape used by every other PM-install path.
+                await installHOG(_supabase, {
+                    nationId: nation.id,
+                    factionId: selectedPartyId,
+                    firstName: party.leader_first_name || 'Unknown',
+                    lastName: party.leader_last_name || 'Unknown',
+                    age: party.leader_age || 50,
+                    currentTick,
+                });
 
                 // Legitimacy effects (monarchy only).
                 // Dismissing a non-monarch PM costs -4. Appointing a non-monarch

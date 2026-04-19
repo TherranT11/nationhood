@@ -375,6 +375,54 @@ const MINISTRY_DOMAINS = Object.freeze({
 
 const PRESIDENTIAL_DOMAIN_MINISTRIES = Object.freeze(['foreign', 'defense', 'trade']);
 
+/** Canonical list of cabinet ministry keys (PM seat first, then domestic +
+ *  presidential-domain seats). Single source of truth for "what counts as a
+ *  cabinet slot" — both formation UI and tick code iterate this. */
+const CABINET_MINISTRY_KEYS = Object.freeze([
+    'prime_minister',
+    'interior', 'foreign', 'defense', 'finance',
+    'education', 'healthcare', 'labor', 'justice',
+    'trade', 'energy', 'transportation',
+    // 'security' is referenced in MINISTRY_DOMAINS but not yet a default cabinet seat.
+]);
+
+/** Office display name (e.g. "Ministry of the Interior").
+ *  Used for the ministries.ministry_name column and any UI labelling the
+ *  *office* (not the person). */
+const MINISTRY_OFFICE_NAMES = Object.freeze({
+    prime_minister: 'Prime Minister',
+    interior:       'Ministry of the Interior',
+    foreign:        'Foreign Ministry',
+    defense:        'Ministry of Defense',
+    finance:        'Ministry of Finance',
+    education:      'Ministry of Education',
+    healthcare:     'Ministry of Healthcare',
+    labor:          'Ministry of Labor',
+    justice:        'Ministry of Justice',
+    trade:          'Ministry of Trade',
+    energy:         'Ministry of Energy',
+    transportation: 'Ministry of Transportation',
+    security:       'Ministry of Security',
+});
+
+/** Person's title (e.g. "Minister of the Interior"). Used for nominee
+ *  display, confirmation bill names, modal headings. */
+const MINISTER_TITLES = Object.freeze({
+    prime_minister: 'Prime Minister',
+    interior:       'Minister of the Interior',
+    foreign:        'Minister of Foreign Affairs',
+    defense:        'Minister of Defense',
+    finance:        'Minister of Finance',
+    education:      'Minister of Education',
+    healthcare:     'Minister of Healthcare',
+    labor:          'Minister of Labor',
+    justice:        'Minister of Justice',
+    trade:          'Minister of Trade',
+    energy:         'Minister of Energy',
+    transportation: 'Minister of Transportation',
+    security:       'Minister of Security',
+});
+
 /** Executive order domain: which branch controls each EO type in semi-presidential.
  *  'president' = only the president's party can issue.
  *  'pm' = only the PM's party can issue.
@@ -8880,129 +8928,107 @@ async function resolveExpiredVotes(supabase, nationId) {
             }
             results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'confirmation', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
-            // Minister confirmation bill (Presidential systems)
+            // Minister confirmation bill (Presidential / Semi-Presidential).
+            //
+            // bill.metadata.pending_minister is the SOLE source of truth for
+            // the nominee. It's written at nominateMinister time and never
+            // mutated — so it survives any external clearing of the
+            // ministries.pending_minister UI cache. Bills lacking metadata
+            // (created before the metadata field was wired) are force-failed
+            // rather than silently passed without installing anything.
             const mKey = bill.ministry_key;
-            let { data: ministry } = await supabase.from('ministries')
-                .select('id, pending_minister, is_acting')
+            const pm = bill.metadata?.pending_minister || null;
+
+            // Fetch the (possibly absent) ministry row — used to know whether
+            // to UPDATE or INSERT, and to preserve is_acting for the failed-
+            // bill restore path. Never the source of truth for the nominee.
+            const { data: ministry } = await supabase.from('ministries')
+                .select('id, is_acting')
                 .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
                 .maybeSingle();
 
-            // Recover missing ministry row using bill.metadata.pending_minister
-            // as the authoritative nominee snapshot (persisted at nomination
-            // time). Without this, a wiped/deleted ministry row would cause
-            // the confirmation to be marked passed with no minister actually
-            // installed.
-            if (!ministry) {
-                const fallbackPending = bill.metadata?.pending_minister || null;
-                if (fallbackPending) {
-                    console.warn(`[resolveExpiredVotes] Ministry row missing for ${mKey} in nation ${bill.nation_id}. Recovering from bill.metadata.`);
-                    const { data: createdMinistry, error: createErr } = await supabase.from('ministries').insert({
-                        nation_id: bill.nation_id,
-                        ministry_key: mKey,
-                        ministry_name: mKey,
-                        is_active: true,
-                        confirmation_status: 'pending',
-                        pending_minister: fallbackPending,
-                    }).select('id, pending_minister, is_acting').single();
-                    if (createErr) {
-                        console.error(`[resolveExpiredVotes] Failed to create missing ministry row for ${mKey}:`, createErr.message);
-                        passed = false;
-                    } else {
-                        ministry = createdMinistry;
-                    }
-                } else {
-                    // No fallback data — refuse to install a phantom minister.
-                    console.error(`[resolveExpiredVotes] Ministry row missing and no bill.metadata.pending_minister for ${mKey} in nation ${bill.nation_id}. Failing the bill.`);
-                    passed = false;
-                }
+            if (!pm) {
+                console.error(`[resolveExpiredVotes] minister_confirmation bill ${bill.id} (${mKey}) missing bill.metadata.pending_minister. Failing.`);
+                passed = false;
             }
 
-            // Check if nominee voted NO — auto-fail (withdrawal of nomination)
-            const minNomineeId = ministry?.pending_minister?.party_id;
-            const minNomineeVotedNo = minNomineeId && (bill.bill_support || []).some(s => {
+            // Auto-fail if the nominee's party itself voted NO.
+            const minNomineeVotedNo = pm?.party_id && (bill.bill_support || []).some(s => {
                 const st = s.stance === 'reject' ? 'no' : s.stance;
-                return s.faction_id === minNomineeId && st === 'no';
+                return s.faction_id === pm.party_id && st === 'no';
             });
             if (minNomineeVotedNo) passed = false;
 
             if (passed) {
                 await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
 
-                if (ministry?.pending_minister) {
-                    const pm = ministry.pending_minister;
-                    const ministryNames = {
-                        prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
-                        foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
-                        finance: 'Ministry of Finance', education: 'Ministry of Education',
-                        healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-                        justice: 'Ministry of Justice', trade: 'Ministry of Trade',
-                        energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
-                        security: 'Ministry of Security'
-                    };
-                    // Fetch full nation for stat baselines
-                    const { data: fullNation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-                    await supabase.from('ministries').update({
-                        party_id: pm.party_id,
-                        minister_first_name: pm.first_name,
-                        minister_last_name: pm.last_name,
-                        minister_age: pm.age,
-                        minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
-                        ministry_name: ministryNames[mKey] || mKey,
-                        confirmation_status: 'confirmed',
-                        pending_minister: null,
-                        stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {}
-                    }).eq('id', ministry.id);
+                const { data: fullNation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+                const ministryFields = {
+                    party_id: pm.party_id,
+                    minister_first_name: pm.first_name,
+                    minister_last_name: pm.last_name,
+                    minister_age: pm.age,
+                    minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
+                    ministry_name: MINISTRY_OFFICE_NAMES[mKey] || mKey,
+                    confirmation_status: 'confirmed',
+                    pending_minister: null,
+                    stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {},
+                };
 
-                    // If confirming a PM, update government_formations so lead_party_id stays correct
-                    if (mKey === 'prime_minister') {
-                        try {
-                            const { data: activeGovFormation } = await supabase.from('government_formations')
-                                .select('id, ministry_assignments')
-                                .eq('nation_id', bill.nation_id)
-                                .in('status', ['formed', 'active', 'caretaker'])
-                                .order('formed_at', { ascending: false })
-                                .limit(1)
-                                .maybeSingle();
-                            if (activeGovFormation) {
-                                const updatedAssignments = { ...(activeGovFormation.ministry_assignments || {}), prime_minister: pm.party_id };
-                                await supabase.from('government_formations')
-                                    .update({ ministry_assignments: updatedAssignments })
-                                    .eq('id', activeGovFormation.id);
-                                console.log(`[resolveExpiredVotes] Updated government_formations PM assignment to ${pm.party_id}`);
-                            }
-                        } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
+                if (ministry) {
+                    const { error: updErr } = await supabase.from('ministries').update(ministryFields).eq('id', ministry.id);
+                    if (updErr) console.error(`[resolveExpiredVotes] ministries update failed for ${mKey}:`, updErr.message);
+                } else {
+                    // Ministry row was missing — recreate it filled with the
+                    // confirmed nominee so the cabinet display reflects reality.
+                    const { error: insErr } = await supabase.from('ministries').insert({
+                        nation_id: bill.nation_id,
+                        ministry_key: mKey,
+                        is_active: true,
+                        ...ministryFields,
+                    });
+                    if (insErr) console.error(`[resolveExpiredVotes] ministries insert failed for ${mKey}:`, insErr.message);
+                }
 
-                        // Install the confirmed PM into head_of_government immediately.
-                        // The UI (and many server-side flows) read head_of_government,
-                        // not ministries.prime_minister. Without this, the PM vanishes
-                        // until the next-tick processParliamentaryPMTimeout safety net
-                        // fires — and that safety net won't run if coalition status is
-                        // 'caretaker', and even when it does it installs the party
-                        // leader, not the nominee confirmed by parliament.
-                        try {
-                            await supabase.from('head_of_government')
-                                .update({ active: false })
-                                .eq('nation_id', bill.nation_id)
-                                .eq('active', true);
-                            const { error: hogUpsertErr } = await supabase.from('head_of_government')
-                                .upsert({
-                                    nation_id: bill.nation_id,
-                                    faction_id: pm.party_id,
-                                    first_name: pm.first_name,
-                                    last_name: pm.last_name,
-                                    age: pm.age || 50,
-                                    ideology: 'Centrist',
-                                    active: true,
-                                    appointed_tick: currentTick,
-                                }, { onConflict: 'nation_id' });
-                            if (hogUpsertErr) {
-                                console.error('[resolveExpiredVotes] Failed to install HOG for confirmed PM:', hogUpsertErr.message);
-                            } else {
-                                console.log(`[resolveExpiredVotes] Installed HOG for confirmed PM ${pm.first_name} ${pm.last_name} (party ${pm.party_id})`);
-                            }
-                        } catch (hogErr) {
-                            console.error('[resolveExpiredVotes] HOG install threw:', hogErr);
+                // PM-specific: keep government_formations + head_of_government in sync.
+                if (mKey === 'prime_minister') {
+                    try {
+                        const { data: activeGovFormation } = await supabase.from('government_formations')
+                            .select('id, ministry_assignments')
+                            .eq('nation_id', bill.nation_id)
+                            .in('status', ['formed', 'active', 'caretaker'])
+                            .order('formed_at', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+                        if (activeGovFormation) {
+                            const updatedAssignments = { ...(activeGovFormation.ministry_assignments || {}), prime_minister: pm.party_id };
+                            await supabase.from('government_formations')
+                                .update({ ministry_assignments: updatedAssignments })
+                                .eq('id', activeGovFormation.id);
+                            console.log(`[resolveExpiredVotes] Updated government_formations PM assignment to ${pm.party_id}`);
                         }
+                    } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
+
+                    // Install the confirmed PM into head_of_government immediately
+                    // (single source of truth — see installHOG). The UI and many
+                    // server-side flows read head_of_government, not ministries.
+                    // Without this, the PM vanishes until the next-tick
+                    // processParliamentaryPMTimeout safety net fires — and that
+                    // safety net won't run if coalition status is 'caretaker',
+                    // and even when it does it installs the party leader, not
+                    // the nominee confirmed by parliament.
+                    try {
+                        await installHOG(supabase, {
+                            nationId: bill.nation_id,
+                            factionId: pm.party_id,
+                            firstName: pm.first_name,
+                            lastName: pm.last_name,
+                            age: pm.age,
+                            currentTick,
+                        });
+                        console.log(`[resolveExpiredVotes] Installed HOG for confirmed PM ${pm.first_name} ${pm.last_name} (party ${pm.party_id})`);
+                    } catch (hogErr) {
+                        console.error('[resolveExpiredVotes] HOG install failed:', hogErr.message || hogErr);
                     }
                 }
 
@@ -9010,12 +9036,13 @@ async function resolveExpiredVotes(supabase, nationId) {
             } else {
                 await failBill(supabase, bill);
 
-                // Clear pending nominee after failed confirmation
-                // If an acting minister was in place, restore 'acting' status instead of 'rejected'
-                if (ministry?.pending_minister) {
+                // Clear any stale pending hint on the ministry row (it was a
+                // UI cache, not the source of truth). Restore 'acting' status
+                // if an acting minister was in place; otherwise mark 'rejected'.
+                if (ministry) {
                     await supabase.from('ministries').update({
                         confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
-                        pending_minister: null
+                        pending_minister: null,
                     }).eq('id', ministry.id);
                 }
 
@@ -15636,15 +15663,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         age: nominee.age
     };
 
-    const ministryDisplayName = {
-        prime_minister: 'Prime Minister', interior: 'Ministry of the Interior',
-        foreign: 'Foreign Ministry', defense: 'Ministry of Defense',
-        finance: 'Ministry of Finance', education: 'Ministry of Education',
-        healthcare: 'Ministry of Healthcare', labor: 'Ministry of Labor',
-        justice: 'Ministry of Justice', trade: 'Ministry of Trade',
-        energy: 'Ministry of Energy', transportation: 'Ministry of Transportation',
-        security: 'Ministry of Security'
-    }[ministryKey] || ministryKey;
+    const ministryDisplayName = MINISTRY_OFFICE_NAMES[ministryKey] || ministryKey;
 
     if (existingMinistry) {
         const { error: updErr } = await supabase.from('ministries').update({
@@ -15665,15 +15684,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
     }
 
     // Create confirmation bill (goes straight to floor vote)
-    const ministerTitle = {
-        prime_minister: 'Prime Minister', interior: 'Minister of the Interior',
-        foreign: 'Minister of Foreign Affairs', defense: 'Minister of Defense',
-        finance: 'Minister of Finance', education: 'Minister of Education',
-        healthcare: 'Minister of Healthcare', labor: 'Minister of Labor',
-        justice: 'Minister of Justice', trade: 'Minister of Trade',
-        energy: 'Minister of Energy', transportation: 'Minister of Transportation',
-        security: 'Minister of Security'
-    }[ministryKey] || ministryDisplayName;
+    const ministerTitle = MINISTER_TITLES[ministryKey] || ministryDisplayName;
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
     const majoritySeats = Math.ceil(nationTotalSeats * 0.5) + 1;
@@ -24956,6 +24967,79 @@ function weightedRandomPick(weightedItems) {
 
 
 /**
+ * Single source of truth for installing a Head of Government row.
+ *
+ * Every PM-install path (parliamentary auto-appoint, presidential PM
+ * confirmation, monarchy royal appointment) routes through this helper so
+ * the upsert columns, ideology lookup, and unique(nation_id) handling stay
+ * identical across paths.
+ *
+ * @param {object} supabase
+ * @param {object} opts
+ * @param {string} opts.nationId
+ * @param {string} opts.factionId           party that the new PM belongs to
+ * @param {string} opts.firstName
+ * @param {string} opts.lastName
+ * @param {number} [opts.age]               defaults to 50 if unset
+ * @param {number} opts.currentTick
+ * @param {string} [opts.traitKey]          leader trait, optional
+ * @param {string} [opts.candidateId]       presidential candidate row id, optional
+ * @param {string} [opts.ideology]          uppercase tag; if omitted, loaded
+ *                                          from factions.leader_ideology with
+ *                                          a CENTRIST fallback
+ * @returns {Promise<{ ideologyTag: string }>}
+ */
+async function installHOG(supabase, opts) {
+    if (!opts?.nationId || !opts?.factionId) {
+        throw new Error('installHOG: nationId and factionId are required');
+    }
+    const {
+        nationId, factionId, firstName, lastName, age,
+        currentTick, traitKey = null, candidateId = null,
+    } = opts;
+
+    let ideologyTag = opts.ideology;
+    if (!ideologyTag) {
+        try {
+            const { data: f } = await supabase
+                .from('factions')
+                .select('leader_ideology')
+                .eq('id', factionId)
+                .maybeSingle();
+            if (f?.leader_ideology) ideologyTag = String(f.leader_ideology).toUpperCase();
+        } catch (_) { /* fall through to CENTRIST */ }
+    }
+    if (!ideologyTag) ideologyTag = 'CENTRIST';
+
+    // head_of_government has UNIQUE(nation_id), so a stale inactive row from
+    // a previous PM would block a plain insert. Deactivate first, then upsert
+    // — the upsert overwrites the just-deactivated row in the same tx.
+    await supabase.from('head_of_government')
+        .update({ active: false })
+        .eq('nation_id', nationId)
+        .eq('active', true);
+
+    const { error: hogErr } = await supabase
+        .from('head_of_government')
+        .upsert({
+            nation_id: nationId,
+            faction_id: factionId,
+            candidate_id: candidateId,
+            first_name: firstName,
+            last_name: lastName,
+            age: age || 50,
+            ideology: ideologyTag,
+            trait_key: traitKey,
+            appointed_tick: currentTick,
+            active: true,
+        }, { onConflict: 'nation_id' });
+
+    if (hogErr) throw hogErr;
+    return { ideologyTag };
+}
+
+
+/**
  * Auto-appoint the party leader as Prime Minister without candidate selection.
  * Used for parliamentary systems — the party leader becomes PM immediately
  * when their party receives the PM role during coalition formation.
@@ -25031,27 +25115,17 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
 
     const leaderAge = faction.leader_age || (35 + Math.floor(Math.random() * 16));
 
-    // Deactivate any current HOG
-    await supabase.from('head_of_government')
-        .update({ active: false })
-        .eq('nation_id', nationId).eq('active', true);
-
-    // Create HOG record
-    const { error: hogErr } = await supabase
-        .from('head_of_government')
-        .upsert({
-            nation_id: nationId,
-            faction_id: factionId,
-            candidate_id: null,
-            first_name: faction.leader_first_name,
-            last_name: faction.leader_last_name,
-            age: leaderAge,
-            ideology: ideology.tag,
-            trait_key: traitKey,
-            appointed_tick: currentTick,
-            active: true
-        }, { onConflict: 'nation_id' });
-    if (hogErr) throw hogErr;
+    // Single source of truth — see installHOG above.
+    await installHOG(supabase, {
+        nationId,
+        factionId,
+        firstName: faction.leader_first_name,
+        lastName: faction.leader_last_name,
+        age: leaderAge,
+        currentTick,
+        traitKey,
+        ideology: ideology.tag,
+    });
 
     // Update administration record
     const pmFullName = `${faction.leader_first_name} ${faction.leader_last_name}`;
