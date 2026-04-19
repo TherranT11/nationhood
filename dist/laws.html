@@ -7,19 +7,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/laws-Bsfvwpu3.js"></script>
+  <script type="module" crossorigin src="/assets/laws-C9pPcjDE.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-CKcaD1JL.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-NKVE84mI.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-CY90Gazr.js">
-  <link rel="modulepreload" crossorigin href="/assets/config-CRvw5bg0.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-types-D9n0pQb0.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-valuation-CgQIQIJ1.js">
+  <link rel="modulepreload" crossorigin href="/assets/config-CTuAIx_5.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-types-CPvqgHog.js">
   <link rel="modulepreload" crossorigin href="/assets/ideology-BqLjustE.js">
   <link rel="modulepreload" crossorigin href="/assets/stats-tIiBSaQA.js">
-  <link rel="modulepreload" crossorigin href="/assets/political-actions-BF080n5r.js">
-  <link rel="modulepreload" crossorigin href="/assets/bills-C8moQHZX.js">
-  <link rel="modulepreload" crossorigin href="/assets/presidential-BmllZnLl.js">
-  <link rel="modulepreload" crossorigin href="/assets/budget-C3N4jaNd.js">
+  <link rel="modulepreload" crossorigin href="/assets/political-actions-F3n029Um.js">
+  <link rel="modulepreload" crossorigin href="/assets/bills-BnvfH5cZ.js">
+  <link rel="modulepreload" crossorigin href="/assets/presidential-qd4NJ5uu.js">
+  <link rel="modulepreload" crossorigin href="/assets/budget-C9-BvnbV.js">
   <link rel="modulepreload" crossorigin href="/assets/sovereign-default-DRjRiSGP.js">
   <link rel="stylesheet" crossorigin href="/assets/laws-CVAQDzSK.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
@@ -59,6 +60,28 @@
         </div>
         <div class="add-text-article-section" id="add-tariff-section" onclick="showTariffForm()">
             <span class="add-text-article-btn-text">+ Tariff Article</span>
+        </div>
+        <div class="add-text-article-section" id="add-bailout-section" onclick="showBailoutForm()">
+            <span class="add-text-article-btn-text">+ Government Bailout</span>
+        </div>
+        <div id="add-bailout-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label" style="color:var(--amber);">Corporation (headquartered in this nation)</label>
+                <select class="form-select" id="bailout-corp-select" onchange="onBailoutCorpChange()">
+                    <option value="">-- Choose a corporation --</option>
+                </select>
+                <div id="bailout-valuation" style="font-size:0.75rem;color:var(--text-secondary);margin-top:4px;"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Amount (in millions of $)</label>
+                <input type="number" class="form-input" id="bailout-amount" min="1" step="1" value="100" oninput="onBailoutAmountChange()">
+                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;">Funded first from national budget reserves; any shortfall adds to debt. Cannot exceed 3× market valuation.</div>
+                <div id="bailout-cap-warning" style="font-size:0.75rem;color:var(--red);margin-top:4px;display:none;"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hideBailoutForm()">Cancel</button>
+                <button class="btn-add" id="add-bailout-btn" disabled onclick="addBailoutArticle()">Add to Bill</button>
+            </div>
         </div>
         <div id="add-tariff-form" style="display:none;">
             <div class="form-group">
