@@ -62,7 +62,7 @@ export async function initCoalitionFormation(supabase, state) {
         supabase.from('government_formations')
             .select('id, status, election_id, formed_at, created_at')
             .eq('nation_id', nation.id)
-            .in('status', ['formed', 'active'])
+            .eq('status', 'formed')
             .order('formed_at', { ascending: false, nullsFirst: false })
             .limit(1)
             .maybeSingle(),
