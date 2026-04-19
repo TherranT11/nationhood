@@ -1408,7 +1408,12 @@ body.h2-page .content {
 }
 
 /* Hide the legacy events card on Home2 — Wire takes its place */
-body.h2-page #events-card { display: none !important; }
+body.h2-page #events-card,
+body.h2-page .fin-card,
+body.h2-page .stats-card,
+body.h2-page .prop-card,
+body.h2-page .wf-card,
+body.h2-page .val-card { display: none !important; }
 
 :root[data-mode="paper"] .h2-wire {
   background: var(--h2-paper); border-color: var(--h2-paper-line);
