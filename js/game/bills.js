@@ -572,42 +572,86 @@ export async function processIdeologyDecay(supabase, nationId, currentTick) {
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
- * Returns true if this bill type uses quorum + simple majority (YES > NO of
- * votes cast) rather than an absolute seat threshold.
+ * Single source of truth for bill-type threshold categorization.
  *
- * Absolute-threshold types (return false):
- *   - foundational / veto_override: 67% of total seats
- *   - no_confidence / impeachment_motion: 50%+1 of total seats
- *   - impeachment_conviction: 67% of total seats
+ * Every path that asks "is this bill type X/Y/Z?" — getRequiredSeats,
+ * isSimpleMajorityBill, evaluateBillVote, resolveBillVote, resolveExpiredVotes,
+ * and any future resolver — routes through getBillTypeSpec() and the named
+ * predicates below. Bill types not listed here (ordinary, ratification,
+ * confirmation, minister_confirmation, etc.) fall through to 'simple'
+ * threshold with quorum.
+ *
+ * Kinds:
+ *   'supermajority' — 2/3 of TOTAL_SEATS (foundational, default_resolution,
+ *                     impeachment_conviction). Nation flags may raise/lower
+ *                     this in the evaluate/resolve functions; the registry
+ *                     owns the default.
+ *   'veto_override' — VETO_OVERRIDE_THRESHOLD of TOTAL_SEATS (currently 2/3
+ *                     but kept distinct from 'supermajority' so the two can
+ *                     diverge without a registry rewrite).
+ *   'absolute'      — Math.floor(TOTAL_SEATS / 2) + 1 (no_confidence,
+ *                     impeachment_motion). No quorum. Nation flags may raise.
+ *   'simple'        — YES > NO of votes cast, with 50% participation quorum.
+ *                     Default for unlisted bill types.
+ */
+const BILL_TYPE_SPECS = Object.freeze({
+    foundational:           { threshold: 'supermajority' },
+    default_resolution:     { threshold: 'supermajority' },
+    veto_override:          { threshold: 'veto_override' },
+    impeachment_conviction: { threshold: 'supermajority' },
+    no_confidence:          { threshold: 'absolute' },
+    impeachment_motion:     { threshold: 'absolute' },
+});
+
+/**
+ * Look up the threshold spec for a bill type. Unlisted types return
+ * { threshold: 'simple' } — covers ordinary, ratification, confirmation,
+ * minister_confirmation, etc.
+ */
+export function getBillTypeSpec(billType) {
+    return BILL_TYPE_SPECS[billType] || { threshold: 'simple' };
+}
+
+/** foundational / default_resolution / veto_override / impeachment_conviction */
+export function isSupermajorityBill(billType) {
+    const k = getBillTypeSpec(billType).threshold;
+    return k === 'supermajority' || k === 'veto_override';
+}
+
+/** no_confidence / impeachment_motion */
+export function isAbsoluteMajorityBill(billType) {
+    return getBillTypeSpec(billType).threshold === 'absolute';
+}
+
+/**
+ * Returns true if this bill type uses quorum + simple majority (YES > NO of
+ * votes cast) rather than an absolute seat threshold. Default for every
+ * bill type not in BILL_TYPE_SPECS.
  */
 export function isSimpleMajorityBill(billType) {
-    return billType !== 'foundational'
-        && billType !== 'default_resolution'
-        && billType !== 'veto_override'
-        && billType !== 'no_confidence'
-        && billType !== 'impeachment_motion'
-        && billType !== 'impeachment_conviction';
+    return getBillTypeSpec(billType).threshold === 'simple';
 }
 
 /**
  * Get the number of YES seats required for a bill to pass.
  *
- * For supermajority bills (foundational, veto_override) the threshold is a
- * fixed fraction of TOTAL_SEATS.
- *
- * For all other bills the rule is simple majority: YES > NO.  When
- * `votesAgainst` is provided, we return `votesAgainst + 1` so the display
- * updates dynamically as votes come in.  Without it we fall back to the
- * absolute half-chamber number for backward compat.
+ * For supermajority / veto_override bills the threshold is a fixed
+ * fraction of TOTAL_SEATS.
+ * For absolute-majority bills (no_confidence, impeachment_motion) the
+ * threshold is floor(TOTAL_SEATS / 2) + 1.
+ * For simple-majority bills the rule is YES > NO — with votesAgainst
+ * supplied we return votesAgainst + 1 so the display updates live; without
+ * it we fall back to MAJORITY_SEATS for backward compat.
  */
 export function getRequiredSeats(billType, votesAgainst) {
-    if (billType === 'foundational' || billType === 'default_resolution' || billType === 'impeachment_conviction')
+    const spec = getBillTypeSpec(billType);
+    if (spec.threshold === 'supermajority')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD);
-    if (billType === 'veto_override')
+    if (spec.threshold === 'veto_override')
         return Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD);
-    if (billType === 'no_confidence' || billType === 'impeachment_motion')
+    if (spec.threshold === 'absolute')
         return Math.floor(GAME_CONFIG.TOTAL_SEATS / 2) + 1;
-    // Ordinary bills: simple majority of votes cast
+    // simple majority of votes cast
     if (votesAgainst != null) return votesAgainst + 1;
     return GAME_CONFIG.MAJORITY_SEATS;
 }
@@ -659,7 +703,7 @@ export function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
     }
 
     // ── Foundational / default_resolution / veto_override / impeachment_conviction: supermajority, no quorum ──
-    if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+    if (isSupermajorityBill(bill.bill_type)) {
         // Determine supermajority ratio:
         // - Impeachment conviction + judicial politicization: 75%
         // - Foundational + constitutional streamlining active (but NOT the streamlining bill itself): 55%
@@ -682,7 +726,7 @@ export function evaluateBillVote(bill, totalSeats, nationFlags = {}) {
     }
 
     // ── Impeachment motion / no confidence: absolute majority, no quorum ──
-    if (bill.bill_type === 'impeachment_motion' || bill.bill_type === 'no_confidence') {
+    if (isAbsoluteMajorityBill(bill.bill_type)) {
         // No confidence: 60% if courts are captured, otherwise 50%+1
         const threshold = (bill.bill_type === 'no_confidence' && judicialPoliticized)
             ? Math.ceil(totalSeats * 0.6)
@@ -751,7 +795,7 @@ export function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     }
 
     // Foundational / default_resolution / veto_override / impeachment_conviction: supermajority
-    if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+    if (isSupermajorityBill(bill.bill_type)) {
         let ratio = 2 / 3;
         if (bill.bill_type === 'impeachment_conviction' && judicialPoliticized) {
             ratio = 0.75;
@@ -764,7 +808,7 @@ export function resolveBillVote(bill, totalSeats, nationFlags = {}) {
     }
 
     // No-confidence / impeachment_motion: absolute majority
-    if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
+    if (isAbsoluteMajorityBill(bill.bill_type)) {
         const threshold = (bill.bill_type === 'no_confidence' && judicialPoliticized)
             ? Math.ceil(totalSeats * 0.6)
             : Math.floor(totalSeats / 2) + 1;
@@ -898,7 +942,7 @@ export async function checkEarlyMajority(supabase, nationId) {
         const undeclaredSeats = Math.max(0, effectiveTotalSeats - participating);
 
         // ── Check 1: Mathematical lock (outcome impossible to change) ──
-        if (bill.bill_type === 'foundational' || bill.bill_type === 'default_resolution' || bill.bill_type === 'veto_override' || bill.bill_type === 'impeachment_conviction') {
+        if (isSupermajorityBill(bill.bill_type)) {
             // Supermajority threshold — must match resolveBillVote logic:
             // - Veto override uses VETO_OVERRIDE_THRESHOLD
             // - Foundational + streamlining active (not the streamlining bill itself): 55%
@@ -915,7 +959,7 @@ export async function checkEarlyMajority(supabase, nationId) {
             } else if (effectiveYes + undeclaredSeats < requiredSeats) {
                 earlyStatus = 'majority_opposed';
             }
-        } else if (bill.bill_type === 'no_confidence' || bill.bill_type === 'impeachment_motion') {
+        } else if (isAbsoluteMajorityBill(bill.bill_type)) {
             // Absolute majority: 50%+1 of total seats, no quorum
             const threshold = Math.floor(effectiveTotalSeats / 2) + 1;
             if (effectiveYes >= threshold) {
@@ -1096,6 +1140,1320 @@ export async function resolveReferendums(supabase, nation, currentTick) {
     }
 
     return results;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// BILL-TYPE RESOLVERS
+//
+// Each resolver handles one bill_type branch that used to live as an
+// if/else-if inside resolveExpiredVotes. Extracted incrementally (R3, R4, …);
+// resolveExpiredVotes will eventually dispatch to these via a map.
+//
+// Every resolver has the same signature:
+//   resolveXBill(supabase, bill, ctx) → Promise<resultEntry>
+// where ctx = { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain }
+// and resultEntry is the row pushed onto the resolveExpiredVotes results array.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Resolve a passed/failed minister_confirmation bill (presidential and
+ * semi-presidential PM + cabinet confirmations). Reads the nominee from
+ * bill.metadata.pending_minister (sole source of truth); installs the
+ * confirmed minister into ministries; for PM bills also syncs
+ * government_formations.ministry_assignments and installs head_of_government.
+ *
+ * Force-fails (overrides ctx.passed) when:
+ *   - bill.metadata.pending_minister is missing
+ *   - the nominee's own party voted NO
+ */
+export async function resolveMinisterConfirmationBill(supabase, bill, ctx) {
+    const { currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+    let passed = ctx.passed;
+
+    const mKey = bill.ministry_key;
+    const pm = bill.metadata?.pending_minister || null;
+
+    // Fetch the (possibly absent) ministry row — used to know whether to
+    // UPDATE or INSERT, and to preserve is_acting for the failed-bill restore
+    // path. Never the source of truth for the nominee.
+    const { data: ministry } = await supabase.from('ministries')
+        .select('id, is_acting')
+        .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
+        .maybeSingle();
+
+    if (!pm) {
+        console.error(`[resolveMinisterConfirmation] bill ${bill.id} (${mKey}) missing bill.metadata.pending_minister. Failing.`);
+        passed = false;
+    }
+
+    // Auto-fail if the nominee's party itself voted NO.
+    const minNomineeVotedNo = pm?.party_id && (bill.bill_support || []).some(s => {
+        const st = s.stance === 'reject' ? 'no' : s.stance;
+        return s.faction_id === pm.party_id && st === 'no';
+    });
+    if (minNomineeVotedNo) passed = false;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        const { data: fullNation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+        const ministryFields = {
+            party_id: pm.party_id,
+            minister_first_name: pm.first_name,
+            minister_last_name: pm.last_name,
+            minister_age: pm.age,
+            minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
+            ministry_name: MINISTRY_OFFICE_NAMES[mKey] || mKey,
+            confirmation_status: 'confirmed',
+            pending_minister: null,
+            stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {},
+        };
+
+        if (ministry) {
+            const { error: updErr } = await supabase.from('ministries').update(ministryFields).eq('id', ministry.id);
+            if (updErr) console.error(`[resolveMinisterConfirmation] ministries update failed for ${mKey}:`, updErr.message);
+        } else {
+            const { error: insErr } = await supabase.from('ministries').insert({
+                nation_id: bill.nation_id,
+                ministry_key: mKey,
+                is_active: true,
+                ...ministryFields,
+            });
+            if (insErr) console.error(`[resolveMinisterConfirmation] ministries insert failed for ${mKey}:`, insErr.message);
+        }
+
+        if (mKey === 'prime_minister') {
+            try {
+                const { data: activeGovFormation } = await supabase.from('government_formations')
+                    .select('id, ministry_assignments')
+                    .eq('nation_id', bill.nation_id)
+                    .in('status', ['formed', 'active', 'caretaker'])
+                    .order('formed_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (activeGovFormation) {
+                    const updatedAssignments = { ...(activeGovFormation.ministry_assignments || {}), prime_minister: pm.party_id };
+                    await supabase.from('government_formations')
+                        .update({ ministry_assignments: updatedAssignments })
+                        .eq('id', activeGovFormation.id);
+                    console.log(`[resolveMinisterConfirmation] Updated government_formations PM assignment to ${pm.party_id}`);
+                }
+            } catch (gfErr) { console.warn('[resolveMinisterConfirmation] Failed to update government_formations PM:', gfErr); }
+
+            try {
+                await installHOG(supabase, {
+                    nationId: bill.nation_id,
+                    factionId: pm.party_id,
+                    firstName: pm.first_name,
+                    lastName: pm.last_name,
+                    age: pm.age,
+                    currentTick,
+                });
+                console.log(`[resolveMinisterConfirmation] Installed HOG for confirmed PM ${pm.first_name} ${pm.last_name} (party ${pm.party_id})`);
+            } catch (hogErr) {
+                console.error('[resolveMinisterConfirmation] HOG install failed:', hogErr.message || hogErr);
+            }
+        }
+
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
+    } else {
+        await failBill(supabase, bill);
+
+        if (ministry) {
+            await supabase.from('ministries').update({
+                confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
+                pending_minister: null,
+            }).eq('id', ministry.id);
+        }
+
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'minister_confirmation',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed ambassador confirmation bill.
+ *
+ * Force-fails (overrides ctx.passed) when the nominee's own party voted NO.
+ * On pass: activates the ambassador row (status='active', is_active=true,
+ * appointed_at_tick).
+ * On fail: rejects the ambassador row (status='rejected', is_active=false).
+ */
+export async function resolveAmbassadorConfirmationBill(supabase, bill, ctx) {
+    const { currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+    let passed = ctx.passed;
+
+    // Resolve the nominee's party for the auto-fail vote check.
+    const { data: ambRow } = await supabase.from('ambassadors')
+        .select('faction_id')
+        .eq('id', bill.ambassador_id)
+        .maybeSingle();
+    const ambNomineeId = ambRow?.faction_id;
+    const nomineeVotedNo = ambNomineeId && (bill.bill_support || []).some(s => {
+        const st = s.stance === 'reject' ? 'no' : s.stance;
+        return s.faction_id === ambNomineeId && st === 'no';
+    });
+    if (nomineeVotedNo) passed = false;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        await supabase.from('ambassadors').update({
+            status: 'active',
+            is_active: true,
+            appointed_at_tick: currentTick,
+        }).eq('id', bill.ambassador_id);
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
+    } else {
+        await failBill(supabase, bill);
+        await supabase.from('ambassadors').update({
+            status: 'rejected',
+            is_active: false,
+        }).eq('id', bill.ambassador_id);
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'confirmation',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed no_confidence bill. Thin wrapper around the
+ * elections.js domain handler (resolveNoConfidence) plus the standard
+ * bills.update / failBill + result-entry bookkeeping.
+ */
+export async function resolveNoConfidenceBill(supabase, bill, ctx) {
+    const { passed, currentTick, votesFor, votesAgainst } = ctx;
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+    } else {
+        await failBill(supabase, bill);
+    }
+    await resolveNoConfidence(supabase, bill, passed, votesFor, votesAgainst, currentTick);
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'no_confidence',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed impeachment_motion bill (Phase 1 of impeachment).
+ *
+ * On pass: advances proceedings to 'trial', applies immediate approval +
+ * credibility hits on the president, auto-spawns the Phase 2 conviction
+ * bill with a trial voting window, fires PRESIDENT IMPEACHED event.
+ *
+ * On fail: marks proceeding motion_result='failed', sets the nation-wide
+ * impeachment-motion cooldown, penalizes the filer, grants the president
+ * vindication bonuses, records a campaign_action row for cooldown tracking,
+ * fires IMPEACHMENT MOTION FAILS event.
+ */
+export async function resolveImpeachmentMotionBill(supabase, bill, ctx) {
+    const { passed, currentTick, votesFor, votesAgainst, totalSeats } = ctx;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        // Motion passed — advance the proceeding to the trial phase.
+        await supabase.from('impeachment_proceedings').update({
+            phase: 'trial',
+            motion_result: 'passed',
+        }).eq('id', bill.impeachment_id);
+
+        // Immediate momentum + credibility hit on the president for being impeached.
+        const { data: proceedingData } = await supabase.from('impeachment_proceedings')
+            .select('president_id').eq('id', bill.impeachment_id).single();
+        if (proceedingData) {
+            const { data: presidentRow } = await supabase.from('presidents')
+                .select('faction_id').eq('id', proceedingData.president_id).single();
+            if (presidentRow) {
+                await supabase.rpc('adjust_momentum', { p_faction_id: presidentRow.faction_id, p_delta: -5, p_label: 'Impeachment passed (-5)', p_tick: currentTick });
+                await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12, currentTick, { source: 'impeachment:passed' });
+            }
+        }
+
+        // Auto-spawn the conviction bill (Phase 2) — goes straight to floor.
+        const seats = totalSeats || GAME_CONFIG.TOTAL_SEATS;
+        const { data: convictionBill } = await supabase.from('bills').insert({
+            nation_id: bill.nation_id,
+            proposed_by: bill.proposed_by,
+            proposed_tick: currentTick,
+            bill_name: bill.bill_name.replace('Impeachment of', 'Conviction of'),
+            bill_type: 'impeachment_conviction',
+            status: 'floor',
+            voting_ends_tick: currentTick + GAME_CONFIG.IMPEACHMENT_TRIAL_TICKS,
+            impeachment_id: bill.impeachment_id,
+            preamble: 'The President has been impeached. Parliament must now vote on removal. A 2/3 supermajority (' + Math.ceil(seats * 2 / 3) + ' of ' + seats + ' seats) is required for conviction and removal from office.',
+        }).select('id').single();
+
+        if (convictionBill) {
+            await supabase.from('impeachment_proceedings').update({
+                conviction_bill_id: convictionBill.id,
+            }).eq('id', bill.impeachment_id);
+        }
+
+        try {
+            await supabase.from('event_log').insert({
+                nation_id: bill.nation_id,
+                event_name: 'PRESIDENT IMPEACHED',
+                event_type: 'impeachment',
+                category: 'government',
+                description_chosen: `Parliament has voted to impeach the President. The motion passed ${votesFor} to ${votesAgainst}. A trial period begins — a 2/3 supermajority vote is required for removal.`,
+                fired_at_tick: currentTick,
+                effects_applied: { impeachment_id: bill.impeachment_id, votes_for: votesFor, votes_against: votesAgainst },
+            });
+        } catch (e) { /* non-blocking */ }
+    } else {
+        await failBill(supabase, bill);
+
+        // Motion failed — close proceeding + apply nation-wide cooldown.
+        await supabase.from('impeachment_proceedings').update({
+            phase: 'resolved',
+            motion_result: 'failed',
+            resolved_at_tick: currentTick,
+        }).eq('id', bill.impeachment_id);
+
+        await supabase.from('nations').update({
+            impeachment_cooldown_until_tick: currentTick + GAME_CONFIG.IMPEACHMENT_MOTION_COOLDOWN_TICKS,
+        }).eq('id', bill.nation_id);
+
+        // Filer: partisan-overreach penalty.
+        await supabase.rpc('adjust_momentum', { p_faction_id: bill.proposed_by, p_delta: -2, p_label: 'Impeachment failed — initiator (-2)', p_tick: currentTick });
+        await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05, 0, currentTick, { source: 'impeachment:motion_failed' });
+
+        // President: vindication bonus.
+        const { data: proc } = await supabase.from('impeachment_proceedings')
+            .select('president_id').eq('id', bill.impeachment_id).single();
+        if (proc) {
+            const { data: presRow } = await supabase.from('presidents')
+                .select('faction_id').eq('id', proc.president_id).single();
+            if (presRow) {
+                await supabase.rpc('adjust_momentum', { p_faction_id: presRow.faction_id, p_delta: 2, p_label: 'Impeachment failed — president vindicated (+2)', p_tick: currentTick });
+                await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03, 0, currentTick, { source: 'impeachment:motion_failed:vindicated' });
+            }
+        }
+
+        await supabase.from('campaign_actions').insert({
+            nation_id: bill.nation_id,
+            party_id: bill.proposed_by,
+            action_type: 'impeachment_failed',
+            tick_performed: currentTick,
+            result: { impeachment_id: bill.impeachment_id },
+        });
+
+        try {
+            await supabase.from('event_log').insert({
+                nation_id: bill.nation_id,
+                event_name: 'IMPEACHMENT MOTION FAILS',
+                event_type: 'impeachment',
+                category: 'government',
+                description_chosen: `The impeachment motion has failed ${votesFor} to ${votesAgainst}. The President remains in office.`,
+                fired_at_tick: currentTick,
+                effects_applied: { impeachment_id: bill.impeachment_id, votes_for: votesFor, votes_against: votesAgainst, cooldown_ticks: GAME_CONFIG.IMPEACHMENT_MOTION_COOLDOWN_TICKS },
+            });
+        } catch (e) { /* non-blocking */ }
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'impeachment_motion',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed impeachment_conviction bill (Phase 2 of impeachment).
+ *
+ * On pass (convicted): marks proceeding conviction_result='convicted'. Actual
+ * presidential removal is handled by processImpeachmentConviction in the
+ * tick handler (which needs cross-nation + scheduling context the resolver
+ * doesn't have).
+ *
+ * On fail (acquitted): marks proceeding acquitted, sets long acquittal
+ * cooldown, grants the president survived-trial bonuses, boosts national
+ * stability, penalizes parties that voted YES on conviction (plus the
+ * filer), fires PRESIDENT ACQUITTED event.
+ */
+export async function resolveImpeachmentConvictionBill(supabase, bill, ctx) {
+    const { passed, currentTick, votesFor, votesAgainst, totalSeats } = ctx;
+    const seats = totalSeats || GAME_CONFIG.TOTAL_SEATS;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        await supabase.from('impeachment_proceedings').update({
+            phase: 'resolved',
+            conviction_result: 'convicted',
+            resolved_at_tick: currentTick,
+        }).eq('id', bill.impeachment_id);
+    } else {
+        await failBill(supabase, bill);
+
+        // Acquitted — close proceeding + long cooldown.
+        await supabase.from('impeachment_proceedings').update({
+            phase: 'resolved',
+            conviction_result: 'acquitted',
+            resolved_at_tick: currentTick,
+        }).eq('id', bill.impeachment_id);
+
+        await supabase.from('nations').update({
+            impeachment_cooldown_until_tick: currentTick + GAME_CONFIG.IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS,
+        }).eq('id', bill.nation_id);
+
+        // President: survived-trial bonuses.
+        const { data: proc } = await supabase.from('impeachment_proceedings')
+            .select('president_id').eq('id', bill.impeachment_id).single();
+        if (proc) {
+            const { data: presRow } = await supabase.from('presidents')
+                .select('faction_id').eq('id', proc.president_id).single();
+            if (presRow) {
+                await supabase.rpc('adjust_momentum', { p_faction_id: presRow.faction_id, p_delta: 3, p_label: 'Survived impeachment (+3)', p_tick: currentTick });
+                await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05, 0, currentTick, { source: 'impeachment:survived' });
+            }
+        }
+
+        // Stability recovers +3.
+        const { data: natRow } = await supabase.from('nations').select('stability').eq('id', bill.nation_id).single();
+        if (natRow) {
+            await supabase.from('nations').update({
+                stability: Math.min(100, Math.round(Number(natRow.stability || 0) + 3)),
+            }).eq('id', bill.nation_id);
+        }
+
+        // Parties that voted YES on conviction take -1 approval.
+        const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'yes' || s.stance === 'accept');
+        for (const v of yesVoters) {
+            if (v.faction_id !== bill.proposed_by) {
+                await supabase.rpc('adjust_momentum', { p_faction_id: v.faction_id, p_delta: -1, p_label: 'Impeachment survived — yes voter (-1)', p_tick: currentTick });
+                await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
+            }
+        }
+        await supabase.rpc('adjust_momentum', { p_faction_id: bill.proposed_by, p_delta: -1, p_label: 'Impeachment survived — initiator (-1)', p_tick: currentTick });
+        await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
+
+        try {
+            await supabase.from('event_log').insert({
+                nation_id: bill.nation_id,
+                event_name: 'PRESIDENT ACQUITTED',
+                event_type: 'impeachment',
+                category: 'government',
+                description_chosen: `The President has been acquitted. The conviction vote failed ${votesFor} to ${votesAgainst} (needed ${Math.ceil(seats * 2 / 3)}). Full presidential powers are restored.`,
+                fired_at_tick: currentTick,
+                effects_applied: { impeachment_id: bill.impeachment_id, votes_for: votesFor, votes_against: votesAgainst, cooldown_ticks: GAME_CONFIG.IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS },
+            });
+        } catch (e) { /* non-blocking */ }
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'impeachment_conviction',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed diplomatic_proposal ratification bill.
+ *
+ * Two sub-paths:
+ *   - Bilateral (proposal_tier === 3 with both proposing_bill_id and target_bill_id):
+ *     waits for the OTHER nation's twin bill; once both sides pass, activates
+ *     the proposal, applies one-time relation bump + unrest spike, and for
+ *     trade agreements creates the trade_agreements + aid_agreement_state
+ *     rows so the tick processor can apply economic effects.
+ *   - Unilateral: activates immediately, same side-effects.
+ *
+ * On fail:
+ *   - Bilateral: marks pipeline side failed, cancels the other side's
+ *     still-open ratification bill, fires failure news to both nations.
+ *   - Unilateral: marks proposal ratification_failed so the FM can retry.
+ */
+export async function resolveDiplomaticRatificationBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        const { data: proposal } = await supabase.from('diplomatic_proposals')
+            .select('*').eq('id', bill.diplomatic_proposal_id).single();
+        if (proposal) {
+            const pd = proposal.proposal_data || {};
+            const isBilateral = proposal.proposal_tier === 3 && proposal.proposing_bill_id && proposal.target_bill_id;
+
+            if (isBilateral) {
+                // ── BILATERAL RATIFICATION (Major Diplomatic Initiative) ──
+                const isProposerBill = bill.id === proposal.proposing_bill_id;
+                const otherBillId = isProposerBill ? proposal.target_bill_id : proposal.proposing_bill_id;
+
+                let otherPassed = false;
+                if (otherBillId) {
+                    const { data: otherBill } = await supabase.from('bills')
+                        .select('status').eq('id', otherBillId).single();
+                    otherPassed = otherBill?.status === 'passed';
+                }
+
+                const pipeline = pd.pipeline || {};
+                if (isProposerBill) pipeline.proposer_result = 'passed';
+                else pipeline.target_result = 'passed';
+                pd.pipeline = pipeline;
+
+                if (otherPassed) {
+                    // BOTH parliaments have ratified — activate the initiative
+                    pipeline.proposer_result = 'passed';
+                    pipeline.target_result = 'passed';
+                    pipeline.ratified_at = currentTick;
+                    pd.pipeline = pipeline;
+
+                    const articles = pd.articles || [];
+                    const activeArticles = articles.filter(a => a.status !== 'struck');
+                    const activeEffects = { proposer: {}, target: {} };
+                    let totalRel = 0;
+
+                    for (const art of activeArticles) {
+                        const effects = art.proposer_effects || art.effects || {};
+                        const targetEffects = art.target_effects || art.effects || {};
+                        totalRel += (effects.relations || 0);
+
+                        art.active_effects = { proposer: {}, target: {} };
+
+                        for (const [key, val] of Object.entries(effects)) {
+                            if (key === 'relations' || key === 'civil_unrest') continue;
+                            if (typeof val === 'number' && val !== 0) {
+                                activeEffects.proposer[key] = (activeEffects.proposer[key] || 0) + val;
+                                art.active_effects.proposer[key] = (art.active_effects.proposer[key] || 0) + val;
+                            }
+                        }
+                        for (const [key, val] of Object.entries(targetEffects)) {
+                            if (key === 'relations' || key === 'civil_unrest') continue;
+                            if (typeof val === 'number' && val !== 0) {
+                                activeEffects.target[key] = (activeEffects.target[key] || 0) + val;
+                                art.active_effects.target[key] = (art.active_effects.target[key] || 0) + val;
+                            }
+                        }
+                    }
+                    pd.active_effects = activeEffects;
+
+                    const { error: activateErr } = await supabase.from('diplomatic_proposals')
+                        .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
+                        .eq('id', bill.diplomatic_proposal_id);
+                    if (activateErr) console.error('[bilateral] Failed to activate proposal:', activateErr.message);
+
+                    if (totalRel !== 0) {
+                        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                        const { data: rel } = await supabase.from('diplomatic_relations')
+                            .select('id, relation_score, active_treaties')
+                            .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
+                        if (rel) {
+                            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
+                            const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
+                            await supabase.from('diplomatic_relations')
+                                .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
+                        }
+                    }
+
+                    let totalUnrestSpike = 0;
+                    for (const art of activeArticles) {
+                        totalUnrestSpike += (art.effects?.civil_unrest || 0);
+                    }
+                    if (totalUnrestSpike > 0) {
+                        for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
+                            const { data: n } = await supabase.from('nations').select('civil_unrest').eq('id', nId).single();
+                            if (n) {
+                                const newVal = Math.max(0, Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike));
+                                await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nId);
+                            }
+                        }
+                    }
+
+                    if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
+                        const durationArt = activeArticles.find(a => a.type === 'duration');
+                        const dt = durationArt?.data || {};
+                        const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
+                        const expiresAt = durationTicks ? currentTick + durationTicks : null;
+
+                        const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                        const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+
+                        const { data: newTA, error: taErr } = await supabase.from('trade_agreements').insert({
+                            nation_a_id: taNationA,
+                            nation_b_id: taNationB,
+                            agreement_type: pd.agreement_type,
+                            agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
+                            articles: activeArticles,
+                            status: 'active',
+                            enacted_at_tick: currentTick,
+                            expires_at_tick: expiresAt,
+                            auto_renew: dt.auto_renew || false,
+                            withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
+                            negotiation_id: null,
+                        }).select('id').single();
+
+                        if (taErr) {
+                            console.error('[bilateral] trade_agreements insert failed:', taErr.message);
+                        } else if (newTA) {
+                            await supabase.from('diplomatic_proposals')
+                                .update({ status: 'enacted' })
+                                .eq('id', bill.diplomatic_proposal_id);
+                            if (pd.agreement_type === 'economic_aid') {
+                                const aidArt = activeArticles.find(a => a.type === 'aid_terms');
+                                if (aidArt) {
+                                    const donorId = aidArt.data?.donor_nation_id;
+                                    const annualAmount = Number(aidArt.data?.annual_amount || 0);
+                                    if (donorId && annualAmount > 0) {
+                                        const recipientId = donorId === proposal.proposing_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                                        const { error: aidErr } = await supabase.from('aid_agreement_state').insert({
+                                            agreement_id: newTA.id,
+                                            donor_nation_id: donorId,
+                                            recipient_nation_id: recipientId,
+                                            current_annual_amount: annualAmount,
+                                            original_annual_amount: annualAmount,
+                                            next_review_tick: currentTick + (DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL || 12),
+                                            condition_failures: {},
+                                        });
+                                        if (aidErr) console.error('[bilateral] aid_agreement_state insert failed:', aidErr.message);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: activeArticles.length });
+
+                    try {
+                        for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
+                            await supabase.rpc('insert_news_event', {
+                                p_nation_id: nId,
+                                p_trigger_key: 'major_initiative_ratified',
+                                p_tick: currentTick,
+                                p_placeholders: {
+                                    nation_a: pd.proposer_nation_name || 'Unknown',
+                                    nation_b: pd.target_nation_name || 'Unknown',
+                                    initiative_name: pd.name || 'Diplomatic Initiative',
+                                    article_count: String(activeArticles.length),
+                                },
+                            });
+                        }
+                    } catch (newsErr) { console.error('News event error:', newsErr); }
+                } else {
+                    // Only one side ratified so far — wait for the other
+                    await supabase.from('diplomatic_proposals')
+                        .update({ proposal_data: pd })
+                        .eq('id', bill.diplomatic_proposal_id);
+                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+                }
+            } else {
+                // ── UNILATERAL RATIFICATION ──
+                const updatedPipeline = { ...(pd.pipeline || {}), ratified_at: currentTick };
+                pd.pipeline = updatedPipeline;
+                await supabase.from('diplomatic_proposals')
+                    .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
+                    .eq('id', bill.diplomatic_proposal_id);
+                const articles = pd.articles || [];
+                const struckIndices = new Set(pd.struck_articles || []);
+                let totalRel = 0;
+                articles.forEach((art, i) => {
+                    if (!struckIndices.has(i)) totalRel += art.relations || 0;
+                });
+                if (totalRel !== 0) {
+                    const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                    const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                    const { data: rel } = await supabase.from('diplomatic_relations')
+                        .select('id, relation_score, active_treaties')
+                        .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
+                    if (rel) {
+                        const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
+                        const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
+                        await supabase.from('diplomatic_relations')
+                            .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
+                    }
+                }
+
+                if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
+                    const activeArticles = articles.filter((_, i) => !struckIndices.has(i));
+                    const addedArticles = pd.added_articles || [];
+                    if (addedArticles.length > 0) activeArticles.push(...addedArticles);
+
+                    const durationArt = activeArticles.find(a => a.type === 'duration');
+                    const dt = durationArt?.data || {};
+                    const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
+                    const expiresAt = durationTicks ? currentTick + durationTicks : null;
+
+                    const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
+                    const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+
+                    await supabase.from('trade_agreements').insert({
+                        nation_a_id: taNationA,
+                        nation_b_id: taNationB,
+                        agreement_type: pd.agreement_type,
+                        agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
+                        articles: activeArticles,
+                        status: 'active',
+                        enacted_at_tick: currentTick,
+                        expires_at_tick: expiresAt,
+                        auto_renew: dt.auto_renew || false,
+                        withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
+                        negotiation_id: null,
+                    }).select('id').single().then(async ({ data: newTA, error: taErr }) => {
+                        if (taErr) { console.error('[ratification] trade_agreements insert failed:', taErr.message); return; }
+                        await supabase.from('diplomatic_proposals')
+                            .update({ status: 'enacted' })
+                            .eq('id', proposal.id);
+                        if (pd.agreement_type === 'economic_aid' && newTA) {
+                            const aidArt = activeArticles.find(a => a.type === 'aid_terms');
+                            if (aidArt) {
+                                const donorId = aidArt.data?.donor_nation_id;
+                                const annualAmount = Number(aidArt.data?.annual_amount || 0);
+                                if (donorId && annualAmount > 0) {
+                                    const recipientId = donorId === proposal.proposing_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
+                                    const { error: aidErr } = await supabase.from('aid_agreement_state').insert({
+                                        agreement_id: newTA.id,
+                                        donor_nation_id: donorId,
+                                        recipient_nation_id: recipientId,
+                                        current_annual_amount: annualAmount,
+                                        original_annual_amount: annualAmount,
+                                        next_review_tick: currentTick + (DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL || 12),
+                                        condition_failures: {},
+                                    });
+                                    if (aidErr) console.error('[ratification] aid_agreement_state insert failed:', aidErr.message);
+                                    else console.log(`[ratification] Aid state created: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(1)}B/yr`);
+                                }
+                            }
+                        }
+                    });
+                }
+
+                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+            }
+        }
+    } else {
+        await failBill(supabase, bill);
+        const { data: failedProposal } = await supabase.from('diplomatic_proposals')
+            .select('proposal_tier, proposing_bill_id, target_bill_id, proposal_data, proposing_nation_id, target_nation_id')
+            .eq('id', bill.diplomatic_proposal_id).single();
+        const isBilateral = failedProposal?.proposal_tier === 3 && failedProposal?.proposing_bill_id && failedProposal?.target_bill_id;
+
+        if (isBilateral) {
+            const fpd = failedProposal.proposal_data || {};
+            const pipeline = fpd.pipeline || {};
+            const isProposerBill = bill.id === failedProposal.proposing_bill_id;
+            if (isProposerBill) pipeline.proposer_result = 'failed';
+            else pipeline.target_result = 'failed';
+            fpd.pipeline = pipeline;
+
+            await supabase.from('diplomatic_proposals')
+                .update({ status: 'ratification_failed', proposal_data: fpd })
+                .eq('id', bill.diplomatic_proposal_id);
+
+            const otherBillId = isProposerBill ? failedProposal.target_bill_id : failedProposal.proposing_bill_id;
+            if (otherBillId) {
+                const { data: otherBill } = await supabase.from('bills')
+                    .select('status, preamble').eq('id', otherBillId).single();
+                if (otherBill && !['passed', 'failed', 'enacted'].includes(otherBill.status)) {
+                    const cancelNote = '\n\nAutomatically cancelled — ratification failed in the other nation\'s parliament.';
+                    await supabase.from('bills')
+                        .update({ status: 'failed', preamble: (otherBill.preamble || '') + cancelNote })
+                        .eq('id', otherBillId);
+                }
+            }
+
+            try {
+                if (failedProposal.proposing_nation_id && failedProposal.target_nation_id) {
+                    for (const nId of [failedProposal.proposing_nation_id, failedProposal.target_nation_id]) {
+                        await supabase.rpc('insert_news_event', {
+                            p_nation_id: nId,
+                            p_trigger_key: 'major_initiative_ratification_failed',
+                            p_tick: currentTick,
+                            p_placeholders: {
+                                initiative_name: fpd.name || 'Diplomatic Initiative',
+                                failed_in: isProposerBill ? (fpd.proposer_nation_name || 'Proposer') : (fpd.target_nation_name || 'Target'),
+                            },
+                        });
+                    }
+                }
+            } catch (newsErr) { console.error('News event error:', newsErr); }
+        } else {
+            await supabase.from('diplomatic_proposals')
+                .update({ status: 'ratification_failed' })
+                .eq('id', bill.diplomatic_proposal_id);
+        }
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'ratification',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed trade-negotiation ratification bill. Bilateral:
+ * waits for the other nation's twin bill; once both pass, creates the
+ * trade_agreements row (+ aid_agreement_state for economic aid) and marks
+ * the negotiation concluded. On failure: marks negotiation ratification_failed.
+ */
+export async function resolveTradeRatificationBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        const { data: neg } = await supabase.from('trade_negotiations')
+            .select('*').eq('id', bill.trade_negotiation_id).single();
+
+        if (neg) {
+            const isNationA = bill.nation_id === neg.nation_a_id;
+            const otherBillId = isNationA ? neg.bill_b_id : neg.bill_a_id;
+
+            let otherPassed = false;
+            if (otherBillId) {
+                const { data: otherBill } = await supabase.from('bills')
+                    .select('status').eq('id', otherBillId).single();
+                otherPassed = otherBill?.status === 'passed';
+            }
+
+            if (otherPassed) {
+                const articles = neg.draft_articles || [];
+                const durationArt = articles.find(a => a.type === 'duration');
+                const durData = durationArt?.data || {};
+                const isPermanent = durData.duration_type === 'permanent';
+                const durationTicks = durData.duration_ticks || null;
+                const autoRenew = durData.auto_renew || false;
+                const withdrawalNotice = durData.withdrawal_notice_ticks || 3;
+
+                const nA = neg.nation_a_id < neg.nation_b_id ? neg.nation_a_id : neg.nation_b_id;
+                const nB = neg.nation_a_id < neg.nation_b_id ? neg.nation_b_id : neg.nation_a_id;
+
+                const { data: newAgreement, error: taInsertErr } = await supabase.from('trade_agreements').insert({
+                    nation_a_id: nA,
+                    nation_b_id: nB,
+                    negotiation_id: neg.id,
+                    bill_a_id: neg.bill_a_id,
+                    bill_b_id: neg.bill_b_id,
+                    agreement_type: neg.agreement_type,
+                    agreement_name: neg.agreement_name || 'Trade Agreement',
+                    articles,
+                    duration_type: isPermanent ? 'permanent' : 'fixed',
+                    duration_ticks: isPermanent ? null : durationTicks,
+                    auto_renew: autoRenew,
+                    withdrawal_notice_ticks: withdrawalNotice,
+                    status: 'active',
+                    enacted_at_tick: currentTick,
+                    expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null),
+                }).select('id').single();
+                if (taInsertErr) console.error('[resolveTradeRatification] trade_agreements insert failed:', taInsertErr.message);
+
+                if (neg.agreement_type === 'economic_aid' && newAgreement) {
+                    const aidTerms = articles.find(a => a.type === 'aid_terms');
+                    if (aidTerms) {
+                        const donorId = aidTerms.data.donor_nation_id;
+                        if (donorId !== nA && donorId !== nB) {
+                            console.error(`[resolveTradeRatification] Invalid donor_nation_id ${donorId} — not a party to agreement [${nA}, ${nB}]. Skipping aid_agreement_state.`);
+                        } else {
+                            const recipientId = donorId === nA ? nB : nA;
+                            const annualAmount = Number(aidTerms.data.annual_amount || 0);
+                            const { error: aidStateError } = await supabase.from('aid_agreement_state').insert({
+                                agreement_id: newAgreement.id,
+                                donor_nation_id: donorId,
+                                recipient_nation_id: recipientId,
+                                current_annual_amount: annualAmount,
+                                original_annual_amount: annualAmount,
+                                next_review_tick: currentTick + DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL,
+                                condition_failures: {},
+                            });
+                            if (aidStateError) {
+                                console.error('[resolveTradeRatification] Failed to create aid_agreement_state:', aidStateError.message);
+                            } else {
+                                console.log(`[resolveTradeRatification] Economic aid agreement activated: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(2)}B`);
+                            }
+                        }
+                    }
+                }
+
+                const { error: negUpdateErr } = await supabase.from('trade_negotiations')
+                    .update({ status: 'concluded', concluded_at_tick: currentTick })
+                    .eq('id', neg.id);
+                if (negUpdateErr) console.error('[resolveTradeRatification] trade_negotiations concluded update failed:', negUpdateErr.message);
+                else console.log('[resolveTradeRatification] Trade agreement activated — negotiation', neg.id, 'marked concluded');
+
+                const { data: rel } = await supabase.from('diplomatic_relations')
+                    .select('id, relation_score, active_treaties')
+                    .eq('nation_a_id', nA).eq('nation_b_id', nB).maybeSingle();
+                if (rel) {
+                    const bonus = neg.agreement_type === 'economic_aid' ? DIPLOMACY_CONFIG.AID_RELATION_BONUS : 5;
+                    const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + bonus));
+                    await supabase.from('diplomatic_relations')
+                        .update({ relation_score: newScore }).eq('id', rel.id);
+                }
+            }
+            // If only one side ratified so far, just leave the negotiation in 'ratification' status.
+        }
+
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+    } else {
+        await failBill(supabase, bill);
+        await supabase.from('trade_negotiations')
+            .update({ status: 'ratification_failed' })
+            .eq('id', bill.trade_negotiation_id);
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'trade_ratification',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed retaliatory-tariff ratification bill. Unilateral —
+ * imposer nation parliament only. On pass: creates an active trade_agreement
+ * row (imposer = nation_a), applies a diplomatic penalty proportional to the
+ * max surcharge, fires an enactment event in the target nation. On fail:
+ * plain failBill.
+ */
+export async function resolveRetaliatoryTariffRatificationBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        const rtData = bill.trade_agreement_data;
+        const imposerId = rtData.imposer_nation_id;
+        const targetId = rtData.target_nation_id;
+        const isPermanent = rtData.duration_type === 'permanent';
+        const durationTicks = rtData.duration_ticks || null;
+
+        await supabase.from('trade_agreements').insert({
+            nation_a_id: imposerId,
+            nation_b_id: targetId,
+            bill_a_id: bill.id,
+            agreement_type: 'retaliatory_tariff',
+            agreement_name: rtData.agreement_name || 'Retaliatory Tariff',
+            articles: rtData.articles || [],
+            duration_type: isPermanent ? 'permanent' : 'fixed',
+            duration_ticks: isPermanent ? null : durationTicks,
+            auto_renew: false,
+            withdrawal_notice_ticks: 1,
+            status: 'active',
+            enacted_at_tick: currentTick,
+            expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null),
+        });
+
+        let maxSurcharge = 0;
+        const articles = rtData.articles || [];
+        for (const art of articles) {
+            if (art.type === 'tariff_surcharge') {
+                maxSurcharge = Math.max(maxSurcharge, art.data.surcharge_pct || 0);
+            }
+        }
+        const relPenalty = Math.round(maxSurcharge / 2);
+
+        if (relPenalty > 0) {
+            const relA = imposerId < targetId ? imposerId : targetId;
+            const relB = imposerId < targetId ? targetId : imposerId;
+            const { data: rel } = await supabase.from('diplomatic_relations')
+                .select('id, relation_score')
+                .eq('nation_a_id', relA).eq('nation_b_id', relB).maybeSingle();
+            if (rel) {
+                const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - relPenalty));
+                await supabase.from('diplomatic_relations')
+                    .update({ relation_score: newScore }).eq('id', rel.id);
+            }
+        }
+
+        try {
+            const { data: imposerNation } = await supabase.from('nations').select('name').eq('id', imposerId).single();
+            const imposerName = imposerNation?.name || 'Unknown';
+            await supabase.from('event_log').insert({
+                nation_id: targetId,
+                event_name: 'Retaliatory Tariff Enacted',
+                trigger_key: 'sanctions_imposed',
+                category: 'Trade',
+                description_chosen: imposerName + ' has enacted a retaliatory tariff on your exports. Relations have decreased by ' + relPenalty + '.',
+                fired_at_tick: currentTick,
+            });
+        } catch (e) { /* non-blocking */ }
+
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+    } else {
+        await failBill(supabase, bill);
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'retaliatory_tariff',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed embargo ratification bill. Unilateral — imposer
+ * nation parliament only. On pass: creates an active trade_agreement row,
+ * applies a diplomatic penalty (20 + 5 per embargoed sector), fires an
+ * enactment event in the target nation. On fail: plain failBill.
+ */
+export async function resolveEmbargoRatificationBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+
+        const embData = bill.trade_agreement_data;
+        const imposerId = embData.imposer_nation_id;
+        const targetId = embData.target_nation_id;
+        const durationTicks = embData.duration_ticks || 12;
+
+        await supabase.from('trade_agreements').insert({
+            nation_a_id: imposerId,
+            nation_b_id: targetId,
+            bill_a_id: bill.id,
+            agreement_type: 'impose_embargo',
+            agreement_name: embData.agreement_name || 'Embargo',
+            articles: embData.articles || [],
+            duration_type: 'fixed',
+            duration_ticks: durationTicks,
+            auto_renew: false,
+            withdrawal_notice_ticks: 1,
+            status: 'active',
+            enacted_at_tick: currentTick,
+            expires_at_tick: currentTick + durationTicks,
+        });
+
+        const embargoedSectors = (embData.articles || []).filter(a => a.type === 'embargo_sector').length;
+        const relPenalty = Math.round(20 + embargoedSectors * 5);
+
+        if (relPenalty > 0) {
+            const relA = imposerId < targetId ? imposerId : targetId;
+            const relB = imposerId < targetId ? targetId : imposerId;
+            const { data: rel } = await supabase.from('diplomatic_relations')
+                .select('id, relation_score')
+                .eq('nation_a_id', relA).eq('nation_b_id', relB).maybeSingle();
+            if (rel) {
+                const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - relPenalty));
+                await supabase.from('diplomatic_relations')
+                    .update({ relation_score: newScore }).eq('id', rel.id);
+            }
+        }
+
+        try {
+            const { data: imposerNation } = await supabase.from('nations').select('name').eq('id', imposerId).single();
+            const imposerName = imposerNation?.name || 'Unknown';
+            await supabase.from('event_log').insert({
+                nation_id: targetId,
+                event_name: 'Embargo Enacted',
+                trigger_key: 'sanctions_imposed',
+                category: 'Trade',
+                description_chosen: imposerName + ' has imposed an embargo on your trade. Relations have decreased by ' + relPenalty + '.',
+                fired_at_tick: currentTick,
+            });
+        } catch (e) { /* non-blocking */ }
+
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+    } else {
+        await failBill(supabase, bill);
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'impose_embargo',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed sovereign-default_resolution bill.
+ *
+ * Thin dispatcher: the heavy economic effects (cross-nation contagion,
+ * creditor payouts, credit-rating updates) live in handler-template.ts
+ * (enactSovereignDefault / handleFailedDefaultResolution) because they
+ * need cross-nation + tick-scheduling context the resolver lacks. The
+ * typeof guard means client-side callers that don't bundle those
+ * functions (admin.html, laws.html) see a no-op enactment while the
+ * tick handler owns the real consequences.
+ */
+export async function resolveDefaultResolutionBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst } = ctx;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (typeof enactSovereignDefault === 'function') {
+            try {
+                await enactSovereignDefault(supabase, bill, currentTick);
+            } catch (defaultErr) {
+                console.error(`[resolveDefaultResolution] enactSovereignDefault failed for bill ${bill.id}:`, defaultErr);
+            }
+        }
+    } else {
+        await failBill(supabase, bill);
+        if (typeof handleFailedDefaultResolution === 'function') {
+            try {
+                await handleFailedDefaultResolution(supabase, bill, currentTick);
+            } catch (failErr) {
+                console.error(`[resolveDefaultResolution] handleFailedDefaultResolution failed for bill ${bill.id}:`, failErr);
+            }
+        }
+    }
+    await fireBillEvent(supabase, passed ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'default_resolution',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed veto_override bill (Presidential systems).
+ *
+ * On pass: marks this bill passed and ENACTS the ORIGINAL (vetoed) bill
+ * via enactBill, bypassing the president's desk entirely. If the
+ * original's enactment fails, both bills are marked failed with an
+ * explanatory event on the original. On fail: the veto holds —
+ * the original stays failed forever (cannot be re-vetoed-overridden).
+ */
+export async function resolveVetoOverrideBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        // Enact the ORIGINAL vetoed bill — bypasses president's desk.
+        const { data: originalBill } = await supabase.from('bills')
+            .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+            .eq('id', bill.original_bill_id).single();
+        if (originalBill) {
+            await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
+            const enactment = await enactBill(supabase, originalBill, currentTick);
+            if (!enactment?.success) {
+                await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
+                await fireBillEvent(supabase, 'bill_failed', originalBill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, billNameOverride: `${originalBill.bill_name} (override enactment failed)` });
+            }
+        }
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+    } else {
+        await failBill(supabase, bill);
+        // Original bill dies with the override — it can never pass now.
+        if (bill.original_bill_id) {
+            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.original_bill_id);
+        }
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'veto_override',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed foundational bill (constitutional amendments,
+ * electoral reform, etc.).
+ *
+ * Three outcomes:
+ *   - passed vote + enactment succeeds → result='passed'
+ *   - passed vote + enactment fails → warn, result='failed', NO failBill call
+ *     (enactFoundationalBill is responsible for whatever cleanup it needs;
+ *     the bill row may stay in whatever intermediate state it left behind)
+ *   - failed vote → failBill, result='failed'
+ *
+ * The heavy lifting — constitutional-system transitions, HOG deactivation,
+ * election scheduling, stat side-effects — lives inside enactFoundationalBill.
+ */
+export async function resolveFoundationalBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+    let enacted = false;
+    if (passed) {
+        enacted = await enactFoundationalBill(supabase, bill, currentTick);
+    }
+    if (!passed || !enacted) {
+        if (!enacted && passed) {
+            console.warn(`[resolveFoundationalBill] Foundational bill ${bill.id} had enough votes but enactment failed.`);
+        } else {
+            await failBill(supabase, bill);
+        }
+    }
+    await fireBillEvent(supabase, enacted ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: enacted ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'foundational',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve an ordinary bill (the catch-all: regular policy bills, repeals,
+ * everything not matched by a specialized resolver).
+ *
+ * Branches:
+ *   - Presidential (hasElectedPresident): route to president's desk —
+ *     bills.update status='president_desk' with a deadline. The president's
+ *     desk processor picks it up for sign/veto/auto-sign.
+ *   - Parliamentary (no elected president): enact immediately via enactBill.
+ *     If enactment fails, the bill is marked failed_enactment with an
+ *     explanatory event; otherwise status=passed and effects applied.
+ *   - Failed: plain failBill + event.
+ *
+ * Note: the absolute-monarchy early-continue for passed ordinary bills
+ * (awaiting_royal_assent) is handled upstream in resolveExpiredVotes —
+ * those bills never reach this resolver.
+ *
+ * Return entry lacks a `type` field (no existing consumer sets one for
+ * ordinary bills), and the pass path may yield result='president_desk',
+ * 'passed', or 'failed_enactment' depending on the sub-branch taken.
+ */
+export async function resolveOrdinaryBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+
+    if (passed) {
+        if (hasElectedPresident(nation)) {
+            await supabase.from('bills').update({
+                status: 'president_desk',
+                passed_tick: currentTick,
+                president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS,
+            }).eq('id', bill.id);
+            await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: (bill.bill_articles || []).length });
+            return {
+                billId: bill.id,
+                billName: bill.bill_name,
+                result: 'president_desk',
+                votesFor,
+                votesAgainst,
+                earlyResolution: bill.early_resolution_status || null,
+            };
+        }
+        // Parliamentary: enact immediately. Wrap enactBill in try/catch so a
+        // thrown exception still produces a clean failed_enactment result.
+        let enactment;
+        try {
+            enactment = await enactBill(supabase, bill, currentTick);
+        } catch (enactErr) {
+            console.error(`[resolveOrdinaryBill] enactBill threw for bill ${bill.id} ("${bill.bill_name}"):`, enactErr);
+            enactment = { success: false, error: `enactBill threw: ${enactErr?.message || enactErr}` };
+        }
+        if (!enactment?.success) {
+            await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'Unknown enactment failure');
+            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, billNameOverride: `${bill.bill_name} (enactment failed)` });
+            return {
+                billId: bill.id,
+                billName: bill.bill_name,
+                result: 'failed_enactment',
+                votesFor,
+                votesAgainst,
+                error: enactment?.error,
+                earlyResolution: bill.early_resolution_status || null,
+            };
+        }
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: (bill.bill_articles || []).length });
+        return {
+            billId: bill.id,
+            billName: bill.bill_name,
+            result: 'passed',
+            votesFor,
+            votesAgainst,
+            earlyResolution: bill.early_resolution_status || null,
+        };
+    }
+    // Failed
+    await failBill(supabase, bill);
+    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: 'failed',
+        votesFor,
+        votesAgainst,
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+
+// ─── Bill resolver dispatch ─────────────────────────────────────────────────
+//
+// Single source of truth for "which resolver handles which bill_type".
+// Each entry is a selector (bill) → resolver | null. A null return means
+// the bill_type is recognized but the specific sub-shape isn't — fall back
+// to resolveOrdinaryBill.
+//
+// This mirrors BILL_TYPE_SPECS (threshold side, R2) on the dispatch side.
+const BILL_RESOLVERS = Object.freeze({
+    no_confidence:          ()  => resolveNoConfidenceBill,
+    foundational:           ()  => resolveFoundationalBill,
+    default_resolution:     ()  => resolveDefaultResolutionBill,
+    confirmation:           (b) => b.ambassador_id      ? resolveAmbassadorConfirmationBill : null,
+    minister_confirmation:  (b) => b.ministry_key       ? resolveMinisterConfirmationBill   : null,
+    veto_override:          (b) => b.original_bill_id   ? resolveVetoOverrideBill           : null,
+    impeachment_motion:     (b) => b.impeachment_id     ? resolveImpeachmentMotionBill      : null,
+    impeachment_conviction: (b) => b.impeachment_id     ? resolveImpeachmentConvictionBill  : null,
+    ratification:           (b) => {
+        if (b.diplomatic_proposal_id)                              return resolveDiplomaticRatificationBill;
+        if (b.trade_negotiation_id)                                return resolveTradeRatificationBill;
+        if (b.trade_agreement_data?.type === 'retaliatory_tariff') return resolveRetaliatoryTariffRatificationBill;
+        if (b.trade_agreement_data?.type === 'impose_embargo')     return resolveEmbargoRatificationBill;
+        return null;
+    },
+});
+
+export function selectBillResolver(bill) {
+    const selector = BILL_RESOLVERS[bill?.bill_type];
+    const resolver = selector ? selector(bill) : null;
+    return resolver || resolveOrdinaryBill;
 }
 
 export async function resolveExpiredVotes(supabase, nationId) {
@@ -1280,1033 +2638,14 @@ export async function resolveExpiredVotes(supabase, nationId) {
             continue; // skip normal enactment — monarch decides
         }
 
-        if (isNoConfidence) {
-            // Handle no-confidence resolution (pass or fail)
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-            } else {
-                await failBill(supabase, bill);
-            }
-            await resolveNoConfidence(supabase, bill, passed, votesFor, votesAgainst, currentTick);
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'no_confidence', earlyResolution: bill.early_resolution_status || null });
-        } else if (isFoundational) {
-            // Handle foundational bill resolution (electoral makeup, etc.)
-            let enacted = false;
-            if (passed) {
-                enacted = await enactFoundationalBill(supabase, bill, currentTick);
-            }
-            if (!passed || !enacted) {
-                if (!enacted && passed) {
-                    console.warn(`[resolveExpiredVotes] Foundational bill ${bill.id} had enough votes but enactment failed.`);
-                } else {
-                    await failBill(supabase, bill);
-                }
-            }
-            await fireBillEvent(supabase, enacted ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational', earlyResolution: bill.early_resolution_status || null });
-        } else if (bill.bill_type === 'default_resolution') {
-            // ── Sovereign Default Resolution ──
-            // Full enactment logic lives in handler-template.ts (enactSovereignDefault /
-            // handleFailedDefaultResolution) because it needs cross-nation contagion
-            // and tick-only helpers. The typeof guard ensures client-side callers
-            // (admin.html, laws.html) don't crash — the server tick handles consequences.
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                if (typeof enactSovereignDefault === 'function') {
-                    try {
-                        await enactSovereignDefault(supabase, bill, currentTick);
-                    } catch (defaultErr) {
-                        console.error(`[resolveExpiredVotes] enactSovereignDefault failed for bill ${bill.id}:`, defaultErr);
-                    }
-                }
-            } else {
-                await failBill(supabase, bill);
-                if (typeof handleFailedDefaultResolution === 'function') {
-                    try {
-                        await handleFailedDefaultResolution(supabase, bill, currentTick);
-                    } catch (failErr) {
-                        console.error(`[resolveExpiredVotes] handleFailedDefaultResolution failed for bill ${bill.id}:`, failErr);
-                    }
-                }
-            }
-            await fireBillEvent(supabase, passed ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'default_resolution', earlyResolution: bill.early_resolution_status || null });
-        } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
-            // Ambassador confirmation bill
-            // Check if nominee voted NO — auto-fail (withdrawal of nomination)
-            const { data: ambRow } = await supabase.from('ambassadors').select('faction_id').eq('id', bill.ambassador_id).maybeSingle();
-            const ambNomineeId = ambRow?.faction_id;
-            const nomineeVotedNo = ambNomineeId && (bill.bill_support || []).some(s => {
-                const st = s.stance === 'reject' ? 'no' : s.stance;
-                return s.faction_id === ambNomineeId && st === 'no';
-            });
-            if (nomineeVotedNo) passed = false;
-
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                // Activate the ambassador — term starts now
-                await supabase.from('ambassadors').update({
-                    status: 'active',
-                    is_active: true,
-                    appointed_at_tick: currentTick
-                }).eq('id', bill.ambassador_id);
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
-            } else {
-                await failBill(supabase, bill);
-                // Reject the ambassador
-                await supabase.from('ambassadors').update({
-                    status: 'rejected',
-                    is_active: false
-                }).eq('id', bill.ambassador_id);
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-            }
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'confirmation', earlyResolution: bill.early_resolution_status || null });
-        } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
-            // Minister confirmation bill (Presidential / Semi-Presidential).
-            //
-            // bill.metadata.pending_minister is the SOLE source of truth for
-            // the nominee. It's written at nominateMinister time and never
-            // mutated — so it survives any external clearing of the
-            // ministries.pending_minister UI cache. Bills lacking metadata
-            // (created before the metadata field was wired) are force-failed
-            // rather than silently passed without installing anything.
-            const mKey = bill.ministry_key;
-            const pm = bill.metadata?.pending_minister || null;
-
-            // Fetch the (possibly absent) ministry row — used to know whether
-            // to UPDATE or INSERT, and to preserve is_acting for the failed-
-            // bill restore path. Never the source of truth for the nominee.
-            const { data: ministry } = await supabase.from('ministries')
-                .select('id, is_acting')
-                .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
-                .maybeSingle();
-
-            if (!pm) {
-                console.error(`[resolveExpiredVotes] minister_confirmation bill ${bill.id} (${mKey}) missing bill.metadata.pending_minister. Failing.`);
-                passed = false;
-            }
-
-            // Auto-fail if the nominee's party itself voted NO.
-            const minNomineeVotedNo = pm?.party_id && (bill.bill_support || []).some(s => {
-                const st = s.stance === 'reject' ? 'no' : s.stance;
-                return s.faction_id === pm.party_id && st === 'no';
-            });
-            if (minNomineeVotedNo) passed = false;
-
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-                const { data: fullNation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-                const ministryFields = {
-                    party_id: pm.party_id,
-                    minister_first_name: pm.first_name,
-                    minister_last_name: pm.last_name,
-                    minister_age: pm.age,
-                    minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
-                    ministry_name: MINISTRY_OFFICE_NAMES[mKey] || mKey,
-                    confirmation_status: 'confirmed',
-                    pending_minister: null,
-                    stat_baselines: fullNation ? buildMinistryBaselines(mKey, fullNation) : {},
-                };
-
-                if (ministry) {
-                    const { error: updErr } = await supabase.from('ministries').update(ministryFields).eq('id', ministry.id);
-                    if (updErr) console.error(`[resolveExpiredVotes] ministries update failed for ${mKey}:`, updErr.message);
-                } else {
-                    // Ministry row was missing — recreate it filled with the
-                    // confirmed nominee so the cabinet display reflects reality.
-                    const { error: insErr } = await supabase.from('ministries').insert({
-                        nation_id: bill.nation_id,
-                        ministry_key: mKey,
-                        is_active: true,
-                        ...ministryFields,
-                    });
-                    if (insErr) console.error(`[resolveExpiredVotes] ministries insert failed for ${mKey}:`, insErr.message);
-                }
-
-                // PM-specific: keep government_formations + head_of_government in sync.
-                if (mKey === 'prime_minister') {
-                    try {
-                        const { data: activeGovFormation } = await supabase.from('government_formations')
-                            .select('id, ministry_assignments')
-                            .eq('nation_id', bill.nation_id)
-                            .in('status', ['formed', 'active', 'caretaker'])
-                            .order('formed_at', { ascending: false })
-                            .limit(1)
-                            .maybeSingle();
-                        if (activeGovFormation) {
-                            const updatedAssignments = { ...(activeGovFormation.ministry_assignments || {}), prime_minister: pm.party_id };
-                            await supabase.from('government_formations')
-                                .update({ ministry_assignments: updatedAssignments })
-                                .eq('id', activeGovFormation.id);
-                            console.log(`[resolveExpiredVotes] Updated government_formations PM assignment to ${pm.party_id}`);
-                        }
-                    } catch (gfErr) { console.warn('[resolveExpiredVotes] Failed to update government_formations PM:', gfErr); }
-
-                    // Install the confirmed PM into head_of_government immediately
-                    // (single source of truth — see installHOG). The UI and many
-                    // server-side flows read head_of_government, not ministries.
-                    // Without this, the PM vanishes until the next-tick
-                    // processParliamentaryPMTimeout safety net fires — and that
-                    // safety net won't run if coalition status is 'caretaker',
-                    // and even when it does it installs the party leader, not
-                    // the nominee confirmed by parliament.
-                    try {
-                        await installHOG(supabase, {
-                            nationId: bill.nation_id,
-                            factionId: pm.party_id,
-                            firstName: pm.first_name,
-                            lastName: pm.last_name,
-                            age: pm.age,
-                            currentTick,
-                        });
-                        console.log(`[resolveExpiredVotes] Installed HOG for confirmed PM ${pm.first_name} ${pm.last_name} (party ${pm.party_id})`);
-                    } catch (hogErr) {
-                        console.error('[resolveExpiredVotes] HOG install failed:', hogErr.message || hogErr);
-                    }
-                }
-
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
-            } else {
-                await failBill(supabase, bill);
-
-                // Clear any stale pending hint on the ministry row (it was a
-                // UI cache, not the source of truth). Restore 'acting' status
-                // if an acting minister was in place; otherwise mark 'rejected'.
-                if (ministry) {
-                    await supabase.from('ministries').update({
-                        confirmation_status: ministry.is_acting ? 'acting' : 'rejected',
-                        pending_minister: null,
-                    }).eq('id', ministry.id);
-                }
-
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-            }
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'minister_confirmation', earlyResolution: bill.early_resolution_status || null });
-        } else if (bill.bill_type === 'veto_override' && bill.original_bill_id) {
-            // Veto override bill (Presidential systems)
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                // Enact the ORIGINAL vetoed bill
-                const { data: originalBill } = await supabase.from('bills')
-                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
-                    .eq('id', bill.original_bill_id).single();
-                if (originalBill) {
-                    await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
-                    const enactment = await enactBill(supabase, originalBill, currentTick);
-                    if (!enactment?.success) {
-                        await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
-                        await fireBillEvent(supabase, 'bill_failed', originalBill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, billNameOverride: `${originalBill.bill_name} (override enactment failed)` });
-                    }
-                }
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
-            } else {
-                await failBill(supabase, bill);
-                // Also fail the original vetoed bill — it can never pass now
-                if (bill.original_bill_id) {
-                    await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.original_bill_id);
-                }
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
-            }
-        } else if (bill.bill_type === 'ratification' && bill.diplomatic_proposal_id) {
-            // Diplomatic ratification bill
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                // Load the linked diplomatic proposal
-                const { data: proposal } = await supabase.from('diplomatic_proposals')
-                    .select('*').eq('id', bill.diplomatic_proposal_id).single();
-                if (proposal) {
-                    const pd = proposal.proposal_data || {};
-                    const isBilateral = proposal.proposal_tier === 3 && proposal.proposing_bill_id && proposal.target_bill_id;
-
-                    if (isBilateral) {
-                        // ── BILATERAL RATIFICATION (Major Diplomatic Initiative) ──
-                        // Check if the OTHER nation's bill has also passed
-                        const isProposerBill = bill.id === proposal.proposing_bill_id;
-                        const otherBillId = isProposerBill ? proposal.target_bill_id : proposal.proposing_bill_id;
-
-                        let otherPassed = false;
-                        if (otherBillId) {
-                            const { data: otherBill } = await supabase.from('bills')
-                                .select('status').eq('id', otherBillId).single();
-                            otherPassed = otherBill?.status === 'passed';
-                        }
-
-                        // Update pipeline with this side's result
-                        const pipeline = pd.pipeline || {};
-                        if (isProposerBill) pipeline.proposer_result = 'passed';
-                        else pipeline.target_result = 'passed';
-                        pd.pipeline = pipeline;
-
-                        if (otherPassed) {
-                            // BOTH parliaments have ratified — activate the initiative
-                            pipeline.proposer_result = 'passed';
-                            pipeline.target_result = 'passed';
-                            pipeline.ratified_at = currentTick;
-                            pd.pipeline = pipeline;
-
-                            // Compute per-tick effects from active articles and store them
-                            const articles = pd.articles || [];
-                            const activeArticles = articles.filter(a => a.status !== 'struck');
-                            const activeEffects = { proposer: {}, target: {} };
-                            let totalRel = 0;
-
-                            for (const art of activeArticles) {
-                                const effects = art.proposer_effects || art.effects || {};
-                                const targetEffects = art.target_effects || art.effects || {};
-                                totalRel += (effects.relations || 0);
-
-                                // Store per-article effects for per-tick processing (enables per-article transition ramp)
-                                art.active_effects = { proposer: {}, target: {} };
-
-                                for (const [key, val] of Object.entries(effects)) {
-                                    if (key === 'relations' || key === 'civil_unrest') continue;
-                                    if (typeof val === 'number' && val !== 0) {
-                                        activeEffects.proposer[key] = (activeEffects.proposer[key] || 0) + val;
-                                        art.active_effects.proposer[key] = (art.active_effects.proposer[key] || 0) + val;
-                                    }
-                                }
-                                for (const [key, val] of Object.entries(targetEffects)) {
-                                    if (key === 'relations' || key === 'civil_unrest') continue;
-                                    if (typeof val === 'number' && val !== 0) {
-                                        activeEffects.target[key] = (activeEffects.target[key] || 0) + val;
-                                        art.active_effects.target[key] = (art.active_effects.target[key] || 0) + val;
-                                    }
-                                }
-                            }
-                            pd.active_effects = activeEffects;
-
-                            const { error: activateErr } = await supabase.from('diplomatic_proposals')
-                                .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
-                                .eq('id', bill.diplomatic_proposal_id);
-                            if (activateErr) console.error('[bilateral] Failed to activate proposal:', activateErr.message);
-
-                            // Apply one-time relation score bump
-                            if (totalRel !== 0) {
-                                const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                                const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-                                const { data: rel } = await supabase.from('diplomatic_relations')
-                                    .select('id, relation_score, active_treaties')
-                                    .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
-                                if (rel) {
-                                    const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
-                                    const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
-                                    await supabase.from('diplomatic_relations')
-                                        .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
-                                }
-                            }
-
-                            // Apply one-time civil unrest spike to both nations (batched to avoid race)
-                            let totalUnrestSpike = 0;
-                            for (const art of activeArticles) {
-                                totalUnrestSpike += (art.effects?.civil_unrest || 0);
-                            }
-                            if (totalUnrestSpike > 0) {
-                                for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
-                                    const { data: n } = await supabase.from('nations').select('civil_unrest').eq('id', nId).single();
-                                    if (n) {
-                                        const newVal = Math.max(0, Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike));
-                                        await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nId);
-                                    }
-                                }
-                            }
-
-                            // For trade agreements (bilateral): create trade_agreements + aid_agreement_state rows
-                            // so the tick processor can apply economic effects (aid transfers, tariffs, etc.)
-                            if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
-                                const durationArt = activeArticles.find(a => a.type === 'duration');
-                                const dt = durationArt?.data || {};
-                                const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
-                                const expiresAt = durationTicks ? currentTick + durationTicks : null;
-
-                                const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                                const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-
-                                const { data: newTA, error: taErr } = await supabase.from('trade_agreements').insert({
-                                    nation_a_id: taNationA,
-                                    nation_b_id: taNationB,
-                                    agreement_type: pd.agreement_type,
-                                    agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
-                                    articles: activeArticles,
-                                    status: 'active',
-                                    enacted_at_tick: currentTick,
-                                    expires_at_tick: expiresAt,
-                                    auto_renew: dt.auto_renew || false,
-                                    withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
-                                    negotiation_id: null
-                                }).select('id').single();
-
-                                if (taErr) {
-                                    console.error('[bilateral] trade_agreements insert failed:', taErr.message);
-                                } else if (newTA) {
-                                    // Move proposal to terminal state so it doesn't show as duplicate active agreement
-                                    await supabase.from('diplomatic_proposals')
-                                        .update({ status: 'enacted' })
-                                        .eq('id', bill.diplomatic_proposal_id);
-                                    if (pd.agreement_type === 'economic_aid') {
-                                        const aidArt = activeArticles.find(a => a.type === 'aid_terms');
-                                        if (aidArt) {
-                                            const donorId = aidArt.data?.donor_nation_id;
-                                            const annualAmount = Number(aidArt.data?.annual_amount || 0);
-                                            if (donorId && annualAmount > 0) {
-                                                const recipientId = donorId === proposal.proposing_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-                                                const { error: aidErr } = await supabase.from('aid_agreement_state').insert({
-                                                    agreement_id: newTA.id,
-                                                    donor_nation_id: donorId,
-                                                    recipient_nation_id: recipientId,
-                                                    current_annual_amount: annualAmount,
-                                                    original_annual_amount: annualAmount,
-                                                    next_review_tick: currentTick + (DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL || 12),
-                                                    condition_failures: {}
-                                                });
-                                                if (aidErr) console.error('[bilateral] aid_agreement_state insert failed:', aidErr.message);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: activeArticles.length });
-
-                            // Fire activation news event
-                            try {
-                                for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
-                                    await supabase.rpc('insert_news_event', {
-                                        p_nation_id: nId,
-                                        p_trigger_key: 'major_initiative_ratified',
-                                        p_tick: currentTick,
-                                        p_placeholders: {
-                                            nation_a: pd.proposer_nation_name || 'Unknown',
-                                            nation_b: pd.target_nation_name || 'Unknown',
-                                            initiative_name: pd.name || 'Diplomatic Initiative',
-                                            article_count: String(activeArticles.length)
-                                        }
-                                    });
-                                }
-                            } catch (newsErr) { console.error('News event error:', newsErr); }
-                        } else {
-                            // Only one side ratified so far — wait for the other
-                            await supabase.from('diplomatic_proposals')
-                                .update({ proposal_data: pd })
-                                .eq('id', bill.diplomatic_proposal_id);
-                            await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                        }
-                    } else {
-                        // ── UNILATERAL RATIFICATION (existing behavior) ──
-                        const updatedPipeline = { ...(pd.pipeline || {}), ratified_at: currentTick };
-                        pd.pipeline = updatedPipeline;
-                        await supabase.from('diplomatic_proposals')
-                            .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
-                            .eq('id', bill.diplomatic_proposal_id);
-                        // Apply relation effects from active articles
-                        const articles = pd.articles || [];
-                        const struckIndices = new Set(pd.struck_articles || []);
-                        let totalRel = 0;
-                        articles.forEach((art, i) => {
-                            if (!struckIndices.has(i)) totalRel += art.relations || 0;
-                        });
-                        if (totalRel !== 0) {
-                            const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                            const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-                            const { data: rel } = await supabase.from('diplomatic_relations')
-                                .select('id, relation_score, active_treaties')
-                                .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
-                            if (rel) {
-                                const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
-                                const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
-                                await supabase.from('diplomatic_relations')
-                                    .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
-                            }
-                        }
-
-                        // For trade agreements: create the trade_agreements row so economic effects apply
-                        if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
-                            const activeArticles = articles.filter((_, i) => !struckIndices.has(i));
-                            const addedArticles = pd.added_articles || [];
-                            if (addedArticles.length > 0) activeArticles.push(...addedArticles);
-
-                            const durationArt = activeArticles.find(a => a.type === 'duration');
-                            const dt = durationArt?.data || {};
-                            const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
-                            const expiresAt = durationTicks ? currentTick + durationTicks : null;
-
-                            const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                            const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-
-                            await supabase.from('trade_agreements').insert({
-                                nation_a_id: taNationA,
-                                nation_b_id: taNationB,
-                                agreement_type: pd.agreement_type,
-                                agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
-                                articles: activeArticles,
-                                status: 'active',
-                                enacted_at_tick: currentTick,
-                                expires_at_tick: expiresAt,
-                                auto_renew: dt.auto_renew || false,
-                                withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
-                                negotiation_id: null
-                            }).select('id').single().then(async ({ data: newTA, error: taErr }) => {
-                                if (taErr) { console.error('[ratification] trade_agreements insert failed:', taErr.message); return; }
-                                // Move proposal to terminal state so it doesn't show as duplicate active agreement
-                                await supabase.from('diplomatic_proposals')
-                                    .update({ status: 'enacted' })
-                                    .eq('id', proposal.id);
-                                // For economic aid: create aid_agreement_state so per-tick budget processing works
-                                if (pd.agreement_type === 'economic_aid' && newTA) {
-                                    const aidArt = activeArticles.find(a => a.type === 'aid_terms');
-                                    if (aidArt) {
-                                        const donorId = aidArt.data?.donor_nation_id;
-                                        const annualAmount = Number(aidArt.data?.annual_amount || 0);
-                                        if (donorId && annualAmount > 0) {
-                                            const recipientId = donorId === proposal.proposing_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-                                            const { error: aidErr } = await supabase.from('aid_agreement_state').insert({
-                                                agreement_id: newTA.id,
-                                                donor_nation_id: donorId,
-                                                recipient_nation_id: recipientId,
-                                                current_annual_amount: annualAmount,
-                                                original_annual_amount: annualAmount,
-                                                next_review_tick: currentTick + (DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL || 12),
-                                                condition_failures: {}
-                                            });
-                                            if (aidErr) console.error('[ratification] aid_agreement_state insert failed:', aidErr.message);
-                                            else console.log(`[ratification] Aid state created: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(1)}B/yr`);
-                                        }
-                                    }
-                                }
-                            });
-                        }
-
-                        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                    }
-                }
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
-            } else {
-                await failBill(supabase, bill);
-                // Load proposal to check if bilateral
-                const { data: failedProposal } = await supabase.from('diplomatic_proposals')
-                    .select('proposal_tier, proposing_bill_id, target_bill_id, proposal_data, proposing_nation_id, target_nation_id')
-                    .eq('id', bill.diplomatic_proposal_id).single();
-                const isBilateral = failedProposal?.proposal_tier === 3 && failedProposal?.proposing_bill_id && failedProposal?.target_bill_id;
-
-                if (isBilateral) {
-                    // Update pipeline with failure
-                    const fpd = failedProposal.proposal_data || {};
-                    const pipeline = fpd.pipeline || {};
-                    const isProposerBill = bill.id === failedProposal.proposing_bill_id;
-                    if (isProposerBill) pipeline.proposer_result = 'failed';
-                    else pipeline.target_result = 'failed';
-                    fpd.pipeline = pipeline;
-
-                    await supabase.from('diplomatic_proposals')
-                        .update({ status: 'ratification_failed', proposal_data: fpd })
-                        .eq('id', bill.diplomatic_proposal_id);
-
-                    // Cancel the other nation's ratification bill (no point voting if one side failed)
-                    const otherBillId = isProposerBill ? failedProposal.target_bill_id : failedProposal.proposing_bill_id;
-                    if (otherBillId) {
-                        const { data: otherBill } = await supabase.from('bills')
-                            .select('status, preamble').eq('id', otherBillId).single();
-                        if (otherBill && !['passed', 'failed', 'enacted'].includes(otherBill.status)) {
-                            const cancelNote = '\n\nAutomatically cancelled — ratification failed in the other nation\'s parliament.';
-                            await supabase.from('bills')
-                                .update({ status: 'failed', preamble: (otherBill.preamble || '') + cancelNote })
-                                .eq('id', otherBillId);
-                        }
-                    }
-
-                    // Fire failure news event in both nations
-                    try {
-                        if (failedProposal.proposing_nation_id && failedProposal.target_nation_id) {
-                            for (const nId of [failedProposal.proposing_nation_id, failedProposal.target_nation_id]) {
-                                await supabase.rpc('insert_news_event', {
-                                    p_nation_id: nId,
-                                    p_trigger_key: 'major_initiative_ratification_failed',
-                                    p_tick: currentTick,
-                                    p_placeholders: {
-                                        initiative_name: fpd.name || 'Diplomatic Initiative',
-                                        failed_in: isProposerBill ? (fpd.proposer_nation_name || 'Proposer') : (fpd.target_nation_name || 'Target')
-                                    }
-                                });
-                            }
-                        }
-                    } catch (newsErr) { console.error('News event error:', newsErr); }
-                } else {
-                    // Mark proposal as ratification_failed so FM can abandon or retry
-                    await supabase.from('diplomatic_proposals')
-                        .update({ status: 'ratification_failed' })
-                        .eq('id', bill.diplomatic_proposal_id);
-                }
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'ratification', earlyResolution: bill.early_resolution_status || null });
-            }
-        } else if (bill.bill_type === 'ratification' && bill.trade_negotiation_id) {
-            // Trade agreement ratification bill
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-                // Check if the OTHER nation's ratification bill has also passed
-                const { data: neg } = await supabase.from('trade_negotiations')
-                    .select('*').eq('id', bill.trade_negotiation_id).single();
-
-                if (neg) {
-                    const isNationA = bill.nation_id === neg.nation_a_id;
-                    const otherBillId = isNationA ? neg.bill_b_id : neg.bill_a_id;
-
-                    let otherPassed = false;
-                    if (otherBillId) {
-                        const { data: otherBill } = await supabase.from('bills')
-                            .select('status').eq('id', otherBillId).single();
-                        otherPassed = otherBill?.status === 'passed';
-                    }
-
-                    if (otherPassed) {
-                        // Both parliaments ratified — activate the trade agreement
-                        // Extract duration info from draft articles
-                        const articles = neg.draft_articles || [];
-                        const durationArt = articles.find(a => a.type === 'duration');
-                        const durData = durationArt?.data || {};
-                        const isPermanent = durData.duration_type === 'permanent';
-                        const durationTicks = durData.duration_ticks || null;
-                        const autoRenew = durData.auto_renew || false;
-                        const withdrawalNotice = durData.withdrawal_notice_ticks || 3;
-
-                        // Ensure canonical nation order (nation_a_id < nation_b_id)
-                        const nA = neg.nation_a_id < neg.nation_b_id ? neg.nation_a_id : neg.nation_b_id;
-                        const nB = neg.nation_a_id < neg.nation_b_id ? neg.nation_b_id : neg.nation_a_id;
-
-                        // Insert into trade_agreements
-                        const { data: newAgreement, error: taInsertErr } = await supabase.from('trade_agreements').insert({
-                            nation_a_id: nA,
-                            nation_b_id: nB,
-                            negotiation_id: neg.id,
-                            bill_a_id: neg.bill_a_id,
-                            bill_b_id: neg.bill_b_id,
-                            agreement_type: neg.agreement_type,
-                            agreement_name: neg.agreement_name || 'Trade Agreement',
-                            articles: articles,
-                            duration_type: isPermanent ? 'permanent' : 'fixed',
-                            duration_ticks: isPermanent ? null : durationTicks,
-                            auto_renew: autoRenew,
-                            withdrawal_notice_ticks: withdrawalNotice,
-                            status: 'active',
-                            enacted_at_tick: currentTick,
-                            expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null)
-                        }).select('id').single();
-                        if (taInsertErr) console.error('[resolveExpiredVotes] trade_agreements insert failed:', taInsertErr.message);
-
-                        // For economic aid agreements, create the aid_agreement_state row
-                        if (neg.agreement_type === 'economic_aid' && newAgreement) {
-                            const aidTerms = articles.find(a => a.type === 'aid_terms');
-                            if (aidTerms) {
-                                const donorId = aidTerms.data.donor_nation_id;
-
-                                // Validate donor_nation_id is one of the two agreement parties
-                                if (donorId !== nA && donorId !== nB) {
-                                    console.error(`[resolveExpiredVotes] Invalid donor_nation_id ${donorId} — not a party to agreement [${nA}, ${nB}]. Skipping aid_agreement_state.`);
-                                } else {
-                                    const recipientId = donorId === nA ? nB : nA;
-                                    const annualAmount = Number(aidTerms.data.annual_amount || 0);
-
-                                    const { error: aidStateError } = await supabase.from('aid_agreement_state').insert({
-                                        agreement_id: newAgreement.id,
-                                        donor_nation_id: donorId,
-                                        recipient_nation_id: recipientId,
-                                        current_annual_amount: annualAmount,
-                                        original_annual_amount: annualAmount,
-                                        next_review_tick: currentTick + DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL,
-                                        condition_failures: {}
-                                    });
-
-                                    if (aidStateError) {
-                                        console.error(`[resolveExpiredVotes] Failed to create aid_agreement_state:`, aidStateError.message);
-                                    } else {
-                                        console.log(`[resolveExpiredVotes] Economic aid agreement activated: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(2)}B`);
-                                    }
-                                }
-                            }
-                        }
-
-                        // Mark negotiation as concluded
-                        const { error: negUpdateErr } = await supabase.from('trade_negotiations')
-                            .update({ status: 'concluded', concluded_at_tick: currentTick })
-                            .eq('id', neg.id);
-                        if (negUpdateErr) console.error('[resolveExpiredVotes] trade_negotiations concluded update failed:', negUpdateErr.message);
-                        else console.log('[resolveExpiredVotes] Trade agreement activated — negotiation', neg.id, 'marked concluded');
-
-                        // Update diplomatic relations
-                        const { data: rel } = await supabase.from('diplomatic_relations')
-                            .select('id, relation_score, active_treaties')
-                            .eq('nation_a_id', nA).eq('nation_b_id', nB).maybeSingle();
-                        if (rel) {
-                            const bonus = neg.agreement_type === 'economic_aid' ? DIPLOMACY_CONFIG.AID_RELATION_BONUS : 5;
-                            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + bonus));
-                            await supabase.from('diplomatic_relations')
-                                .update({ relation_score: newScore }).eq('id', rel.id);
-                        }
-                    }
-                    // If only one side ratified so far, just leave negotiation in 'ratification' status
-                }
-
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
-            } else {
-                await failBill(supabase, bill);
-                // Mark negotiation as ratification_failed
-                await supabase.from('trade_negotiations')
-                    .update({ status: 'ratification_failed' })
-                    .eq('id', bill.trade_negotiation_id);
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'trade_ratification', earlyResolution: bill.early_resolution_status || null });
-            }
-        } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'retaliatory_tariff') {
-            // Unilateral retaliatory tariff ratification
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-                var rtData = bill.trade_agreement_data;
-                var imposerId = rtData.imposer_nation_id;
-                var targetId = rtData.target_nation_id;
-                var isPermanent = rtData.duration_type === 'permanent';
-                var durationTicks = rtData.duration_ticks || null;
-
-                // Insert trade_agreement (retaliatory_tariff bypasses nation ordering constraint — imposer is always nation_a)
-                await supabase.from('trade_agreements').insert({
-                    nation_a_id: imposerId,
-                    nation_b_id: targetId,
-                    bill_a_id: bill.id,
-                    agreement_type: 'retaliatory_tariff',
-                    agreement_name: rtData.agreement_name || 'Retaliatory Tariff',
-                    articles: rtData.articles || [],
-                    duration_type: isPermanent ? 'permanent' : 'fixed',
-                    duration_ticks: isPermanent ? null : durationTicks,
-                    auto_renew: false,
-                    withdrawal_notice_ticks: 1,
-                    status: 'active',
-                    enacted_at_tick: currentTick,
-                    expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null)
-                });
-
-                // Apply relation_score penalty: -surcharge_pct / 2 (max surcharge across all sector articles)
-                var maxSurcharge = 0;
-                var articles = rtData.articles || [];
-                for (var rti = 0; rti < articles.length; rti++) {
-                    if (articles[rti].type === 'tariff_surcharge') {
-                        maxSurcharge = Math.max(maxSurcharge, articles[rti].data.surcharge_pct || 0);
-                    }
-                }
-                var relPenalty = Math.round(maxSurcharge / 2);
-
-                if (relPenalty > 0) {
-                    // Use canonical ordering for diplomatic_relations lookup
-                    var relA = imposerId < targetId ? imposerId : targetId;
-                    var relB = imposerId < targetId ? targetId : imposerId;
-                    var { data: rel } = await supabase.from('diplomatic_relations')
-                        .select('id, relation_score')
-                        .eq('nation_a_id', relA).eq('nation_b_id', relB).maybeSingle();
-                    if (rel) {
-                        var newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - relPenalty));
-                        await supabase.from('diplomatic_relations')
-                            .update({ relation_score: newScore }).eq('id', rel.id);
-                    }
-                }
-
-                // Fire enactment event for target nation
-                try {
-                    var { data: imposerNation } = await supabase.from('nations').select('name').eq('id', imposerId).single();
-                    var imposerName = imposerNation?.name || 'Unknown';
-                    await supabase.from('event_log').insert({
-                        nation_id: targetId,
-                        event_name: 'Retaliatory Tariff Enacted',
-                        trigger_key: 'sanctions_imposed',
-                        category: 'Trade',
-                        description_chosen: imposerName + ' has enacted a retaliatory tariff on your exports. Relations have decreased by ' + relPenalty + '.',
-                        fired_at_tick: currentTick
-                    });
-                } catch (e) { /* non-blocking */ }
-
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
-            } else {
-                await failBill(supabase, bill);
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'retaliatory_tariff', earlyResolution: bill.early_resolution_status || null });
-            }
-        } else if (bill.bill_type === 'ratification' && bill.trade_agreement_data && bill.trade_agreement_data.type === 'impose_embargo') {
-            // Unilateral embargo ratification
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-                var embData = bill.trade_agreement_data;
-                var imposerId = embData.imposer_nation_id;
-                var targetId = embData.target_nation_id;
-                var durationTicks = embData.duration_ticks || 12;
-
-                // Insert trade_agreement (impose_embargo: imposer = nation_a, target = nation_b)
-                await supabase.from('trade_agreements').insert({
-                    nation_a_id: imposerId,
-                    nation_b_id: targetId,
-                    bill_a_id: bill.id,
-                    agreement_type: 'impose_embargo',
-                    agreement_name: embData.agreement_name || 'Embargo',
-                    articles: embData.articles || [],
-                    duration_type: 'fixed',
-                    duration_ticks: durationTicks,
-                    auto_renew: false,
-                    withdrawal_notice_ticks: 1,
-                    status: 'active',
-                    enacted_at_tick: currentTick,
-                    expires_at_tick: currentTick + durationTicks
-                });
-
-                // Diplomatic penalty: 20 + 5 per embargoed sector (25 targeted, 30-45 partial, 50 total)
-                var embargoedSectors = (embData.articles || []).filter(function(a) { return a.type === 'embargo_sector'; }).length;
-                var relPenalty = Math.round(20 + embargoedSectors * 5);
-
-                if (relPenalty > 0) {
-                    var relA = imposerId < targetId ? imposerId : targetId;
-                    var relB = imposerId < targetId ? targetId : imposerId;
-                    var { data: rel } = await supabase.from('diplomatic_relations')
-                        .select('id, relation_score')
-                        .eq('nation_a_id', relA).eq('nation_b_id', relB).maybeSingle();
-                    if (rel) {
-                        var newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) - relPenalty));
-                        await supabase.from('diplomatic_relations')
-                            .update({ relation_score: newScore }).eq('id', rel.id);
-                    }
-                }
-
-                // Fire enactment event for target nation
-                try {
-                    var { data: imposerNation } = await supabase.from('nations').select('name').eq('id', imposerId).single();
-                    var imposerName = imposerNation?.name || 'Unknown';
-                    await supabase.from('event_log').insert({
-                        nation_id: targetId,
-                        event_name: 'Embargo Enacted',
-                        trigger_key: 'sanctions_imposed',
-                        category: 'Trade',
-                        description_chosen: imposerName + ' has imposed an embargo on your trade. Relations have decreased by ' + relPenalty + '.',
-                        fired_at_tick: currentTick
-                    });
-                } catch (e) { /* non-blocking */ }
-
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'impose_embargo', earlyResolution: bill.early_resolution_status || null });
-            } else {
-                await failBill(supabase, bill);
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'impose_embargo', earlyResolution: bill.early_resolution_status || null });
-            }
-        } else if (bill.bill_type === 'impeachment_motion' && bill.impeachment_id) {
-            // ── Impeachment Motion (Phase 1) ──
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-
-                // Update proceeding: motion passed, president is impeached
-                await supabase.from('impeachment_proceedings').update({
-                    phase: 'trial',
-                    motion_result: 'passed'
-                }).eq('id', bill.impeachment_id);
-
-                // Immediate -15 gov_approval hit on president for being impeached
-                const { data: proceedingData } = await supabase.from('impeachment_proceedings')
-                    .select('president_id').eq('id', bill.impeachment_id).single();
-                if (proceedingData) {
-                    const { data: presidentRow } = await supabase.from('presidents')
-                        .select('faction_id').eq('id', proceedingData.president_id).single();
-                    if (presidentRow) {
-                        await supabase.rpc('adjust_momentum', { p_faction_id: presidentRow.faction_id, p_delta: -5, p_label: 'Impeachment passed (-5)', p_tick: currentTick });
-                        await adjustCredibility(supabase, presidentRow.faction_id, bill.nation_id, -0.15, 12, currentTick, { source: 'impeachment:passed' });
-                    }
-                }
-
-                // Create conviction bill (Phase 2) — goes directly to floor with trial-length voting window
-                const { data: convictionBill } = await supabase.from('bills').insert({
-                    nation_id: bill.nation_id,
-                    proposed_by: bill.proposed_by,
-                    proposed_tick: currentTick,
-                    bill_name: bill.bill_name.replace('Impeachment of', 'Conviction of'),
-                    bill_type: 'impeachment_conviction',
-                    status: 'floor',
-                    voting_ends_tick: currentTick + GAME_CONFIG.IMPEACHMENT_TRIAL_TICKS,
-                    impeachment_id: bill.impeachment_id,
-                    preamble: 'The President has been impeached. Parliament must now vote on removal. A 2/3 supermajority (' + Math.ceil(totalSeats * 2 / 3) + ' of ' + totalSeats + ' seats) is required for conviction and removal from office.'
-                }).select('id').single();
-
-                if (convictionBill) {
-                    await supabase.from('impeachment_proceedings').update({
-                        conviction_bill_id: convictionBill.id
-                    }).eq('id', bill.impeachment_id);
-                }
-
-                // Fire impeachment event
-                try {
-                    await supabase.from('event_log').insert({
-                        nation_id: bill.nation_id,
-                        event_name: 'PRESIDENT IMPEACHED',
-                        event_type: 'impeachment',
-                        category: 'government',
-                        description_chosen: `Parliament has voted to impeach the President. The motion passed ${votesFor} to ${votesAgainst}. A trial period begins — a 2/3 supermajority vote is required for removal.`,
-                        fired_at_tick: currentTick,
-                        effects_applied: { impeachment_id: bill.impeachment_id, votes_for: votesFor, votes_against: votesAgainst }
-                    });
-                } catch (e) { /* non-blocking */ }
-            } else {
-                await failBill(supabase, bill);
-
-                // Motion failed — apply cooldown
-                await supabase.from('impeachment_proceedings').update({
-                    phase: 'resolved',
-                    motion_result: 'failed',
-                    resolved_at_tick: currentTick
-                }).eq('id', bill.impeachment_id);
-
-                await supabase.from('nations').update({
-                    impeachment_cooldown_until_tick: currentTick + GAME_CONFIG.IMPEACHMENT_MOTION_COOLDOWN_TICKS
-                }).eq('id', bill.nation_id);
-
-                // Filer takes approval & credibility hit (partisan overreach)
-                await supabase.rpc('adjust_momentum', { p_faction_id: bill.proposed_by, p_delta: -2, p_label: 'Impeachment failed — initiator (-2)', p_tick: currentTick });
-                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.05, 0, currentTick, { source: 'impeachment:motion_failed' });
-
-                // President gets +3 approval (vindication)
-                const { data: proc } = await supabase.from('impeachment_proceedings')
-                    .select('president_id').eq('id', bill.impeachment_id).single();
-                if (proc) {
-                    const { data: presRow } = await supabase.from('presidents')
-                        .select('faction_id').eq('id', proc.president_id).single();
-                    if (presRow) {
-                        await supabase.rpc('adjust_momentum', { p_faction_id: presRow.faction_id, p_delta: 2, p_label: 'Impeachment failed — president vindicated (+2)', p_tick: currentTick });
-                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.03, 0, currentTick, { source: 'impeachment:motion_failed:vindicated' });
-                    }
-                }
-
-                // Record in campaign_actions for cooldown tracking
-                await supabase.from('campaign_actions').insert({
-                    nation_id: bill.nation_id,
-                    party_id: bill.proposed_by,
-                    action_type: 'impeachment_failed',
-                    tick_performed: currentTick,
-                    result: { impeachment_id: bill.impeachment_id }
-                });
-
-                try {
-                    await supabase.from('event_log').insert({
-                        nation_id: bill.nation_id,
-                        event_name: 'IMPEACHMENT MOTION FAILS',
-                        event_type: 'impeachment',
-                        category: 'government',
-                        description_chosen: `The impeachment motion has failed ${votesFor} to ${votesAgainst}. The President remains in office.`,
-                        fired_at_tick: currentTick,
-                        effects_applied: { impeachment_id: bill.impeachment_id, votes_for: votesFor, votes_against: votesAgainst, cooldown_ticks: GAME_CONFIG.IMPEACHMENT_MOTION_COOLDOWN_TICKS }
-                    });
-                } catch (e) { /* non-blocking */ }
-            }
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'impeachment_motion', earlyResolution: bill.early_resolution_status || null });
-
-        } else if (bill.bill_type === 'impeachment_conviction' && bill.impeachment_id) {
-            // ── Impeachment Conviction (Phase 2) ──
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                // Conviction logic handled by processImpeachmentConviction in handler-template
-                // Mark proceeding as convicted — the tick handler will process removal
-                await supabase.from('impeachment_proceedings').update({
-                    phase: 'resolved',
-                    conviction_result: 'convicted',
-                    resolved_at_tick: currentTick
-                }).eq('id', bill.impeachment_id);
-            } else {
-                await failBill(supabase, bill);
-                // Acquitted — president restored, long cooldown
-                await supabase.from('impeachment_proceedings').update({
-                    phase: 'resolved',
-                    conviction_result: 'acquitted',
-                    resolved_at_tick: currentTick
-                }).eq('id', bill.impeachment_id);
-
-                await supabase.from('nations').update({
-                    impeachment_cooldown_until_tick: currentTick + GAME_CONFIG.IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS
-                }).eq('id', bill.nation_id);
-
-                // President gets +5 approval (survived trial)
-                const { data: proc } = await supabase.from('impeachment_proceedings')
-                    .select('president_id').eq('id', bill.impeachment_id).single();
-                if (proc) {
-                    const { data: presRow } = await supabase.from('presidents')
-                        .select('faction_id').eq('id', proc.president_id).single();
-                    if (presRow) {
-                        await supabase.rpc('adjust_momentum', { p_faction_id: presRow.faction_id, p_delta: 3, p_label: 'Survived impeachment (+3)', p_tick: currentTick });
-                        await adjustCredibility(supabase, presRow.faction_id, bill.nation_id, 0.05, 0, currentTick, { source: 'impeachment:survived' });
-                    }
-                }
-
-                // Stability recovers +3
-                const { data: natRow } = await supabase.from('nations').select('stability').eq('id', bill.nation_id).single();
-                if (natRow) {
-                    await supabase.from('nations').update({
-                        stability: Math.min(100, Math.round(Number(natRow.stability || 0) + 3))
-                    }).eq('id', bill.nation_id);
-                }
-
-                // Parties that voted for conviction take -2 approval
-                const yesVoters = (bill.bill_support || []).filter(s => s.stance === 'yes' || s.stance === 'accept');
-                for (const v of yesVoters) {
-                    if (v.faction_id !== bill.proposed_by) {
-                        await supabase.rpc('adjust_momentum', { p_faction_id: v.faction_id, p_delta: -1, p_label: 'Impeachment survived — yes voter (-1)', p_tick: currentTick });
-                        await adjustCredibility(supabase, v.faction_id, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
-                    }
-                }
-                await supabase.rpc('adjust_momentum', { p_faction_id: bill.proposed_by, p_delta: -1, p_label: 'Impeachment survived — initiator (-1)', p_tick: currentTick });
-                await adjustCredibility(supabase, bill.proposed_by, bill.nation_id, -0.03, 0, currentTick, { source: 'impeachment:survived:accuser' });
-
-                try {
-                    await supabase.from('event_log').insert({
-                        nation_id: bill.nation_id,
-                        event_name: 'PRESIDENT ACQUITTED',
-                        event_type: 'impeachment',
-                        category: 'government',
-                        description_chosen: `The President has been acquitted. The conviction vote failed ${votesFor} to ${votesAgainst} (needed ${Math.ceil(totalSeats * 2 / 3)}). Full presidential powers are restored.`,
-                        fired_at_tick: currentTick,
-                        effects_applied: { impeachment_id: bill.impeachment_id, votes_for: votesFor, votes_against: votesAgainst, cooldown_ticks: GAME_CONFIG.IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS }
-                    });
-                } catch (e) { /* non-blocking */ }
-            }
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'impeachment_conviction', earlyResolution: bill.early_resolution_status || null });
-
-        } else if (passed) {
-            // Presidential systems: route regular/repeal bills to president's desk
-            if (hasElectedPresident(nation)) {
-                await supabase.from('bills').update({
-                    status: 'president_desk',
-                    passed_tick: currentTick,
-                    president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
-                }).eq('id', bill.id);
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: (bill.bill_articles || []).length });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
-            } else {
-                // Wrap enactBill in try-catch to convert thrown exceptions into {success: false}
-                let enactment;
-                try {
-                    enactment = await enactBill(supabase, bill, currentTick);
-                } catch (enactErr) {
-                    console.error(`[resolveExpiredVotes] enactBill threw for bill ${bill.id} ("${bill.bill_name}"):`, enactErr);
-                    enactment = { success: false, error: `enactBill threw: ${enactErr?.message || enactErr}` };
-                }
-                if (!enactment?.success) {
-                    await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'Unknown enactment failure');
-                    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, billNameOverride: `${bill.bill_name} (enactment failed)` });
-                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_enactment', votesFor, votesAgainst, error: enactment?.error, earlyResolution: bill.early_resolution_status || null });
-                } else {
-                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: (bill.bill_articles || []).length });
-                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
-                }
-            }
-        } else {
-            await failBill(supabase, bill);
-            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
-        }
+        // Dispatch to the per-bill-type resolver. BILL_RESOLVERS is the single
+        // source of truth for routing; selectBillResolver falls back to
+        // resolveOrdinaryBill for unknown types or sub-shapes that don't match.
+        const resolver = selectBillResolver(bill);
+        const entry = await resolver(supabase, bill, {
+            passed, currentTick, nation, votesFor, votesAgainst, votesAbstain, totalSeats,
+        });
+        results.push(entry);
 
         // ── Bill momentum: award momentum to YES/NO voters based on outcome ──
         // Sponsor: +1 on passage. YES voters: +2/article on pass, -1 on fail.
@@ -3483,1187 +3822,1237 @@ export async function reversePolicy(supabase, nation, policy, passedTick, curren
 
 // ==================== FOUNDATIONAL BILL ENACTMENT ====================
 
+// ─── Foundational reform subtype registry ───────────────────────────────────
+//
+// Single source of truth for dispatching enactFoundationalBill to a subtype.
+// Each entry is { matches: bill => bool, enact: async fn }. The first entry
+// whose `matches` predicate returns true wins; if none match, the fallthrough
+// `enactElectoralMakeup` runs (proposed_seats or preamble-recovered).
+//
+// Precedence is deliberate — it mirrors the legacy if-cascade order so that
+// bills with multiple `proposed_*` fields resolve identically to before.
+const FOUNDATIONAL_REFORMS = Object.freeze([
+    { matches: b => b.proposed_term_length != null, enact: enactPresidentialTermLength },
+    { matches: b => b.proposed_parliamentary_term_length != null, enact: enactLegislativeTermLength },
+    { matches: b => b.proposed_term_limit != null, enact: enactPresidentialTermLimits },
+    { matches: b => !!b.proposed_constitutional_reform, enact: enactConstitutionalReform },
+    { matches: b => !!b.proposed_hos_election_method, enact: enactHosElectionMethod },
+    { matches: b => !!b.proposed_hos_title, enact: enactHosTitle },
+    { matches: b => !!b.proposed_judicial_appointment_politicization, enact: enactJudicialPoliticization },
+    { matches: b => !!b.proposed_electoral_commission_reform, enact: enactElectoralCommissionReform },
+    { matches: b => !!b.proposed_party_registration_threshold, enact: enactPartyRegistrationReform },
+    { matches: b => !!b.proposed_legislative_quorum_override, enact: enactLegislativeQuorumReform },
+    { matches: b => !!b.proposed_constitutional_amendment_streamlining, enact: enactConstitutionalStreamlining },
+    { matches: b => !!b.proposed_monarchy_reform, enact: enactMonarchyReform },
+]);
+
 export async function enactFoundationalBill(supabase, bill, currentTick) {
-    // ── Presidential Term Length subtype ──
-    if (bill.proposed_term_length != null) {
-        const newTermTicks = bill.proposed_term_length;
-        const validOptions = GAME_CONFIG.TERM_LENGTH_OPTIONS || [24, 36, 48, 60, 72, 84];
-        if (!validOptions.includes(newTermTicks)) {
-            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_term_length: ${newTermTicks}. Marking as failed.`);
-            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
-            return false;
-        }
+    for (const { matches, enact } of FOUNDATIONAL_REFORMS) {
+        if (matches(bill)) return enact(supabase, bill, currentTick);
+    }
+    return enactElectoralMakeup(supabase, bill, currentTick);
+}
 
-        // Check if a presidential election is imminent (within TERM_LENGTH_DEFER_WINDOW ticks)
-        const deferWindow = GAME_CONFIG.TERM_LENGTH_DEFER_WINDOW || 10;
-        const { data: imminentElection } = await supabase
-            .from('elections')
-            .select('id, election_tick')
-            .eq('nation_id', bill.nation_id)
-            .eq('election_type', 'presidential')
-            .eq('status', 'scheduled')
-            .gt('election_tick', currentTick)
-            .lte('election_tick', currentTick + deferWindow)
-            .limit(1)
-            .maybeSingle();
 
-        // Get current nation data BEFORE update (for stat effect comparison)
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-        const oldTermTicks = getPresidentialTermTicks(nation);
-        const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
 
-        // Mark bill as passed
-        const { error: billErr } = await supabase.from('bills').update({
-            status: 'passed',
-            passed_tick: currentTick
-        }).eq('id', bill.id);
-        if (billErr) {
-            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
-            return false;
-        }
-
-        // Update nation's presidential_term_ticks
-        const { error: nationErr } = await supabase.from('nations').update({
-            presidential_term_ticks: newTermTicks
-        }).eq('id', bill.nation_id);
-        if (nationErr) {
-            console.error(`[enactFoundationalBill] Failed to update presidential_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
-        }
-
-        // Apply mechanical effects based on whether terms got shorter or longer
-        if (newTermTicks < oldTermTicks) {
-            // Shortening terms — more elections, more polarization & engagement
-            const newPol = Math.min(100, (nation?.polarization || 0) + 2);
-            const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
-            const { error: shortErr } = await supabase.from('nations').update({
-                polarization: newPol,
-                political_engagement: newEng
-            }).eq('id', bill.nation_id);
-            if (shortErr) console.error(`[enactFoundationalBill] Term shortened stat update failed:`, shortErr.message);
-            else console.log(`[enactFoundationalBill] Term shortened: polarization +2, political_engagement +3`);
-        } else if (newTermTicks > oldTermTicks) {
-            // Extending terms — less accountability, more stability
-            const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 3);
-            const newStability = Math.min(100, (nation?.stability || 50) + 2);
-            const { error: extErr } = await supabase.from('nations').update({
-                legitimacy: newLegitimacy,
-                stability: newStability
-            }).eq('id', bill.nation_id);
-            if (extErr) console.error(`[enactFoundationalBill] Term extended stat update failed:`, extErr.message);
-            else console.log(`[enactFoundationalBill] Term extended: legitimacy -3, stability +2`);
-        }
-
-        // If no imminent election, reschedule the next presidential election with the new term length
-        if (!imminentElection) {
-            // Find the active president to calculate when their term should end
-            const { data: activePresident } = await supabase
-                .from('presidents')
-                .select('elected_tick')
-                .eq('nation_id', bill.nation_id)
-                .eq('is_active', true)
-                .limit(1)
-                .maybeSingle();
-
-            if (activePresident) {
-                // Ensure the new term end is in the future (if shortening makes it past, schedule next tick)
-                const newTermEnd = Math.max(currentTick + 1, activePresident.elected_tick + newTermTicks);
-                // Update the scheduled presidential election to reflect new term length
-                const { data: futureElection } = await supabase
-                    .from('elections')
-                    .select('id')
-                    .eq('nation_id', bill.nation_id)
-                    .eq('election_type', 'presidential')
-                    .eq('status', 'scheduled')
-                    .gt('election_tick', currentTick)
-                    .order('election_tick', { ascending: true })
-                    .limit(1)
-                    .maybeSingle();
-
-                if (futureElection) {
-                    const { error: reschedErr } = await supabase.from('elections').update({
-                        election_tick: newTermEnd
-                    }).eq('id', futureElection.id);
-                    if (reschedErr) console.error(`[enactFoundationalBill] Failed to reschedule election:`, reschedErr.message);
-                    else console.log(`[enactFoundationalBill] Rescheduled presidential election to tick ${newTermEnd}`);
-                }
-            }
-        } else {
-            console.log(`[enactFoundationalBill] Presidential election imminent (tick ${imminentElection.election_tick}), term length change deferred to next cycle.`);
-        }
-
-        const newYears = newTermTicks / ticksPerYear;
-        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} presidential term set to ${newYears} years (${newTermTicks} ticks).`);
-        return true;
+async function enactPresidentialTermLength(supabase, bill, currentTick) {
+    const newTermTicks = bill.proposed_term_length;
+    const validOptions = GAME_CONFIG.TERM_LENGTH_OPTIONS || [24, 36, 48, 60, 72, 84];
+    if (!validOptions.includes(newTermTicks)) {
+        console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_term_length: ${newTermTicks}. Marking as failed.`);
+        await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+        return false;
     }
 
-    // ── Legislative Term Length subtype ──
-    if (bill.proposed_parliamentary_term_length != null) {
-        const newParlTermTicks = bill.proposed_parliamentary_term_length;
-        const validOptions = GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_OPTIONS || [24, 36, 48, 60, 72];
-        if (!validOptions.includes(newParlTermTicks)) {
-            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_parliamentary_term_length: ${newParlTermTicks}. Marking as failed.`);
-            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
-            return false;
-        }
+    // Check if a presidential election is imminent (within TERM_LENGTH_DEFER_WINDOW ticks)
+    const deferWindow = GAME_CONFIG.TERM_LENGTH_DEFER_WINDOW || 10;
+    const { data: imminentElection } = await supabase
+        .from('elections')
+        .select('id, election_tick')
+        .eq('nation_id', bill.nation_id)
+        .eq('election_type', 'presidential')
+        .eq('status', 'scheduled')
+        .gt('election_tick', currentTick)
+        .lte('election_tick', currentTick + deferWindow)
+        .limit(1)
+        .maybeSingle();
 
-        // Get current nation data BEFORE update
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-        const oldParlTermTicks = nation?.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
-        const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+    // Get current nation data BEFORE update (for stat effect comparison)
+    const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+    const oldTermTicks = getPresidentialTermTicks(nation);
+    const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
 
-        // Mark bill as passed
-        const { error: billErr } = await supabase.from('bills').update({
-            status: 'passed',
-            passed_tick: currentTick
-        }).eq('id', bill.id);
-        if (billErr) {
-            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
-            return false;
-        }
-
-        // Update nation's parliamentary_term_ticks
-        const { error: nationErr } = await supabase.from('nations').update({
-            parliamentary_term_ticks: newParlTermTicks
-        }).eq('id', bill.nation_id);
-        if (nationErr) {
-            console.error(`[enactFoundationalBill] Failed to update parliamentary_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
-        }
-
-        // Apply mechanical effects based on whether terms got shorter or longer
-        if (newParlTermTicks < oldParlTermTicks) {
-            // Shortening terms — more elections, more polarization & engagement
-            const newPol = Math.min(100, (nation?.polarization || 0) + 2);
-            const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
-            const { error: shortErr } = await supabase.from('nations').update({
-                polarization: newPol,
-                political_engagement: newEng
-            }).eq('id', bill.nation_id);
-            if (shortErr) console.error(`[enactFoundationalBill] Legislative term shortened stat update failed:`, shortErr.message);
-            else console.log(`[enactFoundationalBill] Legislative term shortened: polarization +2, political_engagement +3`);
-        } else if (newParlTermTicks > oldParlTermTicks) {
-            // Extending terms — less accountability, more stability
-            const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 3);
-            const newStability = Math.min(100, (nation?.stability || 50) + 2);
-            const { error: extErr } = await supabase.from('nations').update({
-                legitimacy: newLegitimacy,
-                stability: newStability
-            }).eq('id', bill.nation_id);
-            if (extErr) console.error(`[enactFoundationalBill] Legislative term extended stat update failed:`, extErr.message);
-            else console.log(`[enactFoundationalBill] Legislative term extended: legitimacy -3, stability +2`);
-        }
-
-        // NOTE: We do NOT reschedule the current parliamentary election.
-        // The new term length takes effect after the next election completes.
-
-        const newYears = newParlTermTicks / ticksPerYear;
-        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} parliamentary term set to ${newYears} years (${newParlTermTicks} ticks).`);
-        return true;
+    // Mark bill as passed
+    const { error: billErr } = await supabase.from('bills').update({
+        status: 'passed',
+        passed_tick: currentTick
+    }).eq('id', bill.id);
+    if (billErr) {
+        console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+        return false;
     }
 
-    // ── Presidential Term Limits subtype ──
-    if (bill.proposed_term_limit != null) {
-        const newTermLimit = bill.proposed_term_limit;
-        const validOptions = GAME_CONFIG.TERM_LIMIT_OPTIONS || [0, 1, 2, 3, 4];
-        if (!validOptions.includes(newTermLimit)) {
-            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_term_limit: ${newTermLimit}. Marking as failed.`);
-            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
-            return false;
-        }
+    // Update nation's presidential_term_ticks
+    const { error: nationErr } = await supabase.from('nations').update({
+        presidential_term_ticks: newTermTicks
+    }).eq('id', bill.nation_id);
+    if (nationErr) {
+        console.error(`[enactFoundationalBill] Failed to update presidential_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
+    }
 
-        // Mark bill as passed
-        const { error: billErr } = await supabase.from('bills').update({
-            status: 'passed',
-            passed_tick: currentTick
-        }).eq('id', bill.id);
-        if (billErr) {
-            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
-            return false;
-        }
-
-        // Get current nation data for comparison (BEFORE update)
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-        const oldEffectiveLimit = getPresidentialTermLimit(nation); // null = no limits, number = limit
-        // Update nation's presidential_term_limit
-        const { error: nationErr } = await supabase.from('nations').update({
-            presidential_term_limit: newTermLimit
+    // Apply mechanical effects based on whether terms got shorter or longer
+    if (newTermTicks < oldTermTicks) {
+        // Shortening terms — more elections, more polarization & engagement
+        const newPol = Math.min(100, (nation?.polarization || 0) + 2);
+        const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
+        const { error: shortErr } = await supabase.from('nations').update({
+            polarization: newPol,
+            political_engagement: newEng
         }).eq('id', bill.nation_id);
-        if (nationErr) {
-            console.error(`[enactFoundationalBill] Failed to update presidential_term_limit for nation ${bill.nation_id}:`, nationErr.message);
-        }
+        if (shortErr) console.error(`[enactFoundationalBill] Term shortened stat update failed:`, shortErr.message);
+        else console.log(`[enactFoundationalBill] Term shortened: polarization +2, political_engagement +3`);
+    } else if (newTermTicks > oldTermTicks) {
+        // Extending terms — less accountability, more stability
+        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 3);
+        const newStability = Math.min(100, (nation?.stability || 50) + 2);
+        const { error: extErr } = await supabase.from('nations').update({
+            legitimacy: newLegitimacy,
+            stability: newStability
+        }).eq('id', bill.nation_id);
+        if (extErr) console.error(`[enactFoundationalBill] Term extended stat update failed:`, extErr.message);
+        else console.log(`[enactFoundationalBill] Term extended: legitimacy -3, stability +2`);
+    }
 
-        // Get active president for context
+    // If no imminent election, reschedule the next presidential election with the new term length
+    if (!imminentElection) {
+        // Find the active president to calculate when their term should end
         const { data: activePresident } = await supabase
             .from('presidents')
-            .select('terms_served, faction_id')
+            .select('elected_tick')
             .eq('nation_id', bill.nation_id)
             .eq('is_active', true)
             .limit(1)
             .maybeSingle();
 
-        // Apply mechanical effects
-        if (newTermLimit === 0) {
-            // Removing term limits
-            let legitimacyPenalty = 6;
-            const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - legitimacyPenalty);
-            const newUnrest = Math.min(100, (nation?.civil_unrest || 0) + 4);
-            const updates = {
-                legitimacy: newLegitimacy,
-                civil_unrest: newUnrest
-            };
-            // (regime_health effect removed — Phase 0)
-            const { error: removeErr } = await supabase.from('nations').update(updates).eq('id', bill.nation_id);
-            if (removeErr) console.error(`[enactFoundationalBill] Failed to update stats for term limit removal:`, removeErr.message);
-
-            // Opposition parties gain momentum
-            const { data: allFactions } = await supabase
-                .from('factions')
+        if (activePresident) {
+            // Ensure the new term end is in the future (if shortening makes it past, schedule next tick)
+            const newTermEnd = Math.max(currentTick + 1, activePresident.elected_tick + newTermTicks);
+            // Update the scheduled presidential election to reflect new term length
+            const { data: futureElection } = await supabase
+                .from('elections')
                 .select('id')
                 .eq('nation_id', bill.nation_id)
-                .eq('faction_type', 'party')
-                .neq('id', bill.proposed_by);
+                .eq('election_type', 'presidential')
+                .eq('status', 'scheduled')
+                .gt('election_tick', currentTick)
+                .order('election_tick', { ascending: true })
+                .limit(1)
+                .maybeSingle();
 
-            if (allFactions) {
-                for (const faction of allFactions) {
-                    // Base loves it (+3 approval) but anti-democratic (-0.1 credibility)
-                    await supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 3, p_label: 'Term limits abolished (+3)', p_tick: currentTick });
-                    await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1, 0, currentTick, { source: 'bill:term_limit' });
-                }
+            if (futureElection) {
+                const { error: reschedErr } = await supabase.from('elections').update({
+                    election_tick: newTermEnd
+                }).eq('id', futureElection.id);
+                if (reschedErr) console.error(`[enactFoundationalBill] Failed to reschedule election:`, reschedErr.message);
+                else console.log(`[enactFoundationalBill] Rescheduled presidential election to tick ${newTermEnd}`);
             }
+        }
+    } else {
+        console.log(`[enactFoundationalBill] Presidential election imminent (tick ${imminentElection.election_tick}), term length change deferred to next cycle.`);
+    }
 
-            // Extra polarization if sitting president has served 2+ terms
-            if (activePresident && (activePresident.terms_served || 1) >= 2) {
-                const newPol = Math.min(100, (nation?.polarization || 0) + 10);
-                const { error: polErr } = await supabase.from('nations').update({ polarization: newPol }).eq('id', bill.nation_id);
-                if (polErr) console.error(`[enactFoundationalBill] Polarization update failed:`, polErr.message);
-                else console.log(`[enactFoundationalBill] Sitting president has ${activePresident.terms_served} terms — polarization +10`);
+    const newYears = newTermTicks / ticksPerYear;
+    console.log(`[enactFoundationalBill] Nation ${bill.nation_id} presidential term set to ${newYears} years (${newTermTicks} ticks).`);
+    return true;
+}
+
+async function enactLegislativeTermLength(supabase, bill, currentTick) {
+    const newParlTermTicks = bill.proposed_parliamentary_term_length;
+    const validOptions = GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_OPTIONS || [24, 36, 48, 60, 72];
+    if (!validOptions.includes(newParlTermTicks)) {
+        console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_parliamentary_term_length: ${newParlTermTicks}. Marking as failed.`);
+        await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+        return false;
+    }
+
+    // Get current nation data BEFORE update
+    const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+    const oldParlTermTicks = nation?.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
+    const ticksPerYear = GAME_CONFIG.TICKS_PER_YEAR || 12;
+
+    // Mark bill as passed
+    const { error: billErr } = await supabase.from('bills').update({
+        status: 'passed',
+        passed_tick: currentTick
+    }).eq('id', bill.id);
+    if (billErr) {
+        console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+        return false;
+    }
+
+    // Update nation's parliamentary_term_ticks
+    const { error: nationErr } = await supabase.from('nations').update({
+        parliamentary_term_ticks: newParlTermTicks
+    }).eq('id', bill.nation_id);
+    if (nationErr) {
+        console.error(`[enactFoundationalBill] Failed to update parliamentary_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
+    }
+
+    // Apply mechanical effects based on whether terms got shorter or longer
+    if (newParlTermTicks < oldParlTermTicks) {
+        // Shortening terms — more elections, more polarization & engagement
+        const newPol = Math.min(100, (nation?.polarization || 0) + 2);
+        const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
+        const { error: shortErr } = await supabase.from('nations').update({
+            polarization: newPol,
+            political_engagement: newEng
+        }).eq('id', bill.nation_id);
+        if (shortErr) console.error(`[enactFoundationalBill] Legislative term shortened stat update failed:`, shortErr.message);
+        else console.log(`[enactFoundationalBill] Legislative term shortened: polarization +2, political_engagement +3`);
+    } else if (newParlTermTicks > oldParlTermTicks) {
+        // Extending terms — less accountability, more stability
+        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 3);
+        const newStability = Math.min(100, (nation?.stability || 50) + 2);
+        const { error: extErr } = await supabase.from('nations').update({
+            legitimacy: newLegitimacy,
+            stability: newStability
+        }).eq('id', bill.nation_id);
+        if (extErr) console.error(`[enactFoundationalBill] Legislative term extended stat update failed:`, extErr.message);
+        else console.log(`[enactFoundationalBill] Legislative term extended: legitimacy -3, stability +2`);
+    }
+
+    // NOTE: We do NOT reschedule the current parliamentary election.
+    // The new term length takes effect after the next election completes.
+
+    const newYears = newParlTermTicks / ticksPerYear;
+    console.log(`[enactFoundationalBill] Nation ${bill.nation_id} parliamentary term set to ${newYears} years (${newParlTermTicks} ticks).`);
+    return true;
+}
+
+async function enactPresidentialTermLimits(supabase, bill, currentTick) {
+    const newTermLimit = bill.proposed_term_limit;
+    const validOptions = GAME_CONFIG.TERM_LIMIT_OPTIONS || [0, 1, 2, 3, 4];
+    if (!validOptions.includes(newTermLimit)) {
+        console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_term_limit: ${newTermLimit}. Marking as failed.`);
+        await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+        return false;
+    }
+
+    // Mark bill as passed
+    const { error: billErr } = await supabase.from('bills').update({
+        status: 'passed',
+        passed_tick: currentTick
+    }).eq('id', bill.id);
+    if (billErr) {
+        console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+        return false;
+    }
+
+    // Get current nation data for comparison (BEFORE update)
+    const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+    const oldEffectiveLimit = getPresidentialTermLimit(nation); // null = no limits, number = limit
+    // Update nation's presidential_term_limit
+    const { error: nationErr } = await supabase.from('nations').update({
+        presidential_term_limit: newTermLimit
+    }).eq('id', bill.nation_id);
+    if (nationErr) {
+        console.error(`[enactFoundationalBill] Failed to update presidential_term_limit for nation ${bill.nation_id}:`, nationErr.message);
+    }
+
+    // Get active president for context
+    const { data: activePresident } = await supabase
+        .from('presidents')
+        .select('terms_served, faction_id')
+        .eq('nation_id', bill.nation_id)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+    // Apply mechanical effects
+    if (newTermLimit === 0) {
+        // Removing term limits
+        let legitimacyPenalty = 6;
+        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - legitimacyPenalty);
+        const newUnrest = Math.min(100, (nation?.civil_unrest || 0) + 4);
+        const updates = {
+            legitimacy: newLegitimacy,
+            civil_unrest: newUnrest
+        };
+        // (regime_health effect removed — Phase 0)
+        const { error: removeErr } = await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+        if (removeErr) console.error(`[enactFoundationalBill] Failed to update stats for term limit removal:`, removeErr.message);
+
+        // Opposition parties gain momentum
+        const { data: allFactions } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('nation_id', bill.nation_id)
+            .eq('faction_type', 'party')
+            .neq('id', bill.proposed_by);
+
+        if (allFactions) {
+            for (const faction of allFactions) {
+                // Base loves it (+3 approval) but anti-democratic (-0.1 credibility)
+                await supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 3, p_label: 'Term limits abolished (+3)', p_tick: currentTick });
+                await adjustCredibility(supabase, faction.id, bill.nation_id, -0.1, 0, currentTick, { source: 'bill:term_limit' });
             }
-
-            console.log(`[enactFoundationalBill] Term limits removed: legitimacy -${legitimacyPenalty}, civil_unrest +4, opposition momentum +8`);
-        } else if (oldEffectiveLimit === null || newTermLimit < oldEffectiveLimit) {
-            // Adding or tightening term limits
-            const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 5);
-            const newPressFreedom = Math.min(100, (nation?.press_freedom || 50) + 2);
-            const newJudicialInd = Math.min(100, (nation?.judicial_independence || 50) + 2);
-            const { error: tightenErr } = await supabase.from('nations').update({
-                legitimacy: newLegitimacy,
-                press_freedom: newPressFreedom,
-                judicial_independence: newJudicialInd
-            }).eq('id', bill.nation_id);
-            if (tightenErr) console.error(`[enactFoundationalBill] Term limits tighten stat update failed:`, tightenErr.message);
-            else console.log(`[enactFoundationalBill] Term limits tightened to ${newTermLimit}: legitimacy +5, press_freedom +2, judicial_independence +2`);
         }
 
-        const limitText = newTermLimit === 0 ? 'No Term Limits' : `${newTermLimit} Term${newTermLimit !== 1 ? 's' : ''}`;
-        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} presidential term limit set to: ${limitText}.`);
+        // Extra polarization if sitting president has served 2+ terms
+        if (activePresident && (activePresident.terms_served || 1) >= 2) {
+            const newPol = Math.min(100, (nation?.polarization || 0) + 10);
+            const { error: polErr } = await supabase.from('nations').update({ polarization: newPol }).eq('id', bill.nation_id);
+            if (polErr) console.error(`[enactFoundationalBill] Polarization update failed:`, polErr.message);
+            else console.log(`[enactFoundationalBill] Sitting president has ${activePresident.terms_served} terms — polarization +10`);
+        }
+
+        console.log(`[enactFoundationalBill] Term limits removed: legitimacy -${legitimacyPenalty}, civil_unrest +4, opposition momentum +8`);
+    } else if (oldEffectiveLimit === null || newTermLimit < oldEffectiveLimit) {
+        // Adding or tightening term limits
+        const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 5);
+        const newPressFreedom = Math.min(100, (nation?.press_freedom || 50) + 2);
+        const newJudicialInd = Math.min(100, (nation?.judicial_independence || 50) + 2);
+        const { error: tightenErr } = await supabase.from('nations').update({
+            legitimacy: newLegitimacy,
+            press_freedom: newPressFreedom,
+            judicial_independence: newJudicialInd
+        }).eq('id', bill.nation_id);
+        if (tightenErr) console.error(`[enactFoundationalBill] Term limits tighten stat update failed:`, tightenErr.message);
+        else console.log(`[enactFoundationalBill] Term limits tightened to ${newTermLimit}: legitimacy +5, press_freedom +2, judicial_independence +2`);
+    }
+
+    const limitText = newTermLimit === 0 ? 'No Term Limits' : `${newTermLimit} Term${newTermLimit !== 1 ? 's' : ''}`;
+    console.log(`[enactFoundationalBill] Nation ${bill.nation_id} presidential term limit set to: ${limitText}.`);
+    return true;
+}
+
+async function enactConstitutionalReform(supabase, bill, currentTick) {
+    const targetSystem = bill.proposed_constitutional_reform;
+    const validSystems = ['parliamentary', 'constitutional_monarchy', 'presidential', 'semi_presidential'];
+    if (!validSystems.includes(targetSystem)) {
+        console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_constitutional_reform: ${targetSystem}. Marking as failed.`);
+        const { error: failErr } = await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+        if (failErr) console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as failed:`, failErr.message);
+        return false;
+    }
+
+    // Mark bill as passed
+    const { error: billErr } = await supabase.from('bills').update({
+        status: 'passed',
+        passed_tick: currentTick
+    }).eq('id', bill.id);
+    if (billErr) {
+        console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+        return false;
+    }
+
+    // Get current nation data
+    const { data: nation, error: nationFetchErr } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+    if (nationFetchErr || !nation) {
+        console.error(`[enactFoundationalBill] Failed to fetch nation ${bill.nation_id} for constitutional reform:`, nationFetchErr?.message);
+        return false;
+    }
+    const currentSystem = getCurrentConstitutionalSystem(nation);
+
+    if (currentSystem === targetSystem) {
+        console.warn(`[enactFoundationalBill] Nation ${bill.nation_id} is already ${targetSystem}. No-op.`);
         return true;
     }
 
-    // ── Constitutional Reform subtype (unified government-type switch) ──
-    if (bill.proposed_constitutional_reform) {
-        const targetSystem = bill.proposed_constitutional_reform;
-        const validSystems = ['parliamentary', 'constitutional_monarchy', 'presidential', 'semi_presidential'];
-        if (!validSystems.includes(targetSystem)) {
-            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_constitutional_reform: ${targetSystem}. Marking as failed.`);
-            const { error: failErr } = await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
-            if (failErr) console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as failed:`, failErr.message);
-            return false;
+    // NOTE: Active floor bills (no-confidence, impeachment, etc.) are NOT cancelled during
+    // a constitutional transition. They resolve under the new government type's rules.
+    // This is a known edge case — same pattern as the legacy hos_election_method block.
+    console.log(`[enactFoundationalBill] Constitutional reform: ${currentSystem} → ${targetSystem} for nation ${bill.nation_id}`);
+
+    // Determine structural changes
+    const currentHasPresident = currentSystem === 'presidential' || currentSystem === 'semi_presidential';
+    const targetHasPresident = targetSystem === 'presidential' || targetSystem === 'semi_presidential';
+    const currentHasPM = currentSystem === 'parliamentary' || currentSystem === 'constitutional_monarchy' || currentSystem === 'semi_presidential';
+    const targetHasPM = targetSystem === 'parliamentary' || targetSystem === 'constitutional_monarchy' || targetSystem === 'semi_presidential';
+    const currentIsMonarchy = currentSystem === 'constitutional_monarchy';
+    const targetIsMonarchy = targetSystem === 'constitutional_monarchy';
+
+    // Build nation update
+    const nationUpdate = {
+        last_constitutional_reform_tick: currentTick
+    };
+
+    // Set target government_type and hos_election_method
+    switch (targetSystem) {
+        case 'parliamentary':
+            nationUpdate.government_type = 'Democracy';
+            nationUpdate.hos_election_method = 'appointed';
+            break;
+        case 'constitutional_monarchy':
+            nationUpdate.government_type = 'Democracy';
+            nationUpdate.hos_election_method = 'hereditary';
+            break;
+        case 'presidential':
+            nationUpdate.government_type = 'Presidential';
+            nationUpdate.hos_election_method = 'direct_vote';
+            break;
+        case 'semi_presidential':
+            nationUpdate.government_type = 'Semi-Presidential';
+            nationUpdate.hos_election_method = 'direct_vote';
+            break;
+    }
+
+    // ── Losing president (Presidential/Semi-Pres → Parliamentary/CM) ──
+    if (currentHasPresident && !targetHasPresident) {
+        const { error: presErr } = await supabase.from('presidents')
+            .update({ is_active: false })
+            .eq('nation_id', bill.nation_id)
+            .eq('is_active', true);
+        if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
+
+        const { error: delPresElErr } = await supabase.from('elections').delete()
+            .eq('nation_id', bill.nation_id)
+            .eq('status', 'scheduled')
+            .eq('election_type', 'presidential');
+        if (delPresElErr) console.error('[enactFoundationalBill] Failed to clear presidential elections:', delPresElErr.message);
+
+        const { error: candErr } = await supabase.from('pm_candidates').delete()
+            .eq('nation_id', bill.nation_id)
+            .eq('candidate_type', 'presidential');
+        if (candErr) console.error('[enactFoundationalBill] Failed to clean presidential candidates:', candErr.message);
+
+        // Close administration
+        const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+        const dateStr = shardData?.current_date || _billTickToDate(currentTick);
+        const { error: adminErr } = await supabase.from('administrations')
+            .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
+            .eq('nation_id', bill.nation_id)
+            .is('ended_at_tick', null);
+        if (adminErr) console.error('[enactFoundationalBill] Failed to close administration:', adminErr.message);
+        else await _logAdministrationIntegrityIssue(supabase, bill.nation_id, 'foundational_transition_no_president');
+
+        // Fail bills on president's desk (orphaned without a president)
+        const { error: deskErr } = await supabase.from('bills')
+            .update({ status: 'failed', passed_tick: currentTick })
+            .eq('nation_id', bill.nation_id)
+            .eq('status', 'president_desk');
+        if (deskErr) console.error('[enactFoundationalBill] Failed to clear president desk bills:', deskErr.message);
+
+        // Fail pending impeachment bills and resolve proceedings
+        const { error: impeachBillErr } = await supabase.from('bills')
+            .update({ status: 'failed', passed_tick: currentTick })
+            .eq('nation_id', bill.nation_id)
+            .in('bill_type', ['impeachment_motion', 'impeachment_conviction'])
+            .in('status', ['committee', 'floor']);
+        if (impeachBillErr) console.error('[enactFoundationalBill] Failed to clear impeachment bills:', impeachBillErr.message);
+
+        const { error: impeachProcErr } = await supabase.from('impeachment_proceedings')
+            .update({ phase: 'resolved', resolved_tick: currentTick, outcome: 'dismissed_constitutional_transition' })
+            .eq('nation_id', bill.nation_id)
+            .neq('phase', 'resolved');
+        if (impeachProcErr) console.error('[enactFoundationalBill] Failed to resolve impeachment proceedings:', impeachProcErr.message);
+
+        console.log(`[enactFoundationalBill] President deactivated, presidential elections cleared`);
+    }
+
+    // ── Losing PM (Parliamentary/CM/Semi-Pres → Presidential) ──
+    if (currentHasPM && !targetHasPM) {
+        // Dissolve coalition (formed + caretaker)
+        const { error: coalErr } = await supabase.from('government_formations')
+            .update({ status: 'dissolved' })
+            .eq('nation_id', bill.nation_id)
+            .in('status', ['formed', 'caretaker']);
+        if (coalErr) console.error('[enactFoundationalBill] Failed to dissolve coalition:', coalErr.message);
+
+        // Also expire any in-progress formations
+        const { error: formingErr } = await supabase.from('government_formations')
+            .update({ status: 'expired' })
+            .eq('nation_id', bill.nation_id)
+            .eq('status', 'forming');
+        if (formingErr) console.error('[enactFoundationalBill] Failed to expire forming coalitions:', formingErr.message);
+
+        const { error: hogErr } = await supabase.from('head_of_government')
+            .update({ active: false })
+            .eq('nation_id', bill.nation_id)
+            .eq('active', true);
+        if (hogErr) console.error('[enactFoundationalBill] Failed to deactivate PM:', hogErr.message);
+
+        // Fail pending PM confirmation bills (orphaned without parliamentary system)
+        const { error: pmBillErr } = await supabase.from('bills')
+            .update({ status: 'failed', passed_tick: currentTick })
+            .eq('nation_id', bill.nation_id)
+            .eq('bill_type', 'minister_confirmation')
+            .eq('ministry_key', 'prime_minister')
+            .in('status', ['committee', 'floor']);
+        if (pmBillErr) console.error('[enactFoundationalBill] Failed to clear PM confirmation bills:', pmBillErr.message);
+
+        const { error: delParlElErr } = await supabase.from('elections').delete()
+            .eq('nation_id', bill.nation_id)
+            .eq('status', 'scheduled')
+            .eq('election_type', 'parliamentary');
+        if (delParlElErr) console.error('[enactFoundationalBill] Failed to clear parliamentary elections:', delParlElErr.message);
+
+        nationUpdate.gov_approval = 50;
+        nationUpdate.gov_approval_events = 0;
+
+        console.log(`[enactFoundationalBill] PM deactivated, coalition dissolved`);
+    }
+
+    // ── Gaining president (Parliamentary/CM → Presidential/Semi-Pres) ──
+    if (!currentHasPresident && targetHasPresident) {
+        // Check for existing scheduled presidential election before inserting
+        const { data: existingPresEl } = await supabase.from('elections')
+            .select('id')
+            .eq('nation_id', bill.nation_id)
+            .eq('status', 'scheduled')
+            .eq('election_type', 'presidential')
+            .limit(1);
+
+        if (!existingPresEl || existingPresEl.length === 0) {
+            const { error: presElErr } = await supabase.from('elections').insert({
+                nation_id: bill.nation_id,
+                election_tick: currentTick + 3,
+                status: 'scheduled',
+                election_type: 'presidential'
+            });
+            if (presElErr) console.error('[enactFoundationalBill] Failed to schedule presidential election:', presElErr.message);
+            else console.log(`[enactFoundationalBill] Presidential election scheduled at tick ${currentTick + 3}`);
+        } else {
+            console.log(`[enactFoundationalBill] Presidential election already scheduled, skipping`);
         }
 
-        // Mark bill as passed
-        const { error: billErr } = await supabase.from('bills').update({
-            status: 'passed',
-            passed_tick: currentTick
-        }).eq('id', bill.id);
-        if (billErr) {
-            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
-            return false;
+        if (targetSystem === 'presidential') {
+            const parlTermTicks = Number(nation?.parliamentary_term_ticks) || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
+            const { error: midtermErr } = await supabase.from('elections').insert({
+                nation_id: bill.nation_id,
+                election_tick: currentTick + parlTermTicks,
+                status: 'scheduled',
+                election_type: 'parliamentary'
+            });
+            if (midtermErr) console.error('[enactFoundationalBill] Failed to schedule midterm:', midtermErr.message);
+        }
+    }
+
+    // ── Gaining PM (Presidential → Semi-Pres or Parliamentary/CM) ──
+    if (!currentHasPM && targetHasPM) {
+        nationUpdate.pm_nomination_attempts = 0;
+
+        const { data: existingParlEl } = await supabase.from('elections')
+            .select('id')
+            .eq('nation_id', bill.nation_id)
+            .eq('status', 'scheduled')
+            .eq('election_type', 'parliamentary')
+            .limit(1);
+
+        if (!existingParlEl || existingParlEl.length === 0) {
+            const { error: parlElErr } = await supabase.from('elections').insert({
+                nation_id: bill.nation_id,
+                election_tick: currentTick + 3,
+                status: 'scheduled',
+                election_type: 'parliamentary'
+            });
+            if (parlElErr) console.error('[enactFoundationalBill] Failed to schedule parliamentary election:', parlElErr.message);
+            else console.log(`[enactFoundationalBill] Parliamentary election scheduled at tick ${currentTick + 3}`);
         }
 
-        // Get current nation data
-        const { data: nation, error: nationFetchErr } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-        if (nationFetchErr || !nation) {
-            console.error(`[enactFoundationalBill] Failed to fetch nation ${bill.nation_id} for constitutional reform:`, nationFetchErr?.message);
-            return false;
+        console.log(`[enactFoundationalBill] PM formation triggered`);
+    }
+
+    // ── Gaining monarchy (→ Absolute Monarchy) ──
+    if (!currentIsMonarchy && targetIsMonarchy) {
+        const { firstNames } = getNationNames(nation?.name);
+        const monarchFirstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+        const dynastyName = bill.proposed_dynasty_name || 'Royal House';
+        const dynastyLastName = dynastyName.split(/\s+/).pop() || 'Royal';
+        const monarchAge = 36 + Math.floor(Math.random() * 25);
+
+        nationUpdate.dynasty_name = dynastyName;
+        nationUpdate.dynasty_established_tick = currentTick;
+        if (bill.proposed_dynasty_crest_url) {
+            nationUpdate.dynasty_crest_url = bill.proposed_dynasty_crest_url;
         }
-        const currentSystem = getCurrentConstitutionalSystem(nation);
+        nationUpdate.head_of_state_first_name = monarchFirstName;
+        nationUpdate.head_of_state_last_name = dynastyLastName;
+        nationUpdate.head_of_state_age = monarchAge;
+        nationUpdate.head_of_state_title = isFemaleName(monarchFirstName) ? 'Queen' : 'King';
 
-        if (currentSystem === targetSystem) {
-            console.warn(`[enactFoundationalBill] Nation ${bill.nation_id} is already ${targetSystem}. No-op.`);
-            return true;
+        console.log(`[enactFoundationalBill] Monarch generated: ${nationUpdate.head_of_state_title} ${monarchFirstName} ${dynastyLastName}, age ${monarchAge}`);
+    }
+
+    // ── Losing monarchy (Absolute Monarchy → anything) ──
+    if (currentIsMonarchy && !targetIsMonarchy) {
+        nationUpdate.dynasty_name = null;
+        nationUpdate.dynasty_established_tick = null;
+        nationUpdate.dynasty_crest_url = null;
+        console.log(`[enactFoundationalBill] Monarchy abolished, dynasty cleared`);
+    }
+
+    // ── Stat effects based on target system ──
+    const stability = nation?.stability || 50;
+    const legitimacy = nation?.legitimacy || 50;
+    const politicalEngagement = nation?.political_engagement || 50;
+    const polarization = nation?.polarization || 0;
+    const civilUnrest = nation?.civil_unrest || 0;
+
+    switch (targetSystem) {
+        case 'parliamentary':
+            nationUpdate.stability = Math.min(100, stability + 3);
+            nationUpdate.legitimacy = Math.min(100, legitimacy + 2);
+            break;
+        case 'constitutional_monarchy':
+            nationUpdate.stability = Math.min(100, stability + 5);
+            nationUpdate.legitimacy = Math.max(0, legitimacy - 5);
+            break;
+        case 'presidential':
+            nationUpdate.legitimacy = Math.min(100, legitimacy + 3);
+            nationUpdate.political_engagement = Math.min(100, politicalEngagement + 3);
+            nationUpdate.polarization = Math.min(100, polarization + 2);
+            break;
+        case 'semi_presidential':
+            nationUpdate.legitimacy = Math.min(100, legitimacy + 2);
+            nationUpdate.political_engagement = Math.min(100, politicalEngagement + 2);
+            nationUpdate.polarization = Math.min(100, polarization + 3);
+            break;
+    }
+
+    // Major reform always causes some civil unrest
+    nationUpdate.civil_unrest = Math.min(100, civilUnrest + 5);
+
+    // Apply all nation updates
+    const { error: nationErr } = await supabase.from('nations').update(nationUpdate).eq('id', bill.nation_id);
+    if (nationErr) {
+        console.error(`[enactFoundationalBill] Failed to update nation for constitutional reform:`, nationErr.message);
+    }
+
+    const systemLabels = {
+        parliamentary: 'Parliamentary Democracy',
+        constitutional_monarchy: 'Constitutional Monarchy',
+        presidential: 'Presidential Republic',
+        semi_presidential: 'Semi-Presidential Republic'
+    };
+    console.log(`[enactFoundationalBill] Nation ${bill.nation_id} constitutional system changed to "${systemLabels[targetSystem]}".`);
+    return true;
+}
+
+async function enactHosElectionMethod(supabase, bill, currentTick) {
+    const newMethod = bill.proposed_hos_election_method;
+    const validMethods = ['direct_vote', 'appointed', 'hereditary'];
+    if (!validMethods.includes(newMethod)) {
+        console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_hos_election_method: ${newMethod}. Marking as failed.`);
+        await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+        return false;
+    }
+
+    // Mark bill as passed
+    const { error: billErr } = await supabase.from('bills').update({
+        status: 'passed',
+        passed_tick: currentTick
+    }).eq('id', bill.id);
+    if (billErr) {
+        console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+        return false;
+    }
+
+    // Get current nation data
+    const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+    // Update nation's hos_election_method and dynasty fields
+    const nationUpdate = { hos_election_method: newMethod };
+    if (newMethod === 'hereditary') {
+        nationUpdate.dynasty_name = bill.proposed_dynasty_name || 'Royal House';
+        nationUpdate.dynasty_established_tick = currentTick;
+        if (bill.proposed_dynasty_crest_url) {
+            nationUpdate.dynasty_crest_url = bill.proposed_dynasty_crest_url;
         }
+        // Generate a new monarch: random first name, dynasty last name, age 36-60
+        const { firstNames } = getNationNames(nation?.name);
+        const monarchFirstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+        const dynastyLastName = (bill.proposed_dynasty_name || 'Royal').split(/\s+/).pop(); // Use last word of dynasty name
+        const monarchAge = 36 + Math.floor(Math.random() * 25); // 36-60
+        nationUpdate.head_of_state_first_name = monarchFirstName;
+        nationUpdate.head_of_state_last_name = dynastyLastName;
+        nationUpdate.head_of_state_age = monarchAge;
+        // Set King or Queen based on the generated monarch's name
+        nationUpdate.head_of_state_title = isFemaleName(monarchFirstName) ? 'Queen' : 'King';
+    }
 
-        // NOTE: Active floor bills (no-confidence, impeachment, etc.) are NOT cancelled during
-        // a constitutional transition. They resolve under the new government type's rules.
-        // This is a known edge case — same pattern as the legacy hos_election_method block.
-        console.log(`[enactFoundationalBill] Constitutional reform: ${currentSystem} → ${targetSystem} for nation ${bill.nation_id}`);
+    const { error: nationErr } = await supabase.from('nations').update(nationUpdate).eq('id', bill.nation_id);
+    if (nationErr) {
+        console.error(`[enactFoundationalBill] Failed to update hos_election_method for nation ${bill.nation_id}:`, nationErr.message);
+    }
 
-        // Determine structural changes
-        const currentHasPresident = currentSystem === 'presidential' || currentSystem === 'semi_presidential';
-        const targetHasPresident = targetSystem === 'presidential' || targetSystem === 'semi_presidential';
-        const currentHasPM = currentSystem === 'parliamentary' || currentSystem === 'constitutional_monarchy' || currentSystem === 'semi_presidential';
-        const targetHasPM = targetSystem === 'parliamentary' || targetSystem === 'constitutional_monarchy' || targetSystem === 'semi_presidential';
-        const currentIsMonarchy = currentSystem === 'constitutional_monarchy';
-        const targetIsMonarchy = targetSystem === 'constitutional_monarchy';
+    // Apply mechanical effects based on method
+    if (newMethod === 'hereditary') {
+        // Constitutional monarchy: stability +5, legitimacy -5
+        const newStability = Math.min(100, (nation?.stability || 50) + 5);
+        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
+        const statUpdate = { stability: newStability, legitimacy: newLegitimacy };
 
-        // Build nation update
-        const nationUpdate = {
-            last_constitutional_reform_tick: currentTick
+        const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
+        if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
+        else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5`);
+    } else if (newMethod === 'direct_vote') {
+        // Direct vote: legitimacy +3, political_engagement +3, polarization +2
+        // AND transition Parliamentary → Presidential
+        const wasParliamentary = !nation?.government_type?.toLowerCase().includes('president');
+        const statUpdate = {
+            legitimacy: Math.min(100, (nation?.legitimacy || 50) + 3),
+            political_engagement: Math.min(100, (nation?.political_engagement || 50) + 3),
+            polarization: Math.min(100, (nation?.polarization || 0) + 2)
         };
 
-        // Set target government_type and hos_election_method
-        switch (targetSystem) {
-            case 'parliamentary':
-                nationUpdate.government_type = 'Democracy';
-                nationUpdate.hos_election_method = 'appointed';
-                break;
-            case 'constitutional_monarchy':
-                nationUpdate.government_type = 'Democracy';
-                nationUpdate.hos_election_method = 'hereditary';
-                break;
-            case 'presidential':
-                nationUpdate.government_type = 'Presidential';
-                nationUpdate.hos_election_method = 'direct_vote';
-                break;
-            case 'semi_presidential':
-                nationUpdate.government_type = 'Semi-Presidential';
-                nationUpdate.hos_election_method = 'direct_vote';
-                break;
-        }
+        if (wasParliamentary) {
+            statUpdate.government_type = 'Presidential';
+            console.log(`[enactFoundationalBill] Parliamentary → Presidential transition for nation ${bill.nation_id}`);
 
-        // ── Losing president (Presidential/Semi-Pres → Parliamentary/CM) ──
-        if (currentHasPresident && !targetHasPresident) {
-            const { error: presErr } = await supabase.from('presidents')
-                .update({ is_active: false })
-                .eq('nation_id', bill.nation_id)
-                .eq('is_active', true);
-            if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
-
-            const { error: delPresElErr } = await supabase.from('elections').delete()
-                .eq('nation_id', bill.nation_id)
-                .eq('status', 'scheduled')
-                .eq('election_type', 'presidential');
-            if (delPresElErr) console.error('[enactFoundationalBill] Failed to clear presidential elections:', delPresElErr.message);
-
-            const { error: candErr } = await supabase.from('pm_candidates').delete()
-                .eq('nation_id', bill.nation_id)
-                .eq('candidate_type', 'presidential');
-            if (candErr) console.error('[enactFoundationalBill] Failed to clean presidential candidates:', candErr.message);
-
-            // Close administration
-            const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-            const dateStr = shardData?.current_date || _billTickToDate(currentTick);
-            const { error: adminErr } = await supabase.from('administrations')
-                .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
-                .eq('nation_id', bill.nation_id)
-                .is('ended_at_tick', null);
-            if (adminErr) console.error('[enactFoundationalBill] Failed to close administration:', adminErr.message);
-            else await _logAdministrationIntegrityIssue(supabase, bill.nation_id, 'foundational_transition_no_president');
-
-            // Fail bills on president's desk (orphaned without a president)
-            const { error: deskErr } = await supabase.from('bills')
-                .update({ status: 'failed', passed_tick: currentTick })
-                .eq('nation_id', bill.nation_id)
-                .eq('status', 'president_desk');
-            if (deskErr) console.error('[enactFoundationalBill] Failed to clear president desk bills:', deskErr.message);
-
-            // Fail pending impeachment bills and resolve proceedings
-            const { error: impeachBillErr } = await supabase.from('bills')
-                .update({ status: 'failed', passed_tick: currentTick })
-                .eq('nation_id', bill.nation_id)
-                .in('bill_type', ['impeachment_motion', 'impeachment_conviction'])
-                .in('status', ['committee', 'floor']);
-            if (impeachBillErr) console.error('[enactFoundationalBill] Failed to clear impeachment bills:', impeachBillErr.message);
-
-            const { error: impeachProcErr } = await supabase.from('impeachment_proceedings')
-                .update({ phase: 'resolved', resolved_tick: currentTick, outcome: 'dismissed_constitutional_transition' })
-                .eq('nation_id', bill.nation_id)
-                .neq('phase', 'resolved');
-            if (impeachProcErr) console.error('[enactFoundationalBill] Failed to resolve impeachment proceedings:', impeachProcErr.message);
-
-            console.log(`[enactFoundationalBill] President deactivated, presidential elections cleared`);
-        }
-
-        // ── Losing PM (Parliamentary/CM/Semi-Pres → Presidential) ──
-        if (currentHasPM && !targetHasPM) {
-            // Dissolve coalition (formed + caretaker)
+            // Close the current coalition/government formation (PM system no longer applies)
             const { error: coalErr } = await supabase.from('government_formations')
                 .update({ status: 'dissolved' })
                 .eq('nation_id', bill.nation_id)
                 .in('status', ['formed', 'caretaker']);
             if (coalErr) console.error('[enactFoundationalBill] Failed to dissolve coalition:', coalErr.message);
 
-            // Also expire any in-progress formations
-            const { error: formingErr } = await supabase.from('government_formations')
-                .update({ status: 'expired' })
-                .eq('nation_id', bill.nation_id)
-                .eq('status', 'forming');
-            if (formingErr) console.error('[enactFoundationalBill] Failed to expire forming coalitions:', formingErr.message);
-
+            // Deactivate parliamentary head of government (PM)
             const { error: hogErr } = await supabase.from('head_of_government')
                 .update({ active: false })
                 .eq('nation_id', bill.nation_id)
                 .eq('active', true);
             if (hogErr) console.error('[enactFoundationalBill] Failed to deactivate PM:', hogErr.message);
 
-            // Fail pending PM confirmation bills (orphaned without parliamentary system)
-            const { error: pmBillErr } = await supabase.from('bills')
-                .update({ status: 'failed', passed_tick: currentTick })
-                .eq('nation_id', bill.nation_id)
-                .eq('bill_type', 'minister_confirmation')
-                .eq('ministry_key', 'prime_minister')
-                .in('status', ['committee', 'floor']);
-            if (pmBillErr) console.error('[enactFoundationalBill] Failed to clear PM confirmation bills:', pmBillErr.message);
-
-            const { error: delParlElErr } = await supabase.from('elections').delete()
+            // Clear any scheduled parliamentary-only elections, keep presidential if any
+            const { error: delElErr } = await supabase.from('elections').delete()
                 .eq('nation_id', bill.nation_id)
                 .eq('status', 'scheduled')
                 .eq('election_type', 'parliamentary');
-            if (delParlElErr) console.error('[enactFoundationalBill] Failed to clear parliamentary elections:', delParlElErr.message);
+            if (delElErr) console.error('[enactFoundationalBill] Failed to clear parliamentary elections:', delElErr.message);
 
-            nationUpdate.gov_approval = 50;
-            nationUpdate.gov_approval_events = 0;
-
-            console.log(`[enactFoundationalBill] PM deactivated, coalition dissolved`);
-        }
-
-        // ── Gaining president (Parliamentary/CM → Presidential/Semi-Pres) ──
-        if (!currentHasPresident && targetHasPresident) {
-            // Check for existing scheduled presidential election before inserting
-            const { data: existingPresEl } = await supabase.from('elections')
-                .select('id')
-                .eq('nation_id', bill.nation_id)
-                .eq('status', 'scheduled')
-                .eq('election_type', 'presidential')
-                .limit(1);
-
-            if (!existingPresEl || existingPresEl.length === 0) {
-                const { error: presElErr } = await supabase.from('elections').insert({
-                    nation_id: bill.nation_id,
-                    election_tick: currentTick + 3,
-                    status: 'scheduled',
-                    election_type: 'presidential'
-                });
-                if (presElErr) console.error('[enactFoundationalBill] Failed to schedule presidential election:', presElErr.message);
-                else console.log(`[enactFoundationalBill] Presidential election scheduled at tick ${currentTick + 3}`);
-            } else {
-                console.log(`[enactFoundationalBill] Presidential election already scheduled, skipping`);
-            }
-
-            if (targetSystem === 'presidential') {
-                const parlTermTicks = Number(nation?.parliamentary_term_ticks) || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS;
-                const { error: midtermErr } = await supabase.from('elections').insert({
-                    nation_id: bill.nation_id,
-                    election_tick: currentTick + parlTermTicks,
-                    status: 'scheduled',
-                    election_type: 'parliamentary'
-                });
-                if (midtermErr) console.error('[enactFoundationalBill] Failed to schedule midterm:', midtermErr.message);
-            }
-        }
-
-        // ── Gaining PM (Presidential → Semi-Pres or Parliamentary/CM) ──
-        if (!currentHasPM && targetHasPM) {
-            nationUpdate.pm_nomination_attempts = 0;
-
-            const { data: existingParlEl } = await supabase.from('elections')
-                .select('id')
-                .eq('nation_id', bill.nation_id)
-                .eq('status', 'scheduled')
-                .eq('election_type', 'parliamentary')
-                .limit(1);
-
-            if (!existingParlEl || existingParlEl.length === 0) {
-                const { error: parlElErr } = await supabase.from('elections').insert({
-                    nation_id: bill.nation_id,
-                    election_tick: currentTick + 3,
-                    status: 'scheduled',
-                    election_type: 'parliamentary'
-                });
-                if (parlElErr) console.error('[enactFoundationalBill] Failed to schedule parliamentary election:', parlElErr.message);
-                else console.log(`[enactFoundationalBill] Parliamentary election scheduled at tick ${currentTick + 3}`);
-            }
-
-            console.log(`[enactFoundationalBill] PM formation triggered`);
-        }
-
-        // ── Gaining monarchy (→ Absolute Monarchy) ──
-        if (!currentIsMonarchy && targetIsMonarchy) {
-            const { firstNames } = getNationNames(nation?.name);
-            const monarchFirstName = firstNames[Math.floor(Math.random() * firstNames.length)];
-            const dynastyName = bill.proposed_dynasty_name || 'Royal House';
-            const dynastyLastName = dynastyName.split(/\s+/).pop() || 'Royal';
-            const monarchAge = 36 + Math.floor(Math.random() * 25);
-
-            nationUpdate.dynasty_name = dynastyName;
-            nationUpdate.dynasty_established_tick = currentTick;
-            if (bill.proposed_dynasty_crest_url) {
-                nationUpdate.dynasty_crest_url = bill.proposed_dynasty_crest_url;
-            }
-            nationUpdate.head_of_state_first_name = monarchFirstName;
-            nationUpdate.head_of_state_last_name = dynastyLastName;
-            nationUpdate.head_of_state_age = monarchAge;
-            nationUpdate.head_of_state_title = isFemaleName(monarchFirstName) ? 'Queen' : 'King';
-
-            console.log(`[enactFoundationalBill] Monarch generated: ${nationUpdate.head_of_state_title} ${monarchFirstName} ${dynastyLastName}, age ${monarchAge}`);
-        }
-
-        // ── Losing monarchy (Absolute Monarchy → anything) ──
-        if (currentIsMonarchy && !targetIsMonarchy) {
-            nationUpdate.dynasty_name = null;
-            nationUpdate.dynasty_established_tick = null;
-            nationUpdate.dynasty_crest_url = null;
-            console.log(`[enactFoundationalBill] Monarchy abolished, dynasty cleared`);
-        }
-
-        // ── Stat effects based on target system ──
-        const stability = nation?.stability || 50;
-        const legitimacy = nation?.legitimacy || 50;
-        const politicalEngagement = nation?.political_engagement || 50;
-        const polarization = nation?.polarization || 0;
-        const civilUnrest = nation?.civil_unrest || 0;
-
-        switch (targetSystem) {
-            case 'parliamentary':
-                nationUpdate.stability = Math.min(100, stability + 3);
-                nationUpdate.legitimacy = Math.min(100, legitimacy + 2);
-                break;
-            case 'constitutional_monarchy':
-                nationUpdate.stability = Math.min(100, stability + 5);
-                nationUpdate.legitimacy = Math.max(0, legitimacy - 5);
-                break;
-            case 'presidential':
-                nationUpdate.legitimacy = Math.min(100, legitimacy + 3);
-                nationUpdate.political_engagement = Math.min(100, politicalEngagement + 3);
-                nationUpdate.polarization = Math.min(100, polarization + 2);
-                break;
-            case 'semi_presidential':
-                nationUpdate.legitimacy = Math.min(100, legitimacy + 2);
-                nationUpdate.political_engagement = Math.min(100, politicalEngagement + 2);
-                nationUpdate.polarization = Math.min(100, polarization + 3);
-                break;
-        }
-
-        // Major reform always causes some civil unrest
-        nationUpdate.civil_unrest = Math.min(100, civilUnrest + 5);
-
-        // Apply all nation updates
-        const { error: nationErr } = await supabase.from('nations').update(nationUpdate).eq('id', bill.nation_id);
-        if (nationErr) {
-            console.error(`[enactFoundationalBill] Failed to update nation for constitutional reform:`, nationErr.message);
-        }
-
-        const systemLabels = {
-            parliamentary: 'Parliamentary Democracy',
-            constitutional_monarchy: 'Constitutional Monarchy',
-            presidential: 'Presidential Republic',
-            semi_presidential: 'Semi-Presidential Republic'
-        };
-        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} constitutional system changed to "${systemLabels[targetSystem]}".`);
-        return true;
-    }
-
-    // ── Head of State Election Method subtype (legacy — superseded by constitutional reform) ──
-    if (bill.proposed_hos_election_method) {
-        const newMethod = bill.proposed_hos_election_method;
-        const validMethods = ['direct_vote', 'appointed', 'hereditary'];
-        if (!validMethods.includes(newMethod)) {
-            console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_hos_election_method: ${newMethod}. Marking as failed.`);
-            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
-            return false;
-        }
-
-        // Mark bill as passed
-        const { error: billErr } = await supabase.from('bills').update({
-            status: 'passed',
-            passed_tick: currentTick
-        }).eq('id', bill.id);
-        if (billErr) {
-            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
-            return false;
-        }
-
-        // Get current nation data
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        // Update nation's hos_election_method and dynasty fields
-        const nationUpdate = { hos_election_method: newMethod };
-        if (newMethod === 'hereditary') {
-            nationUpdate.dynasty_name = bill.proposed_dynasty_name || 'Royal House';
-            nationUpdate.dynasty_established_tick = currentTick;
-            if (bill.proposed_dynasty_crest_url) {
-                nationUpdate.dynasty_crest_url = bill.proposed_dynasty_crest_url;
-            }
-            // Generate a new monarch: random first name, dynasty last name, age 36-60
-            const { firstNames } = getNationNames(nation?.name);
-            const monarchFirstName = firstNames[Math.floor(Math.random() * firstNames.length)];
-            const dynastyLastName = (bill.proposed_dynasty_name || 'Royal').split(/\s+/).pop(); // Use last word of dynasty name
-            const monarchAge = 36 + Math.floor(Math.random() * 25); // 36-60
-            nationUpdate.head_of_state_first_name = monarchFirstName;
-            nationUpdate.head_of_state_last_name = dynastyLastName;
-            nationUpdate.head_of_state_age = monarchAge;
-            // Set King or Queen based on the generated monarch's name
-            nationUpdate.head_of_state_title = isFemaleName(monarchFirstName) ? 'Queen' : 'King';
-        }
-
-        const { error: nationErr } = await supabase.from('nations').update(nationUpdate).eq('id', bill.nation_id);
-        if (nationErr) {
-            console.error(`[enactFoundationalBill] Failed to update hos_election_method for nation ${bill.nation_id}:`, nationErr.message);
-        }
-
-        // Apply mechanical effects based on method
-        if (newMethod === 'hereditary') {
-            // Constitutional monarchy: stability +5, legitimacy -5
-            const newStability = Math.min(100, (nation?.stability || 50) + 5);
-            const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
-            const statUpdate = { stability: newStability, legitimacy: newLegitimacy };
-
-            const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
-            if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
-            else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5`);
-        } else if (newMethod === 'direct_vote') {
-            // Direct vote: legitimacy +3, political_engagement +3, polarization +2
-            // AND transition Parliamentary → Presidential
-            const wasParliamentary = !nation?.government_type?.toLowerCase().includes('president');
-            const statUpdate = {
-                legitimacy: Math.min(100, (nation?.legitimacy || 50) + 3),
-                political_engagement: Math.min(100, (nation?.political_engagement || 50) + 3),
-                polarization: Math.min(100, (nation?.polarization || 0) + 2)
-            };
-
-            if (wasParliamentary) {
-                statUpdate.government_type = 'Presidential';
-                console.log(`[enactFoundationalBill] Parliamentary → Presidential transition for nation ${bill.nation_id}`);
-
-                // Close the current coalition/government formation (PM system no longer applies)
-                const { error: coalErr } = await supabase.from('government_formations')
-                    .update({ status: 'dissolved' })
-                    .eq('nation_id', bill.nation_id)
-                    .in('status', ['formed', 'caretaker']);
-                if (coalErr) console.error('[enactFoundationalBill] Failed to dissolve coalition:', coalErr.message);
-
-                // Deactivate parliamentary head of government (PM)
-                const { error: hogErr } = await supabase.from('head_of_government')
-                    .update({ active: false })
-                    .eq('nation_id', bill.nation_id)
-                    .eq('active', true);
-                if (hogErr) console.error('[enactFoundationalBill] Failed to deactivate PM:', hogErr.message);
-
-                // Clear any scheduled parliamentary-only elections, keep presidential if any
-                const { error: delElErr } = await supabase.from('elections').delete()
-                    .eq('nation_id', bill.nation_id)
-                    .eq('status', 'scheduled')
-                    .eq('election_type', 'parliamentary');
-                if (delElErr) console.error('[enactFoundationalBill] Failed to clear parliamentary elections:', delElErr.message);
-
-                // Schedule presidential election 3 ticks out (allows endorsement window)
-                const { error: presElErr } = await supabase.from('elections').insert({
-                    nation_id: bill.nation_id,
-                    election_tick: currentTick + 3,
-                    status: 'scheduled',
-                    election_type: 'presidential'
-                });
-                if (presElErr) console.error('[enactFoundationalBill] Failed to schedule presidential election:', presElErr.message);
-                else console.log(`[enactFoundationalBill] Presidential election scheduled at tick ${currentTick + 3}`);
-
-                // Also schedule the first parliamentary midterm
-                const parlTermTicks = Number(nation?.parliamentary_term_ticks) || 24;
-                const { error: midtermErr } = await supabase.from('elections').insert({
-                    nation_id: bill.nation_id,
-                    election_tick: currentTick + parlTermTicks,
-                    status: 'scheduled',
-                    election_type: 'parliamentary'
-                });
-                if (midtermErr) console.error('[enactFoundationalBill] Failed to schedule midterm:', midtermErr.message);
-
-                // Reset government approval for the transition
-                statUpdate.gov_approval = 50;
-                statUpdate.gov_approval_events = 0;
-            }
-
-            const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
-            if (statErr) console.error(`[enactFoundationalBill] Direct vote stat update failed:`, statErr.message);
-            else console.log(`[enactFoundationalBill] Direct HoS vote established: legitimacy +3, political_engagement +3, polarization +2${wasParliamentary ? ', gov type → Presidential' : ''}`);
-        } else if (newMethod === 'appointed') {
-            // Appointed by Parliament: transition Presidential → Parliamentary if applicable
-            const wasPresidential = nation?.government_type?.toLowerCase().includes('president');
-
-            if (wasPresidential) {
-                console.log(`[enactFoundationalBill] Presidential → Parliamentary transition for nation ${bill.nation_id}`);
-
-                // Deactivate the president
-                const { error: presErr } = await supabase.from('presidents')
-                    .update({ is_active: false })
-                    .eq('nation_id', bill.nation_id)
-                    .eq('is_active', true);
-                if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
-
-                // Change government type
-                const { error: govErr } = await supabase.from('nations').update({
-                    government_type: 'Democracy',
-                    gov_approval: 50,
-                    gov_approval_events: 0
-                }).eq('id', bill.nation_id);
-                if (govErr) console.error(`[enactFoundationalBill] Gov type update failed:`, govErr.message);
-
-                // Clear presidential elections, schedule parliamentary
-                const { error: clearElErr } = await supabase.from('elections').delete()
-                    .eq('nation_id', bill.nation_id)
-                    .eq('status', 'scheduled');
-                if (clearElErr) console.error('[enactFoundationalBill] Failed to clear scheduled elections:', clearElErr.message);
-
-                const { error: parlElErr } = await supabase.from('elections').insert({
-                    nation_id: bill.nation_id,
-                    election_tick: currentTick + 3,
-                    status: 'scheduled',
-                    election_type: 'parliamentary'
-                });
-                if (parlElErr) console.error('[enactFoundationalBill] Failed to schedule parliamentary election:', parlElErr.message);
-                else console.log(`[enactFoundationalBill] Parliamentary election scheduled at tick ${currentTick + 3}`);
-
-                // Clean up presidential candidates
-                const { error: candErr } = await supabase.from('pm_candidates').delete()
-                    .eq('nation_id', bill.nation_id)
-                    .eq('candidate_type', 'presidential');
-                if (candErr) console.error('[enactFoundationalBill] Failed to clean presidential candidates:', candErr.message);
-
-                // Close administration for transition
-                const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-                const dateStr = shardData?.current_date || _billTickToDate(currentTick);
-                const { error: closeAdminErr } = await supabase.from('administrations')
-                    .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
-                    .eq('nation_id', bill.nation_id)
-                    .is('ended_at_tick', null);
-                if (closeAdminErr) console.error('[enactFoundationalBill] Failed to close administration on PM removal transition:', closeAdminErr.message);
-                else await _logAdministrationIntegrityIssue(supabase, bill.nation_id, 'foundational_transition_no_pm');
-
-                console.log(`[enactFoundationalBill] Presidential → Parliamentary Democracy, election at tick ${currentTick + 3}`);
-            }
-            // No stat changes for appointed (it's the default low-friction option)
-        }
-
-        const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
-        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS election method set to "${methodLabels[newMethod]}".`);
-        return true;
-    }
-
-    // ── Head of State Title subtype ──
-    if (bill.proposed_hos_title) {
-        const newTitle = bill.proposed_hos_title.trim();
-        if (!newTitle) {
-            console.warn(`[enactFoundationalBill] Bill ${bill.id} has empty proposed_hos_title. Marking as failed.`);
-            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
-            return false;
-        }
-
-        const { error: billErr } = await supabase.from('bills').update({
-            status: 'passed',
-            passed_tick: currentTick
-        }).eq('id', bill.id);
-        if (billErr) {
-            console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
-            return false;
-        }
-
-        const { error: nationErr } = await supabase.from('nations').update({
-            head_of_state_title: newTitle
-        }).eq('id', bill.nation_id);
-        if (nationErr) {
-            console.error(`[enactFoundationalBill] Failed to update HoS title for nation ${bill.nation_id}:`, nationErr.message);
-        }
-
-        console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS title set to "${newTitle}".`);
-        return true;
-    }
-
-    // ── Judicial Appointment Politicization Act subtype ──
-    if (bill.proposed_judicial_appointment_politicization) {
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
-
-        const cappedJudicial = Math.min(Number(nation?.judicial_independence ?? 50), 30);
-        const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
-        const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
-
-        const { error: nationErr } = await supabase.from('nations').update({
-            judicial_appointment_politicization: true,
-            judicial_independence: cappedJudicial,
-            legitimacy: newLegitimacy,
-            freedom_index: newFreedom
-        }).eq('id', bill.nation_id);
-        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
-
-        const isPres = hasElectedPresident(nation);
-        const mechanicDesc = isPres
-            ? 'Impeachment conviction now requires 75% (up from 67%). The courts no longer serve as a check on executive power.'
-            : 'Votes of no confidence now require 60% (up from 50%+1). The ruling coalition is shielded from parliamentary removal.';
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'judicial_appointment_politicization',
-            description_used: `The Judicial Appointment Politicization Act has passed. The ruling coalition now appoints judges directly. Judicial independence is permanently capped at 30. ${mechanicDesc}`,
-            category: 'POLITICAL',
-            effects_applied: {
-                law: 'judicial_appointment_politicization',
-                judicial_independence_cap: 30,
-                legitimacy: -5,
-                freedom_index: -3,
-                threshold_change: isPres ? 'impeachment_conviction 67%→75%' : 'no_confidence 50%+1→60%'
-            },
-            fired_at_tick: currentTick
-        });
-
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Judicial Appointment Politicization Act enacted for nation ${bill.nation_id}`);
-        return true;
-    }
-
-    // ── Electoral Commission Reform Act subtype ──
-    if (bill.proposed_electoral_commission_reform) {
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
-
-        const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
-        const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 3);
-
-        const { error: nationErr } = await supabase.from('nations').update({
-            electoral_commission_reform: true,
-            legitimacy: newLegitimacy,
-            polarization: newPolarization
-        }).eq('id', bill.nation_id);
-        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for electoral commission reform:`, nationErr.message);
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'electoral_commission_reform',
-            description_used: 'The Electoral Commission Reform Act has passed. The ruling coalition now controls the election commission. Parliamentary elections are tilted in favor of the governing parties — opposition parties face an administrative disadvantage in seat allocation.',
-            category: 'POLITICAL',
-            effects_applied: {
-                law: 'electoral_commission_reform',
-                legitimacy: -5,
-                polarization: 3,
-                seat_bonus: '5-10% random per election'
-            },
-            fired_at_tick: currentTick
-        });
-
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Electoral Commission Reform Act enacted for nation ${bill.nation_id}`);
-        return true;
-    }
-
-    // ── Political Party Registration Act subtype ──
-    if (bill.proposed_party_registration_threshold) {
-        const threshold = Number(bill.proposed_party_registration_threshold);
-        if (![5, 10, 15].includes(threshold)) {
-            console.error(`[enactFoundationalBill] Invalid party registration threshold: ${threshold}`);
-            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
-            return false;
-        }
-
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
-
-        const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 4);
-        const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 5);
-        const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
-
-        const { error: nationErr } = await supabase.from('nations').update({
-            party_registration_threshold: threshold,
-            legitimacy: newLegitimacy,
-            polarization: newPolarization,
-            freedom_index: newFreedom
-        }).eq('id', bill.nation_id);
-        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for party registration act:`, nationErr.message);
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'party_registration_act',
-            description_used: `The Political Party Registration Act has passed. Parties holding less than ${threshold}% of legislative seats will have their seats reallocated after elections. Affected parties cannot sponsor bills, vote, or hold ministries.`,
-            category: 'POLITICAL',
-            effects_applied: {
-                law: 'party_registration_act',
-                threshold_pct: threshold,
-                legitimacy: -4,
-                polarization: 5,
-                freedom_index: -3
-            },
-            fired_at_tick: currentTick
-        });
-
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Political Party Registration Act enacted for nation ${bill.nation_id} (threshold: ${threshold}%)`);
-        return true;
-    }
-
-    // ── Legislative Quorum Reform Act subtype ──
-    if (bill.proposed_legislative_quorum_override) {
-        const quorumPct = Number(bill.proposed_legislative_quorum_override);
-        if (![25, 30, 40].includes(quorumPct)) {
-            console.error(`[enactFoundationalBill] Invalid quorum override: ${quorumPct}`);
-            await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
-            return false;
-        }
-
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
-
-        const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 3);
-        const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 2);
-
-        const { error: nationErr } = await supabase.from('nations').update({
-            legislative_quorum_override: quorumPct,
-            legitimacy: newLegitimacy,
-            freedom_index: newFreedom
-        }).eq('id', bill.nation_id);
-        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for quorum reform:`, nationErr.message);
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'legislative_quorum_reform',
-            description_used: `The Legislative Quorum Reform Act has passed. The quorum requirement for standard bills has been lowered from 50% to ${quorumPct}%. The ruling coalition can now pass legislation with fewer participants.`,
-            category: 'POLITICAL',
-            effects_applied: { law: 'legislative_quorum_reform', quorum_pct: quorumPct, legitimacy: -3, freedom_index: -2 },
-            fired_at_tick: currentTick
-        });
-
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Legislative Quorum Reform Act enacted for nation ${bill.nation_id} (quorum: ${quorumPct}%)`);
-        return true;
-    }
-
-    // ── Constitutional Amendment Streamlining subtype ──
-    if (bill.proposed_constitutional_amendment_streamlining) {
-        const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
-
-        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
-
-        const { error: nationErr } = await supabase.from('nations').update({
-            constitutional_amendment_streamlining: true,
-            legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 8),
-            polarization: Math.min(100, (nation?.polarization ?? 0) + 5),
-            freedom_index: Math.max(0, (nation?.freedom_index ?? 50) - 5)
-        }).eq('id', bill.nation_id);
-        if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for constitutional streamlining:`, nationErr.message);
-
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'constitutional_amendment_streamlining',
-            description_used: 'The Constitutional Amendment Streamlining Act has passed. The supermajority threshold for foundational bills has been lowered from 67% to 55%. The constitution is now far easier to rewrite.',
-            category: 'POLITICAL',
-            effects_applied: { law: 'constitutional_amendment_streamlining', new_threshold: '55%', legitimacy: -8, polarization: 5, freedom_index: -5 },
-            fired_at_tick: currentTick
-        });
-
-        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
-        console.log(`[enactFoundationalBill] Constitutional Amendment Streamlining enacted for nation ${bill.nation_id}`);
-        return true;
-    }
-
-    // ── [Eroding the Monarchy] — Pro-democracy reform series ──
-    if (bill.proposed_monarchy_reform) {
-        const reformKey = bill.proposed_monarchy_reform;
-        const { data: nation } = await supabase.from('nations')
-            .select('id, name, government_type, monarch_faction_id, legitimacy, gov_approval')
-            .eq('id', bill.nation_id).single();
-
-        if (!nation) { console.error(`[enactFoundationalBill] Nation not found for monarchy reform`); return false; }
-
-        const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill as passed:`, billErr.message); return false; }
-
-        const MONARCHY_REFORMS = {
-            freedom_of_press: {
-                statChanges: { press_freedom: 5, freedom_index: 3, legitimacy: 2 },
-                nationFlag: 'monarchy_freedom_of_press',
-                eventDesc: 'The Freedom of the Press Act has been enacted. Independent media is now legal. The Crown gains legitimacy through restraint.',
-            },
-            right_of_assembly: {
-                statChanges: { freedom_index: 3, civil_unrest: -2, stability: 2 },
-                nationFlag: 'monarchy_right_of_assembly',
-                eventDesc: 'The Right of Assembly Act has been enacted. Political gatherings and peaceful protest are now legal.',
-            },
-            independent_judiciary: {
-                statChanges: { judicial_independence: 5, legitimacy: -2, corruption: -3 },
-                nationFlag: 'monarchy_independent_judiciary',
-                eventDesc: 'The Independent Judiciary Act has been enacted. Courts now operate free from royal interference.',
-            },
-            parliamentary_inquiry: {
-                statChanges: { corruption: -3, legitimacy: -3, transparency: 3 },
-                nationFlag: 'monarchy_parliamentary_inquiry',
-                eventDesc: 'The Parliamentary Inquiry Act has been enacted. Parliament can now investigate the Crown\'s finances and decisions.',
-            },
-            civil_liberties_charter: {
-                statChanges: { freedom_index: 5, stability: 2, legitimacy: -3, happiness: 3 },
-                nationFlag: 'monarchy_civil_liberties_charter',
-                eventDesc: 'The Civil Liberties Charter has been enacted. Individual rights are now codified and cannot be overridden by royal decree.',
-            },
-            electoral_reform: {
-                statChanges: { freedom_index: 3, legitimacy: -5, political_engagement: 5 },
-                nationFlag: 'monarchy_electoral_reform',
-                eventDesc: 'The Electoral Reform Act has been enacted. The legal framework for democratic elections now exists. This is the point of no return.',
-            },
-            parliamentary_supremacy: {
-                statChanges: { legitimacy: -5, stability: -3, freedom_index: 5, political_engagement: 5 },
-                nationFlag: 'monarchy_parliamentary_supremacy',
-                eventDesc: 'The Parliamentary Supremacy Act has been enacted. Parliament can now override royal veto with a two-thirds majority. The monarch\'s legislative power is effectively advisory.',
-            },
-            act_of_abdication: {
-                statChanges: { stability: -5, civil_unrest: 10, freedom_index: 8, legitimacy: -10 },
-                nationFlag: null,
-                eventDesc: 'The Act of Abdication has been enacted. The monarchy is dissolved. Democratic elections are scheduled.',
-            },
-        };
-
-        const reform = MONARCHY_REFORMS[reformKey];
-        if (!reform) { console.warn(`[enactFoundationalBill] Unknown monarchy reform: ${reformKey}`); return false; }
-
-        // Apply stat changes
-        if (reform.statChanges && Object.keys(reform.statChanges).length > 0) {
-            const { error: statErr } = await supabase.rpc('increment_nation_stats', {
-                p_nation_id: bill.nation_id,
-                p_changes: reform.statChanges,
-            });
-            if (statErr) console.error(`[enactFoundationalBill] Monarchy reform stat update failed:`, statErr.message);
-        }
-
-        // Set nation flag (for prerequisite tracking)
-        if (reform.nationFlag) {
-            await supabase.from('nations').update({ [reform.nationFlag]: true }).eq('id', bill.nation_id);
-        }
-
-        // Act of Abdication: dissolve monarchy, schedule elections
-        if (reformKey === 'act_of_abdication') {
-            // Clear monarch
-            await supabase.from('nations').update({
-                government_type: 'Democracy',
-                monarch_faction_id: null,
-                failed_formation_attempts: 0,
-            }).eq('id', bill.nation_id);
-
-            // Reset legitimacy and gov approval for fresh start
-            await supabase.rpc('increment_nation_stats', {
-                p_nation_id: bill.nation_id,
-                p_changes: { legitimacy: 50 - (Number(nation.legitimacy) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
-            }).catch(() => {});
-
-            // Dissolve any existing coalition
-            await supabase.from('active_coalitions').update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
-                .eq('nation_id', bill.nation_id).in('status', ['formed', 'active']);
-
-            // Deactivate PM
-            await supabase.from('head_of_government').update({ active: false })
-                .eq('nation_id', bill.nation_id).eq('active', true);
-
-            // Schedule election 2 ticks from now
-            await supabase.from('elections').insert({
+            // Schedule presidential election 3 ticks out (allows endorsement window)
+            const { error: presElErr } = await supabase.from('elections').insert({
                 nation_id: bill.nation_id,
-                election_tick: currentTick + 2,
-                election_type: 'parliamentary',
+                election_tick: currentTick + 3,
                 status: 'scheduled',
-                trigger: 'abdication',
+                election_type: 'presidential'
             });
+            if (presElErr) console.error('[enactFoundationalBill] Failed to schedule presidential election:', presElErr.message);
+            else console.log(`[enactFoundationalBill] Presidential election scheduled at tick ${currentTick + 3}`);
 
-            console.log(`[enactFoundationalBill] Monarchy dissolved for ${nation.name}. Election scheduled at tick ${currentTick + 2}.`);
+            // Also schedule the first parliamentary midterm
+            const parlTermTicks = Number(nation?.parliamentary_term_ticks) || 24;
+            const { error: midtermErr } = await supabase.from('elections').insert({
+                nation_id: bill.nation_id,
+                election_tick: currentTick + parlTermTicks,
+                status: 'scheduled',
+                election_type: 'parliamentary'
+            });
+            if (midtermErr) console.error('[enactFoundationalBill] Failed to schedule midterm:', midtermErr.message);
+
+            // Reset government approval for the transition
+            statUpdate.gov_approval = 50;
+            statUpdate.gov_approval_events = 0;
         }
 
-        // Log event
-        await supabase.from('event_log').insert({
-            nation_id: bill.nation_id,
-            event_name: 'FOUNDATIONAL_LAW_PASSED',
-            trigger_key: 'monarchy_reform_' + reformKey,
-            description_used: reform.eventDesc,
-            category: 'POLITICAL',
-            effects_applied: { law: reformKey, tag: 'eroding_the_monarchy', ...reform.statChanges },
-            fired_at_tick: currentTick,
-        });
+        const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
+        if (statErr) console.error(`[enactFoundationalBill] Direct vote stat update failed:`, statErr.message);
+        else console.log(`[enactFoundationalBill] Direct HoS vote established: legitimacy +3, political_engagement +3, polarization +2${wasParliamentary ? ', gov type → Presidential' : ''}`);
+    } else if (newMethod === 'appointed') {
+        // Appointed by Parliament: transition Presidential → Parliamentary if applicable
+        const wasPresidential = nation?.government_type?.toLowerCase().includes('president');
 
-        console.log(`[enactFoundationalBill] [Eroding the Monarchy] ${reformKey} enacted for nation ${bill.nation_id}`);
-        return true;
-    }
+        if (wasPresidential) {
+            console.log(`[enactFoundationalBill] Presidential → Parliamentary transition for nation ${bill.nation_id}`);
 
-    // ── Electoral Makeup subtype ──
-    // Validate proposed_seats BEFORE marking the bill as passed
-    let newTotalSeats = bill.proposed_seats;
+            // Deactivate the president
+            const { error: presErr } = await supabase.from('presidents')
+                .update({ is_active: false })
+                .eq('nation_id', bill.nation_id)
+                .eq('is_active', true);
+            if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
 
-    // Fallback: if proposed_seats is null (column missing or data lost), parse from preamble
-    if (!newTotalSeats && bill.preamble) {
-        const match = bill.preamble.match(/from\s+\d+\s+to\s+(\d+)/i);
-        if (match) {
-            newTotalSeats = parseInt(match[1], 10);
-            console.warn(`[enactFoundationalBill] proposed_seats was null, recovered ${newTotalSeats} from preamble`);
+            // Change government type
+            const { error: govErr } = await supabase.from('nations').update({
+                government_type: 'Democracy',
+                gov_approval: 50,
+                gov_approval_events: 0
+            }).eq('id', bill.nation_id);
+            if (govErr) console.error(`[enactFoundationalBill] Gov type update failed:`, govErr.message);
+
+            // Clear presidential elections, schedule parliamentary
+            const { error: clearElErr } = await supabase.from('elections').delete()
+                .eq('nation_id', bill.nation_id)
+                .eq('status', 'scheduled');
+            if (clearElErr) console.error('[enactFoundationalBill] Failed to clear scheduled elections:', clearElErr.message);
+
+            const { error: parlElErr } = await supabase.from('elections').insert({
+                nation_id: bill.nation_id,
+                election_tick: currentTick + 3,
+                status: 'scheduled',
+                election_type: 'parliamentary'
+            });
+            if (parlElErr) console.error('[enactFoundationalBill] Failed to schedule parliamentary election:', parlElErr.message);
+            else console.log(`[enactFoundationalBill] Parliamentary election scheduled at tick ${currentTick + 3}`);
+
+            // Clean up presidential candidates
+            const { error: candErr } = await supabase.from('pm_candidates').delete()
+                .eq('nation_id', bill.nation_id)
+                .eq('candidate_type', 'presidential');
+            if (candErr) console.error('[enactFoundationalBill] Failed to clean presidential candidates:', candErr.message);
+
+            // Close administration for transition
+            const { data: shardData } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+            const dateStr = shardData?.current_date || _billTickToDate(currentTick);
+            const { error: closeAdminErr } = await supabase.from('administrations')
+                .update({ ended_at_tick: currentTick, ended_at_date: dateStr, end_reason: 'constitutional_transition' })
+                .eq('nation_id', bill.nation_id)
+                .is('ended_at_tick', null);
+            if (closeAdminErr) console.error('[enactFoundationalBill] Failed to close administration on PM removal transition:', closeAdminErr.message);
+            else await _logAdministrationIntegrityIssue(supabase, bill.nation_id, 'foundational_transition_no_pm');
+
+            console.log(`[enactFoundationalBill] Presidential → Parliamentary Democracy, election at tick ${currentTick + 3}`);
         }
+        // No stat changes for appointed (it's the default low-friction option)
     }
 
-    if (!newTotalSeats || newTotalSeats < 50 || newTotalSeats > 500) {
-        console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_seats: ${newTotalSeats}. Marking as failed.`);
-        await supabase.from('bills').update({
-            status: 'failed',
-            passed_tick: currentTick
-        }).eq('id', bill.id);
+    const methodLabels = { direct_vote: 'Direct Popular Vote', appointed: 'Appointed by Parliament', hereditary: 'Constitutional Monarchy' };
+    console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS election method set to "${methodLabels[newMethod]}".`);
+    return true;
+}
+
+async function enactHosTitle(supabase, bill, currentTick) {
+    const newTitle = bill.proposed_hos_title.trim();
+    if (!newTitle) {
+        console.warn(`[enactFoundationalBill] Bill ${bill.id} has empty proposed_hos_title. Marking as failed.`);
+        await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
         return false;
     }
 
-    // Validation passed — mark bill as passed
-    console.log(`[enactFoundationalBill] Bill ${bill.id}: proposed_seats=${newTotalSeats}. Marking as passed.`);
-    await supabase.from('bills').update({
+    const { error: billErr } = await supabase.from('bills').update({
         status: 'passed',
         passed_tick: currentTick
     }).eq('id', bill.id);
+    if (billErr) {
+        console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+        return false;
+    }
 
-    // Get current total seats to compute delta
-    const { data: nationData } = await supabase
-        .from('nations')
-        .select('total_seats')
-        .eq('id', bill.nation_id)
-        .single();
-    const currentTotalSeats = nationData?.total_seats || GAME_CONFIG.TOTAL_SEATS;
-    const delta = newTotalSeats - currentTotalSeats;
-
-    // 1. Update nation's total_seats
-    await supabase.from('nations').update({
-        total_seats: newTotalSeats
+    const { error: nationErr } = await supabase.from('nations').update({
+        head_of_state_title: newTitle
     }).eq('id', bill.nation_id);
+    if (nationErr) {
+        console.error(`[enactFoundationalBill] Failed to update HoS title for nation ${bill.nation_id}:`, nationErr.message);
+    }
 
-    if (delta !== 0) {
-        // SEATS CHANGE — proportionally rescale all party seats to the new total
-        let redistributed = false;
+    console.log(`[enactFoundationalBill] Nation ${bill.nation_id} HoS title set to "${newTitle}".`);
+    return true;
+}
 
-        // Attempt 1: use vote totals from last completed parliamentary election
-        const { data: election } = await supabase
-            .from('elections')
-            .select('id, results')
-            .eq('nation_id', bill.nation_id)
-            .eq('status', 'completed')
-            .eq('election_type', 'parliamentary')
-            .order('election_tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+async function enactJudicialPoliticization(supabase, bill, currentTick) {
+    const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
 
-        if (election?.results?.votes) {
-            const votes = election.results.votes;
-            const voteTotals = {};
-            // Handle both array format (SQL RPC) and object format (JS simulation)
-            if (Array.isArray(votes)) {
-                for (const v of votes) voteTotals[v.party_id] = v.votes || 0;
-            } else {
-                for (const [pid, v] of Object.entries(votes)) voteTotals[pid] = v || 0;
+    const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+    if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
+
+    const cappedJudicial = Math.min(Number(nation?.judicial_independence ?? 50), 30);
+    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
+    const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
+
+    const { error: nationErr } = await supabase.from('nations').update({
+        judicial_appointment_politicization: true,
+        judicial_independence: cappedJudicial,
+        legitimacy: newLegitimacy,
+        freedom_index: newFreedom
+    }).eq('id', bill.nation_id);
+    if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
+
+    const isPres = hasElectedPresident(nation);
+    const mechanicDesc = isPres
+        ? 'Impeachment conviction now requires 75% (up from 67%). The courts no longer serve as a check on executive power.'
+        : 'Votes of no confidence now require 60% (up from 50%+1). The ruling coalition is shielded from parliamentary removal.';
+
+    await supabase.from('event_log').insert({
+        nation_id: bill.nation_id,
+        event_name: 'FOUNDATIONAL_LAW_PASSED',
+        trigger_key: 'judicial_appointment_politicization',
+        description_used: `The Judicial Appointment Politicization Act has passed. The ruling coalition now appoints judges directly. Judicial independence is permanently capped at 30. ${mechanicDesc}`,
+        category: 'POLITICAL',
+        effects_applied: {
+            law: 'judicial_appointment_politicization',
+            judicial_independence_cap: 30,
+            legitimacy: -5,
+            freedom_index: -3,
+            threshold_change: isPres ? 'impeachment_conviction 67%→75%' : 'no_confidence 50%+1→60%'
+        },
+        fired_at_tick: currentTick
+    });
+
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+    console.log(`[enactFoundationalBill] Judicial Appointment Politicization Act enacted for nation ${bill.nation_id}`);
+    return true;
+}
+
+async function enactElectoralCommissionReform(supabase, bill, currentTick) {
+    const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+    const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+    if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
+
+    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
+    const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 3);
+
+    const { error: nationErr } = await supabase.from('nations').update({
+        electoral_commission_reform: true,
+        legitimacy: newLegitimacy,
+        polarization: newPolarization
+    }).eq('id', bill.nation_id);
+    if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for electoral commission reform:`, nationErr.message);
+
+    await supabase.from('event_log').insert({
+        nation_id: bill.nation_id,
+        event_name: 'FOUNDATIONAL_LAW_PASSED',
+        trigger_key: 'electoral_commission_reform',
+        description_used: 'The Electoral Commission Reform Act has passed. The ruling coalition now controls the election commission. Parliamentary elections are tilted in favor of the governing parties — opposition parties face an administrative disadvantage in seat allocation.',
+        category: 'POLITICAL',
+        effects_applied: {
+            law: 'electoral_commission_reform',
+            legitimacy: -5,
+            polarization: 3,
+            seat_bonus: '5-10% random per election'
+        },
+        fired_at_tick: currentTick
+    });
+
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+    console.log(`[enactFoundationalBill] Electoral Commission Reform Act enacted for nation ${bill.nation_id}`);
+    return true;
+}
+
+async function enactPartyRegistrationReform(supabase, bill, currentTick) {
+    const threshold = Number(bill.proposed_party_registration_threshold);
+    if (![5, 10, 15].includes(threshold)) {
+        console.error(`[enactFoundationalBill] Invalid party registration threshold: ${threshold}`);
+        await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+        return false;
+    }
+
+    const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+    const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+    if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
+
+    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 4);
+    const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 5);
+    const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
+
+    const { error: nationErr } = await supabase.from('nations').update({
+        party_registration_threshold: threshold,
+        legitimacy: newLegitimacy,
+        polarization: newPolarization,
+        freedom_index: newFreedom
+    }).eq('id', bill.nation_id);
+    if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for party registration act:`, nationErr.message);
+
+    await supabase.from('event_log').insert({
+        nation_id: bill.nation_id,
+        event_name: 'FOUNDATIONAL_LAW_PASSED',
+        trigger_key: 'party_registration_act',
+        description_used: `The Political Party Registration Act has passed. Parties holding less than ${threshold}% of legislative seats will have their seats reallocated after elections. Affected parties cannot sponsor bills, vote, or hold ministries.`,
+        category: 'POLITICAL',
+        effects_applied: {
+            law: 'party_registration_act',
+            threshold_pct: threshold,
+            legitimacy: -4,
+            polarization: 5,
+            freedom_index: -3
+        },
+        fired_at_tick: currentTick
+    });
+
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+    console.log(`[enactFoundationalBill] Political Party Registration Act enacted for nation ${bill.nation_id} (threshold: ${threshold}%)`);
+    return true;
+}
+
+async function enactLegislativeQuorumReform(supabase, bill, currentTick) {
+    const quorumPct = Number(bill.proposed_legislative_quorum_override);
+    if (![25, 30, 40].includes(quorumPct)) {
+        console.error(`[enactFoundationalBill] Invalid quorum override: ${quorumPct}`);
+        await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
+        return false;
+    }
+
+    const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+    const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+    if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
+
+    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 3);
+    const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 2);
+
+    const { error: nationErr } = await supabase.from('nations').update({
+        legislative_quorum_override: quorumPct,
+        legitimacy: newLegitimacy,
+        freedom_index: newFreedom
+    }).eq('id', bill.nation_id);
+    if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for quorum reform:`, nationErr.message);
+
+    await supabase.from('event_log').insert({
+        nation_id: bill.nation_id,
+        event_name: 'FOUNDATIONAL_LAW_PASSED',
+        trigger_key: 'legislative_quorum_reform',
+        description_used: `The Legislative Quorum Reform Act has passed. The quorum requirement for standard bills has been lowered from 50% to ${quorumPct}%. The ruling coalition can now pass legislation with fewer participants.`,
+        category: 'POLITICAL',
+        effects_applied: { law: 'legislative_quorum_reform', quorum_pct: quorumPct, legitimacy: -3, freedom_index: -2 },
+        fired_at_tick: currentTick
+    });
+
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+    console.log(`[enactFoundationalBill] Legislative Quorum Reform Act enacted for nation ${bill.nation_id} (quorum: ${quorumPct}%)`);
+    return true;
+}
+
+async function enactConstitutionalStreamlining(supabase, bill, currentTick) {
+    const { data: nation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
+
+    const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+    if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
+
+    const { error: nationErr } = await supabase.from('nations').update({
+        constitutional_amendment_streamlining: true,
+        legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 8),
+        polarization: Math.min(100, (nation?.polarization ?? 0) + 5),
+        freedom_index: Math.max(0, (nation?.freedom_index ?? 50) - 5)
+    }).eq('id', bill.nation_id);
+    if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for constitutional streamlining:`, nationErr.message);
+
+    await supabase.from('event_log').insert({
+        nation_id: bill.nation_id,
+        event_name: 'FOUNDATIONAL_LAW_PASSED',
+        trigger_key: 'constitutional_amendment_streamlining',
+        description_used: 'The Constitutional Amendment Streamlining Act has passed. The supermajority threshold for foundational bills has been lowered from 67% to 55%. The constitution is now far easier to rewrite.',
+        category: 'POLITICAL',
+        effects_applied: { law: 'constitutional_amendment_streamlining', new_threshold: '55%', legitimacy: -8, polarization: 5, freedom_index: -5 },
+        fired_at_tick: currentTick
+    });
+
+    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+    console.log(`[enactFoundationalBill] Constitutional Amendment Streamlining enacted for nation ${bill.nation_id}`);
+    return true;
+}
+
+async function enactMonarchyReform(supabase, bill, currentTick) {
+    const reformKey = bill.proposed_monarchy_reform;
+    const { data: nation } = await supabase.from('nations')
+        .select('id, name, government_type, monarch_faction_id, legitimacy, gov_approval')
+        .eq('id', bill.nation_id).single();
+
+    if (!nation) { console.error(`[enactFoundationalBill] Nation not found for monarchy reform`); return false; }
+
+    const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+    if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill as passed:`, billErr.message); return false; }
+
+    const MONARCHY_REFORMS = {
+        freedom_of_press: {
+            statChanges: { press_freedom: 5, freedom_index: 3, legitimacy: 2 },
+            nationFlag: 'monarchy_freedom_of_press',
+            eventDesc: 'The Freedom of the Press Act has been enacted. Independent media is now legal. The Crown gains legitimacy through restraint.',
+        },
+        right_of_assembly: {
+            statChanges: { freedom_index: 3, civil_unrest: -2, stability: 2 },
+            nationFlag: 'monarchy_right_of_assembly',
+            eventDesc: 'The Right of Assembly Act has been enacted. Political gatherings and peaceful protest are now legal.',
+        },
+        independent_judiciary: {
+            statChanges: { judicial_independence: 5, legitimacy: -2, corruption: -3 },
+            nationFlag: 'monarchy_independent_judiciary',
+            eventDesc: 'The Independent Judiciary Act has been enacted. Courts now operate free from royal interference.',
+        },
+        parliamentary_inquiry: {
+            statChanges: { corruption: -3, legitimacy: -3, transparency: 3 },
+            nationFlag: 'monarchy_parliamentary_inquiry',
+            eventDesc: 'The Parliamentary Inquiry Act has been enacted. Parliament can now investigate the Crown\'s finances and decisions.',
+        },
+        civil_liberties_charter: {
+            statChanges: { freedom_index: 5, stability: 2, legitimacy: -3, happiness: 3 },
+            nationFlag: 'monarchy_civil_liberties_charter',
+            eventDesc: 'The Civil Liberties Charter has been enacted. Individual rights are now codified and cannot be overridden by royal decree.',
+        },
+        electoral_reform: {
+            statChanges: { freedom_index: 3, legitimacy: -5, political_engagement: 5 },
+            nationFlag: 'monarchy_electoral_reform',
+            eventDesc: 'The Electoral Reform Act has been enacted. The legal framework for democratic elections now exists. This is the point of no return.',
+        },
+        parliamentary_supremacy: {
+            statChanges: { legitimacy: -5, stability: -3, freedom_index: 5, political_engagement: 5 },
+            nationFlag: 'monarchy_parliamentary_supremacy',
+            eventDesc: 'The Parliamentary Supremacy Act has been enacted. Parliament can now override royal veto with a two-thirds majority. The monarch\'s legislative power is effectively advisory.',
+        },
+        act_of_abdication: {
+            statChanges: { stability: -5, civil_unrest: 10, freedom_index: 8, legitimacy: -10 },
+            nationFlag: null,
+            eventDesc: 'The Act of Abdication has been enacted. The monarchy is dissolved. Democratic elections are scheduled.',
+        },
+    };
+
+    const reform = MONARCHY_REFORMS[reformKey];
+    if (!reform) { console.warn(`[enactFoundationalBill] Unknown monarchy reform: ${reformKey}`); return false; }
+
+    // Apply stat changes
+    if (reform.statChanges && Object.keys(reform.statChanges).length > 0) {
+        const { error: statErr } = await supabase.rpc('increment_nation_stats', {
+            p_nation_id: bill.nation_id,
+            p_changes: reform.statChanges,
+        });
+        if (statErr) console.error(`[enactFoundationalBill] Monarchy reform stat update failed:`, statErr.message);
+    }
+
+    // Set nation flag (for prerequisite tracking)
+    if (reform.nationFlag) {
+        await supabase.from('nations').update({ [reform.nationFlag]: true }).eq('id', bill.nation_id);
+    }
+
+    // Act of Abdication: dissolve monarchy, schedule elections
+    if (reformKey === 'act_of_abdication') {
+        // Clear monarch
+        await supabase.from('nations').update({
+            government_type: 'Democracy',
+            monarch_faction_id: null,
+            failed_formation_attempts: 0,
+        }).eq('id', bill.nation_id);
+
+        // Reset legitimacy and gov approval for fresh start
+        await supabase.rpc('increment_nation_stats', {
+            p_nation_id: bill.nation_id,
+            p_changes: { legitimacy: 50 - (Number(nation.legitimacy) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
+        }).catch(() => {});
+
+        // Dissolve any existing coalition
+        await supabase.from('active_coalitions').update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
+            .eq('nation_id', bill.nation_id).in('status', ['formed', 'active']);
+
+        // Deactivate PM
+        await supabase.from('head_of_government').update({ active: false })
+            .eq('nation_id', bill.nation_id).eq('active', true);
+
+        // Schedule election 2 ticks from now
+        await supabase.from('elections').insert({
+            nation_id: bill.nation_id,
+            election_tick: currentTick + 2,
+            election_type: 'parliamentary',
+            status: 'scheduled',
+            trigger: 'abdication',
+        });
+
+        console.log(`[enactFoundationalBill] Monarchy dissolved for ${nation.name}. Election scheduled at tick ${currentTick + 2}.`);
+    }
+
+    // Log event
+    await supabase.from('event_log').insert({
+        nation_id: bill.nation_id,
+        event_name: 'FOUNDATIONAL_LAW_PASSED',
+        trigger_key: 'monarchy_reform_' + reformKey,
+        description_used: reform.eventDesc,
+        category: 'POLITICAL',
+        effects_applied: { law: reformKey, tag: 'eroding_the_monarchy', ...reform.statChanges },
+        fired_at_tick: currentTick,
+    });
+
+    console.log(`[enactFoundationalBill] [Eroding the Monarchy] ${reformKey} enacted for nation ${bill.nation_id}`);
+    return true;
+}
+
+async function enactElectoralMakeup(supabase, bill, currentTick) {
+// ── Electoral Makeup subtype ──
+// Validate proposed_seats BEFORE marking the bill as passed
+let newTotalSeats = bill.proposed_seats;
+
+// Fallback: if proposed_seats is null (column missing or data lost), parse from preamble
+if (!newTotalSeats && bill.preamble) {
+    const match = bill.preamble.match(/from\s+\d+\s+to\s+(\d+)/i);
+    if (match) {
+        newTotalSeats = parseInt(match[1], 10);
+        console.warn(`[enactFoundationalBill] proposed_seats was null, recovered ${newTotalSeats} from preamble`);
+    }
+}
+
+if (!newTotalSeats || newTotalSeats < 50 || newTotalSeats > 500) {
+    console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_seats: ${newTotalSeats}. Marking as failed.`);
+    await supabase.from('bills').update({
+        status: 'failed',
+        passed_tick: currentTick
+    }).eq('id', bill.id);
+    return false;
+}
+
+// Validation passed — mark bill as passed
+console.log(`[enactFoundationalBill] Bill ${bill.id}: proposed_seats=${newTotalSeats}. Marking as passed.`);
+await supabase.from('bills').update({
+    status: 'passed',
+    passed_tick: currentTick
+}).eq('id', bill.id);
+
+// Get current total seats to compute delta
+const { data: nationData } = await supabase
+    .from('nations')
+    .select('total_seats')
+    .eq('id', bill.nation_id)
+    .single();
+const currentTotalSeats = nationData?.total_seats || GAME_CONFIG.TOTAL_SEATS;
+const delta = newTotalSeats - currentTotalSeats;
+
+// 1. Update nation's total_seats
+await supabase.from('nations').update({
+    total_seats: newTotalSeats
+}).eq('id', bill.nation_id);
+
+if (delta !== 0) {
+    // SEATS CHANGE — proportionally rescale all party seats to the new total
+    let redistributed = false;
+
+    // Attempt 1: use vote totals from last completed parliamentary election
+    const { data: election } = await supabase
+        .from('elections')
+        .select('id, results')
+        .eq('nation_id', bill.nation_id)
+        .eq('status', 'completed')
+        .eq('election_type', 'parliamentary')
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (election?.results?.votes) {
+        const votes = election.results.votes;
+        const voteTotals = {};
+        // Handle both array format (SQL RPC) and object format (JS simulation)
+        if (Array.isArray(votes)) {
+            for (const v of votes) voteTotals[v.party_id] = v.votes || 0;
+        } else {
+            for (const [pid, v] of Object.entries(votes)) voteTotals[pid] = v || 0;
+        }
+        if (Object.keys(voteTotals).length > 0) {
+            const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
+            for (const [partyId, seats] of Object.entries(newSeats)) {
+                const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', partyId);
+                if (seatErr) {
+                    console.error(`[enactFoundationalBill] Failed to update seats for faction ${partyId}:`, seatErr);
+                    await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
+                    return false;
+                }
             }
-            if (Object.keys(voteTotals).length > 0) {
-                const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
+            redistributed = true;
+            console.log(`[enactFoundationalBill] Redistributed from election vote data.`);
+        }
+    }
+
+    // Fallback: proportionally scale existing faction seats to fill the new total
+    if (!redistributed) {
+        console.warn(`[enactFoundationalBill] No election vote data found — scaling existing seats proportionally.`);
+        const { data: factions } = await supabase
+            .from('factions')
+            .select('id, seats')
+            .eq('nation_id', bill.nation_id)
+            .eq('faction_type', 'party');
+
+        if (factions && factions.length > 0) {
+            const oldSum = factions.reduce((s, f) => s + (f.seats || 0), 0);
+            if (oldSum > 0) {
+                // Use Largest Remainder to cleanly distribute newTotalSeats
+                const seatTotals = {};
+                for (const f of factions) seatTotals[f.id] = f.seats || 0;
+                const newSeats = allocateSeatsByVotes(seatTotals, newTotalSeats);
                 for (const [partyId, seats] of Object.entries(newSeats)) {
                     const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', partyId);
                     if (seatErr) {
@@ -4672,65 +5061,36 @@ export async function enactFoundationalBill(supabase, bill, currentTick) {
                         return false;
                     }
                 }
-                redistributed = true;
-                console.log(`[enactFoundationalBill] Redistributed from election vote data.`);
-            }
-        }
-
-        // Fallback: proportionally scale existing faction seats to fill the new total
-        if (!redistributed) {
-            console.warn(`[enactFoundationalBill] No election vote data found — scaling existing seats proportionally.`);
-            const { data: factions } = await supabase
-                .from('factions')
-                .select('id, seats')
-                .eq('nation_id', bill.nation_id)
-                .eq('faction_type', 'party');
-
-            if (factions && factions.length > 0) {
-                const oldSum = factions.reduce((s, f) => s + (f.seats || 0), 0);
-                if (oldSum > 0) {
-                    // Use Largest Remainder to cleanly distribute newTotalSeats
-                    const seatTotals = {};
-                    for (const f of factions) seatTotals[f.id] = f.seats || 0;
-                    const newSeats = allocateSeatsByVotes(seatTotals, newTotalSeats);
-                    for (const [partyId, seats] of Object.entries(newSeats)) {
-                        const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', partyId);
-                        if (seatErr) {
-                            console.error(`[enactFoundationalBill] Failed to update seats for faction ${partyId}:`, seatErr);
-                            await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
-                            return false;
-                        }
-                    }
-                } else {
-                    // All parties at 0 seats — distribute evenly
-                    const perParty = Math.floor(newTotalSeats / factions.length);
-                    let remainder = newTotalSeats - perParty * factions.length;
-                    for (const f of factions) {
-                        const seats = perParty + (remainder > 0 ? 1 : 0);
-                        if (remainder > 0) remainder--;
-                        const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', f.id);
-                        if (seatErr) {
-                            console.error(`[enactFoundationalBill] Failed to update seats for faction ${f.id}:`, seatErr);
-                            await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
-                            return false;
-                        }
+            } else {
+                // All parties at 0 seats — distribute evenly
+                const perParty = Math.floor(newTotalSeats / factions.length);
+                let remainder = newTotalSeats - perParty * factions.length;
+                for (const f of factions) {
+                    const seats = perParty + (remainder > 0 ? 1 : 0);
+                    if (remainder > 0) remainder--;
+                    const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', f.id);
+                    if (seatErr) {
+                        console.error(`[enactFoundationalBill] Failed to update seats for faction ${f.id}:`, seatErr);
+                        await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
+                        return false;
                     }
                 }
             }
         }
-
-        console.log(`[enactFoundationalBill] ${currentTotalSeats} -> ${newTotalSeats} (${delta > 0 ? '+' : ''}${delta}). Seats rescaled.`);
-    } else {
-        console.log(`[enactFoundationalBill] No seat change (already ${newTotalSeats}).`);
     }
 
-    // Sync in-memory config so downstream logic in the same tick uses the new seat count
-    initGameConfigForNation({ total_seats: newTotalSeats });
+    console.log(`[enactFoundationalBill] ${currentTotalSeats} -> ${newTotalSeats} (${delta > 0 ? '+' : ''}${delta}). Seats rescaled.`);
+} else {
+    console.log(`[enactFoundationalBill] No seat change (already ${newTotalSeats}).`);
+}
 
-    // Legislative activity: boost gov_approval_events
-    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+// Sync in-memory config so downstream logic in the same tick uses the new seat count
+initGameConfigForNation({ total_seats: newTotalSeats });
 
-    return true;
+// Legislative activity: boost gov_approval_events
+await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
+
+return true;
 }
 
 export async function failBill(supabase, bill) {
