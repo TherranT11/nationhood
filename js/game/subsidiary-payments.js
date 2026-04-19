@@ -12,6 +12,10 @@
 
 var MISSED_PAYMENT_THRESHOLD = 3; // consecutive misses before default
 
+function getLoanOriginalPrincipal(policy) {
+    return Math.max(0, Number(policy.original_principal ?? policy.principal ?? 0));
+}
+
 /**
  * Process all active auto-rate policies for a nation.
  * Called once per tick per nation from the corp tick processor.
@@ -105,10 +109,14 @@ export async function processAutoRatePolicies(supabase, nationId, currentTick) {
 
             // For loans: reduce remaining principal and track corp_debt
             if (p.service_type === 'loan') {
-                var interestPortion = Math.round(Number(p.remaining_principal ?? 0) * (Number(p.rate_at_issue ?? 0) / 100 / 12));
+                var originalPrincipal = getLoanOriginalPrincipal(p);
+                var interestPortion = Math.round(originalPrincipal * (Number(p.rate_at_issue ?? 0) / 100 / 12));
                 var principalPortion = Math.max(0, payment - interestPortion);
                 var oldPrincipal = Number(p.remaining_principal ?? 0);
                 policyUpdate.remaining_principal = Math.max(0, oldPrincipal - principalPortion);
+                if (p.original_principal == null && originalPrincipal > 0) {
+                    policyUpdate.original_principal = originalPrincipal;
+                }
 
                 // Reduce borrower's corp_debt by principal paid down
                 if (principalPortion > 0) {

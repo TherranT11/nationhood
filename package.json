@@ -25,6 +25,7 @@
     "test:resolve-foundational": "node scripts/test-resolve-foundational.mjs",
     "test:bills-dispatch": "node scripts/test-bills-dispatch.mjs",
     "test:foundational-reforms": "node scripts/test-foundational-reforms.mjs",
+    "test:flat-interest-loans": "node scripts/test-flat-interest-loans.mjs",
     "migrate:shipping": "node scripts/apply-shipping-migrations.js"
   },
   "devDependencies": {

@@ -950,7 +950,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
-import { computeEquipmentValue } from './js/game/corp-valuation.js';
+import { computeEquipmentValue, computeFinanceReceivableValue, computeCorpValuationBreakdown } from './js/game/corp-valuation.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -1355,6 +1355,12 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     // Private Contracts: sector-specific revenue from active deals
     let govContracts = 0;
     let pvtContracts = 0;
+    let financeLoanInterestRevenue = 0;
+    let financeLoanPrincipalRepaid = 0;
+    let financeLoanScheduledPaymentsTick = 0;
+    let financeLoanCashCollected = 0;
+    let financeLoanLifetimeInterest = 0;
+    let financeInsurancePremiumRevenue = 0;
     // Construction corps only: per-tick build cost the server deducts for
     // each in-progress contract. Mirrors advance-corp-tick/index.ts:1714
     // (perTickCost = bid.estimated_cost / timeline_ticks). Without this line,
@@ -1366,17 +1372,33 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         if (sector === 'Finance') {
             // Finance: interest + premiums earned from active loans/policies
             const { data: finLoans } = await _supabase.from('finance_active_loans')
-                .select('monthly_payment, interest_rate, remaining_principal, finance_loan_requests(request_type)')
+                .select('monthly_payment, payments_made, total_paid, total_interest_paid, interest_rate, remaining_principal, finance_loan_requests(request_type)')
                 .eq('lender_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
             for (const loan of (finLoans || [])) {
                 const reqType = loan.finance_loan_requests?.request_type || 'loan';
                 if (reqType === 'insurance') {
-                    pvtContracts += Number(loan.monthly_payment || 0);
+                    const premiumRevenue = Number(loan.monthly_payment || 0);
+                    pvtContracts += premiumRevenue;
+                    financeInsurancePremiumRevenue += premiumRevenue;
                 } else if (reqType === 'loan') {
+                    const monthlyPayment = Number(loan.monthly_payment || 0);
+                    financeLoanScheduledPaymentsTick += monthlyPayment;
                     const remaining = Math.max(0, Number(loan.remaining_principal || 0));
                     const monthlyRate = (loan.interest_rate / 100) / 12;
-                    pvtContracts += Math.round(remaining * monthlyRate);
+                    const monthlyInterest = Math.max(0, Math.min(monthlyPayment, Math.round(remaining * monthlyRate)));
+                    const monthlyPrincipal = Math.max(0, monthlyPayment - monthlyInterest);
+                    pvtContracts += monthlyInterest;
+                    financeLoanInterestRevenue += monthlyInterest;
+                    financeLoanPrincipalRepaid += monthlyPrincipal;
+
+                    const paymentsMade = Number(loan.payments_made || 0);
+                    const bookedCashCollected = Number(loan.total_paid || 0);
+                    const fallbackCashCollected = monthlyPayment * paymentsMade;
+                    const loanCashCollected = Math.max(0, bookedCashCollected || fallbackCashCollected);
+                    const loanInterestCollected = Math.max(0, Math.min(loanCashCollected, Number(loan.total_interest_paid || 0)));
+                    financeLoanCashCollected += loanCashCollected;
+                    financeLoanLifetimeInterest += loanInterestCollected;
                 } else if (reqType === 'bond') {
                     pvtContracts += Number(loan.monthly_payment || 0);
                 }
@@ -1573,6 +1595,9 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const netProfit = totalRevenue - totalExpenses;
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const debt = outstandingDebt;
+    const financeLoanPaymentReconciliationDelta = financeLoanScheduledPaymentsTick - (financeLoanInterestRevenue + financeLoanPrincipalRepaid);
+    const FINANCE_LOAN_RECON_TOLERANCE = 0.01;
+    const isFinanceLoanReconciliationOff = Math.abs(financeLoanPaymentReconciliationDelta) > FINANCE_LOAN_RECON_TOLERANCE;
 
     // Driver data for display
     const drivers = [
@@ -1602,7 +1627,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     document.getElementById('fin-body').innerHTML = `
         <!-- Revenue -->
         <div class="fin-section">
-            <div class="fin-section__title" style="color:var(--green);">Revenue</div>
+            <div class="fin-section__title" style="color:var(--green);">Revenue <span title="Accounting rule: loan interest and insurance premiums count as revenue. Loan principal repayments increase cash but are not revenue or profit." style="font-size:8px;color:var(--text-dim);font-family:var(--font-mono);text-transform:none;letter-spacing:0;">[?]</span></div>
             <div class="seg-bar">
                 <div class="seg-bar__seg" style="width:${govPct}%;background:var(--teal);"></div>
                 <div class="seg-bar__seg" style="width:${pvtPct}%;background:var(--amber);"></div>
@@ -1614,7 +1639,18 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                 <div class="seg-legend__item"><div class="seg-legend__dot" style="background:var(--text-dim)"></div><span class="seg-legend__label">Market</span></div>
             </div>
             <div class="fin-row"><span class="fin-row__label">Government Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(govContracts)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Private Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
+            <div class="fin-row"><span class="fin-row__label" title="Private operating revenue includes contracts plus loan interest and insurance premiums only; principal repayments are excluded.">Private Operating Revenue (contracts + loan interest/premiums only)</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">P&L revenue</div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Interest portion of this tick's loan payments recognized as operating revenue in P&L.">Loan Interest Revenue (this tick) <span class="fin-row__badge">REVENUE</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeLoanInterestRevenue)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' && financeInsurancePremiumRevenue > 0 ? `<div class="fin-row"><span class="fin-row__label" title="Insurance premiums collected this tick are recognized as operating revenue in P&L.">Insurance Premium Revenue (this tick) <span class="fin-row__badge">REVENUE</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeInsurancePremiumRevenue)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">Non-revenue cash movements</div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Principal repayment increases cash and reduces the loan receivable. It is not revenue or profit.">Loan Principal Repaid (this tick) <span class="fin-row__badge">ASSET→CASH</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanPrincipalRepaid)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Loan cash collected this tick equals interest plus principal.">Loan Cash Collected (this tick) <span class="fin-row__badge">CASH</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanInterestRevenue + financeLoanPrincipalRepaid)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Checks this tick's scheduled loan payments against computed split. Portfolio Scheduled Loan Payments = Interest Revenue + Principal Repaid.">Loan Payment Reconciliation (this tick) <span class="fin-row__badge">CHECK</span></span><span class="fin-row__value" style="color:${isFinanceLoanReconciliationOff ? 'var(--red)' : 'var(--text-bright)'}">${fmtMoney(financeLoanScheduledPaymentsTick)} = ${fmtMoney(financeLoanInterestRevenue)} + ${fmtMoney(financeLoanPrincipalRepaid)} (Δ ${financeLoanPaymentReconciliationDelta >= 0 ? '+' : '-'}${fmtMoney(Math.abs(financeLoanPaymentReconciliationDelta))})</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">Lifetime portfolio totals</div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Portfolio cumulative cash from loans. Loan cash collected = interest + principal.">Loan Cash Collected (to date) <span class="fin-row__badge">PORTFOLIO</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanCashCollected)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Portfolio cumulative interest portion collected from loans.">Loan Interest (to date) <span class="fin-row__badge">PORTFOLIO</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeLoanLifetimeInterest)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:2px 12px 4px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.2px;">Principal repayment increases cash but does not increase profit.</div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(marketRev - propertyRevBonus)}</span></div>
             ${propertyRevBonus > 0 ? `<div class="fin-row"><span class="fin-row__label">Property Revenue<span class="fin-row__badge">BUILDINGS</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(propertyRevBonus)}</span></div>` : ''}
             ${depotRevenueRows.map(d => `<div class="fin-row"><span class="fin-row__label">Fuel Depot (${d.nation})<span class="fin-row__badge">${d.visitors} visitor${d.visitors !== 1 ? 's' : ''}</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(d.revenue)}</span></div>`).join('')}
@@ -1645,7 +1681,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         </div>
         <!-- Net Profit -->
         <div class="fin-net" style="background:${netProfit >= 0 ? 'rgba(92,204,92,0.02)' : 'rgba(204,85,85,0.02)'}">
-            <span class="fin-net__label">Net Profit</span>
+            <span class="fin-net__label">Net Profit <span title="Net Profit uses revenue rules above: loan interest counts, principal repayment does not." style="font-size:8px;color:var(--text-dim);font-family:var(--font-mono);text-transform:none;letter-spacing:0;">[?]</span></span>
             <span class="fin-net__value" style="color:${netProfit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtMoney(netProfit)}</span>
         </div>
         <!-- Cash & Debt -->
@@ -1846,6 +1882,11 @@ async function loadLoansSection() {
         for (const loan of activeLoans) {
             const statusColor = loan.status === 'current' ? 'var(--green)' : loan.status === 'late' ? '#c84' : '#c55';
             const pctPaid = loan.term_months > 0 ? Math.round((loan.payments_made / loan.term_months) * 100) : 0;
+            const monthlyPayment = Number(loan.monthly_payment || 0);
+            const monthlyRate = (Number(loan.interest_rate || 0) / 100) / 12;
+            const remainingPrincipal = Math.max(0, Number(loan.remaining_principal || 0));
+            const monthlyInterestPortion = Math.max(0, Math.min(monthlyPayment, Math.round(remainingPrincipal * monthlyRate)));
+            const monthlyPrincipalPortion = Math.max(0, monthlyPayment - monthlyInterestPortion);
             html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
@@ -1859,8 +1900,12 @@ async function loadLoansSection() {
                     <div style="height:100%;width:${pctPaid}%;background:${statusColor};"></div>
                 </div>
                 <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:7px;color:var(--text-dim);">
-                    <span>Payment: ${fmtMoney(loan.monthly_payment)}/mo</span>
+                    <span>Total Monthly Payment (cash collected): ${fmtMoney(monthlyPayment)}/mo</span>
                     <span>${loan.payments_made}/${loan.term_months} payments</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:1px;font-size:7px;color:var(--text-dim);">
+                    <span>Interest Portion (P&L revenue): ${fmtMoney(monthlyInterestPortion)}</span>
+                    <span>Principal Portion (asset repayment): ${fmtMoney(monthlyPrincipalPortion)}</span>
                 </div>
             </div>`;
         }
@@ -2357,32 +2402,21 @@ async function renderValuation(nation, nationName, faction, wfData, propData, eq
     // Assets — read from DB columns (set at corp creation, scaled by currency strength)
     const cashReserves = Number(faction.corp_cash_reserves) || 0;
     const propertyValue = propData?.propertyValue || 0;
-    // Active Contracts: principal value of commercial instruments the corp
-    // holds as receivables. Today this is loan principal outstanding for
-    // Finance corps; Construction/Shipping stay at 0 until we decide how to
-    // capitalise work-in-progress / shipping claims on the balance sheet.
-    let activeContracts = 0;
+    // Active Contracts / Finance Receivables: principal value of lender-side
+    // positions that remain collectible.
+    let receivableBreakdown = { loans: 0, bonds: 0, insurance: 0, total: 0 };
     if (faction?.id && faction.corp_sector === 'Finance') {
         try {
             const { data: finLoans } = await _supabase.from('finance_active_loans')
-                .select('remaining_principal, finance_loan_requests(request_type)')
+                .select('principal, remaining_principal, finance_loan_requests!inner(request_type)')
                 .eq('lender_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
-            for (const loan of (finLoans || [])) {
-                const reqType = loan.finance_loan_requests?.request_type || 'loan';
-                // Loans: outstanding principal owed to us is the asset value.
-                // Bonds: face value outstanding is the asset. Insurance policies
-                // are written as a contingent liability for the insurer, so they
-                // don't count here.
-                if (reqType === 'loan' || reqType === 'bond') {
-                    const remaining = Math.max(0, Number(loan.remaining_principal || 0));
-                    activeContracts += remaining;
-                }
-            }
+            receivableBreakdown = computeFinanceReceivableValue(finLoans || []);
         } catch (err) {
             console.warn('[Valuation] finance_active_loans lookup failed:', err);
         }
     }
+    const activeContracts = receivableBreakdown.total;
     const totalAssets = cashReserves + propertyValue + equipmentValue + activeContracts;
 
     // Liabilities
@@ -2392,14 +2426,17 @@ async function renderValuation(nation, nationName, faction, wfData, propData, eq
     const pendingProjectCosts = 0;
     const totalLiabilities = outstandingLoans + accountsPayable + pendingProjectCosts;
 
-    // Net Worth
-    const netWorth = totalAssets - totalLiabilities;
-
-    // Market Valuation — based on net worth + demand modifier
-    // Demand: count corps in this subsector in this nation
-    const demandBonus = 0.30; // HIGH demand (0-1 corps) — will be dynamic later
-    const valuation = Math.round(netWorth * (1 + demandBonus));
-    const valuationDelta = valuation - netWorth;
+    // Net Worth + Market Valuation from shared valuation module.
+    const basis = computeCorpValuationBreakdown({
+        cash: cashReserves,
+        propertyValue,
+        equipmentValue,
+        loans: totalLiabilities,
+        financeReceivables: activeContracts,
+    });
+    const netWorth = basis.valuationBasis;
+    const valuation = basis.valuation;
+    const valuationDelta = valuation - basis.valuationBasis;
     const valuationAbove = valuationDelta > 0;
 
     document.getElementById('val-type-badge').textContent = companyType.toUpperCase();
@@ -2417,7 +2454,8 @@ async function renderValuation(nation, nationName, faction, wfData, propData, eq
         ${line('Cash & Reserves', cashReserves, { indent: true })}
         ${line('Property', propertyValue, { indent: true })}
         ${line('Equipment', equipmentValue, { indent: true })}
-        ${line('Active Contracts', activeContracts, { indent: true })}
+        ${line('Finance Receivables (Loans + Bonds)', activeContracts, { indent: true })}
+        ${line('Insurance Coverage (excluded)', receivableBreakdown.insurance, { indent: true, color: 'var(--text-dim)' })}
         ${line('Total Assets', totalAssets, { bold: true, color: 'var(--green)' })}
 
         <div class="val-section-hdr"><span class="val-section-hdr__label" style="color:var(--red);">Liabilities</span></div>
@@ -2425,6 +2463,9 @@ async function renderValuation(nation, nationName, faction, wfData, propData, eq
         ${line('Accounts Payable', accountsPayable, { indent: true })}
         ${line('Pending Project Costs', pendingProjectCosts, { indent: true })}
         ${line('Total Liabilities', totalLiabilities, { bold: true, color: 'var(--red)' })}
+
+        <div class="val-section-hdr"><span class="val-section-hdr__label">Reconciliation</span></div>
+        ${line('Cash + Property + Equipment + Receivables - Liabilities', basis.valuationBasis, { indent: true })}
 
         <div class="val-net">
             <span class="val-net__label">Net Worth</span>

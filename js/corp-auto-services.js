@@ -24,6 +24,15 @@ function fmtMoney(n) {
     return '$' + n;
 }
 
+function computeFlatLoanMonthlyPayment(principal, annualRatePct, termMonths) {
+    const safePrincipal = Math.max(0, Number(principal) || 0);
+    const safeRate = Math.max(0, Number(annualRatePct) || 0);
+    const safeTerm = Math.max(1, Number(termMonths) || 1);
+    const monthlyInterest = (safePrincipal * (safeRate / 100)) / 12;
+    const monthlyPrincipal = safePrincipal / safeTerm;
+    return Math.round(monthlyInterest + monthlyPrincipal);
+}
+
 // ═══════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════
@@ -290,13 +299,8 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
                 // Premium = (amount × rate%) / 12 per month
                 monthly = Math.round((amount * rate.effective_rate / 100) / 12);
             } else {
-                // Amortized loan payment
-                const monthlyRate = rate.effective_rate / 100 / 12;
-                if (monthlyRate > 0) {
-                    monthly = Math.round(amount * (monthlyRate * Math.pow(1 + monthlyRate, term)) / (Math.pow(1 + monthlyRate, term) - 1));
-                } else {
-                    monthly = Math.round(amount / term);
-                }
+                // Flat-interest loan payment
+                monthly = computeFlatLoanMonthlyPayment(amount, rate.effective_rate, term);
             }
             if (monthlyEl) monthlyEl.textContent = fmtMoney(monthly);
             if (submitBtn) submitBtn.disabled = amount <= 0 || amount > maxAmount;
@@ -326,27 +330,18 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
             if (isInsurance) {
                 monthly = Math.round((amount * rate.effective_rate / 100) / 12);
             } else {
-                const mr = rate.effective_rate / 100 / 12;
-                monthly = mr > 0 ? Math.round(amount * (mr * Math.pow(1 + mr, term)) / (Math.pow(1 + mr, term) - 1)) : Math.round(amount / term);
+                monthly = computeFlatLoanMonthlyPayment(amount, rate.effective_rate, term);
             }
 
-            const { data, error } = await _supabase.from('subsidiary_auto_policies').insert({
-                rate_id: rate.id,
-                subsidiary_id: rate.subsidiary_id,
-                lender_faction_id: rate.faction_id,
-                borrower_faction_id: _state.faction?.id,
-                nation_id: rate.nation_id,
-                service_type: serviceType,
-                rate_at_issue: rate.effective_rate,
-                principal: amount,
-                deductible_pct: isInsurance ? rate.deductible_pct : 0,
-                monthly_payment: monthly,
-                term_months: term,
-                remaining_principal: isInsurance ? 0 : amount,
-                started_tick: tick,
-                expires_tick: tick + term,
-                status: 'active',
-            }).select('*').single();
+            const { data, error } = await _supabase.rpc('accept_subsidiary_auto_policy_txn', {
+                p_rate_id: rate.id,
+                p_borrower_faction_id: _state.faction?.id,
+                p_principal: amount,
+                p_term_months: term,
+                p_monthly_payment: monthly,
+                p_started_tick: tick,
+                p_expires_tick: tick + term,
+            });
 
             if (error) {
                 console.error('[AutoServices] Accept failed:', error.message);
@@ -354,12 +349,8 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
                 return;
             }
 
-            // Update rate's policy count
-            await _supabase.from('subsidiary_auto_rates')
-                .update({ policies_issued: (rate.policies_issued || 0) + 1 })
-                .eq('id', rate.id);
-
             _myPolicies.push(data);
+            rate.policies_issued = (rate.policies_issued || 0) + 1;
 
             // Log corporate event for news ticker
             try {

@@ -7537,10 +7537,49 @@ function computeEquipmentValue(vessels, currentTick) {
     return total;
 }
 
-function computeCorpValuation({ cash, loans, properties, propertyValue, vessels, equipmentValue, currentTick }) {
+function computeFinanceReceivableValue(positions) {
+    const breakdown = { loans: 0, bonds: 0, insurance: 0, total: 0 };
+    for (const p of (positions || [])) {
+        const reqType = (p?.finance_loan_requests?.request_type || p?.request_type || 'loan').toLowerCase();
+        const principal = Math.max(0, Number(p?.principal || 0));
+        const remainingPrincipal = Math.max(0, Number(p?.remaining_principal || 0));
+        if (reqType === 'insurance') {
+            // Insurance "coverage" is contingent risk, not a receivable asset.
+            breakdown.insurance += principal;
+            continue;
+        }
+        if (reqType === 'bond') {
+            // Some bond lifecycles track remaining principal amortization; some
+            // carry face principal until maturity.
+            breakdown.bonds += remainingPrincipal > 0 ? remainingPrincipal : principal;
+            continue;
+        }
+        // Default to loan logic: outstanding principal is the receivable.
+        breakdown.loans += remainingPrincipal;
+    }
+    breakdown.total = breakdown.loans + breakdown.bonds;
+    return breakdown;
+}
+
+function computeCorpValuationBreakdown({ cash, loans, properties, propertyValue, vessels, equipmentValue, financeReceivables, currentTick }) {
     const propVal = propertyValue != null ? Number(propertyValue) : computePropertyValue(properties);
     const equipVal = equipmentValue != null ? Number(equipmentValue) : computeEquipmentValue(vessels, currentTick);
-    return Math.round((Number(cash || 0) + propVal + equipVal - Number(loans || 0)) * 1.30);
+    const receivables = Math.max(0, Number(financeReceivables || 0));
+    const liabilities = Number(loans || 0);
+    const valuationBasis = Number(cash || 0) + propVal + equipVal + receivables - liabilities;
+    return {
+        cash: Number(cash || 0),
+        propertyValue: propVal,
+        equipmentValue: equipVal,
+        financeReceivables: receivables,
+        liabilities,
+        valuationBasis,
+        valuation: Math.round(valuationBasis * 1.30),
+    };
+}
+
+function computeCorpValuation({ cash, loans, properties, propertyValue, vessels, equipmentValue, financeReceivables, currentTick }) {
+    return computeCorpValuationBreakdown({ cash, loans, properties, propertyValue, vessels, equipmentValue, financeReceivables, currentTick }).valuation;
 }
 
 // ────────── bills ──────────
@@ -27626,18 +27665,16 @@ function clampServiceRate(value, ceiling) {
 }
 
 /**
- * Tier multipliers — applied to the corp's clamped bid when the shipping
- * claim is created (and to the displayed estimated_revenue on route cards
- * so what the corp sees matches what they'll earn). Agreement-backed lanes
- * pay more (formal bilateral trade = higher stakes for both nations);
- * organic lanes pay less (free-market spillover, smaller cargo commitments).
- * Organic was 0.7 — bumped to 0.85 because at 0.7 even ceiling-bid organic
- * routes couldn't clear 4-tick Container maintenance.
+ * Tier multipliers — applied post-bid when the shipping claim is created.
+ * Agreement-backed lanes get a bonus (formal bilateral trade = higher stakes
+ * for both nations). Organic lanes are neutral here (1.0); their discount is
+ * applied pre-bid during route generation via ORGANIC_REVENUE_MULTIPLIER.
  */
 var AGREEMENT_REVENUE_MULTIPLIER = 1.2;
-var ORGANIC_REVENUE_MULTIPLIER_POST = 0.85;
+var ORGANIC_REVENUE_MULTIPLIER_POST = 1.0; // post-bid: no extra organic penalty; pre-bid 0.35 handles discount
 
 function revenueTierMultiplier(route) {
+    // post-bid: agreement lanes get a bonus; organic lanes keep the clamped bid unchanged.
     return route && route.trade_agreement_id ? AGREEMENT_REVENUE_MULTIPLIER : ORGANIC_REVENUE_MULTIPLIER_POST;
 }
 
@@ -27853,7 +27890,7 @@ async function generateShippingRoutes(supabase, currentTick) {
  * Revenue multiplier for organic routes vs agreement-backed routes.
  * Organic routes pay less to incentivize real trade deals.
  */
-var ORGANIC_REVENUE_MULTIPLIER = 0.35; // 35% of normal rate
+var ORGANIC_REVENUE_MULTIPLIER = 0.35; // pre-bid: organic routes are generated at 35% of normal lane economics
 
 /**
  * Minimum proximity to generate organic routes between nations.
@@ -28025,9 +28062,8 @@ async function generateOrganicRoutes(supabase, currentTick) {
                 var baseVolume = popFactor * gdpFactor * closeness * 30000000; // ~$30M base scaled
                 var volume = Math.round(Math.max(5000000, baseVolume * (0.7 + seededRandom(seed + 999) * 0.6)));
                 var revenueRate = SHIPPING_REVENUE_RATES[sectorMeta.subsector] || SHIPPING_REVENUE_RATES.bulk_cargo;
-                // Organic lanes still pay 35% of the normal rate before clamping.
-                // Ceiling is based on the organic (post-0.35) volume share so the
-                // route card shows what the corp can actually bid to.
+                // pre-bid: route-card estimate is discounted to 35% before clamp/ceiling.
+                // post-bid organic multiplier is 1.0, so approved claims earn off this same base.
                 var estRevenue = clampServiceRate(
                     volume * revenueRate * ORGANIC_REVENUE_MULTIPLIER / MONTHS_PER_YEAR,
                     computeServiceRateCeiling(volume * ORGANIC_REVENUE_MULTIPLIER, sectorMeta.subsector)
@@ -33171,6 +33207,10 @@ async function fetchMyPolicies(supabase, factionId) {
 
 var MISSED_PAYMENT_THRESHOLD = 3; // consecutive misses before default
 
+function getLoanOriginalPrincipal(policy) {
+    return Math.max(0, Number(policy.original_principal ?? policy.principal ?? 0));
+}
+
 /**
  * Process all active auto-rate policies for a nation.
  * Called once per tick per nation from the corp tick processor.
@@ -33264,10 +33304,14 @@ async function processAutoRatePolicies(supabase, nationId, currentTick) {
 
             // For loans: reduce remaining principal and track corp_debt
             if (p.service_type === 'loan') {
-                var interestPortion = Math.round(Number(p.remaining_principal ?? 0) * (Number(p.rate_at_issue ?? 0) / 100 / 12));
+                var originalPrincipal = getLoanOriginalPrincipal(p);
+                var interestPortion = Math.round(originalPrincipal * (Number(p.rate_at_issue ?? 0) / 100 / 12));
                 var principalPortion = Math.max(0, payment - interestPortion);
                 var oldPrincipal = Number(p.remaining_principal ?? 0);
                 policyUpdate.remaining_principal = Math.max(0, oldPrincipal - principalPortion);
+                if (p.original_principal == null && originalPrincipal > 0) {
+                    policyUpdate.original_principal = originalPrincipal;
+                }
 
                 // Reduce borrower's corp_debt by principal paid down
                 if (principalPortion > 0) {

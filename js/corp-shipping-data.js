@@ -37,18 +37,62 @@ function buildLoadResult(dataKey, items, error) {
     };
 }
 
-export async function loadShippingRoutesSafe(supabase, factionId, corpSubsector) {
+const GOV_DISPLAY_MIN = 1_000_000;
+const GOV_DISPLAY_MAX = 18_000_000;
+const GOV_DISPLAY_DURATION_FLOOR = 2;
+
+function clampNumber(value, min, max) {
+    const n = Number(value) || 0;
+    if (n < min) return min;
+    if (n > max) return max;
+    return n;
+}
+
+function deriveGovDisplayContractValue(route) {
+    const estimatedPerTransit = Math.max(250000, Number(route?.estimated_revenue) || 0);
+    const contractDuration = Math.max(
+        GOV_DISPLAY_DURATION_FLOOR,
+        Number(route?.gov_contract_duration || route?.transit_ticks || 1) || 1,
+    );
+    const expectedContractValue = Math.round(estimatedPerTransit * contractDuration * 1.35);
+    const normalizedContract = Number(route?.gov_contract_value) || expectedContractValue;
+    return Math.round(clampNumber(normalizedContract, GOV_DISPLAY_MIN, GOV_DISPLAY_MAX));
+}
+
+function normalizeShippingRoute(route) {
+    if (!route || route.scope !== 'GOVERNMENT') return route;
+    const displayContractValue = deriveGovDisplayContractValue(route);
+    return {
+        ...route,
+        display_contract_value: displayContractValue,
+    };
+}
+
+export async function loadShippingRoutesSafe(supabase, factionId, corpSubsector, options = {}) {
     const subsectorMap = {
         'Bulk Cargo': 'bulk_cargo',
         'Container Freight': 'container_freight',
         'Specialized Transport': 'specialized_transport',
     };
     const dbSubsector = subsectorMap[corpSubsector] || '';
+    const routeOrigin = (options.routeOrigin || 'all').toLowerCase();
+    const routeOffset = Math.max(0, Number(options.offset || 0));
+    const routeLimit = Math.max(1, Math.min(Number(options.limit || 200), 500));
+
+    let routeQuery = supabase.from('shipping_routes').select('*')
+        .eq('status', 'active')
+        .eq('shipping_subsector', dbSubsector);
+    if (routeOrigin === 'organic') {
+        routeQuery = routeQuery.is('trade_agreement_id', null);
+    } else if (routeOrigin === 'agreement') {
+        routeQuery = routeQuery.not('trade_agreement_id', 'is', null);
+    }
+    routeQuery = routeQuery
+        .order('estimated_revenue', { ascending: false })
+        .range(routeOffset, routeOffset + routeLimit - 1);
 
     const [routeResult, appResult] = await Promise.all([
-        supabase.from('shipping_routes').select('*')
-            .eq('status', 'active').eq('shipping_subsector', dbSubsector)
-            .order('estimated_revenue', { ascending: false }),
+        routeQuery,
         supabase.from('shipping_applications').select('*')
             .eq('faction_id', factionId).in('status', ['pending', 'approved']),
     ]);
@@ -60,7 +104,7 @@ export async function loadShippingRoutesSafe(supabase, factionId, corpSubsector)
     return {
         ok: !mergedError,
         state: mergedError ? 'error' : ((routeResult.data || []).length === 0 ? 'empty' : 'ready'),
-        routes: mergedError ? [] : (routeResult.data || []),
+        routes: mergedError ? [] : (routeResult.data || []).map(normalizeShippingRoute),
         applications: mergedError ? [] : (appResult.data || []),
         error: mergedError,
     };
