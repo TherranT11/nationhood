@@ -12468,60 +12468,78 @@ function generateAdminSummary(admin) {
 }
 
 /**
- * Render the dedicated PAST ADMINISTRATIONS subtab. Reads the
- * administrations table (single source of truth) and renders the current
- * administration first, then closed administrations in reverse
- * chronological order, all as expanded cards via renderAdminCard.
+ * Render the dedicated PAST ADMINISTRATIONS subtab for any nation.
+ * Reads the administrations table (single source of truth) for the
+ * selected nation, renders the current administration first then closed
+ * administrations in reverse chronological order via renderAdminCard.
+ *
+ * A nation selector at the top lets the player browse other nations'
+ * histories. Defaults to the player's own nation. If the selected
+ * nation's rows are RLS-restricted, the empty-state renders cleanly.
  */
-async function renderPastAdministrationsTab(container) {
+async function renderPastAdministrationsTab(container, nationIdOverride) {
     if (!container) return;
+
+    const selectedNationId = nationIdOverride || currentNation?.id;
+    if (!selectedNationId) {
+        container.innerHTML = `<div style="padding:16px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;">No nation selected.</div>`;
+        return;
+    }
 
     container.innerHTML = `<div style="padding:16px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;">Loading…</div>`;
 
     try {
-        // Parallel fetch: admins + the nation's full gov_approval_log. One
-        // round-trip for all approval history — computeApprovalArc slices
-        // per-admin windows client-side.
-        const [adminsRes, logRes] = await Promise.all([
+        // Parallel fetch: admins + the nation's full gov_approval_log + ALL
+        // nations (for the selector dropdown). nations is the single source
+        // of truth for name + flag — no hardcoded maps.
+        const [adminsRes, logRes, nationsRes] = await Promise.all([
             _supabase.from('administrations')
                 .select('*')
-                .eq('nation_id', currentNation.id)
+                .eq('nation_id', selectedNationId)
                 .order('started_at_tick', { ascending: false }),
             _supabase.from('gov_approval_log')
                 .select('amount, source, tick')
-                .eq('nation_id', currentNation.id)
+                .eq('nation_id', selectedNationId)
                 .order('tick', { ascending: true }),
+            _supabase.from('nations')
+                .select('id, name, flag_url')
+                .order('name', { ascending: true }),
         ]);
 
         if (adminsRes.error) throw adminsRes.error;
-        // gov_approval_log is best-effort — if it errors or doesn't exist, we
-        // simply skip the arc. Core summary still renders.
+        // Both auxiliary queries are best-effort. If nations or gov_approval_log
+        // errors out we still render the core admin list.
         const logs = (logRes && !logRes.error) ? (logRes.data || []) : [];
+        const nations = (nationsRes && !nationsRes.error) ? (nationsRes.data || []) : [];
+        const selectedNation = nations.find(n => n.id === selectedNationId)
+            || { id: selectedNationId, name: currentNation?.name || 'Unknown', flag_url: currentNation?.flag_url };
 
         const list = adminsRes.data || [];
         const pastAdmins = list.filter(a => a.ended_at_tick != null);
         const currentAdmin = list.find(a => a.ended_at_tick == null);
         const totalCount = pastAdmins.length + (currentAdmin ? 1 : 0);
 
-        // Attach the approval arc to each admin before rendering. For the
-        // open administration, use the current shard tick as the window end.
         const openEndTick = _govData?.shard?.current_tick ?? Number.POSITIVE_INFINITY;
         for (const a of list) {
             const end = a.ended_at_tick ?? openEndTick;
             a._approvalArc = computeApprovalArc(logs, a.started_at_tick, end, a.approval_at_start);
         }
 
+        const selector = buildPastAdminNationSelector(nations, selectedNation);
+
         if (totalCount === 0) {
             container.innerHTML = `
-                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;text-align:center;color:var(--text-dim);">
+                ${selector}
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:260px;text-align:center;color:var(--text-dim);">
                     <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">PAST ADMINISTRATIONS</div>
-                    <div style="font-size:0.85rem;color:var(--text-dim);">No administrations recorded yet.</div>
+                    <div style="font-size:0.85rem;color:var(--text-dim);">No administrations recorded for ${escapeHtml(selectedNation.name)} yet.</div>
                 </div>
             `;
             return;
         }
 
         container.innerHTML = `
+            ${selector}
             <div class="past-admins-list" style="padding:8px 12px;">
                 ${currentAdmin ? renderAdminCard(currentAdmin, true) : ''}
                 ${pastAdmins.map(a => renderAdminCard(a, false)).join('')}
@@ -12531,6 +12549,35 @@ async function renderPastAdministrationsTab(container) {
         console.error('[renderPastAdministrationsTab] load failed:', err);
         container.innerHTML = `<div style="padding:16px;color:var(--red);font-family:var(--font-mono);font-size:12px;">Failed to load administrations: ${escapeHtml(err.message || String(err))}</div>`;
     }
+}
+
+/**
+ * Build the nation selector dropdown shown at the top of the subtab.
+ * Uses a native <select> for the options (simplest) with the selected
+ * nation's flag rendered alongside as a visual cue. Change handler
+ * re-invokes renderPastAdministrationsTab with the new nationId.
+ */
+function buildPastAdminNationSelector(nations, selectedNation) {
+    if (!Array.isArray(nations) || nations.length === 0) return '';
+    const flagSrc = selectedNation.flag_url || `assets/flags/${selectedNation.name}.png`;
+    const options = nations.map(n =>
+        `<option value="${escapeHtml(n.id)}"${n.id === selectedNation.id ? ' selected' : ''}>${escapeHtml(n.name)}</option>`
+    ).join('');
+    return `<div class="past-admin-selector">
+        <img class="past-admin-flag" src="${escapeHtml(flagSrc)}" alt="${escapeHtml(selectedNation.name)} flag" onerror="this.style.display='none'">
+        <select class="past-admin-select" onchange="switchPastAdminNation(this.value)">
+            ${options}
+        </select>
+    </div>`;
+}
+
+/**
+ * Re-render the PAST ADMINISTRATIONS subtab for a different nation.
+ * Exposed on window for the inline onchange handler.
+ */
+function switchPastAdminNation(nationId) {
+    const content = document.getElementById('gov-content');
+    if (content) renderPastAdministrationsTab(content, nationId);
 }
 
 function toggleAdminCard(id) {
@@ -12888,6 +12935,7 @@ window.fileNoConfidence = fileNoConfidence;
 window.callEarlyElections = callEarlyElections;
 window.toggleStatTable = toggleStatTable;
 window.toggleAdminCard = toggleAdminCard;
+window.switchPastAdminNation = switchPastAdminNation;
 // Formation exports
 window.createProposal = createProposal;
 window.openFormation = openFormation;
