@@ -2286,10 +2286,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
         }
 
-        // Presidential pre-election candidate generation, term end safety net, + selection timeout
+        // Presidential pre-election candidate generation + term end safety net.
+        // (processParliamentaryPMTimeout removed — PM is never auto-installed.)
         await triggerPresidentialCandidateSelection(supabase, nation, newTick);
         await processPresidentialTermEnd(supabase, nation, newTick);
-        await processParliamentaryPMTimeout(supabase, nation, newTick);
 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
         await processIncumbentCampaignBonuses(supabase, nation, newTick);

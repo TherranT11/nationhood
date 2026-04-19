@@ -4270,24 +4270,6 @@ async function renderGovernmentPage() {
         // Check for pending PM or President candidates (player needs to select)
         const primeMinister = ministries?.find(m => m.ministry_key === 'prime_minister');
 
-        // Auto-recover orphaned PM state: coalition exists, no HOG, current faction is PM party
-        if (!isPresidential && coalition && !activeHOG) {
-            const coalitionAllocations = getCoalitionAllocations(coalition);
-            const pmPartyId = coalitionAllocations.prime_minister || coalition.lead_party_id;
-            if (pmPartyId && currentFaction?.id === pmPartyId) {
-                try {
-                    const { data: shard } = await _supabase.from('shard')
-                        .select('current_tick').eq('name', 'Alpha Shard').single();
-                    await autoAppointPartyLeaderAsPM(_supabase, currentNation.id, pmPartyId, shard?.current_tick || 0);
-                    console.log('Auto-recovered orphaned PM state: appointed party leader as PM');
-                    location.reload();
-                    return;
-                } catch (recoverErr) {
-                    console.error('PM auto-recovery failed:', recoverErr);
-                }
-            }
-        }
-
         // Preload executive order data for overreach bar & emergency banner
         if (isPresidential && currentNation) {
             try { eoOrderData = await fetchActiveOrders(_supabase, currentNation.id); } catch (e) { console.error('[EO] preload failed:', e); }

@@ -4,11 +4,10 @@
  */
 
 import { GAME_CONFIG, getPresidentialTermLimit } from './config.js';
-import { hasElectedPresident, hasParliamentaryPM, isSemiPresidential, isPresidentialDomainMinistry, MINISTRY_OFFICE_NAMES, MINISTER_TITLES } from './government-types.js';
+import { hasElectedPresident, isSemiPresidential, isPresidentialDomainMinistry, MINISTRY_OFFICE_NAMES, MINISTER_TITLES } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
-import { getWeightedIdeologies, weightedRandomPick, autoAppointPartyLeaderAsPM } from './political-actions.js';
-import { fetchActiveCoalition } from './government-structure.js';
+import { getWeightedIdeologies, weightedRandomPick } from './political-actions.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fireBillEvent } from './event-helpers.js';
 
@@ -642,34 +641,14 @@ export async function autoSelectPresidentialCandidates(supabase, nation, current
 }
 
 /**
- * Safety net for parliamentary systems: if no active HOG exists after coalition
- * formation, auto-appoint the PM party's leader.
+ * (removed) processParliamentaryPMTimeout
+ *
+ * Previously a tick-level safety net that auto-installed the PM party leader
+ * if a coalition was formed but head_of_government was missing. Removed per
+ * design philosophy: ministers (including the PM seat) are never auto-
+ * installed without explicit player action. If the coalition says "formed"
+ * but no PM sits, the player sees the mismatch and takes action.
  */
-export async function processParliamentaryPMTimeout(supabase, nation, currentTick) {
-    if (!hasParliamentaryPM(nation)) return;
-
-    const coalition = await fetchActiveCoalition(supabase, nation.id);
-    if (!coalition || coalition.status !== 'formed') return;
-
-    const { data: existingHOG } = await supabase
-        .from('head_of_government')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('active', true)
-        .limit(1)
-        .maybeSingle();
-    if (existingHOG) return;
-
-    const pmPartyId = coalition.ministry_assignments?.prime_minister || coalition.lead_party_id;
-    if (!pmPartyId) return;
-
-    try {
-        await autoAppointPartyLeaderAsPM(supabase, nation.id, pmPartyId, currentTick);
-        console.log(`Auto-appointed party leader as PM for ${nation.name} (tick timeout recovery)`);
-    } catch (e) {
-        console.error(`Error auto-appointing parliamentary PM for ${nation.name}:`, e);
-    }
-}
 
 // ==================== NOMINEE SELF-REJECTION ====================
 
