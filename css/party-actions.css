@@ -445,6 +445,60 @@
 /* ════════════════════════ COALITION FORMATION (Election tab) ════════════════════════ */
 .cf-page { padding: 16px 20px 40px; max-width: 900px; margin: 0 auto; }
 
+/* Election header — shown for all non-monarchy systems at the top of the Election tab */
+.cf-election-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 14px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    border-left: 3px solid var(--orange);
+    margin-bottom: 16px;
+}
+.cf-eh-left { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
+.cf-eh-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--orange);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+.cf-eh-title-row { display: flex; align-items: center; gap: 12px; }
+.cf-eh-flag { width: 28px; height: auto; flex-shrink: 0; display: block; }
+.cf-eh-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin: 0;
+    letter-spacing: -0.2px;
+    line-height: 1.1;
+}
+.cf-eh-stats { display: flex; gap: 24px; flex-shrink: 0; }
+.cf-eh-stat { display: flex; flex-direction: column; gap: 2px; min-width: 80px; text-align: left; }
+.cf-eh-stat-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+.cf-eh-stat-value {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--text-bright);
+    font-weight: 700;
+}
+.cf-eh-stat-value--accent { color: var(--orange); }
+
+@media (max-width: 720px) {
+    .cf-election-header { flex-direction: column; align-items: flex-start; padding: 12px 14px; }
+    .cf-eh-stats { width: 100%; flex-wrap: wrap; gap: 16px; }
+    .cf-eh-title { font-size: 18px; }
+}
+
 /* Banner */
 .cf-banner { border: 1px solid var(--border-main); margin-bottom: 16px; }
 .cf-banner--safe { border-left: 3px solid var(--accent); }
