@@ -841,7 +841,7 @@ function renderDealFlow() {
             // isn't wired yet (Phase 3). Lock REVIEW DEAL for EQUITY with a
             // distinct tooltip so testers know it's intentional.
             if (canRev && selDeal.type === 'EQUITY') {
-                return `<div class="df-review-btn" style="opacity:0.4;cursor:not-allowed;" title="Buy-In lands in Phase 3">&#128274; VIEW ONLY</div>`;
+                return `<div class="df-review-btn" style="opacity:0.4;cursor:not-allowed;" title="Equity Buy-In coming soon">&#128274; VIEW ONLY</div>`;
             }
             if (canRev) {
                 return `<div class="df-review-btn active" onclick="rdOpen(${dfSelected})">REVIEW DEAL</div>`;
@@ -1817,6 +1817,10 @@ const COLLATERAL_TIERS = [
 function rdOpen(dealIdx) {
     const deal = dfDeals[dealIdx];
     if (!deal) return;
+    // Equity Buy-In modal lands in a later build; refuse to open for now.
+    // The Deal Flow card already surfaces a disabled REVIEW DEAL button
+    // for equity, so this is belt-and-suspenders against edge triggers.
+    if (deal.type === 'EQUITY') return;
     rdDeal = deal;
     rdType = deal.type;
 
