@@ -445,7 +445,10 @@
 /* ════════════════════════ COALITION FORMATION (Election tab) ════════════════════════ */
 .cf-page { padding: 16px 20px 40px; max-width: 900px; margin: 0 auto; }
 
-/* Election header — shown for all non-monarchy systems at the top of the Election tab */
+/* Election header — shown for all non-monarchy systems at the top of the
+ * Election tab. Rendered OUTSIDE .cf-page so it stretches the full width of
+ * the subtab (the 900px cap on .cf-page would otherwise constrain it).
+ * Horizontal margin gives it breathing room from the subtab edges. */
 .cf-election-header {
     display: flex;
     align-items: center;
@@ -455,7 +458,7 @@
     background: var(--bg-card);
     border: 1px solid var(--border-main);
     border-left: 3px solid var(--orange);
-    margin-bottom: 16px;
+    margin: 0 20px 16px;
 }
 .cf-eh-left { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
 .cf-eh-label {

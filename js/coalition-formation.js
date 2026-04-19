@@ -167,30 +167,31 @@ function buildElectionHeader() {
     const govType = (nation.government_type || '').toLowerCase();
     if (govType.includes('absolute') && govType.includes('monarchy')) return '';
 
-    // Parse scheduled elections from the one source of truth. Presidential =
-    // "General" (picks the head of state). Parliamentary = "Midterm" (picks the
-    // chamber). Semi-presidential has both tracks; pure types have only one.
-    const byType = { presidential: null, parliamentary: null };
-    for (const row of _scheduledElections) {
-        const t = row.election_type || 'parliamentary';
-        if (byType[t] == null) byType[t] = row.election_tick;
-    }
+    // Label always reads "NEXT ELECTION"; the subtitle names the election type
+    // relative to the nation's constitutional setup:
+    //   - Pure parliamentary systems → "Parliamentary"
+    //   - Presidential / semi-presidential, next is a presidential election → "General"
+    //   - Presidential / semi-presidential, next is a parliamentary election → "Midterm"
+    const isPresidentialSystem = govType.includes('presidential')
+        || nation.hos_election_method === 'direct_vote';
+    const next = _scheduledElections[0] || null;
+    const nextTick = next?.election_tick ?? null;
+    const nextType = next?.election_type || 'parliamentary';
+    const typeLabel = !isPresidentialSystem
+        ? 'Parliamentary'
+        : (nextType === 'presidential' ? 'General' : 'Midterm');
 
     const currentTick = Number(_currentTick) || 0;
-    function statBlock(label, tick) {
-        if (tick == null) return '';
-        const months = Math.max(0, tick - currentTick);
-        const monthLabel = `${months} Month${months === 1 ? '' : 's'}`;
-        return `<div class="cf-eh-stat">
-            <div class="cf-eh-stat-label">${esc(label)}</div>
-            <div class="cf-eh-stat-value cf-eh-stat-value--accent">${esc(tickToDate(tick))}</div>
-            <div class="cf-eh-stat-sub">${esc(monthLabel)}</div>
-        </div>`;
-    }
+    const months = nextTick != null ? Math.max(0, nextTick - currentTick) : null;
+    const monthLabel = months == null ? null : `${months} Month${months === 1 ? '' : 's'}`;
+    const dateLabel = nextTick != null ? tickToDate(nextTick) : 'TBD';
 
     const totalSeats = Number(nation.total_seats) || 0;
     const nationName = nation.name || 'Unknown';
     const flagSrc = nation.flag_url || `assets/flags/${nationName}.png`;
+
+    const subLines = [monthLabel, `Type: ${typeLabel}`].filter(Boolean)
+        .map(line => `<div class="cf-eh-stat-sub">${esc(line)}</div>`).join('');
 
     return `<div class="cf-election-header">
         <div class="cf-eh-left">
@@ -201,8 +202,11 @@ function buildElectionHeader() {
             </div>
         </div>
         <div class="cf-eh-stats">
-            ${statBlock('NEXT GENERAL', byType.presidential)}
-            ${statBlock('NEXT MIDTERM', byType.parliamentary)}
+            <div class="cf-eh-stat">
+                <div class="cf-eh-stat-label">NEXT ELECTION</div>
+                <div class="cf-eh-stat-value cf-eh-stat-value--accent">${esc(dateLabel)}</div>
+                ${subLines}
+            </div>
             <div class="cf-eh-stat">
                 <div class="cf-eh-stat-label">TOTAL SEATS</div>
                 <div class="cf-eh-stat-value">${totalSeats}</div>
@@ -298,8 +302,8 @@ export async function renderFormationTab(root) {
         || _state.nation?.hos_election_method === 'direct_vote';
     if (isPresidentialRender) {
         const isSemiPresRender = (_state.nation?.government_type || '').toLowerCase().includes('semi');
-        root.innerHTML = `<div class="cf-page">
-            ${header}
+        root.innerHTML = `${header}
+        <div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">&#127979;</div>
                 <div class="cf-no-title">${isSemiPresRender ? 'Semi-Presidential System' : 'Presidential System'}</div>
@@ -313,8 +317,8 @@ export async function renderFormationTab(root) {
     }
 
     if (!_formationNeeded) {
-        root.innerHTML = `<div class="cf-page">
-            ${header}
+        root.innerHTML = `${header}
+        <div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">✓</div>
                 <div class="cf-no-title">Government Formed</div>
@@ -330,8 +334,8 @@ export async function renderFormationTab(root) {
     if (!_electionId) {
         const nextTick = _scheduledElections[0]?.election_tick;
         const ticksUntil = nextTick != null ? Math.max(0, nextTick - _currentTick) : '?';
-        root.innerHTML = `<div class="cf-page">
-            ${header}
+        root.innerHTML = `${header}
+        <div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon" style="font-size:2rem;">&#9878;</div>
                 <div class="cf-no-title">No Government</div>
@@ -444,8 +448,8 @@ export async function renderFormationTab(root) {
         }).join('')}</div>
     ` : '';
 
-    root.innerHTML = `<div class="cf-page">
-        ${header}
+    root.innerHTML = `${header}
+    <div class="cf-page">
         <!-- Formation Banner -->
         <div class="cf-banner cf-banner--${urgency}">
             <div class="cf-banner-header">
