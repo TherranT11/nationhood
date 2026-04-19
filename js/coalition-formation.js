@@ -160,21 +160,32 @@ async function buildElectionHeader() {
     // Fetch all scheduled elections; parse by type. Presidential = "General"
     // (picks the head of state). Parliamentary = "Midterm" (picks the chamber).
     // Semi-presidential has both tracks; pure types have only one.
-    const { data: scheduled } = await _supabase.from('elections')
-        .select('election_tick, election_type')
-        .eq('nation_id', nation.id)
-        .eq('status', 'scheduled')
-        .order('election_tick', { ascending: true });
-
+    // Wrapped in try/catch — a network failure here must not break the entire
+    // Election tab render. Returning '' drops the header only.
     const byType = { presidential: null, parliamentary: null };
-    for (const row of (scheduled || [])) {
-        const t = row.election_type || 'parliamentary';
-        if (byType[t] == null) byType[t] = row.election_tick;
+    try {
+        const { data: scheduled, error } = await _supabase.from('elections')
+            .select('election_tick, election_type')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .order('election_tick', { ascending: true });
+        if (error) {
+            console.warn('[ElectionHeader] scheduled-elections fetch failed:', error.message);
+            return '';
+        }
+        for (const row of (scheduled || [])) {
+            const t = row.election_type || 'parliamentary';
+            if (byType[t] == null) byType[t] = row.election_tick;
+        }
+    } catch (e) {
+        console.warn('[ElectionHeader] fetch threw:', e?.message || e);
+        return '';
     }
 
+    const currentTick = Number(_currentTick) || 0;
     function statBlock(label, tick) {
         if (tick == null) return '';
-        const months = Math.max(0, tick - _currentTick);
+        const months = Math.max(0, tick - currentTick);
         const monthLabel = `${months} Month${months === 1 ? '' : 's'}`;
         return `<div class="cf-eh-stat">
             <div class="cf-eh-stat-label">${esc(label)}</div>
