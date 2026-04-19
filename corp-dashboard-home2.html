@@ -1343,6 +1343,86 @@ body.h2-page .content {
   .h2-kpis { grid-template-columns: 1fr 1fr; }
   .h2-kpi .val { font-size: 24px; }
 }
+
+/* ===========================================================================
+   HOME2 — PHASE 5: THE MORNING WIRE (event feed in dispatch format)
+   =========================================================================== */
+.h2-wire {
+  width: 100%;
+  background: var(--h2-panel); border: 1px solid var(--h2-line);
+  border-radius: 3px; overflow: hidden;
+}
+.h2-wire-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--h2-panel-2);
+  border-bottom: 1px solid var(--h2-line);
+  font-family: var(--h2-mono); font-size: 9.5px; letter-spacing: 0.28em;
+  color: var(--h2-accent); text-transform: uppercase; font-weight: 700;
+}
+.h2-wire-head .t {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+}
+.h2-wire-head .t::before {
+  content: ""; width: 7px; height: 7px;
+  background: var(--h2-accent); border-radius: 1px; flex-shrink: 0;
+}
+.h2-wire-head .live {
+  font-size: 9px; color: var(--h2-body-ink-mute); letter-spacing: 0.18em;
+  font-weight: 600; white-space: nowrap;
+}
+.h2-dispatches { padding: 4px 0; max-height: 480px; overflow-y: auto; }
+.h2-disp {
+  display: grid; grid-template-columns: 60px 64px 1fr;
+  gap: 12px; padding: 9px 16px;
+  border-bottom: 1px solid var(--h2-line-2);
+  align-items: baseline;
+}
+.h2-disp:last-child { border-bottom: none; }
+.h2-when {
+  font-family: var(--h2-mono); font-size: 10px; letter-spacing: 0.16em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase; font-weight: 700;
+}
+.h2-src {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 18px; padding: 0 8px;
+  font-family: var(--h2-mono); font-size: 9px; letter-spacing: 0.16em;
+  text-transform: uppercase; font-weight: 700;
+  border: 1px solid currentColor; border-radius: 2px;
+  width: fit-content;
+}
+.h2-src.alert { color: var(--h2-red); }
+.h2-src.fin   { color: var(--h2-gold); }
+.h2-src.ops   { color: var(--h2-accent); }
+.h2-src.pr    { color: var(--h2-purple); }
+.h2-src.crew  { color: var(--h2-green); }
+.h2-ln {
+  font-family: var(--h2-sans); font-size: 12px; line-height: 1.45;
+  color: var(--h2-body-ink); letter-spacing: 0.01em;
+  word-wrap: break-word; overflow-wrap: break-word; min-width: 0;
+}
+.h2-ln b { color: var(--h2-body-ink); font-weight: 700; }
+.h2-wire-empty {
+  padding: 30px 16px; text-align: center;
+  font-family: var(--h2-mono); font-size: 10px; letter-spacing: 0.18em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase;
+}
+
+/* Hide the legacy events card on Home2 — Wire takes its place */
+body.h2-page #events-card { display: none !important; }
+
+:root[data-mode="paper"] .h2-wire {
+  background: var(--h2-paper); border-color: var(--h2-paper-line);
+}
+:root[data-mode="paper"] .h2-wire-head {
+  background: var(--h2-paper-2); border-bottom-color: var(--h2-paper-line);
+}
+:root[data-mode="paper"] .h2-disp { border-bottom-color: var(--h2-paper-line); }
+:root[data-mode="paper"] .h2-ln,
+:root[data-mode="paper"] .h2-ln b { color: var(--h2-ink); }
+
+@media (max-width: 768px) {
+  .h2-disp { grid-template-columns: 50px 56px 1fr; gap: 8px; padding: 8px 12px; }
+}
 </style>
 </head>
 <body class="h2-page">
@@ -1545,6 +1625,20 @@ body.h2-page .content {
       </div>
       <div class="prop-card__content" id="prop-body"></div>
     </div>
+
+    <!-- Home2 Phase 5: The Morning Wire (renders the same merged event data
+         as the legacy events card, in dispatch format. The legacy card is
+         hidden on Home2 via CSS but kept in the DOM so existing tab-switch
+         JS keeps populating its merged data — which we mirror into the wire). -->
+    <section class="h2-wire" id="h2-wire">
+      <div class="h2-wire-head">
+        <span class="t">The Morning Wire — touches <span id="h2-wire-corp">your corp</span></span>
+        <span class="live" id="h2-wire-live">— events</span>
+      </div>
+      <div class="h2-dispatches" id="h2-wire-dispatches">
+        <div class="h2-wire-empty">Loading…</div>
+      </div>
+    </section>
 
     <!-- Events card -->
     <div class="subs-card" id="events-card" style="display:flex;flex-direction:column;">
@@ -1844,6 +1938,13 @@ async function init() {
             if (nationAbbr) segs.push(nationAbbr + ' EXCH');
             if (slogan) segs.push(slogan);
             tailEl.textContent = segs.length ? segs.join(' · ') : '—';
+        }
+
+        // Wire header — show the corp's short name in "touches {corp}".
+        const wireCorpEl = document.getElementById('h2-wire-corp');
+        if (wireCorpEl) {
+            const shortName = (faction.faction_name || 'your corp').split(' ').slice(0, 2).join(' ');
+            wireCorpEl.textContent = shortName;
         }
 
         // Logo button — exposes the legacy id-card (with logo upload / slogan editor)
@@ -3894,6 +3995,48 @@ const CORP_EVENT_STYLES = {
 };
 const CORP_EVENT_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,136,0.08)', label: '' };
 
+// ─── Home2 Morning Wire — source mapping ───
+// Maps the existing event_log.category values onto the design's 5 wire chips.
+// crew is the catch-all so unmapped categories still render.
+const H2_WIRE_SOURCE = {
+    crisis: 'alert', protest: 'alert',
+    trade: 'fin', economy: 'fin', corporate: 'fin',
+    executive_order: 'ops', military: 'ops',
+    bill: 'pr', government: 'pr', political: 'pr',
+    diplomatic: 'pr', new_party: 'pr',
+};
+const H2_WIRE_LABEL = { alert: 'Alert', fin: 'Fin', ops: 'Ops', pr: 'PR', crew: 'Crew' };
+function h2WireSourceFor(category) {
+    return H2_WIRE_SOURCE[(category || '').toLowerCase()] || 'crew';
+}
+function renderH2WireRows(merged) {
+    const dispEl = document.getElementById('h2-wire-dispatches');
+    const liveEl = document.getElementById('h2-wire-live');
+    if (!dispEl) return; // not on Home2
+    const list = Array.isArray(merged) ? merged : [];
+    if (list.length === 0) {
+        dispEl.innerHTML = '<div class="h2-wire-empty">No dispatches</div>';
+        if (liveEl) liveEl.textContent = '0 events';
+        return;
+    }
+    if (liveEl) liveEl.textContent = `${list.length} event${list.length !== 1 ? 's' : ''}`;
+    const top = list.slice(0, 12);
+    dispEl.innerHTML = top.map(ev => {
+        const src = h2WireSourceFor(ev.category);
+        const when = (ev.fired_at_tick != null) ? `T${ev.fired_at_tick}` : '—';
+        const desc = ev.description_chosen || ev.description_used || '';
+        const eventName = formatEventName(ev.event_name);
+        const body = (eventName && desc)
+            ? `<b>${escapeHtml(eventName)}</b> — ${escapeHtml(desc)}`
+            : escapeHtml(eventName || desc || 'Event');
+        return `<div class="h2-disp">
+            <span class="h2-when">${escapeHtml(when)}</span>
+            <span class="h2-src ${src}">${H2_WIRE_LABEL[src]}</span>
+            <span class="h2-ln">${body}</span>
+        </div>`;
+    }).join('');
+}
+
 const PROTEST_TIER_LABELS = { 1:'Embarrassing Backfire', 2:'Protests Don\'t Materialise', 3:'Modest Turnout', 4:'Respectable Protest', 5:'Strong Demonstration', 6:'Nationwide Protests', 7:'The Big One' };
 
 let _corpEventsCat = 'nation';
@@ -4066,9 +4209,11 @@ async function loadCorpEvents() {
 
         if (merged.length === 0) {
             container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events in this nation yet.</div>';
+            renderH2WireRows([]);
             return;
         }
         container.innerHTML = renderCorpEventRows(merged);
+        renderH2WireRows(merged);
     } catch (e) {
         console.error('Corp local events error:', e);
         container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
@@ -4111,9 +4256,11 @@ async function loadCorpEventsWorld() {
 
         if (merged.length === 0) {
             container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events from other nations yet.</div>';
+            renderH2WireRows([]);
             return;
         }
         container.innerHTML = renderWorldEventRows(merged);
+        renderH2WireRows(merged);
         return;
     } catch (e) {
         console.error('Corp world events error:', e);
@@ -4129,6 +4276,7 @@ async function loadCorpEventsWorld() {
         if (error) throw error;
         if (!corps || corps.length === 0) {
             container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events from other nations yet.</div>';
+            renderH2WireRows([]);
             return;
         }
         container.innerHTML = _renderCorpFoundedList(corps, true);
@@ -4202,9 +4350,11 @@ async function loadPoliticalEvents() {
         );
         if (merged.length === 0) {
             container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No political events recorded yet.</div>';
+            renderH2WireRows([]);
             return;
         }
         container.innerHTML = renderCorpEventRows(merged);
+        renderH2WireRows(merged);
     } catch (e) {
         console.error('Political events error:', e);
         container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
@@ -4250,9 +4400,11 @@ async function loadNationEvents() {
         );
         if (merged.length === 0) {
             container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No nation events recorded yet.</div>';
+            renderH2WireRows([]);
             return;
         }
         container.innerHTML = renderCorpEventRows(merged);
+        renderH2WireRows(merged);
     } catch (e) {
         console.error('Nation events error:', e);
         container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
@@ -4299,9 +4451,11 @@ async function loadCorpWorldEvents() {
         );
         if (merged.length === 0) {
             container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No world events recorded yet.</div>';
+            renderH2WireRows([]);
             return;
         }
         container.innerHTML = renderWorldEventRows(merged);
+        renderH2WireRows(merged);
     } catch (e) {
         console.error('World events error:', e);
         container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
