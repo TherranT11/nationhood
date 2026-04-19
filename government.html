@@ -12354,6 +12354,51 @@ function ticksToDuration(months) {
 }
 
 /**
+ * Reconstruct the approval arc for a single administration from the
+ * gov_approval_log audit trail (one source of truth). Starts from the
+ * admin's recorded approval_at_start baseline and applies every logged
+ * delta in tick order, clamped to [0, 100]. Returns peak + trough with
+ * the source string that caused each extreme.
+ *
+ * Logs outside the tenure window (startTick..endTick) are ignored.
+ * Returns null when there are no logged events during the tenure — the
+ * approval never changed, so there's no arc to report.
+ */
+function computeApprovalArc(logs, startTick, endTick, approvalAtStart) {
+    if (!Array.isArray(logs) || logs.length === 0) return null;
+    const window = logs.filter(l => l.tick >= startTick && l.tick <= endTick);
+    if (window.length === 0) return null;
+
+    let running = Number(approvalAtStart ?? 50);
+    let peak = { value: running, tick: startTick, source: null };
+    let trough = { value: running, tick: startTick, source: null };
+    for (const entry of window) {
+        running = Math.max(0, Math.min(100, running + Number(entry.amount || 0)));
+        if (running > peak.value) peak = { value: Math.round(running), tick: entry.tick, source: entry.source };
+        if (running < trough.value) trough = { value: Math.round(running), tick: entry.tick, source: entry.source };
+    }
+    // Round the baseline values too for consistent display
+    peak.value = Math.round(peak.value);
+    trough.value = Math.round(trough.value);
+    return { peak, trough };
+}
+
+/**
+ * Prettify a gov_approval_log.source key for prose display.
+ *   "bill_passage"            → "Bill Passage"
+ *   "tax:income"              → "Tax — Income"
+ *   "crisis:port_strike"      → "Crisis — Port Strike"
+ */
+function formatApprovalSource(source) {
+    if (!source) return '';
+    const parts = source.split(':');
+    const titleCase = (s) => s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const main = titleCase(parts[0]);
+    if (parts.length === 1) return main;
+    return `${main} — ${titleCase(parts.slice(1).join(':'))}`;
+}
+
+/**
  * Auto-generate a prose summary of an administration based on its data.
  */
 function generateAdminSummary(admin) {
@@ -12398,10 +12443,19 @@ function generateAdminSummary(admin) {
         summary += `The biggest challenge was ${formatAdminStatName(topCh.key)}, which changed by ${formatChange(topCh.raw, topCh.key)}. `;
     }
 
-    // Approval
+    // Approval: start→end summary + peak/trough arc from gov_approval_log.
     if (admin.approval_at_start != null && admin.approval_at_end != null) {
         const diff = admin.approval_at_end - admin.approval_at_start;
         summary += `Government approval ${diff >= 0 ? 'rose' : 'fell'} from ${admin.approval_at_start}% to ${admin.approval_at_end}%. `;
+    }
+    // The approval arc is attached by renderPastAdministrationsTab from the
+    // gov_approval_log source of truth. Only surface when peak ≠ trough —
+    // a flat line isn't narrative.
+    if (admin._approvalArc && admin._approvalArc.peak.value !== admin._approvalArc.trough.value) {
+        const { peak, trough } = admin._approvalArc;
+        const peakCtx = peak.source ? ` after ${escapeHtml(formatApprovalSource(peak.source))}` : '';
+        const troughCtx = trough.source ? ` during ${escapeHtml(formatApprovalSource(trough.source))}` : '';
+        summary += `Approval peaked at ${peak.value}% in ${escapeHtml(tickToDate(peak.tick))}${peakCtx}; bottomed at ${trough.value}% in ${escapeHtml(tickToDate(trough.tick))}${troughCtx}. `;
     }
 
     // End reason
@@ -12425,18 +12479,37 @@ async function renderPastAdministrationsTab(container) {
     container.innerHTML = `<div style="padding:16px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;">Loading…</div>`;
 
     try {
-        const { data: admins, error } = await _supabase
-            .from('administrations')
-            .select('*')
-            .eq('nation_id', currentNation.id)
-            .order('started_at_tick', { ascending: false });
+        // Parallel fetch: admins + the nation's full gov_approval_log. One
+        // round-trip for all approval history — computeApprovalArc slices
+        // per-admin windows client-side.
+        const [adminsRes, logRes] = await Promise.all([
+            _supabase.from('administrations')
+                .select('*')
+                .eq('nation_id', currentNation.id)
+                .order('started_at_tick', { ascending: false }),
+            _supabase.from('gov_approval_log')
+                .select('amount, source, tick')
+                .eq('nation_id', currentNation.id)
+                .order('tick', { ascending: true }),
+        ]);
 
-        if (error) throw error;
+        if (adminsRes.error) throw adminsRes.error;
+        // gov_approval_log is best-effort — if it errors or doesn't exist, we
+        // simply skip the arc. Core summary still renders.
+        const logs = (logRes && !logRes.error) ? (logRes.data || []) : [];
 
-        const list = admins || [];
+        const list = adminsRes.data || [];
         const pastAdmins = list.filter(a => a.ended_at_tick != null);
         const currentAdmin = list.find(a => a.ended_at_tick == null);
         const totalCount = pastAdmins.length + (currentAdmin ? 1 : 0);
+
+        // Attach the approval arc to each admin before rendering. For the
+        // open administration, use the current shard tick as the window end.
+        const openEndTick = _govData?.shard?.current_tick ?? Number.POSITIVE_INFINITY;
+        for (const a of list) {
+            const end = a.ended_at_tick ?? openEndTick;
+            a._approvalArc = computeApprovalArc(logs, a.started_at_tick, end, a.approval_at_start);
+        }
 
         if (totalCount === 0) {
             container.innerHTML = `
