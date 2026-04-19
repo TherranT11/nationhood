@@ -15,6 +15,7 @@
     "check:edge-function-sync": "node scripts/sync-edge-function.js && git diff --exit-code -- supabase/functions/advance-tick/index.ts",
     "test:repeal-helper": "node scripts/test-repeal-helper.mjs",
     "test:endorsement-window": "node scripts/test-endorsement-window.mjs",
+    "test:bills-helpers": "node scripts/test-bills-helpers.mjs",
     "migrate:shipping": "node scripts/apply-shipping-migrations.js"
   },
   "devDependencies": {
