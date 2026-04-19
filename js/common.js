@@ -9,6 +9,7 @@
 
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
+import { hasActiveGovernment } from './game/government-structure.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -772,26 +773,20 @@ async function checkCoalitionFormationBadge(nation) {
     const badge = document.getElementById('politics-badge');
     if (!badge || !nation) return;
     try {
-        // Check: completed election exists AND no formed government
-        const [electionResult, formedResult] = await Promise.all([
+        // Show the badge when a completed election exists but no government is
+        // sitting. hasActiveGovernment is the canonical gate — it routes to the
+        // right source per system type (presidents for presidential, formations
+        // for parliamentary, ministries for monarchy).
+        const [electionResult, activeGov] = await Promise.all([
             _supabase.from('elections')
                 .select('id', { count: 'exact', head: true })
                 .eq('nation_id', nation.id)
                 .eq('status', 'completed'),
-            _supabase.from('government_formations')
-                .select('id', { count: 'exact', head: true })
-                .eq('nation_id', nation.id)
-                .eq('status', 'formed'),
+            hasActiveGovernment(_supabase, nation),
         ]);
 
         const hasElection = (electionResult.count || 0) > 0;
-        const hasFormedGov = (formedResult.count || 0) > 0;
-
-        if (hasElection && !hasFormedGov) {
-            badge.style.display = '';
-        } else {
-            badge.style.display = 'none';
-        }
+        badge.style.display = (hasElection && !activeGov) ? '' : 'none';
     } catch (e) {
         // Non-critical — don't break the page
     }
