@@ -98,6 +98,10 @@ export async function applyForEquity(faction, shard, supabase) {
     if (!confirm(summary)) return;
 
     const currentTick = Number(shard.current_tick || 0);
+    // term_months uses the 120-month sentinel (not 0) to satisfy the base
+    // CHECK constraint (term_months >= 1). Phase 3's buy-in RPC already
+    // COALESCE-NULLIFs term_months through to 120 for the active position,
+    // so 120 here passes cleanly into the active_loan record.
     const { error: insertErr } = await supabase.from('finance_loan_requests').insert({
         requesting_faction_id: faction.id,
         nation_id: faction.nation_id,
@@ -105,7 +109,7 @@ export async function applyForEquity(faction, shard, supabase) {
         amount,
         equity_pct: stake,
         series,
-        term_months: 0,            // equity has no term
+        term_months: 120,
         purpose: purposeTrim,
         status: 'open',
         created_tick: currentTick,
