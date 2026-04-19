@@ -135,6 +135,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 .df-pill.active-insure { color:#000; background:#aa7a5a; border-color:#aa7a5a; }
 .df-pill.active-bond { color:#000; background:#8a6aaa; border-color:#8a6aaa; }
 .df-pill.active-equity { color:#000; background:#c89a4a; border-color:#c89a4a; }
+.df-pill.active-secondary { color:#000; background:#5aaaaa; border-color:#5aaaaa; }
 /* Card list — padded gutter + gap so cards read as discrete tappable units. */
 .df-list { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:8px; }
 .df-deal { padding:12px 14px; border:1px solid var(--panel-border); border-left:3px solid transparent; background:var(--bg-panel); cursor:pointer; position:relative; transition:border-color 0.12s, background 0.12s, transform 0.08s; }
@@ -144,11 +145,13 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 .df-deal.sel-insure { border-left-color:#aa7a5a; background:rgba(170,122,90,0.08); border-color:rgba(170,122,90,0.35); }
 .df-deal.sel-bond { border-left-color:#8a6aaa; background:rgba(138,106,170,0.08); border-color:rgba(138,106,170,0.35); }
 .df-deal.sel-equity { border-left-color:#c89a4a; background:rgba(200,154,74,0.08); border-color:rgba(200,154,74,0.35); }
+.df-deal.sel-secondary { border-left-color:#5aaaaa; background:rgba(90,170,170,0.08); border-color:rgba(90,170,170,0.35); }
 .df-badge { font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:0.5px; padding:2px 7px; line-height:16px; display:inline-block; }
 .df-badge-loan { color:#5a8aaa; background:rgba(90,138,170,0.08); border:1px solid rgba(90,138,170,0.2); }
 .df-badge-insure { color:#aa7a5a; background:rgba(170,122,90,0.08); border:1px solid rgba(170,122,90,0.2); }
 .df-badge-bond { color:#8a6aaa; background:rgba(138,106,170,0.08); border:1px solid rgba(138,106,170,0.2); }
 .df-badge-equity { color:#c89a4a; background:rgba(200,154,74,0.08); border:1px solid rgba(200,154,74,0.2); }
+.df-badge-secondary { color:#5aaaaa; background:rgba(90,170,170,0.08); border:1px solid rgba(90,170,170,0.2); }
 .df-badge-gov { color:#a3b07e; background:rgba(163,176,126,0.1); border:1px solid rgba(163,176,126,0.2); }
 .df-badge-corp { color:#c8a832; background:rgba(200,168,50,0.08); border:1px solid rgba(200,168,50,0.2); }
 .df-badge-nation { color:#8b9a6b; background:rgba(139,154,107,0.08); border:1px solid rgba(139,154,107,0.15); }
@@ -435,10 +438,11 @@ function fmtMoney(n) {
 // ==================== DEAL FLOW ====================
 
 const DF_TYPE_META = {
-    LOAN:   { class: 'loan',   label: 'LOAN' },
-    INSURE: { class: 'insure', label: 'INSURE' },
-    BOND:   { class: 'bond',   label: 'BOND' },
-    EQUITY: { class: 'equity', label: 'EQUITY' },
+    LOAN:      { class: 'loan',      label: 'LOAN' },
+    INSURE:    { class: 'insure',    label: 'INSURE' },
+    BOND:      { class: 'bond',      label: 'BOND' },
+    EQUITY:    { class: 'equity',    label: 'EQUITY' },
+    SECONDARY: { class: 'secondary', label: 'SECONDARY' },
 };
 const DF_RISK_META = {
     LOW:      { class: 'df-risk-low',      label: 'LOW RISK' },
@@ -648,6 +652,52 @@ async function loadDealFlow() {
             alreadyOffered: offeredSet.has(req.id),
         };
     });
+
+    // Phase 8: secondary-market listings. Fetched only for Investment-subsector
+    // corps since they're the only ones who can buy them. Each listed position
+    // becomes a SECONDARY card next to primary EQUITY raises in Deal Flow.
+    if (subsector === 'investment') {
+        const { data: listings } = await _supabase
+            .from('finance_active_loans')
+            .select('id, lender_faction_id, borrower_faction_id, nation_id, principal, equity_pct, series, total_paid, for_sale_price, started_tick, seller:factions!lender_faction_id(id, faction_name, abbreviation, corp_ticker), target:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker, corp_reputation, nation_id), listing_nation:nations!nation_id(name, stability)')
+            .not('for_sale_price', 'is', null)
+            .not('equity_pct', 'is', null)
+            .in('status', ['current', 'late', 'delinquent'])
+            .order('for_sale_price', { ascending: true });
+        for (const pos of (listings || [])) {
+            // Hide the seller's own listings (you can't buy your own stake).
+            if (pos.lender_faction_id === faction.id) continue;
+            const targetRep = Number(pos.target?.corp_reputation ?? 50);
+            const targetStab = Number(pos.listing_nation?.stability ?? 50);
+            dfDeals.push({
+                id: 'sec_' + pos.id,
+                positionId: pos.id,
+                type: 'SECONDARY',
+                applicant: pos.target?.faction_name || 'Unknown',
+                abbr: pos.target?.abbreviation || pos.target?.corp_ticker || '??',
+                entity: 'CORP',
+                nation: pos.listing_nation?.name || 'N/A',
+                nation_id: pos.nation_id,
+                requestingFactionId: pos.borrower_faction_id,
+                sellerFactionId: pos.lender_faction_id,
+                sellerName: pos.seller?.faction_name || 'Unknown',
+                amount: Number(pos.for_sale_price || 0),
+                originalCapital: Number(pos.principal || 0),
+                equityPct: Number(pos.equity_pct || 0),
+                series: pos.series || '?',
+                dividendsToDate: Number(pos.total_paid || 0),
+                purpose: `Listed stake in ${pos.target?.faction_name || 'target corp'}`,
+                reputation: targetRep,
+                stability: targetStab,
+                risk: targetRep >= 60 && targetStab >= 50 ? 'LOW' : targetRep >= 35 ? 'MODERATE' : 'HIGH',
+                isNew: false,
+                ticksLeft: 999,
+                requestId: pos.id,
+                alreadyOffered: false,
+            });
+        }
+    }
+
     renderDealFlow();
 }
 
@@ -699,6 +749,7 @@ function renderDealFlow() {
         { id: 'INSURE', label: 'Insurance', activeClass: 'active-insure' },
         { id: 'BOND', label: 'Bonds', activeClass: 'active-bond' },
         { id: 'EQUITY', label: 'Equity', activeClass: 'active-equity' },
+        { id: 'SECONDARY', label: 'Secondary', activeClass: 'active-secondary' },
     ];
     html += '<div class="df-filters">';
     for (const f of filters) {
@@ -741,17 +792,24 @@ function renderDealFlow() {
         </div>`;
 
         // Row 3: metrics
-        const amountLabel = d.type === 'BOND' ? 'FACE VALUE' : d.type === 'INSURE' ? 'COVERAGE' : d.type === 'EQUITY' ? 'CAPITAL RAISE' : 'AMOUNT';
-        // Middle column: TERM for loan/bond/insurance, SERIES for equity.
-        const midLabel = d.type === 'EQUITY' ? 'SERIES' : 'TERM';
-        const midValue = d.type === 'EQUITY' ? 'Series ' + d.series : d.term + 'mo';
-        const qualLabel = d.type === 'BOND' ? 'COUPON' : d.type === 'EQUITY' ? 'STAKE' : 'REP';
+        const amountLabel = d.type === 'BOND' ? 'FACE VALUE'
+            : d.type === 'INSURE' ? 'COVERAGE'
+            : d.type === 'EQUITY' ? 'CAPITAL RAISE'
+            : d.type === 'SECONDARY' ? 'ASKING PRICE'
+            : 'AMOUNT';
+        // Middle column: TERM for loan/bond/insurance, SERIES for equity / secondary.
+        const midLabel = (d.type === 'EQUITY' || d.type === 'SECONDARY') ? 'SERIES' : 'TERM';
+        const midValue = (d.type === 'EQUITY' || d.type === 'SECONDARY') ? 'Series ' + d.series : d.term + 'mo';
+        const qualLabel = d.type === 'BOND' ? 'COUPON'
+            : (d.type === 'EQUITY' || d.type === 'SECONDARY') ? 'STAKE'
+            : 'REP';
         const qualValue = d.type === 'BOND' ? d.couponRate + '%'
-            : d.type === 'EQUITY' ? d.equityPct + '%'
+            : (d.type === 'EQUITY' || d.type === 'SECONDARY') ? d.equityPct + '%'
             : (d.reputation || d.stability);
         const qualNum = d.type === 'BOND' ? d.couponRate * 10 : (d.reputation || d.stability);
         const qualColor = d.type === 'BOND' ? '#c8a832'
             : d.type === 'EQUITY' ? '#c89a4a'
+            : d.type === 'SECONDARY' ? '#5aaaaa'
             : qualNum >= 60 ? '#5c5' : qualNum >= 35 ? '#ca5' : '#c84';
 
         html += `<div class="df-metrics">
@@ -812,6 +870,18 @@ function renderDealFlow() {
                     html += `<div class="df-detail-row"><span class="df-detail-label">STAKE OFFERED</span><span class="df-detail-value" style="color:#c89a4a;font-weight:700;">${d.equityPct}%</span></div>`;
                     html += `<div class="df-detail-row"><span class="df-detail-label">CORP REPUTATION</span><span class="df-detail-value" style="color:${repColor};">${d.reputation}/100</span></div>`;
                     html += `<div class="df-detail-row"><span class="df-detail-label">NATION STABILITY</span><span class="df-detail-value" style="color:${stabColor};">${d.stability}/100</span></div>`;
+                } else if (d.type === 'SECONDARY') {
+                    const repColor = d.reputation >= 60 ? '#5c5' : d.reputation >= 35 ? '#ca5' : '#c84';
+                    const premium = d.originalCapital > 0
+                        ? Math.round(((d.amount - d.originalCapital) / d.originalCapital) * 10000) / 100
+                        : 0;
+                    const premiumColor = premium >= 0 ? '#5c5' : '#c55';
+                    html += `<div class="df-detail-row"><span class="df-detail-label">CURRENT HOLDER</span><span class="df-detail-value" style="color:var(--panel-text);">${escapeHtml(d.sellerName)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">SERIES / STAKE</span><span class="df-detail-value" style="color:#5aaaaa;font-weight:700;">Series ${escapeHtml(d.series)} &middot; ${d.equityPct}%</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">ORIGINAL CAPITAL</span><span class="df-detail-value" style="color:#9e9a92;">${fmtMoney(d.originalCapital)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label" title="Asking price relative to original capital deployed.">PRICE PREMIUM</span><span class="df-detail-value" style="color:${premiumColor};font-weight:700;">${premium >= 0 ? '+' : ''}${premium}%</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label" title="Cumulative dividends the current holder collected before listing. Resets to 0 after transfer.">SELLER DIVIDENDS TO DATE</span><span class="df-detail-value" style="color:#9e9a92;">${fmtMoney(d.dividendsToDate)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label">CORP REPUTATION</span><span class="df-detail-value" style="color:${repColor};">${d.reputation}/100</span></div>`;
                 }
                 html += '</div>'; // close df-detail
             }
@@ -826,6 +896,7 @@ function renderDealFlow() {
     const insureCount = dfDeals.filter(d => d.type === 'INSURE').length;
     const bondCount = dfDeals.filter(d => d.type === 'BOND').length;
     const equityCount = dfDeals.filter(d => d.type === 'EQUITY').length;
+    const secondaryCount = dfDeals.filter(d => d.type === 'SECONDARY').length;
 
     html += `<div class="df-footer">
         <div class="df-footer__counts">
@@ -833,12 +904,16 @@ function renderDealFlow() {
             <div class="df-footer__count"><div class="df-footer__count-dot" style="background:#aa7a5a;"></div><span class="df-footer__count-label">INSURE</span><span class="df-footer__count-num">${insureCount}</span></div>
             <div class="df-footer__count"><div class="df-footer__count-dot" style="background:#8a6aaa;"></div><span class="df-footer__count-label">BOND</span><span class="df-footer__count-num">${bondCount}</span></div>
             <div class="df-footer__count"><div class="df-footer__count-dot" style="background:#c89a4a;"></div><span class="df-footer__count-label">EQUITY</span><span class="df-footer__count-num">${equityCount}</span></div>
+            <div class="df-footer__count"><div class="df-footer__count-dot" style="background:#5aaaaa;"></div><span class="df-footer__count-label">SECONDARY</span><span class="df-footer__count-num">${secondaryCount}</span></div>
         </div>
         ${(() => {
             const selDeal = dfSelected >= 0 ? dfDeals[dfSelected] : null;
             const canRev = selDeal && dfCanReview(selDeal);
             if (canRev && selDeal.type === 'EQUITY') {
                 return `<div class="df-review-btn active" style="background:#c89a4a;color:#000;" onclick="dfBuyEquityStake(${dfSelected})" title="Purchase this equity stake">BUY STAKE</div>`;
+            }
+            if (canRev && selDeal.type === 'SECONDARY') {
+                return `<div class="df-review-btn active" style="background:#5aaaaa;color:#000;" onclick="dfBuyListedStake(${dfSelected})" title="Buy this listed stake from its current holder">BUY LISTING</div>`;
             }
             if (canRev) {
                 return `<div class="df-review-btn active" onclick="rdOpen(${dfSelected})">REVIEW DEAL</div>`;
@@ -905,10 +980,54 @@ async function dfBuyEquityStake(dealIdx) {
     }
 }
 
+// Secondary market: buy a listed equity stake from another investor.
+// Calls the buy_listed_equity_stake RPC which atomically moves cash
+// seller ← buyer and swaps lender_faction_id on the position. Client-side
+// guards mirror the RPC's so obvious failures surface instantly.
+async function dfBuyListedStake(dealIdx) {
+    if (_submittingOffer) return;
+    const deal = dfDeals[dealIdx];
+    if (!deal || deal.type !== 'SECONDARY' || !faction || !shard) return;
+
+    if (deal.sellerFactionId === faction.id) {
+        alert('You are the current holder of this stake.');
+        return;
+    }
+
+    const cash = Number(faction.corp_cash_reserves || 0);
+    if (cash < deal.amount) {
+        alert('Insufficient cash reserves. Need ' + fmtMoney(deal.amount) + ', have ' + fmtMoney(cash) + '.');
+        return;
+    }
+
+    const confirmText = 'Buy ' + deal.equityPct + '% stake in ' + deal.applicant + ' from ' + deal.sellerName + ' for ' + fmtMoney(deal.amount) + '?\n\n'
+        + 'Ownership transfers immediately. Your dividend counter starts fresh — the seller\'s past dividends do not carry over.';
+    if (!confirm(confirmText)) return;
+
+    _submittingOffer = true;
+    try {
+        const { error } = await _supabase.rpc('buy_listed_equity_stake', {
+            p_position_id: deal.positionId,
+            p_buyer_faction_id: faction.id,
+        });
+        if (error) throw new Error(error.message);
+
+        faction.corp_cash_reserves = cash - deal.amount;
+        dfSelected = -1;
+        alert('Stake acquired from ' + deal.sellerName + '. Dividends accrue from this tick forward.');
+        await Promise.all([loadDealFlow(), loadActivePortfolio()]);
+    } catch (e) {
+        alert('Secondary purchase failed: ' + (e.message || e));
+    } finally {
+        _submittingOffer = false;
+    }
+}
+
 window.dfSetFilter = dfSetFilter;
 window.dfToggleNation = dfToggleNation;
 window.dfSelectDeal = dfSelectDeal;
 window.dfBuyEquityStake = dfBuyEquityStake;
+window.dfBuyListedStake = dfBuyListedStake;
 
 // ==================== ACTIVE PORTFOLIO ====================
 
@@ -1165,12 +1284,21 @@ function renderActivePortfolio() {
                     { label: 'LAST DIVIDEND TICK', value: d.lastDividendTick != null ? 'Tick ' + d.lastDividendTick : '—' },
                     { label: 'ROI TO DATE', value: roiPct + '%', color: roiPct >= 0 ? '#5c5' : '#c55', title: 'Cumulative dividends / capital deployed. Equity is perpetual — no principal return expected; ROI accumulates indefinitely.' },
                 ];
+                if (d.forSalePrice != null) {
+                    rows.push({ label: 'LISTED FOR SALE', value: fmtMoney(d.forSalePrice), color: '#c89a4a', title: 'Any Investment corp can buy this stake at the asking price. Sale transfers ownership and resets your dividend counter.' });
+                }
                 for (const r of rows) {
                     html += `<div class="ap-detail-row"><span class="ap-detail-label" title="${r.title || ''}">${r.label}</span><span class="ap-detail-value" style="color:${r.color || '#9e9a92'};">${r.value}</span></div>`;
                 }
-                // No actions yet: exit/secondary market is Phase 8. Show the
-                // stake as hold-only so players aren't confused by silence.
-                html += `<div class="ap-actions"><div class="ap-action-btn olive" title="Secondary market coming in a later phase.">HOLD</div></div>`;
+                // Seller-side secondary-market actions (Phase 8). LIST /
+                // CANCEL are direct UPDATEs (the permissive active_loans
+                // policy allows the holder to edit their own row); the BUY
+                // side is an RPC because it crosses factions.
+                if (d.forSalePrice != null) {
+                    html += `<div class="ap-actions"><div class="ap-action-btn orange" onclick="apCancelListing('${d.id}')" title="Remove this stake from the secondary market.">CANCEL LISTING</div></div>`;
+                } else {
+                    html += `<div class="ap-actions"><div class="ap-action-btn purple" onclick="apListForSale('${d.id}', ${d.principal || 0})" title="List this stake on the secondary market at an asking price.">LIST FOR SALE</div></div>`;
+                }
             }
 
             html += '</div>'; // close expanded
@@ -1432,6 +1560,45 @@ window.apPayClaim = apPayClaim;
 window.apNegotiateClaim = apNegotiateClaim;
 window.apDisputeClaim = apDisputeClaim;
 window.apSellPosition = apSellPosition;
+
+// ── Equity: list for sale / cancel listing (Phase 8) ──
+// Direct UPDATEs against finance_active_loans. The table has a permissive
+// FOR ALL policy so the holder can flip for_sale_price on their own row.
+// The buy side is an RPC (cross-faction cash); list/cancel are not.
+async function apListForSale(positionId, principal) {
+    const suggested = Number(principal) > 0
+        ? Math.round(Number(principal) * 1.25 / 1_000_000)
+        : 10;
+    const input = prompt(
+        'LIST STAKE FOR SALE\n\n' +
+        'Enter asking price in millions USD (e.g., 75 for $75M).\n\n' +
+        `Suggested: ${suggested} (1.25× your original capital).`
+    );
+    if (input === null) return;
+    const priceM = parseFloat(input);
+    if (isNaN(priceM) || priceM <= 0) { alert('Price must be a positive number.'); return; }
+    const price = Math.round(priceM * 1_000_000);
+
+    const { error } = await _supabase.from('finance_active_loans')
+        .update({ for_sale_price: price })
+        .eq('id', positionId);
+    if (error) { alert('Failed to list position: ' + error.message); return; }
+
+    alert(`Stake listed for ${fmtMoney(price)}. Other Investment corps can now buy it from Deal Flow → Secondary.`);
+    await loadActivePortfolio();
+}
+
+async function apCancelListing(positionId) {
+    if (!confirm('Remove this stake from the secondary market?')) return;
+    const { error } = await _supabase.from('finance_active_loans')
+        .update({ for_sale_price: null })
+        .eq('id', positionId);
+    if (error) { alert('Failed to cancel listing: ' + error.message); return; }
+    await loadActivePortfolio();
+}
+
+window.apListForSale = apListForSale;
+window.apCancelListing = apCancelListing;
 
 // ==================== RESERVES & RISK ====================
 
@@ -1873,7 +2040,7 @@ window.ccToggle = ccToggle;
 
 // ==================== REVIEW DEAL MODAL ====================
 
-const SUBSECTOR_DEAL_MAP = { banking: ['LOAN'], insurance: ['INSURE'], investment: ['BOND', 'EQUITY'] };
+const SUBSECTOR_DEAL_MAP = { banking: ['LOAN'], insurance: ['INSURE'], investment: ['BOND', 'EQUITY', 'SECONDARY'] };
 
 let rdDeal = null;       // the deal being reviewed
 let rdType = 'LOAN';     // active tab
@@ -1903,10 +2070,11 @@ const COLLATERAL_TIERS = [
 function rdOpen(dealIdx) {
     const deal = dfDeals[dealIdx];
     if (!deal) return;
-    // Equity Buy-In modal lands in a later build; refuse to open for now.
-    // The Deal Flow card already surfaces a disabled REVIEW DEAL button
-    // for equity, so this is belt-and-suspenders against edge triggers.
-    if (deal.type === 'EQUITY') return;
+    // Equity and Secondary have their own dedicated buy flows (dfBuyEquityStake
+    // / dfBuyListedStake). rdOpen is the loan/bond/insurance "review + offer"
+    // modal and doesn't apply to either — refuse to open as belt-and-suspenders
+    // against edge triggers.
+    if (deal.type === 'EQUITY' || deal.type === 'SECONDARY') return;
     rdDeal = deal;
     rdType = deal.type;
 
@@ -2737,6 +2905,7 @@ async function loadActivePortfolio() {
         series: isEquity(loan) ? (loan.series || '?') : undefined,
         dividendsReceived: isEquity(loan) ? Number(loan.total_paid || 0) : undefined,
         lastDividendTick: isEquity(loan) ? loan.last_payment_tick : undefined,
+        forSalePrice: isEquity(loan) && loan.for_sale_price != null ? Number(loan.for_sale_price) : null,
     }));
 
     renderActivePortfolio();
