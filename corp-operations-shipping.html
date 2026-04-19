@@ -6161,7 +6161,7 @@ function renderAvailableRoutes() {
                 + 'color:#5c5;background:rgba(92,204,92,0.1);border:1px solid rgba(92,204,92,0.3)">ACTIVE AGREEMENT \u00D71.2' + agName + '</span>';
         } else if (!route.trade_agreement_id && !isGov) {
             html += '<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 5px;line-height:11px;'
-                + 'color:#9e9a92;background:rgba(158,154,146,0.06);border:1px solid rgba(158,154,146,0.15)">OPEN MARKET \u00D70.7</span>';
+                + 'color:#9e9a92;background:rgba(158,154,146,0.06);border:1px solid rgba(158,154,146,0.15)">OPEN MARKET \u00D71.0</span>';
         }
         // Show application status for this route
         var myApp = _myShippingApps.find(function(a) { return a.route_id === route.id; });
@@ -6180,6 +6180,8 @@ function renderAvailableRoutes() {
         // Row 3: Stats bar
         html += '<div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-0);">';
         if (!isGov) {
+            const lane = _monthlyRoutePreview(route);
+            const laneColor = lane.net > 0 ? '#5c5' : lane.net < 0 ? '#c84' : '#9e9a92';
             // Regular route: VOLUME | COMP | TRANSIT | EST. REV
             html += '<div style="flex:1;padding:3px 8px;border-right:1px solid var(--border-0)">'
                 + '<div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.5px">VOLUME</div>'
@@ -6197,6 +6199,11 @@ function renderAvailableRoutes() {
                 + '<div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.5px">EST. REV</div>'
                 + '<div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:' + (route.trade_agreement_id ? '#5c5' : '#b0aa9a') + ';margin-top:1px">' + fmtBig(arEffectiveRevenue(route)) + '</div>'
                 + '</div>';
+            html += '</div>';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 8px;background:var(--bg-0);border:1px solid var(--border-0);border-top:none;">'
+                + '<span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.5px;">EST. MONTHLY MARGIN (state fuel + maint + incident reserve)</span>'
+                + '<span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:' + laneColor + ';">' + (lane.net >= 0 ? '+' : '') + fmtBig(lane.net) + '</span>'
+                + '</div>';
         } else {
             // Government route: CONTRACT | VESSEL | CONTRACT VALUE
             html += '<div style="flex:1;padding:3px 8px;border-right:1px solid var(--border-0)">'
@@ -6211,8 +6218,8 @@ function renderAvailableRoutes() {
                 + '<div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.5px">CONTRACT VALUE</div>'
                 + '<div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-top:1px">' + fmtBig(Number(route.gov_contract_value || route.estimated_revenue || 0)) + '</div>'
                 + '</div>';
+            html += '</div>';
         }
-        html += '</div>';
 
         // Expanded detail (on selection)
         if (isSel) {
@@ -6356,6 +6363,35 @@ async function _fetchDepotForNation(nationId) {
     return { tier: 'state', cost: STATE_COST, ownerFactionId: null, ownerName: null };
 }
 
+const INCIDENT_RESERVE_RATE = 0.06;
+const MAINT_MULT = { in_port: 0.55, loading: 0.85, in_transit: 1.25, anchored: 0.65, dry_dock: 1.15 };
+const VESSEL_FUEL_CLASS_FACTOR = { Coastal: 0.82, Container: 1.18, Bulk: 1.00, Tanker: 1.28, Reefer: 1.12, LNG: 1.34 };
+const BASE_MAINT_BY_CLASS = { Coastal: 90000, Container: 145000, Bulk: 175000, Tanker: 190000, Reefer: 140000, LNG: 290000 };
+
+function _routeFuelCost(route, vesselClass, depotTier) {
+    const baseFuelCost = 50000;
+    const proximity = Math.max(0, Math.min(100, Number(route?.proximity) || 50));
+    const scope = String(route?.scope || '').toUpperCase();
+    const classFactor = VESSEL_FUEL_CLASS_FACTOR[vesselClass] || 1.0;
+    const proximityFactor = 0.75 + (proximity / 100) * 0.9;
+    const scopeFactor = scope === 'COASTAL' ? 0.92 : scope === 'GOVERNMENT' ? 1.05 : 1.0;
+    const routeFuelBase = Math.round(baseFuelCost * classFactor * proximityFactor * scopeFactor);
+    if (depotTier === 'own') return routeFuelBase;
+    if (depotTier === 'other') return Math.round(routeFuelBase * 1.15);
+    return Math.round(routeFuelBase * 1.65);
+}
+
+function _monthlyRoutePreview(route) {
+    const transitTicks = Math.max(1, Number(route?.transit_ticks) || 2);
+    const transitsPerMonth = Math.max(1, 12 / (transitTicks * 2));
+    const gross = Math.round(arEffectiveRevenue(route) * transitsPerMonth);
+    const fuel = Math.round(_routeFuelCost(route, route?.vessel_class, 'state') * transitsPerMonth);
+    const maintenance = Math.round((BASE_MAINT_BY_CLASS[route?.vessel_class] || 120000) * MAINT_MULT.loading);
+    const reserve = Math.round(gross * INCIDENT_RESERVE_RATE);
+    const net = gross - fuel - maintenance - reserve;
+    return { gross, fuel, maintenance, reserve, net };
+}
+
 // ──────────────────────────────────────────────────────────────────
 // Trip economics — single source of truth for the per-trip projection
 // that the Route Application modal shows. Replaces the old inline
@@ -6363,17 +6399,17 @@ async function _fetchDepotForNation(nationId) {
 // connection to what the tick actually charges. Now:
 //
 //   revenue         = bid × tierMult         (0.85 organic, 1.2 agreement)
-//   fuelPerTrip     = destDepot.cost         (real $50k / $57.5k / $150k)
+//   fuelPerTrip     = route model (proximity + class + depot tier)
 //   netPerTrip      = revenue − fuel
 //
 // Maintenance is DELIBERATELY not subtracted here — it's a per-tick
 // fleet-wide cost, not a per-trip expense. The modal surfaces it as a
 // separate informational line so the player can still reason about
 // fleet overhead without mixing time scales.
-function computeTripEconomics({ proposedRate, tierMult, depotCost }) {
+function computeTripEconomics({ route, proposedRate, tierMult, depotTier }) {
     const bid         = Number(proposedRate) || 0;
     const revenue     = Math.round(bid * (Number(tierMult) || 1));
-    const fuelPerTrip = Math.round(Number(depotCost) || 0);
+    const fuelPerTrip = _routeFuelCost(route, route?.vessel_class, depotTier || 'state');
     const netPerTrip  = revenue - fuelPerTrip;
     return { bid, revenue, fuelPerTrip, netPerTrip };
 }
@@ -6427,7 +6463,7 @@ function renderRouteApplicationModal() {
     // js/game/shipping.js so corps, diplomats, and the edge function
     // all evaluate bids against the same number.
     const tierMult = revenueTierMultiplier(r);
-    const depotCost = Number(r.destDepot?.cost) || 150000; // fallback to state-depot rate
+    const depotTier = r.destDepot?.tier || 'state';
 
     // Available vessels (in_port, matching class, not assigned)
     const availableVessels = _fleetVessels.filter(v =>
@@ -6439,7 +6475,7 @@ function renderRouteApplicationModal() {
     // future caller would use. Maintenance is ONLY surfaced as a
     // separate ongoing-overhead line below; it's per-tick per-vessel,
     // not a per-trip expense.
-    const econ = computeTripEconomics({ proposedRate: _raProposedRate, tierMult, depotCost });
+    const econ = computeTripEconomics({ route: r, proposedRate: _raProposedRate, tierMult, depotTier });
     const profitColor = econ.netPerTrip > 0 ? C.green : econ.netPerTrip < 0 ? C.red : C.dim;
     const vesselMaintPerTick = Number(selectedVessel?.base_maintenance) || 0;
     // Transit ticks × maint gives a break-even hint for the current trip:
@@ -6495,7 +6531,8 @@ function renderRouteApplicationModal() {
                 const dep = r.destDepot;
                 if (!dep) return '';
                 const dpName = r.destination_port || 'this port';
-                const costLabel = '$' + Math.round(dep.cost).toLocaleString() + ' / refuel';
+                const modeledFuelCost = _routeFuelCost(r, r.vessel_class, dep.tier);
+                const costLabel = '$' + Math.round(modeledFuelCost).toLocaleString() + ' / refuel';
                 let depText, depColor;
                 if (dep.tier === 'own') {
                     depText  = `${dpName} has your Fuel Depot (${escapeHtml(dep.ownerName || faction.faction_name || 'your corp')}) — ${costLabel}.`;
@@ -6599,7 +6636,17 @@ function renderRouteApplicationModal() {
         ? 'own depot'
         : r.destDepot?.tier === 'other'
         ? 'other corp\'s depot +15%'
-        : 'state depot 3×';
+        : 'state depot (+65%)';
+    const monthlyTransitEstimate = Math.max(1, 12 / (Math.max(1, transitTicks) * 2));
+    const monthlyGross = Math.round(econ.revenue * monthlyTransitEstimate);
+    const monthlyFuel = Math.round(econ.fuelPerTrip * monthlyTransitEstimate);
+    const maintenanceStatusMult = selectedVessel
+        ? (selectedVessel.status === 'in_transit' ? 1.25 : selectedVessel.status === 'in_port' ? 0.55 : 0.85)
+        : 0.85;
+    const monthlyMaint = Math.round(vesselMaintPerTick * maintenanceStatusMult);
+    const monthlyReserve = Math.round(monthlyGross * INCIDENT_RESERVE_RATE);
+    const monthlyNet = monthlyGross - monthlyFuel - monthlyMaint - monthlyReserve;
+    const monthlyNetColor = monthlyNet > 0 ? C.green : monthlyNet < 0 ? C.red : C.dim;
     html += `
             <div style="margin-bottom:14px;">
                 <div style="font-family:${M};font-size:10px;color:${C.dim};letter-spacing:1px;margin-bottom:6px;">ESTIMATED ECONOMICS (PER TRIP)</div>
@@ -6641,6 +6688,32 @@ function renderRouteApplicationModal() {
                            </div>`
                         : `<div style="font-family:${M};font-size:9px;color:${C.dim};line-height:1.5;">Select a vessel to see its per-tick maintenance cost. Maintenance is charged on every corp tick to every vessel regardless of activity, so higher-class ships need higher-paying routes to break even.</div>`
                     }
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${M};font-size:10px;color:${C.dim};letter-spacing:1px;margin-bottom:6px;">PROFITABILITY CHECKPOINT (MONTHLY / ACTIVE SHIP)</div>
+                <div style="background:${C.card};border:1px solid ${C.border};padding:8px 10px;">
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Expected monthly gross revenue</span>
+                        <span style="font-family:${M};font-size:10px;font-weight:700;color:${C.green};">${fmtBig(monthlyGross)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Expected monthly fuel</span>
+                        <span style="font-family:${M};font-size:10px;color:${C.red};">-${fmtBig(monthlyFuel)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Maintenance allocation (${Math.round(maintenanceStatusMult * 100)}% state factor)</span>
+                        <span style="font-family:${M};font-size:10px;color:${C.red};">-${fmtBig(monthlyMaint)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${C.border};">
+                        <span style="font-family:${M};font-size:9px;color:${C.dim};">Incident reserve (${Math.round(INCIDENT_RESERVE_RATE * 100)}%)</span>
+                        <span style="font-family:${M};font-size:10px;color:${C.red};">-${fmtBig(monthlyReserve)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:5px 0;">
+                        <span style="font-family:${M};font-size:10px;font-weight:700;color:${C.text};">EST. MONTHLY NET</span>
+                        <span style="font-family:${M};font-size:13px;font-weight:700;color:${monthlyNetColor};">${monthlyNet >= 0 ? '+' : ''}${fmtBig(monthlyNet)}</span>
+                    </div>
                 </div>
             </div>
 

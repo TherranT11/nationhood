@@ -183,6 +183,59 @@ function resolveIncidentNationId(vessel, corpNationId, claimRouteMap) {
     return destinationNationId || vessel?.current_port_nation_id || corpNationId || null;
 }
 
+// ── Shipping margin model helpers ─────────────────────────────────────────────
+const INCIDENT_RESERVE_RATE = 0.06; // Hold back 6% of modeled gross for incident/insurance shock
+const MAINTENANCE_MULTIPLIER_BY_STATUS = {
+    in_port: 0.55,     // idle in port: crew+systems still cost, but lower than sailing
+    loading: 0.85,     // active handling/turnaround in port
+    in_transit: 1.25,  // sustained sea operation wear
+    anchored: 0.65,
+    dry_dock: 1.15,
+};
+const VESSEL_FUEL_CLASS_FACTOR = {
+    Coastal: 0.82,
+    Container: 1.18,
+    Bulk: 1.00,
+    Tanker: 1.28,
+    Reefer: 1.12,
+    LNG: 1.34,
+};
+
+function maintenanceMultiplierForStatus(status) {
+    return MAINTENANCE_MULTIPLIER_BY_STATUS[status] ?? 1.0;
+}
+
+function computeFuelCostForTransit({ route, vesselClass, depotTier }) {
+    const baseFuelCost = 50000;
+    const proximity = Math.max(0, Math.min(100, Number(route?.proximity) || 50));
+    const scope = String(route?.scope || '').toUpperCase();
+    const classFactor = VESSEL_FUEL_CLASS_FACTOR[vesselClass] || 1.0;
+
+    // Route factor keeps lane length meaningful without making long lanes impossible.
+    const proximityFactor = 0.75 + (proximity / 100) * 0.9; // 0.75x … 1.65x
+    const scopeFactor = scope === 'COASTAL' ? 0.92 : scope === 'GOVERNMENT' ? 1.05 : 1.0;
+    const routeFuelBase = Math.round(baseFuelCost * classFactor * proximityFactor * scopeFactor);
+
+    if (depotTier === 'own') return routeFuelBase;
+    if (depotTier === 'other') return Math.round(routeFuelBase * 1.15);
+    // State fallback remains punitive but is capped below the old hard 3x markup.
+    return Math.round(routeFuelBase * 1.65);
+}
+
+function estimateMonthlyClaimMargin({ route, claim, vessel, fuelCostPerTransit }) {
+    const transitTicks = Math.max(1, Number(route?.transit_ticks) || 2);
+    // Each claim alternates load + transit; monthly cycle ≈ 2*transit ticks.
+    const transitsPerMonth = Math.max(1, 12 / (transitTicks * 2));
+    const grossRevenue = Math.round((Number(claim?.revenue_per_transit) || 0) * transitsPerMonth);
+    const fuelCost = Math.round((Number(fuelCostPerTransit) || 0) * transitsPerMonth);
+    const maintenanceCost = Math.round(
+        (Number(vessel?.base_maintenance) || 0) * maintenanceMultiplierForStatus(vessel?.status)
+    );
+    const incidentReserve = Math.round(grossRevenue * INCIDENT_RESERVE_RATE);
+    const netMargin = grossRevenue - fuelCost - maintenanceCost - incidentReserve;
+    return { grossRevenue, fuelCost, maintenanceCost, incidentReserve, netMargin };
+}
+
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION EVENTS — Templates
 //
@@ -3790,13 +3843,14 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 const claimIds = (activeClaims || []).map(c => c.id);
                 const { data: corpVesselsForTransit } = claimIds.length > 0
                     ? await supabase.from('corp_vessels')
-                        .select('id, vessel_name, fuel, condition, status, active_claim_id, faction_id')
+                        .select('id, vessel_name, vessel_class, fuel, condition, status, base_maintenance, active_claim_id, faction_id')
                         .in('active_claim_id', claimIds)
                     : { data: [] };
 
                 if (activeClaims && activeClaims.length > 0) {
                     let revenueCollected = 0;
                     let transitsCompleted = 0;
+                    const routeMarginRows = [];
 
                     for (const claim of activeClaims) {
                         // Resolve the owning corp for this specific claim.
@@ -3900,14 +3954,25 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 }
                             }
 
-                            const baseFuelCost = 50000;
-                            let fuelCost;
-                            if (fuelDepot && fuelDepot.faction_id === claim.faction_id) {
-                                fuelCost = baseFuelCost; // Own depot
-                            } else if (fuelDepot) {
-                                fuelCost = Math.round(baseFuelCost * 1.15); // Other corp's depot (+15%)
-                                // Pay revenue to depot owner
-                                const depotRevenue = fuelCost - baseFuelCost;
+                            const depotTier = fuelDepot && fuelDepot.faction_id === claim.faction_id
+                                ? 'own'
+                                : fuelDepot
+                                ? 'other'
+                                : 'state';
+                            const assignedVesselForArrival = (corpVesselsForTransit || []).find(v => v.active_claim_id === claim.id);
+                            const fuelCost = computeFuelCostForTransit({
+                                route: claim.shipping_routes,
+                                vesselClass: assignedVesselForArrival?.vessel_class,
+                                depotTier,
+                            });
+                            if (depotTier === 'other') {
+                                // Pay premium margin to depot owner
+                                const ownEquivalentFuel = computeFuelCostForTransit({
+                                    route: claim.shipping_routes,
+                                    vesselClass: assignedVesselForArrival?.vessel_class,
+                                    depotTier: 'own',
+                                });
+                                const depotRevenue = Math.max(0, fuelCost - ownEquivalentFuel);
                                 const { data: depotOwner } = await supabase.from('factions')
                                     .select('corp_cash_reserves').eq('id', fuelDepot.faction_id).single();
                                 if (depotOwner) {
@@ -3915,8 +3980,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                         corp_cash_reserves: Number(depotOwner.corp_cash_reserves || 0) + depotRevenue,
                                     }).eq('id', fuelDepot.faction_id);
                                 }
-                            } else {
-                                fuelCost = baseFuelCost * 3; // State fuel (3x markup)
                             }
 
                             // Deduct fuel cost from shipping corp
@@ -3939,6 +4002,44 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             transitsCompleted++;
                         }
                         // 'in_transit' but not yet arrived — no action needed
+
+                        // Persist per-tick route margin diagnostics (active claims).
+                        const diagVessel = (corpVesselsForTransit || []).find(v => v.active_claim_id === claim.id);
+                        const diagDepotTier = 'state'; // structural baseline (no private depot guarantee)
+                        const diagFuelPerTransit = computeFuelCostForTransit({
+                            route: claim.shipping_routes,
+                            vesselClass: diagVessel?.vessel_class,
+                            depotTier: diagDepotTier,
+                        });
+                        const diagMargin = estimateMonthlyClaimMargin({
+                            route: claim.shipping_routes,
+                            claim,
+                            vessel: diagVessel,
+                            fuelCostPerTransit: diagFuelPerTransit,
+                        });
+                        routeMarginRows.push({
+                            tick: currentTick,
+                            route_id: claim.route_id,
+                            corp_id: claim.faction_id,
+                            claim_id: claim.id,
+                            vessel_id: diagVessel?.id || null,
+                            vessel_class: diagVessel?.vessel_class || null,
+                            vessel_status: claim.vessel_status || diagVessel?.status || null,
+                            gross_revenue: diagMargin.grossRevenue,
+                            fuel_cost: diagMargin.fuelCost,
+                            maintenance_cost: diagMargin.maintenanceCost,
+                            incident_reserve: diagMargin.incidentReserve,
+                            net_margin: diagMargin.netMargin,
+                        });
+                    }
+
+                    if (routeMarginRows.length > 0) {
+                        const { error: marginErr } = await supabase
+                            .from('shipping_route_margin_ticks')
+                            .upsert(routeMarginRows, { onConflict: 'tick,route_id,corp_id' });
+                        if (marginErr) {
+                            console.warn('[advance-corp-tick] Route margin diagnostics upsert failed:', marginErr.message);
+                        }
                     }
 
                     if (revenueCollected > 0 || transitsCompleted > 0) {
@@ -4002,6 +4103,52 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         } catch (routeFetchErr) {
                             console.warn('[advance-corp-tick] Transit-route fetch for incidents failed:', routeFetchErr?.message || routeFetchErr);
                         }
+                    }
+
+                    // Profitability checkpoint: expected monthly revenue per active ship
+                    // vs expected monthly direct ops (fuel + state-adjusted maintenance
+                    // + incident reserve). Logs warnings for structurally negative lanes.
+                    try {
+                        const activeClaimIdsForCorp = vessels.filter(v => v.active_claim_id).map(v => v.active_claim_id);
+                        if (activeClaimIdsForCorp.length > 0) {
+                            const { data: activeClaimsForCorp } = await supabase.from('shipping_claims')
+                                .select('id, route_id, revenue_per_transit, vessel_status, shipping_routes!inner(id, transit_ticks, scope, proximity)')
+                                .in('id', activeClaimIdsForCorp)
+                                .eq('faction_id', corp.id)
+                                .eq('status', 'active');
+                            for (const claim of (activeClaimsForCorp || [])) {
+                                const vessel = vessels.find(v => v.active_claim_id === claim.id);
+                                const fuelPerTransit = computeFuelCostForTransit({
+                                    route: claim.shipping_routes,
+                                    vesselClass: vessel?.vessel_class,
+                                    depotTier: 'state',
+                                });
+                                const m = estimateMonthlyClaimMargin({
+                                    route: claim.shipping_routes,
+                                    claim,
+                                    vessel,
+                                    fuelCostPerTransit: fuelPerTransit,
+                                });
+                                const checkpoint = {
+                                    faction_id: corp.id,
+                                    faction_name: corp.faction_name,
+                                    claim_id: claim.id,
+                                    route_id: claim.route_id,
+                                    vessel_id: vessel?.id || null,
+                                    vessel_name: vessel?.vessel_name || null,
+                                    expected_monthly_revenue: m.grossRevenue,
+                                    expected_monthly_direct_cost: m.fuelCost + m.maintenanceCost + m.incidentReserve,
+                                    expected_monthly_net: m.netMargin,
+                                };
+                                if (m.netMargin < 0) {
+                                    console.warn('[advance-corp-tick] shipping_profitability_checkpoint_negative', checkpoint);
+                                } else {
+                                    console.log('[advance-corp-tick] shipping_profitability_checkpoint', checkpoint);
+                                }
+                            }
+                        }
+                    } catch (profitErr) {
+                        console.warn('[advance-corp-tick] Shipping profitability checkpoint failed:', profitErr?.message || profitErr);
                     }
 
                     for (const v of vessels) {
@@ -4288,8 +4435,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             }
                         }
 
-                        // Maintenance cost (all vessels, even dry dock)
-                        totalMaintenance += v.base_maintenance;
+                        // Maintenance cost by vessel activity state (idle in-port is cheaper;
+                        // in-transit is higher wear).
+                        const maintenanceMultiplier = maintenanceMultiplierForStatus(updates.status || v.status);
+                        totalMaintenance += Math.round((Number(v.base_maintenance) || 0) * maintenanceMultiplier);
 
                         // Apply updates
                         if (Object.keys(updates).length > 0) {
