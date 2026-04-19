@@ -1116,6 +1116,38 @@
     padding: 32px 0 40px;
 }
 
+.nws-reader-notice {
+    float: right;
+    width: 220px;
+    margin: 4px 0 16px 20px;
+    padding: 12px 14px;
+    background: #fdf1dc;
+    border: 1px solid #c0392b;
+    border-left-width: 4px;
+    color: #6b2116;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    line-height: 1.45;
+    letter-spacing: 0.1px;
+}
+
+.nws-reader-notice strong {
+    color: #9b1c0e;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-size: 11px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+@media (max-width: 560px) {
+    .nws-reader-notice {
+        float: none;
+        width: auto;
+        margin: 0 0 16px;
+    }
+}
+
 .nws-reader-headline {
     font-family: 'Playfair Display', serif;
     font-size: clamp(32px, 5vw, 48px);
