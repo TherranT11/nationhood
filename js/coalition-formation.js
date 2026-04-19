@@ -6,7 +6,7 @@ import { buildMinistryBaselines } from './game/stats.js';
 import { autoAppointPartyLeaderAsPM, getNationNames } from './game/political-actions.js';
 import { rolloverAdministration } from './game/elections.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
-import { MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS } from './game/government-types.js';
+import { MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS, hasElectedPresident, isSemiPresidential, isAbsoluteMonarchy } from './game/government-types.js';
 import { tickToDate } from './utils.js';
 
 let _supabase = null;
@@ -126,10 +126,11 @@ export async function initCoalitionFormation(supabase, state) {
 
     // Presidential / semi-presidential systems don't use coalition formation —
     // the president governs (or nominates the PM). The Election tab renders a
-    // system-specific blurb via the early return below.
-    const isPresidentialSystem = (nation.government_type || '').toLowerCase().includes('presidential')
-        || nation.hos_election_method === 'direct_vote';
-    if (isPresidentialSystem) {
+    // system-specific blurb via the early return below. Use the canonical
+    // helper rather than substring-matching government_type (which would
+    // miscategorize parliamentary nations that happen to have a directly-
+    // elected ceremonial head of state, e.g. Vostia).
+    if (hasElectedPresident(nation)) {
         _formationNeeded = false;
         return { needed: false };
     }
@@ -168,16 +169,14 @@ function buildElectionHeader() {
     const nation = _state?.nation;
     if (!nation) return '';
 
-    const govType = (nation.government_type || '').toLowerCase();
-    if (govType.includes('absolute') && govType.includes('monarchy')) return '';
+    if (isAbsoluteMonarchy(nation)) return '';
 
     // Label always reads "NEXT ELECTION"; the subtitle names the election type
     // relative to the nation's constitutional setup:
     //   - Pure parliamentary systems → "Parliamentary"
     //   - Presidential / semi-presidential, next is a presidential election → "General"
     //   - Presidential / semi-presidential, next is a parliamentary election → "Midterm"
-    const isPresidentialSystem = govType.includes('presidential')
-        || nation.hos_election_method === 'direct_vote';
+    const isPresidentialSystem = hasElectedPresident(nation);
     const next = _scheduledElections[0] || null;
     const nextTick = next?.election_tick ?? null;
     const nextType = next?.election_type || 'parliamentary';
@@ -240,8 +239,7 @@ function buildElectionHeader() {
 function buildElectoralMakeup() {
     const nation = _state?.nation;
     if (!nation) return '';
-    const govType = (nation.government_type || '').toLowerCase();
-    if (govType.includes('absolute') && govType.includes('monarchy')) return '';
+    if (isAbsoluteMonarchy(nation)) return '';
 
     const totalSeats = Number(nation.total_seats) || 0;
     if (totalSeats <= 0) return '';
@@ -304,8 +302,7 @@ export async function renderFormationTab(root) {
 
     // Absolute monarchies don't hold elections — render blurb WITHOUT the
     // election header (monarchies have no elections to display).
-    const govType = (_state.nation?.government_type || '').toLowerCase();
-    if (govType.includes('absolute') && govType.includes('monarchy')) {
+    if (isAbsoluteMonarchy(_state.nation)) {
         root.innerHTML = `<div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">&#128081;</div>
@@ -330,10 +327,8 @@ export async function renderFormationTab(root) {
         : '';
 
     // Presidential systems — no coalition formation
-    const isPresidentialRender = (_state.nation?.government_type || '').toLowerCase().includes('presidential')
-        || _state.nation?.hos_election_method === 'direct_vote';
-    if (isPresidentialRender) {
-        const isSemiPresRender = (_state.nation?.government_type || '').toLowerCase().includes('semi');
+    if (hasElectedPresident(_state.nation)) {
+        const isSemiPresRender = isSemiPresidential(_state.nation);
         root.innerHTML = `${header}${makeupRow}
         <div class="cf-page">
             <div class="cf-no-formation">
@@ -534,18 +529,14 @@ const MINISTRY_NAMES = {
 // government-types.js (MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS).
 
 function getExpectedCabinetMinistryKeys(nation) {
-    const governmentType = (nation?.government_type || '').toLowerCase();
-    const isPresidential = governmentType.includes('presidential')
-        || nation?.hos_election_method === 'direct_vote';
-    const isSemiPresidential = governmentType.includes('semi');
-
     const parliamentaryKeys = ['prime_minister', 'interior', 'foreign', 'defense', 'finance',
         'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
     const presidentialKeys = ['interior', 'foreign', 'defense', 'finance',
         'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
 
-    if (isSemiPresidential) return parliamentaryKeys;
-    return isPresidential ? presidentialKeys : parliamentaryKeys;
+    // Semi-presidential has a PM seat (parliamentary shape); pure presidential omits it.
+    if (isSemiPresidential(nation)) return parliamentaryKeys;
+    return hasElectedPresident(nation) ? presidentialKeys : parliamentaryKeys;
 }
 
 function renderMinistryAssignment(formation) {

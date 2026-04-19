@@ -1,6 +1,8 @@
 // js/past-elections.js — Past Elections tab
 // Phase 1: Collapsed election list with date, type, top 3 parties, PM
 
+import { hasElectedPresident } from './game/government-types.js';
+
 let _supabase = null;
 let _state = null;
 let _elections = [];
@@ -145,8 +147,7 @@ function render(root, partyMap) {
         const prevAdmin = _administrations.find(a => a.ended_at_tick != null && a.ended_at_tick >= elec.election_tick - 2 && a.ended_at_tick <= elec.election_tick + 2);
 
         const typeInfo = getElectionTypeLabel(elec, prevAdmin);
-        const isPresidentialNation = (_state.nation?.government_type || '').toLowerCase().includes('presidential')
-            || _state.nation?.hos_election_method === 'direct_vote';
+        const isPresidentialNation = hasElectedPresident(_state.nation);
         const leaderTitle = isPresidentialNation ? 'President' : 'PM';
         const pmName = admin?.prime_minister || 'Unknown';
         const pmColor = admin?.pm_party_id ? (votes.find(v => v.party_id === admin.pm_party_id)?.color || '#888') : '#888';

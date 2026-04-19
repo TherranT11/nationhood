@@ -14,6 +14,7 @@
 import { IDEOLOGY_AXES } from './game/ideology.js';
 import { checkOppositionStatus } from './game/agitator.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, statDirectionSign } from './game/stats.js';
+import { hasElectedPresident } from './game/government-types.js';
 
 let _supabase = null;
 let _state = null;
@@ -196,9 +197,7 @@ export async function initPartyOverview(supabase, state, containerId) {
         const nextElectionTicks = nextElection ? Math.max(0, nextElection.election_tick - currentTick) : null;
         let nextElectionLabel = null;
         if (nextElection && nation) {
-            const isPresNation = nation.government_type?.toLowerCase().includes('presidential') ||
-                nation.hos_election_method === 'direct_vote';
-            if (isPresNation) {
+            if (hasElectedPresident(nation)) {
                 // Check if there's a presidential election at the same tick
                 const hasPresAtSameTick = upcomingElections.some(e =>
                     e.election_type === 'presidential' && e.election_tick === nextElection.election_tick);
