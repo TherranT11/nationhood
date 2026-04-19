@@ -2298,6 +2298,92 @@ export async function resolveVetoOverrideBill(supabase, bill, ctx) {
     };
 }
 
+/**
+ * Resolve an ordinary bill (the catch-all: regular policy bills, repeals,
+ * everything not matched by a specialized resolver).
+ *
+ * Branches:
+ *   - Presidential (hasElectedPresident): route to president's desk —
+ *     bills.update status='president_desk' with a deadline. The president's
+ *     desk processor picks it up for sign/veto/auto-sign.
+ *   - Parliamentary (no elected president): enact immediately via enactBill.
+ *     If enactment fails, the bill is marked failed_enactment with an
+ *     explanatory event; otherwise status=passed and effects applied.
+ *   - Failed: plain failBill + event.
+ *
+ * Note: the absolute-monarchy early-continue for passed ordinary bills
+ * (awaiting_royal_assent) is handled upstream in resolveExpiredVotes —
+ * those bills never reach this resolver.
+ *
+ * Return entry lacks a `type` field (no existing consumer sets one for
+ * ordinary bills), and the pass path may yield result='president_desk',
+ * 'passed', or 'failed_enactment' depending on the sub-branch taken.
+ */
+export async function resolveOrdinaryBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+
+    if (passed) {
+        if (hasElectedPresident(nation)) {
+            await supabase.from('bills').update({
+                status: 'president_desk',
+                passed_tick: currentTick,
+                president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS,
+            }).eq('id', bill.id);
+            await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: (bill.bill_articles || []).length });
+            return {
+                billId: bill.id,
+                billName: bill.bill_name,
+                result: 'president_desk',
+                votesFor,
+                votesAgainst,
+                earlyResolution: bill.early_resolution_status || null,
+            };
+        }
+        // Parliamentary: enact immediately. Wrap enactBill in try/catch so a
+        // thrown exception still produces a clean failed_enactment result.
+        let enactment;
+        try {
+            enactment = await enactBill(supabase, bill, currentTick);
+        } catch (enactErr) {
+            console.error(`[resolveOrdinaryBill] enactBill threw for bill ${bill.id} ("${bill.bill_name}"):`, enactErr);
+            enactment = { success: false, error: `enactBill threw: ${enactErr?.message || enactErr}` };
+        }
+        if (!enactment?.success) {
+            await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'Unknown enactment failure');
+            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, billNameOverride: `${bill.bill_name} (enactment failed)` });
+            return {
+                billId: bill.id,
+                billName: bill.bill_name,
+                result: 'failed_enactment',
+                votesFor,
+                votesAgainst,
+                error: enactment?.error,
+                earlyResolution: bill.early_resolution_status || null,
+            };
+        }
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: (bill.bill_articles || []).length });
+        return {
+            billId: bill.id,
+            billName: bill.bill_name,
+            result: 'passed',
+            votesFor,
+            votesAgainst,
+            earlyResolution: bill.early_resolution_status || null,
+        };
+    }
+    // Failed
+    await failBill(supabase, bill);
+    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: 'failed',
+        votesFor,
+        votesAgainst,
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
 
 export async function resolveExpiredVotes(supabase, nationId) {
     const { data: shard } = await supabase
@@ -2553,38 +2639,12 @@ export async function resolveExpiredVotes(supabase, nationId) {
             });
             results.push(entry);
 
-        } else if (passed) {
-            // Presidential systems: route regular/repeal bills to president's desk
-            if (hasElectedPresident(nation)) {
-                await supabase.from('bills').update({
-                    status: 'president_desk',
-                    passed_tick: currentTick,
-                    president_desk_deadline: currentTick + GAME_CONFIG.PRESIDENT_DESK_TICKS
-                }).eq('id', bill.id);
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: (bill.bill_articles || []).length });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
-            } else {
-                // Wrap enactBill in try-catch to convert thrown exceptions into {success: false}
-                let enactment;
-                try {
-                    enactment = await enactBill(supabase, bill, currentTick);
-                } catch (enactErr) {
-                    console.error(`[resolveExpiredVotes] enactBill threw for bill ${bill.id} ("${bill.bill_name}"):`, enactErr);
-                    enactment = { success: false, error: `enactBill threw: ${enactErr?.message || enactErr}` };
-                }
-                if (!enactment?.success) {
-                    await markBillEnactmentFailed(supabase, bill, currentTick, enactment?.error || 'Unknown enactment failure');
-                    await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, billNameOverride: `${bill.bill_name} (enactment failed)` });
-                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed_enactment', votesFor, votesAgainst, error: enactment?.error, earlyResolution: bill.early_resolution_status || null });
-                } else {
-                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: (bill.bill_articles || []).length });
-                    results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
-                }
-            }
         } else {
-            await failBill(supabase, bill);
-            await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, earlyResolution: bill.early_resolution_status || null });
+            // Catch-all: ordinary bills (regular + repeal), passed or failed.
+            const entry = await resolveOrdinaryBill(supabase, bill, {
+                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
+            });
+            results.push(entry);
         }
 
         // ── Bill momentum: award momentum to YES/NO voters based on outcome ──
