@@ -937,7 +937,30 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
   content: ""; position: absolute; top: -3px; left: 0; right: 0; height: 3px;
   background: linear-gradient(90deg, var(--h2-accent) 0%, var(--h2-accent-deep) 50%, var(--h2-accent) 100%);
 }
-.h2-plate-l { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.h2-plate-l {
+  display: flex; flex-direction: row; align-items: center;
+  gap: 22px; min-width: 0;
+}
+.h2-plate-logo {
+  flex-shrink: 0;
+  width: 72px; height: 72px; border-radius: 4px;
+  background: var(--h2-panel-3);
+  border: 1px solid var(--h2-line-2);
+  border-left: 3px solid var(--h2-accent);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  font-family: var(--h2-serif); font-size: 26px; font-weight: 700;
+  color: var(--h2-body-ink); letter-spacing: 0.06em;
+}
+.h2-plate-logo img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.h2-plate-text { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+:root[data-mode="paper"] .h2-plate-logo {
+  background: var(--h2-paper-2);
+  border-color: var(--h2-paper-line);
+  color: var(--h2-ink);
+}
 .h2-eyebrow {
   font-family: var(--h2-mono); font-size: 10px; letter-spacing: 0.28em;
   color: var(--h2-accent); text-transform: uppercase; font-weight: 700;
@@ -1034,24 +1057,27 @@ body.h2-edit-open .id-card { display: block !important; }
     <!-- Home2 Masthead Plate (Phase 2) — populated in init() -->
     <section class="h2-plate" id="h2-plate">
       <div class="h2-plate-l">
-        <div class="h2-eyebrow">
-          <span id="h2-eyebrow-loc">The Boardroom</span>
-          <span class="h2-stamp">Confidential · Executive</span>
-        </div>
-        <h1 class="h2-title">The Chairman's <em>Desk</em></h1>
-        <div class="h2-datebar" id="h2-datebar">
-          <span id="h2-tick-date">Tick — · —</span>
-          <span class="sep">·</span>
-          <span id="h2-next-close">Next close —</span>
-          <span class="sep">·</span>
-          <span id="h2-ceo">—</span>
+        <div class="h2-plate-logo" id="h2-plate-logo">—</div>
+        <div class="h2-plate-text">
+          <div class="h2-eyebrow">
+            <span id="h2-eyebrow-loc">The Boardroom</span>
+            <span class="h2-stamp">Confidential · Executive</span>
+          </div>
+          <h1 class="h2-title">The Chairman's <em>Desk</em></h1>
+          <div class="h2-datebar" id="h2-datebar">
+            <span id="h2-tick-date">Tick — · —</span>
+            <span class="sep">·</span>
+            <span id="h2-next-close">Next close —</span>
+            <span class="sep">·</span>
+            <span id="h2-ceo">—</span>
+          </div>
         </div>
       </div>
       <div class="h2-plate-r">
         <div class="h2-brand" id="h2-brand">—</div>
         <div class="h2-brand-sub" id="h2-brand-sub">—</div>
         <div class="h2-tail-code" id="h2-tail-code">—</div>
-        <button class="h2-plate-edit-btn" id="h2-edit-toggle" type="button" title="Edit logo / slogan / details">Edit ⚙</button>
+        <button class="h2-plate-edit-btn" id="h2-edit-toggle" type="button" title="Change logo (and other corp details)">Logo</button>
       </div>
     </section>
 
@@ -1282,6 +1308,16 @@ async function init() {
         const estYearRaw = gameDate ? gameDate.replace(/.*,\s*/, '') : '';
         const currentTick = shard?.current_tick;
 
+        // Corporate logo: custom image if uploaded, else ticker initials.
+        const plateLogoEl = document.getElementById('h2-plate-logo');
+        if (plateLogoEl) {
+            if (faction.custom_logo_url) {
+                plateLogoEl.innerHTML = `<img src="${escapeHtml(faction.custom_logo_url)}" alt="logo">`;
+            } else {
+                plateLogoEl.textContent = (tickerUp.slice(0, 3) || '—');
+            }
+        }
+
         // Eyebrow: The Boardroom · {nation}
         const eyebrowLocEl = document.getElementById('h2-eyebrow-loc');
         if (eyebrowLocEl) {
@@ -1350,14 +1386,14 @@ async function init() {
             tailEl.textContent = segs.length ? segs.join(' · ') : '—';
         }
 
-        // Edit toggle — exposes the legacy id-card (with logo upload / slogan editor)
-        // so players can still edit those fields until Phase 2+ ports them natively.
+        // Logo button — exposes the legacy id-card (with logo upload / slogan editor)
+        // so players can change the corp logo until Phase 2+ ports the editor natively.
         const editBtn = document.getElementById('h2-edit-toggle');
         if (editBtn) {
             editBtn.addEventListener('click', () => {
                 const open = document.body.classList.toggle('h2-edit-open');
                 editBtn.classList.toggle('on', open);
-                editBtn.textContent = open ? 'Close ✕' : 'Edit ⚙';
+                editBtn.textContent = open ? 'Close ✕' : 'Logo';
             });
         }
     })();
