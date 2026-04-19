@@ -54,14 +54,14 @@ SET search_path = public
 AS $$
 DECLARE
     v_caller_uid   UUID := auth.uid();
-    v_position     finance_active_loans%ROWTYPE;
+    v_position     public.finance_active_loans%ROWTYPE;
     v_buyer_cash   BIGINT;
     v_seller_cash  BIGINT;
     v_current_tick INT;
 BEGIN
     -- Auth: caller must own the buyer faction (primary OR linked).
     IF NOT EXISTS (
-        SELECT 1 FROM factions
+        SELECT 1 FROM public.factions
         WHERE id = p_buyer_faction_id
           AND (id = v_caller_uid OR linked_user_id = v_caller_uid)
     ) THEN
@@ -70,7 +70,7 @@ BEGIN
 
     -- Lock the position; validate it's still listed and still an equity row.
     SELECT * INTO v_position
-    FROM finance_active_loans
+    FROM public.finance_active_loans
     WHERE id = p_position_id
     FOR UPDATE;
 
@@ -92,7 +92,7 @@ BEGIN
 
     -- Buyer cash sufficiency (lock buyer row).
     SELECT corp_cash_reserves INTO v_buyer_cash
-    FROM factions
+    FROM public.factions
     WHERE id = p_buyer_faction_id
     FOR UPDATE;
 
@@ -103,25 +103,25 @@ BEGIN
 
     -- Lock seller row for cash credit.
     SELECT corp_cash_reserves INTO v_seller_cash
-    FROM factions
+    FROM public.factions
     WHERE id = v_position.lender_faction_id
     FOR UPDATE;
 
-    SELECT current_tick INTO v_current_tick FROM shard LIMIT 1;
+    SELECT current_tick INTO v_current_tick FROM public.shard LIMIT 1;
 
     -- Cash transfer: buyer pays seller the full asking price.
-    UPDATE factions
+    UPDATE public.factions
     SET corp_cash_reserves = v_buyer_cash - v_position.for_sale_price
     WHERE id = p_buyer_faction_id;
 
-    UPDATE factions
+    UPDATE public.factions
     SET corp_cash_reserves = COALESCE(v_seller_cash, 0) + v_position.for_sale_price
     WHERE id = v_position.lender_faction_id;
 
     -- Ownership transfer + delist + reset dividend counters.
     -- started_tick rolls forward so the buyer's portfolio shows "owned
     -- since tick X", not the original funding tick.
-    UPDATE finance_active_loans
+    UPDATE public.finance_active_loans
     SET lender_faction_id    = p_buyer_faction_id,
         for_sale_price       = NULL,
         total_paid           = 0,

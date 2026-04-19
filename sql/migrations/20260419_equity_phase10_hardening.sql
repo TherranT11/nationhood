@@ -49,7 +49,7 @@ SET search_path = public
 AS $$
 DECLARE
     v_caller_uid    UUID := auth.uid();
-    v_request       finance_loan_requests%ROWTYPE;
+    v_request       public.finance_loan_requests%ROWTYPE;
     v_buyer_cash    BIGINT;
     v_target_cash   BIGINT;
     v_current_tick  INT;
@@ -59,7 +59,7 @@ DECLARE
 BEGIN
     -- Auth: caller must own the buyer faction (primary OR linked).
     IF NOT EXISTS (
-        SELECT 1 FROM factions
+        SELECT 1 FROM public.factions
         WHERE id = p_buyer_faction_id
           AND (id = v_caller_uid OR linked_user_id = v_caller_uid)
     ) THEN
@@ -68,7 +68,7 @@ BEGIN
 
     -- Lock the request row; validate.
     SELECT * INTO v_request
-    FROM finance_loan_requests
+    FROM public.finance_loan_requests
     WHERE id = p_request_id
     FOR UPDATE;
 
@@ -88,7 +88,7 @@ BEGIN
         RAISE EXCEPTION 'Cannot buy a stake in your own corp';
     END IF;
 
-    SELECT current_tick INTO v_current_tick FROM shard LIMIT 1;
+    SELECT current_tick INTO v_current_tick FROM public.shard LIMIT 1;
 
     -- Phase 10: expiry guard.
     IF v_current_tick > v_request.expires_tick THEN
@@ -104,7 +104,7 @@ BEGIN
     -- The check here is the best-effort guard; the next iteration can
     -- escalate to advisory locks if races are observed.
     SELECT COALESCE(SUM(equity_pct), 0) INTO v_existing_pct
-    FROM finance_active_loans
+    FROM public.finance_active_loans
     WHERE borrower_faction_id = v_request.requesting_faction_id
       AND equity_pct IS NOT NULL
       AND status IN ('current', 'late', 'delinquent');
@@ -120,7 +120,7 @@ BEGIN
 
     -- Lock buyer row; cash sufficiency.
     SELECT corp_cash_reserves INTO v_buyer_cash
-    FROM factions
+    FROM public.factions
     WHERE id = p_buyer_faction_id
     FOR UPDATE;
 
@@ -131,13 +131,13 @@ BEGIN
 
     -- Lock target row for the cash credit.
     SELECT corp_cash_reserves INTO v_target_cash
-    FROM factions
+    FROM public.factions
     WHERE id = v_request.requesting_faction_id
     FOR UPDATE;
 
     -- Offer row (status='accepted' immediately — no offer/accept two-step
     -- for equity buy-ins under the current design).
-    INSERT INTO finance_loan_offers (
+    INSERT INTO public.finance_loan_offers (
         request_id, offering_faction_id, interest_rate,
         collateral_type, status, created_tick
     ) VALUES (
@@ -150,7 +150,7 @@ BEGIN
     -- Phase 1 when the raiser left it at 0; otherwise the raiser's value
     -- wins. monthly_payment is 0 — the tick branch computes the dividend
     -- each tick as equity_pct × target.monthly_profit.
-    INSERT INTO finance_active_loans (
+    INSERT INTO public.finance_active_loans (
         request_id, offer_id,
         borrower_faction_id, lender_faction_id, nation_id,
         principal, interest_rate, term_months,
@@ -167,16 +167,16 @@ BEGIN
     RETURNING id INTO v_position_id;
 
     -- Move cash.
-    UPDATE factions
+    UPDATE public.factions
     SET corp_cash_reserves = v_buyer_cash - v_request.amount
     WHERE id = p_buyer_faction_id;
 
-    UPDATE factions
+    UPDATE public.factions
     SET corp_cash_reserves = COALESCE(v_target_cash, 0) + v_request.amount
     WHERE id = v_request.requesting_faction_id;
 
     -- Flip request to funded so it leaves Deal Flow.
-    UPDATE finance_loan_requests
+    UPDATE public.finance_loan_requests
     SET status = 'funded',
         accepted_offer_id = v_offer_id,
         funded_tick = v_current_tick
