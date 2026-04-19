@@ -330,7 +330,7 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
                 monthly = mr > 0 ? Math.round(amount * (mr * Math.pow(1 + mr, term)) / (Math.pow(1 + mr, term) - 1)) : Math.round(amount / term);
             }
 
-            const { data, error } = await _supabase.rpc('accept_subsidiary_auto_policy', {
+            const { data, error } = await _supabase.rpc('accept_subsidiary_auto_policy_txn', {
                 p_rate_id: rate.id,
                 p_borrower_faction_id: _state.faction?.id,
                 p_principal: amount,
