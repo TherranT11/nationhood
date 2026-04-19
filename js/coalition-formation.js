@@ -20,6 +20,9 @@ let _totalSeats = 0;
 // of truth for the election header AND the pre-election render branch — both
 // derive what they need (earliest-by-type / earliest-overall) from this array.
 let _scheduledElections = [];
+// Active coalition (virtualized for presidential) from fetchActiveCoalition,
+// used by the header's Government Status line. Single fetch at init time.
+let _activeCoalition = null;
 let _majoritySeats = 0;
 let _lastElectionTick = null;
 let _currentTick = 0;
@@ -94,6 +97,7 @@ export async function initCoalitionFormation(supabase, state) {
     _totalSeats = _allParties.reduce((s, p) => s + (p.seats || 0), 0);
     _majoritySeats = Math.ceil(_totalSeats / 2) + 1;
     _scheduledElections = scheduledResult?.data || [];
+    _activeCoalition = activeCoalition || null;
 
     const election = electionResult.data;
     // activeCoalition is either null or the canonical SSoT result from
@@ -193,9 +197,19 @@ function buildElectionHeader() {
     const subLines = [monthLabel, `Type: ${typeLabel}`].filter(Boolean)
         .map(line => `<div class="cf-eh-stat-sub">${esc(line)}</div>`).join('');
 
+    // Government status line appears to the left of the flag when a coalition
+    // or virtualized presidential government is active. Capitalized for the
+    // four canonical states (formed / caretaker / dissolved / forming).
+    const rawStatus = _activeCoalition?.status || null;
+    const statusLabel = rawStatus ? rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1) : null;
+    const statusLine = statusLabel
+        ? `<div class="cf-eh-gov-status">GOVERNMENT STATUS: <span class="cf-eh-gov-status-value">${esc(statusLabel)}</span></div>`
+        : '';
+
     return `<div class="cf-election-header">
         <div class="cf-eh-left">
             <div class="cf-eh-label">&bull; ELECTIONS</div>
+            ${statusLine}
             <div class="cf-eh-title-row">
                 <img class="cf-eh-flag" src="${esc(flagSrc)}" alt="${esc(nationName)} flag" onerror="this.style.display='none'">
                 <h2 class="cf-eh-title">Elections of ${esc(nationName)}</h2>
@@ -211,6 +225,76 @@ function buildElectionHeader() {
                 <div class="cf-eh-stat-label">TOTAL SEATS</div>
                 <div class="cf-eh-stat-value">${totalSeats}</div>
             </div>
+        </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Electoral Makeup — chamber composition bar with majority marker.
+// Renders one segment per party (sorted by seats desc) colored by party_color,
+// plus an "At Stake" segment filling any unallocated seats (total_seats minus
+// the sum of faction.seats). Pulled entirely from _allParties and
+// nation.total_seats — no new queries.
+// Returns '' for absolute monarchies (no parties, no seats to display).
+// ═══════════════════════════════════════════════════════════════════════════
+function buildElectoralMakeup() {
+    const nation = _state?.nation;
+    if (!nation) return '';
+    const govType = (nation.government_type || '').toLowerCase();
+    if (govType.includes('absolute') && govType.includes('monarchy')) return '';
+
+    const totalSeats = Number(nation.total_seats) || 0;
+    if (totalSeats <= 0) return '';
+
+    const seated = _allParties.filter(p => (p.seats || 0) > 0)
+        .slice().sort((a, b) => (b.seats || 0) - (a.seats || 0));
+    const partySeats = seated.reduce((sum, p) => sum + (p.seats || 0), 0);
+    const atStake = Math.max(0, totalSeats - partySeats);
+    const majority = Math.ceil(totalSeats / 2) + 1;
+    const majorityPct = (majority / totalSeats) * 100;
+
+    const segments = seated.map(p => {
+        const pct = ((p.seats || 0) / totalSeats) * 100;
+        const color = p.party_color || 'var(--text-dim)';
+        return `<div class="cf-em-seg" style="width:${pct}%;background:${esc(color)};" title="${esc(p.faction_name)}: ${p.seats} seats"></div>`;
+    }).join('');
+    const stakeSeg = atStake > 0
+        ? `<div class="cf-em-seg cf-em-seg--stake" style="width:${(atStake / totalSeats) * 100}%;">
+               <span class="cf-em-stake-label">${atStake} SEATS AT STAKE</span>
+           </div>`
+        : '';
+
+    const legendParties = seated.map(p => {
+        const color = p.party_color || 'var(--text-dim)';
+        return `<div class="cf-em-chip">
+            <span class="cf-em-swatch" style="background:${esc(color)};"></span>
+            <span class="cf-em-chip-name">${esc(p.faction_name)}</span>
+            <span class="cf-em-chip-count">${p.seats}</span>
+            <span class="cf-em-chip-unit">seats</span>
+        </div>`;
+    }).join('');
+    const legendStake = atStake > 0
+        ? `<div class="cf-em-chip">
+               <span class="cf-em-swatch cf-em-swatch--stake"></span>
+               <span class="cf-em-chip-name">At Stake</span>
+               <span class="cf-em-chip-count">${atStake}</span>
+               <span class="cf-em-chip-unit">seats</span>
+           </div>`
+        : '';
+
+    return `<div class="cf-electoral-makeup">
+        <div class="cf-em-header">
+            <div class="cf-em-title">&#9642; ELECTORAL MAKEUP</div>
+            <div class="cf-em-meta">MAJORITY AT <span class="cf-em-majority">${majority} SEATS</span> &middot; ${totalSeats} TOTAL</div>
+        </div>
+        <div class="cf-em-bar">
+            ${segments}
+            ${stakeSeg}
+            <div class="cf-em-majority-tick" style="left:${majorityPct.toFixed(2)}%;"></div>
+        </div>
+        <div class="cf-em-legend">
+            ${legendParties}
+            ${legendStake}
         </div>
     </div>`;
 }
@@ -296,13 +380,22 @@ export async function renderFormationTab(root) {
     // All other systems (parliamentary, presidential, semi-presidential) get
     // the election header at the top of every render path.
     const header = buildElectionHeader();
+    // Electoral Makeup sits inside a 2-col grid: left slot reserved for
+    // Campaign Events (not yet built), right slot shows the makeup bar.
+    const makeup = buildElectoralMakeup();
+    const makeupRow = makeup
+        ? `<div class="cf-makeup-row">
+               <div class="cf-makeup-left"></div>
+               <div class="cf-makeup-right">${makeup}</div>
+           </div>`
+        : '';
 
     // Presidential systems — no coalition formation
     const isPresidentialRender = (_state.nation?.government_type || '').toLowerCase().includes('presidential')
         || _state.nation?.hos_election_method === 'direct_vote';
     if (isPresidentialRender) {
         const isSemiPresRender = (_state.nation?.government_type || '').toLowerCase().includes('semi');
-        root.innerHTML = `${header}
+        root.innerHTML = `${header}${makeupRow}
         <div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">&#127979;</div>
@@ -317,7 +410,7 @@ export async function renderFormationTab(root) {
     }
 
     if (!_formationNeeded) {
-        root.innerHTML = `${header}
+        root.innerHTML = `${header}${makeupRow}
         <div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">✓</div>
@@ -334,7 +427,7 @@ export async function renderFormationTab(root) {
     if (!_electionId) {
         const nextTick = _scheduledElections[0]?.election_tick;
         const ticksUntil = nextTick != null ? Math.max(0, nextTick - _currentTick) : '?';
-        root.innerHTML = `${header}
+        root.innerHTML = `${header}${makeupRow}
         <div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon" style="font-size:2rem;">&#9878;</div>
@@ -448,7 +541,7 @@ export async function renderFormationTab(root) {
         }).join('')}</div>
     ` : '';
 
-    root.innerHTML = `${header}
+    root.innerHTML = `${header}${makeupRow}
     <div class="cf-page">
         <!-- Formation Banner -->
         <div class="cf-banner cf-banner--${urgency}">
