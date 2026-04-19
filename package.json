@@ -17,6 +17,7 @@
     "test:endorsement-window": "node scripts/test-endorsement-window.mjs",
     "test:bills-helpers": "node scripts/test-bills-helpers.mjs",
     "test:resolve-minister-confirmation": "node scripts/test-resolve-minister-confirmation.mjs",
+    "test:resolve-ambassador-confirmation": "node scripts/test-resolve-ambassador-confirmation.mjs",
     "migrate:shipping": "node scripts/apply-shipping-migrations.js"
   },
   "devDependencies": {
