@@ -60,7 +60,7 @@ export async function initCoalitionFormation(supabase, state) {
             .maybeSingle(),
         supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
         supabase.from('government_formations')
-            .select('id, status, election_id, formed_at, formed_tick, created_at, created_tick')
+            .select('id, status, election_id, formed_at, created_at')
             .eq('nation_id', nation.id)
             .in('status', ['formed', 'active'])
             .order('formed_at', { ascending: false, nullsFirst: false })
