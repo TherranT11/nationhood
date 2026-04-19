@@ -7,6 +7,7 @@ import { autoAppointPartyLeaderAsPM, getNationNames } from './game/political-act
 import { rolloverAdministration } from './game/elections.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS } from './game/government-types.js';
+import { tickToDate } from './utils.js';
 
 let _supabase = null;
 let _state = null;
@@ -15,6 +16,10 @@ let _electionId = null;
 let _allParties = [];
 let _formations = [];
 let _totalSeats = 0;
+// Scheduled elections for the current nation, ascending by tick. One source
+// of truth for the election header AND the pre-election render branch — both
+// derive what they need (earliest-by-type / earliest-overall) from this array.
+let _scheduledElections = [];
 let _majoritySeats = 0;
 let _lastElectionTick = null;
 let _currentTick = 0;
@@ -51,7 +56,7 @@ export async function initCoalitionFormation(supabase, state) {
     // ministries as "government exists", so the Election tab must agree —
     // otherwise we'd flash "No Government — Snap Election Imminent" while a
     // full cabinet is live one tab over.
-    const [electionResult, shardResult, activeCoalition, partiesResult, hogResult] = await Promise.all([
+    const [electionResult, shardResult, activeCoalition, partiesResult, hogResult, scheduledResult] = await Promise.all([
         supabase.from('elections')
             .select('id, election_type, election_tick, status')
             .eq('nation_id', nation.id)
@@ -77,12 +82,18 @@ export async function initCoalitionFormation(supabase, state) {
             .eq('active', true)
             .limit(1)
             .maybeSingle(),
+        supabase.from('elections')
+            .select('election_tick, election_type')
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled')
+            .order('election_tick', { ascending: true }),
     ]);
 
     _currentTick = shardResult.data?.current_tick ?? 0;
     _allParties = partiesResult.data || [];
     _totalSeats = _allParties.reduce((s, p) => s + (p.seats || 0), 0);
     _majoritySeats = Math.ceil(_totalSeats / 2) + 1;
+    _scheduledElections = scheduledResult?.data || [];
 
     const election = electionResult.data;
     // activeCoalition is either null or the canonical SSoT result from
@@ -141,6 +152,63 @@ export async function initCoalitionFormation(supabase, state) {
 
 export function isFormationNeeded() {
     return _formationNeeded;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Election header — visible for every system except absolute monarchy.
+// Shows nation flag + name, next scheduled election date, months remaining,
+// and chamber seat count. Returns an HTML string to prepend to each render
+// path; returns '' when the nation is an absolute monarchy (caller skips).
+// ═══════════════════════════════════════════════════════════════════════════
+function buildElectionHeader() {
+    const nation = _state?.nation;
+    if (!nation) return '';
+
+    const govType = (nation.government_type || '').toLowerCase();
+    if (govType.includes('absolute') && govType.includes('monarchy')) return '';
+
+    // Parse scheduled elections from the one source of truth. Presidential =
+    // "General" (picks the head of state). Parliamentary = "Midterm" (picks the
+    // chamber). Semi-presidential has both tracks; pure types have only one.
+    const byType = { presidential: null, parliamentary: null };
+    for (const row of _scheduledElections) {
+        const t = row.election_type || 'parliamentary';
+        if (byType[t] == null) byType[t] = row.election_tick;
+    }
+
+    const currentTick = Number(_currentTick) || 0;
+    function statBlock(label, tick) {
+        if (tick == null) return '';
+        const months = Math.max(0, tick - currentTick);
+        const monthLabel = `${months} Month${months === 1 ? '' : 's'}`;
+        return `<div class="cf-eh-stat">
+            <div class="cf-eh-stat-label">${esc(label)}</div>
+            <div class="cf-eh-stat-value cf-eh-stat-value--accent">${esc(tickToDate(tick))}</div>
+            <div class="cf-eh-stat-sub">${esc(monthLabel)}</div>
+        </div>`;
+    }
+
+    const totalSeats = Number(nation.total_seats) || 0;
+    const nationName = nation.name || 'Unknown';
+    const flagSrc = nation.flag_url || `assets/flags/${nationName}.png`;
+
+    return `<div class="cf-election-header">
+        <div class="cf-eh-left">
+            <div class="cf-eh-label">&bull; ELECTIONS</div>
+            <div class="cf-eh-title-row">
+                <img class="cf-eh-flag" src="${esc(flagSrc)}" alt="${esc(nationName)} flag" onerror="this.style.display='none'">
+                <h2 class="cf-eh-title">Elections of ${esc(nationName)}</h2>
+            </div>
+        </div>
+        <div class="cf-eh-stats">
+            ${statBlock('NEXT GENERAL', byType.presidential)}
+            ${statBlock('NEXT MIDTERM', byType.parliamentary)}
+            <div class="cf-eh-stat">
+                <div class="cf-eh-stat-label">TOTAL SEATS</div>
+                <div class="cf-eh-stat-value">${totalSeats}</div>
+            </div>
+        </div>
+    </div>`;
 }
 
 export async function renderFormationTab(root) {
@@ -207,25 +275,8 @@ export async function renderFormationTab(root) {
         }
     }
 
-    // Presidential systems — no coalition formation
-    const isPresidentialRender = (_state.nation?.government_type || '').toLowerCase().includes('presidential')
-        || _state.nation?.hos_election_method === 'direct_vote';
-    if (isPresidentialRender) {
-        const isSemiPresRender = (_state.nation?.government_type || '').toLowerCase().includes('semi');
-        root.innerHTML = `<div class="cf-page">
-            <div class="cf-no-formation">
-                <div class="cf-no-icon">&#127979;</div>
-                <div class="cf-no-title">${isSemiPresRender ? 'Semi-Presidential System' : 'Presidential System'}</div>
-                <div class="cf-no-desc">${isSemiPresRender
-                    ? 'The President nominates a Prime Minister for parliamentary confirmation. The PM then appoints cabinet ministers. No coalition formation is required.'
-                    : 'The President governs directly and nominates cabinet ministers. No coalition formation is required.'
-                }</div>
-            </div>
-        </div>`;
-        return;
-    }
-
-    // Absolute monarchies don't hold elections
+    // Absolute monarchies don't hold elections — render blurb WITHOUT the
+    // election header (monarchies have no elections to display).
     const govType = (_state.nation?.government_type || '').toLowerCase();
     if (govType.includes('absolute') && govType.includes('monarchy')) {
         root.innerHTML = `<div class="cf-page">
@@ -238,8 +289,32 @@ export async function renderFormationTab(root) {
         return;
     }
 
+    // All other systems (parliamentary, presidential, semi-presidential) get
+    // the election header at the top of every render path.
+    const header = buildElectionHeader();
+
+    // Presidential systems — no coalition formation
+    const isPresidentialRender = (_state.nation?.government_type || '').toLowerCase().includes('presidential')
+        || _state.nation?.hos_election_method === 'direct_vote';
+    if (isPresidentialRender) {
+        const isSemiPresRender = (_state.nation?.government_type || '').toLowerCase().includes('semi');
+        root.innerHTML = `<div class="cf-page">
+            ${header}
+            <div class="cf-no-formation">
+                <div class="cf-no-icon">&#127979;</div>
+                <div class="cf-no-title">${isSemiPresRender ? 'Semi-Presidential System' : 'Presidential System'}</div>
+                <div class="cf-no-desc">${isSemiPresRender
+                    ? 'The President nominates a Prime Minister for parliamentary confirmation. The PM then appoints cabinet ministers. No coalition formation is required.'
+                    : 'The President governs directly and nominates cabinet ministers. No coalition formation is required.'
+                }</div>
+            </div>
+        </div>`;
+        return;
+    }
+
     if (!_formationNeeded) {
         root.innerHTML = `<div class="cf-page">
+            ${header}
             <div class="cf-no-formation">
                 <div class="cf-no-icon">✓</div>
                 <div class="cf-no-title">Government Formed</div>
@@ -249,23 +324,14 @@ export async function renderFormationTab(root) {
         return;
     }
 
-    // Pre-election state: no completed election yet, but one is scheduled
+    // Pre-election state: no completed election yet, but one is scheduled.
+    // Reads the earliest scheduled election from _scheduledElections — same
+    // source the header derives its dates from, one fetch at init.
     if (!_electionId) {
-        const nationId = _state.nation?.id;
-        let ticksUntil = '?';
-        if (nationId) {
-            const { data: scheduled } = await _supabase.from('elections')
-                .select('election_tick')
-                .eq('nation_id', nationId)
-                .eq('status', 'scheduled')
-                .order('election_tick', { ascending: true })
-                .limit(1)
-                .maybeSingle();
-            if (scheduled) {
-                ticksUntil = Math.max(0, scheduled.election_tick - _currentTick);
-            }
-        }
+        const nextTick = _scheduledElections[0]?.election_tick;
+        const ticksUntil = nextTick != null ? Math.max(0, nextTick - _currentTick) : '?';
         root.innerHTML = `<div class="cf-page">
+            ${header}
             <div class="cf-no-formation">
                 <div class="cf-no-icon" style="font-size:2rem;">&#9878;</div>
                 <div class="cf-no-title">No Government</div>
@@ -379,6 +445,7 @@ export async function renderFormationTab(root) {
     ` : '';
 
     root.innerHTML = `<div class="cf-page">
+        ${header}
         <!-- Formation Banner -->
         <div class="cf-banner cf-banner--${urgency}">
             <div class="cf-banner-header">
