@@ -1423,6 +1423,124 @@ body.h2-page #events-card { display: none !important; }
 @media (max-width: 768px) {
   .h2-disp { grid-template-columns: 50px 56px 1fr; gap: 8px; padding: 8px 12px; }
 }
+
+/* ===========================================================================
+   HOME2 — PHASE 6: HERO EXECUTIVE BRIEFING + TODAY'S FOLDERS (empty state)
+   Renders the design's structure with an empty/placeholder body. A future
+   iteration will populate them from a pending-decisions aggregation layer
+   (open bids, refurbish prompts, loan offers, political events, etc.).
+   =========================================================================== */
+.h2-hero {
+  width: 100%;
+  background: var(--h2-paper);
+  color: var(--h2-ink);
+  border: 1px solid var(--h2-paper-line);
+  border-top: 3px solid var(--h2-accent);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+.h2-hero::before {
+  content: ""; position: absolute; top: -3px; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--h2-accent) 0%, var(--h2-accent-deep) 50%, var(--h2-accent) 100%);
+}
+.h2-hero-inside { padding: 22px 26px; }
+.h2-hero-meta {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; font-family: var(--h2-mono); font-size: 10px;
+  letter-spacing: 0.18em; color: var(--h2-ink-mute);
+  text-transform: uppercase; font-weight: 600;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--h2-paper-line);
+  margin-bottom: 16px;
+}
+.h2-hero-meta .h2-hero-stamp {
+  padding: 3px 10px;
+  border: 1px solid var(--h2-accent);
+  color: var(--h2-accent);
+  border-radius: 2px;
+  font-size: 9px; letter-spacing: 0.22em;
+  background: rgba(74, 168, 216, 0.05);
+}
+.h2-hero-meta .h2-hero-stamp.quiet {
+  border-color: var(--h2-paper-line);
+  color: var(--h2-ink-mute);
+  background: var(--h2-paper-2);
+}
+.h2-hero-headline {
+  margin: 0 0 12px;
+  font-family: var(--h2-serif); font-size: 26px; font-weight: 600;
+  line-height: 1.2; letter-spacing: -0.01em; color: var(--h2-ink);
+}
+.h2-hero-dek {
+  margin: 0; font-family: var(--h2-serif); font-size: 14px; line-height: 1.55;
+  color: var(--h2-ink-dim);
+}
+.h2-hero-empty {
+  text-align: left;
+  padding: 6px 0 4px;
+}
+.h2-hero-empty .h2-hero-headline {
+  color: var(--h2-ink-mute);
+  font-style: italic;
+}
+
+/* Section header (Today's Folders title bar) */
+.h2-section-h {
+  display: flex; align-items: baseline; gap: 14px;
+  padding: 18px 4px 10px;
+}
+.h2-section-h .t {
+  font-family: var(--h2-serif); font-size: 18px; font-weight: 600;
+  color: var(--h2-body-ink); letter-spacing: -0.01em;
+}
+.h2-section-h .t em { font-style: italic; color: var(--h2-accent); font-weight: 500; }
+.h2-section-h .meta {
+  font-family: var(--h2-mono); font-size: 9.5px; letter-spacing: 0.18em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase; font-weight: 600;
+  margin-left: auto;
+}
+
+/* Folder stack (empty state) */
+.h2-stack {
+  width: 100%;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.h2-stack-empty {
+  background: var(--h2-panel);
+  border: 1px dashed var(--h2-line-2);
+  border-radius: 3px;
+  padding: 28px 22px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-align: center;
+}
+.h2-stack-empty .t {
+  font-family: var(--h2-serif); font-size: 16px; font-style: italic;
+  color: var(--h2-body-ink-dim);
+}
+.h2-stack-empty .sub {
+  font-family: var(--h2-mono); font-size: 10px; letter-spacing: 0.16em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase;
+}
+
+/* Paper-mode tweaks */
+:root[data-mode="paper"] .h2-hero {
+  background: var(--h2-paper);
+  border-color: var(--h2-paper-line);
+  color: var(--h2-ink);
+}
+:root[data-mode="paper"] .h2-stack-empty {
+  background: var(--h2-paper);
+  border-color: var(--h2-paper-line);
+}
+:root[data-mode="paper"] .h2-stack-empty .t,
+:root[data-mode="paper"] .h2-section-h .t { color: var(--h2-ink); }
+
+@media (max-width: 768px) {
+  .h2-hero-inside { padding: 18px 18px; }
+  .h2-hero-headline { font-size: 22px; }
+  .h2-hero-meta { flex-direction: column; gap: 8px; }
+}
 </style>
 </head>
 <body class="h2-page">
@@ -1624,6 +1742,38 @@ body.h2-page #events-card { display: none !important; }
         <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);" id="prop-count">1 ASSET</span>
       </div>
       <div class="prop-card__content" id="prop-body"></div>
+    </div>
+
+    <!-- Home2 Phase 6: Hero Executive Briefing (empty state).
+         Future iteration will populate this from a pending-decisions
+         aggregation layer (open bids, refurbish prompts, loan offers,
+         political events, etc.) and pick the highest-priority item. -->
+    <article class="h2-hero" id="h2-hero">
+      <div class="h2-hero-inside">
+        <div class="h2-hero-meta">
+          <div>
+            <div>Briefings · Today</div>
+            <div style="margin-top:4px;color:var(--h2-ink-faint);">Awaiting items</div>
+          </div>
+          <div class="h2-hero-stamp quiet">No urgent decisions</div>
+        </div>
+        <div class="h2-hero-empty">
+          <h2 class="h2-hero-headline">No briefings today.</h2>
+          <p class="h2-hero-dek">A briefing appears here when an item needs the chairman's attention this tick — a counter-bid, a refurbish prompt, a loan offer, a political moment that touches the corp.</p>
+        </div>
+      </div>
+    </article>
+
+    <!-- Home2 Phase 6: Today's Folders (empty state). -->
+    <div class="h2-section-h">
+      <span class="t">Today's <em>Folders</em></span>
+      <span class="meta" id="h2-folders-meta">0 pending</span>
+    </div>
+    <div class="h2-stack" id="h2-stack">
+      <div class="h2-stack-empty">
+        <span class="t">No pending folders.</span>
+        <span class="sub">Decisions will land here as they open.</span>
+      </div>
     </div>
 
     <!-- Home2 Phase 5: The Morning Wire (renders the same merged event data
