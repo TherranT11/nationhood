@@ -464,7 +464,8 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 
         for (const [axisKey, shift] of Object.entries(axisShifts)) {
             const oldScore = currentScores[axisKey] || 0;
-            const newScore = Math.max(-100, Math.min(100, oldScore + shift));
+            const normalizedScore = Math.round(oldScore + shift);
+            const newScore = Math.max(-100, Math.min(100, normalizedScore));
             if (newScore !== oldScore) {
                 updateObj[axisKey] = newScore;
                 hasChanges = true;
@@ -472,7 +473,19 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
         }
 
         if (hasChanges) {
-            await supabase.from('faction_ideology').update(updateObj).eq('faction_id', factionId);
+            const { error: updateErr } = await supabase
+                .from('faction_ideology')
+                .update(updateObj)
+                .eq('faction_id', factionId);
+
+            if (updateErr) {
+                console.error(`[processIdeologyShifts] update failed for faction ${factionId}`, {
+                    faction_id: factionId,
+                    payload: updateObj,
+                    error: updateErr.message
+                });
+                continue;
+            }
 
             // Record snapshot for ideology_history
             if (typeof currentTick === 'number') {
