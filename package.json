@@ -18,6 +18,7 @@
     "test:bills-helpers": "node scripts/test-bills-helpers.mjs",
     "test:resolve-minister-confirmation": "node scripts/test-resolve-minister-confirmation.mjs",
     "test:resolve-ambassador-confirmation": "node scripts/test-resolve-ambassador-confirmation.mjs",
+    "test:resolve-no-confidence-and-impeachment": "node scripts/test-resolve-no-confidence-and-impeachment.mjs",
     "migrate:shipping": "node scripts/apply-shipping-migrations.js"
   },
   "devDependencies": {
