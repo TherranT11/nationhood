@@ -665,6 +665,63 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
             ? `${nation.head_of_state_last_name} Administration`
             : `${pmPartyName} Administration`);
 
+    // ──────────────────────────────────────────────────────────────────
+    // Continuity rule: if the incoming coalition keeps the same Prime
+    // Minister, this is ONE administration continuing across a coalition
+    // change — not two separate administrations. Resume the most recent
+    // row in place rather than close-and-create.
+    //
+    // The incoming PM name is derived from the lead party's leader (this
+    // is what autoAppointPartyLeaderAsPM will install after rollover). If
+    // the HOG row is already active (edge case), prefer that.
+    // ──────────────────────────────────────────────────────────────────
+    let incomingPmName = activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}`.trim() : '';
+    if (!incomingPmName && leadPartyId) {
+        const { data: leadFaction } = await supabase
+            .from('factions')
+            .select('leader_first_name, leader_last_name')
+            .eq('id', leadPartyId)
+            .maybeSingle();
+        if (leadFaction?.leader_first_name) {
+            incomingPmName = `${leadFaction.leader_first_name} ${leadFaction.leader_last_name || ''}`.trim();
+        }
+    }
+
+    if (incomingPmName) {
+        const { data: lastAdmin } = await supabase
+            .from('administrations')
+            .select('id, prime_minister, started_at_tick')
+            .eq('nation_id', nationId)
+            .order('started_at_tick', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (lastAdmin && lastAdmin.prime_minister === incomingPmName) {
+            // Same PM continues — update coalition composition in place.
+            // Preserve started_at_tick, stats_at_start, approval_at_start,
+            // and accumulated records (bills_passed, laws_repealed, etc.).
+            const { error: updErr } = await supabase
+                .from('administrations')
+                .update({
+                    ended_at_tick: null,
+                    ended_at_date: null,
+                    end_reason: null,
+                    coalition_parties: coalitionParties,
+                    total_seats: totalSeats,
+                    pm_party_id: leadPartyId,
+                    pm_party_name: pmPartyName,
+                    admin_name: adminName,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', lastAdmin.id);
+            if (updErr) throw updErr;
+            console.log(`Administration continued (same PM "${incomingPmName}") across coalition change at tick ${currentTick}`);
+            await _verifyAdministrationIntegrity(supabase, nationId, 'rolloverAdministration_same_pm_continuation');
+            return;
+        }
+    }
+
     const payload = {
         nation_id: nationId,
         admin_name: adminName,

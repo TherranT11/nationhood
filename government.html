@@ -1058,6 +1058,8 @@ function renderGovContent() {
         renderLawsTab(content);
     } else if (_govActiveSubtab === 'budget') {
         renderBudgetTab(content);
+    } else if (_govActiveSubtab === 'past') {
+        renderPastAdministrationsTab(content);
     } else {
         const label = GOV_SUBTABS.find(t => t.id === _govActiveSubtab)?.label || _govActiveSubtab;
         content.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;text-align:center;color:var(--text-dim);">
@@ -4345,8 +4347,6 @@ async function renderGovernmentPage() {
                     <svg id="parliament-svg" viewBox="0 0 520 280"></svg>
                 </div>
                 <div class="parliament-legend" id="parliament-legend"></div>
-
-                <div id="past-administrations-container"></div>
             </div>
         `;
 
@@ -4365,9 +4365,6 @@ async function renderGovernmentPage() {
         if (seatParties.length > 0) {
             drawParliament(seatParties);
         }
-
-        // Load and render past administrations
-        loadPastAdministrations();
 
         // Load admin chat messages
         loadAdminChat();
@@ -12417,14 +12414,17 @@ function generateAdminSummary(admin) {
 }
 
 /**
- * Load and render past administrations.
+ * Render the dedicated PAST ADMINISTRATIONS subtab. Reads the
+ * administrations table (single source of truth) and renders the current
+ * administration first, then closed administrations in reverse
+ * chronological order, all as expanded cards via renderAdminCard.
  */
-async function loadPastAdministrations() {
-    const container = document.getElementById('past-administrations-container');
+async function renderPastAdministrationsTab(container) {
     if (!container) return;
 
+    container.innerHTML = `<div style="padding:16px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;">Loading…</div>`;
+
     try {
-        // Fetch all administrations (both past and current)
         const { data: admins, error } = await _supabase
             .from('administrations')
             .select('*')
@@ -12432,60 +12432,32 @@ async function loadPastAdministrations() {
             .order('started_at_tick', { ascending: false });
 
         if (error) throw error;
-        if (!admins || admins.length === 0) {
-            const { data: transitionEvents, error: transitionErr } = await _supabase
-                .from('event_log')
-                .select('event_id, event_name, category, fired_at_tick')
-                .eq('nation_id', currentNation.id)
-                .or('event_name.ilike.%transition%,event_name.ilike.%collapsed%,event_name.ilike.%resignation%,event_name.ilike.%dissolved%')
-                .order('fired_at_tick', { ascending: false })
-                .limit(5);
-            if (!transitionErr && (transitionEvents || []).length > 0) {
-                console.warn('[GovernmentUI] transition events detected but no administrations found', {
-                    nation_id: currentNation.id,
-                    transition_events: transitionEvents
-                });
-            }
 
+        const list = admins || [];
+        const pastAdmins = list.filter(a => a.ended_at_tick != null);
+        const currentAdmin = list.find(a => a.ended_at_tick == null);
+        const totalCount = pastAdmins.length + (currentAdmin ? 1 : 0);
+
+        if (totalCount === 0) {
             container.innerHTML = `
-                <div class="past-admins-toggle" style="cursor: default;">
-                    <span class="past-admins-toggle-text">Past Administrations (0)</span>
-                </div>
-                <div class="info-block" style="margin-top: 8px;">
-                    <div class="info-row">
-                        <span class="info-label">History</span>
-                        <span class="info-value" style="color: var(--text-muted);">No administrations recorded yet.</span>
-                    </div>
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;text-align:center;color:var(--text-dim);">
+                    <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">PAST ADMINISTRATIONS</div>
+                    <div style="font-size:0.85rem;color:var(--text-dim);">No administrations recorded yet.</div>
                 </div>
             `;
             return;
         }
 
-        const pastAdmins = admins.filter(a => a.ended_at_tick != null);
-        const currentAdmin = admins.find(a => a.ended_at_tick == null);
-        const totalCount = pastAdmins.length + (currentAdmin ? 1 : 0);
-
         container.innerHTML = `
-            <div class="past-admins-toggle" onclick="togglePastAdmins()">
-                <span class="past-admins-toggle-text">Past Administrations (${pastAdmins.length})</span>
-                <span class="chevron">&#9660;</span>
-            </div>
-            <div class="past-admins-list hidden" id="past-admins-list">
+            <div class="past-admins-list" style="padding:8px 12px;">
                 ${currentAdmin ? renderAdminCard(currentAdmin, true) : ''}
                 ${pastAdmins.map(a => renderAdminCard(a, false)).join('')}
             </div>
         `;
     } catch (err) {
-        console.error('Error loading past administrations:', err);
+        console.error('[renderPastAdministrationsTab] load failed:', err);
+        container.innerHTML = `<div style="padding:16px;color:var(--red);font-family:var(--font-mono);font-size:12px;">Failed to load administrations: ${escapeHtml(err.message || String(err))}</div>`;
     }
-}
-
-function togglePastAdmins() {
-    const toggle = document.querySelector('.past-admins-toggle');
-    const list = document.getElementById('past-admins-list');
-    if (!toggle || !list) return;
-    toggle.classList.toggle('open');
-    list.classList.toggle('hidden');
 }
 
 function toggleAdminCard(id) {
@@ -12841,7 +12813,6 @@ window.openNominateModal = openNominateModal;
 window.selectCandidate = selectCandidate;
 window.fileNoConfidence = fileNoConfidence;
 window.callEarlyElections = callEarlyElections;
-window.togglePastAdmins = togglePastAdmins;
 window.toggleStatTable = toggleStatTable;
 window.toggleAdminCard = toggleAdminCard;
 // Formation exports
