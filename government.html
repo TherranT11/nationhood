@@ -1303,7 +1303,7 @@ async function loadTimelineData() {
     try {
         const [eventsRes, actionsRes, billsRes] = await Promise.all([
             _supabase.from('event_log')
-                .select('id, event_name, category, fired_at_tick, description_used, description_chosen')
+                .select('id, event_name, trigger_key, category, fired_at_tick, description_used, description_chosen')
                 .eq('nation_id', nationId)
                 .gte('fired_at_tick', startTick)
                 .order('fired_at_tick', { ascending: false })
@@ -1324,14 +1324,27 @@ async function loadTimelineData() {
 
         const merged = [];
 
+        // Cabinet-related event_log trigger keys (minister appointments, dismissals,
+        // resignations, PM appointments) — all route to CABINET regardless of what
+        // server-side category they were stamped with. Party-level events
+        // (rebrand, fundraise, rally, etc.) are NOT included anywhere in the
+        // executive timeline — this panel covers executive / cabinet / policy /
+        // crisis / legislation, not party organizational work.
+        const CABINET_TRIGGERS = new Set([
+            'minister_resigned', 'minister_purged', 'pm_appointed',
+        ]);
+
         // Events
         for (const ev of (eventsRes.data || [])) {
             const cat = (ev.category || '').toLowerCase();
-            let type = 'event';
-            if (cat.includes('crisis') || cat.includes('disaster')) type = 'crisis';
+            const trigger = ev.trigger_key || '';
+            let type;
+            if (CABINET_TRIGGERS.has(trigger)) type = 'appointment';
+            else if (cat.includes('crisis') || cat.includes('disaster')) type = 'crisis';
             else if (cat.includes('politic') || cat.includes('government')) type = 'policy';
             else if (cat.includes('trade') || cat.includes('econom')) type = 'economy';
             else if (cat.includes('military') || cat.includes('security')) type = 'military';
+            else type = 'event';
             merged.push({
                 tick: ev.fired_at_tick,
                 type,
@@ -1341,18 +1354,21 @@ async function loadTimelineData() {
             });
         }
 
-        // Campaign actions (minister appointments, platform changes, etc.)
+        // Campaign actions — explicit allowlist. Only executive-level actions
+        // (minister appointments/dismissals, platform changes, statements,
+        // strongman succession) reach the timeline. Party-level actions
+        // (rebrand, fundraise, rally) are excluded entirely.
         for (const ca of (actionsRes.data || [])) {
             const aType = ca.action_type || '';
-            let type = 'appointment';
-            let title = aType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            let type;
+            let title;
             let desc = '';
             if (aType === 'assign_minister') {
                 type = 'appointment';
                 title = 'Minister Appointed';
                 desc = ca.result?.minister_name ? `${ca.result.minister_name} appointed to ${ca.result.ministry_key || 'ministry'}.` : '';
             } else if (aType === 'fire_minister' || aType === 'purge_minister') {
-                type = 'reshuffle';
+                type = 'appointment';
                 title = aType === 'purge_minister' ? 'Minister Purged' : 'Minister Dismissed';
                 desc = ca.result?.minister_name ? `${ca.result.minister_name} removed from ${ca.result.ministry_key || 'ministry'}.` : '';
             } else if (aType === 'set_platform' || aType === 'adopt_platform') {
@@ -1367,6 +1383,9 @@ async function loadTimelineData() {
                 type = 'crisis';
                 title = 'Leader Succession';
                 desc = ca.result?.deceased_name ? `${ca.result.deceased_name} has died. ${ca.result.successor_name} succeeds.` : '';
+            } else {
+                // Party-level action (rebrand / fundraise / rally / etc.) — skip.
+                continue;
             }
             merged.push({
                 tick: ca.tick_performed,
@@ -1431,7 +1450,6 @@ const TIMELINE_TYPE_CONFIG = {
     legislation: { color: 'var(--green)', icon: '\uD83D\uDCDC' },
     crisis:      { color: 'var(--orange)', icon: '\uD83D\uDCC9' },
     scandal:     { color: 'var(--red)', icon: '\uD83D\uDD25' },
-    reshuffle:   { color: 'var(--amber)', icon: '\uD83D\uDD04' },
     economy:     { color: 'var(--teal)', icon: '\uD83D\uDCB0' },
     military:    { color: 'var(--red)', icon: '\u2694\uFE0F' },
     communications: { color: 'var(--blue)', icon: '\uD83D\uDCE2' },
