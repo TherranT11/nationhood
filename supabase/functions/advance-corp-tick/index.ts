@@ -1357,23 +1357,36 @@ const SUB_PARENT_REP_NEUTRAL = 50;       // at this rep the parent-rep multiplie
 const SUB_PARENT_REP_MIN = 0.3;          // min multiplier at rep 0
 const SUB_PARENT_REP_MAX = 1.7;          // max multiplier at rep 100
 
-async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
+async function processSubsidiaryRevenue(supabase, nation, currentTick) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
-    const corpIds = corps.map(c => c.id);
-    const corpMap = Object.fromEntries(corps.map(c => [c.id, c]));
 
     // All active regional HQs in this nation (including those with 0 or negative cash)
     const { data: hqs, error: hqErr } = await supabase
         .from('corp_properties')
         .select('id, sub_cash, name, faction_id')
-        .in('faction_id', corpIds)
         .eq('nation_id', nation.id)
         .eq('type', 'regional_hq')
         .eq('is_active', true);
 
-    if (hqErr || !hqs || hqs.length === 0) return;
+    if (hqErr) throw hqErr;
+    if (!hqs || hqs.length === 0) {
+        console.log(`[SubRevenue] ${nation.name}: processed 0 regional HQ(s) at tick ${currentTick}.`);
+        return { hqCount: 0, updatedCount: 0 };
+    }
+
+    const parentCorpIds = [...new Set(hqs.map(hq => hq.faction_id).filter(Boolean))];
+    let corpMap = {};
+    if (parentCorpIds.length > 0) {
+        const { data: parentCorps, error: corpErr } = await supabase
+            .from('factions')
+            .select('id, faction_name, corp_reputation')
+            .in('id', parentCorpIds);
+        if (corpErr) throw corpErr;
+        corpMap = Object.fromEntries((parentCorps || []).map(c => [c.id, c]));
+    }
 
     const baseRepMult = SUB_DEFAULT_REPUTATION / 100;
+    let updatedCount = 0;
     for (const hq of hqs) {
         const subCash = Number(hq.sub_cash ?? 0);
         const corp = corpMap[hq.faction_id];
@@ -1413,9 +1426,13 @@ async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
         if (updErr) {
             console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name}:`, updErr.message);
         } else {
+            updatedCount += 1;
             console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, parentRep:${parentRep}, repMult:${parentRepMult.toFixed(2)}, overhead:${overhead.toLocaleString()}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
         }
     }
+
+    console.log(`[SubRevenue] ${nation.name}: processed ${hqs.length} regional HQ(s), updated ${updatedCount}, at tick ${currentTick}.`);
+    return { hqCount: hqs.length, updatedCount };
 }
 
 function parseRequiredForSectors(rawRequiredFor) {
@@ -3669,6 +3686,17 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 summary.errors.push({ nation: nation.name, sector: 'construction', error: String(constructionErr) });
             }
 
+            // ── Subsidiary Revenue (GDP-based growth/loss per subsidiary) ──
+            try {
+                const subRevenueSummary = await processSubsidiaryRevenue(supabase, nation, currentTick);
+                if (corps.length === 0) {
+                    console.log(`[advance-corp-tick] ${nation.name}: 0 local corporations, subsidiary path processed ${subRevenueSummary?.hqCount || 0} regional HQ(s).`);
+                }
+            } catch (subRevErr) {
+                console.error(`[advance-corp-tick] Subsidiary revenue failed for ${nation.name} (non-fatal):`, subRevErr);
+                summary.errors.push({ nation: nation.name, sector: 'subsidiary_revenue', error: String(subRevErr) });
+            }
+
             // ── Corp-specific processing (requires local corporations) ──
             if (corps.length === 0) continue;
             summary.corpsProcessed += corps.length;
@@ -3680,14 +3708,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (propEffErr) {
                 console.error(`[advance-corp-tick] Property effects failed for ${nation.name} (non-fatal):`, propEffErr);
                 summary.errors.push({ nation: nation.name, sector: 'property_effects', error: String(propEffErr) });
-            }
-
-            // ── Subsidiary Revenue (GDP-based growth/loss per subsidiary) ──
-            try {
-                await processSubsidiaryRevenue(supabase, nation, corps, currentTick);
-            } catch (subRevErr) {
-                console.error(`[advance-corp-tick] Subsidiary revenue failed for ${nation.name} (non-fatal):`, subRevErr);
-                summary.errors.push({ nation: nation.name, sector: 'subsidiary_revenue', error: String(subRevErr) });
             }
 
             // ── Corporation Monthly Income ──────────────────────────────
