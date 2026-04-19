@@ -9732,6 +9732,99 @@ async function resolveEmbargoRatificationBill(supabase, bill, ctx) {
     };
 }
 
+/**
+ * Resolve a passed/failed sovereign-default_resolution bill.
+ *
+ * Thin dispatcher: the heavy economic effects (cross-nation contagion,
+ * creditor payouts, credit-rating updates) live in handler-template.ts
+ * (enactSovereignDefault / handleFailedDefaultResolution) because they
+ * need cross-nation + tick-scheduling context the resolver lacks. The
+ * typeof guard means client-side callers that don't bundle those
+ * functions (admin.html, laws.html) see a no-op enactment while the
+ * tick handler owns the real consequences.
+ */
+async function resolveDefaultResolutionBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst } = ctx;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        if (typeof enactSovereignDefault === 'function') {
+            try {
+                await enactSovereignDefault(supabase, bill, currentTick);
+            } catch (defaultErr) {
+                console.error(`[resolveDefaultResolution] enactSovereignDefault failed for bill ${bill.id}:`, defaultErr);
+            }
+        }
+    } else {
+        await failBill(supabase, bill);
+        if (typeof handleFailedDefaultResolution === 'function') {
+            try {
+                await handleFailedDefaultResolution(supabase, bill, currentTick);
+            } catch (failErr) {
+                console.error(`[resolveDefaultResolution] handleFailedDefaultResolution failed for bill ${bill.id}:`, failErr);
+            }
+        }
+    }
+    await fireBillEvent(supabase, passed ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'default_resolution',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed veto_override bill (Presidential systems).
+ *
+ * On pass: marks this bill passed and ENACTS the ORIGINAL (vetoed) bill
+ * via enactBill, bypassing the president's desk entirely. If the
+ * original's enactment fails, both bills are marked failed with an
+ * explanatory event on the original. On fail: the veto holds —
+ * the original stays failed forever (cannot be re-vetoed-overridden).
+ */
+async function resolveVetoOverrideBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        // Enact the ORIGINAL vetoed bill — bypasses president's desk.
+        const { data: originalBill } = await supabase.from('bills')
+            .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+            .eq('id', bill.original_bill_id).single();
+        if (originalBill) {
+            await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
+            const enactment = await enactBill(supabase, originalBill, currentTick);
+            if (!enactment?.success) {
+                await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
+                await fireBillEvent(supabase, 'bill_failed', originalBill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, billNameOverride: `${originalBill.bill_name} (override enactment failed)` });
+            }
+        }
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+    } else {
+        await failBill(supabase, bill);
+        // Original bill dies with the override — it can never pass now.
+        if (bill.original_bill_id) {
+            await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.original_bill_id);
+        }
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'veto_override',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
 
 async function resolveExpiredVotes(supabase, nationId) {
     const { data: shard } = await supabase
@@ -9936,32 +10029,10 @@ async function resolveExpiredVotes(supabase, nationId) {
             await fireBillEvent(supabase, enacted ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
             results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational', earlyResolution: bill.early_resolution_status || null });
         } else if (bill.bill_type === 'default_resolution') {
-            // ── Sovereign Default Resolution ──
-            // Full enactment logic lives in handler-template.ts (enactSovereignDefault /
-            // handleFailedDefaultResolution) because it needs cross-nation contagion
-            // and tick-only helpers. The typeof guard ensures client-side callers
-            // (admin.html, laws.html) don't crash — the server tick handles consequences.
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                if (typeof enactSovereignDefault === 'function') {
-                    try {
-                        await enactSovereignDefault(supabase, bill, currentTick);
-                    } catch (defaultErr) {
-                        console.error(`[resolveExpiredVotes] enactSovereignDefault failed for bill ${bill.id}:`, defaultErr);
-                    }
-                }
-            } else {
-                await failBill(supabase, bill);
-                if (typeof handleFailedDefaultResolution === 'function') {
-                    try {
-                        await handleFailedDefaultResolution(supabase, bill, currentTick);
-                    } catch (failErr) {
-                        console.error(`[resolveExpiredVotes] handleFailedDefaultResolution failed for bill ${bill.id}:`, failErr);
-                    }
-                }
-            }
-            await fireBillEvent(supabase, passed ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: passed ? 'passed' : 'failed', votesFor, votesAgainst, type: 'default_resolution', earlyResolution: bill.early_resolution_status || null });
+            const entry = await resolveDefaultResolutionBill(supabase, bill, {
+                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
+            });
+            results.push(entry);
         } else if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
             const entry = await resolveAmbassadorConfirmationBill(supabase, bill, {
                 passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
@@ -9973,32 +10044,10 @@ async function resolveExpiredVotes(supabase, nationId) {
             });
             results.push(entry);
         } else if (bill.bill_type === 'veto_override' && bill.original_bill_id) {
-            // Veto override bill (Presidential systems)
-            if (passed) {
-                await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-                // Enact the ORIGINAL vetoed bill
-                const { data: originalBill } = await supabase.from('bills')
-                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
-                    .eq('id', bill.original_bill_id).single();
-                if (originalBill) {
-                    await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
-                    const enactment = await enactBill(supabase, originalBill, currentTick);
-                    if (!enactment?.success) {
-                        await markBillEnactmentFailed(supabase, originalBill, currentTick, enactment?.error || 'Unknown enactment failure');
-                        await fireBillEvent(supabase, 'bill_failed', originalBill, { currentTick, nationName: nation?.name, votesFor: 0, votesAgainst: 0, billNameOverride: `${originalBill.bill_name} (override enactment failed)` });
-                    }
-                }
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'passed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
-            } else {
-                await failBill(supabase, bill);
-                // Also fail the original vetoed bill — it can never pass now
-                if (bill.original_bill_id) {
-                    await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.original_bill_id);
-                }
-                await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-                results.push({ billId: bill.id, billName: bill.bill_name, result: 'failed', votesFor, votesAgainst, type: 'veto_override', earlyResolution: bill.early_resolution_status || null });
-            }
+            const entry = await resolveVetoOverrideBill(supabase, bill, {
+                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
+            });
+            results.push(entry);
         } else if (bill.bill_type === 'ratification' && bill.diplomatic_proposal_id) {
             const entry = await resolveDiplomaticRatificationBill(supabase, bill, {
                 passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,

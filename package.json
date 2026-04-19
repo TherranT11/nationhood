@@ -20,6 +20,7 @@
     "test:resolve-ambassador-confirmation": "node scripts/test-resolve-ambassador-confirmation.mjs",
     "test:resolve-no-confidence-and-impeachment": "node scripts/test-resolve-no-confidence-and-impeachment.mjs",
     "test:resolve-ratifications": "node scripts/test-resolve-ratifications.mjs",
+    "test:resolve-veto-override-and-default": "node scripts/test-resolve-veto-override-and-default.mjs",
     "migrate:shipping": "node scripts/apply-shipping-migrations.js"
   },
   "devDependencies": {
