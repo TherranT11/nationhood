@@ -147,7 +147,8 @@ function render(root, partyMap) {
         const prevAdmin = _administrations.find(a => a.ended_at_tick != null && a.ended_at_tick >= elec.election_tick - 2 && a.ended_at_tick <= elec.election_tick + 2);
 
         const typeInfo = getElectionTypeLabel(elec, prevAdmin);
-        const leaderTitle = hasElectedPresident(_state.nation) ? 'President' : 'PM';
+        const isPresidentialNation = hasElectedPresident(_state.nation);
+        const leaderTitle = isPresidentialNation ? 'President' : 'PM';
         const pmName = admin?.prime_minister || 'Unknown';
         const pmColor = admin?.pm_party_id ? (votes.find(v => v.party_id === admin.pm_party_id)?.color || '#888') : '#888';
 
