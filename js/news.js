@@ -412,6 +412,9 @@ export async function initNewspaper(supabase, state) {
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
+                    <div class="nws-writer-notice" role="note">
+                        <strong>Note:</strong> Mentions of real-world events, people, or entities will cause your party to lose all Momentum and Governance. Further violations will cause action.
+                    </div>
                     <div class="nws-form-error" id="nws-form-error"></div>
                     <div class="nws-form-success" id="nws-form-success"></div>
 

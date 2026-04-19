@@ -1148,6 +1148,27 @@
     }
 }
 
+.nws-writer-notice {
+    background: #fdf1dc;
+    border: 1px solid #c0392b;
+    border-left-width: 4px;
+    color: #6b2116;
+    padding: 12px 14px;
+    margin: 0 0 18px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.nws-writer-notice strong {
+    color: #9b1c0e;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-size: 11px;
+    display: block;
+    margin-bottom: 4px;
+}
+
 .nws-reader-headline {
     font-family: 'Playfair Display', serif;
     font-size: clamp(32px, 5vw, 48px);
