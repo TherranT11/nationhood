@@ -24,6 +24,15 @@ function fmtMoney(n) {
     return '$' + n;
 }
 
+function computeFlatLoanMonthlyPayment(principal, annualRatePct, termMonths) {
+    const safePrincipal = Math.max(0, Number(principal) || 0);
+    const safeRate = Math.max(0, Number(annualRatePct) || 0);
+    const safeTerm = Math.max(1, Number(termMonths) || 1);
+    const monthlyInterest = (safePrincipal * (safeRate / 100)) / 12;
+    const monthlyPrincipal = safePrincipal / safeTerm;
+    return Math.round(monthlyInterest + monthlyPrincipal);
+}
+
 // ═══════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════
@@ -290,13 +299,8 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
                 // Premium = (amount × rate%) / 12 per month
                 monthly = Math.round((amount * rate.effective_rate / 100) / 12);
             } else {
-                // Amortized loan payment
-                const monthlyRate = rate.effective_rate / 100 / 12;
-                if (monthlyRate > 0) {
-                    monthly = Math.round(amount * (monthlyRate * Math.pow(1 + monthlyRate, term)) / (Math.pow(1 + monthlyRate, term) - 1));
-                } else {
-                    monthly = Math.round(amount / term);
-                }
+                // Flat-interest loan payment
+                monthly = computeFlatLoanMonthlyPayment(amount, rate.effective_rate, term);
             }
             if (monthlyEl) monthlyEl.textContent = fmtMoney(monthly);
             if (submitBtn) submitBtn.disabled = amount <= 0 || amount > maxAmount;
@@ -326,8 +330,7 @@ function openAcceptModal(container, rateId, serviceType, filterType) {
             if (isInsurance) {
                 monthly = Math.round((amount * rate.effective_rate / 100) / 12);
             } else {
-                const mr = rate.effective_rate / 100 / 12;
-                monthly = mr > 0 ? Math.round(amount * (mr * Math.pow(1 + mr, term)) / (Math.pow(1 + mr, term) - 1)) : Math.round(amount / term);
+                monthly = computeFlatLoanMonthlyPayment(amount, rate.effective_rate, term);
             }
 
             const { data, error } = await _supabase.rpc('accept_subsidiary_auto_policy_txn', {

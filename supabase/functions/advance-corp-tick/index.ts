@@ -3055,8 +3055,9 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
         const borrowerCash = Number(borrower?.corp_cash_reserves) || 0;
         const payment = loan.monthly_payment;
         const monthlyRate = (loan.interest_rate / 100) / 12;
+        const originalPrincipal = Math.max(0, Number(loan.original_principal ?? loan.principal ?? 0));
         const remainingPrincipal = Math.max(0, Number(loan.remaining_principal) || 0);
-        const interestPortion = Math.round(remainingPrincipal * monthlyRate);
+        const interestPortion = Math.round(originalPrincipal * monthlyRate);
         const principalPortion = Math.max(0, payment - interestPortion);
         const newRemainingPrincipal = Math.max(0, remainingPrincipal - principalPortion);
 
@@ -3083,7 +3084,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + lenderReceives
             }).eq('id', loan.lender_faction_id);
 
-            await supabase.from('finance_active_loans').update({
+            const loanUpdate = {
                 total_paid: newTotalPaid,
                 total_interest_paid: newInterestPaid,
                 remaining_principal: newRemainingPrincipal,
@@ -3092,7 +3093,12 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 last_payment_tick: currentTick,
                 status: isRepaid ? 'repaid' : 'current',
                 completed_tick: isRepaid ? currentTick : null,
-            }).eq('id', loan.id);
+            };
+            if (loan.original_principal == null && originalPrincipal > 0) {
+                loanUpdate.original_principal = originalPrincipal;
+            }
+
+            await supabase.from('finance_active_loans').update(loanUpdate).eq('id', loan.id);
 
             results.payments++;
         } else {
