@@ -1213,6 +1213,136 @@ body.h2-page .content {
   .h2-layout { grid-template-columns: 1fr; }
   .h2-left-col { position: static; }
 }
+
+/* ===========================================================================
+   HOME2 — PHASE 4: KPI STRIP + RIGHT-RAIL CARDS (Net Worth / Treasury)
+   =========================================================================== */
+.h2-kpis {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px; margin-bottom: 18px; width: 100%;
+}
+.h2-kpi {
+  background: var(--h2-panel); border: 1px solid var(--h2-line);
+  border-top: 2px solid var(--h2-accent);
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.h2-kpi.green { border-top-color: var(--h2-green); }
+.h2-kpi.gold { border-top-color: var(--h2-gold); }
+.h2-kpi.red { border-top-color: var(--h2-red); }
+.h2-kpi .lbl {
+  font-family: var(--h2-mono); font-size: 9px; letter-spacing: 0.24em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.h2-kpi .val {
+  font-family: var(--h2-serif); font-size: 28px; font-weight: 600;
+  color: var(--h2-body-ink); line-height: 1;
+}
+.h2-kpi .val small {
+  font-family: var(--h2-mono); font-size: 13px; font-weight: 600;
+  color: var(--h2-body-ink-dim); letter-spacing: 0.04em; margin-left: 1px;
+}
+.h2-kpi .delta {
+  font-family: var(--h2-mono); font-size: 9px; letter-spacing: 0.14em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.h2-kpi .delta.up { color: var(--h2-green); }
+.h2-kpi .delta.down { color: var(--h2-red); }
+.h2-kpi .delta.flat { color: var(--h2-body-ink-mute); }
+
+/* Right-col cards (Net Worth + Treasury) */
+.h2-card {
+  background: var(--h2-panel); border: 1px solid var(--h2-line);
+  border-radius: 3px; overflow: hidden;
+  font-family: var(--h2-sans); color: var(--h2-body-ink);
+}
+.h2-card .card-h {
+  padding: 10px 14px; border-bottom: 1px solid var(--h2-line);
+  background: var(--h2-panel-2);
+  display: flex; align-items: center; justify-content: space-between;
+  font-family: var(--h2-mono); font-size: 9.5px; letter-spacing: 0.28em;
+  color: var(--h2-accent); text-transform: uppercase; font-weight: 700;
+}
+.h2-card .card-h .r {
+  font-size: 9px; color: var(--h2-body-ink-mute); letter-spacing: 0.18em;
+  font-weight: 600;
+}
+.h2-stand { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.h2-stand .top {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.h2-stand .sym {
+  font-family: var(--h2-mono); font-size: 12px; font-weight: 700;
+  color: var(--h2-body-ink); letter-spacing: 0.18em;
+}
+.h2-stand .ex {
+  font-family: var(--h2-mono); font-size: 9px; letter-spacing: 0.18em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase;
+}
+.h2-stand .px {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 10px;
+}
+.h2-stand .p {
+  font-family: var(--h2-serif); font-size: 26px; font-weight: 700;
+  color: var(--h2-body-ink); line-height: 1;
+}
+.h2-stand .p small {
+  font-family: var(--h2-mono); font-size: 13px; font-weight: 600;
+  color: var(--h2-body-ink-dim); letter-spacing: 0.04em; margin-left: 1px;
+}
+.h2-stand .d {
+  font-family: var(--h2-mono); font-size: 10px; letter-spacing: 0.14em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase; font-weight: 600;
+}
+.h2-stand .d.up { color: var(--h2-green); }
+.h2-stand .d.down { color: var(--h2-red); }
+.h2-stand .spark {
+  width: 100%; height: 42px; display: block;
+}
+.h2-treasury { padding: 4px 14px 12px; display: flex; flex-direction: column; }
+.h2-treasury .row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 7px 0; border-bottom: 1px dashed var(--h2-line-2);
+  font-family: var(--h2-mono); font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.h2-treasury .row:last-child { border-bottom: none; }
+.h2-treasury .row .k {
+  color: var(--h2-body-ink-dim); letter-spacing: 0.16em; text-transform: uppercase;
+  font-weight: 600;
+}
+.h2-treasury .row .v {
+  color: var(--h2-body-ink); font-weight: 700; letter-spacing: 0.04em;
+}
+.h2-treasury .row .v.accent { color: var(--h2-accent); }
+.h2-treasury .row .v.good { color: var(--h2-green); }
+.h2-treasury .row .v.gold { color: var(--h2-gold); }
+.h2-treasury .row .v.red { color: var(--h2-red); }
+
+/* Paper-mode tweaks for Phase 4 surfaces */
+:root[data-mode="paper"] .h2-kpi,
+:root[data-mode="paper"] .h2-card {
+  background: var(--h2-paper);
+  border-color: var(--h2-paper-line);
+  color: var(--h2-ink);
+}
+:root[data-mode="paper"] .h2-card .card-h {
+  background: var(--h2-paper-2);
+  border-bottom-color: var(--h2-paper-line);
+}
+:root[data-mode="paper"] .h2-kpi .val,
+:root[data-mode="paper"] .h2-stand .p,
+:root[data-mode="paper"] .h2-treasury .row .v { color: var(--h2-ink); }
+
+@media (max-width: 1280px) {
+  .h2-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 768px) {
+  .h2-kpis { grid-template-columns: 1fr 1fr; }
+  .h2-kpi .val { font-size: 24px; }
+}
 </style>
 </head>
 <body class="h2-page">
@@ -1326,6 +1456,36 @@ body.h2-page .content {
 
       <!-- CENTER -->
       <div class="h2-center">
+
+        <!-- KPI strip -->
+        <div class="h2-kpis">
+          <div class="h2-kpi">
+            <span class="lbl">Cash on Hand</span>
+            <span class="val" id="h2-kpi-cash">—</span>
+            <span class="delta flat" id="h2-kpi-cash-d">—</span>
+          </div>
+          <div class="h2-kpi green">
+            <span class="lbl">Revenue, Tick</span>
+            <span class="val" id="h2-kpi-rev">—</span>
+            <span class="delta flat" id="h2-kpi-rev-d">projected</span>
+          </div>
+          <div class="h2-kpi gold">
+            <span class="lbl">Net Worth · Book</span>
+            <span class="val" id="h2-kpi-nw">—</span>
+            <span class="delta flat" id="h2-kpi-nw-d">—</span>
+          </div>
+          <div class="h2-kpi">
+            <span class="lbl">Reputation</span>
+            <span class="val" id="h2-kpi-rep">—</span>
+            <span class="delta flat" id="h2-kpi-rep-d">—</span>
+          </div>
+          <div class="h2-kpi red">
+            <span class="lbl">Market Share</span>
+            <span class="val" id="h2-kpi-mkt">—</span>
+            <span class="delta flat" id="h2-kpi-mkt-d">—</span>
+          </div>
+        </div>
+
         <div class="id-card">
       <div class="id-card__header">
         <div class="id-card__header-left">
@@ -1434,8 +1594,39 @@ body.h2-page .content {
     </div>
       </div><!-- /.h2-center -->
 
-      <!-- RIGHT RAIL (Phase 4+ will fill this with Net Worth + Treasury cards) -->
-      <aside class="h2-right-col"></aside>
+      <!-- RIGHT RAIL: Net Worth + Treasury -->
+      <aside class="h2-right-col">
+
+        <section class="h2-card">
+          <div class="card-h"><span>Net Worth</span><span class="r" id="h2-nw-close">Book</span></div>
+          <div class="h2-stand">
+            <div class="top">
+              <span class="sym" id="h2-nw-sym">—</span>
+              <span class="ex" id="h2-nw-ex">—</span>
+            </div>
+            <div class="px">
+              <span class="p" id="h2-nw-price">—</span>
+              <span class="d flat" id="h2-nw-d">—</span>
+            </div>
+            <svg class="spark" viewBox="0 0 200 42" preserveAspectRatio="none" id="h2-nw-spark-svg">
+              <path id="h2-nw-spark" d="M0,21 L200,21" fill="none" stroke="var(--h2-green)" stroke-width="1.5"/>
+            </svg>
+          </div>
+        </section>
+
+        <section class="h2-card">
+          <div class="card-h"><span>Treasury</span><span class="r" id="h2-tr-close">Close</span></div>
+          <div class="h2-treasury">
+            <div class="row"><span class="k">Cash &amp; Reserves</span><span class="v accent" id="h2-tr-cash">—</span></div>
+            <div class="row"><span class="k">Property · Book</span><span class="v" id="h2-tr-property">—</span></div>
+            <div class="row"><span class="k">Equipment</span><span class="v" id="h2-tr-equipment">—</span></div>
+            <div class="row"><span class="k">Outstanding Loans</span><span class="v good" id="h2-tr-loans">—</span></div>
+            <div class="row"><span class="k">Accts Payable</span><span class="v" id="h2-tr-payable">—</span></div>
+            <div class="row"><span class="k">Credit Rating</span><span class="v gold" id="h2-tr-credit">—</span></div>
+          </div>
+        </section>
+
+      </aside>
 
     </div><!-- /.h2-layout -->
   </div><!-- /.content -->
@@ -1463,6 +1654,33 @@ function fmtMoney(n) {
     if (Math.abs(n) >= 1_000_000) return '$' + (n / 1_000_000).toFixed(2) + 'M';
     if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(1) + 'k';
     return '$' + Math.round(n).toLocaleString();
+}
+
+// Split a money value into a main number + unit suffix so the KPI tiles can
+// render the unit smaller (e.g. "$49.72" + "M"). Used by Home2 only.
+function fmtMoneySplit(n) {
+    const v = Number(n) || 0;
+    const abs = Math.abs(v);
+    if (abs >= 1_000_000_000) return { main: '$' + (v / 1e9).toFixed(2), unit: 'B' };
+    if (abs >= 1_000_000) return { main: '$' + (v / 1e6).toFixed(2), unit: 'M' };
+    if (abs >= 1000) return { main: '$' + (v / 1e3).toFixed(1), unit: 'k' };
+    return { main: '$' + Math.round(v).toLocaleString(), unit: '' };
+}
+
+// Map a 0-100 "credit_rating" stat into a Moody's-style band. Approximate;
+// Home2 displays it as the Treasury card's credit indicator.
+function h2CreditBand(score) {
+    const s = Math.max(0, Math.min(100, Number(score) || 0));
+    if (s >= 90) return { tag: 'Aaa', tone: 'good' };
+    if (s >= 80) return { tag: 'Aa1', tone: 'good' };
+    if (s >= 70) return { tag: 'A1', tone: 'good' };
+    if (s >= 60) return { tag: 'Baa1', tone: 'gold' };
+    if (s >= 50) return { tag: 'Baa3', tone: 'gold' };
+    if (s >= 40) return { tag: 'Ba1', tone: 'gold' };
+    if (s >= 30) return { tag: 'Ba3', tone: 'red' };
+    if (s >= 20) return { tag: 'B2', tone: 'red' };
+    if (s >= 10) return { tag: 'Caa1', tone: 'red' };
+    return { tag: 'Ca', tone: 'red' };
 }
 
 // Shared utility: get nation stat with fallback
@@ -2186,6 +2404,9 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const netProfit = totalRevenue - totalExpenses;
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const debt = outstandingDebt;
+
+    // Home2: push revenue + net to the KPI strip.
+    h2SetKPIRevenue(totalRevenue, netProfit);
 
     // Driver data for display
     const drivers = [
@@ -3058,6 +3279,111 @@ async function renderValuation(nation, nationName, faction, wfData, propData, eq
             <div class="val-market__note">${valuationAbove ? 'Market believes in future growth.' : 'Market doubts current trajectory.'}</div>
         </div>
     `;
+
+    // Home2: populate the KPI strip + Net Worth/Treasury right-rail cards.
+    h2PopulateValuation({
+        faction, nationName,
+        cashReserves, propertyValue, equipmentValue,
+        outstandingLoans, accountsPayable, totalLiabilities,
+        netWorth, currentTickDate: nation?._h2_close_label,
+    });
+}
+
+// ─── Home2 KPI / right-rail populators ───
+function h2SetKPIRevenue(totalRevenue, netProfit) {
+    const v = document.getElementById('h2-kpi-rev');
+    const d = document.getElementById('h2-kpi-rev-d');
+    if (!v) return; // not on Home2
+    const split = fmtMoneySplit(totalRevenue);
+    v.innerHTML = `${split.main}<small>${split.unit}</small>`;
+    if (d) {
+        const netSplit = fmtMoneySplit(Math.abs(netProfit));
+        const sign = netProfit >= 0 ? '+' : '−';
+        const cls = netProfit >= 0 ? 'up' : 'down';
+        d.className = 'delta ' + cls;
+        d.textContent = `${sign}${netSplit.main}${netSplit.unit} net`;
+    }
+}
+
+function h2PopulateValuation({ faction, nationName, cashReserves, propertyValue, equipmentValue, outstandingLoans, accountsPayable, totalLiabilities, netWorth }) {
+    if (!document.getElementById('h2-kpi-cash')) return; // not on Home2
+
+    // KPI strip — Cash, Net Worth, Reputation, Market Share
+    const cashSplit = fmtMoneySplit(cashReserves);
+    document.getElementById('h2-kpi-cash').innerHTML = `${cashSplit.main}<small>${cashSplit.unit}</small>`;
+    const cashD = document.getElementById('h2-kpi-cash-d');
+    if (cashD) cashD.textContent = totalLiabilities > 0 ? `Liab. ${fmtMoneySplit(totalLiabilities).main}${fmtMoneySplit(totalLiabilities).unit}` : 'No liabilities';
+
+    const nwSplit = fmtMoneySplit(netWorth);
+    document.getElementById('h2-kpi-nw').innerHTML = `${nwSplit.main}<small>${nwSplit.unit}</small>`;
+    const nwD = document.getElementById('h2-kpi-nw-d');
+    if (nwD) {
+        const cls = netWorth >= 0 ? 'up' : 'down';
+        nwD.className = 'delta ' + cls;
+        nwD.textContent = netWorth >= 0 ? 'positive equity' : 'negative equity';
+    }
+
+    const rep = Number(faction.corp_reputation ?? 0);
+    const repEl = document.getElementById('h2-kpi-rep');
+    if (repEl) repEl.innerHTML = `${Math.round(rep)}<small> / 100</small>`;
+    const repD = document.getElementById('h2-kpi-rep-d');
+    if (repD) {
+        repD.className = 'delta ' + (rep >= 70 ? 'up' : rep >= 40 ? 'flat' : 'down');
+        repD.textContent = rep >= 70 ? 'strong' : rep >= 40 ? 'steady' : 'weak';
+    }
+
+    const mkt = Number(faction.corp_market_share ?? 0);
+    const mktEl = document.getElementById('h2-kpi-mkt');
+    if (mktEl) mktEl.innerHTML = `${Math.round(mkt)}<small>%</small>`;
+    const mktD = document.getElementById('h2-kpi-mkt-d');
+    if (mktD) {
+        mktD.className = 'delta ' + (mkt >= 15 ? 'up' : mkt >= 5 ? 'flat' : 'down');
+        mktD.textContent = mkt >= 15 ? 'major player' : mkt >= 5 ? 'mid-tier' : 'niche';
+    }
+
+    // Net Worth right-rail card
+    const ticker = (faction.corp_ticker || faction.abbreviation || 'CORP').toUpperCase();
+    const symEl = document.getElementById('h2-nw-sym');
+    if (symEl) symEl.textContent = ticker;
+    const exEl = document.getElementById('h2-nw-ex');
+    if (exEl) {
+        const nationAbbr = (nationName || '').split(' ').map(w => w[0] || '').join('').toUpperCase().slice(0, 4);
+        exEl.textContent = `${faction.corp_company_type || 'Private'}${nationAbbr ? ' · ' + nationAbbr + ' EXCH' : ''}`;
+    }
+    const priceEl = document.getElementById('h2-nw-price');
+    if (priceEl) priceEl.innerHTML = `${nwSplit.main}<small>${nwSplit.unit}</small>`;
+    const dEl = document.getElementById('h2-nw-d');
+    if (dEl) {
+        // No tick-history yet; show a flat indicator until Phase 6 wires real history.
+        dEl.className = 'd flat';
+        dEl.textContent = 'no history yet';
+    }
+
+    // Treasury card
+    const setMoney = (id, val, mod) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = fmtMoney(val);
+        if (mod) el.classList.add(mod);
+    };
+    setMoney('h2-tr-cash', cashReserves);
+    setMoney('h2-tr-property', propertyValue);
+    setMoney('h2-tr-equipment', equipmentValue);
+    const loansEl = document.getElementById('h2-tr-loans');
+    if (loansEl) {
+        loansEl.textContent = fmtMoney(outstandingLoans);
+        loansEl.classList.toggle('good', outstandingLoans === 0);
+        loansEl.classList.toggle('red', outstandingLoans > 0);
+    }
+    setMoney('h2-tr-payable', accountsPayable);
+
+    const credit = h2CreditBand(faction.corp_credit_rating ?? 50);
+    const creditEl = document.getElementById('h2-tr-credit');
+    if (creditEl) {
+        creditEl.textContent = `${credit.tag} · ${credit.tone === 'good' ? 'stable' : credit.tone === 'gold' ? 'watch' : 'caution'}`;
+        creditEl.classList.remove('good', 'gold', 'red');
+        creditEl.classList.add(credit.tone);
+    }
 }
 
 // ── Tick countdown ──
