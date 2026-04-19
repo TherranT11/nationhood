@@ -22,6 +22,7 @@
     "test:resolve-ratifications": "node scripts/test-resolve-ratifications.mjs",
     "test:resolve-veto-override-and-default": "node scripts/test-resolve-veto-override-and-default.mjs",
     "test:resolve-ordinary": "node scripts/test-resolve-ordinary.mjs",
+    "test:resolve-foundational": "node scripts/test-resolve-foundational.mjs",
     "migrate:shipping": "node scripts/apply-shipping-migrations.js"
   },
   "devDependencies": {

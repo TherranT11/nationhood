@@ -9826,6 +9826,45 @@ async function resolveVetoOverrideBill(supabase, bill, ctx) {
 }
 
 /**
+ * Resolve a passed/failed foundational bill (constitutional amendments,
+ * electoral reform, etc.).
+ *
+ * Three outcomes:
+ *   - passed vote + enactment succeeds → result='passed'
+ *   - passed vote + enactment fails → warn, result='failed', NO failBill call
+ *     (enactFoundationalBill is responsible for whatever cleanup it needs;
+ *     the bill row may stay in whatever intermediate state it left behind)
+ *   - failed vote → failBill, result='failed'
+ *
+ * The heavy lifting — constitutional-system transitions, HOG deactivation,
+ * election scheduling, stat side-effects — lives inside enactFoundationalBill.
+ */
+async function resolveFoundationalBill(supabase, bill, ctx) {
+    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+    let enacted = false;
+    if (passed) {
+        enacted = await enactFoundationalBill(supabase, bill, currentTick);
+    }
+    if (!passed || !enacted) {
+        if (!enacted && passed) {
+            console.warn(`[resolveFoundationalBill] Foundational bill ${bill.id} had enough votes but enactment failed.`);
+        } else {
+            await failBill(supabase, bill);
+        }
+    }
+    await fireBillEvent(supabase, enacted ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: enacted ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'foundational',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
  * Resolve an ordinary bill (the catch-all: regular policy bills, repeals,
  * everything not matched by a specialized resolver).
  *
@@ -10100,20 +10139,10 @@ async function resolveExpiredVotes(supabase, nationId) {
             });
             results.push(entry);
         } else if (isFoundational) {
-            // Handle foundational bill resolution (electoral makeup, etc.)
-            let enacted = false;
-            if (passed) {
-                enacted = await enactFoundationalBill(supabase, bill, currentTick);
-            }
-            if (!passed || !enacted) {
-                if (!enacted && passed) {
-                    console.warn(`[resolveExpiredVotes] Foundational bill ${bill.id} had enough votes but enactment failed.`);
-                } else {
-                    await failBill(supabase, bill);
-                }
-            }
-            await fireBillEvent(supabase, enacted ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-            results.push({ billId: bill.id, billName: bill.bill_name, result: enacted ? 'passed' : 'failed', votesFor, votesAgainst, type: 'foundational', earlyResolution: bill.early_resolution_status || null });
+            const entry = await resolveFoundationalBill(supabase, bill, {
+                passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
+            });
+            results.push(entry);
         } else if (bill.bill_type === 'default_resolution') {
             const entry = await resolveDefaultResolutionBill(supabase, bill, {
                 passed, currentTick, nation, votesFor, votesAgainst, votesAbstain,
