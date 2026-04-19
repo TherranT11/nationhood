@@ -914,6 +914,111 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
     max-width: 100%;
   }
 }
+
+/* ===========================================================================
+   HOME2 — PHASE 2: MASTHEAD PLATE
+   =========================================================================== */
+.h2-plate {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 24px;
+  align-items: center;
+  padding: 22px 28px;
+  background: var(--h2-panel);
+  border: 1px solid var(--h2-line);
+  border-top: 3px solid var(--h2-accent);
+  border-radius: 2px;
+  position: relative;
+  margin-bottom: 18px;
+  color: var(--h2-body-ink);
+  font-family: var(--h2-sans);
+}
+.h2-plate::before {
+  content: ""; position: absolute; top: -3px; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--h2-accent) 0%, var(--h2-accent-deep) 50%, var(--h2-accent) 100%);
+}
+.h2-plate-l { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.h2-eyebrow {
+  font-family: var(--h2-mono); font-size: 10px; letter-spacing: 0.28em;
+  color: var(--h2-accent); text-transform: uppercase; font-weight: 700;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.h2-eyebrow .h2-stamp {
+  padding: 2px 7px; border: 1px solid var(--h2-accent);
+  color: var(--h2-accent); border-radius: 2px; font-size: 9px;
+  letter-spacing: 0.2em;
+}
+.h2-title {
+  margin: 0; font-family: var(--h2-serif); font-size: 40px;
+  font-weight: 500; letter-spacing: -0.015em; color: var(--h2-body-ink);
+  line-height: 1;
+}
+.h2-title em { font-style: italic; color: var(--h2-accent); font-weight: 500; }
+.h2-datebar {
+  font-family: var(--h2-mono); font-size: 11px; letter-spacing: 0.14em;
+  color: var(--h2-body-ink-dim); text-transform: uppercase;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.h2-datebar .sep { color: var(--h2-body-ink-mute); }
+.h2-plate-r {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+  text-align: right;
+}
+.h2-brand {
+  font-family: var(--h2-serif); font-size: 22px; font-weight: 700;
+  color: var(--h2-body-ink); letter-spacing: -0.01em;
+  max-width: 360px;
+}
+.h2-brand em { color: var(--h2-accent); font-style: italic; font-weight: 500; }
+.h2-brand-sub {
+  font-family: var(--h2-mono); font-size: 10px; letter-spacing: 0.22em;
+  color: var(--h2-body-ink-mute); text-transform: uppercase; font-weight: 600;
+}
+.h2-tail-code {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 10px; margin-top: 4px;
+  background: var(--h2-panel-3); border: 1px solid var(--h2-accent-dark);
+  border-radius: 2px;
+  font-family: var(--h2-mono); font-size: 10.5px; letter-spacing: 0.14em;
+  color: var(--h2-accent); font-weight: 700;
+}
+.h2-tail-code::before { content: "⚓"; font-size: 11px; }
+.h2-plate-edit-btn {
+  margin-top: 6px;
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--h2-line-2);
+  color: var(--h2-body-ink-mute);
+  font-family: var(--h2-mono); font-size: 9px; letter-spacing: 0.2em;
+  text-transform: uppercase; cursor: pointer; border-radius: 2px;
+}
+.h2-plate-edit-btn:hover {
+  border-color: var(--h2-accent); color: var(--h2-accent);
+}
+.h2-plate-edit-btn.on {
+  border-color: var(--h2-accent); color: var(--h2-accent); background: var(--h2-panel-3);
+}
+
+/* Paper mode plate refinements */
+:root[data-mode="paper"] .h2-plate {
+  background: var(--h2-paper);
+  border-color: var(--h2-paper-line);
+}
+:root[data-mode="paper"] .h2-tail-code {
+  background: var(--h2-paper-2);
+  border-color: var(--h2-accent-dark);
+}
+
+/* Phase 2: hide the old id-card by default. Edit button re-exposes it for
+   logo/slogan editing until Phase 2+ builds native editors in the plate. */
+.id-card { display: none !important; }
+body.h2-edit-open .id-card { display: block !important; }
+
+@media (max-width: 900px) {
+  .h2-plate { grid-template-columns: 1fr; }
+  .h2-plate-r { align-items: flex-start; text-align: left; }
+  .h2-title { font-size: 30px; }
+}
 </style>
 </head>
 <body>
@@ -926,6 +1031,30 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
   <div id="corp-topbar-container"></div>
 
   <div class="content">
+    <!-- Home2 Masthead Plate (Phase 2) — populated in init() -->
+    <section class="h2-plate" id="h2-plate">
+      <div class="h2-plate-l">
+        <div class="h2-eyebrow">
+          <span id="h2-eyebrow-loc">The Boardroom</span>
+          <span class="h2-stamp">Confidential · Executive</span>
+        </div>
+        <h1 class="h2-title">The Chairman's <em>Desk</em></h1>
+        <div class="h2-datebar" id="h2-datebar">
+          <span id="h2-tick-date">Tick — · —</span>
+          <span class="sep">·</span>
+          <span id="h2-next-close">Next close —</span>
+          <span class="sep">·</span>
+          <span id="h2-ceo">—</span>
+        </div>
+      </div>
+      <div class="h2-plate-r">
+        <div class="h2-brand" id="h2-brand">—</div>
+        <div class="h2-brand-sub" id="h2-brand-sub">—</div>
+        <div class="h2-tail-code" id="h2-tail-code">—</div>
+        <button class="h2-plate-edit-btn" id="h2-edit-toggle" type="button" title="Edit logo / slogan / details">Edit ⚙</button>
+      </div>
+    </section>
+
     <div class="id-card">
       <div class="id-card__header">
         <div class="id-card__header-left">
@@ -1145,6 +1274,93 @@ async function init() {
             faction, shard, activeTab: 'home2', allUserFactions, badges,
         });
     }
+
+    // ── Populate Home2 masthead plate ──
+    (function populateH2Plate() {
+        const tickerUp = (faction.corp_ticker || faction.abbreviation || '').toUpperCase();
+        const gameDate = shard?.current_date || '';
+        const estYearRaw = gameDate ? gameDate.replace(/.*,\s*/, '') : '';
+        const currentTick = shard?.current_tick;
+
+        // Eyebrow: The Boardroom · {nation}
+        const eyebrowLocEl = document.getElementById('h2-eyebrow-loc');
+        if (eyebrowLocEl) {
+            eyebrowLocEl.textContent = nationName
+                ? `The Boardroom · ${nationName}`
+                : 'The Boardroom';
+        }
+
+        // Datebar
+        const tickDateEl = document.getElementById('h2-tick-date');
+        if (tickDateEl) {
+            const parts = [];
+            if (currentTick !== undefined && currentTick !== null) parts.push('Tick ' + currentTick);
+            if (gameDate) parts.push(gameDate);
+            tickDateEl.textContent = parts.length ? parts.join(' · ') : 'Tick — · —';
+        }
+        const nextCloseEl = document.getElementById('h2-next-close');
+        if (nextCloseEl) nextCloseEl.textContent = 'Next close —'; // updated by existing countdown hook if present
+
+        const ceoEl = document.getElementById('h2-ceo');
+        if (ceoEl) {
+            const nameParts = [faction.leader_first_name, faction.leader_last_name].filter(Boolean);
+            if (nameParts.length) {
+                const ageSuffix = faction.leader_age ? ' (' + faction.leader_age + ')' : '';
+                const title = faction.leader_role || 'Chairman & Chief Executive';
+                ceoEl.textContent = `${nameParts.join(' ')} · ${title}${ageSuffix}`;
+            } else {
+                ceoEl.textContent = '—';
+            }
+        }
+
+        // Brand: corp name with last word italicized (design cue)
+        const brandEl = document.getElementById('h2-brand');
+        if (brandEl) {
+            const name = faction.faction_name || 'Unnamed Corporation';
+            const words = name.split(' ');
+            if (words.length > 1) {
+                const head = words.slice(0, -1).join(' ');
+                const tail = words[words.length - 1];
+                brandEl.innerHTML = `${escapeHtml(head)} <em>${escapeHtml(tail)}</em>`;
+            } else {
+                brandEl.textContent = name;
+            }
+        }
+
+        // Brand sub: {Company Type} · Est. {year} · {Sector or Specialization}
+        const brandSubEl = document.getElementById('h2-brand-sub');
+        if (brandSubEl) {
+            const segs = [];
+            if (faction.corp_company_type) segs.push(faction.corp_company_type);
+            if (estYearRaw) segs.push('Est. ' + estYearRaw);
+            const spec = faction.corp_subsector || faction.corp_sector;
+            if (spec) segs.push(spec);
+            brandSubEl.textContent = segs.length ? segs.join(' · ') : '—';
+        }
+
+        // Tail code: {Ticker} · {Nation abbr} EXCH · "{Slogan}"
+        const tailEl = document.getElementById('h2-tail-code');
+        if (tailEl) {
+            const nationAbbr = (nationName || '').split(' ').map(w => w[0] || '').join('').toUpperCase().slice(0, 4);
+            const slogan = faction.party_description ? ('"' + faction.party_description + '"') : '';
+            const segs = [];
+            if (tickerUp) segs.push(tickerUp);
+            if (nationAbbr) segs.push(nationAbbr + ' EXCH');
+            if (slogan) segs.push(slogan);
+            tailEl.textContent = segs.length ? segs.join(' · ') : '—';
+        }
+
+        // Edit toggle — exposes the legacy id-card (with logo upload / slogan editor)
+        // so players can still edit those fields until Phase 2+ ports them natively.
+        const editBtn = document.getElementById('h2-edit-toggle');
+        if (editBtn) {
+            editBtn.addEventListener('click', () => {
+                const open = document.body.classList.toggle('h2-edit-open');
+                editBtn.classList.toggle('on', open);
+                editBtn.textContent = open ? 'Close ✕' : 'Edit ⚙';
+            });
+        }
+    })();
 
     // ── Populate identity card ──
     document.getElementById('id-type-badge').textContent = faction.corp_company_type || '—';
