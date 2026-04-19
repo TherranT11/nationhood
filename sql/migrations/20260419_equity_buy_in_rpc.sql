@@ -19,9 +19,12 @@
 -- (20260419_auto_loan_origination_rpc.sql).
 --
 -- Idempotent — safe to re-run.
+--
+-- Note: NO explicit BEGIN;/COMMIT; around the file. Supabase's SQL Editor
+-- mishandles dollar-quoted function bodies inside explicit transactions
+-- (splits at internal semicolons, surfaces "relation v_request does not
+-- exist"). Supabase runs each migration in an implicit transaction anyway.
 -- ══════════════════════════════════════════════════════════════════════════
-
-BEGIN;
 
 -- ── 1. Widen finance_loan_offers.interest_rate CHECK ──
 -- The shared offers table reuses interest_rate for equity's stake pct
@@ -155,8 +158,6 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.buy_equity_stake(UUID, UUID) TO authenticated;
-
-COMMIT;
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- Verification

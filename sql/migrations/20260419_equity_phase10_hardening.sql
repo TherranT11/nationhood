@@ -26,9 +26,10 @@
 --
 -- Idempotent — safe to re-run. CREATE OR REPLACE FUNCTION redefines
 -- buy_equity_stake in place.
+--
+-- Note: NO explicit BEGIN;/COMMIT; around the file — Supabase SQL Editor
+-- mishandles dollar-quoted function bodies inside explicit transactions.
 -- ══════════════════════════════════════════════════════════════════════════
-
-BEGIN;
 
 -- ── 1. Widen term_months CHECK ──
 ALTER TABLE finance_loan_requests
@@ -187,8 +188,6 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.buy_equity_stake(UUID, UUID) TO authenticated;
-
-COMMIT;
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- Verification

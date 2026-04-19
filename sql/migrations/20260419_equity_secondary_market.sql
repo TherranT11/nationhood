@@ -22,9 +22,10 @@
 -- for the seller is pocketed as cash at sale time; no PnL ledger yet.
 --
 -- Idempotent — safe to re-run.
+--
+-- Note: NO explicit BEGIN;/COMMIT; around the file — Supabase SQL Editor
+-- mishandles dollar-quoted function bodies inside explicit transactions.
 -- ══════════════════════════════════════════════════════════════════════════
-
-BEGIN;
 
 -- ── 1. for_sale_price column ──
 ALTER TABLE finance_active_loans
@@ -136,8 +137,6 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.buy_listed_equity_stake(UUID, UUID) TO authenticated;
-
-COMMIT;
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- Verification
