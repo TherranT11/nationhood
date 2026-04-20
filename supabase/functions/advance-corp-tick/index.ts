@@ -1359,8 +1359,15 @@ const SUB_PARENT_REP_MAX = 1.7;          // max multiplier at rep 100
 
 async function processSubsidiaryRevenue(supabase, nation, currentTick) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    const corpMap = Object.fromEntries(corps.map(c => [c.id, c]));
 
-    // All active regional HQs in this nation (including those with 0 or negative cash)
+    // All active regional HQs PHYSICALLY in this nation. Previously this also
+    // filtered by faction_id IN (this-nation corps), which silently dropped
+    // cross-nation subsidiaries (parent corp in nation A, subsidiary in nation
+    // B) — revenue was computed for neither tick (A's tick skipped it on
+    // nation_id; B's tick skipped it on faction_id). Now we pick up every
+    // subsidiary in this nation and lazy-fetch any parent corp missing from
+    // corpMap so the reputation multiplier resolves.
     const { data: hqs, error: hqErr } = await supabase
         .from('corp_properties')
         .select('id, sub_cash, name, faction_id')
@@ -1383,6 +1390,19 @@ async function processSubsidiaryRevenue(supabase, nation, currentTick) {
             .in('id', parentCorpIds);
         if (corpErr) throw corpErr;
         corpMap = Object.fromEntries((parentCorps || []).map(c => [c.id, c]));
+    }
+
+    // Lazy-fetch parent corps that aren't in this nation's corps array.
+    const missingParentIds = [...new Set(
+        hqs.map(h => h.faction_id).filter(fid => fid && !corpMap[fid])
+    )];
+    if (missingParentIds.length > 0) {
+        const { data: extraParents, error: extraErr } = await supabase
+            .from('factions')
+            .select('id, faction_name, corp_reputation')
+            .in('id', missingParentIds);
+        if (extraErr) console.warn('[SubRevenue] Failed to fetch cross-nation parent corps:', extraErr.message);
+        for (const p of (extraParents || [])) corpMap[p.id] = p;
     }
 
     const baseRepMult = SUB_DEFAULT_REPUTATION / 100;
