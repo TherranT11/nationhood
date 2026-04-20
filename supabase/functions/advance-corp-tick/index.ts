@@ -1359,7 +1359,6 @@ const SUB_PARENT_REP_MAX = 1.7;          // max multiplier at rep 100
 
 async function processSubsidiaryRevenue(supabase, nation, currentTick) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
-    const corpMap = Object.fromEntries(corps.map(c => [c.id, c]));
 
     // All active regional HQs PHYSICALLY in this nation. Previously this also
     // filtered by faction_id IN (this-nation corps), which silently dropped
