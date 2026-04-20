@@ -7,7 +7,6 @@ const THEME_STORAGE_KEY = 'corpThemePref';
 // Stashed at render time so the CASH-pill dropdown can query cash history
 // for the active corp without re-threading faction through window handlers.
 let _topbarFaction = null;
-let _topbarShard = null;
 
 // Sync body.light-mode from localStorage. Called at render (and by a tiny inline
 // script at the top of each corp body) so saved preference survives page loads
@@ -73,7 +72,6 @@ export function renderCorpTopBar(container, opts = {}) {
     applyStoredCorpTheme();
     const { faction, shard, activeTab, allUserFactions, badges } = opts;
     _topbarFaction = faction;
-    _topbarShard = shard;
     const tabBadges = badges || {}; // { tabId: { count, color } }
     const isLightMode = document.body.classList.contains('light-mode');
     const ticker = faction?.corp_ticker || faction?.abbreviation || '';
@@ -283,7 +281,11 @@ async function _renderCashMovements() {
             .eq('borrower_faction_id', factionId)
             .order('started_tick', { ascending: false })
             .limit(10);
-        const [{ data: hist }, { data: loans }] = await Promise.all([histQ, loanQ]);
+        const [histRes, loanRes] = await Promise.all([histQ, loanQ]);
+        if (histRes.error) console.warn('[CashDropdown] corp_cash_history query error:', histRes.error.message);
+        if (loanRes.error) console.warn('[CashDropdown] finance_active_loans query error:', loanRes.error.message);
+        const hist = histRes.data;
+        const loans = loanRes.data;
 
         const entries = [];
         for (const h of (hist || [])) {
