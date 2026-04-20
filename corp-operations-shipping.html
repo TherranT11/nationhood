@@ -12101,7 +12101,7 @@ async function loadAllCorporations() {
             .is('abandoned_at', null)
             .order('faction_name'),
         _supabase.from('corp_properties')
-            .select('id, faction_id, name, nation_id, subsector, type, factions(faction_name, corp_sector, corp_ticker, abbreviation, corp_reputation, corp_company_type, linked_user_id)')
+            .select('id, faction_id, name, nation_id, subsector, type, sub_cash, factions(faction_name, corp_sector, corp_ticker, abbreviation, corp_reputation, corp_company_type, linked_user_id)')
             .eq('type', 'regional_hq')
             .eq('is_active', true),
     ]);
@@ -12142,15 +12142,51 @@ async function loadAllCorporations() {
         };
     });
 
-    // Map subsidiaries as pseudo-corp entries
-    const { data: nationNames } = await _supabase.from('nations').select('id, name');
+    // Map subsidiaries as pseudo-corp entries. Previously hardcoded cash /
+    // revenue / valuation to 0 and used the PARENT's reputation — that's
+    // wrong. Subsidiaries have their own sub_cash, a fixed baseline
+    // reputation (SUB_DEFAULT_REPUTATION = 25), a tick-delta revenue
+    // formula, and a valuation derived from aggregated property values
+    // in their nation. Mirrors the math in getSubsidiaryData() (View A).
+    const { data: nationData } = await _supabase.from('nations').select('id, name, gdp_growth');
     const nationMap = {};
-    (nationNames || []).forEach(n => { nationMap[n.id] = n.name; });
+    const nationGdpMap = {};
+    (nationData || []).forEach(n => {
+        nationMap[n.id] = n.name;
+        nationGdpMap[n.id] = Number(n.gdp_growth ?? 50);
+    });
+
+    // Batch-fetch all corp_properties for subsidiary (faction, nation) pairs
+    // so we can sum purchase_price for valuation and capacity for workforce.
+    const subFactionIds = [...new Set((subsRes.data || []).map(s => s.faction_id).filter(Boolean))];
+    const subNationIds = [...new Set((subsRes.data || []).map(s => s.nation_id).filter(Boolean))];
+    const subPropsMap = {}; // key = `${factionId}|${nationId}` → property rows
+    if (subFactionIds.length && subNationIds.length) {
+        const { data: allSubProps, error: subPropsErr } = await _supabase.from('corp_properties')
+            .select('faction_id, nation_id, purchase_price, capacity')
+            .in('faction_id', subFactionIds)
+            .in('nation_id', subNationIds)
+            .eq('is_active', true);
+        if (subPropsErr) console.warn('[loadAllCorporations] subsidiary props fetch failed:', subPropsErr.message);
+        for (const p of (allSubProps || [])) {
+            const key = `${p.faction_id}|${p.nation_id}`;
+            (subPropsMap[key] ||= []).push(p);
+        }
+    }
 
     for (const sub of (subsRes.data || [])) {
         const parent = parentMap[sub.faction_id];
         if (!parent) continue;
         const parentStatus = (parent.corp_company_type || 'Private').toUpperCase();
+        const subCash = Number(sub.sub_cash ?? 0);
+        const gdpGrowth = nationGdpMap[sub.nation_id] ?? 50;
+        const propsForSub = subPropsMap[`${sub.faction_id}|${sub.nation_id}`] || [];
+        const subValuation = propsForSub.reduce((s, p) => s + Number(p.purchase_price || 0), 0);
+        const tickDelta = computeSubsidiaryTickDelta({
+            subCash,
+            gdpGrowth,
+            parentReputation: Number(parent.corp_reputation ?? 50),
+        });
         corps.push({
             id: sub.id,
             faction_name: sub.name || 'Subsidiary',
@@ -12158,14 +12194,15 @@ async function loadAllCorporations() {
             corp_sector: parent.corp_sector,
             corp_subsector: sub.subsector || parent.corp_subsector,
             corp_ticker: parent.corp_ticker,
+            corp_cash_reserves: subCash,
             nation_id: sub.nation_id,
             nation: nationMap[sub.nation_id] || '?',
             abbr: (parent.corp_ticker || parent.abbreviation || '??').slice(0, 4),
             status: parentStatus,
             isPlayer: !!parent.linked_user_id,
-            reputation: Math.round(Number(parent.corp_reputation ?? 50)),
-            revenue: 0,
-            valuation: 0,
+            reputation: SUB_DEFAULT_REPUTATION,
+            revenue: tickDelta.netDelta,
+            valuation: subValuation,
             _isSub: true,
             _parentName: parent.faction_name,
         });
