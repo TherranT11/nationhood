@@ -2714,7 +2714,10 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
         const newCash = Math.max(0, currentCash + netChange);
         const newLoans = Math.max(0, currentLoans - principalPaid);
 
-        const updateFields = { corp_cash_reserves: newCash };
+        // monthly_profit is the dividend base for equity positions (Phase 4).
+        // Stored as netChange (post-debt, post-tax cash flow) so equity holders
+        // share in what's actually left after the corp's own obligations.
+        const updateFields = { corp_cash_reserves: newCash, monthly_profit: netChange };
         if (principalPaid > 0) updateFields.corp_loans = newLoans;
 
         const { error: updateErr } = await supabase.from('factions')
@@ -3013,6 +3016,56 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 }).eq('id', loan.id);
                 if (missErr) console.warn('[Insurance] Missed premium update failed:', missErr.message);
             }
+            continue;
+        }
+
+        // Equity: pay dividend = equity_pct × target.monthly_profit (if profit > 0).
+        // Losses don't flow to the investor — equity can't go negative, they just
+        // earn nothing that tick. monthly_profit was written above by
+        // processCorpMonthlyIncome for this same tick.
+        if (requestType === 'equity') {
+            const { data: target } = await supabase.from('factions')
+                .select('corp_cash_reserves, monthly_profit')
+                .eq('id', loan.borrower_faction_id).single();
+            if (!target) {
+                console.warn(`[Equity] Target ${loan.borrower_faction_id} not found; skipping`);
+                continue;
+            }
+
+            const profit = Number(target.monthly_profit || 0);
+            const stakePct = Number(loan.equity_pct || 0);
+            const dividendDue = profit > 0 ? Math.floor(profit * stakePct / 100) : 0;
+            const targetCash = Number(target.corp_cash_reserves || 0);
+            // Clamp to cash on hand — a corp with a paper profit but empty till
+            // pays what it can. No "missed payment" concept for equity.
+            const actualPayout = Math.max(0, Math.min(dividendDue, targetCash));
+
+            if (actualPayout > 0) {
+                var { error: debitErr } = await supabase.from('factions').update({
+                    corp_cash_reserves: targetCash - actualPayout,
+                }).eq('id', loan.borrower_faction_id);
+                if (debitErr) console.warn('[Equity] Target debit failed:', debitErr.message);
+
+                const { data: lender } = await supabase.from('factions')
+                    .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
+                if (lender) {
+                    var { error: creditErr } = await supabase.from('factions').update({
+                        corp_cash_reserves: Number(lender.corp_cash_reserves || 0) + actualPayout,
+                    }).eq('id', loan.lender_faction_id);
+                    if (creditErr) console.warn('[Equity] Investor credit failed:', creditErr.message);
+                }
+            }
+
+            // Always tick the counters, even on a $0 dividend, so the position
+            // reflects that a tick was processed.
+            var { error: equityTrackErr } = await supabase.from('finance_active_loans').update({
+                total_paid: (Number(loan.total_paid) || 0) + actualPayout,
+                payments_made: (loan.payments_made || 0) + 1,
+                last_payment_tick: currentTick,
+            }).eq('id', loan.id);
+            if (equityTrackErr) console.warn('[Equity] Position tracking update failed:', equityTrackErr.message);
+
+            if (actualPayout > 0) results.payments++;
             continue;
         }
 
@@ -3833,6 +3886,25 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         .select('id, vessel_name, vessel_class, fuel, condition, status, base_maintenance, active_claim_id, faction_id')
                         .in('active_claim_id', claimIds)
                     : { data: [] };
+
+                // Cross-nation fix: shipping_claims.nation_id is the route's
+                // origin nation (where the claim is processed), NOT the
+                // claim-holder's home nation. Corps based in OTHER nations
+                // claiming this nation's routes aren't in `corps` (which is
+                // filtered by nation_id = nation.id), so corpById misses
+                // them → the claim loop skipped them silently, leaving
+                // vessels stuck in 'loading' forever. Lazy-fetch the
+                // missing corps by id here.
+                const claimFactionIds = [...new Set((activeClaims || []).map(c => c.faction_id))];
+                const missingFactionIds = claimFactionIds.filter(id => !corpById[id]);
+                if (missingFactionIds.length > 0) {
+                    const { data: extraCorps, error: extraErr } = await supabase
+                        .from('factions')
+                        .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
+                        .in('id', missingFactionIds);
+                    if (extraErr) console.warn('[advance-corp-tick] Failed to fetch cross-nation claim-holders:', extraErr.message);
+                    for (const c of (extraCorps || [])) corpById[c.id] = c;
+                }
 
                 if (activeClaims && activeClaims.length > 0) {
                     let revenueCollected = 0;

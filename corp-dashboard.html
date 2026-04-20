@@ -1533,14 +1533,35 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     // profit while cash actually grew only ~$300-400k/tick.
     let corpLoanService = 0;
     let insurancePremiums = 0;
+    let equityDividends = 0;
+    let capTable = [];
     if (faction?.id) {
         try {
             const { data: borrowerLiabilities } = await _supabase.from('finance_active_loans')
-                .select('monthly_payment, finance_loan_requests(request_type)')
+                .select('monthly_payment, equity_pct, series, total_paid, finance_loan_requests(request_type), lender:factions!lender_faction_id(faction_name)')
                 .eq('borrower_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
+            // Equity dividends are computed from last tick's monthly_profit ×
+            // equity_pct — the same formula the tick processor uses. Matches
+            // what actually got paid; lags projections by one tick for the
+            // current-tick estimate, which is honest given the card is an
+            // approximation.
+            const lastTickProfit = Math.max(0, Number(faction?.monthly_profit || 0));
             for (const row of (borrowerLiabilities || [])) {
                 const reqType = row.finance_loan_requests?.request_type || 'loan';
+                if (reqType === 'equity') {
+                    const stake = Number(row.equity_pct || 0);
+                    const dividend = Math.floor(lastTickProfit * stake / 100);
+                    equityDividends += dividend;
+                    capTable.push({
+                        investor: row.lender?.faction_name || 'Unknown',
+                        stakePct: stake,
+                        series: row.series || '?',
+                        paidToDate: Number(row.total_paid || 0),
+                        nextDividend: dividend,
+                    });
+                    continue;
+                }
                 const pmt = Number(row.monthly_payment || 0);
                 if (pmt <= 0) continue;
                 if (reqType === 'insurance') {
@@ -1556,6 +1577,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                     corpLoanService += pmt; // standard loans
                 }
             }
+            capTable.sort((a, b) => b.stakePct - a.stakePct);
         } catch (err) {
             console.warn('[Finances] borrower finance_active_loans lookup failed:', err);
         }
@@ -1566,7 +1588,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const FIXED_OVERHEAD = 75000; // minimum operating costs (matches tick processor)
     // Corporate tax: applied to positive income (matches tick processor formula)
     const corpTaxRate = Math.max(0, Math.min(1, (Number(nation?.corporate_tax ?? 0) / 100) || 0));
-    const preExpenses = wages + execSalaries + materials + properties + equipment + fleet + debtService + corpLoanService + insurancePremiums + projectCosts + FIXED_OVERHEAD;
+    const preExpenses = wages + execSalaries + materials + properties + equipment + fleet + debtService + corpLoanService + insurancePremiums + equityDividends + projectCosts + FIXED_OVERHEAD;
     const taxableIncome = Math.max(0, totalRevenue - preExpenses);
     const taxes = Math.round(taxableIncome * corpTaxRate);
 
@@ -1704,6 +1726,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
             <div class="fin-row"><span class="fin-row__label">Debt Service</span><span class="fin-row__value" style="color:#a44">${fmtMoney(debtService)}</span></div>
             ${corpLoanService > 0 ? `<div class="fin-row"><span class="fin-row__label">Loan Repayments</span><span class="fin-row__value" style="color:#a44">${fmtMoney(corpLoanService)}</span></div>` : ''}
             ${insurancePremiums > 0 ? `<div class="fin-row"><span class="fin-row__label">Insurance Premiums</span><span class="fin-row__value" style="color:#a44">${fmtMoney(insurancePremiums)}</span></div>` : ''}
+            ${equityDividends > 0 ? `<div class="fin-row"><span class="fin-row__label" title="Dividends to equity holders. Each tick: equity_pct × last tick's monthly profit. $0 on loss ticks.">Equity Dividends</span><span class="fin-row__value" style="color:#a44">${fmtMoney(equityDividends)}</span></div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Taxes</span><span class="fin-row__value" style="color:#a44">${fmtMoney(taxes)}</span></div>
             ${taxBreakdownHtml ? `<div style="padding:2px 12px 6px 20px;border-bottom:1px solid var(--border-hair);">${taxBreakdownHtml}</div>` : ''}
             <div class="fin-total">
@@ -1764,6 +1787,32 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
             </div>
             <div id="fin-loans-list" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">No active loans.</div>
         </div>
+        ${capTable.length > 0 ? (() => {
+            const totalStake = capTable.reduce((s, h) => s + (h.stakePct || 0), 0);
+            const totalPaid = capTable.reduce((s, h) => s + (h.paidToDate || 0), 0);
+            return `<div style="padding:8px 14px;border-top:1px solid var(--border-0);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-dim);text-transform:uppercase;">Cap Table</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#c89a4a;">${totalStake.toFixed(2)}% STAKED &middot; ${fmtMoney(totalPaid)} PAID TO DATE</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 50px 40px 1fr 1fr;gap:4px;font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;padding:0 2px 3px;border-bottom:1px solid var(--border-hair);">
+                    <span>INVESTOR</span>
+                    <span style="text-align:right;">STAKE</span>
+                    <span style="text-align:center;">SERIES</span>
+                    <span style="text-align:right;">PAID TO DATE</span>
+                    <span style="text-align:right;" title="Projected next dividend = stake × last tick's profit.">NEXT DIVIDEND</span>
+                </div>
+                ${capTable.map(h => `
+                    <div style="display:grid;grid-template-columns:1fr 50px 40px 1fr 1fr;gap:4px;font-family:var(--font-mono);font-size:8px;padding:2px;border-bottom:1px solid var(--border-hair);">
+                        <span style="color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(h.investor)}">${escapeHtml(h.investor)}</span>
+                        <span style="color:#c89a4a;text-align:right;">${h.stakePct.toFixed(2)}%</span>
+                        <span style="color:#c89a4a;text-align:center;">${escapeHtml(h.series)}</span>
+                        <span style="color:var(--green);text-align:right;">${fmtMoney(h.paidToDate)}</span>
+                        <span style="color:${h.nextDividend > 0 ? 'var(--green)' : 'var(--text-dim)'};text-align:right;">${fmtMoney(h.nextDividend)}</span>
+                    </div>
+                `).join('')}
+            </div>`;
+        })() : ''}
         <!-- Market Revenue Drivers -->
         <div style="padding:8px 14px;">
             <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px;">Market Revenue Drivers</div>
