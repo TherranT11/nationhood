@@ -4630,24 +4630,32 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // non_pnl_cash_movements stays in one source of truth.
             if (corps.length > 0) {
                 try {
-                    const { data: endFactions } = await supabase
+                    const { data: endFactions, error: endFactionsErr } = await supabase
                         .from('factions')
                         .select('id, corp_cash_reserves, monthly_profit')
                         .in('id', corps.map(c => c.id));
-                    const rows = (endFactions || []).map(f => {
-                        const cashStart = cashStartByCorp.get(f.id) ?? 0;
-                        const cashEnd = Number(f.corp_cash_reserves || 0);
-                        const monthlyProfit = Number(f.monthly_profit || 0);
-                        const cashDelta = cashEnd - cashStart;
-                        return {
-                            faction_id: f.id,
-                            tick: currentTick,
-                            cash_start: cashStart,
-                            cash_end: cashEnd,
-                            cash_delta: cashDelta,
-                            non_pnl_cash_movements: cashDelta - monthlyProfit,
-                        };
-                    });
+                    if (endFactionsErr) throw endFactionsErr;
+                    // Only write rows for corps we captured a real start-of-tick
+                    // snapshot for. Guards against a corp appearing in endFactions
+                    // that wasn't in the initial corps fetch (e.g., founded or
+                    // un-abandoned mid-tick) — that would otherwise record the
+                    // corp's entire cash balance as a phantom delta.
+                    const rows = (endFactions || [])
+                        .filter(f => cashStartByCorp.has(f.id))
+                        .map(f => {
+                            const cashStart = cashStartByCorp.get(f.id);
+                            const cashEnd = Number(f.corp_cash_reserves || 0);
+                            const monthlyProfit = Number(f.monthly_profit || 0);
+                            const cashDelta = cashEnd - cashStart;
+                            return {
+                                faction_id: f.id,
+                                tick: currentTick,
+                                cash_start: cashStart,
+                                cash_end: cashEnd,
+                                cash_delta: cashDelta,
+                                non_pnl_cash_movements: cashDelta - monthlyProfit,
+                            };
+                        });
                     if (rows.length > 0) {
                         const { error: cashHistErr } = await supabase
                             .from('corp_cash_history')
