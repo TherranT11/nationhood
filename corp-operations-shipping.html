@@ -3997,6 +3997,29 @@ function tickToDate(tick) {
     return `${MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
 }
 
+// Shared by both construction and vessel insurance requests.
+// Returns an integer number of months in [6, 120] snapped to 3-month
+// increments, or null if the user cancelled. Premium total scales
+// naturally in the existing Review Deal formula at
+// corp-operations-finance.html:2462 (coverage × annual_rate × term/12)
+// — no separate pricing curve per term, so this prompt is the single
+// source of truth for term. Future UI polish: replace with a slider
+// modal. The functional fix (term settable, cost scales) is here.
+function _promptInsuranceTerm() {
+    const input = prompt(
+        'POLICY TERM\n' +
+        '─'.repeat(30) + '\n\n' +
+        'How many months of coverage? (6 to 120, default 12)\n\n' +
+        'Snaps to 3-month increments. Longer terms = higher total premium at the same annual rate.',
+        '12'
+    );
+    if (input === null) return null;
+    const parsed = parseInt(input, 10);
+    if (!Number.isFinite(parsed)) { alert('Enter a number between 6 and 120.'); return null; }
+    const clamped = Math.max(6, Math.min(120, parsed));
+    return Math.round(clamped / 3) * 3;
+}
+
 async function requestInsurance(contractId, budgetCeiling) {
     if (!faction || !shard) return;
 
@@ -4011,6 +4034,9 @@ async function requestInsurance(contractId, budgetCeiling) {
     if (coverageDesc === null) return;
     const purpose = coverageDesc.trim() || 'Construction Insurance';
 
+    const termMonths = _promptInsuranceTerm();
+    if (termMonths === null) return;
+
     const currentTick = shard.current_tick || 0;
     const { error } = await _supabase.from('finance_loan_requests').insert({
         requesting_faction_id: faction.id,
@@ -4018,7 +4044,7 @@ async function requestInsurance(contractId, budgetCeiling) {
         request_type: 'insurance',
         insured_contract_id: contractId,
         amount: budgetCeiling,
-        term_months: 0,
+        term_months: termMonths,
         purpose: purpose,
         status: 'open',
         created_tick: currentTick,
@@ -13752,6 +13778,9 @@ async function flRequestInsurance(vesselId, vesselName, vesselValue) {
     if (!faction || !shard) return;
     if (!confirm('Request insurance for ' + vesselName + '?\n\nInsurance corporations will see this in their Deal Flow and can offer coverage terms.\n\nVessel value: ' + hfFmtBig(vesselValue))) return;
 
+    const termMonths = _promptInsuranceTerm();
+    if (termMonths === null) return;
+
     const currentTick = shard.current_tick || 0;
     const { error } = await _supabase.from('finance_loan_requests').insert({
         requesting_faction_id: faction.id,
@@ -13759,7 +13788,7 @@ async function flRequestInsurance(vesselId, vesselName, vesselValue) {
         request_type: 'insurance',
         insured_vessel_id: vesselId,
         amount: vesselValue,
-        term_months: 0,
+        term_months: termMonths,
         purpose: 'Vessel Insurance — ' + vesselName,
         status: 'open',
         created_tick: currentTick,

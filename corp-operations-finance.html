@@ -2409,6 +2409,36 @@ function rdClose() {
     rdDeal = null;
 }
 
+// Persist a status='declined' offer row so the Deal Flow query at ~line 484
+// hides this request from my view going forward. The existing
+// filter "request_id IN (my offering_faction_id's offers)" treats any
+// offer row the same — accepted, pending, or declined — so a
+// status='declined' INSERT is the correct minimum write to hide the
+// deal from me while leaving it visible to other financiers.
+async function rdDecline() {
+    const deal = rdDeal;
+    if (!deal || !faction?.id) { rdClose(); return; }
+    try {
+        const { error } = await _supabase.from('finance_loan_offers').insert({
+            request_id: deal.requestId || deal.id,
+            offering_faction_id: faction.id,
+            // CHECK constraint requires >= 1.0; value is meaningless for
+            // a declined offer — the row exists only to hide the request
+            // from this financier's Deal Flow.
+            interest_rate: 1.0,
+            collateral_type: 'unsecured',
+            status: 'declined',
+            created_tick: (shard?.current_tick) || 0,
+        });
+        if (error) console.warn('[Decline] finance_loan_offers insert failed:', error.message);
+    } catch (err) {
+        console.warn('[Decline] Unexpected error:', err?.message || err);
+    }
+    rdClose();
+    if (typeof loadDealFlow === 'function') loadDealFlow();
+}
+window.rdDecline = rdDecline;
+
 function rdSetLoanRate(v) { rdLoanRate = Number(v); renderReviewDeal(); }
 function rdSetLoanCollateral(v) { rdLoanCollateral = v; renderReviewDeal(); }
 function rdSetLoanTermsText(v) { rdLoanTermsText = v; }
@@ -2459,7 +2489,10 @@ function renderReviewDeal() {
     const loanExpectedReturn = Math.round(loanTotalInterest * (1 - defaultProb / 100));
 
     // ── Insurance calculations ──
-    const insureTermYears = (d.term || 18) / 12;
+    // Fallback default for legacy rows where term_months was hardcoded 0
+    // before the request UI started collecting term. New rows always set
+    // term in [6, 120] via _promptInsuranceTerm in corp-operations-shipping.
+    const insureTermYears = (d.term || 12) / 12;
     const insureTotalPremiums = Math.round(rdInsureCoverage * (rdInsurePremium / 100) * insureTermYears);
     const baseClaimProb = 100 - (d.reputation || 50); // lower rep = higher claim chance
     const insureClaimProb = Math.max(5, Math.min(50, Math.round(baseClaimProb * 0.4)));
@@ -2852,7 +2885,7 @@ function renderReviewDeal() {
             <div class="rd-footer__metric"><div class="rd-footer__metric-label">RISK</div><div class="rd-footer__metric-value" style="color:${footerRiskColor};">${footerRisk}%</div></div>
         </div>
         <div style="display:flex;gap:6px;">
-            <button class="rd-btn-decline" onclick="rdClose()">DECLINE</button>
+            <button class="rd-btn-decline" onclick="rdDecline()">DECLINE</button>
             <button class="rd-btn-action ${actionClass}" onclick="rdSubmitOffer()" ${actionDisabled}${actionTitle}>${actionButtonLabel}</button>
         </div>
     </div>`;
