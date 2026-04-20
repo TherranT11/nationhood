@@ -3,7 +3,7 @@
 
 import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo } from './game/platforms.js';
 import { getPromiseProgress } from './game/platform-promises.js';
-import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, checkOppositionStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
+import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
 import { getNationNames, resignPM, installHOG } from './game/political-actions.js';
 import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM } from './game/government-types.js';
@@ -316,7 +316,7 @@ export async function initPartyActions(supabase, state) {
         _supabase.from('faction_platforms').select('*').eq('faction_id', faction.id).order('slot'),
         _supabase.from('faction_platforms').select('*').eq('nation_id', state.nation?.id),
         fetchActiveAgitator(_supabase, faction.id),
-        checkOppositionStatus(_supabase, state.nation?.id, faction.id),
+        getGoverningStatus(_supabase, state.nation?.id, faction.id),
         _supabase.from('faction_electoral_standing')
             .select('ideological_alignment, visibility, raw_appeal')
             .eq('faction_id', faction.id)

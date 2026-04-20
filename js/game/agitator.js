@@ -9,6 +9,7 @@
  */
 
 import { getNationNames } from './political-actions.js';
+import { isAbsoluteMonarchy, hasElectedPresident } from './government-types.js';
 
 // ═══════════════════════════════════════════════════
 // AGITATOR BACKGROUNDS (flavor text)
@@ -129,22 +130,52 @@ export function generateAgitatorPool(nationId, nationName) {
 }
 
 // ═══════════════════════════════════════════════════
-// OPPOSITION CHECK
+// GOVERNING STATUS
 // ═══════════════════════════════════════════════════
 
 /**
- * Determine if a faction is in opposition (not in the current governing coalition).
- * Queries the active administration's coalition_parties array.
+ * Determines a party's political role relative to the current government.
+ * Single source of truth for GOVERNING / OPPOSITION / LOYAL / DISSIDENT
+ * labels across every UI that shows party status.
  *
- * @param {object} supabase
- * @param {string} nationId
- * @param {string} factionId
- * @returns {Promise<{isOpposition: boolean, administration: object|null}>}
+ * Rules:
+ *   Parliamentary Democracy : in coalition OR PM party → GOVERNING
+ *   Presidential Republic   : president's party OR holds an active
+ *                             cabinet ministry → GOVERNING
+ *   Semi-Presidential       : any of the above → GOVERNING
+ *   Absolute Monarchy       : party seats >= 1 → LOYAL, else DISSIDENT
+ *
+ * Return shape preserves `isOpposition` and `administration` for
+ * backward compatibility with existing callers; adds `isGoverning`
+ * and `label`.
  */
-export async function checkOppositionStatus(supabase, nationId, factionId) {
+export async function getGoverningStatus(supabase, nationId, factionId) {
+    var { data: nation } = await supabase
+        .from('nations')
+        .select('government_type')
+        .eq('id', nationId)
+        .maybeSingle();
+
+    // Absolute Monarchy: seats-only gate, no admin row required.
+    if (isAbsoluteMonarchy(nation)) {
+        var { data: faction } = await supabase
+            .from('factions')
+            .select('seats')
+            .eq('id', factionId)
+            .maybeSingle();
+        return computeGoverningFromInputs({
+            partyId: factionId,
+            partySeats: faction?.seats,
+            admin: null,
+            ministryHolder: false,
+            nation,
+        });
+    }
+
+    // Active administration — single source for coalition / PM / president.
     var { data: admin, error } = await supabase
         .from('administrations')
-        .select('id, coalition_parties, stats_at_start, started_at_tick, pm_party_id')
+        .select('id, coalition_parties, stats_at_start, started_at_tick, pm_party_id, president_party_id')
         .eq('nation_id', nationId)
         .is('ended_at_tick', null)
         .order('started_at_tick', { ascending: false })
@@ -152,32 +183,84 @@ export async function checkOppositionStatus(supabase, nationId, factionId) {
         .maybeSingle();
 
     if (error) {
-        console.error('[Agitator] Failed to check opposition status:', error.message);
-        return { isOpposition: false, administration: null };
+        console.error('[Agitator] Failed to check governing status:', error.message);
+        return { isGoverning: false, isOpposition: true, label: 'OPPOSITION', administration: null };
     }
 
+    // Presidential / Semi-Presidential also need a cabinet-held check.
+    var ministryHolder = false;
+    if (hasElectedPresident(nation)) {
+        var { count } = await supabase
+            .from('ministries')
+            .select('*', { count: 'exact', head: true })
+            .eq('nation_id', nationId)
+            .eq('party_id', factionId)
+            .eq('is_active', true);
+        ministryHolder = (count || 0) > 0;
+    }
+
+    return computeGoverningFromInputs({
+        partyId: factionId,
+        partySeats: null,
+        admin,
+        ministryHolder,
+        nation,
+    });
+}
+
+/**
+ * Synchronous variant for render loops that already have admin + ministry
+ * data loaded. Shares `computeGoverningFromInputs` with the async version
+ * so the rules only live in one place.
+ *
+ * @param {object} party             must have id, seats
+ * @param {object|null} admin        active administrations row (or null)
+ * @param {Set<string>} ministryPartyIds  party ids holding an active ministry
+ * @param {object} nation            must have government_type
+ */
+export function getGoverningStatusFor(party, admin, ministryPartyIds, nation) {
+    return computeGoverningFromInputs({
+        partyId: party?.id,
+        partySeats: party?.seats,
+        admin,
+        ministryHolder: ministryPartyIds ? ministryPartyIds.has(party?.id) : false,
+        nation,
+    });
+}
+
+// Rule implementation shared by both getGoverningStatus (async DB fetch)
+// and getGoverningStatusFor (sync pre-loaded data). Single source of truth
+// for who counts as "governing" — do not duplicate this logic elsewhere.
+function computeGoverningFromInputs({ partyId, partySeats, admin, ministryHolder, nation }) {
+    if (isAbsoluteMonarchy(nation)) {
+        var monarchyGoverning = Number(partySeats || 0) >= 1;
+        return {
+            isGoverning: monarchyGoverning,
+            isOpposition: !monarchyGoverning,
+            label: monarchyGoverning ? 'LOYAL' : 'DISSIDENT',
+            administration: null,
+        };
+    }
     if (!admin) {
-        // No active administration — caretaker/transitional state, treat as opposition
-        return { isOpposition: true, administration: null };
+        return { isGoverning: false, isOpposition: true, label: 'OPPOSITION', administration: null };
     }
-
-    // Check if faction is in the coalition.
-    // Support both legacy/object formats:
-    // - [{ party_id: 'uuid', ... }]
-    // - [{ id: 'uuid', ... }]
-    // - ['uuid', ...]
     var coalitionParties = Array.isArray(admin.coalition_parties) ? admin.coalition_parties : [];
-    var coalitionIds = coalitionParties
-        .map(function(entry) {
-            if (!entry) return null;
-            if (typeof entry === 'string') return entry;
-            if (typeof entry === 'object') return entry.party_id || entry.id || null;
-            return null;
-        })
-        .filter(Boolean);
-    var inCoalition = coalitionIds.includes(factionId) || admin.pm_party_id === factionId;
-
-    return { isOpposition: !inCoalition, administration: admin };
+    var inCoalition = coalitionParties.some(function(entry) {
+        if (!entry) return false;
+        if (typeof entry === 'string') return entry === partyId;
+        if (typeof entry === 'object') return (entry.party_id || entry.id) === partyId;
+        return false;
+    });
+    var isPM = admin.pm_party_id === partyId;
+    var isPresidentsParty = admin.president_party_id === partyId;
+    var isGoverning = isPM || inCoalition || isPresidentsParty
+        || (hasElectedPresident(nation) && !!ministryHolder);
+    return {
+        isGoverning,
+        isOpposition: !isGoverning,
+        label: isGoverning ? 'GOVERNING' : 'OPPOSITION',
+        administration: admin,
+    };
 }
 
 // ═══════════════════════════════════════════════════
