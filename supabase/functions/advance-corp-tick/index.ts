@@ -2060,20 +2060,48 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             // Close any active insurance policies for this completed project
             try {
                 // Deal Flow policies (finance_active_loans)
-                const { data: insReq } = await supabase
+                const { data: insReqs, error: insReqErr } = await supabase
                     .from('finance_loan_requests')
                     .select('id')
                     .eq('request_type', 'insurance')
                     .eq('insured_contract_id', contract.id)
-                    .eq('status', 'funded')
-                    .maybeSingle();
-                if (insReq) {
-                    await supabase.from('finance_active_loans').update({
-                        status: 'repaid',
-                        completed_tick: currentTick,
-                    }).eq('request_id', insReq.id).eq('status', 'current');
-                    console.log(`[Projects] Deal flow insurance closed for completed project: ${contract.name}`);
+                    .eq('status', 'funded');
+                if (insReqErr) throw insReqErr;
+
+                const fundedRequestIds = (insReqs || []).map((r) => r.id).filter(Boolean);
+                let linkedPoliciesFound = 0;
+                let linkedPoliciesClosed = 0;
+
+                if (fundedRequestIds.length > 0) {
+                    const closableStatuses = ['current', 'late', 'delinquent'];
+                    const { data: linkedPolicies, error: linkedPoliciesErr } = await supabase
+                        .from('finance_active_loans')
+                        .select('id, status')
+                        .in('request_id', fundedRequestIds)
+                        .in('status', closableStatuses);
+                    if (linkedPoliciesErr) throw linkedPoliciesErr;
+
+                    linkedPoliciesFound = (linkedPolicies || []).length;
+
+                    if (linkedPoliciesFound > 0) {
+                        const { data: updatedPolicies, error: closeErr } = await supabase
+                            .from('finance_active_loans')
+                            .update({
+                                status: 'repaid',
+                                completed_tick: currentTick,
+                            })
+                            .in('request_id', fundedRequestIds)
+                            .in('status', closableStatuses)
+                            .select('id');
+                        if (closeErr) throw closeErr;
+                        linkedPoliciesClosed = (updatedPolicies || []).length;
+                    }
                 }
+
+                console.log(
+                    `[Projects] Insurance cleanup for completed project ${contract.name} (${contract.id}): ` +
+                    `${fundedRequestIds.length} funded request(s), ${linkedPoliciesFound} closable policy/policies found, ${linkedPoliciesClosed} closed`
+                );
 
                 // Refund performance bond if one exists
                 if (contract.bond_id) {
