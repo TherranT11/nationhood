@@ -11,6 +11,10 @@
 -- inside plpgsql), which breaks this function at create time.
 -- ══════════════════════════════════════════════════════════════════════════
 
+-- Drop any existing version first — idempotent, avoids "cannot change
+-- return type" errors when the OUT-parameter shape differs.
+DROP FUNCTION IF EXISTS public.create_custom_group_chat(TEXT, UUID[]);
+
 CREATE OR REPLACE FUNCTION public.create_custom_group_chat(
     chat_name TEXT,
     member_ids UUID[]
