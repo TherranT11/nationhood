@@ -128,6 +128,8 @@ BEGIN
         total_paid           = 0,
         total_interest_paid  = 0,
         payments_made        = 0,
+        payments_missed      = 0,
+        status               = CASE WHEN status = 'repaid' THEN 'repaid' ELSE 'current' END,
         last_payment_tick    = NULL,
         started_tick         = v_current_tick
     WHERE id = p_position_id;

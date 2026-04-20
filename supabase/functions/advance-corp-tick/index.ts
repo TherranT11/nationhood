@@ -3109,6 +3109,8 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             var { error: equityTrackErr } = await supabase.from('finance_active_loans').update({
                 total_paid: (Number(loan.total_paid) || 0) + actualPayout,
                 payments_made: (loan.payments_made || 0) + 1,
+                payments_missed: 0,
+                status: 'current',
                 last_payment_tick: currentTick,
             }).eq('id', loan.id);
             if (equityTrackErr) console.warn('[Equity] Position tracking update failed:', equityTrackErr.message);
@@ -3170,6 +3172,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 total_paid: loan.total_paid + payment,
                 total_interest_paid: (loan.total_interest_paid || 0) + payment,
                 payments_made: newPaymentsMade,
+                payments_missed: 0,
                 last_payment_tick: currentTick,
                 status: isMatured ? 'repaid' : 'current',
                 completed_tick: isMatured ? currentTick : null,
