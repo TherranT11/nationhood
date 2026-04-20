@@ -2469,18 +2469,15 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                 }
             }
         } else if (sector === 'Construction') {
-            // Construction: revenue from in-progress contracts this corp is building
+            // Per-tick build costs: server deducts estimated_cost / timeline_ticks
+            // from corp_cash_reserves every tick a contract is in_progress
+            // (advance-corp-tick/index.ts:1812). Mirror that here so the expense
+            // side of the card matches real cash flow.
             const { data: activeContracts } = await _supabase.from('construction_contracts')
-                .select('id, budget_ceiling, timeline_ticks')
+                .select('id, timeline_ticks')
                 .eq('awarded_to_faction', faction.id)
                 .eq('status', 'in_progress');
-            const contractIdList = [];
-            for (const c of (activeContracts || [])) {
-                pvtContracts += Math.round((c.budget_ceiling || 0) / (c.timeline_ticks || 1));
-                if (c.id) contractIdList.push(c.id);
-            }
-            // Fetch winning bids to get estimated_cost, then compute per-tick
-            // build cost to mirror the server's deduction.
+            const contractIdList = (activeContracts || []).map(c => c.id).filter(Boolean);
             if (contractIdList.length > 0) {
                 const { data: wonBids } = await _supabase.from('contract_bids')
                     .select('contract_id, estimated_cost')
@@ -2492,6 +2489,19 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                     const estCost = bidCostByContract[c.id] || 0;
                     projectCosts += Math.round(estCost / Math.max(1, c.timeline_ticks || 1));
                 }
+            }
+            // Contract revenue: the corp is only paid on completion
+            // (advance-corp-tick/index.ts:2153-2165 writes payment_received on
+            // delivery). Spreading budget_ceiling / timeline_ticks as phantom
+            // per-tick revenue produced a ~breakeven Net Profit while cash
+            // drained by the real per-tick build cost — now fixed by showing
+            // the payment only on the tick it actually lands.
+            const { data: deliveriesThisTick } = await _supabase.from('construction_deliveries')
+                .select('payment_received')
+                .eq('faction_id', faction.id)
+                .eq('delivered_at_tick', currentTick);
+            for (const d of (deliveriesThisTick || [])) {
+                pvtContracts += Number(d.payment_received || 0);
             }
         } else if (sector === 'Shipping') {
             // Shipping: revenue from active shipping claims
