@@ -1182,6 +1182,40 @@ async function dfBuyEquityStake(dealIdx) {
 
         faction.corp_cash_reserves = cash - deal.amount;
         dfSelected = -1;
+
+        // Fire corporate event in BOTH the investor's nation AND the raiser's
+        // nation so Local feeds on both sides pick it up; everyone else sees
+        // it as Corporate World. Implied valuation (amount / stake) is the
+        // "valuation on the raise" the user asked for. Non-blocking: failure
+        // warns but doesn't undo the completed buy.
+        try {
+            const currentTick = Number(shard?.current_tick || 0);
+            const investorLabel = faction.faction_name + ' [' + (faction.abbreviation || faction.corp_ticker || '??') + ']';
+            const raiserLabel = deal.applicant + ' [' + (deal.abbr || '??') + ']';
+            const impliedVal = Number(deal.impliedValuation || 0);
+            const valText = impliedVal > 0 ? fmtMoney(impliedVal) : fmtMoney(deal.amount);
+            const description = investorLabel + ' has just invested into ' + raiserLabel
+                + ' for their series ' + (deal.series || '?')
+                + ' at a valuation of approximately ' + valText + '.';
+            const nationIds = new Set();
+            if (faction.nation_id) nationIds.add(faction.nation_id);
+            if (deal.nation_id) nationIds.add(deal.nation_id);
+            const rows = [...nationIds].map(nid => ({
+                nation_id: nid,
+                event_name: 'Series ' + (deal.series || '?') + ' Investment',
+                category: 'corporate',
+                faction_id: faction.id,
+                description_used: description,
+                fired_at_tick: currentTick,
+            }));
+            if (rows.length > 0) {
+                const { error: evErr } = await _supabase.from('event_log').insert(rows);
+                if (evErr) console.warn('[DealFlow] Investment event log failed:', evErr.message);
+            }
+        } catch (evErr) {
+            console.warn('[DealFlow] Investment event log exception:', evErr?.message || evErr);
+        }
+
         alert('Purchased ' + deal.equityPct + '% stake in ' + deal.applicant + '. Dividends accumulate monthly.');
         await Promise.all([loadDealFlow(), loadActivePortfolio()]);
     } catch (e) {

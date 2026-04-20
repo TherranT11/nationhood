@@ -120,5 +120,23 @@ export async function applyForEquity(faction, shard, supabase) {
         return;
     }
 
+    // Fire corporate event so the raise shows up in the raiser's nation
+    // (Corporate Local) and every other nation (Corporate World) event feeds.
+    // Best-effort: if the insert fails, the raise itself is already posted —
+    // surface a warn and move on rather than block the action.
+    try {
+        const corpLabel = faction.faction_name + ' [' + (faction.abbreviation || faction.corp_ticker || '??') + ']';
+        await supabase.from('event_log').insert({
+            nation_id: faction.nation_id,
+            event_name: 'Series ' + series + ' Raise Opened',
+            category: 'corporate',
+            faction_id: faction.id,
+            description_used: corpLabel + ' has started the process of raising their series ' + series + ' and seeks investors.',
+            fired_at_tick: currentTick,
+        });
+    } catch (evErr) {
+        console.warn('[equity-apply] Event log insert failed:', evErr?.message || evErr);
+    }
+
     alert(`Series ${series} raise posted to Deal Flow. Investment corps can now fund you.`);
 }
