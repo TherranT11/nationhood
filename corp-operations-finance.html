@@ -352,6 +352,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
+import { computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -519,6 +520,64 @@ async function loadDealFlow() {
         }
     }
 
+    // Batch-fetch valuation inputs for every corp currently raising equity.
+    // Investors want to judge: is the raise priced above or below fair value?
+    // Implied valuation is arithmetic (amount / stake); actual market valuation
+    // requires cash + loans + properties + vessels + receivables. Fetched once
+    // per Deal Flow load — a handful of raisers at a time, so the joins are cheap.
+    const equityRaiserIds = [...new Set((requests || [])
+        .filter(r => r.request_type === 'equity' && r.requesting_faction?.id)
+        .map(r => r.requesting_faction.id))];
+    const equityValuations = {};
+    if (equityRaiserIds.length > 0) {
+        const [propsRes, vesselsRes, receivablesRes, loansRes] = await Promise.all([
+            _supabase.from('corp_properties')
+                .select('faction_id, purchase_price, condition')
+                .in('faction_id', equityRaiserIds),
+            _supabase.from('corp_vessels')
+                .select('faction_id, purchase_price, condition, built_at_tick, status')
+                .in('faction_id', equityRaiserIds),
+            _supabase.from('finance_active_loans')
+                .select('lender_faction_id, principal, remaining_principal, finance_loan_requests!inner(request_type)')
+                .in('lender_faction_id', equityRaiserIds)
+                .in('status', ['current', 'late', 'delinquent']),
+            _supabase.from('factions')
+                .select('id, corp_loans')
+                .in('id', equityRaiserIds),
+        ]);
+        // Surface any partial-fetch failures — silently defaulting a field to
+        // [] would make a solvent corp render as DISTRESSED and mislead the
+        // investor. Warns are non-fatal; valuation just falls back to 0 on
+        // that bucket, which the DISTRESSED branch already handles.
+        if (propsRes.error) console.warn('[DealFlow] Equity valuation: corp_properties fetch failed:', propsRes.error.message);
+        if (vesselsRes.error) console.warn('[DealFlow] Equity valuation: corp_vessels fetch failed:', vesselsRes.error.message);
+        if (receivablesRes.error) console.warn('[DealFlow] Equity valuation: finance_active_loans fetch failed:', receivablesRes.error.message);
+        if (loansRes.error) console.warn('[DealFlow] Equity valuation: factions(corp_loans) fetch failed:', loansRes.error.message);
+        const propsBy = {};
+        for (const p of (propsRes.data || [])) (propsBy[p.faction_id] ||= []).push(p);
+        const vesselsBy = {};
+        for (const v of (vesselsRes.data || [])) (vesselsBy[v.faction_id] ||= []).push(v);
+        const recBy = {};
+        for (const r of (receivablesRes.data || [])) (recBy[r.lender_faction_id] ||= []).push(r);
+        const loansBy = {};
+        for (const f of (loansRes.data || [])) loansBy[f.id] = Number(f.corp_loans || 0);
+
+        for (const fid of equityRaiserIds) {
+            const req = (requests || []).find(r => r.request_type === 'equity' && r.requesting_faction?.id === fid);
+            const corp = req?.requesting_faction;
+            if (!corp) continue;
+            const receivablesTotal = computeFinanceReceivableValue(recBy[fid] || []).total;
+            equityValuations[fid] = computeCorpValuation({
+                cash: Number(corp.corp_cash_reserves || 0),
+                loans: loansBy[fid] || 0,
+                properties: propsBy[fid] || [],
+                vessels: vesselsBy[fid] || [],
+                financeReceivables: receivablesTotal,
+                currentTick: shard?.current_tick || 0,
+            });
+        }
+    }
+
     const subsector = (faction.corp_subsector || '').toLowerCase();
 
     dfDeals = (requests || []).filter(req => {
@@ -579,6 +638,10 @@ async function loadDealFlow() {
                 equityPct: Number(req.equity_pct) || 0,
                 series: req.series || '?',
                 purpose: req.purpose || 'Capital raise',
+                marketValuation: equityValuations[corp?.id] || 0,
+                impliedValuation: (Number(req.equity_pct) > 0)
+                    ? Math.round((req.amount || 0) / (Number(req.equity_pct) / 100))
+                    : 0,
                 reputation: rep,
                 stability: stab,
                 // Equity risk is reputation-driven — no collateral to fall back on.
@@ -716,8 +779,105 @@ function dfSetFilter(type) {
 
 function dfSelectDeal(idx) {
     dfSelected = dfSelected === idx ? -1 : idx;
+    // Lazy-load + realtime-subscribe equity discussion on expand. Cached
+    // per requestId so a second expand of the same card doesn't re-fetch.
+    // Subscription is scoped to the currently-selected card — switching
+    // cards or collapsing unsubscribes the previous channel.
+    if (dfSelected >= 0) {
+        const d = dfDeals[dfSelected];
+        if (d && d.type === 'EQUITY' && d.requestId) {
+            if (!dfDiscussions[d.requestId]) dfLoadDiscussion(d.requestId);
+            dfSubscribeDiscussion(d.requestId);
+        } else {
+            dfUnsubscribeDiscussion();
+        }
+    } else {
+        dfUnsubscribeDiscussion();
+    }
     renderDealFlow();
 }
+
+// ==================== EQUITY REQUEST DISCUSSIONS (Phase 11) ====================
+// Per-request chat threads visible to the raiser and any Investment-subsector
+// corp. Table equity_request_discussions has permissive SELECT + own-faction
+// INSERT policies; UPDATE/DELETE disallowed (messages are immutable).
+let dfDiscussions = {};        // requestId -> array of message rows
+let _equityPostingMsg = false; // single-flight guard for post handler
+
+async function dfLoadDiscussion(requestId) {
+    if (!requestId) return;
+    const { data, error } = await _supabase
+        .from('equity_request_discussions')
+        .select('id, body, author_faction_id, created_tick, created_at, author:factions!author_faction_id(id, faction_name, abbreviation, corp_ticker)')
+        .eq('request_id', requestId)
+        .order('created_at', { ascending: true });
+    if (error) { console.warn('[DealFlow] Load discussion failed:', error.message); return; }
+    dfDiscussions[requestId] = data || [];
+    renderDealFlow();
+}
+
+async function dfPostDiscussion(requestId) {
+    if (_equityPostingMsg || !faction || !shard) return;
+    const input = document.getElementById(`df-disc-input-${requestId}`);
+    if (!input) return;
+    const body = input.value.trim();
+    if (!body) return;
+    if (body.length > 1000) { alert('Message too long (max 1000 chars).'); return; }
+
+    _equityPostingMsg = true;
+    input.disabled = true;
+    try {
+        const { error } = await _supabase.from('equity_request_discussions').insert({
+            request_id: requestId,
+            author_faction_id: faction.id,
+            body,
+            created_tick: shard.current_tick || 0,
+        });
+        if (error) { alert('Failed to post: ' + error.message); return; }
+        input.value = '';
+        await dfLoadDiscussion(requestId);
+    } finally {
+        input.disabled = false;
+        _equityPostingMsg = false;
+    }
+}
+
+function dfCanPostDiscussion(deal) {
+    if (!faction) return false;
+    // Raiser posts on their own request; Investment corps post on any.
+    if (deal.requestingFactionId === faction.id) return true;
+    return (faction.corp_subsector || '').toLowerCase() === 'investment';
+}
+
+// Realtime subscription: auto-refetch the thread whenever anyone else
+// INSERTs a message to the same request. Scoped per-request — only the
+// currently-expanded card's channel is active.
+let _dfDiscSub = null;
+let _dfDiscSubRequestId = null;
+
+function dfSubscribeDiscussion(requestId) {
+    if (_dfDiscSubRequestId === requestId && _dfDiscSub) return; // already on this channel
+    dfUnsubscribeDiscussion();
+    _dfDiscSubRequestId = requestId;
+    _dfDiscSub = _supabase.channel(`eqdisc-${requestId}`)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'equity_request_discussions',
+            filter: `request_id=eq.${requestId}`,
+        }, () => dfLoadDiscussion(requestId))
+        .subscribe();
+}
+
+function dfUnsubscribeDiscussion() {
+    if (_dfDiscSub) {
+        try { _supabase.removeChannel(_dfDiscSub); } catch (_) {}
+        _dfDiscSub = null;
+        _dfDiscSubRequestId = null;
+    }
+}
+
+window.dfPostDiscussion = dfPostDiscussion;
 
 function renderDealFlow() {
     const container = document.getElementById('df-container');
@@ -866,10 +1026,61 @@ function renderDealFlow() {
                 } else if (d.type === 'EQUITY') {
                     const repColor = d.reputation >= 60 ? '#5c5' : d.reputation >= 35 ? '#ca5' : '#c84';
                     const stabColor = d.stability >= 50 ? '#5c5' : d.stability >= 30 ? '#ca5' : '#c84';
+                    // Valuation comparison: implied (from raise terms) vs
+                    // market (from corp-valuation helper). If market is <=0
+                    // the corp is distressed — premium math is meaningless.
+                    const marketVal = Number(d.marketValuation || 0);
+                    const impliedVal = Number(d.impliedValuation || 0);
+                    const distressed = marketVal <= 0;
+                    let premiumPct = null;
+                    if (!distressed && impliedVal > 0) {
+                        premiumPct = Math.round(((impliedVal - marketVal) / marketVal) * 100);
+                    }
+                    const premiumColor = premiumPct == null ? '#6a6660'
+                        : premiumPct <= 0 ? '#5c5'
+                        : premiumPct <= 25 ? '#ca5'
+                        : '#c55';
+                    const premiumText = premiumPct == null ? 'N/A'
+                        : Math.abs(premiumPct) > 999 ? (premiumPct > 0 ? '>+999%' : '<-999%')
+                        : (premiumPct >= 0 ? '+' : '') + premiumPct + '%';
                     html += `<div class="df-detail-row"><span class="df-detail-label">SERIES</span><span class="df-detail-value" style="color:#c89a4a;font-weight:700;">Series ${escapeHtml(d.series)}</span></div>`;
                     html += `<div class="df-detail-row"><span class="df-detail-label">STAKE OFFERED</span><span class="df-detail-value" style="color:#c89a4a;font-weight:700;">${d.equityPct}%</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label" title="Cash + property + equipment + receivables − debt, times 1.30 premium. Same formula used for bankruptcy payout and bailout valuation.">MARKET VALUATION</span><span class="df-detail-value" style="color:${distressed ? '#c55' : 'var(--panel-text)'};">${distressed ? 'DISTRESSED' : fmtMoney(marketVal)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label" title="Raise amount / stake offered. The valuation the raise terms imply.">IMPLIED VALUATION</span><span class="df-detail-value">${fmtMoney(impliedVal)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label" title="How much above (premium) or below (discount) fair market value the raise terms imply. Negative = you're buying cheap.">PREMIUM / DISCOUNT</span><span class="df-detail-value" style="color:${premiumColor};font-weight:700;">${premiumText}</span></div>`;
                     html += `<div class="df-detail-row"><span class="df-detail-label">CORP REPUTATION</span><span class="df-detail-value" style="color:${repColor};">${d.reputation}/100</span></div>`;
                     html += `<div class="df-detail-row"><span class="df-detail-label">NATION STABILITY</span><span class="df-detail-value" style="color:${stabColor};">${d.stability}/100</span></div>`;
+
+                    // Discussion thread (Phase 11). Anyone in Investment sees the
+                    // messages; only Investment corps + the raiser can post.
+                    const messages = dfDiscussions[d.requestId];
+                    const canPostMsg = dfCanPostDiscussion(d);
+                    const threadInner = messages == null
+                        ? '<div style="font-size:10px;color:#6a6660;padding:4px 0;">Loading...</div>'
+                        : messages.length === 0
+                            ? '<div style="font-size:10px;color:#6a6660;padding:4px 0;">No messages yet. Start the conversation.</div>'
+                            : messages.map(m => {
+                                const isRaiser = m.author_faction_id === d.requestingFactionId;
+                                const authorLabel = (m.author?.abbreviation || m.author?.corp_ticker || m.author?.faction_name || 'Unknown')
+                                    + (isRaiser ? ' (raiser)' : '');
+                                const labelColor = isRaiser ? '#c89a4a' : '#5a8aaa';
+                                return `<div style="margin-bottom:6px;padding-left:6px;border-left:2px solid ${labelColor};">
+                                    <div style="font-family:var(--font-mono);font-size:8px;color:${labelColor};">${escapeHtml(authorLabel)} &middot; tick ${Number(m.created_tick || 0)}</div>
+                                    <div style="font-size:11px;color:var(--panel-text);margin-top:1px;word-wrap:break-word;">${escapeHtml(m.body || '')}</div>
+                                </div>`;
+                            }).join('');
+                    const inputArea = canPostMsg
+                        ? `<div style="display:flex;gap:4px;margin-top:6px;">
+                                <input id="df-disc-input-${d.requestId}" type="text" maxlength="1000" placeholder="Ask a question or pitch your thesis..." onkeydown="if(event.key==='Enter')dfPostDiscussion('${d.requestId}')" style="flex:1;padding:4px 6px;font-family:var(--font-mono);font-size:10px;background:var(--bg-panel);border:1px solid var(--panel-border);color:var(--panel-text);outline:none;">
+                                <span onclick="dfPostDiscussion('${d.requestId}')" style="padding:4px 10px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;color:#000;background:#c89a4a;cursor:pointer;">SEND</span>
+                            </div>`
+                        : '<div style="font-size:10px;color:#6a6660;margin-top:4px;">Read-only — only the raiser and Investment-subsector corps can post.</div>';
+                    const msgCount = Array.isArray(messages) ? messages.length : 0;
+                    html += `<div style="margin-top:8px;padding:8px;background:var(--bg-card);border:1px solid var(--panel-border);">
+                        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:#6a6660;margin-bottom:6px;">DISCUSSION${msgCount > 0 ? ' (' + msgCount + ')' : ''}</div>
+                        ${threadInner}
+                        ${inputArea}
+                    </div>`;
                 } else if (d.type === 'SECONDARY') {
                     const repColor = d.reputation >= 60 ? '#5c5' : d.reputation >= 35 ? '#ca5' : '#c84';
                     const premium = d.originalCapital > 0
