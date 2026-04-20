@@ -1823,18 +1823,26 @@ function renderMinistryExpandedContent(ministry, partyColor) {
         }
     }
 
-    // Management buttons: resign / dismiss / appoint
+    // Management buttons: resign / dismiss / appoint+nominate.
+    // The head-of-government party varies by system:
+    //   Parliamentary     → PM's party handles dismiss + appoint (direct)
+    //   Semi-presidential → PM's party handles dismiss + nominate (confirmation)
+    //   Presidential      → President's party handles dismiss + nominate (confirmation)
+    // Mirrors the branching in renderMinistryCard at ~line 6535.
     const isCaretaker = coalitionData?.status === 'caretaker';
+    const isSemiPres = isSemiPresidential(currentNation);
+    const isPurePresidential = isPresidential && !isSemiPres;
+    const isHeadOfGovParty = isPurePresidential ? isPresidentParty : isPMParty;
     let mgmtBtns = '';
 
-    // Resign: any party can resign their own minister
+    // Resign: any governing party can resign their own minister
     if (isFilled && isMyMinistry && !isCaretaker) {
         mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--orange);border-color:var(--orange)44;"
             onclick="event.stopPropagation();resignMinistry('${escapeHtml(key)}')">RESIGN</div>`;
     }
 
-    // Dismiss: PM can dismiss other parties' ministers (costs 1 AP)
-    if (isFilled && isPMParty && !isMyMinistry && !isCaretaker) {
+    // Dismiss: head-of-government's party can dismiss other parties' ministers (costs 1 AP)
+    if (isFilled && isHeadOfGovParty && !isMyMinistry && !isCaretaker) {
         const ap = currentFaction?.action_points || 0;
         if (ap >= 1) {
             mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--red);border-color:var(--red)44;"
@@ -1844,10 +1852,17 @@ function renderMinistryExpandedContent(ministry, partyColor) {
         }
     }
 
-    // Appoint: PM can fill vacant ministries
-    if (!isFilled && isPMParty && !isCaretaker) {
-        mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--accent);border-color:var(--accent)44;"
-            onclick="event.stopPropagation();openAssignModal('${escapeHtml(key)}')">APPOINT</div>`;
+    // Fill vacant ministry: parliamentary APPOINTs direct; presidential/semi-pres
+    // NOMINATE through a confirmation bill (openNominateModal enforces the
+    // semi-pres presidential-domain constraint on foreign/defense/trade).
+    if (!isFilled && isHeadOfGovParty && !isCaretaker) {
+        if (isPresidential) {
+            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--accent);border-color:var(--accent)44;"
+                onclick="event.stopPropagation();openNominateModal('${escapeHtml(key)}')">NOMINATE</div>`;
+        } else {
+            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--accent);border-color:var(--accent)44;"
+                onclick="event.stopPropagation();openAssignModal('${escapeHtml(key)}')">APPOINT</div>`;
+        }
     }
 
     if (mgmtBtns) {
