@@ -1,7 +1,7 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, cash, faction switcher, nav tabs
 
-const CORP_VERSION = 'Alpha 2.2.0.18';
+const CORP_VERSION = 'Alpha 2.2.0.22';
 const THEME_STORAGE_KEY = 'corpThemePref';
 
 // Stashed at render time so the CASH-pill dropdown can query cash history
@@ -274,18 +274,26 @@ async function _renderCashMovements() {
             .eq('faction_id', factionId)
             .order('tick', { ascending: false })
             .limit(10);
-        // One-off cash inflows — equity sales + new loans originated to this corp.
-        // request_type discriminates: 'equity' → "Sold X%", 'loan' → "Received Loan".
-        const loanQ = _supabase.from('finance_active_loans')
+        // BORROWER side — one-off cash INFLOWS (equity sales, loans received).
+        const borrowerQ = _supabase.from('finance_active_loans')
             .select('started_tick, principal, equity_pct, finance_loan_requests(request_type)')
             .eq('borrower_faction_id', factionId)
             .order('started_tick', { ascending: false })
             .limit(10);
-        const [histRes, loanRes] = await Promise.all([histQ, loanQ]);
-        if (histRes.error) console.warn('[CashDropdown] corp_cash_history query error:', histRes.error.message);
-        if (loanRes.error) console.warn('[CashDropdown] finance_active_loans query error:', loanRes.error.message);
+        // LENDER side — one-off cash OUTFLOWS (equity bought into another corp,
+        // loan originated to another corp). Principal becomes a negative entry.
+        const lenderQ = _supabase.from('finance_active_loans')
+            .select('started_tick, principal, equity_pct, finance_loan_requests(request_type)')
+            .eq('lender_faction_id', factionId)
+            .order('started_tick', { ascending: false })
+            .limit(10);
+        const [histRes, borrowerRes, lenderRes] = await Promise.all([histQ, borrowerQ, lenderQ]);
+        if (histRes.error)     console.warn('[CashDropdown] corp_cash_history query error:', histRes.error.message);
+        if (borrowerRes.error) console.warn('[CashDropdown] finance_active_loans (borrower) query error:', borrowerRes.error.message);
+        if (lenderRes.error)   console.warn('[CashDropdown] finance_active_loans (lender) query error:', lenderRes.error.message);
         const hist = histRes.data;
-        const loans = loanRes.data;
+        const loans = borrowerRes.data;
+        const lent  = lenderRes.data;
 
         const entries = [];
         for (const h of (hist || [])) {
@@ -311,6 +319,24 @@ async function _renderCashMovements() {
                     tick: l.started_tick,
                     amount: Number(l.principal || 0),
                     label: 'Received Loan',
+                });
+            }
+        }
+        // LENDER-side outflows: cash left this corp to buy equity in / loan to another corp.
+        for (const l of (lent || [])) {
+            const type = l.finance_loan_requests?.request_type;
+            if (type === 'equity') {
+                const pct = Number(l.equity_pct || 0).toFixed(2).replace(/\.00$/, '');
+                entries.push({
+                    tick: l.started_tick,
+                    amount: -Number(l.principal || 0),
+                    label: `Bought ${pct}% Equity`,
+                });
+            } else if (type === 'loan') {
+                entries.push({
+                    tick: l.started_tick,
+                    amount: -Number(l.principal || 0),
+                    label: 'Issued Loan',
                 });
             }
         }
