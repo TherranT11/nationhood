@@ -2950,12 +2950,31 @@ async function loadLoansSection() {
 
     const { data: activeLoans, error: loanErr } = await _supabase
         .from('finance_active_loans')
-        .select('*')
+        .select('*, finance_loan_requests!inner(request_type, insured_contract_id)')
         .eq('borrower_faction_id', faction.id)
         .in('status', ['current', 'late', 'delinquent'])
         .is('equity_pct', null)
         .order('started_tick', { ascending: false });
     if (loanErr) console.error('[Loans] Active loans query error:', loanErr.message);
+
+    const insuredContractIds = [];
+    for (const loan of (activeLoans || [])) {
+        const insuredId = loan.finance_loan_requests?.insured_contract_id;
+        if (insuredId) insuredContractIds.push(insuredId);
+    }
+    const uniqueInsuredContractIds = [...new Set(insuredContractIds)];
+    let contractStatusById = {};
+    if (uniqueInsuredContractIds.length > 0) {
+        const { data: contracts, error: contractErr } = await _supabase
+            .from('construction_contracts')
+            .select('id, status')
+            .in('id', uniqueInsuredContractIds);
+        if (contractErr) {
+            console.error('[Loans] Contract status query error:', contractErr.message);
+        } else {
+            contractStatusById = Object.fromEntries((contracts || []).map(c => [c.id, c.status]));
+        }
+    }
 
     let html = '';
 
@@ -2994,12 +3013,56 @@ async function loadLoansSection() {
 
     if (activeLoans && activeLoans.length > 0) {
         for (const loan of activeLoans) {
-            const statusColor = loan.status === 'current' ? 'var(--green)' : loan.status === 'late' ? '#c84' : '#c55';
+            const reqType = loan.finance_loan_requests?.request_type || 'loan';
+            const insuredContractId = loan.finance_loan_requests?.insured_contract_id;
+            const linkedContractStatus = insuredContractId ? contractStatusById[insuredContractId] : null;
+            if (reqType === 'insurance') {
+                const hasStatusDrift = (loan.status === 'late' || loan.status === 'delinquent') && Number(loan.payments_missed || 0) === 0;
+                const policyStatusColor = hasStatusDrift
+                    ? '#d9a441'
+                    : loan.status === 'current' ? 'var(--green)' : loan.status === 'late' ? '#c84' : '#c55';
+                const projectLabel = linkedContractStatus === 'completed'
+                    ? 'Project Completed'
+                    : linkedContractStatus === 'in_progress'
+                        ? 'Project In Progress'
+                        : null;
+                html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <span style="color:#5a8aaa;font-weight:700;">INSURANCE</span>
+                            <span style="color:${policyStatusColor};font-weight:700;">${loan.status.toUpperCase()}</span>
+                            ${hasStatusDrift
+                                ? '<span style="color:#d9a441;background:rgba(217,164,65,0.14);border:1px solid rgba(217,164,65,0.32);padding:1px 6px;font-size:7px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">Status drift</span>'
+                                : ''}
+                        </div>
+                        ${linkedContractStatus === 'completed'
+                            ? '<span style="color:#c8a64e;background:rgba(200,166,78,0.14);border:1px solid rgba(200,166,78,0.3);padding:1px 6px;font-size:7px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">Pending auto-close</span>'
+                            : ''}
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:7px;color:var(--text-dim);">
+                        <span>Monthly Premium: ${fmtMoney(loan.monthly_payment)}/mo</span>
+                        <span>Coverage: ${fmtMoney(loan.principal)}</span>
+                    </div>
+                    ${projectLabel
+                        ? `<div style="margin-top:4px;">
+                            <span style="color:#5a8aaa;background:rgba(90,138,170,0.14);border:1px solid rgba(90,138,170,0.32);padding:1px 6px;font-size:7px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">${projectLabel}</span>
+                        </div>`
+                        : ''}
+                </div>`;
+                continue;
+            }
+            const hasStatusDrift = (loan.status === 'late' || loan.status === 'delinquent') && Number(loan.payments_missed || 0) === 0;
+            const statusColor = hasStatusDrift
+                ? '#d9a441'
+                : loan.status === 'current' ? 'var(--green)' : loan.status === 'late' ? '#c84' : '#c55';
             const pctPaid = loan.term_months > 0 ? Math.round((loan.payments_made / loan.term_months) * 100) : 0;
             html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
                         <span style="color:${statusColor};font-weight:700;">${loan.status.toUpperCase()}</span>
+                        ${hasStatusDrift
+                            ? '<span style="color:#d9a441;background:rgba(217,164,65,0.14);border:1px solid rgba(217,164,65,0.32);padding:1px 6px;font-size:7px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;margin-left:4px;">Status drift</span>'
+                            : ''}
                         <span style="color:var(--text-primary);margin-left:4px;">${fmtMoney(loan.principal)}</span>
                         <span style="color:var(--text-dim);margin-left:4px;">@ ${loan.interest_rate}%</span>
                     </div>

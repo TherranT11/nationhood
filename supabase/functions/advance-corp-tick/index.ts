@@ -3102,7 +3102,9 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             const dividendOccurred = actualPayout > 0;
             var { error: equityTrackErr } = await supabase.from('finance_active_loans').update({
                 total_paid: (Number(loan.total_paid) || 0) + actualPayout,
-                payments_made: (loan.payments_made || 0) + (dividendOccurred ? 1 : 0),
+                payments_made: (loan.payments_made || 0) + 1,
+                payments_missed: 0,
+                status: 'current',
                 last_payment_tick: currentTick,
                 last_payment_amount: actualPayout,
             }).eq('id', loan.id);
@@ -3165,6 +3167,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 total_paid: loan.total_paid + payment,
                 total_interest_paid: (loan.total_interest_paid || 0) + payment,
                 payments_made: newPaymentsMade,
+                payments_missed: 0,
                 last_payment_tick: currentTick,
                 status: isMatured ? 'repaid' : 'current',
                 completed_tick: isMatured ? currentTick : null,

@@ -1243,6 +1243,41 @@ function updateCreateGroupBtn() {
     if (btn) btn.disabled = _groupSelectIds.size === 0;
 }
 
+function mapCreateGroupChatError(err) {
+    const message = (err?.message || '').toLowerCase();
+    const code = err?.code || '';
+
+    if (code === '42501' || message.includes('not authenticated') || message.includes('authentication required')) {
+        return 'You must be signed in to create a group chat.';
+    }
+
+    if (message.includes('no faction linked')) {
+        return 'No faction is linked to your account yet. Reload and try again.';
+    }
+
+    if (message.includes('select at least one other member')) {
+        return 'Select at least one other faction before creating a group chat.';
+    }
+
+    if (message.includes('100 characters or fewer')) {
+        return 'Group chat name must be 100 characters or fewer.';
+    }
+
+    if (message.includes('selected members were not found')) {
+        return 'One or more selected factions could not be found. Refresh the member list and try again.';
+    }
+
+    if (code === '23505') {
+        return 'This group already exists with the selected members.';
+    }
+
+    if (message.includes('row-level security') || code === 'PGRST301') {
+        return 'You do not have permission to create this group chat.';
+    }
+
+    return err?.message || 'Unknown error';
+}
+
 async function createGroupChat() {
     const nameInput = document.getElementById('msg-group-name');
     const btn = document.getElementById('msg-create-group');
@@ -1252,47 +1287,25 @@ async function createGroupChat() {
     if (btn) btn.disabled = true;
 
     try {
-        // Create the group chat
-        const { data: chat, error: chatErr } = await _supabase
-            .from('group_chats')
-            .insert({
-                name: chatName,
-                chat_type: 'custom',
-                created_by: _msgFaction.id,
-            })
-            .select()
-            .single();
-        if (chatErr) throw chatErr;
-
-        // Add self + all selected members
-        const members = [_msgFaction.id, ..._groupSelectIds];
-        const memberRows = members.map(fid => ({
-            chat_id: chat.id,
-            faction_id: fid,
-        }));
-
-        const { error: memErr } = await _supabase
-            .from('group_chat_members')
-            .insert(memberRows);
-        if (memErr) throw memErr;
-
-        // Post a system message
-        await _supabase.from('group_chat_messages').insert({
-            chat_id: chat.id,
-            sender_id: null,
-            is_system: true,
-            message_text: `${_msgFaction.faction_name || 'Someone'} created this group chat.`,
-            sent_at_tick: _msgShard?.current_tick || null,
+        const { data: rpcData, error: rpcErr } = await _supabase.rpc('create_custom_group_chat', {
+            chat_name: chatName,
+            member_ids: Array.from(_groupSelectIds),
         });
+        if (rpcErr) throw rpcErr;
+
+        const created = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        const newChatId = created?.chat_id;
+        const newChatName = created?.name || chatName;
+        if (!newChatId) throw new Error('Group chat creation returned no chat id');
 
         // Open the new chat thread
         const headerTitle = document.querySelector('.msg-panel__title');
         if (headerTitle) headerTitle.textContent = 'Messages';
-        openThread({ type: 'group', id: chat.id, name: chatName });
+        openThread({ type: 'group', id: newChatId, name: newChatName });
 
     } catch (err) {
         console.error('[Messaging] Create group failed:', err);
-        alert('Failed to create group chat: ' + (err.message || 'Unknown error'));
+        alert('Failed to create group chat: ' + mapCreateGroupChatError(err));
         if (btn) btn.disabled = false;
     }
 }

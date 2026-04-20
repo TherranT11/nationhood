@@ -208,6 +208,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 .ap-action-btn.red { color:#c55; border:1px solid rgba(204,85,85,0.27); }
 .ap-action-btn.purple { color:#8a6aaa; border:1px solid rgba(138,106,170,0.27); }
 .ap-action-btn.olive { color:#8b9a6b; border:1px solid rgba(139,154,107,0.27); }
+.ap-action-btn.disabled { opacity:0.5; cursor:not-allowed; pointer-events:none; }
 .ap-claim-box { padding:4px 6px; margin-bottom:4px; background:rgba(204,85,85,0.04); border:1px solid rgba(204,85,85,0.1); }
 .ap-empty { padding:30px 20px; text-align:center; font-family:var(--font-mono); font-size:12px; color:#6a6660; line-height:1.6; }
 
@@ -1315,7 +1316,7 @@ function renderActivePortfolio() {
     const loanInterestRevenueTotal = apPortfolio
         .filter(p => p.type === 'LOAN')
         .reduce((s, p) => s + (p.interestRevenue || 0), 0);
-    const alertCount = apPortfolio.filter(p => p.alert).length;
+    const alertCount = apPortfolio.filter(p => p.hasAlert).length;
 
     // Header
     let html = `<div class="df-header">
@@ -1387,7 +1388,7 @@ function renderActivePortfolio() {
         const isExp = apExpanded === globalIdx;
         const tm = DF_TYPE_META[d.type];
         const sm = AP_STATUS_META[d.status] || AP_STATUS_META.CURRENT;
-        const hasAlert = !!d.alert;
+        const hasAlert = d.hasAlert === true;
         const elapsed = d.paymentsMade || 0;
         const term = d.term || 1;
         const pctComplete = Math.round((elapsed / term) * 100);
@@ -1464,7 +1465,7 @@ function renderActivePortfolio() {
 
         // Alert banner
         if (hasAlert) {
-            html += `<div class="ap-deal__alert" style="background:${sm.color}08;border:1px solid ${sm.color}20;color:${sm.color};">${escapeHtml(d.alert)}</div>`;
+            html += `<div class="ap-deal__alert" style="background:${sm.color}08;border:1px solid ${sm.color}20;color:${sm.color};">${escapeHtml(d.alertMsg || '')}</div>`;
         }
 
         // Expanded details
@@ -1472,6 +1473,8 @@ function renderActivePortfolio() {
             html += '<div class="ap-deal__expanded">';
 
             if (d.type === 'LOAN') {
+                const missedPayments = Number(d.paymentsMissed || 0);
+                const isLateOrDelinquent = d.status === 'LATE' || d.status === 'DELINQUENT';
                 const rows = [
                     { label: 'PRINCIPAL', value: fmtMoney(d.principal || 0) },
                     { label: 'REMAINING', value: fmtMoney(d.remaining || 0), color: 'var(--panel-text)' },
@@ -1487,8 +1490,34 @@ function renderActivePortfolio() {
                 for (const r of rows) {
                     html += `<div class="ap-detail-row"><span class="ap-detail-label" title="${r.title || ''}">${r.label}</span><span class="ap-detail-value" style="color:${r.color || '#9e9a92'};">${r.value}</span></div>`;
                 }
-                if (d.status !== 'CURRENT') {
-                    html += `<div class="ap-actions"><div class="ap-action-btn green" onclick="apRestructure('${d.id}')">RESTRUCTURE</div><div class="ap-action-btn orange" onclick="apCallLoan('${d.id}')">CALL LOAN</div><div class="ap-action-btn red" onclick="apForeclose('${d.id}')">FORECLOSE</div></div>`;
+                if (isLateOrDelinquent && missedPayments > 0) {
+                    const canRestructure = isLateOrDelinquent;
+                    const restructureReason = canRestructure
+                        ? 'WHEN TO USE: Preserve the relationship when the borrower can recover but needs breathing room. ACTION: Applies term extension + rate reset + missed-payment reset. FINANCIAL CONSEQUENCES: Lowers near-term monthly cash, restarts delinquency pressure, and extends time to full principal recovery.'
+                        : 'WHEN TO USE: Only available once the loan is LATE or DELINQUENT. ACTION: Would apply term extension + rate reset + missed-payment reset. FINANCIAL CONSEQUENCES: Trades faster collections for a softer repayment path and longer exposure window.';
+
+                    const isEscalated = d.status === 'DELINQUENT' || missedPayments >= 3;
+                    const canCallLoan = !isEscalated;
+                    const callLoanReason = canCallLoan
+                        ? 'WHEN TO USE: Escalate after repeated misses when you want hard collection pressure before foreclosure. ACTION: Demands accelerated repayment and advances delinquency escalation timing. FINANCIAL CONSEQUENCES: Raises default risk and may accelerate losses if the borrower cannot cure quickly.'
+                        : 'WHEN TO USE: Already escalated. ACTION: Accelerated repayment demand + delinquency escalation timing are already in force. FINANCIAL CONSEQUENCES: No additional escalation benefit until status changes.';
+
+                    const canForeclose = d.status === 'DELINQUENT' || missedPayments >= 3;
+                    const forecloseReason = canForeclose
+                        ? 'WHEN TO USE: Final remedy after delinquency threshold is reached and recovery via normal payments is unlikely. ACTION: Immediate default + collateral recovery payout (cash 70%, property 80%, equipment 50%). FINANCIAL CONSEQUENCES: Irreversible action; ends future interest/principal cashflow and realizes immediate recovery/loss now.'
+                        : 'WHEN TO USE: Requires delinquent/default threshold first (DELINQUENT status or 3+ missed payments). ACTION: Immediate default + collateral recovery payout (cash 70%, property 80%, equipment 50%). FINANCIAL CONSEQUENCES: Irreversible once triggered and converts expected future cashflow into immediate realized recovery/loss.';
+
+                    const loanActionBtn = (colorClass, label, enabled, onclickJs, reason) => {
+                        const disabledClass = enabled ? '' : ' disabled';
+                        const clickAttr = enabled ? ` onclick="${onclickJs}"` : '';
+                        return `<div class="ap-action-btn ${colorClass}${disabledClass}" title="${escapeHtml(reason)}"${clickAttr}>${label}</div>`;
+                    };
+
+                    html += '<div class="ap-actions">';
+                    html += loanActionBtn('green', 'RESTRUCTURE', canRestructure, `apRestructure('${d.id}')`, restructureReason);
+                    html += loanActionBtn('orange', 'CALL LOAN', canCallLoan, `apCallLoan('${d.id}')`, callLoanReason);
+                    html += loanActionBtn('red', 'FORECLOSE', canForeclose, `apForeclose('${d.id}')`, forecloseReason);
+                    html += '</div>';
                 }
             } else if (d.type === 'INSURE') {
                 const rows = [
@@ -1594,6 +1623,14 @@ window.apToggle = apToggle;
 // ── Portfolio Action Handlers ──
 
 async function apRestructure(loanId) {
+    const { data: currentLoan } = await _supabase.from('finance_active_loans').select('status,payments_missed').eq('id', loanId).single();
+    const currentStatus = String(currentLoan?.status || '').toUpperCase();
+    const missedPayments = Number(currentLoan?.payments_missed || 0);
+    if (!((currentStatus === 'LATE' || currentStatus === 'DELINQUENT') && missedPayments > 0)) {
+        alert('Restructure unavailable. Only late/delinquent loans with missed payments can be restructured.');
+        return;
+    }
+
     const newRate = prompt('RESTRUCTURE LOAN\n\nEnter new annual interest rate (1-20%):\n(This extends the term by 12 months and resets missed payments.)');
     if (!newRate) return;
     const rate = parseFloat(newRate);
@@ -1626,6 +1663,14 @@ async function apRestructure(loanId) {
 }
 
 async function apCallLoan(loanId) {
+    const { data: currentLoan } = await _supabase.from('finance_active_loans').select('status,payments_missed').eq('id', loanId).single();
+    const currentStatus = String(currentLoan?.status || '').toUpperCase();
+    const missedPayments = Number(currentLoan?.payments_missed || 0);
+    if (currentStatus === 'DELINQUENT' || missedPayments >= 3) {
+        alert('Call Loan unavailable. Loan is already in a delinquent/escalated state.');
+        return;
+    }
+
     if (!confirm('CALL LOAN\n\nDemand immediate full repayment of remaining principal.\nThe borrower will have 3 ticks to pay or default.\n\nProceed?')) return;
 
     const { error } = await _supabase.from('finance_active_loans').update({
@@ -1640,6 +1685,14 @@ async function apCallLoan(loanId) {
 }
 
 async function apForeclose(loanId) {
+    const { data: currentLoan } = await _supabase.from('finance_active_loans').select('status,payments_missed').eq('id', loanId).single();
+    const currentStatus = String(currentLoan?.status || '').toUpperCase();
+    const missedPayments = Number(currentLoan?.payments_missed || 0);
+    if (!(currentStatus === 'DELINQUENT' || missedPayments >= 3)) {
+        alert('Foreclose unavailable. Requires delinquent/default threshold state.');
+        return;
+    }
+
     if (!confirm('FORECLOSE\n\nImmediately default the loan and seize collateral.\nCollateral recovery: Equipment 60%, Property 75%, Unsecured 0%.\n\nThis cannot be undone. Proceed?')) return;
 
     const { data: loan } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
@@ -3136,7 +3189,7 @@ async function loadActivePortfolio() {
         status: loan.status.toUpperCase(),
         collateral: loan.collateral_type,
         purpose: loan.purpose || '',
-        alert: loan.status === 'late' || loan.status === 'delinquent',
+        hasAlert: loan.status === 'late' || loan.status === 'delinquent',
         alertLevel: loan.status === 'delinquent' ? 'red' : loan.status === 'late' ? 'orange' : null,
         alertMsg: loan.status === 'delinquent'
             ? `${loan.payments_missed} missed payments. Default imminent.`
