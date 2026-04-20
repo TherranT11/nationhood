@@ -1,8 +1,12 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, cash, faction switcher, nav tabs
 
-const CORP_VERSION = 'Alpha 2.2.0.17';
+const CORP_VERSION = 'Alpha 2.2.0.18';
 const THEME_STORAGE_KEY = 'corpThemePref';
+
+// Stashed at render time so the CASH-pill dropdown can query cash history
+// for the active corp without re-threading faction through window handlers.
+let _topbarFaction = null;
 
 // Sync body.light-mode from localStorage. Called at render (and by a tiny inline
 // script at the top of each corp body) so saved preference survives page loads
@@ -67,6 +71,7 @@ function escHtml(str) {
 export function renderCorpTopBar(container, opts = {}) {
     applyStoredCorpTheme();
     const { faction, shard, activeTab, allUserFactions, badges } = opts;
+    _topbarFaction = faction;
     const tabBadges = badges || {}; // { tabId: { count, color } }
     const isLightMode = document.body.classList.contains('light-mode');
     const ticker = faction?.corp_ticker || faction?.abbreviation || '';
@@ -151,7 +156,12 @@ export function renderCorpTopBar(container, opts = {}) {
             </div>
             <div class="corp-topbar__version">${CORP_VERSION}</div>
             <div class="corp-topbar__right">
-                <span class="corp-topbar__cash" id="topbar-cash">CASH: ${cashStr}</span>
+                <div class="corp-topbar__cash-wrap" id="corp-cash-wrap">
+                    <span class="corp-topbar__cash" id="topbar-cash" onclick="window._corpTopbarToggleCashDropdown()">CASH: ${cashStr} ▾</span>
+                    <div class="corp-topbar__dropdown corp-topbar__cash-dd" id="corp-cash-dropdown">
+                        <div id="corp-cash-dd-list" style="padding:10px 14px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading recent movements…</div>
+                    </div>
+                </div>
                 <div class="corp-topbar__switcher" id="faction-switcher">
                     <span class="corp-topbar__badge-btn" id="corp-name-badge" onclick="window._corpTopbarToggleDropdown()">[${escHtml(ticker.toUpperCase() || '--')}] ▾</span>
                     <div class="corp-topbar__dropdown" id="corp-faction-dropdown">${dropdownHtml}</div>
@@ -237,6 +247,113 @@ window._corpTopbarToggleDropdown = function() {
     const dd = document.getElementById('corp-faction-dropdown');
     if (dd) dd.classList.toggle('open');
 };
+
+// CASH-pill dropdown: last 5 cash movements for this corp. Derived —
+// no new writes — from corp_cash_history (per-tick P&L) + finance_active_loans
+// originations (equity sales, loan receipts) where this corp is the borrower.
+window._corpTopbarToggleCashDropdown = async function() {
+    const dd = document.getElementById('corp-cash-dropdown');
+    if (!dd) return;
+    const willOpen = !dd.classList.contains('open');
+    dd.classList.toggle('open');
+    if (willOpen) await _renderCashMovements();
+};
+
+async function _renderCashMovements() {
+    const list = document.getElementById('corp-cash-dd-list');
+    if (!list || !_topbarFaction?.id) return;
+    try {
+        const { _supabase } = await import('./supabase-client.js');
+        const { tickToDate } = await import('./utils.js');
+        const factionId = _topbarFaction.id;
+
+        // Per-tick P&L component = cash_delta - non_pnl_cash_movements.
+        // Written by advance-corp-tick at end of each nation's corp block.
+        const histQ = _supabase.from('corp_cash_history')
+            .select('tick, cash_delta, non_pnl_cash_movements')
+            .eq('faction_id', factionId)
+            .order('tick', { ascending: false })
+            .limit(10);
+        // One-off cash inflows — equity sales + new loans originated to this corp.
+        // request_type discriminates: 'equity' → "Sold X%", 'loan' → "Received Loan".
+        const loanQ = _supabase.from('finance_active_loans')
+            .select('started_tick, principal, equity_pct, finance_loan_requests(request_type)')
+            .eq('borrower_faction_id', factionId)
+            .order('started_tick', { ascending: false })
+            .limit(10);
+        const [histRes, loanRes] = await Promise.all([histQ, loanQ]);
+        if (histRes.error) console.warn('[CashDropdown] corp_cash_history query error:', histRes.error.message);
+        if (loanRes.error) console.warn('[CashDropdown] finance_active_loans query error:', loanRes.error.message);
+        const hist = histRes.data;
+        const loans = loanRes.data;
+
+        const entries = [];
+        for (const h of (hist || [])) {
+            const pnl = Number(h.cash_delta || 0) - Number(h.non_pnl_cash_movements || 0);
+            if (pnl === 0) continue;  // don't clutter with zero ticks
+            entries.push({
+                tick: h.tick,
+                amount: pnl,
+                label: pnl >= 0 ? 'Income' : 'Loss',
+            });
+        }
+        for (const l of (loans || [])) {
+            const type = l.finance_loan_requests?.request_type;
+            if (type === 'equity') {
+                const pct = Number(l.equity_pct || 0).toFixed(2).replace(/\.00$/, '');
+                entries.push({
+                    tick: l.started_tick,
+                    amount: Number(l.principal || 0),
+                    label: `Sold ${pct}% Equity`,
+                });
+            } else if (type === 'loan') {
+                entries.push({
+                    tick: l.started_tick,
+                    amount: Number(l.principal || 0),
+                    label: 'Received Loan',
+                });
+            }
+        }
+
+        entries.sort((a, b) => b.tick - a.tick);
+        const top5 = entries.slice(0, 5);
+
+        if (top5.length === 0) {
+            list.innerHTML = '<div style="padding:10px 14px;color:var(--text-dim);">No recent cash movements.</div>';
+            return;
+        }
+
+        const fmtAmt = (n) => {
+            const abs = Math.abs(n);
+            const s = abs >= 1e9 ? (abs / 1e9).toFixed(2) + 'B'
+                    : abs >= 1e6 ? (abs / 1e6).toFixed(2) + 'M'
+                    : abs >= 1e3 ? (abs / 1e3).toFixed(1) + 'k'
+                    : String(abs);
+            return (n >= 0 ? '+$' : '-$') + s;
+        };
+        list.innerHTML = top5.map(e => {
+            const color = e.amount >= 0 ? 'var(--green, #5c5)' : 'var(--red, #c55)';
+            return `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 14px;border-bottom:1px solid var(--border-0);font-family:var(--font-mono);font-size:10px;">
+                <span style="color:${color};font-weight:700;min-width:70px;">${fmtAmt(e.amount)}</span>
+                <span style="color:var(--text-primary);flex:1;">${e.label}</span>
+                <span style="color:var(--text-dim);">${tickToDate(e.tick)}</span>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        console.warn('[CashDropdown] Failed to render cash movements:', err?.message || err);
+        list.innerHTML = '<div style="padding:10px 14px;color:var(--red);">Could not load recent movements.</div>';
+    }
+}
+
+// Close both dropdowns on outside click so they don't stick open.
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#corp-cash-wrap')) {
+        document.getElementById('corp-cash-dropdown')?.classList.remove('open');
+    }
+    if (!e.target.closest('#faction-switcher')) {
+        document.getElementById('corp-faction-dropdown')?.classList.remove('open');
+    }
+});
 
 window._corpTopbarToggleTheme = function() {
     const nowLight = document.body.classList.toggle('light-mode');

@@ -39,12 +39,16 @@
     color: #f0efe6; letter-spacing: 0.5px; opacity: 0.8;
 }
 .corp-topbar__right { display: flex; align-items: center; gap: 10px; }
+.corp-topbar__cash-wrap { position: relative; }
 .corp-topbar__cash {
     font-family: var(--font-mono); font-size: 10px; font-weight: 700;
     letter-spacing: 0.5px; color: var(--gold);
     padding: 3px 8px; background: rgba(200,168,50,0.08);
     border: 1px solid rgba(200,168,50,0.2);
+    cursor: pointer;
 }
+.corp-topbar__cash:hover { background: rgba(200,168,50,0.14); }
+.corp-topbar__cash-dd { min-width: 340px; }
 .corp-topbar__switcher { position: relative; }
 .corp-topbar__badge-btn {
     font-family: var(--font-mono); font-size: 12px; font-weight: 700;
