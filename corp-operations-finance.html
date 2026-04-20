@@ -1489,18 +1489,20 @@ function renderActivePortfolio() {
                 }
                 if (isLateOrDelinquent && missedPayments > 0) {
                     const canRestructure = isLateOrDelinquent;
-                    const restructureReason = canRestructure ? 'Restructure available for late or delinquent loans.' : 'Restructure is only available when a loan is late or delinquent.';
+                    const restructureReason = canRestructure
+                        ? 'WHEN TO USE: Preserve the relationship when the borrower can recover but needs breathing room. ACTION: Applies term extension + rate reset + missed-payment reset. FINANCIAL CONSEQUENCES: Lowers near-term monthly cash, restarts delinquency pressure, and extends time to full principal recovery.'
+                        : 'WHEN TO USE: Only available once the loan is LATE or DELINQUENT. ACTION: Would apply term extension + rate reset + missed-payment reset. FINANCIAL CONSEQUENCES: Trades faster collections for a softer repayment path and longer exposure window.';
 
                     const isEscalated = d.status === 'DELINQUENT' || missedPayments >= 3;
                     const canCallLoan = !isEscalated;
                     const callLoanReason = canCallLoan
-                        ? 'Call loan to escalate and demand immediate repayment.'
-                        : 'Loan is already in delinquent/escalated call state.';
+                        ? 'WHEN TO USE: Escalate after repeated misses when you want hard collection pressure before foreclosure. ACTION: Demands accelerated repayment and advances delinquency escalation timing. FINANCIAL CONSEQUENCES: Raises default risk and may accelerate losses if the borrower cannot cure quickly.'
+                        : 'WHEN TO USE: Already escalated. ACTION: Accelerated repayment demand + delinquency escalation timing are already in force. FINANCIAL CONSEQUENCES: No additional escalation benefit until status changes.';
 
                     const canForeclose = d.status === 'DELINQUENT' || missedPayments >= 3;
                     const forecloseReason = canForeclose
-                        ? 'Foreclosure available after delinquency/default threshold is reached.'
-                        : 'Foreclosure requires delinquent/default threshold (e.g., delinquent status or 3+ missed payments).';
+                        ? 'WHEN TO USE: Final remedy after delinquency threshold is reached and recovery via normal payments is unlikely. ACTION: Immediate default + collateral recovery payout (cash 70%, property 80%, equipment 50%). FINANCIAL CONSEQUENCES: Irreversible action; ends future interest/principal cashflow and realizes immediate recovery/loss now.'
+                        : 'WHEN TO USE: Requires delinquent/default threshold first (DELINQUENT status or 3+ missed payments). ACTION: Immediate default + collateral recovery payout (cash 70%, property 80%, equipment 50%). FINANCIAL CONSEQUENCES: Irreversible once triggered and converts expected future cashflow into immediate realized recovery/loss.';
 
                     const loanActionBtn = (colorClass, label, enabled, onclickJs, reason) => {
                         const disabledClass = enabled ? '' : ' disabled';
