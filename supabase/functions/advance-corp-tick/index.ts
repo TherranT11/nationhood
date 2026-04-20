@@ -3624,6 +3624,18 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
             const corps = corpFactions || [];
 
+            // Tick-entry cash snapshot. Reused at tick-exit (below) to write
+            // one honest corp_cash_history row per corp with a real cash_delta
+            // and non_pnl_cash_movements = cash_delta − monthly_profit. Fixed
+            // the previous setup where the snapshot was captured inside the
+            // fleet-maintenance loop, which ran AFTER processCorpMonthlyIncome
+            // and processFinanceLoans — so every non-shipping corp wrote
+            // cash_delta = 0 and non_pnl_cash_movements = null, breaking the
+            // Finances card's "Actual Cash Change" reconciliation.
+            const cashStartByCorp = new Map(
+                corps.map(c => [c.id, Number(c.corp_cash_reserves || 0)])
+            );
+
             // ── Construction Sector (runs for ALL nations) ───────────────
             // Contract generation, bid resolution, and project advancement
             // are not gated behind local corp presence — corps from any
@@ -4180,13 +4192,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     console.warn(`[advance-corp-tick] Failed to fetch fresh corp cash for ${corp.faction_name}:`, corpCashErr.message);
                 }
                 let corpCashRunning = Number(corpCashRow?.corp_cash_reserves ?? corp.corp_cash_reserves ?? 0);
-                const cashAtTickStart = corpCashRunning;
-                console.log('[advance-corp-tick] corp_cash_tick_start', {
-                    faction_id: corp.id,
-                    faction_name: corp.faction_name,
-                    tick: currentTick,
-                    before_balance: corpCashRunning,
-                });
 
                 const { data: vessels } = await supabase.from('corp_vessels')
                     .select('id, vessel_name, vessel_class, condition, fuel, status, base_maintenance, drydock_until_tick, active_claim_id, current_port_nation_id')
@@ -4577,27 +4582,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         }
                     }
                 }
-                console.log('[advance-corp-tick] corp_cash_tick_end', {
-                    faction_id: corp.id,
-                    faction_name: corp.faction_name,
-                    tick: currentTick,
-                    after_balance: corpCashRunning,
-                });
-                const cashDelta = corpCashRunning - cashAtTickStart;
-                const nonPnlCashMovements = null;
-                const { error: cashHistoryErr } = await supabase
-                    .from('corp_cash_history')
-                    .upsert({
-                        faction_id: corp.id,
-                        tick: currentTick,
-                        cash_start: cashAtTickStart,
-                        cash_end: corpCashRunning,
-                        cash_delta: cashDelta,
-                        non_pnl_cash_movements: nonPnlCashMovements,
-                    }, { onConflict: 'faction_id,tick' });
-                if (cashHistoryErr) {
-                    console.warn(`[advance-corp-tick] corp_cash_history upsert failed for ${corp.faction_name}:`, cashHistoryErr.message);
-                }
             } catch (vesselErr) {
                 console.error(`[advance-corp-tick] Vessel decay failed for ${corp.faction_name} (non-fatal):`, vesselErr);
             }
@@ -4640,6 +4624,51 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
             // ── Defense Sector ───────────────────────────────────────────
             // FUTURE: Arms contracts, military equipment production
+
+            // Tick-exit cash snapshot → one corp_cash_history row per corp.
+            // cash_delta is computed against cashStartByCorp captured at the
+            // top of this per-nation block (before any processing). Feeds the
+            // Finances card's "Actual Cash Change" reconciliation. Reads
+            // factions.monthly_profit set by processCorpMonthlyIncome so
+            // non_pnl_cash_movements stays in one source of truth.
+            if (corps.length > 0) {
+                try {
+                    const { data: endFactions, error: endFactionsErr } = await supabase
+                        .from('factions')
+                        .select('id, corp_cash_reserves, monthly_profit')
+                        .in('id', corps.map(c => c.id));
+                    if (endFactionsErr) throw endFactionsErr;
+                    // Only write rows for corps we captured a real start-of-tick
+                    // snapshot for. Guards against a corp appearing in endFactions
+                    // that wasn't in the initial corps fetch (e.g., founded or
+                    // un-abandoned mid-tick) — that would otherwise record the
+                    // corp's entire cash balance as a phantom delta.
+                    const rows = (endFactions || [])
+                        .filter(f => cashStartByCorp.has(f.id))
+                        .map(f => {
+                            const cashStart = cashStartByCorp.get(f.id);
+                            const cashEnd = Number(f.corp_cash_reserves || 0);
+                            const monthlyProfit = Number(f.monthly_profit || 0);
+                            const cashDelta = cashEnd - cashStart;
+                            return {
+                                faction_id: f.id,
+                                tick: currentTick,
+                                cash_start: cashStart,
+                                cash_end: cashEnd,
+                                cash_delta: cashDelta,
+                                non_pnl_cash_movements: cashDelta - monthlyProfit,
+                            };
+                        });
+                    if (rows.length > 0) {
+                        const { error: cashHistErr } = await supabase
+                            .from('corp_cash_history')
+                            .upsert(rows, { onConflict: 'faction_id,tick' });
+                        if (cashHistErr) console.warn(`[advance-corp-tick] corp_cash_history upsert failed for ${nation.name}:`, cashHistErr.message);
+                    }
+                } catch (cashHistOuterErr) {
+                    console.warn(`[advance-corp-tick] Cash history write failed for ${nation.name}:`, cashHistOuterErr?.message || cashHistOuterErr);
+                }
+            }
 
         } catch (nationProcessErr) {
             console.error(`[advance-corp-tick] FAILED processing corps for ${nation.name}:`, nationProcessErr);

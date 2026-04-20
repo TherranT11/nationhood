@@ -61,7 +61,7 @@ import { initPage, qCacheBust } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, deductAP } from './js/game/config.js';
 import { fileNoConfidenceMotion } from './js/game/no-confidence.js';
-import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
+import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialRepublic, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
 import { formatStatName, autoAppointPartyLeaderAsPM, getNationNames, resignPM } from './js/game/political-actions.js';
@@ -1823,18 +1823,28 @@ function renderMinistryExpandedContent(ministry, partyColor) {
         }
     }
 
-    // Management buttons: resign / dismiss / appoint
+    // Management buttons: resign / dismiss / appoint+nominate.
+    // The head-of-government party varies by system:
+    //   Parliamentary     → PM's party handles dismiss + appoint (direct)
+    //   Semi-presidential → PM's party handles dismiss + nominate (confirmation)
+    //   Presidential      → President's party handles dismiss + nominate (confirmation)
+    // Mirrors the branching in renderMinistryCard at ~line 6535.
+    //
+    // TODO(refactor): the pattern `isPresidential && !isSemiPresidential()` is
+    // reinvented at lines 1190, 1234, 1697 and here (1834). All four are just
+    // `isPresidentialRepublic()`. Consolidate when those renderers are next touched.
     const isCaretaker = coalitionData?.status === 'caretaker';
+    const isHeadOfGovParty = isPresidentialRepublic(currentNation) ? isPresidentParty : isPMParty;
     let mgmtBtns = '';
 
-    // Resign: any party can resign their own minister
+    // Resign: any governing party can resign their own minister
     if (isFilled && isMyMinistry && !isCaretaker) {
         mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--orange);border-color:var(--orange)44;"
             onclick="event.stopPropagation();resignMinistry('${escapeHtml(key)}')">RESIGN</div>`;
     }
 
-    // Dismiss: PM can dismiss other parties' ministers (costs 1 AP)
-    if (isFilled && isPMParty && !isMyMinistry && !isCaretaker) {
+    // Dismiss: head-of-government's party can dismiss other parties' ministers (costs 1 AP)
+    if (isFilled && isHeadOfGovParty && !isMyMinistry && !isCaretaker) {
         const ap = currentFaction?.action_points || 0;
         if (ap >= 1) {
             mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--red);border-color:var(--red)44;"
@@ -1844,10 +1854,17 @@ function renderMinistryExpandedContent(ministry, partyColor) {
         }
     }
 
-    // Appoint: PM can fill vacant ministries
-    if (!isFilled && isPMParty && !isCaretaker) {
-        mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--accent);border-color:var(--accent)44;"
-            onclick="event.stopPropagation();openAssignModal('${escapeHtml(key)}')">APPOINT</div>`;
+    // Fill vacant ministry: parliamentary APPOINTs direct; presidential/semi-pres
+    // NOMINATE through a confirmation bill (openNominateModal enforces the
+    // semi-pres presidential-domain constraint on foreign/defense/trade).
+    if (!isFilled && isHeadOfGovParty && !isCaretaker) {
+        if (isPresidential) {
+            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--accent);border-color:var(--accent)44;"
+                onclick="event.stopPropagation();openNominateModal('${escapeHtml(key)}')">NOMINATE</div>`;
+        } else {
+            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--accent);border-color:var(--accent)44;"
+                onclick="event.stopPropagation();openAssignModal('${escapeHtml(key)}')">APPOINT</div>`;
+        }
     }
 
     if (mgmtBtns) {
