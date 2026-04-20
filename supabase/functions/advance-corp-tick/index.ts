@@ -3906,6 +3906,25 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         .in('active_claim_id', claimIds)
                     : { data: [] };
 
+                // Cross-nation fix: shipping_claims.nation_id is the route's
+                // origin nation (where the claim is processed), NOT the
+                // claim-holder's home nation. Corps based in OTHER nations
+                // claiming this nation's routes aren't in `corps` (which is
+                // filtered by nation_id = nation.id), so corpById misses
+                // them → the claim loop skipped them silently, leaving
+                // vessels stuck in 'loading' forever. Lazy-fetch the
+                // missing corps by id here.
+                const claimFactionIds = [...new Set((activeClaims || []).map(c => c.faction_id))];
+                const missingFactionIds = claimFactionIds.filter(id => !corpById[id]);
+                if (missingFactionIds.length > 0) {
+                    const { data: extraCorps, error: extraErr } = await supabase
+                        .from('factions')
+                        .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
+                        .in('id', missingFactionIds);
+                    if (extraErr) console.warn('[advance-corp-tick] Failed to fetch cross-nation claim-holders:', extraErr.message);
+                    for (const c of (extraCorps || [])) corpById[c.id] = c;
+                }
+
                 if (activeClaims && activeClaims.length > 0) {
                     let revenueCollected = 0;
                     let transitsCompleted = 0;
