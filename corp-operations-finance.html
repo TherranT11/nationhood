@@ -771,8 +771,70 @@ function dfSetFilter(type) {
 
 function dfSelectDeal(idx) {
     dfSelected = dfSelected === idx ? -1 : idx;
+    // Lazy-load equity request discussion on expand. Cached by requestId so
+    // a second expand of the same card doesn't re-fetch.
+    if (dfSelected >= 0) {
+        const d = dfDeals[dfSelected];
+        if (d && d.type === 'EQUITY' && d.requestId && !dfDiscussions[d.requestId]) {
+            dfLoadDiscussion(d.requestId);
+        }
+    }
     renderDealFlow();
 }
+
+// ==================== EQUITY REQUEST DISCUSSIONS (Phase 11) ====================
+// Per-request chat threads visible to the raiser and any Investment-subsector
+// corp. Table equity_request_discussions has permissive SELECT + own-faction
+// INSERT policies; UPDATE/DELETE disallowed (messages are immutable).
+let dfDiscussions = {};        // requestId -> array of message rows
+let _equityPostingMsg = false; // single-flight guard for post handler
+
+async function dfLoadDiscussion(requestId) {
+    if (!requestId) return;
+    const { data, error } = await _supabase
+        .from('equity_request_discussions')
+        .select('id, body, author_faction_id, created_tick, created_at, author:factions!author_faction_id(id, faction_name, abbreviation, corp_ticker)')
+        .eq('request_id', requestId)
+        .order('created_at', { ascending: true });
+    if (error) { console.warn('[DealFlow] Load discussion failed:', error.message); return; }
+    dfDiscussions[requestId] = data || [];
+    renderDealFlow();
+}
+
+async function dfPostDiscussion(requestId) {
+    if (_equityPostingMsg || !faction || !shard) return;
+    const input = document.getElementById(`df-disc-input-${requestId}`);
+    if (!input) return;
+    const body = input.value.trim();
+    if (!body) return;
+    if (body.length > 1000) { alert('Message too long (max 1000 chars).'); return; }
+
+    _equityPostingMsg = true;
+    input.disabled = true;
+    try {
+        const { error } = await _supabase.from('equity_request_discussions').insert({
+            request_id: requestId,
+            author_faction_id: faction.id,
+            body,
+            created_tick: shard.current_tick || 0,
+        });
+        if (error) { alert('Failed to post: ' + error.message); return; }
+        input.value = '';
+        await dfLoadDiscussion(requestId);
+    } finally {
+        input.disabled = false;
+        _equityPostingMsg = false;
+    }
+}
+
+function dfCanPostDiscussion(deal) {
+    if (!faction) return false;
+    // Raiser posts on their own request; Investment corps post on any.
+    if (deal.requestingFactionId === faction.id) return true;
+    return (faction.corp_subsector || '').toLowerCase() === 'investment';
+}
+
+window.dfPostDiscussion = dfPostDiscussion;
 
 function renderDealFlow() {
     const container = document.getElementById('df-container');
@@ -945,6 +1007,37 @@ function renderDealFlow() {
                     html += `<div class="df-detail-row"><span class="df-detail-label" title="How much above (premium) or below (discount) fair market value the raise terms imply. Negative = you're buying cheap.">PREMIUM / DISCOUNT</span><span class="df-detail-value" style="color:${premiumColor};font-weight:700;">${premiumText}</span></div>`;
                     html += `<div class="df-detail-row"><span class="df-detail-label">CORP REPUTATION</span><span class="df-detail-value" style="color:${repColor};">${d.reputation}/100</span></div>`;
                     html += `<div class="df-detail-row"><span class="df-detail-label">NATION STABILITY</span><span class="df-detail-value" style="color:${stabColor};">${d.stability}/100</span></div>`;
+
+                    // Discussion thread (Phase 11). Anyone in Investment sees the
+                    // messages; only Investment corps + the raiser can post.
+                    const messages = dfDiscussions[d.requestId];
+                    const canPostMsg = dfCanPostDiscussion(d);
+                    const threadInner = messages == null
+                        ? '<div style="font-size:10px;color:#6a6660;padding:4px 0;">Loading...</div>'
+                        : messages.length === 0
+                            ? '<div style="font-size:10px;color:#6a6660;padding:4px 0;">No messages yet. Start the conversation.</div>'
+                            : messages.map(m => {
+                                const isRaiser = m.author_faction_id === d.requestingFactionId;
+                                const authorLabel = (m.author?.abbreviation || m.author?.corp_ticker || m.author?.faction_name || 'Unknown')
+                                    + (isRaiser ? ' (raiser)' : '');
+                                const labelColor = isRaiser ? '#c89a4a' : '#5a8aaa';
+                                return `<div style="margin-bottom:6px;padding-left:6px;border-left:2px solid ${labelColor};">
+                                    <div style="font-family:var(--font-mono);font-size:8px;color:${labelColor};">${escapeHtml(authorLabel)} &middot; tick ${Number(m.created_tick || 0)}</div>
+                                    <div style="font-size:11px;color:var(--panel-text);margin-top:1px;word-wrap:break-word;">${escapeHtml(m.body || '')}</div>
+                                </div>`;
+                            }).join('');
+                    const inputArea = canPostMsg
+                        ? `<div style="display:flex;gap:4px;margin-top:6px;">
+                                <input id="df-disc-input-${d.requestId}" type="text" maxlength="1000" placeholder="Ask a question or pitch your thesis..." onkeydown="if(event.key==='Enter')dfPostDiscussion('${d.requestId}')" style="flex:1;padding:4px 6px;font-family:var(--font-mono);font-size:10px;background:var(--bg-panel);border:1px solid var(--panel-border);color:var(--panel-text);outline:none;">
+                                <span onclick="dfPostDiscussion('${d.requestId}')" style="padding:4px 10px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;color:#000;background:#c89a4a;cursor:pointer;">SEND</span>
+                            </div>`
+                        : '<div style="font-size:10px;color:#6a6660;margin-top:4px;">Read-only — only the raiser and Investment-subsector corps can post.</div>';
+                    const msgCount = Array.isArray(messages) ? messages.length : 0;
+                    html += `<div style="margin-top:8px;padding:8px;background:var(--bg-card);border:1px solid var(--panel-border);">
+                        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:#6a6660;margin-bottom:6px;">DISCUSSION${msgCount > 0 ? ' (' + msgCount + ')' : ''}</div>
+                        ${threadInner}
+                        ${inputArea}
+                    </div>`;
                 } else if (d.type === 'SECONDARY') {
                     const repColor = d.reputation >= 60 ? '#5c5' : d.reputation >= 35 ? '#ca5' : '#c84';
                     const premium = d.originalCapital > 0
