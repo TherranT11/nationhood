@@ -12,7 +12,7 @@
 // Exports initPartyOverview(supabase, state, containerId)
 
 import { IDEOLOGY_AXES } from './game/ideology.js';
-import { checkOppositionStatus } from './game/agitator.js';
+import { getGoverningStatus, getGoverningStatusFor } from './game/agitator.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, statDirectionSign } from './game/stats.js';
 import { hasElectedPresident } from './game/government-types.js';
 
@@ -151,21 +151,23 @@ export async function initPartyOverview(supabase, state, containerId) {
         const currentTick = state.shard?.current_tick || 0;
 
         const [
-            oppositionResult,
+            governingResult,
             partiesResult,
             ideologyResult,
             standingsResult,
             activityResult,
             caucusResult,
             electionResult,
+            ministriesResult,
         ] = await Promise.all([
-            checkOppositionStatus(supabase, nationId, factionId),
+            getGoverningStatus(supabase, nationId, factionId),
             supabase.from('factions').select('*').eq('nation_id', nationId).eq('faction_type', 'party'),
             supabase.from('faction_ideology').select('*'),  // fetch all, filter by party IDs after
             supabase.from('faction_electoral_standing').select('*').eq('nation_id', nationId),
             supabase.from('campaign_actions').select('*').eq('party_id', factionId).order('tick_performed', { ascending: false }).limit(20),
             supabase.from('caucus_factions').select('*').eq('party_id', factionId).eq('is_active', true),
             supabase.from('elections').select('*').eq('nation_id', nationId).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(5),
+            supabase.from('ministries').select('party_id').eq('nation_id', nationId).eq('is_active', true),
         ]);
 
         // Log errors but don't fail
@@ -177,7 +179,12 @@ export async function initPartyOverview(supabase, state, containerId) {
         if (electionResult.error) console.error('[PartyOverview] Election fetch error:', electionResult.error.message);
 
         const allParties = partiesResult.data || [];
-        const admin = oppositionResult.administration;
+        const admin = governingResult.administration;
+        // Pre-computed set of party IDs holding an active ministry, used by
+        // getGoverningStatusFor to determine cabinet-held status in rival rows.
+        const ministryPartyIds = new Set(
+            (ministriesResult.data || []).map(m => m.party_id).filter(Boolean)
+        );
 
         // Build ideology lookup: { factionId: row }
         const ideoMap = {};
@@ -210,8 +217,11 @@ export async function initPartyOverview(supabase, state, containerId) {
 
         // Store everything
         _overview = {
-            isOpposition: oppositionResult.isOpposition,
+            isOpposition: governingResult.isOpposition,
+            isGoverning: governingResult.isGoverning,
+            statusLabel: governingResult.label,
             administration: admin,
+            ministryPartyIds,
             governanceScore: govResult.score,
             governanceDeltas: govResult.deltas.sort((a, b) => Math.abs(b.signed) - Math.abs(a.signed)),
             governanceMultiplier: govResult.multiplier,
@@ -256,9 +266,9 @@ function renderPartyOverview(container) {
         _visibleParties = [faction?.id, ...o.rivalParties.map(p => p.id)];
     }
 
-    const adminName = o.administration?.admin_name || (o.isOpposition ? 'Opposition' : 'Government');
-    const statusLabel = o.isOpposition ? 'OPPOSITION' : 'GOVERNING';
-    const statusColor = o.isOpposition ? 'var(--orange)' : 'var(--green)';
+    const adminName = o.administration?.admin_name || (o.isGoverning ? 'Government' : 'Opposition');
+    const statusLabel = o.statusLabel;
+    const statusColor = o.isGoverning ? 'var(--green)' : 'var(--orange)';
     const seats = faction?.seats || 0;
     const totalSeats = nation?.total_seats || 100;
     const momentum = faction?.momentum ?? 50;
@@ -302,7 +312,7 @@ function renderPartyOverview(container) {
 function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
     const govScore = o.governanceScore;
     const govColor = govScore >= 0 ? 'var(--green)' : 'var(--red)';
-    const adminName = o.isOpposition ? 'Opposition' : (o.administration?.admin_name || 'Government');
+    const adminName = o.isGoverning ? (o.administration?.admin_name || 'Government') : 'Opposition';
     const isMonarchy = (_state.nation?.government_type || '').toLowerCase().includes('monarchy');
     const elTicks = isMonarchy ? 'No elections' : (o.nextElectionTicks != null ? o.nextElectionTicks : '—');
     const elColor = isMonarchy ? 'var(--text-dim)' : ((typeof elTicks === 'number' && elTicks <= 3) ? 'var(--red)' : 'var(--text-bright)');
@@ -637,18 +647,9 @@ function renderQuickInfoCards() {
 function renderRivalParties(o, myFaction) {
     const rivals = o.rivalParties;
     const admin = o.administration;
-    const coalitionIds = new Set(
-        (Array.isArray(admin?.coalition_parties) ? admin.coalition_parties : [])
-            .map(entry => {
-                if (!entry) return null;
-                if (typeof entry === 'string') return entry;
-                if (typeof entry === 'object') return entry.party_id || entry.id || null;
-                return null;
-            })
-            .filter(Boolean)
-    );
+    const nation = _state.nation;
     const pmPartyId = admin?.pm_party_id;
-    const totalSeats = _state.nation?.total_seats || 100;
+    const totalSeats = nation?.total_seats || 100;
 
     const AXIS_LABELS = ['SEC/FRE', 'TRA/PRO', 'IND/COL', 'LIB/EQL', 'GLB/NAT'];
     const AXIS_KEYS = ['security_freedom', 'tradition_progress', 'individualism_collectivism', 'liberty_equality', 'globalism_nationalism'];
@@ -660,19 +661,15 @@ function renderRivalParties(o, myFaction) {
             ? `${party.leader_first_name} ${party.leader_last_name}` : 'Unknown';
         const seats = party.seats || 0;
 
-        // Governing status
-        const isPM = party.id === pmPartyId;
-        const isCoalition = coalitionIds.has(party.id);
-        let statusLabel, statusColor;
-        if (isPM) {
-            statusLabel = 'GOVERNING \u2014 LEAD';
-            statusColor = 'var(--green)';
-        } else if (isCoalition) {
-            statusLabel = 'GOVERNING \u2014 JUNIOR';
-            statusColor = 'var(--green)';
-        } else {
-            statusLabel = 'OPPOSITION';
-            statusColor = 'var(--orange)';
+        // Governing status — single source of truth in getGoverningStatusFor.
+        // Parliamentary lead party (PM) keeps a "— LEAD" tag for visual hierarchy;
+        // other governing partners just show the bare label.
+        const gov = getGoverningStatusFor(party, admin, o.ministryPartyIds, nation);
+        let statusLabel = gov.label;
+        const statusColor = gov.isGoverning ? 'var(--green)' : 'var(--orange)';
+        if (gov.isGoverning && gov.label === 'GOVERNING') {
+            if (party.id === pmPartyId) statusLabel = 'GOVERNING \u2014 LEAD';
+            else statusLabel = 'GOVERNING \u2014 JUNIOR';
         }
 
         // Seat diff vs you
