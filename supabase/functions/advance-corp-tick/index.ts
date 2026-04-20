@@ -2079,25 +2079,28 @@ async function processActiveProjects(supabase, nationId, currentTick) {
 
             // Close any active insurance policies for this completed project
             try {
-                // Deal Flow policies (finance_active_loans)
+                // Find all insurance requests linked to this contract. The live
+                // loan row (finance_active_loans) already carries the real policy
+                // status — gating here on request.status hid every policy from
+                // closure because nothing in production ever set request.status
+                // to 'funded'. Rely on the loan-side status filter at line 2101.
                 const { data: insReqs, error: insReqErr } = await supabase
                     .from('finance_loan_requests')
                     .select('id')
                     .eq('request_type', 'insurance')
-                    .eq('insured_contract_id', contract.id)
-                    .eq('status', 'funded');
+                    .eq('insured_contract_id', contract.id);
                 if (insReqErr) throw insReqErr;
 
-                const fundedRequestIds = (insReqs || []).map((r) => r.id).filter(Boolean);
+                const linkedRequestIds = (insReqs || []).map((r) => r.id).filter(Boolean);
                 let linkedPoliciesFound = 0;
                 let linkedPoliciesClosed = 0;
 
-                if (fundedRequestIds.length > 0) {
+                if (linkedRequestIds.length > 0) {
                     const closableStatuses = ['current', 'late', 'delinquent'];
                     const { data: linkedPolicies, error: linkedPoliciesErr } = await supabase
                         .from('finance_active_loans')
                         .select('id, status')
-                        .in('request_id', fundedRequestIds)
+                        .in('request_id', linkedRequestIds)
                         .in('status', closableStatuses);
                     if (linkedPoliciesErr) throw linkedPoliciesErr;
 
@@ -2110,7 +2113,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                                 status: 'repaid',
                                 completed_tick: currentTick,
                             })
-                            .in('request_id', fundedRequestIds)
+                            .in('request_id', linkedRequestIds)
                             .in('status', closableStatuses)
                             .select('id');
                         if (closeErr) throw closeErr;
@@ -2120,7 +2123,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
 
                 console.log(
                     `[Projects] Insurance cleanup for completed project ${contract.name} (${contract.id}): ` +
-                    `${fundedRequestIds.length} funded request(s), ${linkedPoliciesFound} closable policy/policies found, ${linkedPoliciesClosed} closed`
+                    `${linkedRequestIds.length} insurance request(s), ${linkedPoliciesFound} closable policy/policies found, ${linkedPoliciesClosed} closed`
                 );
 
                 // Refund performance bond if one exists
