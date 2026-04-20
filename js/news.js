@@ -731,6 +731,7 @@ function bindSubmitHandler() {
                             .from('active_laws')
                             .select('id, policies!inner(policy_key)')
                             .eq('nation_id', nation.id)
+                            .eq('is_reversal', false)
                             .eq('policies.policy_key', 'internet_sovereignty')
                             .limit(1)
                             .maybeSingle();

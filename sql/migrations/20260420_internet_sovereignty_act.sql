@@ -68,12 +68,13 @@ BEGIN
             0.5,
             3,
             '[
-                {"stat_key":"freedom_index","direction":"down","magnitude":5},
-                {"stat_key":"press_freedom","direction":"down","magnitude":3},
-                {"stat_key":"stability","direction":"up","magnitude":2},
-                {"stat_key":"gov_approval","direction":"up","magnitude":2}
+                {"stat_key":"freedom_index","direction":"down","rate":5,"delay_ticks":0,"duration_ticks":1,"adjust_type":null,"adjust_value":0},
+                {"stat_key":"press_freedom","direction":"down","rate":3,"delay_ticks":0,"duration_ticks":1,"adjust_type":null,"adjust_value":0},
+                {"stat_key":"stability","direction":"up","rate":2,"delay_ticks":0,"duration_ticks":1,"adjust_type":null,"adjust_value":0},
+                {"stat_key":"gov_approval","direction":"up","rate":2,"delay_ticks":0,"duration_ticks":1,"adjust_type":null,"adjust_value":0},
+                {"stat_key":"gdp_growth","direction":"down","rate":0.5,"delay_ticks":0,"duration_ticks":3,"adjust_type":null,"adjust_value":0}
             ]'::jsonb,
-            2,
+            0,
             0,
             0,
             0,
@@ -93,12 +94,13 @@ BEGIN
             stat_change_per_tick  = 0.5,
             duration_months       = 3,
             stat_effects          = '[
-                {"stat_key":"freedom_index","direction":"down","magnitude":5},
-                {"stat_key":"press_freedom","direction":"down","magnitude":3},
-                {"stat_key":"stability","direction":"up","magnitude":2},
-                {"stat_key":"gov_approval","direction":"up","magnitude":2}
+                {"stat_key":"freedom_index","direction":"down","rate":5,"delay_ticks":0,"duration_ticks":1,"adjust_type":null,"adjust_value":0},
+                {"stat_key":"press_freedom","direction":"down","rate":3,"delay_ticks":0,"duration_ticks":1,"adjust_type":null,"adjust_value":0},
+                {"stat_key":"stability","direction":"up","rate":2,"delay_ticks":0,"duration_ticks":1,"adjust_type":null,"adjust_value":0},
+                {"stat_key":"gov_approval","direction":"up","rate":2,"delay_ticks":0,"duration_ticks":1,"adjust_type":null,"adjust_value":0},
+                {"stat_key":"gdp_growth","direction":"down","rate":0.5,"delay_ticks":0,"duration_ticks":3,"adjust_type":null,"adjust_value":0}
             ]'::jsonb,
-            approval_impact       = 2,
+            approval_impact       = 0,
             is_active             = true
         WHERE id = v_id;
     END IF;
