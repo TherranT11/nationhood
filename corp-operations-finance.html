@@ -1404,8 +1404,11 @@ function renderActivePortfolio() {
         </div>`;
 
         // Row 2: nation + progress
+        const lastDivStr = d.type === 'EQUITY' && (d.lastDividendAmount || 0) > 0
+            ? ` · LAST: ${fmtMoney(d.lastDividendAmount)}`
+            : '';
         const progressText = d.type === 'EQUITY'
-            ? `SERIES ${escapeHtml(d.series || '?')} — ${elapsed} DIVIDEND${elapsed === 1 ? '' : 'S'} PAID`
+            ? `SERIES ${escapeHtml(d.series || '?')} — ${elapsed} DIVIDEND${elapsed === 1 ? '' : 'S'} PAID${lastDivStr}`
             : `${elapsed}/${term}mo — ${pctComplete}%`;
         html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
             <span class="df-badge df-badge-nation" style="line-height:12px;">${escapeHtml((d.nation || '').toUpperCase())}</span>
@@ -1524,8 +1527,9 @@ function renderActivePortfolio() {
                     { label: 'STAKE', value: (d.equityPct || 0) + '%', color: '#c89a4a' },
                     { label: 'SERIES', value: escapeHtml(d.series || '?'), color: '#c89a4a' },
                     { label: 'DIVIDENDS RECEIVED', value: fmtMoney(d.dividendsReceived || 0), color: '#5c5', title: 'Cumulative dividends since buy-in.' },
-                    { label: 'AVG DIVIDEND / TICK', value: fmtMoney(avgPerTick), title: 'Dividends paid divided by ticks processed. $0 ticks (loss months) drag this down.' },
-                    { label: 'TICKS PROCESSED', value: String(d.paymentsMade || 0) },
+                    { label: 'LAST DIVIDEND PAID', value: (d.lastDividendAmount || 0) > 0 ? fmtMoney(d.lastDividendAmount) : '—', color: (d.lastDividendAmount || 0) > 0 ? '#5c5' : '#6a6660', title: 'The most recent tick payout. $0 if the target had a loss or no cash that tick.' },
+                    { label: 'AVG DIVIDEND / PAID TICK', value: fmtMoney(avgPerTick), title: 'Cumulative dividends divided by the count of actual payout ticks. Loss ticks are excluded from the denominator.' },
+                    { label: 'DIVIDENDS PAID', value: String(d.paymentsMade || 0), title: 'Number of ticks this position actually distributed cash.' },
                     { label: 'LAST DIVIDEND TICK', value: d.lastDividendTick != null ? 'Tick ' + d.lastDividendTick : '—' },
                     { label: 'ROI TO DATE', value: roiPct + '%', color: roiPct >= 0 ? '#5c5' : '#c55', title: 'Cumulative dividends / capital deployed. Equity is perpetual — no principal return expected; ROI accumulates indefinitely.' },
                 ];
@@ -3150,6 +3154,7 @@ async function loadActivePortfolio() {
         series: isEquity(loan) ? (loan.series || '?') : undefined,
         dividendsReceived: isEquity(loan) ? Number(loan.total_paid || 0) : undefined,
         lastDividendTick: isEquity(loan) ? loan.last_payment_tick : undefined,
+        lastDividendAmount: isEquity(loan) ? Number(loan.last_payment_amount || 0) : undefined,
         forSalePrice: isEquity(loan) && loan.for_sale_price != null ? Number(loan.for_sale_price) : null,
     }));
 
