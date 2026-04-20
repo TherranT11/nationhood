@@ -3997,27 +3997,62 @@ function tickToDate(tick) {
     return `${MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
 }
 
-// Shared by both construction and vessel insurance requests.
-// Returns an integer number of months in [6, 120] snapped to 3-month
-// increments, or null if the user cancelled. Premium total scales
-// naturally in the existing Review Deal formula at
-// corp-operations-finance.html:2462 (coverage × annual_rate × term/12)
-// — no separate pricing curve per term, so this prompt is the single
-// source of truth for term. Future UI polish: replace with a slider
-// modal. The functional fix (term settable, cost scales) is here.
+// Shared by both construction and vessel insurance requests. Shows a
+// modal with a dropdown of canonical term options and resolves to the
+// chosen number of months (6–120) or null if cancelled.
+// Premium total scales naturally in the existing Review Deal formula
+// at corp-operations-finance.html:2492 (coverage × annual_rate × term/12)
+// — no separate pricing curve per term, so this dropdown is the single
+// source of truth for term at request creation.
+const _INSURANCE_TERM_OPTIONS = [
+    { months:   6, label:   '6 months' },
+    { months:  12, label:  '12 months (1 year)' },
+    { months:  18, label:  '18 months' },
+    { months:  24, label:  '24 months (2 years)' },
+    { months:  36, label:  '36 months (3 years)' },
+    { months:  48, label:  '48 months (4 years)' },
+    { months:  60, label:  '60 months (5 years)' },
+    { months:  72, label:  '72 months (6 years)' },
+    { months:  84, label:  '84 months (7 years)' },
+    { months:  96, label:  '96 months (8 years)' },
+    { months: 108, label: '108 months (9 years)' },
+    { months: 120, label: '120 months (10 years)' },
+];
+
 function _promptInsuranceTerm() {
-    const input = prompt(
-        'POLICY TERM\n' +
-        '─'.repeat(30) + '\n\n' +
-        'How many months of coverage? (6 to 120, default 12)\n\n' +
-        'Snaps to 3-month increments. Longer terms = higher total premium at the same annual rate.',
-        '12'
-    );
-    if (input === null) return null;
-    const parsed = parseInt(input, 10);
-    if (!Number.isFinite(parsed)) { alert('Enter a number between 6 and 120.'); return null; }
-    const clamped = Math.max(6, Math.min(120, parsed));
-    return Math.round(clamped / 3) * 3;
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+        const modal = document.createElement('div');
+        modal.style.cssText = 'background:var(--panel-main,#1a1815);border:1px solid var(--panel-border,#332d28);padding:22px 26px;min-width:380px;max-width:420px;font-family:var(--font-mono,monospace);color:var(--text-bright,#d4c8b8);';
+
+        const optsHtml = _INSURANCE_TERM_OPTIONS.map(o =>
+            `<option value="${o.months}"${o.months === 12 ? ' selected' : ''}>${o.label}</option>`
+        ).join('');
+
+        modal.innerHTML = `
+            <div style="font-size:12px;font-weight:700;letter-spacing:1.5px;margin-bottom:6px;color:var(--gold,#c89a4a);">POLICY TERM</div>
+            <div style="font-size:10px;color:var(--text-dim,#8a8278);line-height:1.5;margin-bottom:16px;">
+                Coverage duration in months. Premium scales with term at the same annual rate — a 24-month policy costs twice as much as a 12-month policy at the same rate.
+            </div>
+            <select id="_insTermSelect" style="width:100%;padding:8px 10px;background:var(--panel-dark,#14120e);color:var(--text-bright,#d4c8b8);border:1px solid var(--panel-border,#332d28);font-family:inherit;font-size:12px;margin-bottom:18px;">${optsHtml}</select>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button id="_insTermCancel" style="padding:7px 16px;background:transparent;color:var(--text-dim,#8a8278);border:1px solid var(--panel-border,#332d28);cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:0.5px;">CANCEL</button>
+                <button id="_insTermOk" style="padding:7px 16px;background:var(--teal,#5aafa5);color:#000;border:1px solid var(--teal,#5aafa5);cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:0.5px;">CONFIRM</button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        const selectEl = document.getElementById('_insTermSelect');
+        selectEl.focus();
+
+        const finish = (value) => { overlay.remove(); resolve(value); };
+        document.getElementById('_insTermCancel').onclick = () => finish(null);
+        document.getElementById('_insTermOk').onclick = () => finish(parseInt(selectEl.value, 10));
+        overlay.onclick = (e) => { if (e.target === overlay) finish(null); };
+    });
 }
 
 async function requestInsurance(contractId, budgetCeiling) {
