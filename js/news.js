@@ -1,6 +1,7 @@
 // js/news.js — The Cruceran & The Continental newspaper pages
 
 import { tickToDate } from './utils.js';
+import { fetchActiveCoalition } from './game/government-structure.js';
 
 // Module-level references set during init
 let _supabase = null;
@@ -706,10 +707,12 @@ function bindSubmitHandler() {
 
                 if (error) throw error;
 
-                // Momentum: +2 for 1st article this tick, 0 for subsequent
+                // Momentum: +2 for 1st article this tick, 0 for subsequent.
+                // Exception (Internet Sovereignty Act): if ISA is an active law
+                // in this nation AND the author is in the sitting government
+                // coalition, subsequent posts yield +1 instead of 0.
                 const currentTick = shard?.current_tick || 0;
-                let momDelta = 0; // subsequent articles give nothing
-                // Check how many articles this faction already published this tick
+                let momDelta = 0;
                 const { data: tickArticles, error: tickCountErr } = await _supabase
                     .from('player_articles')
                     .select('id')
@@ -718,9 +721,33 @@ function bindSubmitHandler() {
                 if (tickCountErr) {
                     console.error('[News] Failed to count articles this tick:', tickCountErr);
                 }
-                // Count includes the article we just inserted, so 1 means this is the first
-                if (!tickCountErr && (!tickArticles || tickArticles.length <= 1)) {
+                const isFirstPostThisTick = !tickCountErr && (!tickArticles || tickArticles.length <= 1);
+                if (isFirstPostThisTick) {
                     momDelta = 2;
+                } else {
+                    // Subsequent post — check ISA-active + coalition-member exception.
+                    try {
+                        const { data: isaLaw } = await _supabase
+                            .from('active_laws')
+                            .select('id, policies!inner(policy_key)')
+                            .eq('nation_id', nation.id)
+                            .eq('is_reversal', false)
+                            .eq('policies.policy_key', 'internet_sovereignty')
+                            .limit(1)
+                            .maybeSingle();
+                        if (isaLaw) {
+                            const coalition = await fetchActiveCoalition(_supabase, nation.id);
+                            // fetchActiveCoalition returns { party_ids, lead_party_id, ... }
+                            // with party_ids covering the full sitting government coalition
+                            // (PM + partners in parliamentary; president + cabinet in
+                            // presidential; monarch's sponsor in monarchy).
+                            const coalitionIds = new Set(coalition?.party_ids || []);
+                            if (coalition?.lead_party_id) coalitionIds.add(coalition.lead_party_id);
+                            if (coalitionIds.has(faction.id)) momDelta = 1;
+                        }
+                    } catch (e) {
+                        console.warn('[News] ISA coalition-bonus check failed:', e?.message || e);
+                    }
                 }
                 const momLabel = `News article published (+${momDelta})`;
 
