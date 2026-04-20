@@ -3093,11 +3093,12 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 }
             }
 
-            // Always tick the counters, even on a $0 dividend, so the position
-            // reflects that a tick was processed.
+            // Track dividend totals and last-paid tick. Do NOT increment
+            // payments_made — equity has no term or payment count; the field
+            // is loan-specific and leaking into equity rows only made
+            // downstream UIs render a misleading "N/120 payments" string.
             var { error: equityTrackErr } = await supabase.from('finance_active_loans').update({
                 total_paid: (Number(loan.total_paid) || 0) + actualPayout,
-                payments_made: (loan.payments_made || 0) + 1,
                 last_payment_tick: currentTick,
             }).eq('id', loan.id);
             if (equityTrackErr) console.warn('[Equity] Position tracking update failed:', equityTrackErr.message);
