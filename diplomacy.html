@@ -173,6 +173,15 @@ async function checkTradeNotifications() {
     const factionId = _worldState?.faction?.id;
     if (!nationId || !factionId) { _tradeTabNeedsAttention = false; return; }
 
+    // Minister of Trade with pending shipping applications — flag the subtab
+    // so the MoT sees the amber dot without having to open the Trade view.
+    // _shippingAppsByRoute is populated by loadShippingData on page init.
+    if (_isTradeMinister) {
+        for (const apps of Object.values(_shippingAppsByRoute || {})) {
+            if (apps && apps.length > 0) { _tradeTabNeedsAttention = true; return; }
+        }
+    }
+
     try {
         // Load active/open negotiations for this nation
         const { data: negs } = await _supabase.from('trade_negotiations')
@@ -1006,6 +1015,12 @@ function renderShippingContractsBlock() {
             closesInTicks === 0 ? 'closing this tick' :
             `closes in ${closesInTicks} tick${closesInTicks !== 1 ? 's' : ''}`;
 
+        // Pulsing amber dot shown only to the Minister of Trade — reminds them
+        // a decision is pending. Reuses coalition-pulse keyframes (dashboard.css).
+        const motDot = canAct
+            ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${pendingRowColor};margin-left:6px;vertical-align:middle;animation:coalition-pulse 1.5s ease-in-out infinite;"></span>`
+            : '';
+
         html += `<div style="border-bottom:1px solid var(--border-main);border-left:3px solid ${pendingRowColor};">
             <div onclick="openShippingBidModal('${routeId}')"
                  style="padding:12px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
@@ -1013,7 +1028,7 @@ function renderShippingContractsBlock() {
                     <div style="width:28px;height:28px;background:${pendingRowColor}15;border:1px solid ${pendingRowColor}33;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:14px;">\u2693</div>
                     <div>
                         <div style="font-size:13px;font-weight:600;color:var(--text-bright);">
-                            ${escapeHtml(routeLabel)}
+                            ${escapeHtml(routeLabel)}${motDot}
                         </div>
                         <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px;">
                             ${escapeHtml(r.goods_name || 'Trade goods')} \u00B7 ${bidCount} bid${bidCount !== 1 ? 's' : ''} pending${closesLabel ? ' \u00B7 ' + closesLabel : ''}

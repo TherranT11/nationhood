@@ -422,7 +422,7 @@ export function renderTopBar(activeTab) {
                     </div>
                 </div>
             </div>
-            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.2.0.7</div>
+            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.2.0.8</div>
             <div class="top-bar-right">
                 <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
                 ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
@@ -674,11 +674,38 @@ async function updateDiplomacyBadge(faction, nation, roles) {
             }
         }
 
+        // 4. Pending shipping applications — Minister of Trade only.
+        // Amber-pulse the whole badge when these contribute; flags the MoT
+        // that a corporation is waiting on their ministerial decision.
+        let shippingAppsCount = 0;
+        if (roles.isMoT) {
+            const { data: apps } = await _supabase
+                .from('shipping_applications')
+                .select('id, shipping_routes!inner(origin_nation_id, destination_nation_id)')
+                .eq('status', 'pending');
+            for (const a of (apps || [])) {
+                const r = a.shipping_routes;
+                if (r && (r.origin_nation_id === nation.id || r.destination_nation_id === nation.id)) {
+                    shippingAppsCount++;
+                }
+            }
+            count += shippingAppsCount;
+        }
+
         if (count > 0) {
             badge.textContent = count;
             badge.style.display = '';
+            if (shippingAppsCount > 0) {
+                badge.classList.add('nav-badge--amber');
+                badge.style.animation = 'coalition-pulse 1.5s ease-in-out infinite';
+            } else {
+                badge.classList.remove('nav-badge--amber');
+                badge.style.animation = '';
+            }
         } else {
             badge.style.display = 'none';
+            badge.classList.remove('nav-badge--amber');
+            badge.style.animation = '';
         }
     } catch (e) {
         console.error('Error updating diplomacy badge:', e);
