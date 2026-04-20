@@ -1858,11 +1858,17 @@ async function acceptOffer(offerId, requestId) {
 
         if (request.status !== 'open') return;
 
-        const r = (offer.interest_rate / 100) / 12;
+        // Flat-interest schedule — matches the server's per-tick math
+        // (advance-corp-tick/index.ts:interestPortion = originalPrincipal
+        // × monthlyRate) and the canonical regression in
+        // scripts/test-flat-interest-loans.mjs. Previously this used
+        // declining-balance amortization, so the stored monthly_payment
+        // was too low to fully amortize under the server's flat model
+        // and loans got stuck past maturity with a positive balance.
         const n = request.term_months;
-        const monthlyPayment = r > 0
-            ? Math.round((request.amount * r) / (1 - Math.pow(1 + r, -n)))
-            : Math.round(request.amount / n);
+        const monthlyInterest = Math.round((request.amount * (offer.interest_rate / 100)) / 12);
+        const monthlyPrincipal = Math.round(request.amount / n);
+        const monthlyPayment = monthlyInterest + monthlyPrincipal;
 
         const currentTick = shard?.current_tick || 0;
 

@@ -1640,11 +1640,15 @@ async function apRestructure(loanId) {
     if (!loan) { alert('Loan not found.'); return; }
 
     const newTerm = loan.term_months + 12;
-    const monthlyRate = rate / 100 / 12;
-    const remaining = Number(loan.remaining_principal || 0) + Number(loan.total_interest_paid || 0);
-    const newPayment = monthlyRate > 0
-        ? Math.round(remaining * (monthlyRate * Math.pow(1 + monthlyRate, newTerm)) / (Math.pow(1 + monthlyRate, newTerm) - 1))
-        : Math.round(remaining / newTerm);
+    // Flat-interest schedule — matches the server's per-tick math and the
+    // canonical regression in scripts/test-flat-interest-loans.mjs. The
+    // prior amortization formula here diverged from the server and left
+    // restructured loans unable to fully amortize, same bug class that
+    // affected acceptOffer.
+    const remaining = Number(loan.remaining_principal || 0);
+    const monthlyInterest = Math.round((remaining * (rate / 100)) / 12);
+    const monthlyPrincipal = Math.round(remaining / newTerm);
+    const newPayment = monthlyInterest + monthlyPrincipal;
 
     if (!confirm(`Restructure to ${rate}% over ${newTerm} months?\nNew monthly payment: ${fmtMoney(newPayment)}\nMissed payments reset to 0.`)) return;
 
