@@ -545,6 +545,14 @@ async function loadDealFlow() {
                 .select('id, corp_loans')
                 .in('id', equityRaiserIds),
         ]);
+        // Surface any partial-fetch failures — silently defaulting a field to
+        // [] would make a solvent corp render as DISTRESSED and mislead the
+        // investor. Warns are non-fatal; valuation just falls back to 0 on
+        // that bucket, which the DISTRESSED branch already handles.
+        if (propsRes.error) console.warn('[DealFlow] Equity valuation: corp_properties fetch failed:', propsRes.error.message);
+        if (vesselsRes.error) console.warn('[DealFlow] Equity valuation: corp_vessels fetch failed:', vesselsRes.error.message);
+        if (receivablesRes.error) console.warn('[DealFlow] Equity valuation: finance_active_loans fetch failed:', receivablesRes.error.message);
+        if (loansRes.error) console.warn('[DealFlow] Equity valuation: factions(corp_loans) fetch failed:', loansRes.error.message);
         const propsBy = {};
         for (const p of (propsRes.data || [])) (propsBy[p.faction_id] ||= []).push(p);
         const vesselsBy = {};
