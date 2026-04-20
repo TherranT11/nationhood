@@ -1541,19 +1541,12 @@ async function refundArticleAP() {
     } catch (e) { console.error('AP refund error:', e); }
 }
 
-/** Update the submit button text to show the total cash cost ($50k base +
- *  $20k per article — matches the deduction in submitToCommittee()). */
+/** Update the submit button text with the flat bill cost — $50k regardless
+ *  of article count. Matches the deduction in submitToCommittee(). */
 function updateSubmitButtonCost() {
     const btn = document.getElementById('submit-bill-btn');
     if (!btn) return;
-    const base = 50000;
-    const perArticle = 20000;
-    const total = base + draftArticles.length * perArticle;
-    const fmt = (n) => '$' + Math.round(n / 1000) + 'k';
-    const breakdown = draftArticles.length > 0
-        ? ` (${fmt(base)} + ${draftArticles.length} × ${fmt(perArticle)})`
-        : '';
-    btn.textContent = `Submit Bill to Committee \u2014 ${fmt(total)}${breakdown}`;
+    btn.textContent = 'Submit Bill to Committee \u2014 $50k';
 }
 
 function openDraftModal() {
@@ -3972,13 +3965,12 @@ async function submitToCommittee() {
         }
     }
 
-    // Bill costs $50k base + $20k per article
-    const billCost = 50000 + (draftArticles.length * 20000);
+    // Flat $50k to propose a bill, regardless of article count.
+    const billCost = 50000;
     const currentFunds = currentFaction.party_funds || 0;
     if (currentFunds < billCost) {
-        const costLabel = '$' + Math.round(billCost / 1000) + 'k';
         const fundsLabel = '$' + Math.round(currentFunds / 1000) + 'k';
-        alert('Not enough funds. Need ' + costLabel + ' ($50k + $20k per article), have ' + fundsLabel + '.');
+        alert('Not enough funds. Need $50k to propose a bill, have ' + fundsLabel + '.');
         isSubmitting = false;
         document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
         return;
