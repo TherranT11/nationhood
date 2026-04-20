@@ -582,7 +582,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                     <button class="all-laws-btn" onclick="toggleAllLaws()">📋 All Laws</button>
                     ${showDefaultBtn ? `<button class="default-resolution-btn${defaultEligible ? '' : ' default-btn-locked'}" onclick="${defaultEligible ? 'openDefaultResolutionModal()' : 'void(0)'}" ${defaultEligible ? '' : 'disabled'} title="${defaultEligible ? 'Debt: ' + formatDebtToGDP(debtRatio) + ' of GDP' : 'Requires debt-to-GDP ≥ 150% (current: ' + formatDebtToGDP(debtRatio) + ')'}">💀 Default Resolution</button>` : ''}
                     <button class="draft-btn" onclick="openDraftModal()" ${canDraft ? '' : 'disabled'} ${noSeatsTitle}>
-                        ${termPropose} <span class="ap-cost">${GAME_CONFIG.DRAFT_BILL_AP_COST} AP</span>
+                        ${termPropose}
                     </button>
                 </div>
             </div>
@@ -1339,22 +1339,9 @@ async function rescindLaw(activeLawId, policyName, policyId, entrenchmentTier) {
     const thresholdNote = entrenchmentTier === 'protected' ? '\n\n⚠ This is a PROTECTED law — repeal requires 60% supermajority.'
         : entrenchmentTier === 'entrenched' ? '\n\n⚠ This is an ENTRENCHED law — repeal requires 67% supermajority.'
         : '';
-    if (!confirm('Propose a bill to rescind "' + policyName + '"?\n\nThis will create a repeal bill and send it to committee for a vote.\nCost: ' + GAME_CONFIG.DRAFT_BILL_AP_COST + ' AP' + thresholdNote)) return;
+    if (!confirm('Propose a bill to rescind "' + policyName + '"?\n\nThis will create a repeal bill and send it to committee for a vote.' + thresholdNote)) return;
     _actionLock = true;
     try {
-        // Deduct AP (consistent with regular bill drafting)
-        let apCost = GAME_CONFIG.DRAFT_BILL_AP_COST;
-        if (currentFaction) {
-            if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost -= 1;
-            if ((currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
-            apCost = Math.max(1, apCost);
-        }
-        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
-        if (!apResult.success) {
-            alert('Not enough AP. Need ' + apCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
-            return;
-        }
-        currentFaction.action_points = apResult.newAp;
         sessionStorage.removeItem('nationhood_state');
 
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -1429,18 +1416,6 @@ async function fileEntrenchmentUpgrade(activeLawId, policyName, targetTier) {
     _actionLock = true;
     try {
         const tierLabels = { protected: 'Protected', entrenched: 'Entrenched', enshrined: 'Constitutional' };
-        let apCost = GAME_CONFIG.DRAFT_BILL_AP_COST;
-        if (currentFaction) {
-            if ((currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost -= 1;
-            if ((currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
-            apCost = Math.max(1, apCost);
-        }
-        const apResult = await deductAP(_supabase, currentFaction.id, apCost);
-        if (!apResult.success) {
-            alert('Not enough AP. Need ' + apCost + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
-            return;
-        }
-        currentFaction.action_points = apResult.newAp;
         sessionStorage.removeItem('nationhood_state');
 
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -1487,73 +1462,14 @@ async function fileEntrenchmentUpgrade(activeLawId, policyName, targetTier) {
 
 // ==================== DRAFT MODAL ====================
 
-const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 4;
 let _draftArticleLock = false; // Prevents double-fire on async article add/remove
 
-/** Count non-text draft articles (these are the ones that count toward the free limit). */
-function countBillableArticles(articles) {
-    return articles.filter(a => !a.isText && !a.isEntrenchment).length;
-}
-
-/** Check if adding a non-text article would exceed the free limit and charge 1 AP if so.
- *  Returns true if the article can be added, false if insufficient AP. */
-async function chargeArticleAP() {
-    const billableCount = countBillableArticles(draftArticles);
-    if (billableCount >= FREE_ARTICLE_LIMIT) {
-        try {
-            const apResult = await deductAP(_supabase, currentFaction.id, 1);
-            if (!apResult.success) {
-                alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
-                return false;
-            }
-            currentFaction.action_points = apResult.newAp;
-            sessionStorage.removeItem('nationhood_state');
-        } catch (e) {
-            console.error('chargeArticleAP error:', e);
-            alert('Failed to deduct AP. Please try again.');
-            return false;
-        }
-        return true; // paid
-    }
-    return true; // free
-}
-
-/** Returns true if the article at the given index was a paid article (beyond the free limit). */
-function isArticlePaid(index) {
-    // Count how many non-text articles come before this one (in original insertion order)
-    let billableIndex = 0;
-    for (let i = 0; i < draftArticles.length; i++) {
-        if (!draftArticles[i].isText) {
-            if (i === index) return billableIndex >= FREE_ARTICLE_LIMIT;
-            billableIndex++;
-        }
-    }
-    return false;
-}
-
-/** Refund 1 AP for a paid article removal. */
-async function refundArticleAP() {
-    try {
-        const { error } = await _supabase.rpc('accumulate_ap', { p_faction_id: currentFaction.id, p_gain: 1, p_max_ap: GAME_CONFIG.MAX_AP || 20 });
-        if (error) { console.error('AP refund RPC error:', error); return; }
-        currentFaction.action_points = (currentFaction.action_points || 0) + 1;
-        sessionStorage.removeItem('nationhood_state');
-    } catch (e) { console.error('AP refund error:', e); }
-}
-
-/** Update the submit button text to show the total cash cost ($50k base +
- *  $20k per article — matches the deduction in submitToCommittee()). */
+/** Update the submit button text with the flat bill cost — $50k regardless
+ *  of article count. Matches the deduction in submitToCommittee(). */
 function updateSubmitButtonCost() {
     const btn = document.getElementById('submit-bill-btn');
     if (!btn) return;
-    const base = 50000;
-    const perArticle = 20000;
-    const total = base + draftArticles.length * perArticle;
-    const fmt = (n) => '$' + Math.round(n / 1000) + 'k';
-    const breakdown = draftArticles.length > 0
-        ? ` (${fmt(base)} + ${draftArticles.length} × ${fmt(perArticle)})`
-        : '';
-    btn.textContent = `Submit Bill to Committee \u2014 ${fmt(total)}${breakdown}`;
+    btn.textContent = 'Submit Bill to Committee \u2014 $50k';
 }
 
 function openDraftModal() {
@@ -1907,8 +1823,6 @@ async function addPermitArticle() {
     if (_draftArticleLock || !_selectedPermitPolicy) return;
     _draftArticleLock = true;
     try {
-        const canAdd = await chargeArticleAP();
-        if (!canAdd) return;
         const nextNum = draftArticles.length > 0 ? Math.max(...draftArticles.map(a => a.articleNumber)) + 1 : 2;
         const artEntry = {
             articleNumber: nextNum,
@@ -2302,11 +2216,8 @@ async function addFundingArticle() {
         return;
     }
 
-    // Charge 1 AP if beyond free article limit
     _draftArticleLock = true;
     try {
-        const canAdd = await chargeArticleAP();
-        if (!canAdd) return;
 
         draftArticles.push({
             articleNumber: draftArticles.length + 2,
@@ -2856,11 +2767,8 @@ async function selectRepealPolicy(policyId) {
         alert('A repeal article for this law is already in the draft.');
         return;
     }
-    // Charge 1 AP if beyond free article limit
     _draftArticleLock = true;
     try {
-        const canAdd = await chargeArticleAP();
-        if (!canAdd) return;
         draftArticles.push({
             articleNumber: draftArticles.length + 2,
             policy: policy,
@@ -3200,11 +3108,8 @@ async function addArticle() {
     }
 
     if (!selectedPolicy) return;
-    // Charge 1 AP if beyond free article limit
     _draftArticleLock = true;
     try {
-        const canAdd = await chargeArticleAP();
-        if (!canAdd) return;
         draftArticles.push({ articleNumber: draftArticles.length + 2, policy: selectedPolicy, isOpposed: selectedPolicy.isOpposed || false });
         renderDraftArticles(); hideAddArticleForm(); selectedPolicy = null;
         if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
@@ -3239,11 +3144,7 @@ function renderDraftArticles() {
         }
     }
 
-    // Track billable article index for cost display
-    let _billableIdx = 0;
     container.innerHTML = draftArticles.map((art, index) => {
-        const _isPaid = !art.isText && ((() => { const idx = _billableIdx; _billableIdx++; return idx >= FREE_ARTICLE_LIMIT; })());
-        const _costBadge = _isPaid ? ' <span class="ap-cost" style="font-size:0.7rem;color:var(--amber);font-weight:600;">1 AP</span>' : '';
         if (art.isFoundational) {
             if (art.foundationalSubtype === 'hos_title') {
                 return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
@@ -3418,7 +3319,7 @@ function renderDraftArticles() {
             const pColor = art.permitAction === 'repeal' ? 'var(--red)' : 'var(--amber)';
             return `<div class="draft-article-card" style="border-left:3px solid ${pColor};">
                 <div class="draft-article-info">
-                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${pColor};">Permit (${pAction})</span>${_costBadge}</div>
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${pColor};">Permit (${pAction})</span></div>
                     <div class="draft-article-name">🔨 ${escapeHtml(art.permitPolicy.policy_name)}</div>
                     <div class="draft-article-meta">${pAction === 'Repeal' ? 'Removes this permit requirement from all corporations' : 'Corporations will need this permit to operate'}</div>
                 </div>
@@ -3454,7 +3355,7 @@ function renderDraftArticles() {
                 `<div style="margin-top:2px;font-size:0.8rem;color:var(--text-primary);font-weight:600;">Ongoing: ${ongoingText}</div>`;
             return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
                 <div class="draft-article-info">
-                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span>${_costBadge}</div>
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span></div>
                     <div class="draft-article-name">${escapeHtml(fd.ministry_label)} Ministry Funding</div>
                     <div class="draft-article-meta">${summaryParts.map(s => escapeHtml(s)).join('<br>')}</div>
                     ${budgetImpact}
@@ -3509,7 +3410,7 @@ function renderDraftArticles() {
             }
             return `<div class="draft-article-card" style="border-left:3px solid var(--red);">
                 <div class="draft-article-info">
-                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">REPEAL</span>${_costBadge}</div>
+                    <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--red);">REPEAL</span></div>
                     <div class="draft-article-name">${escapeHtml(p.policy_name)} ${ideoHTML} <span class="opposed-badge" style="background:var(--red);color:#fff;">REPEAL</span></div>
                     <div class="draft-article-meta">${escapeHtml(p.description || '')}</div>
                     ${reversalHTML}
@@ -3523,7 +3424,7 @@ function renderDraftArticles() {
             const rateColor = rate >= 80 ? 'var(--red)' : rate >= 50 ? '#c84' : rate >= 20 ? 'var(--amber)' : 'var(--green)';
             return `<div class="draft-article-card" style="border-left:3px solid var(--amber);">
                 <div class="draft-article-info">
-                    <div class="draft-article-num">Article ${art.articleNumber}${_costBadge}</div>
+                    <div class="draft-article-num">Article ${art.articleNumber}</div>
                     <div class="draft-article-name">${escapeHtml(art.policy.policy_name)} <span class="article-ideology" style="background:rgba(200,168,50,0.10);color:#c8a832;border:1px solid rgba(200,168,50,0.30);">TARIFF</span></div>
                     <div class="draft-article-meta">${escapeHtml(art.policy.description || '')}</div>
                     <div style="margin-top:4px;font-family:var(--font-mono);font-size:0.8rem;font-weight:700;color:${rateColor};">Rate: ${rate}%</div>
@@ -3535,7 +3436,7 @@ function renderDraftArticles() {
             const amtM = Math.round((art.amount || 0) / 1_000_000);
             return `<div class="draft-article-card" style="border-left:3px solid var(--amber);">
                 <div class="draft-article-info">
-                    <div class="draft-article-num">Article ${art.articleNumber}${_costBadge}</div>
+                    <div class="draft-article-num">Article ${art.articleNumber}</div>
                     <div class="draft-article-name">Government Bailout of ${escapeHtml(art.corpName || 'Corp')} <span class="article-ideology" style="background:rgba(200,168,50,0.10);color:#c8a832;border:1px solid rgba(200,168,50,0.30);">BAILOUT</span></div>
                     <div class="draft-article-meta">Grants $${amtM.toLocaleString()}M to ${escapeHtml(art.corpName || 'Corp')}. Drawn from budget reserves first, overflow to debt. Yes-voters: −50 Momentum each, −20 gov approval event each.</div>
                 </div>
@@ -3564,7 +3465,7 @@ function renderDraftArticles() {
             else if (_onCost < 0) _parts.push(`<span style="color:var(--green)">Relief: ${_fmtC(Math.abs(_onCost))}/t</span>`);
             if (_parts.length > 0) _policyCostBadge = ' <span style="font-size:0.7rem;color:var(--text-secondary);margin-left:6px;">' + _parts.join(' · ') + '</span>';
         }
-        return `<div class="draft-article-card" style="${borderColor}"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}${_costBadge}${_policyCostBadge}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}${opposedBadge}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
+        return `<div class="draft-article-card" style="${borderColor}"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}${_policyCostBadge}</div><div class="draft-article-name">${art.policy.policy_name} ${ideoHTML}${opposedBadge}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
     }).join('') + penaltySummary;
 }
 
@@ -3574,11 +3475,8 @@ async function removeArticle(index) {
     try {
         const art = draftArticles[index];
         if (!art) return;
-        const wasPaid = !art.isText && isArticlePaid(index);
         draftArticles.splice(index, 1);
         draftArticles.forEach((art, i) => { art.articleNumber = i + 2; });
-        // Refund 1 AP if this was a paid article (beyond the free limit)
-        if (wasPaid) await refundArticleAP();
         renderDraftArticles();
         // Re-show add buttons (they may have been hidden for foundational bills)
         _showAllArticleButtons();
@@ -3972,13 +3870,12 @@ async function submitToCommittee() {
         }
     }
 
-    // Bill costs $50k base + $20k per article
-    const billCost = 50000 + (draftArticles.length * 20000);
+    // Flat $50k to propose a bill, regardless of article count.
+    const billCost = 50000;
     const currentFunds = currentFaction.party_funds || 0;
     if (currentFunds < billCost) {
-        const costLabel = '$' + Math.round(billCost / 1000) + 'k';
         const fundsLabel = '$' + Math.round(currentFunds / 1000) + 'k';
-        alert('Not enough funds. Need ' + costLabel + ' ($50k + $20k per article), have ' + fundsLabel + '.');
+        alert('Not enough funds. Need $50k to propose a bill, have ' + fundsLabel + '.');
         isSubmitting = false;
         document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
         return;

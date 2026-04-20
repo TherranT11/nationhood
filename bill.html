@@ -275,22 +275,7 @@ let sponsorSelectedPolicy = null;
 let selectedRepealLaw = null; // Active law selected for repeal article
 // Repeal bills can have additional articles added in committee, so 'repeal' is NOT in this list
 const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'impeachment_motion', 'impeachment_conviction'];
-const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 4;
-
-/** Count non-text articles in a bill. Text articles have no policy_id, no funding_data, no effect_data. */
-function countNonTextArticles(articles) {
-    return (articles || []).filter(a => a.policy_id || a.funding_data || a.effect_data).length;
-}
-
 let _billArticleLock = false; // Prevents double-fire on async article operations
-
-/** Refund 1 AP to a faction (used when removing paid articles). */
-async function refundArticleAP_bill(factionId) {
-    try {
-        const { error } = await _supabase.rpc('accumulate_ap', { p_faction_id: factionId, p_gain: 1, p_max_ap: GAME_CONFIG.MAX_AP || 20 });
-        if (error) console.error('AP refund RPC error:', error);
-    } catch (e) { console.error('AP refund error:', e); }
-}
 
 const urlParams = new URLSearchParams(window.location.search);
 const billId = urlParams.get('id');
@@ -2977,20 +2962,6 @@ async function respondToAmendment(reqId, response) {
             return;
         }
         if (response === 'accepted') {
-            // Pre-check: charge sponsor 1 AP if adding a non-text article beyond the free limit
-            const isStrike = req.request_type === 'strike' && req.target_article_id;
-            if (!isStrike) {
-                const nonTextCount = countNonTextArticles(currentBill.bill_articles);
-                const isTextAmendment = !req.policy_id;
-                if (!isTextAmendment && nonTextCount >= FREE_ARTICLE_LIMIT) {
-                    const apResult = await deductAP(_supabase, currentFaction.id, 1);
-                    if (!apResult.success) {
-                        alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
-                        return;
-                    }
-                    currentFaction.action_points = apResult.newAp;
-                }
-            }
 
             // AP secured — now commit the acceptance
             await _supabase.from('bill_amendment_requests').update({ status: 'accepted' }).eq('id', reqId);
@@ -3225,17 +3196,6 @@ async function rescindArticle(articleId) {
         await renumberArticles(billId);
         await cleanupOrphanedConditionalSupport();
 
-        // Refund 1 AP if this was a non-text article and the bill had more than FREE_ARTICLE_LIMIT non-text articles
-        const isTextArticle = !targetArt.policy_id && !targetArt.funding_data && !targetArt.effect_data;
-        if (!isTextArticle) {
-            const nonTextCountBefore = countNonTextArticles(currentBill.bill_articles);
-            if (nonTextCountBefore > FREE_ARTICLE_LIMIT) {
-                // Refund to whoever paid: sponsor's own articles → sponsor, conditional support → the requester
-                const refundTo = targetArt.added_by || currentFaction.id;
-                await refundArticleAP_bill(refundTo);
-            }
-        }
-
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
     finally { _billArticleLock = false; }
@@ -3412,20 +3372,7 @@ async function submitSponsorAddArticle() {
         }
     }
     _billArticleLock = true;
-    let paidArticleAP = false;
     try {
-        // Check if this article would exceed the free limit
-        const nonTextCount = countNonTextArticles(currentBill.bill_articles);
-        if (nonTextCount >= FREE_ARTICLE_LIMIT) {
-            const apResult = await deductAP(_supabase, currentFaction.id, 1);
-            if (!apResult.success) {
-                alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
-                return;
-            }
-            currentFaction.action_points = apResult.newAp;
-            paidArticleAP = true;
-        }
-
         const { data: existingArticles } = await _supabase.from('bill_articles')
             .select('article_number').eq('bill_id', billId)
             .order('article_number', { ascending: false }).limit(1);
@@ -3449,8 +3396,6 @@ async function submitSponsorAddArticle() {
             insertErr = error;
         }
         if (insertErr) {
-            // Refund AP if the insert failed after deduction
-            if (paidArticleAP) await refundArticleAP_bill(currentFaction.id);
             throw insertErr;
         }
         closeSponsorAddModal();
