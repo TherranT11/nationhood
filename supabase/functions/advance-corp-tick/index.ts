@@ -3962,12 +3962,20 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 continue; // Ship stays loading, can't depart
                             }
 
-                            // Start transit next tick
-                            await supabase.from('shipping_claims').update({
+                            // Start transit next tick. Capture error so silent
+                            // failures surface — previously an UPDATE rejection
+                            // (trigger, constraint, RLS) was swallowed and the
+                            // claim stayed 'loading' forever with no signal.
+                            var { error: claimTransitErr } = await supabase.from('shipping_claims').update({
                                 vessel_status: 'in_transit',
                                 transit_started_tick: currentTick,
                                 transit_arrives_tick: currentTick + transitTicks,
                             }).eq('id', claim.id);
+                            if (claimTransitErr) {
+                                console.warn(`[advance-corp-tick] Claim transit UPDATE failed for claim=${claim.id} corp=${claim.faction_id}: ${claimTransitErr.message}`);
+                                continue; // don't flip the vessel if the claim didn't update
+                            }
+                            console.log(`[advance-corp-tick] Claim ${claim.id} transitioned loading→in_transit (corp=${claim.faction_id}, transitTicks=${transitTicks}, arrives=${currentTick + transitTicks})`);
 
                             // Update assigned vessel to in_transit
                             var { error: transitErr } = await supabase.from('corp_vessels').update({
