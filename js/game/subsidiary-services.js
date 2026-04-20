@@ -11,7 +11,7 @@
  *   effective_rate = base_rate + owner_markup (0-5%)
  *
  * Insurance: effective_rate = annual premium as % of insured value
- * Loans: effective_rate = annual interest rate on principal
+ * Loans: effective_rate = annual loan rate (applies by the loan's interest model: amortized vs flat).
  */
 
 // ═══════════════════════════════════════════════════

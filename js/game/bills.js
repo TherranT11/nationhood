@@ -464,7 +464,8 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
 
         for (const [axisKey, shift] of Object.entries(axisShifts)) {
             const oldScore = currentScores[axisKey] || 0;
-            const newScore = Math.max(-100, Math.min(100, oldScore + shift));
+            const normalizedScore = Math.round(oldScore + shift);
+            const newScore = Math.max(-100, Math.min(100, normalizedScore));
             if (newScore !== oldScore) {
                 updateObj[axisKey] = newScore;
                 hasChanges = true;
@@ -472,7 +473,32 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
         }
 
         if (hasChanges) {
-            await supabase.from('faction_ideology').update(updateObj).eq('faction_id', factionId);
+            try {
+                const { error: updateErr } = await supabase
+                    .from('faction_ideology')
+                    .update(updateObj)
+                    .eq('faction_id', factionId);
+
+                if (updateErr) {
+                    console.error('[processIdeologyShifts] faction_ideology update failed', {
+                        factionId,
+                        nationId,
+                        currentTick,
+                        attemptedAxisUpdates: updateObj,
+                        error: updateErr.message
+                    });
+                    continue;
+                }
+            } catch (err) {
+                console.error('[processIdeologyShifts] faction_ideology update threw', {
+                    factionId,
+                    nationId,
+                    currentTick,
+                    attemptedAxisUpdates: updateObj,
+                    error: err?.message || String(err)
+                });
+                continue;
+            }
 
             // Record snapshot for ideology_history
             if (typeof currentTick === 'number') {
@@ -497,7 +523,12 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
             .from('ideology_history')
             .insert(historyRows);
         if (histErr) {
-            console.warn('[processIdeologyShifts] ideology_history insert failed (table may not exist yet):', histErr.message);
+            console.warn('[processIdeologyShifts] ideology_history insert failed (table may not exist yet)', {
+                nationId,
+                currentTick,
+                affectedFactionIds: historyRows.map(row => row.faction_id),
+                error: histErr.message
+            });
         }
     }
 }

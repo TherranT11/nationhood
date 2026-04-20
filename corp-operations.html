@@ -2773,6 +2773,11 @@ import { initSubDashboard } from './js/corp-sub-dashboard.js';
 import { loadShippingRoutesSafe, loadActiveVoyagesSafe, loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
 import { applyForEquity } from './js/equity-apply.js';
 import { VESSEL_SPECS } from './js/game/vessels.js';
+import {
+    SUB_GDP_NEUTRAL,
+    SUB_DEFAULT_REPUTATION,
+    computeSubsidiaryTickDelta
+} from './js/game/subsidiary-economics.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -10653,7 +10658,7 @@ window.propSell = propSell;
 
 // ==================== SUBSIDIARY SHARED HELPERS ====================
 
-const SUB_RATES = { SALE: 0.8, DISSOLVE: 0.6, REVENUE_BASE: 0.02, MAX_LOSS: 0.05, GDP_NEUTRAL: 30, DEFAULT_REPUTATION: 25 };
+const SUB_RATES = { SALE: 0.8, DISSOLVE: 0.6 };
 
 function subParseAmount(input) {
     if (!input) return 0;
@@ -10720,13 +10725,14 @@ function getSubsidiaryData(hqProp) {
         ? words.map(w => w[0]).join('').toUpperCase().slice(0, 4)
         : (hqProp.name || 'SUB').slice(0, 4).toUpperCase();
 
-    // Mirrors server-side processSubsidiaryRevenue formula
     const subCash = Number(hqProp.sub_cash || 0);
     const gdpGrowth = Number(nationData?.gdp_growth ?? 50);
-    const base = subCash * SUB_RATES.REVENUE_BASE;
-    const gdpMod = (gdpGrowth - SUB_RATES.GDP_NEUTRAL) / 100;
-    const repMult = SUB_RATES.DEFAULT_REPUTATION / 100;
-    const revenue = subCash > 0 ? Math.round(base * (1 + gdpMod) * repMult) : 0;
+    const projectedTick = computeSubsidiaryTickDelta({
+        subCash,
+        gdpGrowth,
+        parentReputation: Number(faction?.corp_reputation ?? 50),
+    });
+    const revenue = projectedTick.netDelta;
 
     return {
         id: hqProp.id,
@@ -10739,13 +10745,15 @@ function getSubsidiaryData(hqProp) {
         revenue,
         debt: 0,
         cash: subCash,
-        reputation: SUB_RATES.DEFAULT_REPUTATION,
+        reputation: SUB_DEFAULT_REPUTATION,
         valuation: totalVal,
         workforce: totalCapacity,
         projects,
         established: hqProp.created_at ? new Date(hqProp.created_at).getFullYear().toString() : '—',
-        trend: gdpGrowth >= 40 && subCash > 0 ? 'up' : gdpGrowth >= SUB_RATES.GDP_NEUTRAL && subCash > 0 ? 'flat' : 'down',
+        trend: revenue > 0 ? 'up' : revenue < 0 ? 'down' : (gdpGrowth >= SUB_GDP_NEUTRAL && subCash > 0 ? 'flat' : 'down'),
         profitable: revenue > 0,
+        projectedInvestmentReturn: projectedTick.investmentReturn,
+        projectedOverhead: projectedTick.overhead,
         hqProp,
     };
 }
@@ -10802,7 +10810,9 @@ function renderManageSubsidiariesCard() {
         const repColor = sub.reputation >= 40 ? C.accent : sub.reputation >= 25 ? C.yellow : C.orange;
 
         const stats = [
-            { label: 'Revenue', value: hfFmtBig(sub.revenue), color: sub.profitable ? C.greenBright : C.redDim },
+            { label: 'Projected Revenue', value: hfFmtBig(sub.revenue), color: sub.profitable ? C.greenBright : C.redDim },
+            { label: 'Projected Overhead', value: '-' + hfFmtBig(sub.projectedOverhead), color: C.redDim },
+            { label: 'Projected Investment Return', value: '+' + hfFmtBig(sub.projectedInvestmentReturn), color: C.greenBright },
             { label: 'Cash', value: hfFmtBig(sub.cash), color: C.text },
             { label: 'Debt', value: sub.debt > 0 ? hfFmtBig(sub.debt) : '$0', color: sub.debt > 0 ? C.orange : C.dim },
             { label: 'Reputation', value: sub.reputation + '/100', color: repColor },

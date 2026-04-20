@@ -1357,7 +1357,7 @@ const SUB_PARENT_REP_NEUTRAL = 50;       // at this rep the parent-rep multiplie
 const SUB_PARENT_REP_MIN = 0.3;          // min multiplier at rep 0
 const SUB_PARENT_REP_MAX = 1.7;          // max multiplier at rep 100
 
-async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
+async function processSubsidiaryRevenue(supabase, nation, currentTick) {
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
     const corpMap = Object.fromEntries(corps.map(c => [c.id, c]));
 
@@ -1375,7 +1375,22 @@ async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
         .eq('type', 'regional_hq')
         .eq('is_active', true);
 
-    if (hqErr || !hqs || hqs.length === 0) return;
+    if (hqErr) throw hqErr;
+    if (!hqs || hqs.length === 0) {
+        console.log(`[SubRevenue] ${nation.name}: processed 0 regional HQ(s) at tick ${currentTick}.`);
+        return { hqCount: 0, updatedCount: 0 };
+    }
+
+    const parentCorpIds = [...new Set(hqs.map(hq => hq.faction_id).filter(Boolean))];
+    let corpMap = {};
+    if (parentCorpIds.length > 0) {
+        const { data: parentCorps, error: corpErr } = await supabase
+            .from('factions')
+            .select('id, faction_name, corp_reputation')
+            .in('id', parentCorpIds);
+        if (corpErr) throw corpErr;
+        corpMap = Object.fromEntries((parentCorps || []).map(c => [c.id, c]));
+    }
 
     // Lazy-fetch parent corps that aren't in this nation's corps array.
     const missingParentIds = [...new Set(
@@ -1391,6 +1406,7 @@ async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
     }
 
     const baseRepMult = SUB_DEFAULT_REPUTATION / 100;
+    let updatedCount = 0;
     for (const hq of hqs) {
         const subCash = Number(hq.sub_cash ?? 0);
         const corp = corpMap[hq.faction_id];
@@ -1430,9 +1446,13 @@ async function processSubsidiaryRevenue(supabase, nation, corps, currentTick) {
         if (updErr) {
             console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name}:`, updErr.message);
         } else {
+            updatedCount += 1;
             console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, parentRep:${parentRep}, repMult:${parentRepMult.toFixed(2)}, overhead:${overhead.toLocaleString()}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
         }
     }
+
+    console.log(`[SubRevenue] ${nation.name}: processed ${hqs.length} regional HQ(s), updated ${updatedCount}, at tick ${currentTick}.`);
+    return { hqCount: hqs.length, updatedCount };
 }
 
 function parseRequiredForSectors(rawRequiredFor) {
@@ -2060,20 +2080,48 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             // Close any active insurance policies for this completed project
             try {
                 // Deal Flow policies (finance_active_loans)
-                const { data: insReq } = await supabase
+                const { data: insReqs, error: insReqErr } = await supabase
                     .from('finance_loan_requests')
                     .select('id')
                     .eq('request_type', 'insurance')
                     .eq('insured_contract_id', contract.id)
-                    .eq('status', 'funded')
-                    .maybeSingle();
-                if (insReq) {
-                    await supabase.from('finance_active_loans').update({
-                        status: 'repaid',
-                        completed_tick: currentTick,
-                    }).eq('request_id', insReq.id).eq('status', 'current');
-                    console.log(`[Projects] Deal flow insurance closed for completed project: ${contract.name}`);
+                    .eq('status', 'funded');
+                if (insReqErr) throw insReqErr;
+
+                const fundedRequestIds = (insReqs || []).map((r) => r.id).filter(Boolean);
+                let linkedPoliciesFound = 0;
+                let linkedPoliciesClosed = 0;
+
+                if (fundedRequestIds.length > 0) {
+                    const closableStatuses = ['current', 'late', 'delinquent'];
+                    const { data: linkedPolicies, error: linkedPoliciesErr } = await supabase
+                        .from('finance_active_loans')
+                        .select('id, status')
+                        .in('request_id', fundedRequestIds)
+                        .in('status', closableStatuses);
+                    if (linkedPoliciesErr) throw linkedPoliciesErr;
+
+                    linkedPoliciesFound = (linkedPolicies || []).length;
+
+                    if (linkedPoliciesFound > 0) {
+                        const { data: updatedPolicies, error: closeErr } = await supabase
+                            .from('finance_active_loans')
+                            .update({
+                                status: 'repaid',
+                                completed_tick: currentTick,
+                            })
+                            .in('request_id', fundedRequestIds)
+                            .in('status', closableStatuses)
+                            .select('id');
+                        if (closeErr) throw closeErr;
+                        linkedPoliciesClosed = (updatedPolicies || []).length;
+                    }
                 }
+
+                console.log(
+                    `[Projects] Insurance cleanup for completed project ${contract.name} (${contract.id}): ` +
+                    `${fundedRequestIds.length} funded request(s), ${linkedPoliciesFound} closable policy/policies found, ${linkedPoliciesClosed} closed`
+                );
 
                 // Refund performance bond if one exists
                 if (contract.bond_id) {
@@ -2958,11 +3006,15 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
         .from('finance_active_loans')
         .select('*, finance_loan_requests!inner(request_type, issuer_nation_id)')
         .eq('nation_id', nationId)
-        .in('status', ['current', 'late', 'delinquent']);
+        .in('status', ['current', 'late', 'delinquent'])
+        .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
 
     if (!activeLoans || activeLoans.length === 0) return results;
 
     for (const loan of activeLoans) {
+        // Idempotency guard: do not process the same loan twice in one tick.
+        if (Number(loan.last_payment_tick) === Number(currentTick)) continue;
+
         const requestType = loan.finance_loan_requests?.request_type || 'loan';
 
         // Insurance: collect premium from policyholder, credit to insurer
@@ -2970,36 +3022,48 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             const premium = Number(loan.monthly_payment) || 0;
             if (premium <= 0) continue;
 
-            // Deduct premium from policyholder (borrower)
+            // Deduct premium from policyholder (borrower) only when full premium is affordable.
             const { data: holder } = await supabase.from('factions')
                 .select('corp_cash_reserves').eq('id', loan.borrower_faction_id).single();
-            if (holder) {
-                var holderCash = Number(holder.corp_cash_reserves || 0);
+            const holderCash = Number(holder?.corp_cash_reserves || 0);
+
+            if (holderCash >= premium) {
                 var { error: holderErr } = await supabase.from('factions').update({
-                    corp_cash_reserves: Math.max(0, holderCash - premium),
+                    corp_cash_reserves: holderCash - premium,
                 }).eq('id', loan.borrower_faction_id);
                 if (holderErr) console.warn('[Insurance] Premium deduction failed:', holderErr.message);
+
+                // Credit premium to insurer (lender)
+                const { data: insurer } = await supabase.from('factions')
+                    .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
+                if (insurer) {
+                    var { error: insurerErr } = await supabase.from('factions').update({
+                        corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium,
+                    }).eq('id', loan.lender_faction_id);
+                    if (insurerErr) console.warn('[Insurance] Premium credit failed:', insurerErr.message);
+                }
+
+                // Update payment tracking (once per tick).
+                var { error: trackErr } = await supabase.from('finance_active_loans').update({
+                    payments_made: (loan.payments_made || 0) + 1,
+                    total_paid: (Number(loan.total_paid) || 0) + premium,
+                    total_interest_paid: (Number(loan.total_interest_paid) || 0) + premium,
+                    payments_missed: 0,
+                    status: 'current',
+                    last_payment_tick: currentTick,
+                }).eq('id', loan.id);
+                if (trackErr) console.warn('[Insurance] Payment tracking update failed:', trackErr.message);
+
+                results.payments++;
+            } else {
+                const newMissed = (loan.payments_missed || 0) + 1;
+                const newStatus = newMissed >= 3 ? 'delinquent' : 'late';
+                const { error: missErr } = await supabase.from('finance_active_loans').update({
+                    payments_missed: newMissed,
+                    status: newStatus,
+                }).eq('id', loan.id);
+                if (missErr) console.warn('[Insurance] Missed premium update failed:', missErr.message);
             }
-
-            // Credit premium to insurer (lender)
-            const { data: insurer } = await supabase.from('factions')
-                .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
-            if (insurer) {
-                var { error: insurerErr } = await supabase.from('factions').update({
-                    corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium,
-                }).eq('id', loan.lender_faction_id);
-                if (insurerErr) console.warn('[Insurance] Premium credit failed:', insurerErr.message);
-            }
-
-            // Update payment tracking
-            var { error: trackErr } = await supabase.from('finance_active_loans').update({
-                payments_made: (loan.payments_made || 0) + 1,
-                total_paid: (Number(loan.total_paid) || 0) + premium,
-                last_payment_tick: currentTick,
-            }).eq('id', loan.id);
-            if (trackErr) console.warn('[Insurance] Payment tracking update failed:', trackErr.message);
-
-            results.payments++;
             continue;
         }
 
@@ -3617,61 +3681,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     summary.construction.push({ nation: nation.name, type: 'expired_events', data: expiredResults });
                 }
 
-                // ── Insurance Premium Collection ─────────────────────────
-                try {
-                    const { data: activePolicies } = await supabase
-                        .from('finance_active_loans')
-                        .select('id, borrower_faction_id, lender_faction_id, monthly_payment, payments_made, total_paid, total_interest_paid, request_id, finance_loan_requests!inner(request_type, insured_contract_id)')
-                        .eq('status', 'current')
-                        .eq('nation_id', nation.id)
-                        .eq('finance_loan_requests.request_type', 'insurance');
-
-                    for (const policy of (activePolicies || [])) {
-                        const premium = policy.monthly_payment || 0;
-                        if (premium <= 0) continue;
-
-                        // Find the insured corp (the one who requested insurance)
-                        const contractId = policy.finance_loan_requests?.insured_contract_id;
-                        if (!contractId) continue;
-
-                        const { data: insReq } = await supabase
-                            .from('finance_loan_requests')
-                            .select('requesting_faction_id')
-                            .eq('id', policy.request_id)
-                            .single();
-                        if (!insReq) continue;
-
-                        const insuredFactionId = insReq.requesting_faction_id;
-
-                        // Deduct premium from insured corp
-                        const { data: insured } = await supabase.from('factions')
-                            .select('corp_cash_reserves').eq('id', insuredFactionId).single();
-                        if (insured) {
-                            await supabase.from('factions').update({
-                                corp_cash_reserves: Math.max(0, Number(insured.corp_cash_reserves || 0) - premium)
-                            }).eq('id', insuredFactionId);
-                        }
-
-                        // Credit premium to insurer
-                        const { data: insurer } = await supabase.from('factions')
-                            .select('corp_cash_reserves').eq('id', policy.lender_faction_id).single();
-                        if (insurer) {
-                            await supabase.from('factions').update({
-                                corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium
-                            }).eq('id', policy.lender_faction_id);
-                        }
-
-                        // Track premium payment on the policy record
-                        await supabase.from('finance_active_loans').update({
-                            payments_made: (policy.payments_made || 0) + 1,
-                            total_paid: (policy.total_paid || 0) + premium,
-                            total_interest_paid: (policy.total_interest_paid || 0) + premium,
-                        }).eq('id', policy.id);
-                    }
-                } catch (insErr) {
-                    console.warn(`[Insurance] Premium collection error for ${nation.name}:`, insErr.message);
-                }
-
                 // ── Permit Lifecycle (pending→active, expiry) ─────────────
             try {
                 // Advance pending permits to active
@@ -3778,6 +3787,17 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 summary.errors.push({ nation: nation.name, sector: 'construction', error: String(constructionErr) });
             }
 
+            // ── Subsidiary Revenue (GDP-based growth/loss per subsidiary) ──
+            try {
+                const subRevenueSummary = await processSubsidiaryRevenue(supabase, nation, currentTick);
+                if (corps.length === 0) {
+                    console.log(`[advance-corp-tick] ${nation.name}: 0 local corporations, subsidiary path processed ${subRevenueSummary?.hqCount || 0} regional HQ(s).`);
+                }
+            } catch (subRevErr) {
+                console.error(`[advance-corp-tick] Subsidiary revenue failed for ${nation.name} (non-fatal):`, subRevErr);
+                summary.errors.push({ nation: nation.name, sector: 'subsidiary_revenue', error: String(subRevErr) });
+            }
+
             // ── Corp-specific processing (requires local corporations) ──
             if (corps.length === 0) continue;
             summary.corpsProcessed += corps.length;
@@ -3789,14 +3809,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (propEffErr) {
                 console.error(`[advance-corp-tick] Property effects failed for ${nation.name} (non-fatal):`, propEffErr);
                 summary.errors.push({ nation: nation.name, sector: 'property_effects', error: String(propEffErr) });
-            }
-
-            // ── Subsidiary Revenue (GDP-based growth/loss per subsidiary) ──
-            try {
-                await processSubsidiaryRevenue(supabase, nation, corps, currentTick);
-            } catch (subRevErr) {
-                console.error(`[advance-corp-tick] Subsidiary revenue failed for ${nation.name} (non-fatal):`, subRevErr);
-                summary.errors.push({ nation: nation.name, sector: 'subsidiary_revenue', error: String(subRevErr) });
             }
 
             // ── Corporation Monthly Income ──────────────────────────────
@@ -4176,6 +4188,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     console.warn(`[advance-corp-tick] Failed to fetch fresh corp cash for ${corp.faction_name}:`, corpCashErr.message);
                 }
                 let corpCashRunning = Number(corpCashRow?.corp_cash_reserves ?? corp.corp_cash_reserves ?? 0);
+                const cashAtTickStart = corpCashRunning;
                 console.log('[advance-corp-tick] corp_cash_tick_start', {
                     faction_id: corp.id,
                     faction_name: corp.faction_name,
@@ -4578,6 +4591,21 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     tick: currentTick,
                     after_balance: corpCashRunning,
                 });
+                const cashDelta = corpCashRunning - cashAtTickStart;
+                const nonPnlCashMovements = null;
+                const { error: cashHistoryErr } = await supabase
+                    .from('corp_cash_history')
+                    .upsert({
+                        faction_id: corp.id,
+                        tick: currentTick,
+                        cash_start: cashAtTickStart,
+                        cash_end: corpCashRunning,
+                        cash_delta: cashDelta,
+                        non_pnl_cash_movements: nonPnlCashMovements,
+                    }, { onConflict: 'faction_id,tick' });
+                if (cashHistoryErr) {
+                    console.warn(`[advance-corp-tick] corp_cash_history upsert failed for ${corp.faction_name}:`, cashHistoryErr.message);
+                }
             } catch (vesselErr) {
                 console.error(`[advance-corp-tick] Vessel decay failed for ${corp.faction_name} (non-fatal):`, vesselErr);
             }
