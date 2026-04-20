@@ -352,6 +352,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
+import { computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -519,6 +520,56 @@ async function loadDealFlow() {
         }
     }
 
+    // Batch-fetch valuation inputs for every corp currently raising equity.
+    // Investors want to judge: is the raise priced above or below fair value?
+    // Implied valuation is arithmetic (amount / stake); actual market valuation
+    // requires cash + loans + properties + vessels + receivables. Fetched once
+    // per Deal Flow load — a handful of raisers at a time, so the joins are cheap.
+    const equityRaiserIds = [...new Set((requests || [])
+        .filter(r => r.request_type === 'equity' && r.requesting_faction?.id)
+        .map(r => r.requesting_faction.id))];
+    const equityValuations = {};
+    if (equityRaiserIds.length > 0) {
+        const [propsRes, vesselsRes, receivablesRes, loansRes] = await Promise.all([
+            _supabase.from('corp_properties')
+                .select('faction_id, purchase_price, condition')
+                .in('faction_id', equityRaiserIds),
+            _supabase.from('corp_vessels')
+                .select('faction_id, purchase_price, condition, built_at_tick, status')
+                .in('faction_id', equityRaiserIds),
+            _supabase.from('finance_active_loans')
+                .select('lender_faction_id, principal, remaining_principal, finance_loan_requests!inner(request_type)')
+                .in('lender_faction_id', equityRaiserIds)
+                .in('status', ['current', 'late', 'delinquent']),
+            _supabase.from('factions')
+                .select('id, corp_loans')
+                .in('id', equityRaiserIds),
+        ]);
+        const propsBy = {};
+        for (const p of (propsRes.data || [])) (propsBy[p.faction_id] ||= []).push(p);
+        const vesselsBy = {};
+        for (const v of (vesselsRes.data || [])) (vesselsBy[v.faction_id] ||= []).push(v);
+        const recBy = {};
+        for (const r of (receivablesRes.data || [])) (recBy[r.lender_faction_id] ||= []).push(r);
+        const loansBy = {};
+        for (const f of (loansRes.data || [])) loansBy[f.id] = Number(f.corp_loans || 0);
+
+        for (const fid of equityRaiserIds) {
+            const req = (requests || []).find(r => r.request_type === 'equity' && r.requesting_faction?.id === fid);
+            const corp = req?.requesting_faction;
+            if (!corp) continue;
+            const receivablesTotal = computeFinanceReceivableValue(recBy[fid] || []).total;
+            equityValuations[fid] = computeCorpValuation({
+                cash: Number(corp.corp_cash_reserves || 0),
+                loans: loansBy[fid] || 0,
+                properties: propsBy[fid] || [],
+                vessels: vesselsBy[fid] || [],
+                financeReceivables: receivablesTotal,
+                currentTick: shard?.current_tick || 0,
+            });
+        }
+    }
+
     const subsector = (faction.corp_subsector || '').toLowerCase();
 
     dfDeals = (requests || []).filter(req => {
@@ -579,6 +630,10 @@ async function loadDealFlow() {
                 equityPct: Number(req.equity_pct) || 0,
                 series: req.series || '?',
                 purpose: req.purpose || 'Capital raise',
+                marketValuation: equityValuations[corp?.id] || 0,
+                impliedValuation: (Number(req.equity_pct) > 0)
+                    ? Math.round((req.amount || 0) / (Number(req.equity_pct) / 100))
+                    : 0,
                 reputation: rep,
                 stability: stab,
                 // Equity risk is reputation-driven — no collateral to fall back on.
@@ -866,8 +921,28 @@ function renderDealFlow() {
                 } else if (d.type === 'EQUITY') {
                     const repColor = d.reputation >= 60 ? '#5c5' : d.reputation >= 35 ? '#ca5' : '#c84';
                     const stabColor = d.stability >= 50 ? '#5c5' : d.stability >= 30 ? '#ca5' : '#c84';
+                    // Valuation comparison: implied (from raise terms) vs
+                    // market (from corp-valuation helper). If market is <=0
+                    // the corp is distressed — premium math is meaningless.
+                    const marketVal = Number(d.marketValuation || 0);
+                    const impliedVal = Number(d.impliedValuation || 0);
+                    const distressed = marketVal <= 0;
+                    let premiumPct = null;
+                    if (!distressed && impliedVal > 0) {
+                        premiumPct = Math.round(((impliedVal - marketVal) / marketVal) * 100);
+                    }
+                    const premiumColor = premiumPct == null ? '#6a6660'
+                        : premiumPct <= 0 ? '#5c5'
+                        : premiumPct <= 25 ? '#ca5'
+                        : '#c55';
+                    const premiumText = premiumPct == null ? 'N/A'
+                        : Math.abs(premiumPct) > 999 ? (premiumPct > 0 ? '>+999%' : '<-999%')
+                        : (premiumPct >= 0 ? '+' : '') + premiumPct + '%';
                     html += `<div class="df-detail-row"><span class="df-detail-label">SERIES</span><span class="df-detail-value" style="color:#c89a4a;font-weight:700;">Series ${escapeHtml(d.series)}</span></div>`;
                     html += `<div class="df-detail-row"><span class="df-detail-label">STAKE OFFERED</span><span class="df-detail-value" style="color:#c89a4a;font-weight:700;">${d.equityPct}%</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label" title="Cash + property + equipment + receivables − debt, times 1.30 premium. Same formula used for bankruptcy payout and bailout valuation.">MARKET VALUATION</span><span class="df-detail-value" style="color:${distressed ? '#c55' : 'var(--panel-text)'};">${distressed ? 'DISTRESSED' : fmtMoney(marketVal)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label" title="Raise amount / stake offered. The valuation the raise terms imply.">IMPLIED VALUATION</span><span class="df-detail-value">${fmtMoney(impliedVal)}</span></div>`;
+                    html += `<div class="df-detail-row"><span class="df-detail-label" title="How much above (premium) or below (discount) fair market value the raise terms imply. Negative = you're buying cheap.">PREMIUM / DISCOUNT</span><span class="df-detail-value" style="color:${premiumColor};font-weight:700;">${premiumText}</span></div>`;
                     html += `<div class="df-detail-row"><span class="df-detail-label">CORP REPUTATION</span><span class="df-detail-value" style="color:${repColor};">${d.reputation}/100</span></div>`;
                     html += `<div class="df-detail-row"><span class="df-detail-label">NATION STABILITY</span><span class="df-detail-value" style="color:${stabColor};">${d.stability}/100</span></div>`;
                 } else if (d.type === 'SECONDARY') {
