@@ -3093,14 +3093,20 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 }
             }
 
-            // Always tick the counters, even on a $0 dividend, so the position
-            // reflects that a tick was processed.
+            // Track dividend history. payments_made counts ACTUAL dividend
+            // events (only when actualPayout > 0) — this is what the investor
+            // portfolio's "N DIVIDENDS PAID" display reads. $0 loss-ticks don't
+            // count, so the number reflects real distributions. last_payment_*
+            // fields always capture the most recent cycle (amount can be 0)
+            // so the UI can show "LAST: $X" per position.
+            const dividendOccurred = actualPayout > 0;
             var { error: equityTrackErr } = await supabase.from('finance_active_loans').update({
                 total_paid: (Number(loan.total_paid) || 0) + actualPayout,
                 payments_made: (loan.payments_made || 0) + 1,
                 payments_missed: 0,
                 status: 'current',
                 last_payment_tick: currentTick,
+                last_payment_amount: actualPayout,
             }).eq('id', loan.id);
             if (equityTrackErr) console.warn('[Equity] Position tracking update failed:', equityTrackErr.message);
 

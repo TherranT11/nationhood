@@ -1792,7 +1792,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
             const totalPaid = capTable.reduce((s, h) => s + (h.paidToDate || 0), 0);
             return `<div style="padding:8px 14px;border-top:1px solid var(--border-0);">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-dim);text-transform:uppercase;">Cap Table</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-dim);text-transform:uppercase;">Private Investment</span>
                     <span style="font-family:var(--font-mono);font-size:8px;color:#c89a4a;">${totalStake.toFixed(2)}% STAKED &middot; ${fmtMoney(totalPaid)} PAID TO DATE</span>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 50px 40px 1fr 1fr;gap:4px;font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;padding:0 2px 3px;border-bottom:1px solid var(--border-hair);">
@@ -1920,11 +1920,16 @@ async function loadLoansSection() {
     if (!container) return;
 
     try {
+    // Equity requests + accepted equity positions live in the same tables
+    // as loans (finance_loan_requests + finance_active_loans) but are
+    // rendered in the Cap Table / Private Investment section, not here.
+    // Filter them out so the LOANS panel shows actual debt only.
     const { data: requests, error: reqErr } = await _supabase
         .from('finance_loan_requests')
         .select('*, finance_loan_offers!request_id(*)')
         .eq('requesting_faction_id', faction.id)
         .in('status', ['open', 'funded'])
+        .neq('request_type', 'equity')
         .order('created_tick', { ascending: false });
     if (reqErr) console.error('[Loans] Request query error:', reqErr.message);
 
@@ -1933,6 +1938,7 @@ async function loadLoansSection() {
         .select('*')
         .eq('borrower_faction_id', faction.id)
         .in('status', ['current', 'late', 'delinquent'])
+        .is('equity_pct', null)
         .order('started_tick', { ascending: false });
     if (loanErr) console.error('[Loans] Active loans query error:', loanErr.message);
 

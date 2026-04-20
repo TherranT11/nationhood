@@ -2935,11 +2935,16 @@ async function loadLoansSection() {
     if (!container) return;
 
     try {
+    // Equity requests + accepted equity positions live in the same tables
+    // as loans (finance_loan_requests + finance_active_loans) but are
+    // rendered in the Cap Table / Private Investment section, not here.
+    // Filter them out so the LOANS panel shows actual debt only.
     const { data: requests, error: reqErr } = await _supabase
         .from('finance_loan_requests')
         .select('*, finance_loan_offers!request_id(*)')
         .eq('requesting_faction_id', faction.id)
         .in('status', ['open', 'funded'])
+        .neq('request_type', 'equity')
         .order('created_tick', { ascending: false });
     if (reqErr) console.error('[Loans] Request query error:', reqErr.message);
 
@@ -2948,6 +2953,7 @@ async function loadLoansSection() {
         .select('*, finance_loan_requests!inner(request_type, insured_contract_id)')
         .eq('borrower_faction_id', faction.id)
         .in('status', ['current', 'late', 'delinquent'])
+        .is('equity_pct', null)
         .order('started_tick', { ascending: false });
     if (loanErr) console.error('[Loans] Active loans query error:', loanErr.message);
 
