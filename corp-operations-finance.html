@@ -1315,7 +1315,7 @@ function renderActivePortfolio() {
     const loanInterestRevenueTotal = apPortfolio
         .filter(p => p.type === 'LOAN')
         .reduce((s, p) => s + (p.interestRevenue || 0), 0);
-    const alertCount = apPortfolio.filter(p => p.alert).length;
+    const alertCount = apPortfolio.filter(p => p.hasAlert).length;
 
     // Header
     let html = `<div class="df-header">
@@ -1387,7 +1387,7 @@ function renderActivePortfolio() {
         const isExp = apExpanded === globalIdx;
         const tm = DF_TYPE_META[d.type];
         const sm = AP_STATUS_META[d.status] || AP_STATUS_META.CURRENT;
-        const hasAlert = !!d.alert;
+        const hasAlert = d.hasAlert === true;
         const elapsed = d.paymentsMade || 0;
         const term = d.term || 1;
         const pctComplete = Math.round((elapsed / term) * 100);
@@ -1461,7 +1461,7 @@ function renderActivePortfolio() {
 
         // Alert banner
         if (hasAlert) {
-            html += `<div class="ap-deal__alert" style="background:${sm.color}08;border:1px solid ${sm.color}20;color:${sm.color};">${escapeHtml(d.alert)}</div>`;
+            html += `<div class="ap-deal__alert" style="background:${sm.color}08;border:1px solid ${sm.color}20;color:${sm.color};">${escapeHtml(d.alertMsg || '')}</div>`;
         }
 
         // Expanded details
@@ -3132,7 +3132,7 @@ async function loadActivePortfolio() {
         status: loan.status.toUpperCase(),
         collateral: loan.collateral_type,
         purpose: loan.purpose || '',
-        alert: loan.status === 'late' || loan.status === 'delinquent',
+        hasAlert: loan.status === 'late' || loan.status === 'delinquent',
         alertLevel: loan.status === 'delinquent' ? 'red' : loan.status === 'late' ? 'orange' : null,
         alertMsg: loan.status === 'delinquent'
             ? `${loan.payments_missed} missed payments. Default imminent.`
