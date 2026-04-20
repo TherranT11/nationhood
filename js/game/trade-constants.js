@@ -1015,9 +1015,12 @@ export function calculateExportCapacity(nation, sector, opts) {
     // ── Domestic demand: feed your own people/industry first ──
     // Mirrors grossDemand from calculateImportDemand so both sides of trade
     // use consistent demand estimates. Only the surplus is available for export.
-    // Domestic consumption always scales with GDP (even for resource sectors —
-    // a rich nation consumes more fuel internally than a poor one).
-    var demandGdpMod = Math.sqrt(gdp / cfg.BASELINE_GDP);
+    //
+    // Resource-sector demand is pinned (no GDP scaling) to match production,
+    // which is also pinned at gdpModifier = 1.0 above. Otherwise demand
+    // grows with economic size while production stays fixed, and large-GDP
+    // nations get clamped to the floor regardless of endowment.
+    var demandGdpMod = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;
     var domesticDemand = 0;
@@ -1095,7 +1098,10 @@ export function calculateImportDemand(nation, sector, opts) {
 
     var cfg = TRADE_CONFIG;
     var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = Math.sqrt(gdp / cfg.BASELINE_GDP);
+    // Resource sectors pin at 1.0 to stay consistent with the export-side
+    // (calculateExportCapacity), so gross demand for fuel/minerals does
+    // not scale with GDP while production is also pinned.
+    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;   // stat normalizer: divide 0-100 stats by 5
 
