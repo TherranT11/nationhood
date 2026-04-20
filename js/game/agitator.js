@@ -130,18 +130,9 @@ export function generateAgitatorPool(nationId, nationName) {
 }
 
 // ═══════════════════════════════════════════════════
-// OPPOSITION CHECK
+// GOVERNING STATUS
 // ═══════════════════════════════════════════════════
 
-/**
- * Determine if a faction is in opposition (not in the current governing coalition).
- * Queries the active administration's coalition_parties array.
- *
- * @param {object} supabase
- * @param {string} nationId
- * @param {string} factionId
- * @returns {Promise<{isOpposition: boolean, administration: object|null}>}
- */
 /**
  * Determines a party's political role relative to the current government.
  * Single source of truth for GOVERNING / OPPOSITION / LOYAL / DISSIDENT

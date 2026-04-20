@@ -21,7 +21,8 @@ let _state = null;
 
 // All fetched data stored here for rendering phases
 export let _overview = {
-    isOpposition: true,
+    isGoverning: false,
+    statusLabel: 'OPPOSITION',  // GOVERNING | OPPOSITION | LOYAL | DISSIDENT
     administration: null,       // active administration row
     governanceScore: 0,
     governanceDeltas: [],       // { key, start, now, delta, isGood }
@@ -217,7 +218,6 @@ export async function initPartyOverview(supabase, state, containerId) {
 
         // Store everything
         _overview = {
-            isOpposition: governingResult.isOpposition,
             isGoverning: governingResult.isGoverning,
             statusLabel: governingResult.label,
             administration: admin,
