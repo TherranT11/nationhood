@@ -2961,16 +2961,6 @@ async function processVesselOrderDeliveries(supabase, currentTick) {
 async function processFinanceLoans(supabase, nationId, currentTick) {
     const results = { expired: 0, payments: 0, defaults: 0 };
 
-    // Check for Financial Sector Deregulation Act
-    const { data: deregLaw } = await supabase
-        .from('active_laws')
-        .select('id, policy:policies!policy_id(policy_key)')
-        .eq('nation_id', nationId)
-        .limit(100);
-    const hasDeregulation = (deregLaw || []).some(l =>
-        l.policy?.policy_key?.startsWith('financial_sector_deregulation'));
-    const interestBonus = hasDeregulation ? 0.10 : 0; // +10% interest income
-
     // 1. Expire unfunded loan requests past their deadline
     const { data: expiredReqs } = await supabase
         .from('finance_loan_requests')
@@ -3204,19 +3194,16 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 corp_cash_reserves: borrowerCash - payment
             }).eq('id', loan.borrower_faction_id);
 
-            // Lender receives payment + deregulation interest bonus
-            const deregBonus = Math.round(interestPortion * interestBonus);
-            const lenderReceives = payment + deregBonus;
             const { data: lender } = await supabase
                 .from('factions')
                 .select('corp_cash_reserves')
                 .eq('id', loan.lender_faction_id)
                 .single();
             await supabase.from('factions').update({
-                corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + lenderReceives
+                corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + payment
             }).eq('id', loan.lender_faction_id);
 
-            const loanUpdate = {
+            await supabase.from('finance_active_loans').update({
                 total_paid: newTotalPaid,
                 total_interest_paid: newInterestPaid,
                 remaining_principal: newRemainingPrincipal,
@@ -3225,12 +3212,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 last_payment_tick: currentTick,
                 status: isRepaid ? 'repaid' : 'current',
                 completed_tick: isRepaid ? currentTick : null,
-            };
-            if (loan.original_principal == null && originalPrincipal > 0) {
-                loanUpdate.original_principal = originalPrincipal;
-            }
-
-            await supabase.from('finance_active_loans').update(loanUpdate).eq('id', loan.id);
+            }).eq('id', loan.id);
 
             results.payments++;
         } else {
