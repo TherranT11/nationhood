@@ -771,13 +771,20 @@ function dfSetFilter(type) {
 
 function dfSelectDeal(idx) {
     dfSelected = dfSelected === idx ? -1 : idx;
-    // Lazy-load equity request discussion on expand. Cached by requestId so
-    // a second expand of the same card doesn't re-fetch.
+    // Lazy-load + realtime-subscribe equity discussion on expand. Cached
+    // per requestId so a second expand of the same card doesn't re-fetch.
+    // Subscription is scoped to the currently-selected card — switching
+    // cards or collapsing unsubscribes the previous channel.
     if (dfSelected >= 0) {
         const d = dfDeals[dfSelected];
-        if (d && d.type === 'EQUITY' && d.requestId && !dfDiscussions[d.requestId]) {
-            dfLoadDiscussion(d.requestId);
+        if (d && d.type === 'EQUITY' && d.requestId) {
+            if (!dfDiscussions[d.requestId]) dfLoadDiscussion(d.requestId);
+            dfSubscribeDiscussion(d.requestId);
+        } else {
+            dfUnsubscribeDiscussion();
         }
+    } else {
+        dfUnsubscribeDiscussion();
     }
     renderDealFlow();
 }
@@ -832,6 +839,34 @@ function dfCanPostDiscussion(deal) {
     // Raiser posts on their own request; Investment corps post on any.
     if (deal.requestingFactionId === faction.id) return true;
     return (faction.corp_subsector || '').toLowerCase() === 'investment';
+}
+
+// Realtime subscription: auto-refetch the thread whenever anyone else
+// INSERTs a message to the same request. Scoped per-request — only the
+// currently-expanded card's channel is active.
+let _dfDiscSub = null;
+let _dfDiscSubRequestId = null;
+
+function dfSubscribeDiscussion(requestId) {
+    if (_dfDiscSubRequestId === requestId && _dfDiscSub) return; // already on this channel
+    dfUnsubscribeDiscussion();
+    _dfDiscSubRequestId = requestId;
+    _dfDiscSub = _supabase.channel(`eqdisc-${requestId}`)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'equity_request_discussions',
+            filter: `request_id=eq.${requestId}`,
+        }, () => dfLoadDiscussion(requestId))
+        .subscribe();
+}
+
+function dfUnsubscribeDiscussion() {
+    if (_dfDiscSub) {
+        try { _supabase.removeChannel(_dfDiscSub); } catch (_) {}
+        _dfDiscSub = null;
+        _dfDiscSubRequestId = null;
+    }
 }
 
 window.dfPostDiscussion = dfPostDiscussion;
