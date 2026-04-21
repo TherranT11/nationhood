@@ -2263,6 +2263,7 @@ async function renderNationPage(nation) {
     // ---- Tab bar ----
     h += '<div class="nation-tab-bar">';
     h += '<button class="nation-tab' + (_activeNationTab === 'statistics' ? ' active' : '') + '" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
+    h += '<button class="nation-tab' + (_activeNationTab === 'profile' ? ' active' : '') + '" data-tab="profile" onclick="switchNationTab(\'profile\')">Nation</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'immigration' ? ' active' : '') + '" data-tab="immigration" onclick="switchNationTab(\'immigration\')">Immigration</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'illegal' ? ' active' : '') + '" data-tab="illegal" onclick="switchNationTab(\'illegal\')">Illegal Immigration</button>';
     h += '</div>';
@@ -2279,6 +2280,12 @@ async function renderNationPage(nation) {
     }
 
     h += '</div>'; // end statistics tab
+
+    // ---- Nation Profile tab (embedded nation-info.html) ----
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-profile"' + (_activeNationTab === 'profile' ? '' : ' style="display:none;"') + '>';
+    var _profileSlug = String(nation.name || '').toLowerCase().replace(/\s+/g, '');
+    h += '<iframe id="nation-profile-frame" src="nation-info.html?name=' + encodeURIComponent(_profileSlug) + '&embedded=1" style="width:100%;min-height:85vh;border:0;background:var(--n-bg);display:block;"></iframe>';
+    h += '</div>'; // end profile tab
 
     // ---- Immigration tab ----
     h += '<div class="nation-body nation-tab-content" id="nation-tab-immigration"' + (_activeNationTab === 'immigration' ? '' : ' style="display:none;"') + '>';
