@@ -2834,7 +2834,9 @@ const FEMALE_NAMES = new Set([
     'Hanneke', 'Ilse', 'Jobke', 'Karlijn', 'Lieselotte', 'Maaike', 'Nienke', 'Roos',
     // Vostia
     'Dragana', 'Svetlana', 'Jelena', 'Milica', 'Danica', 'Zora', 'Radmila',
-    'Snežana', 'Vesna'
+    'Snežana', 'Vesna',
+    // Dravka
+    'Afërdita', 'Bora', 'Era', 'Luljeta', 'Teuta'
 ]);
 
 export function isFemaleName(firstName) {
@@ -2863,6 +2865,31 @@ export const ALMAKIR_LAST_NAMES = [
     'Al-Rantisi','Al-Banna','Al-Khatour',
 ];
 
+// Dravka (Albanian) name pools
+const DRAVKA_NATIONS = ['Dravka'];
+export const DRAVKA_FIRST_NAMES = [
+    // Male
+    'Agon','Altin','Arban','Ardian','Ardit','Arian','Arlind','Armend','Artan','Auron',
+    'Bardhyl','Besart','Besmir','Besnik','Bledar','Blerim','Burim','Dalmat','Dardan','Dasnor',
+    'Dëfrim','Dorian','Drilon','Dritan','Edon','Endrit','Enver','Erion','Ermal','Ervin',
+    'Fisnik','Flamur','Genti','Gezim','Ilir','Jetmir','Kastriot','Kreshnik','Luan','Mirlind',
+    'Pajtim','Saimir','Skerdilaid','Taulant','Vigan',
+    // Female
+    'Afërdita','Bora','Era','Luljeta','Teuta',
+];
+export const DRAVKA_LAST_NAMES = [
+    'Abazi','Ademi','Agolli','Ahmeti','Alia','Aliti','Asllani','Bajrami','Bakalli','Bala',
+    'Balaj','Bardhi','Beqiri','Berisha','Biba','Bisha','Brahimi','Buda','Bushaj','Bushati',
+    'Caka','Cami','Cani','Cela','Dajaku','Dauti','Deda','Dedaj','Demiri','Dervishi',
+    'Dobi','Doda','Dragusha','Duka','Elezi','Fejzu','Ferati','Frashëri','Gashi','Gega',
+    'Gjoni','Gjoka','Gurakuqi','Hadergjonaj','Hajdari','Halili','Hamiti','Haradinaj','Hasani','Hoti',
+    'Hoxha','Ismaili','Jahjaga','Jashari','Kadiu','Kastrati','Kelmendi','Kodra','Kola','Konica',
+    'Krasniqi','Kuqi','Kurti','Leka','Lekaj','Limaj','Luli','Lumi','Malo','Marku',
+    'Mazreku','Mehmeti','Meidani','Meksi','Meta','Morina','Muka','Murati','Musliu','Mustafa',
+    'Myftiu','Nano','Ndreu','Osmani','Pajaziti','Pasha','Prenga','Qosja','Rama','Rexhepi',
+    'Rugova','Sadiku','Sejdiu','Selimi','Shala','Shehu','Smajlaj','Spahiu','Tafa','Zaimi',
+];
+
 export function getNationNames(nationName) {
     if (AVELIA_NATIONS.includes(nationName)) {
         return { firstNames: AVELIA_FIRST_NAMES, lastNames: AVELIA_LAST_NAMES };
@@ -2878,6 +2905,9 @@ export function getNationNames(nationName) {
     }
     if (ALMAKIR_NATIONS.includes(nationName)) {
         return { firstNames: ALMAKIR_FIRST_NAMES, lastNames: ALMAKIR_LAST_NAMES };
+    }
+    if (DRAVKA_NATIONS.includes(nationName)) {
+        return { firstNames: DRAVKA_FIRST_NAMES, lastNames: DRAVKA_LAST_NAMES };
     }
     return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
 }
