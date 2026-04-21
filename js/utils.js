@@ -67,6 +67,24 @@ export function formatCurrencyShort(val) {
 }
 
 /**
+ * Compact money format used across the corp pages — "$1.50B" / "$23.4M"
+ * / "$120.0k" / "$850". Two-decimal M/B output, one-decimal k, raw
+ * localeString under a thousand. Originally hfFmtBig() inside the
+ * Hire/Fire prelude on corp-operations.html; promoted here when Expansion
+ * + Actions got split into their own pages and the helper turned out to
+ * have callers outside the HF subsystem (bid assembly, fleet actions,
+ * insurance, ship market, etc.).
+ */
+export function hfFmtBig(n) {
+    const abs = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(2) + 'B';
+    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(2) + 'M';
+    if (abs >= 1e3) return sign + '$' + (abs / 1e3).toFixed(1) + 'k';
+    return sign + '$' + abs.toLocaleString();
+}
+
+/**
  * Format a budget value with compact suffixes ($1.2T, $500M, $30K).
  */
 export function fmtBudgetCurrency(val) {

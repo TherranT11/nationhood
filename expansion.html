@@ -1,0 +1,2821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expansion | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/corp-topbar.css">
+<link rel="stylesheet" href="css/corp-light-theme.css">
+<link rel="stylesheet" href="css/corp-sub-dashboard.css">
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
+  --red-faint: rgba(217,83,79,0.08);
+  --red-border: rgba(217,83,79,0.18);
+  --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --teal: #5aafa5;
+  --teal-faint: rgba(90,175,165,0.08);
+  --teal-border: rgba(90,175,165,0.18);
+  --gold: #c8a832;
+  --gold-faint: rgba(200,168,50,0.08);
+  --gold-border: rgba(200,168,50,0.20);
+  --orange: #c88444;
+  --orange-faint: rgba(200,132,68,0.08);
+  --orange-border: rgba(200,132,68,0.18);
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-serif: 'IBM Plex Serif', Georgia, serif;
+  /* Panel palette — flips under body.light-mode. Dark defaults; light override below. */
+  --bg-card: #1a1a17;
+  --bg-panel: #252525;
+  --panel-main: #1f1f1a;
+  --panel-border: rgba(255,255,255,0.08);
+  --panel-text: #c4c2b8;
+  --panel-muted: #888;
+  --border-main: rgba(255,255,255,0.12);
+}
+body.light-mode {
+  --bg-card: #ffffff;
+  --bg-panel: #faf9f5;
+  --panel-main: #f8f7f2;
+  --panel-border: #e8e7e0;
+  --panel-text: #e8e4dc;
+  --panel-muted: #6a6660;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+}
+
+.loading-msg {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 2px; color: var(--text-dim);
+}
+</style>
+</head>
+<body>
+<script src="js/corp-theme-init.js"></script>
+<div id="corp-topbar-container"></div>
+
+<div id="loading" class="loading-msg">LOADING…</div>
+
+<div id="page-content" style="display:none;padding:20px;max-width:1400px;margin:0 auto;">
+  <div id="expansion-content" style="display:flex;justify-content:center;gap:12px;align-items:flex-start;flex-wrap:wrap;width:100%;">
+    <!-- Row 1: Hire/Fire, Workforce, New Property, Create Subsidiary -->
+    <div id="hf-card-container"></div>
+    <div id="wf-summary-container"></div>
+    <div id="new-property-container"></div>
+    <div id="create-subsidiary-container"></div>
+    <!-- Row 2: Manage Subsidiaries, Corporations -->
+    <div id="manage-subsidiaries-container"></div>
+    <div id="corporations-container"></div>
+  </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { escapeHtml, hfFmtBig } from './js/utils.js';
+import { renderCorpTopBar } from './js/corp-topbar.js';
+import { initSubDashboard } from './js/corp-sub-dashboard.js';
+import { loadAllCorporations as fetchAllCorporations } from './js/corp-all-corporations.js';
+import { loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
+import { computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
+import {
+    SUB_GDP_NEUTRAL,
+    SUB_DEFAULT_REPUTATION,
+    computeSubsidiaryTickDelta
+} from './js/game/subsidiary-economics.js';
+
+// ── Core corp-page state (mirrors corp-operations.html) ──
+let allUserFactions = [];
+let faction = null;
+let nationStats = null;
+let shard = null;
+
+// `_allNations` is read (never written) by renderSubsidiaryMarketplaceCard
+// for nation-name labeling. corp-operations.html had the same reference
+// without a declaration, relying on listings being empty in practice. We
+// declare it empty here to avoid a latent ReferenceError if the marketplace
+// ever returns a listing with a nation_id.
+let _allNations = [];
+
+let _hfChanges = { general: 0, skilled: 0, innovative: 0 };
+let _hfConfirming = false;
+
+const HF_TYPES = [
+    { id: 'general', label: 'General Workforce', multiplier: 2, color: '#8b9a6b', factionKey: 'corp_general_workforce' },
+    { id: 'skilled', label: 'Skilled Workforce', multiplier: 3, color: '#c8a832', factionKey: 'corp_skilled_workforce' },
+    { id: 'innovative', label: 'Innovative Workforce', multiplier: 6, color: '#c84', factionKey: 'corp_innovative_workforce' },
+];
+function hfCalcWage(multiplier) {
+    const minWage = Number(nationStats?.minimum_wage ?? 50);
+    const inflation = Number(nationStats?.inflation ?? 50);
+    const sol = Number(nationStats?.standard_of_living ?? 50);
+    const baseAnnual = (minWage / 100) * 48000;
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.5);
+    const solMod = 1 + ((sol - 50) / 100 * 0.5);
+    return Math.round(baseAnnual * multiplier * inflMod * solMod);
+}
+
+// hfFmtBig moved to js/utils.js (shared across the three corp-operations
+// pages, expansion.html, and actions.html).
+function hfGetCapacity() {
+    // Total capacity from owned properties (condition-scaled) + 500 base HQ
+    const propCapacity = _ownedProperties.reduce((sum, p) => {
+        const cap = Number(p.capacity || 0);
+        const cond = Number(p.condition || 0) / 100;
+        return sum + Math.floor(cap * cond);
+    }, 0);
+    return propCapacity + 500; // 500 = National HQ base capacity
+}
+
+function hfSetChange(id, delta) {
+    const type = HF_TYPES.find(t => t.id === id);
+    const current = Number(faction?.[type.factionKey] ?? 0);
+    const newDelta = _hfChanges[id] + delta;
+    if (current + newDelta < 0) return;
+
+    // Check capacity on hiring (not firing)
+    if (delta > 0) {
+        const totalAfter = HF_TYPES.reduce((s, t) => {
+            const cur = Number(faction?.[t.factionKey] ?? 0);
+            const pendingDelta = t.id === id ? newDelta : _hfChanges[t.id];
+            return s + cur + pendingDelta;
+        }, 0);
+        const capacity = hfGetCapacity();
+        if (totalAfter > capacity) return; // silently block — UI shows capacity
+    }
+
+    _hfChanges[id] = newDelta;
+    renderHireFireCard();
+}
+
+function hfReset(id) {
+    if (id) { _hfChanges[id] = 0; } else { _hfChanges = { general: 0, skilled: 0, innovative: 0 }; }
+    renderHireFireCard();
+}
+
+async function hfConfirm() {
+    if (_hfConfirming) return;
+    const hasChanges = Object.values(_hfChanges).some(v => v !== 0);
+    if (!hasChanges) return;
+
+    // Calculate hiring cost (10% of annual wage per new hire, firing is free)
+    let hiringCost = 0;
+    for (const type of HF_TYPES) {
+        const change = _hfChanges[type.id];
+        if (change > 0) {
+            hiringCost += change * hfCalcWage(type.multiplier) * 0.1;
+        }
+    }
+
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (hiringCost > cash) {
+        alert('Insufficient cash reserves. Hiring cost: ' + hfFmtBig(hiringCost) + ', available: ' + hfFmtBig(cash));
+        return;
+    }
+
+    // Enforce capacity limit before writing
+    const totalAfterAll = HF_TYPES.reduce((s, t) => s + Number(faction?.[t.factionKey] ?? 0) + _hfChanges[t.id], 0);
+    const cap = hfGetCapacity();
+    if (totalAfterAll > cap) {
+        alert('Cannot hire beyond property capacity (' + cap.toLocaleString() + '). You need more workplaces.');
+        return;
+    }
+
+    const msg = hiringCost > 0
+        ? 'Confirm workforce changes?\n\nHiring fee: ' + hfFmtBig(hiringCost) + ' (deducted from cash reserves)'
+        : 'Confirm workforce changes?\n\nFiring workers — no cost.';
+    if (!confirm(msg)) return;
+
+    _hfConfirming = true;
+    try {
+        const updates = {};
+        for (const type of HF_TYPES) {
+            const current = Number(faction?.[type.factionKey] ?? 0);
+            updates[type.factionKey] = Math.max(0, current + _hfChanges[type.id]);
+        }
+        if (hiringCost > 0) {
+            updates.corp_cash_reserves = Math.max(0, cash - Math.round(hiringCost));
+        }
+        const { error } = await _supabase.from('factions').update(updates).eq('id', faction.id);
+        if (error) throw error;
+
+        // Update local state
+        Object.assign(faction, updates);
+        _hfChanges = { general: 0, skilled: 0, innovative: 0 };
+        // Update cash display
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) {
+            const newCash = Number(faction.corp_cash_reserves ?? 0);
+            cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+        }
+        renderHireFireCard();
+    } catch (err) {
+        alert('Error: ' + err.message);
+    } finally {
+        _hfConfirming = false;
+    }
+}
+
+function renderHireFireCard() {
+    const container = document.getElementById('hf-card-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: 'var(--bg-card)', surface: 'var(--panel-main)', card: 'var(--bg-panel)', border: 'var(--panel-border)',
+        accent: '#8b9a6b', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', red: '#c55', redDim: '#a44',
+        text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
+
+    const minWage = Number(nationStats?.minimum_wage ?? 50);
+    const inflation = Number(nationStats?.inflation ?? 50);
+    const sol = Number(nationStats?.standard_of_living ?? 50);
+    const baseAnnual = (minWage / 100) * 48000;
+    const inflMod = (1 + ((inflation - 50) / 100 * 0.5)).toFixed(2);
+    const solMod = (1 + ((sol - 50) / 100 * 0.5)).toFixed(2);
+    const nationName = nationStats?.name || faction?.nation || 'Nation';
+
+    const hasChanges = Object.values(_hfChanges).some(v => v !== 0);
+
+    const capacity = hfGetCapacity();
+    let totalCurrent = 0, totalAfter = 0, totalCurrentCost = 0, totalAfterCost = 0;
+    let typesHtml = '';
+
+    for (const type of HF_TYPES) {
+        const current = Number(faction?.[type.factionKey] ?? 0);
+        const change = _hfChanges[type.id];
+        const after = current + change;
+        const wage = hfCalcWage(type.multiplier);
+        const isHiring = change > 0;
+        const isFiring = change < 0;
+        const currentAnnual = current * wage;
+        const afterAnnual = after * wage;
+        const delta = afterAnnual - currentAnnual;
+
+        totalCurrent += current;
+        totalAfter += after;
+        totalCurrentCost += currentAnnual;
+        totalAfterCost += afterAnnual;
+
+        const bgTint = change !== 0 ? (isHiring ? 'rgba(92,204,92,0.02)' : 'rgba(204,85,85,0.02)') : 'transparent';
+
+        typesHtml += `
+        <div style="padding:10px 14px;border-bottom:1px solid ${C.border};background:${bgTint};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:4px;height:14px;background:${type.color}"></div>
+                    <span style="font-size:12px;font-weight:700;color:${C.text}">${type.label}</span>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:4px;">
+                    <span style="font-family:${mono};font-size:16px;font-weight:700;color:${C.text}">${current.toLocaleString()}</span>
+                    ${change !== 0 ? `<span style="font-family:${mono};font-size:10px;color:${C.dim}">→</span>
+                    <span style="font-family:${mono};font-size:16px;font-weight:700;color:${isHiring ? C.greenBright : C.red}">${after.toLocaleString()}</span>` : ''}
+                </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim}">WAGE (MIN × ${type.multiplier}.0 × ${inflMod} × ${solMod})</span>
+                <span style="font-family:${mono};font-size:10px;color:${type.color}">${hfFmtBig(wage)}/yr</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;">
+                <div onclick="hfSetChange('${type.id}',-50)" style="width:28px;height:24px;display:flex;align-items:center;justify-content:center;font-family:${mono};font-size:8px;font-weight:700;color:${C.red};border:1px solid ${C.border};cursor:pointer;background:${C.card}">-50</div>
+                <div onclick="hfSetChange('${type.id}',-10)" style="width:28px;height:24px;display:flex;align-items:center;justify-content:center;font-family:${mono};font-size:8px;font-weight:700;color:${C.redDim};border:1px solid ${C.border};cursor:pointer;background:${C.card}">-10</div>
+                <div style="flex:1;text-align:center;padding:2px 0;background:${change !== 0 ? C.card : 'transparent'};border:1px solid ${change !== 0 ? C.border : 'transparent'}">
+                    ${change !== 0 ? `<div style="display:flex;align-items:center;justify-content:center;gap:6px;">
+                        <span style="font-family:${mono};font-size:12px;font-weight:700;color:${isHiring ? C.greenBright : C.red}">${isHiring ? '+' : ''}${change}</span>
+                        <span onclick="hfReset('${type.id}')" style="font-family:${mono};font-size:8px;color:${C.dim};cursor:pointer;padding:0 4px">✕</span>
+                    </div>` : `<span style="font-family:${mono};font-size:9px;color:${C.dim}">—</span>`}
+                </div>
+                <div onclick="hfSetChange('${type.id}',10)" style="width:28px;height:24px;display:flex;align-items:center;justify-content:center;font-family:${mono};font-size:8px;font-weight:700;color:${C.greenBright};border:1px solid ${C.border};cursor:pointer;background:${C.card}">+10</div>
+                <div onclick="hfSetChange('${type.id}',50)" style="width:28px;height:24px;display:flex;align-items:center;justify-content:center;font-family:${mono};font-size:8px;font-weight:700;color:${C.greenBright};border:1px solid ${C.border};cursor:pointer;background:${C.card}">+50</div>
+            </div>
+            ${change !== 0 ? `<div style="margin-top:6px;padding:4px 8px;background:${C.bg};border:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim}">ANNUAL COST IMPACT</span>
+                <span style="font-family:${mono};font-size:10px;font-weight:700;color:${delta > 0 ? C.red : C.greenBright}">${delta > 0 ? '+' : ''}${hfFmtBig(delta)}/yr</span>
+            </div>` : ''}
+        </div>`;
+    }
+
+    const costDelta = totalAfterCost - totalCurrentCost;
+
+    container.innerHTML = `
+    <div style="width:380px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Hire / Fire</span>
+            </div>
+            <span style="font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.8px;padding:1px 6px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${nationName.toUpperCase()}</span>
+        </div>
+        <div style="flex:1;overflow:auto;">
+            <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
+                <div style="font-family:${mono};font-size:8px;letter-spacing:1.5px;color:${C.dim};text-transform:uppercase;margin-bottom:4px">Wage Inputs</div>
+                <div style="display:flex;gap:0;">
+                    <div style="flex:1;padding:2px 6px;border-right:1px solid ${C.border}">
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">MIN WAGE</div>
+                        <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">${minWage}/100</div>
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim}">${hfFmtBig(baseAnnual)}/yr</div>
+                    </div>
+                    <div style="flex:1;padding:2px 6px;border-right:1px solid ${C.border}">
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">INFLATION</div>
+                        <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">${inflation}/100</div>
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim}">×${inflMod}</div>
+                    </div>
+                    <div style="flex:1;padding:2px 6px;">
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">STD OF LIVING</div>
+                        <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">${sol}/100</div>
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim}">×${solMod}</div>
+                    </div>
+                </div>
+            </div>
+            ${typesHtml}
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;${hasChanges ? 'margin-bottom:6px;' : ''}">
+                <div>
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">WORKFORCE / CAPACITY</div>
+                    <div style="display:flex;align-items:baseline;gap:4px;">
+                        <span style="font-family:${mono};font-size:13px;font-weight:700;color:${totalCurrent >= capacity ? C.red : C.text}">${hasChanges ? totalAfter.toLocaleString() : totalCurrent.toLocaleString()}</span>
+                        <span style="font-family:${mono};font-size:9px;color:${C.dim}">/ ${capacity.toLocaleString()}</span>
+                    </div>
+                    ${totalCurrent >= capacity && !hasChanges ? `<div style="font-family:${mono};font-size:7px;color:${C.red};margin-top:2px;">Need workplaces to hire new employees.</div>` : ''}
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">ANNUAL WAGES</div>
+                    <div style="display:flex;align-items:baseline;gap:4px;justify-content:flex-end;">
+                        <span style="font-family:${mono};font-size:11px;font-weight:700;color:${C.text}">${hfFmtBig(totalCurrentCost)}</span>
+                        ${hasChanges ? `<span style="font-family:${mono};font-size:9px;color:${C.dim}">→</span>
+                        <span style="font-family:${mono};font-size:11px;font-weight:700;color:${costDelta > 0 ? C.red : C.greenBright}">${hfFmtBig(totalAfterCost)}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+            ${hasChanges ? `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid ${C.border};">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">NET CHANGE</span>
+                    <span style="font-family:${mono};font-size:11px;font-weight:700;color:${costDelta > 0 ? C.red : C.greenBright}">${costDelta > 0 ? '+' : ''}${hfFmtBig(costDelta)}/yr</span>
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">(${costDelta > 0 ? '+' : ''}${hfFmtBig(Math.round(costDelta / 12))}/tick)</span>
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <div onclick="hfReset()" style="padding:4px 12px;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:1px;color:${C.dim};border:1px solid ${C.border};cursor:pointer">RESET</div>
+                    <div onclick="hfConfirm()" style="padding:4px 14px;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:1px;color:#000;background:${C.accent};cursor:pointer">CONFIRM</div>
+                </div>
+            </div>` : ''}
+        </div>
+    </div>`;
+}
+
+function renderWorkforceSummary() {
+    const container = document.getElementById('wf-summary-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: 'var(--bg-card)', surface: 'var(--panel-main)', card: 'var(--bg-panel)', border: 'var(--panel-border)',
+        accent: '#8b9a6b', gold: '#c8a832', orange: '#c84', blue: '#5a9abf',
+        text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660', red: '#c55' };
+
+    const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
+    const minWage = Number(nationStats?.minimum_wage ?? 50);
+    const inflation = Number(nationStats?.inflation ?? 50);
+    const sol = Number(nationStats?.standard_of_living ?? 50);
+    const baseAnnual = (minWage / 100) * 48000;
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.5);
+    const solMod = 1 + ((sol - 50) / 100 * 0.5);
+
+    const tiers = [
+        { label: 'General Workforce', mult: 2, color: C.accent, key: 'corp_general_workforce', countColor: C.text },
+        { label: 'Skilled Workforce', mult: 3, color: C.gold, key: 'corp_skilled_workforce', countColor: C.blue },
+        { label: 'Innovative Workforce', mult: 6, color: C.orange, key: 'corp_innovative_workforce', countColor: C.gold },
+    ];
+
+    let totalCount = 0, totalCost = 0;
+    let tiersHtml = '';
+
+    for (const t of tiers) {
+        const count = Number(faction?.[t.key] ?? 0);
+        const wage = Math.round(baseAnnual * t.mult * inflMod * solMod);
+        const annualCost = count * wage;
+        totalCount += count;
+        totalCost += annualCost;
+
+        tiersHtml += `
+        <div style="padding:8px 12px;border-bottom:1px solid ${C.border};">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <span style="font-size:12px;font-weight:700;color:${C.text}">${t.label}</span>
+                    <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;margin-left:4px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${nationName}</span>
+                </div>
+                <span style="font-family:${mono};font-size:16px;font-weight:700;color:${t.countColor}">${count.toLocaleString()}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:2px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim}">WAGE (MIN × ${t.mult}.0 × ${inflMod.toFixed(2)} × ${solMod.toFixed(2)})</span>
+                <span style="font-family:${mono};font-size:10px;color:${C.muted}">${hfFmtBig(wage)}/yr</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:1px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim}">TOTAL ANNUAL COST</span>
+                <span style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">${hfFmtBig(annualCost)}</span>
+            </div>
+        </div>`;
+    }
+
+    container.innerHTML = `
+    <div style="width:380px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Workforce</span>
+            </div>
+            <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.text}">${totalCount.toLocaleString()}</span>
+        </div>
+        <div style="flex:1;overflow:auto;">
+            ${tiersHtml}
+            <div style="padding:8px 12px;background:${C.card};border-bottom:1px solid ${C.border};">
+                <div style="font-family:${mono};font-size:8px;letter-spacing:1px;color:${C.dim};text-transform:uppercase;margin-bottom:4px">Wage Inputs</div>
+                <div style="display:flex;justify-content:space-between;">
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">MINIMUM WAGE (${nationName})</span>
+                    <span style="font-family:${mono};font-size:9px;color:${C.text}">${minWage}/100 → ${hfFmtBig(baseAnnual)}/yr</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:2px;">
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">INFLATION MODIFIER</span>
+                    <span style="font-family:${mono};font-size:9px;color:${C.text}">×${inflMod.toFixed(2)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:2px;">
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">STD OF LIVING MODIFIER</span>
+                    <span style="font-family:${mono};font-size:9px;color:${C.text}">×${solMod.toFixed(2)}</span>
+                </div>
+            </div>
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">TOTAL WORKFORCE</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.text}">${totalCount.toLocaleString()}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">TOTAL ANNUAL WAGES</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.red}">${hfFmtBig(totalCost)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">PER TICK (÷12)</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.red}">${hfFmtBig(Math.round(totalCost / 12))}</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+let _ownedProperties = [];
+
+async function loadOwnedProperties() {
+    if (!faction?.id) return;
+    const { data } = await _supabase
+        .from('corp_properties')
+        .select('*')
+        .eq('faction_id', faction.id)
+        .eq('is_active', true)
+        .order('type', { ascending: false }) // regional_hq sorts first
+        .order('purchased_at_tick', { ascending: false });
+    _ownedProperties = data || [];
+}
+
+function renderPropertyCard() {
+    const container = document.getElementById('property-card-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: 'var(--bg-card)', surface: 'var(--panel-main)', card: 'var(--bg-panel)', border: 'var(--panel-border)',
+        accent: '#8b9a6b', green: '#4a8', red: '#c55', gold: '#c8a832', orange: '#c84',
+        text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
+
+    const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
+    const _inflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
+
+    let propsHtml = '';
+    let totalValue = 0;
+    let totalMaint = 0;
+
+    // National HQ always present — value scales with nation stats
+    const hqNation = nationStats?.name || faction?.nation || 'Home Nation';
+    const hqBaseCost = 50000000; // $50M base for 500 capacity HQ
+    const hqInflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
+    const hqStabMod = 0.8 + (Number(nationStats?.stability ?? 50) / 100 * 0.4);
+    const hqValue = Math.round(hqBaseCost * hqInflMod * hqStabMod);
+    const hqMaint = Math.round(hqValue * 0.005);
+    totalValue += hqValue;
+    totalMaint += hqMaint;
+
+    propsHtml += `
+    <div style="padding:8px 12px;border-bottom:1px solid ${C.border};">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+            <span style="font-size:11px;font-weight:600;color:${C.text}">National Headquarters</span>
+            <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:#5c5;background:rgba(68,170,136,0.08);border:1px solid rgba(68,170,136,0.15)">HQ</span>
+        </div>
+        <div style="font-family:${mono};font-size:8px;color:${C.dim};margin-bottom:4px;">${hqNation} · Headquarters</div>
+        <div style="display:flex;gap:0;background:${C.card};border:1px solid ${C.border}">
+            <div style="flex:1;padding:3px 6px;border-right:1px solid ${C.border}">
+                <div style="font-family:${mono};font-size:7px;color:${C.dim}">CAPACITY</div>
+                <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">500</div>
+            </div>
+            <div style="flex:1;padding:3px 6px;border-right:1px solid ${C.border}">
+                <div style="font-family:${mono};font-size:7px;color:${C.dim}">VALUE</div>
+                <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${hfFmtBig(hqValue)}</div>
+            </div>
+            <div style="flex:1;padding:3px 6px">
+                <div style="font-family:${mono};font-size:7px;color:${C.dim}">MAINT/MO</div>
+                <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.red}">${hfFmtBig(hqMaint)}</div>
+            </div>
+        </div>
+    </div>`;
+
+    for (const prop of _ownedProperties) {
+        const sm = NP_STYLE_META[prop.style] || NP_STYLE_META.Basic;
+        totalValue += Number(prop.purchase_price || 0);
+        totalMaint += Number(prop.monthly_maintenance || 0);
+
+        propsHtml += `
+        <div style="padding:8px 12px;border-bottom:1px solid ${C.border};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                <span style="font-size:11px;font-weight:600;color:${C.text}">${prop.name}</span>
+                <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${C.green};background:rgba(68,170,136,0.08);border:1px solid rgba(68,170,136,0.15)">OWNED</span>
+            </div>
+            <div style="font-family:${mono};font-size:8px;color:${C.dim};margin-bottom:4px;">${prop.city || nationName} · ${(prop.type || '').replace(/_/g, ' ')} · <span style="color:${sm.color}">${(prop.style || 'Basic').toUpperCase()}</span></div>
+            <div style="display:flex;gap:0;background:${C.card};border:1px solid ${C.border}">
+                <div style="flex:1;padding:3px 6px;border-right:1px solid ${C.border}">
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim}">CAPACITY</div>
+                    <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">${(prop.capacity || 0).toLocaleString()}</div>
+                </div>
+                <div style="flex:1;padding:3px 6px;border-right:1px solid ${C.border}">
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim}">PAID</div>
+                    <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${hfFmtBig(prop.purchase_price || 0)}</div>
+                </div>
+                <div style="flex:1;padding:3px 6px">
+                    <div style="font-family:${mono};font-size:7px;color:${C.dim}">MAINT/MO</div>
+                    <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.red}">${hfFmtBig(prop.monthly_maintenance || 0)}</div>
+                </div>
+            </div>
+            <div style="margin-top:4px;display:flex;justify-content:space-between;">
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">CONDITION</span>
+                <span style="font-family:${mono};font-size:9px;color:${prop.condition >= 75 ? '#5c5' : prop.condition >= 50 ? '#ca5' : C.orange}">${prop.condition}%</span>
+            </div>
+            <div style="width:100%;height:3px;background:${C.border};margin-top:2px;"><div style="width:${prop.condition}%;height:100%;background:${prop.condition >= 75 ? '#5c5' : prop.condition >= 50 ? '#ca5' : C.orange}"></div></div>
+            <div style="display:flex;gap:4px;margin-top:6px;">
+                <div onclick="propRefurbish('${prop.id}')" style="flex:1;padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:${C.accent};border:1px solid ${C.accent}33;cursor:pointer;">REFURBISH (${hfFmtBig(Math.round((prop.purchase_price || 0) * 0.1 * _inflMod))})</div>
+                <div onclick="propSell('${prop.id}')" style="flex:1;padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:${C.red};border:1px solid ${C.red}33;cursor:pointer;">SELL</div>
+            </div>
+        </div>`;
+    }
+
+    container.innerHTML = `
+    <div style="width:380px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Property</span>
+            </div>
+            <span style="font-family:${mono};font-size:10px;color:${C.muted}">${_ownedProperties.length + 1} ASSET${_ownedProperties.length + 1 !== 1 ? 'S' : ''}</span>
+        </div>
+        <div style="flex:1;overflow:auto;">
+            ${propsHtml}
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">TOTAL VALUE</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.green}">${hfFmtBig(totalValue)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">TOTAL MAINTENANCE</span>
+                <span style="font-family:${mono};font-size:13px;font-weight:700;color:${C.red}">${hfFmtBig(totalMaint)}/mo</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+// ==================== NEW PROPERTY MARKETPLACE ====================
+
+let _npAvailable = [];
+let _npSelected = null;
+
+const NP_STYLE_META = {
+    Basic:       { color: '#6a6660', label: 'BASIC' },
+    Modern:      { color: '#8b9a6b', label: 'MODERN' },
+    Sustainable: { color: '#5c5',    label: 'SUSTAINABLE' },
+    Innovative:  { color: '#c8a832', label: 'INNOVATIVE' },
+    Heritage:    { color: '#c84',    label: 'HERITAGE' },
+    Premium:     { color: '#ca5',    label: 'PREMIUM' },
+};
+
+async function loadAvailableProperties() {
+    if (!faction?.nation_id) return;
+
+    const { data, error } = await _supabase
+        .from('available_properties')
+        .select('*')
+        .eq('nation_id', faction.nation_id)
+        .eq('status', 'available')
+        .order('price', { ascending: true });
+
+    if (error) { console.warn('[Property] Failed to load marketplace:', error.message); return; }
+
+    // Filter out warehouse properties for non-Construction corps
+    const isConstruction = faction?.corp_sector === 'Construction';
+    _npAvailable = (data || [])
+        .filter(p => isConstruction || p.type !== 'warehouse')
+        .map(p => ({
+            ...p,
+            adjusted_cost: p.price,
+            adjusted_maintenance: p.monthly_maintenance,
+        }));
+}
+
+function renderNewPropertyCard() {
+    const container = document.getElementById('new-property-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: 'var(--bg-card)', surface: 'var(--panel-main)', card: 'var(--bg-panel)', border: 'var(--panel-border)',
+        accent: '#8b9a6b', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', red: '#c55', redDim: '#a44', yellow: '#ca5',
+        text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
+
+    const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
+    const sol = Number(nationStats?.standard_of_living ?? 50);
+    const gdpGrowth = Number(nationStats?.gdp_growth ?? 50);
+    const inflation = Number(nationStats?.inflation ?? 50);
+
+    // City name mapping from city_template
+    const capital = nationStats?.capital || 'Capital';
+    const cityMap = { capital: capital, port: capital + ' Port', industrial: capital + ' Industrial Zone', suburban: capital + ' Suburbs', coastal: capital + ' Coast' };
+
+    let listingsHtml = '';
+    if (_npAvailable.length === 0) {
+        listingsHtml = `<div style="padding:20px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">No properties available in this market.<br>Improve GDP Growth and Standard of Living to unlock more.</div>`;
+    } else {
+        for (let i = 0; i < _npAvailable.length; i++) {
+            const p = _npAvailable[i];
+            const isSel = _npSelected === i;
+            const sm = NP_STYLE_META[p.style] || NP_STYLE_META.Basic;
+            const city = cityMap[p.city_template] || capital;
+
+            listingsHtml += `
+            <div onclick="npSelect(${i})" style="padding:8px 14px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                    <span style="font-size:11px;font-weight:600;color:${C.text}">${p.name}</span>
+                    <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${sm.color};background:${sm.color}12;border:1px solid ${sm.color}25">${sm.label}</span>
+                </div>
+                <div style="font-family:${mono};font-size:8px;color:${C.dim};margin-bottom:5px;">${city} · ${p.type.replace(/_/g, ' ')}</div>
+                <div style="display:flex;gap:0;background:${C.card};border:1px solid ${C.border}">
+                    <div style="flex:1;padding:4px 8px;border-right:1px solid ${C.border}">
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">CAPACITY</div>
+                        <div style="font-family:${mono};font-size:11px;font-weight:700;color:${C.text};margin-top:1px">${p.capacity.toLocaleString()}</div>
+                    </div>
+                    <div style="flex:1;padding:4px 8px;border-right:1px solid ${C.border}">
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">PRICE</div>
+                        <div style="font-family:${mono};font-size:11px;font-weight:700;color:${C.gold};margin-top:1px">${hfFmtBig(p.adjusted_cost)}</div>
+                    </div>
+                    <div style="flex:1;padding:4px 8px">
+                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">MAINT/MO</div>
+                        <div style="font-family:${mono};font-size:11px;font-weight:700;color:${C.redDim};margin-top:1px">${hfFmtBig(p.adjusted_maintenance)}</div>
+                    </div>
+                </div>
+                ${isSel ? `<div style="margin-top:5px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+                        <span style="font-family:${mono};font-size:7px;color:${C.dim}">CONDITION</span>
+                        <span style="font-family:${mono};font-size:9px;color:${p.condition >= 75 ? C.greenBright : p.condition >= 50 ? C.yellow : C.orange}">${p.condition}%</span>
+                    </div>
+                    <div style="width:100%;height:3px;background:${C.border}"><div style="width:${p.condition}%;height:100%;background:${p.condition >= 75 ? C.greenBright : p.condition >= 50 ? C.yellow : C.orange}"></div></div>
+                </div>` : ''}
+            </div>`;
+        }
+    }
+
+    container.innerHTML = `
+    <div style="width:380px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">New Property</span>
+            </div>
+            <span style="font-family:${mono};font-size:9px;color:${C.dim}">${_npAvailable.length} AVAILABLE</span>
+        </div>
+        <div style="padding:4px 14px;border-bottom:1px solid ${C.border};display:flex;gap:12px;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">STD OF LIVING</span>
+                <span style="font-family:${mono};font-size:9px;font-weight:700;color:${sol >= 50 ? C.greenBright : C.yellow}">${Math.round(sol)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">GDP GROWTH</span>
+                <span style="font-family:${mono};font-size:9px;font-weight:700;color:${gdpGrowth >= 50 ? C.greenBright : C.yellow}">${Math.round(gdpGrowth)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-family:${mono};font-size:7px;color:${C.dim}">INFLATION</span>
+                <span style="font-family:${mono};font-size:9px;font-weight:700;color:${inflation <= 50 ? C.greenBright : C.red}">${Math.round(inflation)}</span>
+            </div>
+        </div>
+        <div style="flex:1;overflow:auto;">
+            ${listingsHtml}
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;gap:6px;justify-content:space-between;">
+                <div onclick="npOpenConstructionModal()" style="flex:1;padding:6px 0;text-align:center;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${C.gold};border:1px solid ${C.gold}44;cursor:pointer">CONSTRUCTION PROJECT</div>
+                <div onclick="npBuyProperty()" style="flex:1;padding:6px 0;text-align:center;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${_npSelected !== null ? '#000' : C.dim};background:${_npSelected !== null ? C.accent : 'transparent'};border:1px solid ${_npSelected !== null ? C.accent : C.border};cursor:${_npSelected !== null ? 'pointer' : 'default'};opacity:${_npSelected !== null ? 1 : 0.4}">BUY PROPERTY</div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function npSelect(idx) {
+    _npSelected = _npSelected === idx ? null : idx;
+    renderNewPropertyCard();
+}
+
+let _npBuying = false;
+async function npBuyProperty() {
+    if (_npSelected === null || _npBuying) return;
+    const prop = _npAvailable[_npSelected];
+    if (!prop) return;
+
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (prop.adjusted_cost > cash) {
+        alert('Insufficient cash reserves.\nProperty: ' + hfFmtBig(prop.adjusted_cost) + '\nCash: ' + hfFmtBig(cash));
+        return;
+    }
+
+    if (!confirm('Buy "' + prop.name + '" for ' + hfFmtBig(prop.adjusted_cost) + '?\n\nMonthly maintenance: ' + hfFmtBig(prop.adjusted_maintenance) + '/mo\nCondition: ' + prop.condition + '%\n\nThis will be deducted from your cash reserves.')) return;
+
+    _npBuying = true;
+    try {
+        // 1. Insert into corp_properties
+        const { error: insertErr } = await _supabase.from('corp_properties').insert({
+            faction_id: faction.id,
+            nation_id: faction.nation_id,
+            catalog_id: prop.catalog_id || null,
+            name: prop.name,
+            type: prop.type,
+            style: prop.style,
+            capacity: prop.capacity,
+            purchase_price: prop.adjusted_cost,
+            monthly_maintenance: prop.adjusted_maintenance,
+            condition: prop.condition,
+            city: prop.city,
+            purchased_at_tick: Number(document.getElementById('tick-number')?.textContent || 0),
+            is_active: true,
+        });
+        if (insertErr) throw insertErr;
+
+        // 2. Deduct cash
+        const newCash = Math.max(0, cash - prop.adjusted_cost);
+        const { error: cashErr } = await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        if (cashErr) throw cashErr;
+        faction.corp_cash_reserves = newCash;
+
+        // 3. Mark available property as sold
+        if (prop.id) {
+            await _supabase.from('available_properties').update({ status: 'sold', purchased_by: faction.id }).eq('id', prop.id);
+        }
+
+        // 4. Update cash display
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) {
+            cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+        }
+
+        // 5. Refresh
+        _npSelected = null;
+        await loadAvailableProperties();
+        renderNewPropertyCard();
+        renderPropertyCard(); // refresh owned properties card
+
+        alert('Property purchased: ' + prop.name + '\n\nDeducted: ' + hfFmtBig(prop.adjusted_cost));
+    } catch (err) {
+        alert('Purchase failed: ' + err.message);
+    } finally {
+        _npBuying = false;
+    }
+}
+
+// ==================== CONSTRUCTION PROJECT MODAL ====================
+
+const CP_STYLE_META = {
+    Basic:       { costMod: 1.0, maintMod: 1.0, repGain: 1, color: '#6a6660', desc: 'Functional. No frills.' },
+    Modern:      { costMod: 1.4, maintMod: 1.2, repGain: 2, color: '#8b9a6b', desc: 'Contemporary design. Good retention.' },
+    Sustainable: { costMod: 1.6, maintMod: 0.8, repGain: 3, color: '#5c5',    desc: 'Green building. Lower upkeep.' },
+    Innovative:  { costMod: 2.0, maintMod: 1.5, repGain: 4, color: '#c8a832', desc: 'Cutting edge. Attracts top talent.' },
+    Heritage:    { costMod: 1.3, maintMod: 1.4, repGain: 2, color: '#c84',    desc: 'Restored historic. High character.' },
+    Premium:     { costMod: 2.5, maintMod: 1.8, repGain: 5, color: '#ca5',    desc: 'Flagship prestige. Maximum reputation.' },
+};
+
+let _cpModal = false;
+let _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', nationId: null, nationName: null };
+let _cpSubmitting = false;
+let _cpNations = []; // nations where corp has HQ or Regional HQ
+
+function cpCalcBudget() {
+    const inflation = Number(nationStats?.inflation ?? 50);
+    const inflMod = 1 + ((inflation - 50) / 100 * 0.3);
+    const styleMod = CP_STYLE_META[_cpData.style]?.costMod || 1.0;
+    const typeMod = _cpData.type === 'Warehouse' ? 0.75 : 1.0;
+    const total = Math.round(_cpData.size * 100000 * inflMod * styleMod * typeMod);
+    const maint = Math.round(total * 0.007 * (CP_STYLE_META[_cpData.style]?.maintMod || 1.0));
+    return { total, maint, inflMod, styleMod };
+}
+
+async function npOpenConstructionModal() {
+    _cpModal = true;
+    const homeNationId = faction?.nation_id;
+    const homeName = nationStats?.name || faction?.nation || 'Home Nation';
+    _cpData = { name: '', type: 'Office Building', size: 2000, style: 'Modern', nationId: homeNationId, nationName: homeName };
+
+    // Build list of nations where corp has presence (National HQ + Regional HQs)
+    _cpNations = [{ id: homeNationId, name: homeName, label: 'National HQ' }];
+    try {
+        const { data: hqProps } = await _supabase.from('corp_properties')
+            .select('nation_id, name, nations!nation_id(name)')
+            .eq('faction_id', faction.id)
+            .eq('type', 'regional_hq')
+            .eq('is_active', true);
+        for (const hq of (hqProps || [])) {
+            if (hq.nation_id === homeNationId) continue;
+            _cpNations.push({ id: hq.nation_id, name: hq.nations?.name || 'Unknown', label: hq.name || 'Regional HQ' });
+        }
+    } catch (_) {}
+
+    renderConstructionModal();
+}
+
+function cpClose() {
+    _cpModal = false;
+    document.getElementById('cp-modal-overlay')?.remove();
+}
+
+function cpSetField(field, value) {
+    _cpData[field] = value;
+    renderConstructionModal();
+}
+
+async function cpSubmit() {
+    if (_cpSubmitting || !_cpData.name.trim()) return;
+    if (!_cpData.nationId) { alert('Select a location.'); return; }
+    _cpSubmitting = true;
+
+    try {
+        const budget = cpCalcBudget();
+        const targetNationId = _cpData.nationId;
+        const nationName = _cpData.nationName || 'Unknown';
+        const repGain = CP_STYLE_META[_cpData.style]?.repGain || 1;
+
+        // Generate project code: PVT-C1-2015
+        const shardRes = await _supabase.from('shard').select('current_tick, current_date').eq('name', 'Alpha Shard').single();
+        const currentTick = shardRes.data?.current_tick || 0;
+        const gameYear = (shardRes.data?.current_date || '').match(/\d{4}/)?.[0] || '2015';
+
+        // Count existing private contracts to generate sequence
+        const { count: existingCount } = await _supabase.from('construction_contracts')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', targetNationId)
+            .eq('issuer_type', 'PRIVATE');
+        const seq = (existingCount || 0) + 1;
+        const projectCode = `PVT-C${seq}-${gameYear}`;
+
+        // Insert into construction_contracts
+        const { error } = await _supabase.from('construction_contracts').insert({
+            nation_id: targetNationId,
+            template_key: 'custom_building',
+            sector: 'civil_engineering',
+            name: _cpData.name.trim(),
+            project_type: _cpData.type,
+            project_subtype: _cpData.style,
+            description: `${_cpData.type} (${_cpData.style}) — ${_cpData.size.toLocaleString()} employees, commissioned by ${faction.faction_name}`,
+            project_code: projectCode,
+            budget_ceiling: budget.total,
+            timeline_ticks: Math.max(4, Math.ceil(_cpData.size / 2000) + 2),
+            required_materials: (() => {
+                const k = _cpData.size / 1000; // units per 1,000 employees
+                const s = _cpData.style;
+                const styleMat = {
+                    Basic:       { concrete: 1.0, steel: 1.0, glass: 0.5, em: 1.0, lumber: 1.5, heavy: 1.0, agg: 1.0 },
+                    Modern:      { concrete: 1.1, steel: 1.1, glass: 1.4, em: 1.4, lumber: 0.5, heavy: 1.1, agg: 1.1 },
+                    Sustainable: { concrete: 0.9, steel: 0.9, glass: 0.9, em: 0.9, lumber: 1.5, heavy: 0.9, agg: 0.9 },
+                    Innovative:  { concrete: 1.2, steel: 1.2, glass: 2.0, em: 2.0, lumber: 0.5, heavy: 2.0, agg: 1.2 },
+                    Heritage:    { concrete: 1.3, steel: 1.3, glass: 1.3, em: 1.3, lumber: 2.0, heavy: 1.3, agg: 1.3 },
+                    Premium:     { concrete: 1.5, steel: 1.5, glass: 2.5, em: 1.5, lumber: 1.0, heavy: 1.5, agg: 1.5 },
+                }[s] || { concrete: 1, steel: 1, glass: 1, em: 1, lumber: 1, heavy: 1, agg: 1 };
+                const r = (base, mod) => Math.max(1, Math.ceil(k * base * mod));
+                return {
+                    concrete: r(8, styleMat.concrete),
+                    steel: r(6, styleMat.steel),
+                    glass_facades: r(3, styleMat.glass),
+                    em_systems: r(4, styleMat.em),
+                    lumber: r(1, styleMat.lumber),
+                    heavy_parts: r(2, styleMat.heavy),
+                    aggregate: r(3, styleMat.agg),
+                };
+            })(),
+            required_equipment: (() => {
+                const sz = _cpData.size;
+                const equip = { trucks: Math.ceil(sz / 2000) + 1, mixers: Math.ceil(sz / 3000) + 1 };
+                if (sz > 1000) { equip.excavators = Math.ceil(sz / 3000) + 1; equip.cranes = Math.ceil(sz / 4000) + 1; }
+                if (sz > 3000) { equip.bulldozers = Math.ceil(sz / 4000) + 1; equip.haulers = Math.ceil(sz / 5000) + 1; }
+                if (sz > 8000) { equip.pile_drivers = Math.ceil(sz / 6000) + 1; }
+                return equip;
+            })(),
+            required_workforce: { general: Math.ceil(_cpData.size * 0.08), skilled: Math.ceil(_cpData.size * 0.03) },
+            status: 'open',
+            generated_at_tick: currentTick,
+            bidding_ends_tick: currentTick + 3,
+            issuer_type: 'PRIVATE',
+            issuer_name: faction.faction_name,
+            issuer_faction_id: faction.id,
+        });
+
+        if (error) throw error;
+
+        cpClose();
+        alert('Construction project submitted!\n\n' +
+            'Project: ' + _cpData.name.trim() + '\n' +
+            'Code: ' + projectCode + '\n' +
+            'Budget: ' + hfFmtBig(budget.total) + '\n' +
+            'Expected Reputation: +' + Math.ceil((budget.adjusted / 100_000_000) * 3) + ' (+3 per $100M)\n\n' +
+            'All construction corporations in ' + nationName + ' can now bid on this project.');
+    } catch (err) {
+        alert('Failed to submit project: ' + err.message);
+    } finally {
+        _cpSubmitting = false;
+    }
+}
+
+function renderConstructionModal() {
+    // Remove existing overlay
+    document.getElementById('cp-modal-overlay')?.remove();
+    if (!_cpModal) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: 'var(--bg-card)', surface: 'var(--panel-main)', card: 'var(--bg-panel)', border: 'var(--panel-border)',
+        accent: '#8b9a6b', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', red: '#c55', redDim: '#a44', yellow: '#ca5',
+        text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
+
+    const budget = cpCalcBudget();
+    const repGain = Math.ceil((budget.total / 100_000_000) * 3);
+    const repColor = repGain >= 4 ? C.gold : repGain >= 3 ? C.greenBright : repGain >= 2 ? C.accent : C.dim;
+
+    // Style grid
+    const stylesHtml = Object.entries(CP_STYLE_META).map(([name, meta]) => {
+        const active = _cpData.style === name;
+        return `<div onclick="cpSetField('style','${name}')" style="padding:5px 6px;cursor:pointer;text-align:center;background:${active ? meta.color + '18' : 'transparent'};border:1px solid ${active ? meta.color + '44' : C.border};">
+            <div style="font-family:${mono};font-size:9px;font-weight:700;color:${active ? meta.color : C.dim}">${name}</div>
+            <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:1px">×${meta.costMod.toFixed(1)} cost</div>
+        </div>`;
+    }).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'cp-modal-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+
+    overlay.innerHTML = `
+    <div style="width:570px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;max-height:90vh;">
+        <div style="padding:12px 20px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:10px;color:${C.gold}">●</span>
+                <span style="font-family:${mono};font-size:14px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Construction Project</span>
+            </div>
+            <span onclick="cpClose()" style="font-family:${mono};font-size:18px;color:${C.dim};cursor:pointer">×</span>
+        </div>
+        <div style="padding:14px 20px;overflow:auto;flex:1;">
+
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Building Name</div>
+                <input id="cp-name-input" value="${_cpData.name.replace(/"/g, '&quot;')}" placeholder="e.g., McKenna Tower"
+                    style="width:100%;padding:8px 12px;font-family:${mono};font-size:14px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;box-sizing:border-box;" />
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Type</div>
+                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                    ${['Regional HQ', 'Office Building',
+                       ...(faction?.corp_sector === 'Construction' ? ['Warehouse'] : []),
+                       ...(faction?.corp_subsector?.toLowerCase() === 'banking' ? ['Branch Office'] : []),
+                       ...(faction?.corp_subsector?.toLowerCase() === 'investment' ? ['Trading Floor'] : []),
+                       ...(faction?.corp_subsector?.toLowerCase() === 'insurance' ? ['Claims Office'] : []),
+                    ].map(t => {
+                        const isSpecial = ['Branch Office', 'Trading Floor', 'Claims Office'].includes(t);
+                        const specialColor = '#8a6aaa';
+                        const activeColor = t === 'Warehouse' ? C.orange : isSpecial ? specialColor : C.accent;
+                        return `<span onclick="cpSetField('type','${t}')" style="flex:1;min-width:100px;text-align:center;padding:6px 0;font-family:${mono};font-size:12px;font-weight:700;cursor:pointer;color:${_cpData.type === t ? '#000' : C.dim};background:${_cpData.type === t ? activeColor : 'transparent'};border:1px solid ${_cpData.type === t ? activeColor : C.border}">${t}</span>`;
+                    }).join('')}
+                </div>
+                ${_cpData.type === 'Warehouse' ? `<div style="font-family:${mono};font-size:9px;color:${C.orange};margin-top:5px;">Warehouse: 75% construction cost, stores up to $20M in materials</div>` : ''}
+                ${_cpData.type === 'Branch Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Branch Office: Increases lending capacity. +1 reputation per 200 employees. Enables cross-nation lending.</div>` : ''}
+                ${_cpData.type === 'Trading Floor' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Trading Floor: Enables secondary bond market. +1 reputation per 200 employees. Portfolio management bonuses.</div>` : ''}
+                ${_cpData.type === 'Claims Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Claims Office: Faster claim processing. +1 reputation per 200 employees. Local presence reduces premiums.</div>` : ''}
+                ${_cpData.type === 'Regional HQ' ? `<div style="font-family:${mono};font-size:9px;color:${C.accent};margin-top:5px;">Regional HQ: Establishes corporate presence in another nation.</div>` : ''}
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Location</div>
+                <select onchange="cpSetField('nationId', this.value); cpSetField('nationName', this.options[this.selectedIndex].text)"
+                    style="width:100%;padding:8px 12px;font-family:${mono};font-size:12px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;">
+                    ${_cpNations.map(n => `<option value="${n.id}" ${_cpData.nationId === n.id ? 'selected' : ''}>${n.name} (${n.label})</option>`).join('')}
+                </select>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                    <span style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase">Size (Employees)</span>
+                    <span style="font-family:${mono};font-size:18px;font-weight:700;color:${C.text}">${_cpData.size.toLocaleString()}</span>
+                </div>
+                <input type="range" min="500" max="18000" step="500" value="${_cpData.size}" oninput="cpSetField('size',+this.value)"
+                    style="width:100%;accent-color:${C.accent};height:5px;" />
+                <div style="display:flex;justify-content:space-between;font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">
+                    <span>500 min</span><span>18,000 max</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Style</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">${stylesHtml}</div>
+                <div style="margin-top:5px;font-family:${mono};font-size:10px;color:${CP_STYLE_META[_cpData.style].color}">${CP_STYLE_META[_cpData.style].desc}</div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Estimated Cost</div>
+                <div style="background:${C.card};border:1px solid ${C.border};padding:10px 12px;">
+                    <div style="display:flex;justify-content:space-between;padding:5px 0;">
+                        <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.text}">TOTAL BUDGET</span>
+                        <span style="font-family:${mono};font-size:18px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.total)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid ${C.border}">
+                        <span style="font-family:${mono};font-size:10px;color:${C.dim}">EST. MONTHLY MAINTENANCE</span>
+                        <span style="font-family:${mono};font-size:12px;color:${C.redDim}">${hfFmtBig(budget.maint)}/mo</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="padding:8px 10px;background:rgba(200,168,50,0.04);border:1px solid rgba(200,168,50,0.12);margin-bottom:10px;">
+                <div style="font-family:${mono};font-size:10px;color:${C.gold};margin-bottom:3px">WHAT HAPPENS NEXT</div>
+                <div style="font-size:12px;color:${C.dim};line-height:1.5">
+                    This project will appear as a Civil Engineering bid in the Open Contracts pool for all construction corporations with an HQ or Regional HQ in ${_cpData.nationName || 'the selected nation'}. The lowest qualified bidder wins the contract and begins construction.
+                </div>
+            </div>
+
+            <div style="padding:8px 10px;background:rgba(139,154,107,0.04);border:1px solid rgba(139,154,107,0.12);">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-family:${mono};font-size:12px;color:${C.accent}">EXPECTED REPUTATION GAIN</span>
+                    <span style="font-family:${mono};font-size:20px;font-weight:700;color:${repColor}">+${repGain}</span>
+                </div>
+                <div style="font-family:${mono};font-size:9px;color:${C.dim};margin-top:3px">${_cpData.style} style · ${repGain === 5 ? 'Maximum prestige' : repGain >= 4 ? 'Impressive presence' : repGain >= 3 ? 'Strong statement' : repGain >= 2 ? 'Solid investment' : 'Functional addition'}</div>
+            </div>
+
+        </div>
+        <div style="padding:12px 20px;border-top:1px solid ${C.border};background:${C.card};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div>
+                <div style="font-family:${mono};font-size:9px;color:${C.dim}">TOTAL PROJECT</div>
+                <div style="font-family:${mono};font-size:18px;font-weight:700;color:${C.gold}">${hfFmtBig(budget.total)}</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <div onclick="cpClose()" style="padding:7px 20px;font-family:${mono};font-size:12px;font-weight:700;letter-spacing:1px;color:${C.dim};border:1px solid ${C.border};cursor:pointer">CANCEL</div>
+                <div onclick="cpSubmitFromModal()" style="padding:7px 20px;font-family:${mono};font-size:12px;font-weight:700;letter-spacing:1px;color:#000;background:${C.gold};cursor:pointer;opacity:${_cpData.name.trim().length > 0 ? 1 : 0.4}">SUBMIT PROJECT</div>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+
+    // Wire up the name input (can't use oninput in template string easily)
+    const nameInput = document.getElementById('cp-name-input');
+    if (nameInput) {
+        nameInput.addEventListener('input', (e) => { _cpData.name = e.target.value; });
+    }
+
+    // Close on overlay click (not modal body)
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cpClose(); });
+}
+
+function cpSubmitFromModal() {
+    // Read latest name from input
+    const nameInput = document.getElementById('cp-name-input');
+    if (nameInput) _cpData.name = nameInput.value;
+    if (!_cpData.name.trim()) { alert('Please enter a building name.'); return; }
+    cpSubmit();
+}
+
+window.cpClose = cpClose;
+window.cpSetField = cpSetField;
+window.cpSubmitFromModal = cpSubmitFromModal;
+
+window.npSelect = npSelect;
+window.npBuyProperty = npBuyProperty;
+window.npOpenConstructionModal = npOpenConstructionModal;
+
+let _propActing = false;
+
+async function propRefurbish(propId) {
+    if (_propActing) return;
+    const prop = _ownedProperties.find(p => p.id === propId);
+    if (!prop) return;
+
+    const inflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
+    const cost = Math.round((prop.purchase_price || 0) * 0.1 * inflMod);
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (cost > cash) {
+        alert('Insufficient cash. Refurbishment costs ' + hfFmtBig(cost) + ' (inflation-adjusted), you have ' + hfFmtBig(cash));
+        return;
+    }
+
+    if (prop.condition >= 95) {
+        alert('Property is already in excellent condition (' + prop.condition + '%).');
+        return;
+    }
+
+    // 1d20 condition boost (5-25%)
+    const boost = 5 + Math.floor(Math.random() * 21);
+    const newCondition = Math.min(100, prop.condition + boost);
+
+    if (!confirm('Refurbish "' + prop.name + '"?\n\nCost: ' + hfFmtBig(cost) + '\nExpected improvement: +' + boost + '% condition (' + prop.condition + '% → ' + newCondition + '%)')) return;
+
+    _propActing = true;
+    try {
+        await _supabase.from('corp_properties').update({ condition: newCondition }).eq('id', propId);
+        const newCash = Math.max(0, cash - cost);
+        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newCash;
+
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+
+        await loadOwnedProperties();
+        renderPropertyCard();
+        alert('Refurbished! Condition: ' + prop.condition + '% → ' + newCondition + '%');
+    } catch (err) {
+        alert('Refurbishment failed: ' + err.message);
+    } finally {
+        _propActing = false;
+    }
+}
+
+async function propSell(propId) {
+    if (_propActing) return;
+    const prop = _ownedProperties.find(p => p.id === propId);
+    if (!prop) return;
+
+    // Sale value: 60% of purchase price × condition × inflation
+    const inflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
+    const conditionFactor = (prop.condition || 50) / 100;
+    const saleValue = Math.round((prop.purchase_price || 0) * 0.6 * conditionFactor * inflMod);
+
+    if (!confirm('Sell "' + prop.name + '"?\n\nSale value: ' + hfFmtBig(saleValue) + ' (60% × ' + prop.condition + '% condition × inflation)\n\nThe property will go back on the market for 6 ticks.\nThis cannot be undone.')) return;
+
+    _propActing = true;
+    try {
+        // 1. Deactivate owned property
+        await _supabase.from('corp_properties').update({ is_active: false }).eq('id', propId);
+
+        // 2. Add sale value to cash
+        const cash = Number(faction?.corp_cash_reserves ?? 0);
+        const newCash = cash + saleValue;
+        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newCash;
+
+        // 3. Put it back on the market for 6 ticks
+        const shardRes = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardRes.data?.current_tick || 0;
+
+        await _supabase.from('available_properties').insert({
+            nation_id: faction.nation_id,
+            catalog_id: prop.catalog_id || null,
+            name: prop.name,
+            type: prop.type,
+            style: prop.style,
+            capacity: prop.capacity,
+            price: Math.round(saleValue * 1.1), // slight markup from sale value
+            monthly_maintenance: prop.monthly_maintenance,
+            condition: prop.condition,
+            city: prop.city,
+            generated_at_tick: currentTick,
+            expires_at_tick: currentTick + 6,
+            status: 'available',
+        });
+
+        // 4. Update UI
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+
+        await loadOwnedProperties();
+        renderPropertyCard();
+        await loadAvailableProperties();
+        renderNewPropertyCard();
+        alert('Sold "' + prop.name + '" for ' + hfFmtBig(saleValue));
+    } catch (err) {
+        alert('Sale failed: ' + err.message);
+    } finally {
+        _propActing = false;
+    }
+}
+
+window.propRefurbish = propRefurbish;
+window.propSell = propSell;
+
+// ==================== SUBSIDIARY SHARED HELPERS ====================
+
+const SUB_RATES = { SALE: 0.8, DISSOLVE: 0.6 };
+
+function subParseAmount(input) {
+    if (!input) return 0;
+    const cleaned = input.trim().replace(/[$,]/g, '');
+    const mMatch = cleaned.match(/^([\d.]+)\s*[Mm]$/);
+    const kMatch = cleaned.match(/^([\d.]+)\s*[Kk]$/);
+    if (mMatch) return Math.round(parseFloat(mMatch[1]) * 1000000);
+    if (kMatch) return Math.round(parseFloat(kMatch[1]) * 1000);
+    return Math.round(parseFloat(cleaned));
+}
+
+function subUpdateTopbarCash(cash) {
+    const cashEl = document.getElementById('topbar-cash');
+    if (cashEl) cashEl.textContent = 'CASH: ' + (cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k');
+}
+
+function subGetNationName(nationId) {
+    return _subNations.find(n => n.id === nationId)?.name || '—';
+}
+
+function subGetNationProps(nationId) {
+    return _ownedProperties.filter(p => p.nation_id === nationId);
+}
+
+async function subReloadCards() {
+    _mSubSelected = 0;
+    await loadOwnedProperties();
+    renderPropertyCard();
+    renderManageSubsidiariesCard();
+    renderCreateSubsidiaryCard();
+}
+
+let _subActionLock = false;
+
+// ==================== SUBSIDIARIES CARD ====================
+
+let _mSubSelected = 0;
+let _subProjectCounts = {}; // nation_id -> number of active projects
+
+async function loadSubsidiaryProjectCounts() {
+    if (!faction?.id) return;
+    try {
+        const { data } = await _supabase
+            .from('construction_contracts')
+            .select('nation_id')
+            .eq('awarded_to_faction', faction.id)
+            .in('status', ['in_progress', 'awarded']);
+        _subProjectCounts = {};
+        for (const c of (data || [])) {
+            if (c.nation_id) _subProjectCounts[c.nation_id] = (_subProjectCounts[c.nation_id] || 0) + 1;
+        }
+    } catch (e) { /* non-fatal */ }
+}
+
+function getSubsidiaryData(hqProp) {
+    const nationProps = subGetNationProps(hqProp.nation_id);
+    const totalVal = nationProps.reduce((s, p) => s + Number(p.purchase_price || 0), 0);
+    const totalCapacity = nationProps.reduce((s, p) => s + Number(p.capacity || 0), 0);
+    const projects = _subProjectCounts[hqProp.nation_id] || 0;
+    const nationData = _subNations.find(n => n.id === hqProp.nation_id);
+
+    const words = (hqProp.name || '').trim().split(/\s+/);
+    const abbr = words.length >= 2
+        ? words.map(w => w[0]).join('').toUpperCase().slice(0, 4)
+        : (hqProp.name || 'SUB').slice(0, 4).toUpperCase();
+
+    const subCash = Number(hqProp.sub_cash || 0);
+    const gdpGrowth = Number(nationData?.gdp_growth ?? 50);
+    const projectedTick = computeSubsidiaryTickDelta({
+        subCash,
+        gdpGrowth,
+        parentReputation: Number(faction?.corp_reputation ?? 50),
+    });
+    const revenue = projectedTick.netDelta;
+
+    return {
+        id: hqProp.id,
+        name: hqProp.name,
+        abbr,
+        nation: nationData?.name || hqProp.city || '—',
+        nationId: hqProp.nation_id,
+        sector: faction?.corp_sector || 'General',
+        subsector: hqProp.subsector || faction?.corp_subsector || '—',
+        revenue,
+        debt: 0,
+        cash: subCash,
+        reputation: SUB_DEFAULT_REPUTATION,
+        valuation: totalVal,
+        workforce: totalCapacity,
+        projects,
+        established: hqProp.created_at ? new Date(hqProp.created_at).getFullYear().toString() : '—',
+        trend: revenue > 0 ? 'up' : revenue < 0 ? 'down' : (gdpGrowth >= SUB_GDP_NEUTRAL && subCash > 0 ? 'flat' : 'down'),
+        profitable: revenue > 0,
+        projectedInvestmentReturn: projectedTick.investmentReturn,
+        projectedOverhead: projectedTick.overhead,
+        hqProp,
+    };
+}
+
+function renderManageSubsidiariesCard() {
+    const container = document.getElementById('manage-subsidiaries-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: 'var(--bg-card)', surface: 'var(--panel-main)', card: 'var(--bg-panel)', border: 'var(--panel-border)',
+        accent: '#8b9a6b', accentBright: '#a3b07e', blue: '#5a9abf', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', greenDark: '#2a5a3a', red: '#c55', redDim: '#a44', yellow: '#ca5',
+        text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
+
+    const hqProps = _ownedProperties.filter(p => p.type === 'regional_hq');
+    const subsidiaries = hqProps.map(getSubsidiaryData);
+    if (_mSubSelected >= subsidiaries.length) _mSubSelected = 0;
+    const sub = subsidiaries[_mSubSelected] || null;
+
+    // ─── LEFT: Table ───
+    let tableRows = '';
+    if (subsidiaries.length === 0) {
+        tableRows = `<div style="padding:30px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">No subsidiaries established.<br>Use Create Subsidiary to expand.</div>`;
+    }
+    let totalRevenue = 0, totalVal = 0;
+    for (let i = 0; i < subsidiaries.length; i++) {
+        const s = subsidiaries[i];
+        const isSel = i === _mSubSelected;
+        totalRevenue += s.revenue;
+        totalVal += s.valuation;
+        const tc = s.trend === 'up' ? C.greenBright : s.trend === 'down' ? C.red : C.dim;
+        const tChar = s.trend === 'up' ? '▲' : s.trend === 'down' ? '▼' : '–';
+        tableRows += `
+        <div onclick="selectSubsidiary(${i})" style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
+            <span style="width:40px;font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${s.abbr}</span>
+            <div style="flex:1.5;">
+                <div style="font-size:11px;font-weight:600;color:${C.text};line-height:1.2">${s.name}</div>
+                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:1px">${s.subsector}</div>
+            </div>
+            <span style="width:65px"><span style="font-family:${mono};font-size:7px;letter-spacing:0.5px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${s.nation.toUpperCase().slice(0,8)}</span></span>
+            <span style="width:55px;font-family:${mono};font-size:9px;font-weight:700;color:${s.profitable ? C.greenBright : C.redDim};text-align:right">${hfFmtBig(s.revenue)}</span>
+            <span style="width:40px;font-family:${mono};font-size:9px;font-weight:700;color:${s.reputation >= 40 ? C.accent : s.reputation >= 25 ? C.yellow : C.orange};text-align:right">${s.reputation}</span>
+            <span style="width:55px;font-family:${mono};font-size:9px;color:${C.muted};text-align:right">${hfFmtBig(s.valuation)}</span>
+            <span style="width:12px;font-family:${mono};font-size:8px;color:${tc};text-align:right">${tChar}</span>
+        </div>`;
+    }
+
+    // ─── RIGHT: Detail ───
+    let detailHtml = '';
+    if (sub) {
+        const trendColor = sub.trend === 'up' ? C.greenBright : sub.trend === 'down' ? C.red : C.dim;
+        const trendChar = sub.trend === 'up' ? '▲' : sub.trend === 'down' ? '▼' : '–';
+        const trendLabel = sub.trend === 'up' ? 'Growing' : sub.trend === 'down' ? 'Declining' : 'Stable';
+        const repColor = sub.reputation >= 40 ? C.accent : sub.reputation >= 25 ? C.yellow : C.orange;
+
+        const stats = [
+            { label: 'Projected Revenue', value: hfFmtBig(sub.revenue), color: sub.profitable ? C.greenBright : C.redDim },
+            { label: 'Projected Overhead', value: '-' + hfFmtBig(sub.projectedOverhead), color: C.redDim },
+            { label: 'Projected Investment Return', value: '+' + hfFmtBig(sub.projectedInvestmentReturn), color: C.greenBright },
+            { label: 'Cash', value: hfFmtBig(sub.cash), color: C.text },
+            { label: 'Debt', value: sub.debt > 0 ? hfFmtBig(sub.debt) : '$0', color: sub.debt > 0 ? C.orange : C.dim },
+            { label: 'Reputation', value: sub.reputation + '/100', color: repColor },
+            { label: 'Market Valuation', value: hfFmtBig(sub.valuation), color: C.gold },
+            { label: 'Workforce', value: sub.workforce.toLocaleString(), color: C.text },
+            { label: 'Active Projects', value: sub.projects.toString(), color: sub.projects > 0 ? C.text : C.dim },
+        ];
+
+        const canDissolve = sub.projects === 0;
+
+        const subLogoHtml = sub.hqProp?.logo_url
+            ? `<img src="${escapeHtml(sub.hqProp.logo_url)}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;">`
+            : `<label style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:${C.card};border:1px dashed ${C.border};border-radius:4px;cursor:pointer;font-size:14px;color:${C.dim};" title="Upload subsidiary logo">+<input type="file" accept="image/*" id="sub-logo-upload" data-prop-id="${sub.hqProp?.id || ''}" style="display:none;"></label>`;
+
+        detailHtml = `
+            <div style="padding:8px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+                    ${subLogoHtml}
+                    <div>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-family:${mono};font-size:12px;font-weight:700;color:${C.gold}">${sub.abbr}</span>
+                            <span style="font-size:12px;font-weight:700;color:${C.text}">${sub.name}</span>
+                        </div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <span style="font-family:${mono};font-size:7px;letter-spacing:0.5px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${sub.nation.toUpperCase()}</span>
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim}">Est. ${sub.established}</span>
+                    <span style="font-family:${mono};font-size:8px;color:${trendColor}">${trendChar} ${trendLabel}</span>
+                </div>
+                    </div>
+                </div>
+            </div>
+            ${stats.map(r => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 14px;border-bottom:1px solid ${C.border};">
+                <span style="font-family:${mono};font-size:9px;color:${C.dim};letter-spacing:0.5px;text-transform:uppercase">${r.label}</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;color:${r.color}">${r.value}</span>
+            </div>`).join('')}
+            <div style="padding:6px 14px;border-bottom:1px solid ${C.border};flex-shrink:0;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                    <span style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.8px">REPUTATION</span>
+                    <span style="font-family:${mono};font-size:8px;color:${C.muted}">75% sub / 25% parent</span>
+                </div>
+                <div style="width:100%;height:4px;background:${C.border}"><div style="width:${sub.reputation}%;height:100%;background:${repColor}"></div></div>
+            </div>
+            ${(sub.subsector === 'Insurance' || sub.subsector === 'Banking') ? `<div id="sub-dashboard-${sub.id}" style="flex:1;overflow-y:auto;"></div>` : '<div style="flex:1"></div>'}
+            <div style="padding:6px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+                <div style="font-family:${mono};font-size:8px;letter-spacing:1.5px;color:${C.dim};text-transform:uppercase;margin-bottom:6px">Actions</div>
+                <div style="display:flex;gap:4px;margin-bottom:4px;">
+                    <div onclick="subInjectCapital('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.greenBright};border:1px solid ${C.greenDark};background:rgba(74,170,136,0.06)">INJECT CAPITAL</div>
+                    <div onclick="subWithdraw('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${sub.cash > 0 ? C.gold : C.dim};border:1px solid ${sub.cash > 0 ? C.gold + '44' : C.border};opacity:${sub.cash > 0 ? 1 : 0.4}">WITHDRAW</div>
+                </div>
+                <div style="display:flex;gap:4px;">
+                    <div onclick="subMerge('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.accent};border:1px solid ${C.accent}">MERGE</div>
+                    <div onclick="subPutForSale('${sub.id}')" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${C.orange};border:1px solid ${C.orange}">PUT UP FOR SALE</div>
+                    <div onclick="${canDissolve ? "subDissolve('" + sub.id + "')" : ''}" style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;letter-spacing:0.5px;color:${canDissolve ? C.red : C.dim};border:1px solid ${canDissolve ? C.red : C.border};opacity:${canDissolve ? 1 : 0.3}">DISSOLVE</div>
+                </div>
+                ${sub.projects > 0 ? `<div style="margin-top:4px;font-family:${mono};font-size:7px;color:${C.dim}">Cannot dissolve with active projects.</div>` : ''}
+            </div>`;
+    } else {
+        detailHtml = `<div style="padding:30px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">Select a subsidiary to manage.</div>`;
+    }
+
+    container.innerHTML = `
+    <div style="width:760px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Manage Subsidiaries</span>
+            </div>
+            <span style="font-family:${mono};font-size:9px;color:${C.dim}">${subsidiaries.length} ACTIVE</span>
+        </div>
+        <div style="flex:1;display:flex;overflow:hidden;">
+            <div style="flex:1;border-right:1px solid ${C.border};display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;padding:5px 14px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+                    <span style="width:40px;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">ABBR</span>
+                    <span style="flex:1.5;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">NAME</span>
+                    <span style="width:65px;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">NATION</span>
+                    <span style="width:55px;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px;text-align:right">REVENUE</span>
+                    <span style="width:40px;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px;text-align:right">REP</span>
+                    <span style="width:55px;font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px;text-align:right">VALUE</span>
+                    <span style="width:12px"></span>
+                </div>
+                <div style="flex:1;overflow:auto;">${tableRows}</div>
+                <div style="padding:6px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;display:flex;align-items:center;">
+                    <span style="width:40px"></span>
+                    <span style="flex:1.5;font-family:${mono};font-size:8px;color:${C.dim}">COMBINED</span>
+                    <span style="width:65px"></span>
+                    <span style="width:55px;font-family:${mono};font-size:9px;font-weight:700;color:${C.text};text-align:right">${hfFmtBig(totalRevenue)}</span>
+                    <span style="width:40px"></span>
+                    <span style="width:55px;font-family:${mono};font-size:9px;font-weight:700;color:${C.text};text-align:right">${hfFmtBig(totalVal)}</span>
+                    <span style="width:12px"></span>
+                </div>
+            </div>
+            <div style="width:280px;display:flex;flex-direction:column;overflow:auto;">
+                ${detailHtml}
+            </div>
+        </div>
+    </div>`;
+
+    // Subsidiary logo upload handler
+    document.getElementById('sub-logo-upload')?.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        const propId = e.target.dataset.propId;
+        if (!file || !propId) return;
+        if (file.size > 2 * 1024 * 1024) { alert('Logo must be under 2MB.'); return; }
+        try {
+            const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+            const path = `party-logos/${faction.id}/sub_${propId}_${Date.now()}.${ext}`;
+            const { error: upErr } = await _supabase.storage.from('public-assets').upload(path, file, { contentType: file.type, upsert: true });
+            if (upErr) throw upErr;
+            const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(path);
+            const logoUrl = urlData?.publicUrl;
+            if (logoUrl) {
+                await _supabase.from('corp_properties').update({ logo_url: logoUrl }).eq('id', propId);
+                const prop = _ownedProperties.find(p => p.id === propId);
+                if (prop) prop.logo_url = logoUrl;
+                renderManageSubsidiariesCard();
+            }
+        } catch (err) { alert('Upload failed: ' + (err.message || 'Error')); }
+    });
+
+    // Init service dashboard for Insurance/Banking subsidiaries after DOM update
+    if (sub && (sub.subsector === 'Insurance' || sub.subsector === 'Banking')) {
+        const dashId = 'sub-dashboard-' + sub.id;
+        setTimeout(() => {
+            if (document.getElementById(dashId)) {
+                initSubDashboard(_supabase, { faction, nation: nationStats, shard }, dashId, sub.id)
+                    .catch(e => console.error('[SubDash] Init failed:', e));
+            }
+        }, 50);
+    }
+}
+
+// ─── SELL / DISSOLVE: unified liquidation (different multiplier) ───
+async function _subLiquidate(propId, mode) {
+    if (_subActionLock) return;
+    const hq = _ownedProperties.find(p => p.id === propId);
+    if (!hq) return;
+    const isSell = mode === 'sell';
+    const rate = isSell ? SUB_RATES.SALE : SUB_RATES.DISSOLVE;
+    const verb = isSell ? 'SELL' : 'DISSOLVE';
+    const pastVerb = isSell ? 'sold' : 'dissolved';
+    const rateLabel = isSell ? '80%' : '60%';
+
+    const nationName = subGetNationName(hq.nation_id);
+    const nationProps = subGetNationProps(hq.nation_id);
+    const propValue = nationProps.reduce((s, p) => s + Math.round((p.purchase_price || 0) * rate * (p.condition || 50) / 100), 0);
+    const subCash = Number(hq.sub_cash || 0);
+    const totalReturn = propValue + subCash;
+
+    if (!confirm(
+        verb + ' subsidiary "' + hq.name + '"?\n\n' +
+        nationProps.length + ' properties at ' + rateLabel + ' × condition:\n' +
+        '  Property value: ' + hfFmtBig(propValue) + '\n' +
+        '  Subsidiary cash: ' + hfFmtBig(subCash) + '\n' +
+        '  ─────────────────\n' +
+        '  Total return: ' + hfFmtBig(totalReturn) + '\n\n' +
+        'All operations in ' + nationName + ' cease.\nThis cannot be undone.'
+    )) return;
+
+    _subActionLock = true;
+    try {
+        const propIds = nationProps.map(p => p.id);
+        // Deactivate properties — use .eq() for single, .in() for multiple (avoids Supabase .in() 400 on single-element arrays)
+        if (propIds.length === 1) {
+            const { error: propErr } = await _supabase.from('corp_properties').update({ is_active: false }).eq('id', propIds[0]);
+            if (propErr) throw propErr;
+        } else if (propIds.length > 1) {
+            const { error: propErr } = await _supabase.from('corp_properties').update({ is_active: false }).in('id', propIds);
+            if (propErr) throw propErr;
+        }
+        // Zero out subsidiary cash on the HQ (separate update in case migration not yet applied)
+        await _supabase.from('corp_properties').update({ sub_cash: 0 }).eq('id', propId).then(() => {}).catch(() => {});
+        const newCash = Number(faction?.corp_cash_reserves ?? 0) + totalReturn;
+        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newCash;
+        subUpdateTopbarCash(newCash);
+        await subReloadCards();
+        alert('Subsidiary ' + pastVerb + '. ' + nationProps.length + ' properties liquidated.\nTotal received: ' + hfFmtBig(totalReturn));
+    } catch (err) { alert('Failed: ' + err.message); }
+    finally { _subActionLock = false; }
+}
+function subSell(propId) { _subLiquidate(propId, 'sell'); }
+
+// ─── PUT UP FOR SALE: list subsidiary on marketplace ───
+async function subPutForSale(propId) {
+    if (_subActionLock) return;
+    const hq = _ownedProperties.find(p => p.id === propId);
+    if (!hq) return;
+
+    const nationName = subGetNationName(hq.nation_id);
+    const nationProps = subGetNationProps(hq.nation_id);
+    const valuation = nationProps.reduce((s, p) => s + Math.round((p.purchase_price || 0) * 0.8 * (p.condition || 50) / 100), 0);
+    const subCash = Number(hq.sub_cash || 0);
+    const monthlyRev = Math.round(subCash * 0.05); // rough estimate
+
+    if (!confirm(
+        'PUT UP FOR SALE: "' + hq.name + '"\n\n' +
+        'Nation: ' + nationName + '\n' +
+        'Estimated Valuation: ' + hfFmtBig(valuation) + '\n' +
+        'Subsidiary Cash: ' + hfFmtBig(subCash) + '\n' +
+        'Subsector: ' + (hq.subsector || 'General') + '\n\n' +
+        'This will list your subsidiary on the marketplace.\n' +
+        'Other corporations can place bids (minimum $1M).\n' +
+        'You review and accept bids.\n\n' +
+        'Continue?'
+    )) return;
+
+    _subActionLock = true;
+    try {
+        const currentTick = shard?.current_tick || 0;
+        const { data, error } = await _supabase.from('subsidiary_sales').insert({
+            subsidiary_id: propId,
+            seller_faction_id: faction.id,
+            nation_id: hq.nation_id,
+            subsidiary_name: hq.name,
+            subsector: hq.subsector || null,
+            valuation: valuation,
+            monthly_revenue: monthlyRev,
+            sub_cash_at_listing: subCash,
+            employee_count: hq.capacity || 0,
+            status: 'listed',
+            listed_at_tick: currentTick,
+        }).select('*').single();
+
+        if (error) {
+            alert('Failed to list: ' + error.message);
+            return;
+        }
+
+        alert('"' + hq.name + '" is now listed for sale.\n\nOther corporations will see it on the Expansion tab and can place bids.');
+        await subReloadCards();
+    } catch (err) {
+        alert('Failed: ' + err.message);
+    } finally {
+        _subActionLock = false;
+    }
+}
+
+// ─── SUBSIDIARY MARKETPLACE: show listings + bids ───
+let _marketplaceListings = [];
+let _subsidiaryMarketplaceUnavailable = false;
+
+function isFeatureUnavailableSupabaseError(error) {
+    if (!error) return false;
+    const code = String(error.code || '').toUpperCase();
+    const message = String(error.message || '');
+    return code === 'PGRST202'
+        || code === 'PGRST205'
+        || code === '42P01'
+        || /Could not find the table/i.test(message)
+        || /schema cache/i.test(message);
+}
+
+async function runSubsidiaryMarketplaceQuery(queryPromise, label) {
+    const { data, error } = await queryPromise;
+    if (!error) return { data: data || [], error: null, unavailable: false };
+
+    if (isFeatureUnavailableSupabaseError(error)) {
+        console.warn('[SubMarket] ' + label + ' unavailable in this environment:', error.message);
+        return { data: [], error, unavailable: true };
+    }
+
+    console.error('[SubMarket] ' + label + ' failed:', error.message);
+    return { data: [], error, unavailable: false };
+}
+
+let _subMarketLoadState = 'ready';
+let _subMarketLoadError = null;
+
+async function loadMarketplaceListings() {
+    const result = await loadSubsidiaryMarketSafe(_supabase);
+    _marketplaceListings = result.listings;
+    _subMarketLoadState = result.state;
+    _subMarketLoadError = result.error;
+
+    if (_subMarketLoadError) {
+        console.error('[SubMarket] Load failed:', _subMarketLoadError.message);
+    }
+}
+
+function renderSubsidiaryMarketplaceCard() {
+    let el = document.getElementById('sub-marketplace-card');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'sub-marketplace-card';
+        document.getElementById('expansion-content')?.appendChild(el);
+    }
+
+    const listings = _marketplaceListings.filter(l => l.seller_faction_id !== faction?.id);
+    const myListings = _marketplaceListings.filter(l => l.seller_faction_id === faction?.id);
+
+    const mono = "'JetBrains Mono',monospace";
+    // Palette drawn from computed CSS vars so this panel follows the page's
+    // light-mode palette instead of the hardcoded dark values.
+    const cs = getComputedStyle(document.body);
+    const cv = (name, fallback) => (cs.getPropertyValue(name).trim() || fallback);
+    const C = {
+        surface: cv('--bg-2', 'var(--bg-card)'),
+        card:    cv('--bg-3', '#f0efeb'),
+        border:  cv('--border-0', 'rgba(0,0,0,0.08)'),
+        dim:     cv('--text-dim', '#aaa'),
+        muted:   cv('--text-muted', '#888'),
+        text:    cv('--text-primary', '#333'),
+        bright:  cv('--text-bright', '#1a1a17'),
+        orange:  cv('--orange', '#d35400'),
+        green:   cv('--green', '#2d8a2d'),
+        blue:    cv('--blue', '#2874a6'),
+        red:     cv('--red', '#c0392b'),
+        gold:    cv('--gold', '#a88520'),
+    };
+
+    let html = `<div style="width:760px;background:${C.surface};border:1px solid ${C.border};font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:10px 14px;border-bottom:1px solid ${C.border};display:flex;align-items:center;gap:8px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:${C.orange};display:inline-block;"></span>
+            <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:1.5px;color:${C.orange};text-transform:uppercase;">Subsidiary Marketplace</span>
+            <span style="font-family:${mono};font-size:9px;color:${C.dim};">${listings.length} available</span>
+        </div>`;
+
+    // My active listings (seller view)
+    if (myListings.length > 0) {
+        html += `<div style="padding:8px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
+            <div style="font-family:${mono};font-size:8px;letter-spacing:1px;color:${C.gold};text-transform:uppercase;margin-bottom:6px;">YOUR LISTINGS</div>`;
+        for (const l of myListings) {
+            const bids = l.subsidiary_bids || [];
+            const pendingBids = bids.filter(b => b.status === 'pending');
+            html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <span style="font-size:11px;font-weight:700;color:${C.bright};">${escapeHtml(l.subsidiary_name)}</span>
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim};margin-left:6px;">${escapeHtml(l.subsector || '')}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-family:${mono};font-size:9px;color:${pendingBids.length > 0 ? C.green : C.dim};">${pendingBids.length} bid${pendingBids.length !== 1 ? 's' : ''}</span>
+                    ${pendingBids.length > 0 ? `<span onclick="subViewBids('${l.id}')" style="font-family:${mono};font-size:8px;font-weight:700;padding:3px 8px;color:${C.green};border:1px solid ${C.green}44;cursor:pointer;">VIEW BIDS</span>` : ''}
+                    <span onclick="subCancelSale('${l.id}')" style="font-family:${mono};font-size:8px;font-weight:700;padding:3px 8px;color:${C.red};border:1px solid ${C.red}44;cursor:pointer;">CANCEL</span>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    // Available listings (buyer view)
+    if (_subMarketLoadState === 'error') {
+        html += `<div style="padding:24px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.red};font-style:italic;">${escapeHtml((_subMarketLoadError && _subMarketLoadError.message) || 'Subsidiary marketplace is temporarily unavailable.')}</div>`;
+    } else if (listings.length === 0) {
+        html += `<div style="padding:24px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim};font-style:italic;">No subsidiaries for sale right now.</div>`;
+    } else {
+        for (const l of listings) {
+            const myBid = (l.subsidiary_bids || []).find(b => b.bidder_faction_id === faction?.id && b.status === 'pending');
+            const nationObj = (_allNations || []).find(n => n.id === l.nation_id);
+            const nationName = nationObj?.name || 'Unknown';
+
+            html += `<div style="padding:10px 14px;border-bottom:1px solid ${C.border};">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:12px;font-weight:700;color:${C.bright};">${escapeHtml(l.subsidiary_name)}</span>
+                        <span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${C.orange};border:1px solid ${C.orange}44;background:${C.orange}0a;">${escapeHtml(l.subsector || 'General')}</span>
+                    </div>
+                    <span style="font-family:${mono};font-size:8px;color:${C.dim};">${escapeHtml(nationName)}</span>
+                </div>
+                <div style="display:flex;gap:16px;font-family:${mono};font-size:8px;color:${C.muted};margin-bottom:8px;">
+                    <span>Valuation: <strong style="color:${C.text};">${hfFmtBig(l.valuation)}</strong></span>
+                    <span>Revenue: <strong style="color:${C.text};">${hfFmtBig(l.monthly_revenue)}/mo</strong></span>
+                    <span>Cash: <strong style="color:${C.text};">${hfFmtBig(l.sub_cash_at_listing)}</strong></span>
+                    <span>Staff: <strong style="color:${C.text};">${l.employee_count}</strong></span>
+                </div>
+                <div style="display:flex;justify-content:flex-end;">
+                    ${myBid
+                        ? `<span style="font-family:${mono};font-size:8px;font-weight:700;color:${C.green};">✓ BID PLACED: ${hfFmtBig(myBid.bid_amount)}</span>`
+                        : `<span onclick="subPlaceBid('${l.id}','${escapeHtml(l.subsidiary_name)}',${l.valuation})" style="font-family:${mono};font-size:8px;font-weight:700;padding:4px 14px;color:#000;background:${C.orange};cursor:pointer;">PLACE BID</span>`
+                    }
+                </div>
+            </div>`;
+        }
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+async function subPlaceBid(saleId, subName, valuation) {
+    const amountStr = prompt('Place bid for "' + subName + '"\n\nValuation: ' + hfFmtBig(valuation) + '\nMinimum bid: $1M\n\nEnter bid amount ($):');
+    if (!amountStr) return;
+    const amount = Math.round(Number(amountStr));
+    if (isNaN(amount) || amount < 1000000) {
+        alert('Minimum bid is $1,000,000.');
+        return;
+    }
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (amount > cash) {
+        alert('Insufficient funds. You have ' + hfFmtBig(cash) + '.');
+        return;
+    }
+
+    const { error } = await _supabase.from('subsidiary_bids').insert({
+        sale_id: saleId,
+        bidder_faction_id: faction.id,
+        bid_amount: amount,
+        status: 'pending',
+        placed_at_tick: shard?.current_tick || 0,
+    });
+
+    if (error) {
+        if (error.message.includes('duplicate') || error.message.includes('unique')) {
+            alert('You already have a bid on this subsidiary.');
+        } else {
+            alert('Failed to place bid: ' + error.message);
+        }
+        return;
+    }
+
+    alert('Bid of ' + hfFmtBig(amount) + ' placed on "' + subName + '".\nThe seller will review your bid.');
+    await loadMarketplaceListings();
+    renderSubsidiaryMarketplaceCard();
+}
+
+async function subViewBids(saleId) {
+    const sale = _marketplaceListings.find(l => l.id === saleId);
+    if (!sale) return;
+    const bids = (sale.subsidiary_bids || []).filter(b => b.status === 'pending');
+    if (bids.length === 0) { alert('No pending bids.'); return; }
+
+    // Fetch bidder names
+    const bidderIds = bids.map(b => b.bidder_faction_id);
+    const { data: bidders } = await _supabase.from('factions').select('id, faction_name').in('id', bidderIds);
+    const nameMap = {};
+    (bidders || []).forEach(f => { nameMap[f.id] = f.faction_name; });
+
+    let msg = 'Bids for "' + sale.subsidiary_name + '":\n\n';
+    const sortedBids = bids.sort((a, b) => b.bid_amount - a.bid_amount);
+    for (let i = 0; i < sortedBids.length; i++) {
+        const b = sortedBids[i];
+        msg += (i + 1) + '. ' + (nameMap[b.bidder_faction_id] || 'Unknown') + ': ' + hfFmtBig(b.bid_amount) + '\n';
+    }
+    msg += '\nEnter the number of the bid to accept (or cancel):';
+
+    const choice = prompt(msg);
+    if (!choice) return;
+    const idx = parseInt(choice, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= sortedBids.length) { alert('Invalid selection.'); return; }
+
+    const acceptedBid = sortedBids[idx];
+    const bidderName = nameMap[acceptedBid.bidder_faction_id] || 'Unknown';
+
+    if (!confirm('Accept bid of ' + hfFmtBig(acceptedBid.bid_amount) + ' from ' + bidderName + '?\n\nThis will transfer ownership of "' + sale.subsidiary_name + '" to them.\nYou will receive ' + hfFmtBig(acceptedBid.bid_amount) + ' in cash.\n\nThis cannot be undone.')) return;
+
+    await subAcceptBid(sale, acceptedBid);
+}
+
+let _acceptBidLock = false;
+async function subAcceptBid(sale, bid) {
+    if (_acceptBidLock) return;
+    _acceptBidLock = true;
+    try {
+        const currentTick = shard?.current_tick || 0;
+
+        // 1. Deduct from buyer
+        const { data: buyer } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', bid.bidder_faction_id).single();
+        const buyerCash = Number(buyer?.corp_cash_reserves ?? 0);
+        if (buyerCash < bid.bid_amount) {
+            alert('Buyer has insufficient funds. Bid cannot be completed.');
+            await _supabase.from('subsidiary_bids').update({ status: 'rejected', resolved_at_tick: currentTick }).eq('id', bid.id);
+            return;
+        }
+
+        var { error: buyErr } = await _supabase.from('factions').update({ corp_cash_reserves: buyerCash - bid.bid_amount }).eq('id', bid.bidder_faction_id);
+        if (buyErr) { alert('Failed to deduct from buyer: ' + buyErr.message); return; }
+
+        // 2. Credit to seller
+        const sellerCash = Number(faction?.corp_cash_reserves ?? 0);
+        var { error: sellErr } = await _supabase.from('factions').update({ corp_cash_reserves: sellerCash + bid.bid_amount }).eq('id', faction.id);
+        if (sellErr) {
+            // Rollback buyer deduction
+            await _supabase.from('factions').update({ corp_cash_reserves: buyerCash }).eq('id', bid.bidder_faction_id);
+            alert('Failed to credit seller: ' + sellErr.message);
+            return;
+        }
+        faction.corp_cash_reserves = sellerCash + bid.bid_amount;
+
+        // 3. Transfer subsidiary ownership
+        await _supabase.from('corp_properties').update({ faction_id: bid.bidder_faction_id }).eq('id', sale.subsidiary_id);
+
+        // 4. Transfer all properties in that nation to buyer
+        const subNationProps = _ownedProperties.filter(p => p.nation_id === sale.nation_id && p.faction_id === faction.id);
+        for (const prop of subNationProps) {
+            await _supabase.from('corp_properties').update({ faction_id: bid.bidder_faction_id }).eq('id', prop.id);
+        }
+
+        // 5. Mark sale completed, bid accepted, other bids rejected
+        await _supabase.from('subsidiary_sales').update({ status: 'completed', completed_at_tick: currentTick, accepted_bid_id: bid.id }).eq('id', sale.id);
+        await _supabase.from('subsidiary_bids').update({ status: 'accepted', resolved_at_tick: currentTick }).eq('id', bid.id);
+        await _supabase.from('subsidiary_bids').update({ status: 'rejected', resolved_at_tick: currentTick }).eq('sale_id', sale.id).neq('id', bid.id);
+
+        subUpdateTopbarCash(faction.corp_cash_reserves);
+        alert('Sale complete! Received ' + hfFmtBig(bid.bid_amount) + '.\n\n"' + sale.subsidiary_name + '" has been transferred to the buyer.');
+        await subReloadCards();
+        await loadMarketplaceListings();
+        renderSubsidiaryMarketplaceCard();
+    } catch (err) {
+        console.error('[SubMarket] Accept bid error:', err);
+        alert('Transfer failed: ' + err.message);
+    } finally {
+        _acceptBidLock = false;
+    }
+}
+
+async function subCancelSale(saleId) {
+    if (!confirm('Cancel this listing? The subsidiary will no longer be for sale.')) return;
+    const { error } = await _supabase.from('subsidiary_sales').update({ status: 'cancelled' }).eq('id', saleId);
+    if (error) { alert('Failed: ' + error.message); return; }
+    await loadMarketplaceListings();
+    renderSubsidiaryMarketplaceCard();
+}
+function subDissolve(propId) { _subLiquidate(propId, 'dissolve'); }
+
+// ─── INJECT / WITHDRAW: unified cash transfer between parent ↔ subsidiary ───
+async function _subTransfer(propId, isWithdraw) {
+    if (_subActionLock) return;
+    const hq = _ownedProperties.find(p => p.id === propId);
+    if (!hq) return;
+    const parentCash = Number(faction?.corp_cash_reserves ?? 0);
+    const subCash = Number(hq.sub_cash || 0);
+    const verb = isWithdraw ? 'WITHDRAW' : 'INJECT CAPITAL';
+
+    if (isWithdraw && subCash <= 0) { alert('This subsidiary has no cash to withdraw.'); return; }
+
+    const maxAmount = isWithdraw ? subCash : parentCash;
+    const input = prompt(
+        verb + (isWithdraw ? ' from ' : ' into ') + hq.name + '\n\n' +
+        'Parent cash: ' + hfFmtBig(parentCash) + '\n' +
+        'Subsidiary cash: ' + hfFmtBig(subCash) + '\n\n' +
+        'Enter amount (e.g., 5000000 or 5M):'
+    );
+    if (!input) return;
+
+    const amount = subParseAmount(input);
+    if (!amount || amount <= 0 || isNaN(amount)) { alert('Invalid amount.'); return; }
+    if (amount > maxAmount) { alert('Insufficient ' + (isWithdraw ? 'subsidiary' : 'parent') + ' cash. Available: ' + hfFmtBig(maxAmount)); return; }
+
+    const newParent = isWithdraw ? parentCash + amount : parentCash - amount;
+    const newSub = isWithdraw ? subCash - amount : subCash + amount;
+    if (!confirm(verb + ' ' + hfFmtBig(amount) + (isWithdraw ? ' from ' : ' into ') + hq.name + '?\n\nParent: ' + hfFmtBig(parentCash) + ' → ' + hfFmtBig(newParent) + '\nSubsidiary: ' + hfFmtBig(subCash) + ' → ' + hfFmtBig(newSub))) return;
+
+    _subActionLock = true;
+    try {
+        await Promise.all([
+            _supabase.from('factions').update({ corp_cash_reserves: newParent }).eq('id', faction.id),
+            _supabase.from('corp_properties').update({ sub_cash: newSub }).eq('id', propId),
+        ]);
+        faction.corp_cash_reserves = newParent;
+        hq.sub_cash = newSub;
+        subUpdateTopbarCash(newParent);
+        renderManageSubsidiariesCard();
+        alert((isWithdraw ? 'Withdrew ' : 'Injected ') + hfFmtBig(amount) + (isWithdraw ? ' from ' : ' into ') + hq.name + '.');
+    } catch (err) { alert('Failed: ' + err.message); }
+    finally { _subActionLock = false; }
+}
+function subInjectCapital(propId) { _subTransfer(propId, false); }
+function subWithdraw(propId) { _subTransfer(propId, true); }
+
+// ─── MERGE: Absorb subsidiary into parent corporation ───
+async function subMerge(propId) {
+    if (_subActionLock) return;
+    const sourceHq = _ownedProperties.find(p => p.id === propId);
+    if (!sourceHq) return;
+
+    const sourceData = getSubsidiaryData(sourceHq);
+    const sourceNation = sourceData.nation;
+    const sourceProps = subGetNationProps(sourceHq.nation_id);
+    const sourceVal = sourceData.valuation;
+    const sourceCash = sourceData.cash;
+    const sourceRep = sourceData.reputation;
+    const sourceSubsector = sourceData.subsector;
+    const mergeCost = Math.round(sourceVal * 2.25);
+
+    // Reputation impact: +10% or -20% of subsidiary's rep
+    const repGain = Math.round(sourceRep * 0.10);
+    const repLoss = Math.round(sourceRep * 0.20);
+
+    // Workforce: hire workers to fill total capacity
+    // hfGetCapacity() already includes subsidiary properties (they're in _ownedProperties)
+    const totalCapacity = hfGetCapacity();
+    const currentWorkforce = HF_TYPES.reduce((s, t) => s + Number(faction?.[t.factionKey] ?? 0), 0);
+    const workersToHire = Math.max(0, totalCapacity - currentWorkforce);
+
+    const parentCash = Number(faction?.corp_cash_reserves ?? 0);
+    if (mergeCost > parentCash) {
+        alert(
+            'Insufficient cash to acquire subsidiary.\n\n' +
+            'Acquisition cost (2.25× valuation): ' + hfFmtBig(mergeCost) + '\n' +
+            'Available cash: ' + hfFmtBig(parentCash)
+        );
+        return;
+    }
+
+    if (sourceData.projects > 0) {
+        alert('Cannot merge — subsidiary has ' + sourceData.projects + ' active project(s). Complete or abandon them first.');
+        return;
+    }
+
+    if (!confirm(
+        'MERGE "' + sourceHq.name + '" INTO YOUR CORPORATION\n\n' +
+        'Acquisition cost (2.25× valuation): ' + hfFmtBig(mergeCost) + '\n' +
+        'Subsidiary cash absorbed: ' + hfFmtBig(sourceCash) + '\n' +
+        'Net cost: ' + hfFmtBig(mergeCost - sourceCash) + '\n\n' +
+        '• ' + sourceProps.length + ' properties transferred to parent\n' +
+        '• Subsidiary subsector "' + sourceSubsector + '" added to portfolio\n' +
+        '• Workers hired to max capacity (+' + workersToHire.toLocaleString() + ')\n' +
+        '• Reputation: +' + repGain + ' or -' + repLoss + ' (from sub rep ' + sourceRep + ')\n\n' +
+        'This cannot be undone.'
+    )) return;
+
+    _subActionLock = true;
+    try {
+        // Transfer all properties to parent nation; demote HQ, clear subsidiary fields
+        const parentNationId = faction.nation_id;
+        if (sourceProps.length > 0) {
+            const nonHqIds = sourceProps.filter(p => p.id !== sourceHq.id).map(p => p.id);
+            if (nonHqIds.length === 1) {
+                const { error: propErr } = await _supabase.from('corp_properties').update({
+                    nation_id: parentNationId,
+                    type: 'office',
+                }).eq('id', nonHqIds[0]);
+                if (propErr) throw propErr;
+            } else if (nonHqIds.length > 1) {
+                const { error: propErr } = await _supabase.from('corp_properties').update({
+                    nation_id: parentNationId,
+                    type: 'office',
+                }).in('id', nonHqIds);
+                if (propErr) throw propErr;
+            }
+            // Demote HQ: clear sub_cash, subsector, convert to office
+            const { error: hqErr } = await _supabase.from('corp_properties').update({
+                nation_id: parentNationId,
+                type: 'office',
+                sub_cash: 0,
+                subsector: null,
+            }).eq('id', sourceHq.id);
+            if (hqErr) throw hqErr;
+        }
+
+        // Compute faction updates
+        const newParentCash = parentCash - mergeCost + sourceCash;
+        const currentGeneral = Number(faction?.corp_general_workforce ?? 0);
+        const newGeneral = currentGeneral + workersToHire;
+        const repDelta = Math.random() >= 0.5 ? repGain : -repLoss;
+        const currentStanding = Number(faction?.standing ?? 50);
+        const newStanding = Math.max(0, Math.min(100, currentStanding + repDelta));
+
+        const { error: factionErr } = await _supabase.from('factions').update({
+            corp_cash_reserves: newParentCash,
+            corp_general_workforce: newGeneral,
+            standing: newStanding,
+        }).eq('id', faction.id);
+        if (factionErr) throw factionErr;
+
+        faction.corp_cash_reserves = newParentCash;
+        faction.corp_general_workforce = newGeneral;
+        faction.standing = newStanding;
+        subUpdateTopbarCash(newParentCash);
+
+        await subReloadCards();
+        alert(
+            'Merger complete!\n\n' +
+            '"' + sourceHq.name + '" absorbed into your corporation.\n' +
+            'Cost: ' + hfFmtBig(mergeCost) + ' | Cash absorbed: ' + hfFmtBig(sourceCash) + '\n' +
+            'Reputation ' + (repDelta >= 0 ? '+' : '') + repDelta + ' (now ' + newStanding + ')\n' +
+            'Workers hired: +' + workersToHire.toLocaleString() + ' general workforce\n' +
+            'Properties: ' + sourceProps.length + ' transferred to parent'
+        );
+    } catch (err) { alert('Merge failed: ' + err.message); }
+    finally { _subActionLock = false; }
+}
+window.subDissolve = subDissolve;
+window.subInjectCapital = subInjectCapital;
+window.subWithdraw = subWithdraw;
+window.subMerge = subMerge;
+window.subSell = subSell;
+window.subPutForSale = subPutForSale;
+window.subPlaceBid = subPlaceBid;
+window.subViewBids = subViewBids;
+window.subCancelSale = subCancelSale;
+window.selectSubsidiary = function(i) { _mSubSelected = i; renderManageSubsidiariesCard(); };
+
+// ==================== CREATE SUBSIDIARY ====================
+
+let _subNations = [];
+let _subNationCorpCounts = {}; // nation_id -> number of active corps
+let _subSelectedNation = null;
+let _subCreating = false;
+let _subCustomName = '';
+let _subCustomAbbr = '';
+let _subSelectedSector = ''; // defaults to parent's sector, can be changed
+let _subSelectedSubsector = ''; // defaults to parent's subsector
+
+// Cross-sector subsidiary cost multipliers (relative to same-sector base)
+const SUB_SECTOR_MULTIPLIERS = {
+    'Construction': 4,
+    'Finance': 5,
+    'Shipping': 4,
+};
+const SUB_AVAILABLE_SECTORS = ['Construction', 'Shipping', 'Finance'];
+
+// Subsector definitions with cost modifiers (relative to parent subsector)
+const SUB_SUBSECTORS = {
+    'Construction': [
+        { id: 'civil', name: 'Civil Engineering', mod: 0 },
+        { id: 'industrial', name: 'Industrial Construction', mod: 0.25 },
+        { id: 'mega', name: 'Megaprojects', mod: 0.40 },
+    ],
+    'Shipping': [
+        { id: 'bulk_cargo', name: 'Bulk Cargo', mod: 0 },
+        { id: 'container_freight', name: 'Container Freight', mod: 0.20 },
+        { id: 'specialized_transport', name: 'Specialized Transport', mod: 0.35 },
+    ],
+    'Finance': [
+        { id: 'banking', name: 'Banking', mod: 0 },
+        { id: 'insurance', name: 'Insurance', mod: 0.15 },
+        { id: 'investment', name: 'Investment Management', mod: 0.30 },
+    ],
+    'Technology': [
+        { id: 'software', name: 'Software Development', mod: 0 },
+        { id: 'hardware', name: 'Hardware Manufacturing', mod: 0.20 },
+        { id: 'telecom', name: 'Telecommunications', mod: 0.35 },
+    ],
+    'Energy': [
+        { id: 'oil_gas', name: 'Oil & Gas', mod: 0 },
+        { id: 'renewables', name: 'Renewables', mod: 0.20 },
+        { id: 'mining', name: 'Mining', mod: 0.30 },
+    ],
+    'Healthcare': [
+        { id: 'pharma', name: 'Pharmaceuticals', mod: 0 },
+        { id: 'hospitals', name: 'Hospital Systems', mod: 0.20 },
+        { id: 'biotech', name: 'Biotechnology', mod: 0.35 },
+    ],
+};
+
+async function loadNationsForSubsidiary() {
+    const { data, error } = await _supabase.from('nations').select('*').order('name');
+    if (error) { console.warn('[Subsidiary] Failed to load nations:', error.message); }
+    _subNations = (data || []).filter(n => n.id !== faction?.nation_id);
+
+    // Count active corps per nation for demand indicator
+    const { data: corps } = await _supabase.from('factions')
+        .select('nation_id')
+        .eq('faction_type', 'corporation')
+        .is('abandoned_at', null);
+    _subNationCorpCounts = {};
+    for (const c of (corps || [])) {
+        if (c.nation_id) _subNationCorpCounts[c.nation_id] = (_subNationCorpCounts[c.nation_id] || 0) + 1;
+    }
+
+    // Default sector and subsector to parent's
+    _subSelectedSector = faction?.corp_sector || '';
+    _subSelectedSubsector = faction?.corp_subsector || '';
+}
+
+function subGetSubsectors() {
+    const sector = _subSelectedSector || faction?.corp_sector || '';
+    return SUB_SUBSECTORS[sector] || [{ id: 'general', name: sector || 'General', mod: 0 }];
+}
+
+function subSetSector(sector) {
+    _subSelectedSector = sector;
+    // Reset subsector to first option of new sector
+    const subs = SUB_SUBSECTORS[sector];
+    _subSelectedSubsector = subs ? subs[0].name : '';
+    renderCreateSubsidiaryCard();
+}
+
+function subGetSectorMultiplier() {
+    const parentSector = faction?.corp_sector || '';
+    if (_subSelectedSector === parentSector) return 1;
+    return SUB_SECTOR_MULTIPLIERS[_subSelectedSector] || 4;
+}
+
+function subGetSubsectorMod() {
+    const subsectors = subGetSubsectors();
+    const sel = subsectors.find(s => s.name === _subSelectedSubsector);
+    return sel ? sel.mod : 0;
+}
+
+function subCalcNationMultiplier(n) {
+    const sol = Number(n.standard_of_living ?? 50);
+    // Multiplier based on standard of living: higher SoL = more expensive
+    return Math.max(0.5, Math.round((sol / 50) * 100) / 100);
+}
+
+function subCalcEntryCost(n) {
+    const BASE = 50000000;
+    const sectorMult = subGetSectorMultiplier();
+    const subsectorMod = 1 + subGetSubsectorMod();
+    const nationMult = subCalcNationMultiplier(n);
+    return Math.round(Math.max(10000000, BASE * sectorMult * subsectorMod * nationMult));
+}
+
+function subGetDemand(nationId) {
+    const count = _subNationCorpCounts[nationId] || 0;
+    if (count <= 1) return { label: 'HIGH', color: '#5c5' };
+    if (count <= 3) return { label: 'MODERATE', color: '#ca5' };
+    return { label: 'LOW', color: '#c55' };
+}
+
+function subSelectNation(nationId) {
+    _subSelectedNation = _subSelectedNation === nationId ? null : nationId;
+    if (_subSelectedNation) {
+        const n = _subNations.find(x => x.id === _subSelectedNation);
+        _subCustomName = (faction?.faction_name || 'Subsidiary') + ' ' + (n?.name || '');
+    } else {
+        _subCustomName = '';
+    }
+    renderCreateSubsidiaryCard();
+}
+
+function subSetSubsector(name) {
+    _subSelectedSubsector = name;
+    renderCreateSubsidiaryCard();
+}
+
+function subSetName(val) {
+    _subCustomName = val;
+}
+
+function subSetAbbr(val) {
+    _subCustomAbbr = val.toUpperCase().slice(0, 4);
+}
+
+async function subCreate() {
+    if (_subCreating || !_subSelectedNation) return;
+    const nation = _subNations.find(n => n.id === _subSelectedNation);
+    if (!nation) return;
+
+    const subName = (_subCustomName || '').trim();
+    const subAbbr = (_subCustomAbbr || '').trim();
+    if (!subName) { alert('Please enter a corporation name for the subsidiary.'); return; }
+    if (subAbbr.length < 2) { alert('Please enter an abbreviation (2-4 chars).'); return; }
+
+    // Check if already have subsidiary there
+    const existing = _ownedProperties.find(p => p.nation_id === nation.id && p.type === 'regional_hq');
+    if (existing) { alert('You already have a subsidiary in ' + nation.name); return; }
+
+    const cost = subCalcEntryCost(nation);
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (cost > cash) {
+        alert('Insufficient cash. Entry cost: ' + hfFmtBig(cost) + ', available: ' + hfFmtBig(cash));
+        return;
+    }
+
+    if (!confirm('Establish subsidiary in ' + nation.name + '?\n\nName: ' + subName + ' (' + subAbbr + ')\nSubsector: ' + (_subSelectedSubsector || 'General') + '\nEntry cost: ' + hfFmtBig(cost) + '\nCreates a Regional HQ (500 capacity)\nUnlocks ' + nation.name + ' for operations\n\nDeducted from cash reserves.')) return;
+
+    _subCreating = true;
+    try {
+        const shardRes = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardRes.data?.current_tick || 0;
+        const condition = 85 + Math.floor(Math.random() * 16); // 85-100% new build
+        const maint = Math.round(cost * 0.005);
+
+        // Create regional HQ property
+        const { error: propErr } = await _supabase.from('corp_properties').insert({
+            faction_id: faction.id,
+            nation_id: nation.id,
+            name: subName,
+            type: 'regional_hq',
+            style: 'Modern',
+            capacity: 500,
+            purchase_price: cost,
+            monthly_maintenance: maint,
+            condition: condition,
+            city: nation.capital || nation.name,
+            purchased_at_tick: currentTick,
+            is_active: true,
+            subsector: _subSelectedSubsector || faction?.corp_subsector || null,
+        });
+        if (propErr) throw propErr;
+
+        // Deduct cash
+        const newCash = Math.max(0, cash - cost);
+        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newCash;
+
+        subUpdateTopbarCash(newCash);
+
+        // Log corporate event for news ticker + world events
+        const selectedSector = _subSelectedSector || faction?.corp_sector || 'Unknown';
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: nation.id,
+                event_name: 'New Subsidiary Established',
+                category: 'corporate',
+                description_chosen: `${faction.faction_name} has invested ${hfFmtBig(cost)} to establish ${subName}, a new ${selectedSector} corporation in ${nation.name}.`,
+                fired_at_tick: shard?.current_tick || 0,
+            });
+        } catch (_) { /* non-blocking */ }
+
+        // One-time GDP growth nudge (+0.2) for the subsidiary nation
+        try {
+            const { data: subNation } = await _supabase.from('nations').select('gdp_growth').eq('id', nation.id).single();
+            if (subNation) {
+                await _supabase.from('nations').update({
+                    gdp_growth: Math.min(100, Number(subNation.gdp_growth || 50) + 0.2)
+                }).eq('id', nation.id);
+            }
+        } catch (_) { /* non-blocking */ }
+
+        _subSelectedNation = null;
+        _subCustomName = '';
+        _subCustomAbbr = '';
+        await subReloadCards();
+        alert('Subsidiary "' + subName + '" established in ' + nation.name + '!\n\nCost: ' + hfFmtBig(cost) + '\nRegional HQ created with ' + condition + '% condition.');
+    } catch (err) {
+        alert('Failed: ' + err.message);
+    } finally {
+        _subCreating = false;
+    }
+}
+
+function renderCreateSubsidiaryCard() {
+    const container = document.getElementById('create-subsidiary-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: 'var(--bg-card)', surface: 'var(--panel-main)', card: 'var(--bg-panel)', border: 'var(--panel-border)',
+        accent: '#8b9a6b', accentBright: '#a3b07e', blue: '#5a9abf', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', greenDark: '#2a5a3a', red: '#c55',
+        yellow: '#ca5', text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
+
+    const parentSector = faction?.corp_sector || 'General';
+    const parentSubsector = faction?.corp_subsector || '';
+    const subsectors = subGetSubsectors();
+    const selectedSub = subsectors.find(s => s.name === _subSelectedSubsector) || subsectors[0];
+
+    // Filter out nations where we already have a subsidiary
+    const existingNationIds = new Set(_ownedProperties.filter(p => p.type === 'regional_hq').map(p => p.nation_id));
+    const available = _subNations.filter(n => !existingNationIds.has(n.id));
+    const sel = _subSelectedNation ? available.find(n => n.id === _subSelectedNation) : null;
+
+    const canCreate = _subCustomName.trim().length > 0 && _subCustomAbbr.trim().length >= 2 && sel !== null;
+
+    // ─── SECTOR (selectable — cross-sector has cost multiplier) ───
+    const currentSector = _subSelectedSector || parentSector;
+    const sectorMult = subGetSectorMultiplier();
+    let sectorHtml = `
+    <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
+        <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Sector</div>
+        <div style="display:flex;gap:3px;">
+            ${SUB_AVAILABLE_SECTORS.map(s => {
+                const active = s === currentSector;
+                const isSame = s === parentSector;
+                const mult = isSame ? 1 : (SUB_SECTOR_MULTIPLIERS[s] || 4);
+                const multColor = isSame ? C.greenBright : C.orange;
+                return `<div onclick="subSetSector('${s}')" style="flex:1;padding:5px 4px;text-align:center;cursor:pointer;background:${active ? C.accent + '18' : 'transparent'};border:1px solid ${active ? C.accent + '44' : C.border};">
+                    <div style="font-family:${mono};font-size:9px;font-weight:700;color:${active ? C.accentBright : C.dim}">${s}</div>
+                    <div style="font-family:${mono};font-size:7px;margin-top:2px;color:${multColor}">${isSame ? 'PARENT · ×1' : '×' + mult + ' COST'}</div>
+                </div>`;
+            }).join('')}
+        </div>
+        ${sectorMult > 1 ? `<div style="font-family:${mono};font-size:7px;color:${C.orange};margin-top:4px;padding:3px 6px;background:rgba(204,136,68,0.06);border:1px solid rgba(204,136,68,0.15);">Cross-sector subsidiary: base cost ×${sectorMult}</div>` : ''}
+    </div>`;
+
+    // ─── SUBSECTOR ───
+    let subsectorHtml = `
+    <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
+        <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Subsector</div>
+        <div style="display:flex;gap:3px;">
+            ${subsectors.map(s => {
+                const active = s.name === _subSelectedSubsector;
+                const isSame = s.name === parentSubsector;
+                return `<div onclick="subSetSubsector('${s.name.replace(/'/g, "\\'")}')" style="flex:1;padding:5px 4px;text-align:center;cursor:pointer;background:${active ? C.accent + '18' : 'transparent'};border:1px solid ${active ? C.accent + '44' : C.border};">
+                    <div style="font-family:${mono};font-size:8px;font-weight:700;color:${active ? C.accentBright : C.dim}">${s.name}</div>
+                    <div style="font-family:${mono};font-size:7px;margin-top:2px;color:${isSame ? C.greenBright : s.mod > 0 ? C.orange : C.dim}">${isSame ? 'SAME — ±0%' : (s.mod > 0 ? '+' + Math.round(s.mod * 100) + '%' : '±0%')}</div>
+                </div>`;
+            }).join('')}
+        </div>
+    </div>`;
+
+    // ─── NATION LIST ───
+    let nationHtml = '';
+    if (available.length === 0) {
+        nationHtml = `<div style="padding:20px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">Subsidiaries in all available nations.</div>`;
+    } else {
+        for (const n of available) {
+            const active = n.id === _subSelectedNation;
+            const demand = subGetDemand(n.id);
+            const corpCount = _subNationCorpCounts[n.id] || 0;
+            const sol = Math.round(Number(n.standard_of_living ?? 50));
+            const mult = subCalcNationMultiplier(n);
+            nationHtml += `
+            <div onclick="subSelectNation('${n.id}')" style="display:flex;align-items:center;padding:4px 8px;margin-bottom:2px;cursor:pointer;background:${active ? 'rgba(139,154,107,0.04)' : 'transparent'};border:1px solid ${active ? C.accent + '44' : C.border};border-left:${active ? '2px solid ' + C.accent : '2px solid transparent'};">
+                <div style="flex:1;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:11px;font-weight:600;color:${active ? C.text : C.muted}">${n.name}</span>
+                        <span style="font-family:${mono};font-size:7px;font-weight:700;padding:0 4px;color:${demand.color};background:${demand.color}12;border:1px solid ${demand.color}25;line-height:12px">${demand.label}</span>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:2px;">
+                        <span style="font-family:${mono};font-size:7px;color:${C.dim}">STD/LIVING: <span style="color:${C.muted}">${sol}</span></span>
+                        <span style="font-family:${mono};font-size:7px;color:${C.dim}">CORPS: <span style="color:${corpCount >= 4 ? C.red : corpCount >= 2 ? C.yellow : C.greenBright}">${corpCount}</span></span>
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-family:${mono};font-size:9px;font-weight:700;color:${mult > 1 ? C.orange : C.greenBright}">×${mult.toFixed(2)}</div>
+                </div>
+            </div>`;
+        }
+    }
+
+    // ─── NAME + ABBREVIATION ───
+    let nameHtml = `
+    <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
+        <div style="margin-bottom:6px;">
+            <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">Corporation Name</div>
+            <input type="text" value="${(_subCustomName || '').replace(/"/g, '&quot;')}" oninput="subSetName(this.value)" placeholder="e.g., ${(faction?.faction_name || 'Corp') + ' ' + (sel?.name || 'International')}" style="width:100%;padding:5px 8px;font-family:${mono};font-size:10px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;box-sizing:border-box;" />
+        </div>
+        <div>
+            <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">Abbreviation (2-4 chars)</div>
+            <input type="text" value="${(_subCustomAbbr || '').replace(/"/g, '&quot;')}" oninput="subSetAbbr(this.value)" placeholder="${(faction?.faction_name || 'CORP').slice(0,2).toUpperCase() + (sel?.name || 'XX').slice(0,2).toUpperCase()}" maxlength="4" style="width:80px;padding:5px 8px;font-family:${mono};font-size:12px;font-weight:700;color:${C.gold};background:${C.card};border:1px solid ${C.border};outline:none;text-align:center;letter-spacing:2px;" />
+        </div>
+    </div>`;
+
+    // ─── SUBSIDIARY RULES ───
+    const rules = [
+        { rule: 'Bid on projects in that nation', icon: '✓', color: C.greenBright },
+        { rule: 'Hires local workers at nation rates', icon: '✓', color: C.greenBright },
+        { rule: "Must use parent's materials & vehicles", icon: '!', color: C.orange },
+        { rule: 'Reputation gain: 75% sub / 25% parent', icon: '◐', color: C.gold },
+        { rule: 'Market revenue at 50% parent rate', icon: '◐', color: C.gold },
+        { rule: 'Counts as domestic corporation', icon: '✓', color: C.greenBright },
+        { rule: 'Starting reputation: 25', icon: '●', color: C.muted },
+    ];
+    let rulesHtml = `
+    <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
+        <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Subsidiary Rules</div>
+        <div style="background:${C.card};border:1px solid ${C.border};padding:6px 8px;">
+            ${rules.map((r, i) => `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;${i < rules.length - 1 ? 'border-bottom:1px solid ' + C.border : ''}">
+                <span style="font-family:${mono};font-size:9px;color:${r.color};width:12px;text-align:center">${r.icon}</span>
+                <span style="font-size:9px;color:${C.muted}">${r.rule}</span>
+            </div>`).join('')}
+        </div>
+    </div>`;
+
+    // ─── COST BREAKDOWN FOOTER ───
+    const baseCost = 50000000;
+    const subsectorMod = selectedSub.mod;
+    const nationMult = sel ? subCalcNationMultiplier(sel) : null;
+    const finalCost = sel ? subCalcEntryCost(sel) : null;
+    const estimateCost = Math.round(baseCost * sectorMult * (1 + subsectorMod)); // estimate without nation
+
+    let costHtml = `
+    <div style="background:${C.bg};border:1px solid ${C.border};padding:6px 8px;margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
+            <span style="font-family:${mono};font-size:8px;color:${C.dim}">BASE</span>
+            <span style="font-family:${mono};font-size:9px;color:${C.muted}">${hfFmtBig(baseCost)}</span>
+        </div>
+        ${sectorMult > 1 ? `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
+            <span style="font-family:${mono};font-size:8px;color:${C.dim}">SECTOR (${currentSector})</span>
+            <span style="font-family:${mono};font-size:9px;font-weight:700;color:${C.orange}">×${sectorMult}</span>
+        </div>` : ''}
+        <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
+            <span style="font-family:${mono};font-size:8px;color:${C.dim}">SUBSECTOR (${selectedSub.name})</span>
+            <span style="font-family:${mono};font-size:9px;color:${subsectorMod === 0 ? C.greenBright : C.orange}">${subsectorMod === 0 ? '±0%' : '+' + Math.round(subsectorMod * 100) + '%'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
+            <span style="font-family:${mono};font-size:8px;color:${C.dim}">NATION (${sel ? sel.name : 'select below'})</span>
+            <span style="font-family:${mono};font-size:9px;color:${sel ? (nationMult > 1 ? C.orange : C.greenBright) : C.dim}">${sel ? '×' + nationMult.toFixed(2) : '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:3px 0;">
+            <span style="font-family:${mono};font-size:9px;font-weight:700;color:${C.text}">TOTAL COST</span>
+            <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${sel ? hfFmtBig(finalCost) : '~' + hfFmtBig(estimateCost)}</span>
+        </div>
+    </div>`;
+
+    container.innerHTML = `
+    <div style="width:380px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.gold}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Create Subsidiary</span>
+            </div>
+        </div>
+        <div style="flex:1;overflow:auto;">
+            ${sectorHtml}
+            ${subsectorHtml}
+            <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
+                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Nation</div>
+                ${nationHtml}
+            </div>
+            ${nameHtml}
+            ${rulesHtml}
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            ${costHtml}
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-family:${mono};font-size:8px;color:${C.dim}">IMMEDIATE PAYMENT</span>
+                <div onclick="subCreate()"
+                    onmouseover="this.style.filter='brightness(1.2)';this.style.transform='scale(1.02)'"
+                    onmouseout="this.style.filter='';this.style.transform=''"
+                    onmousedown="this.style.transform='scale(0.97)'"
+                    onmouseup="this.style.transform='scale(1.02)'"
+                    style="padding:6px 22px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${canCreate ? '#000' : '#c8a832'};background:${canCreate ? C.gold : 'rgba(200,168,50,0.08)'};border:1px solid ${canCreate ? C.gold : 'rgba(200,168,50,0.3)'};cursor:pointer;opacity:${canCreate ? 1 : 0.7};transition:all 0.1s ease;user-select:none">CREATE SUBSIDIARY</div>
+            </div>
+        </div>
+    </div>`;
+}
+
+window.subSelectNation = subSelectNation;
+window.subCreate = subCreate;
+window.subSetName = subSetName;
+window.subSetAbbr = subSetAbbr;
+window.subSetSector = subSetSector;
+window.subSetSubsector = subSetSubsector;
+
+// ==================== CORPORATIONS CARD (760×450) ====================
+
+let _allCorps = [];
+let _corpSelected = 0;
+// Persist investigations to localStorage so they survive page refresh
+let _investigatedCorps = JSON.parse(localStorage.getItem('nationhood_investigated_corps') || '{}');
+let _corpFilterNation = 'ALL';
+let _corpSortBy = 'REPUTATION';
+
+async function loadAllCorporations() {
+    _allCorps = await fetchAllCorporations();
+}
+
+
+function corpSelect(idx) { _corpSelected = idx; renderCorporationsCard(); }
+function corpFilterNation(n) { _corpFilterNation = n; _corpSelected = 0; renderCorporationsCard(); }
+function corpSort(s) { _corpSortBy = s; _corpSelected = 0; renderCorporationsCard(); }
+
+async function corpInvestigate(targetCorpId) {
+    if (!faction || !shard) return;
+    const cash = Number(faction.corp_cash_reserves ?? 0);
+    if (cash < 500000) { alert('Insufficient cash. Need $500k.'); return; }
+
+    const { error } = await _supabase.from('factions').update({
+        corp_cash_reserves: cash - 500000,
+    }).eq('id', faction.id);
+    if (error) { alert('Failed: ' + error.message); return; }
+
+    faction.corp_cash_reserves = cash - 500000;
+    _investigatedCorps[targetCorpId] = true;
+    localStorage.setItem('nationhood_investigated_corps', JSON.stringify(_investigatedCorps));
+
+    // Reload the target corp's full data (including hidden financials)
+    const { data: fullCorpData } = await _supabase.from('factions')
+        .select('corp_cash_reserves, corp_loans, corp_reputation, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce')
+        .eq('id', targetCorpId).single();
+    if (fullCorpData) {
+        const corp = _allCorps.find(c => c.id === targetCorpId);
+        if (corp) {
+            Object.assign(corp, fullCorpData);
+            const cash = Number(fullCorpData.corp_cash_reserves || 0);
+            const loans = Number(fullCorpData.corp_loans || 0);
+            let receivables = 0;
+            try {
+                const { data: financePositions } = await _supabase.from('finance_active_loans')
+                    .select('principal, remaining_principal, finance_loan_requests!inner(request_type)')
+                    .eq('lender_faction_id', targetCorpId)
+                    .in('status', ['current', 'late', 'delinquent']);
+                receivables = computeFinanceReceivableValue(financePositions || []).total;
+            } catch (err) {
+                console.warn('[corpInvestigate] receivable lookup failed:', err);
+            }
+            corp.reputation = Math.round(Number(fullCorpData.corp_reputation ?? 50));
+            corp.revenue = Math.round(cash * 0.1);
+            corp.valuation = computeCorpValuation({ cash, loans, financeReceivables: receivables });
+        }
+    }
+
+    renderCorporationsCard();
+}
+
+function renderCorporationsCard() {
+    const container = document.getElementById('corporations-container');
+    if (!container) return;
+
+    const mono = "'JetBrains Mono', monospace";
+    const C = { bg: 'var(--bg-card)', surface: 'var(--panel-main)', card: 'var(--bg-panel)', border: 'var(--panel-border)',
+        accent: '#8b9a6b', blue: '#5a8aaa', gold: '#c8a832', orange: '#c84',
+        greenBright: '#5c5', red: '#c55', yellow: '#ca5',
+        text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
+
+    const STATUS_META = {
+        PUBLIC: { color: C.greenBright, bg: 'rgba(92,204,92,0.06)', border: 'rgba(92,204,92,0.15)' },
+        PRIVATE: { color: C.gold, bg: 'rgba(200,168,50,0.08)', border: 'rgba(200,168,50,0.2)' },
+        STATE: { color: C.orange, bg: 'rgba(204,136,68,0.06)', border: 'rgba(204,136,68,0.15)' },
+    };
+
+    // Collect nations for filter
+    const nations = [...new Set(_allCorps.map(c => c.nation).filter(Boolean))];
+
+    // Filter + sort
+    let filtered = [..._allCorps];
+    if (_corpFilterNation !== 'ALL') filtered = filtered.filter(c => c.nation === _corpFilterNation);
+    if (_corpSortBy === 'REPUTATION') filtered.sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
+    else if (_corpSortBy === 'REVENUE') filtered.sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
+    else if (_corpSortBy === 'VALUATION') filtered.sort((a, b) => (b.valuation || 0) - (a.valuation || 0));
+
+    if (_corpSelected >= filtered.length) _corpSelected = 0;
+    const sel = filtered[_corpSelected] || null;
+    const currentTick = shard?.current_tick || 0;
+    const isInvestigated = sel && !!_investigatedCorps[sel.id];
+    const isPrivateHidden = sel && sel.status === 'PRIVATE' && !isInvestigated;
+    const isState = sel && sel.status === 'STATE';
+
+    // Left table rows
+    let tableRows = '';
+    if (filtered.length === 0) {
+        tableRows = `<div style="padding:30px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">No corporations found.</div>`;
+    }
+    for (let i = 0; i < filtered.length; i++) {
+        const c = filtered[i];
+        const isSel = i === _corpSelected;
+        const csm = STATUS_META[c.status] || STATUS_META.PRIVATE;
+        const hidden = c.status === 'PRIVATE' && !_investigatedCorps[c.id];
+        tableRows += `
+        <div onclick="corpSelect(${i})" style="display:flex;align-items:center;padding:7px 16px;border-bottom:1px solid ${C.border};cursor:pointer;border-left:2px solid ${isSel ? C.accent : 'transparent'};background:${isSel ? 'rgba(139,154,107,0.03)' : 'transparent'};">
+            <span style="width:42px;font-family:${mono};font-size:10px;font-weight:700;color:${C.gold}">${c.abbr}</span>
+            <div style="flex:1.3;">
+                <div style="font-size:11px;font-weight:600;color:${C.text};line-height:1.2">${c.faction_name}</div>
+                <div style="font-family:${mono};font-size:7px;color:${C.dim};margin-top:1px">${c._isSub ? '<span style="color:#8a6aaa;">SUB</span> · ' : ''}${c.corp_subsector || c.corp_sector || '—'}</div>
+            </div>
+            <span style="width:62px"><span style="font-family:${mono};font-size:8px;padding:1px 5px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(c.nation || '—').toUpperCase().slice(0,6)}</span></span>
+            <span style="width:56px;font-family:${mono};font-size:9px;font-weight:700;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.revenue)}</span>
+            <span style="width:34px;font-family:${mono};font-size:10px;font-weight:700;color:${c.reputation >= 70 ? C.greenBright : c.reputation >= 40 ? C.accent : C.yellow};text-align:right">${c.reputation}</span>
+            <span style="width:56px;font-family:${mono};font-size:9px;color:${hidden ? C.dim : C.muted};text-align:right">${hidden ? '—' : hfFmtBig(c.valuation)}</span>
+            <span style="width:48px;text-align:center"><span style="font-family:${mono};font-size:7px;font-weight:700;padding:1px 5px;color:${csm.color};background:${csm.bg};border:1px solid ${csm.border}">${c.status}</span></span>
+        </div>`;
+    }
+
+    // Right detail panel
+    let detailHtml = '';
+    if (sel) {
+        const sm = STATUS_META[sel.status] || STATUS_META.PRIVATE;
+        const stats = [
+            ...(sel._isSub ? [{ label: 'Parent', value: sel._parentName || '—', color: '#8a6aaa' }] : []),
+            { label: 'Sector', value: sel.corp_sector || '—', color: C.text },
+            { label: 'Subsector', value: sel.corp_subsector || '—', color: C.accent },
+            { label: 'Reputation', value: sel.reputation + '/100', color: sel.reputation >= 70 ? C.greenBright : sel.reputation >= 40 ? C.accent : C.yellow },
+            { label: 'Revenue', value: isPrivateHidden ? 'UNDISCLOSED' : hfFmtBig(sel.revenue), color: isPrivateHidden ? C.dim : C.greenBright },
+            { label: 'Cash Reserves', value: isPrivateHidden ? 'UNDISCLOSED' : hfFmtBig(sel.corp_cash_reserves || 0), color: isPrivateHidden ? C.dim : C.text },
+            { label: 'Market Valuation', value: isPrivateHidden ? 'UNDISCLOSED' : hfFmtBig(sel.valuation), color: isPrivateHidden ? C.dim : C.gold },
+        ];
+
+        detailHtml = `
+        <div style="padding:10px 16px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+                <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${sel.abbr}</span>
+                <span style="font-size:14px;font-weight:700;color:${C.text}">${sel.faction_name}</span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <span style="font-family:${mono};font-size:8px;padding:2px 6px;color:${C.accent};background:rgba(139,154,107,0.08);border:1px solid rgba(139,154,107,0.15)">${(sel.nation || '—').toUpperCase()}</span>
+                <span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:${sm.color};background:${sm.bg};border:1px solid ${sm.border}">${sel.status}</span>
+                ${sel._isSub ? `<span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:#8a6aaa;background:rgba(138,106,170,0.08);border:1px solid rgba(138,106,170,0.2)">SUBSIDIARY</span>` : ''}
+                ${sel.isPlayer ? `<span style="font-family:${mono};font-size:8px;font-weight:700;padding:2px 6px;color:${C.blue};background:rgba(90,138,170,0.08);border:1px solid rgba(90,138,170,0.2)">PLAYER</span>` : `<span style="font-family:${mono};font-size:8px;color:${C.dim}">NPC</span>`}
+            </div>
+        </div>
+        ${stats.map(r => `<div style="display:flex;justify-content:space-between;padding:5px 16px;border-bottom:1px solid ${C.border};">
+            <span style="font-family:${mono};font-size:10px;color:${C.dim};text-transform:uppercase">${r.label}</span>
+            <span style="font-family:${mono};font-size:11px;font-weight:700;color:${r.value === 'UNDISCLOSED' ? C.dim : r.color};${r.value === 'UNDISCLOSED' ? 'font-style:italic;' : ''}">${r.value}</span>
+        </div>`).join('')}
+        <div style="padding:6px 14px;border-bottom:1px solid ${C.border};flex-shrink:0;">
+            <div style="width:100%;height:4px;background:${C.border}"><div style="width:${sel.reputation}%;height:100%;background:${sel.reputation >= 70 ? C.greenBright : sel.reputation >= 40 ? C.accent : C.yellow}"></div></div>
+        </div>
+        ${isPrivateHidden ? `<div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:rgba(200,168,50,0.03);">
+            <div style="font-family:${mono};font-size:8px;color:${C.gold};margin-bottom:2px">PRIVATE — FINANCIALS UNDISCLOSED</div>
+            <div style="font-size:9px;color:${C.dim};line-height:1.4">Use INVESTIGATE to reveal financial data for 12 ticks.</div>
+        </div>` : ''}
+        ${isState ? `<div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:rgba(204,136,68,0.03);">
+            <div style="font-family:${mono};font-size:8px;color:${C.orange};margin-bottom:2px">STATE-OWNED ENTERPRISE</div>
+            <div style="font-size:9px;color:${C.dim};line-height:1.4">Government-controlled. Cannot be acquired directly. May be privatized by parliamentary vote.</div>
+        </div>` : ''}
+        <div style="flex:1"></div>
+        <div style="padding:6px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+            <div style="font-family:${mono};font-size:8px;letter-spacing:1.5px;color:${C.dim};text-transform:uppercase;margin-bottom:6px">Actions</div>
+            <div style="display:flex;gap:4px;margin-bottom:4px;">
+                <div onclick="${isPrivateHidden ? `corpInvestigate('${sel.id}')` : ''}" style="flex:1;padding:5px 0;text-align:center;cursor:${isPrivateHidden ? 'pointer' : 'default'};font-family:${mono};font-size:8px;font-weight:700;color:${isPrivateHidden ? C.blue : isInvestigated ? C.greenBright : C.dim};border:1px solid ${isPrivateHidden ? C.blue + '44' : isInvestigated ? C.greenBright + '44' : C.border};opacity:${isPrivateHidden ? 1 : 0.3}">${isInvestigated ? 'INVESTIGATED ✓' : 'INVESTIGATE — $500k'}</div>
+                <div style="flex:1;padding:5px 0;text-align:center;cursor:pointer;font-family:${mono};font-size:8px;font-weight:700;color:${C.accent};border:1px solid ${C.accent}44">PARTNER</div>
+            </div>
+            <div style="display:flex;gap:4px;">
+                <div style="flex:1;padding:5px 0;text-align:center;cursor:${isState ? 'not-allowed' : 'pointer'};font-family:${mono};font-size:8px;font-weight:700;color:${isState ? C.dim : C.gold};border:1px solid ${isState ? C.border : C.gold + '44'};opacity:${isState ? 0.3 : 1}">ACQUIRE</div>
+                <div style="flex:1;padding:5px 0;text-align:center;cursor:${isState ? 'not-allowed' : 'pointer'};font-family:${mono};font-size:8px;font-weight:700;color:${isState ? C.dim : C.orange};border:1px solid ${isState ? C.border : C.orange + '44'};opacity:${isState ? 0.3 : 1}">MERGER</div>
+            </div>
+            ${isState ? `<div style="margin-top:4px;font-family:${mono};font-size:7px;color:${C.dim}">State-owned corps cannot be acquired or merged.</div>` : ''}
+        </div>`;
+    } else {
+        detailHtml = `<div style="padding:30px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">Select a corporation to view details.</div>`;
+    }
+
+    // Filter pills
+    const filterHtml = `
+    <div style="padding:6px 16px;border-bottom:1px solid ${C.border};background:${C.card};display:flex;gap:12px;align-items:center;flex-shrink:0;">
+        <div style="display:flex;gap:3px;align-items:center;">
+            <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px;width:40px">NATION</span>
+            <span onclick="corpFilterNation('ALL')" style="padding:3px 8px;font-family:${mono};font-size:8px;font-weight:700;cursor:pointer;color:${_corpFilterNation === 'ALL' ? '#000' : C.dim};background:${_corpFilterNation === 'ALL' ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === 'ALL' ? C.accent : C.border}">ALL</span>
+            ${nations.map(n => `<span onclick="corpFilterNation('${n}')" style="padding:3px 8px;font-family:${mono};font-size:8px;font-weight:700;cursor:pointer;color:${_corpFilterNation === n ? '#000' : C.dim};background:${_corpFilterNation === n ? C.accent : 'transparent'};border:1px solid ${_corpFilterNation === n ? C.accent : C.border}">${n}</span>`).join('')}
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;gap:3px;align-items:center;">
+            <span style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:0.8px">SORT</span>
+            ${['REPUTATION', 'REVENUE', 'VALUATION'].map(s => `<span onclick="corpSort('${s}')" style="padding:3px 8px;font-family:${mono};font-size:8px;font-weight:700;cursor:pointer;color:${_corpSortBy === s ? '#000' : C.dim};background:${_corpSortBy === s ? C.accent : 'transparent'};border:1px solid ${_corpSortBy === s ? C.accent : C.border}">${s}</span>`).join('')}
+        </div>
+    </div>`;
+
+    container.innerHTML = `
+    <div style="width:760px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:8px;color:${C.accent}">●</span>
+                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Corporations</span>
+            </div>
+            <span style="font-family:${mono};font-size:9px;color:${C.dim}">${_allCorps.length} IN DATABASE</span>
+        </div>
+        ${filterHtml}
+        <div style="flex:1;display:flex;overflow:hidden;">
+            <div style="flex:1;border-right:1px solid ${C.border};display:flex;flex-direction:column;">
+                <div style="display:flex;padding:5px 16px;border-bottom:1px solid ${C.border};background:${C.card};flex-shrink:0;">
+                    <span style="width:42px;font-family:${mono};font-size:8px;color:${C.dim}">ABBR</span>
+                    <span style="flex:1.3;font-family:${mono};font-size:8px;color:${C.dim}">CORPORATION</span>
+                    <span style="width:62px;font-family:${mono};font-size:8px;color:${C.dim}">NATION</span>
+                    <span style="width:56px;font-family:${mono};font-size:8px;color:${C.dim};text-align:right">REV</span>
+                    <span style="width:34px;font-family:${mono};font-size:8px;color:${C.dim};text-align:right">REP</span>
+                    <span style="width:56px;font-family:${mono};font-size:8px;color:${C.dim};text-align:right">VALUE</span>
+                    <span style="width:48px;font-family:${mono};font-size:8px;color:${C.dim};text-align:center">STATUS</span>
+                </div>
+                <div style="flex:1;overflow:auto;">${tableRows}</div>
+            </div>
+            <div style="width:280px;display:flex;flex-direction:column;overflow:auto;">
+                ${detailHtml}
+            </div>
+        </div>
+    </div>`;
+}
+
+window.corpSelect = corpSelect;
+window.corpInvestigate = corpInvestigate;
+window.corpFilterNation = corpFilterNation;
+window.corpSort = corpSort;
+
+// Hire/Fire card onclick handlers. On the old in-page Expansion tab
+// these lived in corp-operations.html's tail at lines ~14226-14228; the
+// Commit 1 extraction pulled every other hf* helper into this file but
+// missed re-binding these three to window, which made every +10/-10/+50/
+// -50/X/CONFIRM button on the HF card throw ReferenceError.
+window.hfSetChange = hfSetChange;
+window.hfReset = hfReset;
+window.hfConfirm = hfConfirm;
+
+// ── Init ──
+// On page load: fetch faction + shard + nationStats, render topbar, then
+// run the full load+render pipeline that switchToExpansion used to run
+// inside corp-operations.html. No sector redirect — Expansion works for
+// every corp sector (Construction, Shipping, Finance) with content
+// filtered by faction.corp_sector inside the render helpers.
+async function init() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    // Inspector mode: admin panel impersonation via ?faction_id=
+    const urlFactionId = new URLSearchParams(location.search).get('faction_id');
+    if (urlFactionId) {
+        const { data: inspected, error: inspectErr } = await _supabase
+            .from('factions').select('*').eq('id', urlFactionId).single();
+        if (inspectErr) console.warn('[Inspector] faction fetch failed:', inspectErr.message);
+        else if (inspected?.faction_type === 'corporation') faction = inspected;
+    }
+
+    if (!faction) {
+        const { data: allFactions } = await _supabase.from('factions')
+            .select('*').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+        allUserFactions = (allFactions || []).filter(f => f.nation_id);
+
+        const activeFactionId = sessionStorage.getItem('active_faction_id');
+        faction = allUserFactions.find(f => f.id === activeFactionId)
+            || allUserFactions.find(f => f.faction_type === 'corporation')
+            || allUserFactions[0];
+
+        if (!faction) { await _supabase.auth.signOut(); window.location.href = 'login.html'; return; }
+        if (faction.faction_type !== 'corporation') { window.location.href = 'dashboard.html'; return; }
+    }
+
+    const [nationRes, shardRes] = await Promise.all([
+        faction.nation_id
+            ? _supabase.from('nations').select('*').eq('id', faction.nation_id).single()
+            : Promise.resolve({ data: null }),
+        _supabase.from('shard').select('current_tick, current_date, next_tick_at, tick_interval_hours').eq('name', 'Alpha Shard').single(),
+    ]);
+    if (nationRes.data) nationStats = nationRes.data;
+    shard = shardRes.data;
+
+    // Render shared top bar with EXPANSION marked active.
+    const topBarContainer = document.getElementById('corp-topbar-container');
+    if (topBarContainer) {
+        renderCorpTopBar(topBarContainer, { faction, shard, activeTab: 'expansion', allUserFactions });
+    }
+
+    // Show the page before kicking off the (potentially slow) render
+    // pipeline so the topbar isn't delayed.
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('page-content').style.display = 'block';
+
+    // Load + render pipeline — this is the exact body switchToExpansion
+    // used to run inside corp-operations.html.
+    await loadOwnedProperties();
+    renderHireFireCard();
+    renderWorkforceSummary();
+    await loadAvailableProperties();
+    renderNewPropertyCard();
+    await loadNationsForSubsidiary();
+    await loadSubsidiaryProjectCounts();
+    renderCreateSubsidiaryCard();
+    renderManageSubsidiariesCard();
+    await loadAllCorporations();
+    renderCorporationsCard();
+    await loadMarketplaceListings();
+    renderSubsidiaryMarketplaceCard();
+}
+
+init();
+</script>
+</body>
+</html>
