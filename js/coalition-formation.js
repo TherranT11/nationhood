@@ -109,6 +109,9 @@ export async function initCoalitionFormation(supabase, state) {
     _scheduledElections = scheduledResult?.data || [];
     _activeCoalition = activeCoalition || null;
     _platformsByFaction = {};
+    if (platformsResult?.error) {
+        console.warn('[CoalitionFormation] faction_platforms query failed:', platformsResult.error.message);
+    }
     for (const row of (platformsResult?.data || [])) {
         (_platformsByFaction[row.faction_id] ||= []).push(row.platform_key);
     }
@@ -420,6 +423,7 @@ export async function renderFormationTab(root) {
     } else if (alreadyProposed) {
         proposeHtml = `<div class="cf-note">You have already submitted a proposal for this election.</div>`;
     } else {
+        const formatStats = (keys) => (keys || []).map(k => k.replace(/_/g, ' ')).join(', ');
         const partyGrid = _allParties.map(p => {
             const isYou = p.id === faction.id;
             const seats = p.seats || 0;
@@ -427,7 +431,6 @@ export async function renderFormationTab(root) {
             const platforms = (_platformsByFaction[p.id] || [])
                 .map(key => PLATFORMS.find(pl => pl.id === key))
                 .filter(Boolean);
-            const formatStats = (keys) => keys.map(k => k.replace(/_/g, ' ')).join(', ');
             const platformRows = platforms.map(plat => `<div class="cf-platform">
                 <span class="cf-platform-label"><span class="cf-platform-icon">${plat.icon}</span> ${esc(plat.name)}</span>
                 <span class="cf-platform-stats">
