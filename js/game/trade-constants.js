@@ -741,7 +741,13 @@ export function buildEffectiveSectorList() {
  * @param {Object} allocation  – food_land_allocation row (or DEFAULT_FOOD_ALLOCATION)
  * @returns {number} export capacity in dollars
  */
-export function calculateFoodExportCapacity(nation, subsector, allocation) {
+/**
+ * Gross domestic production of a food sub-sector for a nation, per tick.
+ * After spoilage (perishables) + stability, BEFORE domestic-need
+ * subtraction and BEFORE the export_multiplier / currency / floor.
+ * This is what the farms actually produce.
+ */
+export function calculateFoodDomesticProduction(nation, subsector, allocation) {
     var cfg = TRADE_CONFIG;
 
     var gdp = Number(nation.gdp) || 0;
@@ -752,13 +758,9 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
     // Use sqrt(gdpModifier) so economy matters but land dominates.
     var econScale = Math.sqrt(gdpModifier);
 
-    // Effective arable land for this sub-sector
     var effectiveLand = getEffectiveArableLand(nation, subsector.key, allocation);
-
-    // Threshold check
     if (effectiveLand <= (subsector.export_threshold || 0)) return 0;
 
-    // Normalize to 0-20 scale
     var normalizedScore = effectiveLand / 5;
 
     // Apply stat driver bonuses (secondary drivers boost capacity by up to ~30%)
@@ -766,29 +768,42 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
     var drivers = subsector.drivers;
     for (var i = 0; i < drivers.length; i++) {
         var d = drivers[i];
-        if (d.stat === 'arable_land') continue; // Already accounted for via effective land
+        if (d.stat === 'arable_land') continue;
         var val = Number(nation[d.stat]) || 0;
-        if (d.inverted) val = 100 - val; // e.g. weak currency boosts cash crop exports
+        if (d.inverted) val = 100 - val;
         var bonus = ((val - 50) / 50) * d.weight * 0.3;
         driverBonus += bonus;
     }
     driverBonus = Math.max(0.5, Math.min(1.5, driverBonus));
 
-    // Total production: land × economy-scale × driver bonus
     var totalProduction = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * econScale * driverBonus;
 
-    // Spoilage for perishables: reduces effective production
+    // Spoilage for perishables reduces actual farm output
     if (subsector.key === 'fruits_vegetables') {
         totalProduction *= calculateSpoilageMultiplier(nation);
     }
 
-    // ── Domestic demand cap: nations must feed their own people first ──
-    // Subtract domestic need from TOTAL production, then take the export
-    // fraction of the surplus. This ensures the domestic-demand check
-    // operates at the correct scale — previously it was applied after
-    // the export_multiplier, which made the $1B domestic need dwarf
-    // the already-reduced $500M export slice and zeroed out exports
-    // for any nation with significant population.
+    // Stability (political disruption reduces real farm output)
+    var stability = Number(nation.stability ?? 50);
+    var stabilityMod = Math.min(1.0, stability / 40);
+    totalProduction *= stabilityMod;
+
+    return Math.round(totalProduction);
+}
+
+export function calculateFoodExportCapacity(nation, subsector, allocation) {
+    var cfg = TRADE_CONFIG;
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    if (gdpModifier <= 0) return 0;
+    var econScale = Math.sqrt(gdpModifier);
+
+    var totalProduction = calculateFoodDomesticProduction(nation, subsector, allocation);
+    if (totalProduction <= 0) return 0;
+
+    // ── Domestic demand cap: nations feed their own people first ──
+    // Subtract domestic need from production BEFORE the export fraction
+    // so the demand check operates at the right scale.
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var domesticNeed = 0;
 
@@ -802,11 +817,9 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
         var solFV = (Number(nation.standard_of_living ?? 50)) / 100;
         domesticNeed = popNorm * (0.4 + urban * 0.4 + solFV * 0.3) * cfg.BASE_TRADE_MULTIPLIER * 0.2;
     } else if (subsector.key === 'cash_crops') {
-        domesticNeed = popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.04; // minimal domestic use
+        domesticNeed = popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.04;
     }
 
-    // Only export the surplus after domestic needs are met.
-    // If total production < domestic need, no exports.
     var surplus = totalProduction;
     if (domesticNeed > 0) {
         surplus = Math.max(0, totalProduction - domesticNeed);
@@ -815,20 +828,12 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
     // Export fraction of the surplus (most food stays domestic)
     var capacity = surplus * subsector.export_multiplier;
 
-    // Stability modifier (same as regular sectors)
-    var stability = Number(nation.stability ?? 50);
-    var stabilityMod = Math.min(1.0, stability / 40);
-    capacity *= stabilityMod;
-
-    // Currency strength modifier on EXPORTS:
-    // Strong currency = exports are expensive in foreign markets = less competitive.
-    // Weak currency = exports are cheap = more competitive.
-    // currency_strength 50 = 1.0, 75 = 0.67x (expensive), 25 = 2.0x (cheap)
+    // Currency strength modifier on EXPORTS
     var currencyStrength = Number(nation.currency_strength ?? 50);
     var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
     capacity *= currencyModifier;
 
-    // Floor: minimal organic trade (even deficit nations have some border trade)
+    // Floor: minimal organic trade
     var minCapacity = Math.round(0.002 * cfg.BASE_TRADE_MULTIPLIER * econScale);
     return Math.max(minCapacity, Math.round(capacity));
 }
@@ -945,7 +950,16 @@ export function calculateFoodImportDemand(nation, subsector, allocation) {
 var RESOURCE_SECTORS = new Set(['fuel_energy', 'minerals', 'food_agriculture',
     'grains_staples', 'livestock_dairy', 'fruits_vegetables', 'cash_crops']);
 
-export function calculateExportCapacity(nation, sector, opts) {
+/**
+ * Calculate a nation's gross domestic production for a given sector.
+ * Returns the raw output the nation generates each tick BEFORE domestic
+ * demand is subtracted and BEFORE currency/export modifiers are applied.
+ * Stability is baked in — political chaos reduces real output.
+ *
+ * This is the number the UI should show as "Prod": what the nation
+ * actually makes, not what's left over to export.
+ */
+export function calculateDomesticProduction(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
 
     // Resource sectors (oil, minerals, food) are fixed endowments — no GDP scaling.
@@ -954,9 +968,7 @@ export function calculateExportCapacity(nation, sector, opts) {
     var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
     if (gdpModifier <= 0) return 0;
 
-    // Calculate primary export score from sector stat(s) (0-100 scale)
-    // Primary stat (export_stat) must clear the threshold on its own.
-    // Bonus stats (export_bonus_stats) add to capacity but don't gate it.
+    // Primary score: must clear threshold on its own. Bonus stats can add but not gate.
     var score = 0;
     if (sector.export_stat) {
         score = Number(nation[sector.export_stat]) || 0;
@@ -968,10 +980,8 @@ export function calculateExportCapacity(nation, sector, opts) {
         score = sum / sector.export_stats.length;
     }
 
-    // Threshold check: primary stat must exceed sector threshold
     if (score <= (sector.export_threshold || 0)) return 0;
 
-    // Bonus stats: add a fraction of secondary stats to the score (capped at +50% of primary)
     if (sector.export_bonus_stats) {
         var bonusSum = 0;
         for (var bi = 0; bi < sector.export_bonus_stats.length; bi++) {
@@ -983,43 +993,51 @@ export function calculateExportCapacity(nation, sector, opts) {
 
     // Normalize from 0-100 codebase scale to 0-20 spec scale
     var normalizedScore = score / 5;
-
-    // Total production = normalizedScore × BASE_TRADE_MULTIPLIER × gdpModifier
     var totalProduction = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
 
     // ── Sector-specific production scaling ──
-
-    // Food: tighter supply (equivalent to normalizing by /30 instead of /5).
     if (sector.key === 'food_agriculture') {
-        totalProduction *= 0.167;
+        totalProduction *= 0.167;  // tighter supply (equivalent to /30 normalization)
     }
-
-    // Arms: requires meaningful defense spending to have an arms industry
     if (sector.key === 'arms') {
         var defensePct = (opts && opts.defense_pct) || 0;
         if (defensePct <= 8) return 0;
         totalProduction *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
     }
-
-    // Tourism: smaller than goods trade + requires stability
     if (sector.key === 'tourism') {
         totalProduction *= 0.5;
         if ((Number(nation.stability) || 0) <= 25) return 0;
     }
-
-    // Services & Finance: smaller than goods trade
     if (sector.key === 'services_finance') {
         totalProduction *= 0.7;
     }
+
+    // ── Stability modifier ──
+    // Political instability disrupts production across all sectors.
+    // Below 40 stability, output degrades. At 20, halved. At 0, zero.
+    var stability = Number(nation.stability ?? 50);
+    var stabilityMod = Math.min(1.0, stability / 40);
+    totalProduction *= stabilityMod;
+
+    return Math.round(totalProduction);
+}
+
+export function calculateExportCapacity(nation, sector, opts) {
+    var cfg = TRADE_CONFIG;
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
+    if (gdpModifier <= 0) return 0;
+
+    var totalProduction = calculateDomesticProduction(nation, sector, opts);
+    if (totalProduction <= 0) return 0;
 
     // ── Domestic demand: feed your own people/industry first ──
     // Mirrors grossDemand from calculateImportDemand so both sides of trade
     // use consistent demand estimates. Only the surplus is available for export.
     //
     // Resource-sector demand is pinned (no GDP scaling) to match production,
-    // which is also pinned at gdpModifier = 1.0 above. Otherwise demand
-    // grows with economic size while production stays fixed, and large-GDP
-    // nations get clamped to the floor regardless of endowment.
+    // which is also pinned at gdpModifier = 1.0. Otherwise demand grows with
+    // economic size while production stays fixed.
     var demandGdpMod = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;
@@ -1033,48 +1051,35 @@ export function calculateExportCapacity(nation, sector, opts) {
         var transportNeed = Math.max(0, 12 - railNorm) * 0.15;
         domesticDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod;
     }
-
     else if (sector.key === 'minerals') {
         var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
         var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
         var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
         domesticDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod;
     }
-
     else if (sector.key === 'manufactured_goods') {
         var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
         domesticDemand = popNorm * (solNorm / 8) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod * 0.7;
     }
-
     else if (sector.key === 'technology') {
         var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
         var digiNorm = (Number(nation.digital_infrastructure) || 0) / SN;
         domesticDemand = popNorm * ((solNorm + digiNorm) / 16) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod * 0.6;
     }
 
-    // Subtract domestic demand from total production — only export the surplus
     var capacity = totalProduction;
     if (domesticDemand > 0) {
         capacity = Math.max(0, totalProduction - domesticDemand);
     }
 
-    // ── Stability modifier ──
-    // Political instability disrupts production across all sectors.
-    // Below 40 stability, export capacity starts degrading.
-    // At stability 20, capacity is halved. At 0, no exports at all.
-    var stability = Number(nation.stability ?? 50);
-    var stabilityMod = Math.min(1.0, stability / 40);
-    capacity *= stabilityMod;
-
     // ── Currency strength modifier on EXPORTS ──
-    // Strong currency = exports are expensive in foreign markets = less competitive.
-    // Weak currency = exports are cheap = more competitive.
-    // currency_strength 50 = 1.0 (neutral), 75 = 0.67x (expensive), 25 = 2.0x (cheap)
+    // Strong currency = exports expensive abroad = less competitive.
+    // currency_strength 50 = 1.0 (neutral), 75 = 0.67x, 25 = 2.0x
     var currencyStrength = Number(nation.currency_strength ?? 50);
     var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
     capacity *= currencyModifier;
 
-    // Floor: even distressed nations maintain some organic trade (5% of GDP-scaled baseline)
+    // Floor: even distressed nations maintain some organic trade
     var minCapacity = Math.round(0.02 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
     return Math.max(minCapacity, Math.round(capacity));
 }
@@ -1497,7 +1502,7 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
     }
 
     // ── Step 2: Compute export capacity + import demand for every nation × sector ──
-    // nationFlows[nationId][sectorKey] = { exportCapacity, importDemand }
+    // nationFlows[nationId][sectorKey] = { domesticProduction, exportCapacity, importDemand }
     var nationFlows = {};
     // sectorAgg[sectorKey] = { totalSupply, totalDemand }
     var sectorAgg = {};
@@ -1513,10 +1518,11 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
 
         for (var si = 0; si < sectors.length; si++) {
             var sector = sectors[si];
-            var expCap, impDem;
+            var expCap, impDem, domProd;
 
             if (isFoodSubsector(sector.key)) {
                 // ── Food sub-sector: use specialized calculation ──
+                domProd = calculateFoodDomesticProduction(n, sector, foodAlloc);
                 expCap = calculateFoodExportCapacity(n, sector, foodAlloc);
                 impDem = calculateFoodImportDemand(n, sector, foodAlloc);
             } else {
@@ -1530,6 +1536,7 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                     importOpts = { defense_budget: defenseBudget, has_arms_exports: false };
                 }
 
+                domProd = calculateDomesticProduction(n, sector, exportOpts);
                 expCap = calculateExportCapacity(n, sector, exportOpts);
                 impDem = calculateImportDemand(n, sector, importOpts);
 
@@ -1549,7 +1556,9 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 expCap = Math.round(expCap * (exportCaps['food_agriculture'] / 100));
             }
 
-            nationFlows[n.id][sector.key] = { exportCapacity: expCap, importDemand: impDem };
+            // Export caps only restrict what leaves the country — they don't
+            // change what's produced, so domProd is captured pre-cap.
+            nationFlows[n.id][sector.key] = { domesticProduction: domProd, exportCapacity: expCap, importDemand: impDem };
             sectorAgg[sector.key].totalSupply += expCap;
             sectorAgg[sector.key].totalDemand += impDem;
         }
@@ -2147,6 +2156,7 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 nation_id: n.id,
                 tick: currentTick,
                 sector: sKey,
+                domestic_production: nationFlows[n.id][sKey].domesticProduction,
                 export_capacity: nationFlows[n.id][sKey].exportCapacity,
                 export_volume: expVol,
                 import_demand: nationFlows[n.id][sKey].importDemand,
