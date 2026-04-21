@@ -481,11 +481,17 @@ async function loadDealFlow() {
         for (const n of (bNations || [])) borrowerNations[n.id] = n;
     }
 
-    // Check which requests this corp already made an offer on
+    // Check which requests this corp already made an offer on. Pull
+    // `status` so we can distinguish: pending/accepted offers keep the
+    // deal visible with a disabled "ALREADY OFFERED" button (investor
+    // needs line-of-sight into their live bids), while declined offers
+    // remove the deal from Deal Flow entirely — that's the "I passed
+    // on this" signal the rdDecline flow writes.
     const { data: myOffers } = await _supabase
         .from('finance_loan_offers')
-        .select('request_id')
+        .select('request_id, status')
         .eq('offering_faction_id', faction.id);
+    const declinedSet = new Set((myOffers || []).filter(o => o.status === 'declined').map(o => o.request_id));
     const offeredSet = new Set((myOffers || []).map(o => o.request_id));
 
     // Fetch active loan counts + total outstanding per borrower faction
@@ -582,6 +588,12 @@ async function loadDealFlow() {
     const subsector = (faction.corp_subsector || '').toLowerCase();
 
     dfDeals = (requests || []).filter(req => {
+        // Hide requests this corp has explicitly declined — players
+        // expect "DECLINE" to remove the card from Deal Flow, not just
+        // disable its action button. Pending/accepted offers on other
+        // requests are NOT filtered here; those still render with a
+        // disabled "ALREADY OFFERED" button via `alreadyOffered` below.
+        if (declinedSet.has(req.id)) return false;
         // Banking sees loans, Investment sees bonds + equity, Insurance sees insurance
         if (req.request_type === 'bond') return subsector === 'investment';
         if (req.request_type === 'insurance') return subsector === 'insurance';
@@ -2413,12 +2425,12 @@ function rdClose() {
     rdDeal = null;
 }
 
-// Persist a status='declined' offer row so the Deal Flow query at ~line 484
-// hides this request from my view going forward. The existing
-// filter "request_id IN (my offering_faction_id's offers)" treats any
-// offer row the same — accepted, pending, or declined — so a
-// status='declined' INSERT is the correct minimum write to hide the
-// deal from me while leaving it visible to other financiers.
+// Persist a status='declined' offer row. loadDealFlow() reads these
+// rows into `declinedSet` and filters out any request the current
+// corp declined, so the deal disappears from this financier's Deal
+// Flow while staying visible to others. Pending/accepted offers from
+// the same financier on other requests are still shown (with a
+// disabled "ALREADY OFFERED" button) — only declines hide the card.
 async function rdDecline() {
     const deal = rdDeal;
     if (!deal || !faction?.id) { rdClose(); return; }
