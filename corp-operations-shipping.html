@@ -2663,7 +2663,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { computePropertyValue, computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
-import { renderRoleActionsShell } from './js/role-actions.js';
+import { renderCorpActions } from './js/corp-actions.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
 import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
@@ -7975,149 +7975,21 @@ function skillColor(s) {
 function renderActionsTab() {
     const container = document.getElementById('actions-container');
     if (!container) return;
-
-    const corpName = faction?.faction_name || 'Corporation';
-    const ticker = (faction?.abbreviation || faction?.corp_ticker || '??').toUpperCase();
-    const sector = faction?.corp_sector || '';
-    const subsector = faction?.corp_subsector || '';
-
-    // Mirror of corp-operations.html:renderActionsTab — this file
-    // handles the Shipping corp variant. Valuation uses the SSOT
-    // formula (computeCorpValuation); `vessels` is passed empty here
-    // because shipping corp vessels aren't loaded into module-scope
-    // state on this page (they're fetched on-demand for bankruptcy at
-    // :8580). That means the Valuation pill under-reports for shipping
-    // corps until the vessels cache is wired up — flagged follow-up.
-    const cashReserves = Number(faction?.corp_cash_reserves || 0);
-    const outstandingLoans = Number(faction?.corp_loans || 0);
-    const valuation = computeCorpValuation({
-        cash: cashReserves,
-        loans: outstandingLoans,
-        properties: _ownedProperties || [],
+    // Shared renderer in js/corp-actions.js builds the shell chrome
+    // (stat pills + status bar) and the exec-card list. We still keep
+    // per-page state (_selectedExecIdx) and call renderActionsRightPanel
+    // after — it reads the page-local action handlers.
+    // Shipping corp vessels aren't cached in module state on this page
+    // (bankruptcy fetches on-demand at :8580). Passing [] here means
+    // the Valuation pill under-reports fleet value — known follow-up.
+    renderCorpActions(container, {
+        faction,
+        shard,
+        ownedProperties: _ownedProperties,
         vessels: [],
-        financeReceivables: 0,
-        currentTick: shard?.current_tick || 0,
+        executives: _executives,
+        selectedExecIdx: _selectedExecIdx,
     });
-
-    const repRaw = Number(faction?.corp_reputation ?? 50);
-    const reputation = Math.max(0, Math.min(100, Math.round(Number.isFinite(repRaw) ? repRaw : 50)));
-    const repColor = reputation >= 60 ? 'var(--green)'
-        : reputation >= 40 ? 'var(--text-bright)'
-        : 'var(--red)';
-
-    const fmt = (n) => {
-        const v = Number(n) || 0;
-        const abs = Math.abs(v);
-        const body = abs >= 1_000_000_000 ? (abs / 1_000_000_000).toFixed(1) + 'B'
-            : abs >= 1_000_000 ? (abs / 1_000_000).toFixed(1) + 'M'
-            : abs >= 1_000 ? Math.round(abs / 1000) + 'k'
-            : String(Math.round(abs));
-        return (v < 0 ? '-$' : '$') + body;
-    };
-
-    const propertyCount = (_ownedProperties || []).length;
-    const valColor = valuation < 0 ? 'var(--red)' : 'var(--green)';
-
-    renderRoleActionsShell(container, {
-        title: 'Corporate Actions',
-        entityName: `${corpName} · ${ticker}`,
-        entityColor: '#8b9a6b',
-        stats: [
-            { label: 'Cash', value: fmt(cashReserves), color: 'var(--accent)' },
-            { label: 'Reputation', value: String(reputation), color: repColor },
-            { label: 'Valuation', value: fmt(valuation), color: valColor },
-        ],
-        statusBarItems: [
-            {
-                type: 'count',
-                label: 'Sector',
-                big: sector || '—',
-                bigColor: '#8b9a6b',
-                dim1: subsector || '',
-            },
-            {
-                type: 'count',
-                label: 'Properties',
-                big: String(propertyCount),
-                bigColor: '#8b9a6b',
-                dim1: propertyCount === 1 ? 'building' : 'buildings',
-            },
-        ],
-        rolesContainerId: 'corp-exec-list',
-        panelContainerId: 'corp-actions-panel',
-        rolesColumnWidth: 262,
-    });
-
-    // ═══ LEFT PANEL: Executive cards ═══
-    const execList = document.getElementById('corp-exec-list');
-    if (execList) {
-        let execHtml = '';
-        for (let i = 0; i < EXEC_ROLES.length; i++) {
-            const role = EXEC_ROLES[i];
-            const meta = EXEC_ROLE_META[role];
-            const exec = getExecForRole(role);
-            const isSel = _selectedExecIdx === i;
-            const color = meta.color;
-            const isVacant = !exec;
-
-            execHtml += `<div onclick="actSelectExec(${i})" style="
-                padding:10px 12px;
-                background:${isSel ? color + '0a' : 'var(--bg-2,#1a1a17)'};
-                border:1px solid ${isSel ? color + '44' : 'var(--border-0,rgba(255,255,255,0.06))'};
-                border-left:3px solid ${isSel ? color : 'var(--border-0,rgba(255,255,255,0.06))'};
-                cursor:pointer;
-            ">`;
-
-            if (isVacant && role !== 'CEO') {
-                execHtml += `<div style="display:flex;align-items:center;gap:10px;">
-                    <div style="width:45px;height:45px;background: var(--border-hair);border:1px dashed var(--border-1);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);flex-shrink:0;">?</div>
-                    <div style="flex:1;min-width:0;">
-                        <div style="display:flex;align-items:center;gap:4px;">
-                            <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
-                        </div>
-                        <div style="font-size:13px;font-weight:600;color:var(--text-dim);margin-top:2px;">VACANT</div>
-                        <div style="margin-top:4px;">
-                            <span onclick="event.stopPropagation();openExecSearch('${role}')" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;padding:3px 8px;color:#5a8aaa;border:1px solid rgba(90,138,170,0.25);background:rgba(90,138,170,0.06);cursor:pointer;">EXECUTIVE SEARCH</span>
-                        </div>
-                    </div>
-                </div>`;
-            } else {
-                const name = exec ? `${exec.first_name} ${exec.last_name}` : '—';
-                const age = exec ? exec.age : 0;
-                const sk = exec ? exec.skill : 0;
-                const sal = exec ? exec.salary_per_year : 0;
-                const portrait = exec ? getInitials(exec.first_name, exec.last_name) : '—';
-
-                execHtml += `<div style="display:flex;align-items:center;gap:10px;">
-                    <div style="width:45px;height:45px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};flex-shrink:0;">${escapeHtml(portrait)}</div>
-                    <div style="flex:1;min-width:0;">
-                        <div style="display:flex;align-items:center;gap:4px;">
-                            <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
-                        </div>
-                        <div style="font-size:13px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : 'var(--text-muted,#666)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}${age ? ` <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">(${age})</span>` : ''}</div>
-                        <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
-                            <div style="display:flex;align-items:center;gap:3px;flex:1;">
-                                <div style="flex:1;height:3px;background:var(--border-0,rgba(255,255,255,0.06));">
-                                    <div style="width:${sk}%;height:100%;background:${skillColor(sk)};"></div>
-                                </div>
-                                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);width:18px;text-align:right;">${sk}</span>
-                            </div>
-                            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${actFmtSalary(sal)}/yr</span>
-                        </div>
-                    </div>
-                </div>`;
-            }
-            execHtml += `</div>`;
-        }
-        execList.innerHTML = execHtml;
-    }
-
-    // ═══ RIGHT PANEL ═══
-    const panelHost = document.getElementById('corp-actions-panel');
-    if (panelHost) {
-        panelHost.innerHTML = `<div id="actions-right-panel"></div>`;
-    }
-
     renderActionsRightPanel();
 }
 
