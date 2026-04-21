@@ -111,7 +111,9 @@ import { formatInflationRate, getInflationLabel, inflationColorClass, STAT_DECAY
 import { fetchPreviousNationTick, assertRawEconomicValue } from './js/common.js';
 
 // Resolve nation name from query parameter: nation-info.html?name=sangreza
-const NATION_SLUG = new URLSearchParams(window.location.search).get('name');
+const _QS = new URLSearchParams(window.location.search);
+const NATION_SLUG = _QS.get('name');
+const IS_EMBEDDED = _QS.get('embedded') === '1';
 if (!NATION_SLUG) { window.location.href = 'dashboard.html'; }
 
 // Map slugs to proper nation names (handles spaces and casing)
@@ -123,9 +125,21 @@ const SLUG_TO_NAME = {
     'sanestrella': 'San Estrella',
     'palvera': 'Palvera',
     'calveth': 'Calveth',
-    'flandis': 'Flandis'
+    'flandis': 'Flandis',
+    'dravka': 'Dravka',
+    'vostia': 'Vostia',
+    'sierramar': 'Sierramar',
+    'hajjara': 'Hajjara'
 };
 const NATION_NAME = SLUG_TO_NAME[NATION_SLUG.toLowerCase()] || NATION_SLUG.charAt(0).toUpperCase() + NATION_SLUG.slice(1);
+
+// When embedded inside nation.html's iframe, hide the "← Home" back link
+// so the inner frame doesn't try to navigate itself to dashboard.html.
+if (IS_EMBEDDED) {
+    const css = document.createElement('style');
+    css.textContent = '.toc-back{display:none !important;}';
+    document.head.appendChild(css);
+}
 
 let nation = null;
 let profile = null;
