@@ -730,23 +730,9 @@ export function buildEffectiveSectorList() {
 
 // ==================== FOOD SUB-SECTOR CALCULATION FUNCTIONS ====================
 
-/**
- * Calculate export capacity for a food sub-sector.
- *
- * Uses effective arable land (total arable × allocation %) as the primary
- * driver, modified by sub-sector-specific stat drivers.
- *
- * @param {Object} nation      – nation row with all stats
- * @param {Object} subsector   – FOOD_SUBSECTORS entry
- * @param {Object} allocation  – food_land_allocation row (or DEFAULT_FOOD_ALLOCATION)
- * @returns {number} export capacity in dollars
- */
-/**
- * Gross domestic production of a food sub-sector for a nation, per tick.
- * After spoilage (perishables) + stability, BEFORE domestic-need
- * subtraction and BEFORE the export_multiplier / currency / floor.
- * This is what the farms actually produce.
- */
+// Gross food-sub-sector output per tick: land × econ × drivers, then
+// spoilage (perishables) and stability. Pairs with calculateFoodExport-
+// Capacity which handles the domestic-need + export-market side.
 export function calculateFoodDomesticProduction(nation, subsector, allocation) {
     var cfg = TRADE_CONFIG;
 
@@ -791,6 +777,8 @@ export function calculateFoodDomesticProduction(nation, subsector, allocation) {
     return Math.round(totalProduction);
 }
 
+// Pairs with calculateFoodDomesticProduction: subtract domestic need,
+// apply sub-sector export fraction, currency modifier, floor.
 export function calculateFoodExportCapacity(nation, subsector, allocation) {
     var cfg = TRADE_CONFIG;
     var gdp = Number(nation.gdp) || 0;
@@ -950,15 +938,10 @@ export function calculateFoodImportDemand(nation, subsector, allocation) {
 var RESOURCE_SECTORS = new Set(['fuel_energy', 'minerals', 'food_agriculture',
     'grains_staples', 'livestock_dairy', 'fruits_vegetables', 'cash_crops']);
 
-/**
- * Calculate a nation's gross domestic production for a given sector.
- * Returns the raw output the nation generates each tick BEFORE domestic
- * demand is subtracted and BEFORE currency/export modifiers are applied.
- * Stability is baked in — political chaos reduces real output.
- *
- * This is the number the UI should show as "Prod": what the nation
- * actually makes, not what's left over to export.
- */
+// Gross sector output per tick — score × base × gdpModifier, sector
+// multipliers, then stability. Written to trade_flows.domestic_production
+// and shown as "Prod" in the UI. Pairs with calculateExportCapacity
+// which handles the domestic-demand + export-market side.
 export function calculateDomesticProduction(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
 
@@ -1022,6 +1005,10 @@ export function calculateDomesticProduction(nation, sector, opts) {
     return Math.round(totalProduction);
 }
 
+// Pairs with calculateDomesticProduction: subtract domestic demand from
+// gross output, apply currency modifier, floor. Resource sectors are
+// endowment-pinned (gdpModifier = 1.0) so demand scales with the same
+// base as production.
 export function calculateExportCapacity(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
     var gdp = Number(nation.gdp) || 0;
@@ -1034,11 +1021,6 @@ export function calculateExportCapacity(nation, sector, opts) {
     // ── Domestic demand: feed your own people/industry first ──
     // Mirrors grossDemand from calculateImportDemand so both sides of trade
     // use consistent demand estimates. Only the surplus is available for export.
-    //
-    // Resource-sector demand is pinned (no GDP scaling) to match production,
-    // which is also pinned at gdpModifier = 1.0. Otherwise demand grows with
-    // economic size while production stays fixed.
-    var demandGdpMod = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;
     var domesticDemand = 0;
@@ -1049,22 +1031,22 @@ export function calculateExportCapacity(nation, sector, opts) {
         var colNorm = (Number(nation.cost_of_living) || 0) / SN;
         var railNorm = (Number(nation.rail_network) || 0) / SN;
         var transportNeed = Math.max(0, 12 - railNorm) * 0.15;
-        domesticDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod;
+        domesticDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
     }
     else if (sector.key === 'minerals') {
         var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
         var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
         var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
-        domesticDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod;
+        domesticDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
     }
     else if (sector.key === 'manufactured_goods') {
         var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
-        domesticDemand = popNorm * (solNorm / 8) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod * 0.7;
+        domesticDemand = popNorm * (solNorm / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
     }
     else if (sector.key === 'technology') {
         var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
         var digiNorm = (Number(nation.digital_infrastructure) || 0) / SN;
-        domesticDemand = popNorm * ((solNorm + digiNorm) / 16) * cfg.BASE_TRADE_MULTIPLIER * demandGdpMod * 0.6;
+        domesticDemand = popNorm * ((solNorm + digiNorm) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
     }
 
     var capacity = totalProduction;
@@ -1455,6 +1437,11 @@ export function calculateTariffRevenue(totalImports, tariffRate, collectionRate)
 /**
  * Main trade engine — runs once per tick for ALL nations simultaneously.
  *
+ * NOT exported: the browser never calls this (the tick processor does).
+ * sync-edge-function.js concatenates this file into advance-tick/index.ts
+ * and strips the `export` prefix anyway, so dropping `export` here just
+ * trims the browser's public surface.
+ *
  * Pipeline:
  *   1. Compute per-nation per-sector export capacity + import demand
  *   2. Aggregate supply/demand per sector → price modifiers (with smoothing)
@@ -1462,13 +1449,8 @@ export function calculateTariffRevenue(totalImports, tariffRate, collectionRate)
  *   4. For each exporter-sector, distribute capacity among importers (weighted by affinity × demand)
  *   5. Write trade_flows, trade_partners, trade_summary rows
  *   6. Update nation trade_balance stat + add tariff revenue
- *
- * @param {Object} supabase     – Supabase client
- * @param {Array}  nationList   – array of nation rows (already fetched)
- * @param {number} currentTick  – current game tick
- * @returns {Object} { processed, totalVolume }
  */
-export async function processTradeFlows(supabase, nationList, currentTick) {
+async function processTradeFlows(supabase, nationList, currentTick) {
     if (!nationList || nationList.length < 2) {
         console.log('[processTradeFlows] Need at least 2 nations for trade, skipping');
         return { processed: 0, totalVolume: 0 };
