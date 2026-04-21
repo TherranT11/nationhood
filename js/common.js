@@ -10,6 +10,7 @@
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
+import { SECTOR_OPS_PAGE } from './corp-topbar.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -967,8 +968,7 @@ export function updateTopBarInfo(faction, shard, nation) {
         if (navEl) {
             const currentTab = window.__currentTab || '';
             const sector = faction.corp_sector || 'Construction';
-            const SECTOR_OPS = { Finance: 'corp-operations-finance.html', Shipping: 'corp-operations-shipping.html', Construction: 'corp-operations.html' };
-            const opsHref = SECTOR_OPS[sector] || 'corp-operations.html';
+            const opsHref = SECTOR_OPS_PAGE[sector] || 'corp-operations.html';
             const corpTabs = [
                 { id: 'home', label: 'Home', href: 'corp-dashboard.html' },
                 { id: 'operations', label: 'Operations', href: opsHref },
