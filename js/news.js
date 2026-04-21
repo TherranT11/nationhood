@@ -29,7 +29,7 @@ const PUBLICATION_CONFIG = {
         key: 'continental',
         name: 'The Continental',
         tagline: 'Where Ideas Converge',
-        nations: ['Calveth', 'Flandis', 'Vostia'],
+        nations: ['Calveth', 'Flandis', 'Vostia', 'Dravka'],
         style: 'continental'
     },
     alsahwa: {

@@ -1218,7 +1218,10 @@ function renderAdminBanner() {
 
     // Head of State section (Monarch / President / ceremonial head)
     // Absolute monarchies: use the monarch faction's leader, not nations.head_of_state_*
-    const isMonarchyGov = (nation?.government_type || '').toLowerCase().includes('monarchy');
+    // Constitutional monarchies (parliamentary + hereditary HoS, e.g. Calveth, Dravka)
+    // also have a monarch + dynasty to display, not just absolute monarchies.
+    const isMonarchyGov = (nation?.government_type || '').toLowerCase().includes('monarchy')
+        || nation?.hos_election_method === 'hereditary';
     const isAbsoluteMonarchyGov = (nation?.government_type || '').toLowerCase().includes('absolute');
     let hosFirst, hosLast, hosAge;
     if (isAbsoluteMonarchyGov && nation?.monarch_faction_id) {
@@ -1233,7 +1236,11 @@ function renderAdminBanner() {
     }
     const isSemiPres = isSemiPresidential(nation);
     const isPurePresidential = isPresidential && !isSemiPres;
-    const hosTitle = isMonarchyGov ? (nation?.monarch_title || 'King') : (isPurePresidential ? 'Vice President' : 'Head of State');
+    // Prefer head_of_state_title (per-nation exact, e.g. 'Queen' for Dravka)
+    // over the legacy monarch_title column (absolute-monarchy-only, defaults to 'King').
+    const hosTitle = isMonarchyGov
+        ? (nation?.head_of_state_title || nation?.monarch_title || 'King')
+        : (isPurePresidential ? 'Vice President' : 'Head of State');
     // Semi-Presidential: President already shown above, don't duplicate as "Head of State"
     if (hosFirst && hosLast && !isSemiPres) {
         const hosName = `${hosFirst} ${hosLast}`;

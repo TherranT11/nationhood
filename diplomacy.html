@@ -430,7 +430,7 @@ function renderTradeEconomy() {
         <div class="tr-commodity-header">
             <span style="flex:1;">COMMODITY</span>
             <span style="width:75px;text-align:right;">PROD /MO</span>
-            <span style="width:75px;text-align:right;">DEMAND /MO</span>
+            <span style="width:75px;text-align:right;">IMP DEMAND /MO</span>
             <span style="width:75px;text-align:right;">BAL /MO</span>
         </div>`;
 
@@ -507,7 +507,7 @@ function renderTradeEconomy() {
 
             // Domestic Demand
             html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
-                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">DOMESTIC DEMAND</span>
+                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">IMPORT DEMAND</span>
                 <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--amber);">${fmtBudgetCurrency(impDem)}${unitDem ? ' <span style="font-weight:400;color:var(--text-dim);font-size:10px;">(' + unitDem + ')</span>' : ''}</span>
             </div>`;
 

@@ -2277,7 +2277,7 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
 
     h += '<div class="econ-cards-row econ-cards-3" style="margin-top:12px;">';
     h += renderOverviewCard('Production', prodLabel || formatBudgetCurrency(domProd), 'neutral', 'gross output / year');
-    h += renderOverviewCard('Demand', demLabel || formatBudgetCurrency(impDem), impDem > domProd ? 'deficit' : 'neutral', 'total need');
+    h += renderOverviewCard('Import Demand', demLabel || formatBudgetCurrency(impDem), impDem > domProd ? 'deficit' : 'neutral', 'imports wanted');
     h += renderOverviewCard('Exports \u2014 Organic', orgExpLabel || formatBudgetCurrency(organicExports), organicExports > 0 ? 'surplus' : 'neutral', organicExports > 0 ? 'no trade deal required' : 'no organic exports');
     h += '</div>';
 
@@ -2616,7 +2616,7 @@ function renderSectorDetail(nation, sectorKey) {
         h += '<div class="econ-cards-row econ-cards-3" style="margin-top:12px;">';
         h += renderOverviewCard('Production', formatTradeVolume(prodVal, sectorKey), 'neutral', 'gross output / year');
         if (!sector.export_only) {
-            h += renderOverviewCard('Demand', formatTradeVolume(demandVal, sectorKey), demandVal > prodVal ? 'deficit' : 'neutral', 'total need');
+            h += renderOverviewCard('Import Demand', formatTradeVolume(demandVal, sectorKey), demandVal > prodVal ? 'deficit' : 'neutral', 'imports wanted');
         } else {
             h += renderOverviewCard('Revenue', formatBudgetCurrency(expVol), 'surplus', 'export revenue');
         }
