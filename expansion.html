@@ -517,7 +517,6 @@ function renderPropertyCard() {
         text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
 
     const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
-    const _inflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
 
     let propsHtml = '';
     let totalValue = 0;
@@ -588,7 +587,6 @@ function renderPropertyCard() {
             </div>
             <div style="width:100%;height:3px;background:${C.border};margin-top:2px;"><div style="width:${prop.condition}%;height:100%;background:${prop.condition >= 75 ? '#5c5' : prop.condition >= 50 ? '#ca5' : C.orange}"></div></div>
             <div style="display:flex;gap:4px;margin-top:6px;">
-                <div onclick="propRefurbish('${prop.id}')" style="flex:1;padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:${C.accent};border:1px solid ${C.accent}33;cursor:pointer;">REFURBISH (${hfFmtBig(Math.round((prop.purchase_price || 0) * 0.1 * _inflMod))})</div>
                 <div onclick="propSell('${prop.id}')" style="flex:1;padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:${C.red};border:1px solid ${C.red}33;cursor:pointer;">SELL</div>
             </div>
         </div>`;
@@ -1137,50 +1135,6 @@ window.npOpenConstructionModal = npOpenConstructionModal;
 
 let _propActing = false;
 
-async function propRefurbish(propId) {
-    if (_propActing) return;
-    const prop = _ownedProperties.find(p => p.id === propId);
-    if (!prop) return;
-
-    const inflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
-    const cost = Math.round((prop.purchase_price || 0) * 0.1 * inflMod);
-    const cash = Number(faction?.corp_cash_reserves ?? 0);
-    if (cost > cash) {
-        alert('Insufficient cash. Refurbishment costs ' + hfFmtBig(cost) + ' (inflation-adjusted), you have ' + hfFmtBig(cash));
-        return;
-    }
-
-    if (prop.condition >= 95) {
-        alert('Property is already in excellent condition (' + prop.condition + '%).');
-        return;
-    }
-
-    // 1d20 condition boost (5-25%)
-    const boost = 5 + Math.floor(Math.random() * 21);
-    const newCondition = Math.min(100, prop.condition + boost);
-
-    if (!confirm('Refurbish "' + prop.name + '"?\n\nCost: ' + hfFmtBig(cost) + '\nExpected improvement: +' + boost + '% condition (' + prop.condition + '% → ' + newCondition + '%)')) return;
-
-    _propActing = true;
-    try {
-        await _supabase.from('corp_properties').update({ condition: newCondition }).eq('id', propId);
-        const newCash = Math.max(0, cash - cost);
-        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
-        faction.corp_cash_reserves = newCash;
-
-        const cashEl = document.getElementById('topbar-cash');
-        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
-
-        await loadOwnedProperties();
-        renderPropertyCard();
-        alert('Refurbished! Condition: ' + prop.condition + '% → ' + newCondition + '%');
-    } catch (err) {
-        alert('Refurbishment failed: ' + err.message);
-    } finally {
-        _propActing = false;
-    }
-}
-
 async function propSell(propId) {
     if (_propActing) return;
     const prop = _ownedProperties.find(p => p.id === propId);
@@ -1240,7 +1194,6 @@ async function propSell(propId) {
     }
 }
 
-window.propRefurbish = propRefurbish;
 window.propSell = propSell;
 
 // ==================== SUBSIDIARY SHARED HELPERS ====================

@@ -951,6 +951,7 @@ import { escapeHtml, tickToDate } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
 import { computeEquipmentValue, computeFinanceReceivableValue, computeCorpValuationBreakdown } from './js/game/corp-valuation.js';
+import { computeRefurbishCost, startRefurbish } from './js/corp-refurbish.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -2254,7 +2255,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
                 ? `<div style="margin-top:4px;padding:3px 6px;background:var(--amber-faint, rgba(176,154,91,0.08));border:1px solid var(--amber-border, rgba(176,154,91,0.2));font-size:8px;font-family:var(--font-mono);color:var(--amber, #b09a5b);text-align:center;">REFURBISHING — ${prop.refurbish_until_tick - (shard?.current_tick || 0)} tick${prop.refurbish_until_tick - (shard?.current_tick || 0) !== 1 ? 's' : ''} remaining</div>`
                 : `<div style="display:flex;gap:4px;margin-top:4px;">
                 <button class="prop-action-btn prop-action-btn--sell" onclick="showSellModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.purchase_price || 0},${prop.condition})">SELL</button>
-                <button class="prop-action-btn prop-action-btn--refurbish" onclick="showRefurbishModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.condition},${propCap})">REFURBISH</button>
+                <button class="prop-action-btn prop-action-btn--refurbish" onclick="showRefurbishModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.condition},${prop.purchase_price || 0},${prop.refurbish_count || 0})">REFURBISH</button>
                 ${factionData?.corp_sector === 'Finance' && (prop.type === 'office' || prop.type === 'regional_hq') && !['branch_office','trading_floor','claims_office'].includes(prop.type)
                     ? `<button class="prop-action-btn" style="background:rgba(138,106,170,0.08);border-color:rgba(138,106,170,0.2);color:#8a6aaa;" onclick="showConvertModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.purchase_price || 0})">CONVERT</button>`
                     : ''}
@@ -2826,70 +2827,53 @@ async function confirmSellProperty(propId, salePrice) {
 
 let _refurbInProgress = false;
 
-function showRefurbishModal(propId, propName, condition, capacity) {
+function showRefurbishModal(propId, propName, condition, purchasePrice, refurbishCount) {
     if (_refurbInProgress) return;
     const nation = window._nationStats;
     const faction = window._factionData;
     const inflation = getNationStat(nation, 'inflation');
-
-    // Cost: $2M base per 1000 capacity × inflation modifier
     const inflationMod = 1 + (inflation - 50) / 100 * 0.3;
-    const baseCost = Math.round(2_000_000 * (capacity / 1000));
-    const refurbishCost = Math.round(baseCost * inflationMod);
+    const refurbishCost = computeRefurbishCost({ purchase_price: purchasePrice, refurbish_count: refurbishCount }, inflationMod);
 
-    // Workforce required: 10% of property capacity (general workers)
-    const workforceNeeded = Math.max(50, Math.round(capacity * 0.10));
-    const availableGeneral = Number(faction?.corp_general_workforce ?? 0);
-    const hasWorkforce = availableGeneral >= workforceNeeded;
-
-    // Cash check
     const cashReserves = Number(faction?.corp_cash_reserves ?? 0);
     const hasCash = cashReserves >= refurbishCost;
 
-    // Duration: 1d6 ticks (shown as range since roll happens on confirm)
-    // Outcome: condition restored to 94-100% (1d6: roll of 1 = 94%, roll of 6 = 100%)
-
     const overlay = document.getElementById('prop-modal-overlay');
     const content = document.getElementById('prop-modal-content');
-    const canRefurbish = hasWorkforce && hasCash && condition < 100;
+    const canRefurbish = hasCash && condition < 95;
 
     let warningHtml = '';
-    if (condition >= 100) warningHtml = '<div style="color:var(--green);font-size:9px;margin-bottom:8px;">Property is already at 100% condition.</div>';
+    if (condition >= 95) warningHtml = '<div style="color:var(--green);font-size:9px;margin-bottom:8px;">Property already at excellent condition (' + condition + '%).</div>';
     else if (!hasCash) warningHtml = '<div style="color:var(--red);font-size:9px;margin-bottom:8px;">Insufficient cash reserves.</div>';
-    else if (!hasWorkforce) warningHtml = '<div style="color:var(--red);font-size:9px;margin-bottom:8px;">Insufficient general workforce (need ' + workforceNeeded.toLocaleString() + ', have ' + availableGeneral.toLocaleString() + ').</div>';
 
     content.innerHTML = `
         <div style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary);">Refurbish Property</div>
-        <div style="font-size:10px;color:var(--text-dim);margin-bottom:12px;">${escapeHtml(propName)} — Current Condition: ${condition}%</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:12px;">${escapeHtml(propName)} — Refurbishment #${refurbishCount + 1} — Current Condition: ${condition}%</div>
         ${warningHtml}
         <div style="background:var(--bg-3);border:1px solid var(--border-hair);padding:8px;margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
-                <span style="color:var(--text-dim);">Cost</span>
+                <span style="color:var(--text-dim);">Cost${refurbishCount > 0 ? ` (1.25<sup>${refurbishCount}</sup> ×)` : ''}</span>
                 <span style="color:${hasCash ? 'var(--gold, #c8a832)' : 'var(--red)'};">${fmtMoney(refurbishCost)}</span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
-                <span style="color:var(--text-dim);">Workforce Required</span>
-                <span style="color:${hasWorkforce ? 'var(--blue)' : 'var(--red)'};">${workforceNeeded.toLocaleString()} General</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
                 <span style="color:var(--text-dim);">Duration</span>
-                <span style="color:var(--amber, #b09a5b);">1–6 ticks</span>
+                <span style="color:var(--amber, #b09a5b);">4–9 ticks</span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);">
                 <span style="color:var(--text-dim);">Outcome</span>
-                <span style="color:var(--green);">Condition → 94–100%</span>
+                <span style="color:var(--green);">Condition → 95–98%</span>
             </div>
         </div>
         <div style="display:flex;gap:6px;">
             <button class="prop-modal-btn prop-modal-btn--cancel" onclick="closePropModal()">Cancel</button>
-            <button class="prop-modal-btn prop-modal-btn--confirm" id="prop-refurb-confirm" onclick="confirmRefurbish('${propId}', ${refurbishCost}, ${workforceNeeded})" ${canRefurbish ? '' : 'disabled'}>Begin Refurbishment</button>
+            <button class="prop-modal-btn prop-modal-btn--confirm" id="prop-refurb-confirm" onclick="confirmRefurbish('${propId}', ${purchasePrice}, ${refurbishCount}, ${condition})" ${canRefurbish ? '' : 'disabled'}>Begin Refurbishment</button>
         </div>
     `;
 
     overlay.style.display = 'flex';
 }
 
-async function confirmRefurbish(propId, cost, workforceNeeded) {
+async function confirmRefurbish(propId, purchasePrice, refurbishCount, condition) {
     if (_refurbInProgress) return;
     _refurbInProgress = true;
     const btn = document.getElementById('prop-refurb-confirm');
@@ -2898,42 +2882,20 @@ async function confirmRefurbish(propId, cost, workforceNeeded) {
     try {
         const factionId = window._corpFactionId;
         const currentTick = window._currentTick;
+        const faction = window._factionData;
+        const nation = window._nationStats;
         if (!factionId) throw new Error('No faction');
 
-        // Roll 1d6 for duration and condition outcome
-        const durationRoll = Math.floor(Math.random() * 6) + 1; // 1-6
-        const conditionRoll = Math.floor(Math.random() * 6) + 1; // 1-6
-        const newCondition = 94 + conditionRoll; // 95-100 (1→95, 6→100)... wait, 94 + 1 = 95, 94 + 6 = 100
-        const untilTick = currentTick + durationRoll;
+        const inflation = getNationStat(nation, 'inflation');
+        const inflationMod = 1 + (inflation - 50) / 100 * 0.3;
+        const prop = { id: propId, purchase_price: purchasePrice, refurbish_count: refurbishCount, condition: condition };
+        const result = await startRefurbish(_supabase, factionId, faction?.corp_cash_reserves, prop, currentTick, inflationMod);
 
-        // Deduct cash
-        const { data: fData } = await _supabase
-            .from('factions')
-            .select('corp_cash_reserves')
-            .eq('id', factionId)
-            .single();
-        const currentCash = Number(fData?.corp_cash_reserves ?? 0);
-        if (currentCash < cost) throw new Error('Insufficient cash');
-
-        const { error: cashErr } = await _supabase
-            .from('factions')
-            .update({ corp_cash_reserves: currentCash - cost })
-            .eq('id', factionId);
-        if (cashErr) throw new Error('Failed to deduct cost: ' + cashErr.message);
-
-        // Set refurbish fields on property
-        const { error: propErr } = await _supabase
-            .from('corp_properties')
-            .update({
-                refurbish_until_tick: untilTick,
-                refurbish_condition: newCondition,
-            })
-            .eq('id', propId)
-            .eq('faction_id', factionId);
-        if (propErr) throw new Error('Failed to start refurbishment: ' + propErr.message);
+        if (!result.ok) throw new Error(result.error || 'Refurbishment failed.');
+        if (faction) faction.corp_cash_reserves = result.newCash;
 
         closePropModal();
-        alert('Refurbishment started! Duration: ' + durationRoll + ' tick' + (durationRoll !== 1 ? 's' : '') + '. Condition will be restored to ' + Math.min(100, newCondition) + '% when complete.');
+        alert(`Refurbishment started! Duration: ${result.duration} ticks. Target condition: ${result.targetCondition}%. Cost: ${fmtMoney(result.cost)}.`);
         location.reload();
     } catch (err) {
         alert('Refurbishment failed: ' + err.message);

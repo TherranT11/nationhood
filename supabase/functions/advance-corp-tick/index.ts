@@ -1193,12 +1193,15 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
 
 async function processPropertyEffects(supabase, nation, corps, currentTick) {
     for (const corp of corps) {
-        // Load owned properties for this corp in this nation
+        // No nation filter: subsidiary properties can live in a different
+        // nation than their parent corp. Filtering by nation.id here silently
+        // skipped those rows — same bug pattern processSubsidiaryRevenue was
+        // fixed for at line 1363. Each corp appears in exactly one nation's
+        // corps list (its HQ nation), so this runs once per corp per tick.
         const { data: properties, error: propErr } = await supabase
             .from('corp_properties')
-            .select('id, monthly_maintenance, condition, capacity, refurbish_until_tick, refurbish_condition')
+            .select('id, monthly_maintenance, condition, capacity, refurbish_until_tick, refurbish_condition, refurbish_count')
             .eq('faction_id', corp.id)
-            .eq('nation_id', nation.id)
             .eq('is_active', true);
 
         if (propErr || !properties || properties.length === 0) continue;
@@ -1218,6 +1221,7 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
                     condition: restoredCondition,
                     refurbish_until_tick: null,
                     refurbish_condition: null,
+                    refurbish_count: (Number(prop.refurbish_count) || 0) + 1,
                 });
                 console.log(`[PropertyEffects] ${corp.faction_name}: refurbishment complete on ${prop.id}, condition → ${restoredCondition}%`);
                 continue; // skip degradation this tick
@@ -1265,6 +1269,7 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
             if ('refurbish_until_tick' in upd) {
                 updateObj.refurbish_until_tick = upd.refurbish_until_tick;
                 updateObj.refurbish_condition = upd.refurbish_condition;
+                updateObj.refurbish_count = upd.refurbish_count;
             }
             const { error: condErr } = await supabase.from('corp_properties').update(updateObj).eq('id', upd.id);
             if (condErr) console.warn(`[PropertyEffects] Condition update failed for property ${upd.id}:`, condErr.message);
