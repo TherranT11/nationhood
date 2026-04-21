@@ -1906,7 +1906,14 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
     }
 
     // Wire the faction-select change to swap the Page dropdown list.
-    // We attach this lazily because the element is rendered via a SQL template.
+    // The admin panel HTML is loaded via the get_admin_panel RPC (see
+    // admin.html:114-117) AFTER DOMContentLoaded, so the
+    // #inspector-faction-select element does not exist at page-load
+    // time — DOMContentLoaded and readyState-based attachment attempts
+    // silently failed here, which is why the dropdown never swapped
+    // to corp pages when a corp faction was selected. Listen for the
+    // admin-panel-loaded custom event that admin.html:117 dispatches
+    // after innerHTML injection — by that point the select exists.
     (function wireFactionTypeSwap() {
         const attach = () => {
             const sel = document.getElementById('inspector-faction-select');
@@ -1918,11 +1925,7 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
                 _renderInspectorPageOptions(type);
             });
         };
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', attach);
-        } else {
-            attach();
-        }
+        document.addEventListener('admin-panel-loaded', attach);
     })();
 
     function buildInspectorUrl(page) {

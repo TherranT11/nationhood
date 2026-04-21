@@ -308,6 +308,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 .rd-footer__metric-value { font-family:var(--font-mono); font-size:12px; font-weight:700; }
 .rd-btn-decline { padding:6px 16px; font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:1px; color:#c55; border:1px solid rgba(204,85,85,0.27); background:transparent; cursor:pointer; }
 .rd-btn-action { padding:6px 20px; font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:1px; color:#000; cursor:pointer; border:none; }
+.rd-btn-decline:disabled, .rd-btn-action:disabled { cursor:not-allowed; opacity:0.4; }
 .rd-btn-action.loan { background:#5a8aaa; }
 .rd-btn-action.insure { background:#aa7a5a; }
 .rd-btn-action.bond { background:#8a6aaa; }
@@ -481,11 +482,20 @@ async function loadDealFlow() {
         for (const n of (bNations || [])) borrowerNations[n.id] = n;
     }
 
-    // Check which requests this corp already made an offer on
-    const { data: myOffers } = await _supabase
+    // Check which requests this corp already made an offer on. Pull
+    // `status` so we can distinguish: pending/accepted offers keep the
+    // deal visible with a disabled "ALREADY OFFERED" button (investor
+    // needs line-of-sight into their live bids), while declined offers
+    // remove the deal from Deal Flow entirely — that's the "I passed
+    // on this" signal the rdDecline flow writes.
+    // A silent failure here would make declinedSet empty and
+    // resurrect declined cards — loud enough warning so it's diagnosable.
+    const { data: myOffers, error: offersErr } = await _supabase
         .from('finance_loan_offers')
-        .select('request_id')
+        .select('request_id, status')
         .eq('offering_faction_id', faction.id);
+    if (offersErr) console.warn('[DealFlow] myOffers query failed (declinedSet will be empty):', offersErr.message);
+    const declinedSet = new Set((myOffers || []).filter(o => o.status === 'declined').map(o => o.request_id));
     const offeredSet = new Set((myOffers || []).map(o => o.request_id));
 
     // Fetch active loan counts + total outstanding per borrower faction
@@ -582,6 +592,12 @@ async function loadDealFlow() {
     const subsector = (faction.corp_subsector || '').toLowerCase();
 
     dfDeals = (requests || []).filter(req => {
+        // Hide requests this corp has explicitly declined — players
+        // expect "DECLINE" to remove the card from Deal Flow, not just
+        // disable its action button. Pending/accepted offers on other
+        // requests are NOT filtered here; those still render with a
+        // disabled "ALREADY OFFERED" button via `alreadyOffered` below.
+        if (declinedSet.has(req.id)) return false;
         // Banking sees loans, Investment sees bonds + equity, Insurance sees insurance
         if (req.request_type === 'bond') return subsector === 'investment';
         if (req.request_type === 'insurance') return subsector === 'insurance';
@@ -2413,15 +2429,20 @@ function rdClose() {
     rdDeal = null;
 }
 
-// Persist a status='declined' offer row so the Deal Flow query at ~line 484
-// hides this request from my view going forward. The existing
-// filter "request_id IN (my offering_faction_id's offers)" treats any
-// offer row the same — accepted, pending, or declined — so a
-// status='declined' INSERT is the correct minimum write to hide the
-// deal from me while leaving it visible to other financiers.
+// Persist a status='declined' offer row. loadDealFlow() reads these
+// rows into `declinedSet` and filters out any request the current
+// corp declined, so the deal disappears from this financier's Deal
+// Flow while staying visible to others. Pending/accepted offers from
+// the same financier on other requests are still shown (with a
+// disabled "ALREADY OFFERED" button) — only declines hide the card.
 async function rdDecline() {
     const deal = rdDeal;
     if (!deal || !faction?.id) { rdClose(); return; }
+    // Defense in depth — button is disabled in the footer when
+    // alreadyOffered, but guard here too in case the handler is
+    // invoked programmatically. INSERT would fail the unique
+    // constraint on (request_id, offering_faction_id) silently.
+    if (deal.alreadyOffered) { rdClose(); return; }
     try {
         const { error } = await _supabase.from('finance_loan_offers').insert({
             request_id: deal.requestId || deal.id,
@@ -2881,6 +2902,16 @@ function renderReviewDeal() {
     const actionDisabled = alreadyOffered ? 'disabled' : '';
     const actionTitle = alreadyOffered ? ' title="You already have an offer on this request."' : '';
     const actionButtonLabel = alreadyOffered ? 'ALREADY OFFERED' : actionLabel;
+    // DECLINE shares the alreadyOffered gate with the action button:
+    // clicking decline on a card where this corp already has a pending
+    // offer would INSERT a duplicate (request_id, offering_faction_id)
+    // row into finance_loan_offers and fail the unique constraint
+    // silently. Disabling the button here is the simplest prevention.
+    // Tradeoff: a financier cannot retract a pending offer via this
+    // path. If "retract + decline in one click" is wanted, convert
+    // rdDecline to an UPDATE when alreadyOffered is true.
+    const declineDisabled = alreadyOffered ? 'disabled' : '';
+    const declineTitle = alreadyOffered ? ' title="Retract the pending offer first before declining."' : '';
 
     html += `<div class="rd-footer">
         <div style="display:flex;gap:12px;">
@@ -2889,7 +2920,7 @@ function renderReviewDeal() {
             <div class="rd-footer__metric"><div class="rd-footer__metric-label">RISK</div><div class="rd-footer__metric-value" style="color:${footerRiskColor};">${footerRisk}%</div></div>
         </div>
         <div style="display:flex;gap:6px;">
-            <button class="rd-btn-decline" onclick="rdDecline()">DECLINE</button>
+            <button class="rd-btn-decline" onclick="rdDecline()" ${declineDisabled}${declineTitle}>DECLINE</button>
             <button class="rd-btn-action ${actionClass}" onclick="rdSubmitOffer()" ${actionDisabled}${actionTitle}>${actionButtonLabel}</button>
         </div>
     </div>`;
