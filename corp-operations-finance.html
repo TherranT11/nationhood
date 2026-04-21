@@ -2437,6 +2437,11 @@ function rdClose() {
 async function rdDecline() {
     const deal = rdDeal;
     if (!deal || !faction?.id) { rdClose(); return; }
+    // Defense in depth — button is disabled in the footer when
+    // alreadyOffered, but guard here too in case the handler is
+    // invoked programmatically. INSERT would fail the unique
+    // constraint on (request_id, offering_faction_id) silently.
+    if (deal.alreadyOffered) { rdClose(); return; }
     try {
         const { error } = await _supabase.from('finance_loan_offers').insert({
             request_id: deal.requestId || deal.id,
@@ -2896,6 +2901,16 @@ function renderReviewDeal() {
     const actionDisabled = alreadyOffered ? 'disabled' : '';
     const actionTitle = alreadyOffered ? ' title="You already have an offer on this request."' : '';
     const actionButtonLabel = alreadyOffered ? 'ALREADY OFFERED' : actionLabel;
+    // DECLINE shares the alreadyOffered gate with the action button:
+    // clicking decline on a card where this corp already has a pending
+    // offer would INSERT a duplicate (request_id, offering_faction_id)
+    // row into finance_loan_offers and fail the unique constraint
+    // silently. Disabling the button here is the simplest prevention.
+    // Tradeoff: a financier cannot retract a pending offer via this
+    // path. If "retract + decline in one click" is wanted, convert
+    // rdDecline to an UPDATE when alreadyOffered is true.
+    const declineDisabled = alreadyOffered ? 'disabled' : '';
+    const declineTitle = alreadyOffered ? ' title="Retract the pending offer first before declining."' : '';
 
     html += `<div class="rd-footer">
         <div style="display:flex;gap:12px;">
@@ -2904,7 +2919,7 @@ function renderReviewDeal() {
             <div class="rd-footer__metric"><div class="rd-footer__metric-label">RISK</div><div class="rd-footer__metric-value" style="color:${footerRiskColor};">${footerRisk}%</div></div>
         </div>
         <div style="display:flex;gap:6px;">
-            <button class="rd-btn-decline" onclick="rdDecline()">DECLINE</button>
+            <button class="rd-btn-decline" onclick="rdDecline()" ${declineDisabled}${declineTitle}>DECLINE</button>
             <button class="rd-btn-action ${actionClass}" onclick="rdSubmitOffer()" ${actionDisabled}${actionTitle}>${actionButtonLabel}</button>
         </div>
     </div>`;
