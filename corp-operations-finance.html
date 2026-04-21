@@ -487,10 +487,13 @@ async function loadDealFlow() {
     // needs line-of-sight into their live bids), while declined offers
     // remove the deal from Deal Flow entirely — that's the "I passed
     // on this" signal the rdDecline flow writes.
-    const { data: myOffers } = await _supabase
+    // A silent failure here would make declinedSet empty and
+    // resurrect declined cards — loud enough warning so it's diagnosable.
+    const { data: myOffers, error: offersErr } = await _supabase
         .from('finance_loan_offers')
         .select('request_id, status')
         .eq('offering_faction_id', faction.id);
+    if (offersErr) console.warn('[DealFlow] myOffers query failed (declinedSet will be empty):', offersErr.message);
     const declinedSet = new Set((myOffers || []).filter(o => o.status === 'declined').map(o => o.request_id));
     const offeredSet = new Set((myOffers || []).map(o => o.request_id));
 
