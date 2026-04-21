@@ -422,7 +422,7 @@ export function renderTopBar(activeTab) {
                     </div>
                 </div>
             </div>
-            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.2.0.26</div>
+            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.2.0.27</div>
             <div class="top-bar-right">
                 <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
                 ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
@@ -1420,10 +1420,14 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (!state) return;
 
     // Corporation faction on a party page — redirect to corp dashboard
-    // (except shared pages like news and wiki which both factions can use)
+    // (except shared pages like news and wiki which both factions can use).
+    // Preserve window.location.search so admin-inspector overrides
+    // (?nation_id= and ?faction_id=) survive the redirect — otherwise
+    // corp-dashboard.html falls back to the admin's own corp instead
+    // of the inspected one.
     const SHARED_TABS = ['news', 'wiki'];
     if (state.faction?.faction_type === 'corporation' && !SHARED_TABS.includes(activeTab)) {
-        window.location.href = 'corp-dashboard.html';
+        window.location.href = 'corp-dashboard.html' + window.location.search;
         return;
     }
 
