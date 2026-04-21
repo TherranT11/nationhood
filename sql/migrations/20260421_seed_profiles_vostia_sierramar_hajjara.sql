@@ -7,11 +7,13 @@
 --
 -- Safe to re-run: ON CONFLICT (nation_id) DO UPDATE refreshes
 -- the content in place without duplicating rows.
+--
+-- Strings use dollar-quoting ($p$ ... $p$) to avoid any apostrophe
+-- escaping issues with the long overview paragraphs and the JSON
+-- history timelines.
 -- ============================================================
 
 -- ==================== VOSTIA ====================
--- Serbian / Montenegrin-inspired mountainous parliamentary democracy.
--- Meridian continent. Capital: Ostavar. Parliamentary, 260 seats.
 
 INSERT INTO nation_profiles (
     nation_id, flag_url, overview, motto,
@@ -24,31 +26,31 @@ INSERT INTO nation_profiles (
 )
 SELECT n.id,
     'assets/flags/Vostia.png',
-    'Vostia is a mountainous parliamentary democracy on the western edge of the Meridian continent, forged over five centuries of empire, resistance, and reconstruction. Steep limestone ranges cut the country into fiercely independent valleys — each with its own dialect, saint''s day, and memory of siege. The capital, Ostavar, sprawls along the banks of the Drina-analog river and anchors a heavy-industry corridor that still employs a third of the working population. Copper, zinc, and lignite drive exports, but bureaucratic inertia, stubborn corruption, and steady emigration of young professionals weigh on a country that insists, always, that it is about to turn the corner. Vostians take fierce pride in their Orthodox heritage, their unbroken line of folk polyphony, and a literary tradition — equal parts epic, elegy, and complaint — that predates most European print.',
-    'Sloboda i Čast — Freedom and Honor',
-    '[
+    $p$Vostia is a mountainous parliamentary democracy on the western edge of the Meridian continent, forged over five centuries of empire, resistance, and reconstruction. Steep limestone ranges cut the country into fiercely independent valleys, each with its own dialect, saint's day, and memory of siege. The capital, Ostavar, sprawls along the banks of the Morova River and anchors a heavy-industry corridor that still employs a third of the working population. Copper, zinc, and lignite drive exports, but bureaucratic inertia, stubborn corruption, and steady emigration of young professionals weigh on a country that insists, always, that it is about to turn the corner. Vostians take fierce pride in their Orthodox heritage, their unbroken line of folk polyphony, and a literary tradition (equal parts epic, elegy, and complaint) that predates most of the continent's written record.$p$,
+    $p$Sloboda i Čast - Freedom and Honor$p$,
+    $p$[
         {"year": "1389", "event": "Battle of Kosmar Field; Vostian principalities crushed by the Harran Sultanate, beginning four centuries of subjugation."},
         {"year": "1804", "event": "First Vostian Uprising; peasant levies expel Harran garrisons from the northern valleys."},
         {"year": "1878", "event": "Treaty of Berva grants full independence; Principality of Vostia proclaimed."},
-        {"year": "1918", "event": "Kingdom of Vostia enlarged at end of the Great War; absorbs the Ostavar Basin and coastal strip."},
-        {"year": "1941", "event": "Axis occupation; partisan resistance movement takes root in the highlands."},
+        {"year": "1918", "event": "Kingdom of Vostia enlarged at end of the Great Continental War; absorbs the Ostavar Basin and coastal strip."},
+        {"year": "1941", "event": "Occupation by the Harran-led coalition; partisan resistance movement takes root in the highlands."},
         {"year": "1945", "event": "Socialist Federal Republic of Vostia established under Marshal Blažov."},
         {"year": "1991", "event": "Federation fractures; rump Vostia emerges after a decade of civil conflict."},
         {"year": "2003", "event": "New constitution adopted; parliamentary republic with 260-seat Skupština."},
-        {"year": "2018", "event": "EU-analog accession talks stall over judicial reform; mass emigration accelerates."},
+        {"year": "2018", "event": "Meridian Accord accession talks stall over judicial reform; mass emigration accelerates."},
         {"year": "2024", "event": "Current political era; coalition governments contend with demographic decline and chronic graft."}
-    ]'::jsonb,
+    ]$p$::jsonb,
     'Republic of Vostia',
     'Vostian',
     'Vostian (official), Meridian Common, Harran minority',
-    'Vostian Orthodox (68%), Catholic (9%), Sunni Muslim minority (7%), irreligious (16%)',
+    $p$Vostian Orthodox (68%), Catholic (9%), Harran-rite minority (7%), irreligious (16%)$p$,
     'Vostian Dinar (VSD)',
     '1878',
-    'Bože Pravde Vostije (God of Justice of Vostia)',
+    $p$Bože Pravde Vostije (God of Justice of Vostia)$p$,
     'Golden Eagle',
-    'Plavi Karanfil (Blue Carnation)',
-    'Western Meridian — Dinaric-analog mountain belt with narrow coastal plain',
-    'Continental interior; Mediterranean influence along the 180 km coastline; cold snowy winters in the highlands',
+    $p$Plavi Karanfil (Blue Carnation)$p$,
+    $p$Western Meridian - the Zavorje mountain belt and its narrow coastal plain$p$,
+    'Continental interior; maritime influence along the 180 km coastline; cold snowy winters in the highlands',
     '88,500',
     '180',
     'Copper, zinc, lead, lignite coal, timber, hydroelectric potential, antimony',
@@ -87,8 +89,6 @@ ON CONFLICT (nation_id) DO UPDATE SET
     drives_on         = EXCLUDED.drives_on;
 
 -- ==================== SIERRAMAR ====================
--- Puerto Rican / Caribbean Spanish-inspired island parliamentary republic.
--- Crucera continent. Capital: Porto Serrano. Parliamentary, 100 seats.
 
 INSERT INTO nation_profiles (
     nation_id, flag_url, overview, motto,
@@ -101,10 +101,10 @@ INSERT INTO nation_profiles (
 )
 SELECT n.id,
     'assets/flags/Sierramar.png',
-    'Sierramar is a small but spirited island democracy in the northeastern reaches of the Crucera continent, shaped by colonial legacy, volcanic geography, and the restless ambition of its young population. The capital, Porto Serrano, wraps around a natural deepwater harbor where fishing fleets share dock space with container ships from across the Sierramari Channel — one of the busiest transit lanes in the region. Inland, the Sierra del Mar rises almost vertically from the coast, creating microclimates that support coffee and tropical fruit in the highlands and sugarcane in the lowland flats. Solvarist faith anchors daily life through festivals, family obligation, and a calendar of saint''s days older than the Republic itself, while a rising generation pushes hard for modernization, better jobs, and relief from the annual hurricane season. Emigration drains talent, graft tests patience, and weather tests everything else — but Sierramari resilience is a point of national pride, worn on the sleeve and sung in every chorus of the anthem.',
-    'Mar, Monte, y Mañana — Sea, Mountain, and Tomorrow',
-    '[
-        {"year": "1498", "event": "First contact; Seravian navigators chart the island''s leeward coast."},
+    $p$Sierramar is a small but spirited island democracy in the northeastern reaches of the Crucera continent, shaped by colonial legacy, volcanic geography, and the restless ambition of its young population. The capital, Porto Serrano, wraps around a natural deepwater harbor where fishing fleets share dock space with container ships from across the Sierramari Channel, one of the busiest transit lanes in the region. Inland, the Sierra del Mar rises almost vertically from the coast, creating microclimates that support coffee and tropical fruit in the highlands and sugarcane in the lowland flats. Solvarist faith anchors daily life through festivals, family obligation, and a calendar of saint's days older than the Republic itself, while a rising generation pushes hard for modernization, better jobs, and relief from the annual hurricane season. Emigration drains talent, graft tests patience, and weather tests everything else, but Sierramari resilience is a point of national pride, worn on the sleeve and sung in every chorus of the anthem.$p$,
+    $p$Mar, Monte, y Mañana - Sea, Mountain, and Tomorrow$p$,
+    $p$[
+        {"year": "1498", "event": "First contact; Seravian navigators chart the island's leeward coast."},
         {"year": "1573", "event": "Fortaleza de San Serrano built at the mouth of the harbor; permanent settlement begins."},
         {"year": "1687", "event": "Sugar economy takes root; enslaved labor imported from across the Crucera basin."},
         {"year": "1830", "event": "Abolition decree; plantation oligarchy restructures into wage-labor estates."},
@@ -114,18 +114,18 @@ SELECT n.id,
         {"year": "1979", "event": "Hurricane Celeste devastates the east coast; international aid reshapes coastal infrastructure."},
         {"year": "2004", "event": "New electoral law adopts proportional representation; multiparty era begins."},
         {"year": "2022", "event": "Current political era; coalition governments juggle tourism, emigration, and climate pressure."}
-    ]'::jsonb,
+    ]$p$::jsonb,
     'Parliamentary Republic of Sierramar',
     'Sierramari',
     'Estrellan (official), Sierramari Creole',
     'Solvarist (84%), Protestant minorities (9%), irreligious (7%)',
     'Serrano Real (SRR)',
     '1901',
-    'Canto del Mar (Song of the Sea)',
+    $p$Canto del Mar (Song of the Sea)$p$,
     'Frigatebird',
-    'Hibisco del Monte (Mountain Hibiscus)',
-    'Northeastern Crucera — volcanic island in the Sierramari Channel',
-    'Tropical maritime; wet season April–October; hurricane risk August–November',
+    $p$Hibisco del Monte (Mountain Hibiscus)$p$,
+    'Northeastern Crucera, volcanic island in the Sierramari Channel',
+    'Tropical maritime; wet season April to October; hurricane risk August to November',
     '4,216',
     '640',
     'Fish stocks, volcanic soil, freshwater rivers, timber, minor bauxite deposits, tidal energy potential',
@@ -164,8 +164,6 @@ ON CONFLICT (nation_id) DO UPDATE SET
     drives_on         = EXCLUDED.drives_on;
 
 -- ==================== HAJJARA ====================
--- Arab-inspired absolute monarchy on the Al-Makir continent.
--- Oil- and gas-rich, young population, deep religious tradition.
 
 INSERT INTO nation_profiles (
     nation_id, flag_url, overview, motto,
@@ -178,30 +176,30 @@ INSERT INTO nation_profiles (
 )
 SELECT n.id,
     'assets/flags/Hajjara.png',
-    'Hajjara is a vast desert kingdom on the Al-Makir continent, ruled for three centuries by the House of Hajjar — an absolute monarchy whose legitimacy rests on Solvaric-era conquest, tribal alliance, and custodianship of the great pilgrimage city of Al-Makir al-Kubra. Beneath its sand seas lie some of the richest proven hydrocarbon reserves on the continent, and state oil revenue funds everything from lavish infrastructure to a sprawling welfare-and-stipend apparatus that binds the population to the throne. The Hajjar National Front, the king''s party, holds a commanding majority in an advisory parliament; organized opposition exists but operates inside carefully drawn red lines. Society is young, growing, and deeply devout, with daily life ordered around the prayer calendar and the long Al-Ardin festival season. A rising generation of foreign-educated Hajjaris presses — cautiously — for economic diversification, women''s labor participation, and a less arbitrary justice system, while the crown balances modernization against the clerical establishment and the tribal confederations that made the kingdom possible.',
-    'Al-Mulk lillah, wa al-Watan lil-Hajjar — Sovereignty to the Divine, the Nation to Hajjar',
-    '[
+    $p$Hajjara is a vast desert kingdom on the Al-Makir continent, ruled for three centuries by the House of Hajjar, an absolute monarchy whose legitimacy rests on Solvaric-era conquest, tribal alliance, and custodianship of the great pilgrimage city of Al-Makir al-Kubra. Beneath its sand seas lie some of the richest proven hydrocarbon reserves on the continent, and state oil revenue funds everything from lavish infrastructure to a sprawling welfare-and-stipend apparatus that binds the population to the throne. The Hajjar National Front, the king's party, holds a commanding majority in an advisory parliament; organized opposition exists but operates inside carefully drawn red lines. Society is young, growing, and deeply devout, with daily life ordered around the prayer calendar and the long Al-Ardin festival season. A rising generation of foreign-educated Hajjaris presses, cautiously, for economic diversification, women's labor participation, and a less arbitrary justice system, while the crown balances modernization against the clerical establishment and the tribal confederations that made the kingdom possible.$p$,
+    $p$Al-Mulk lillah, wa al-Watan lil-Hajjar - Sovereignty to the Divine, the Nation to Hajjar$p$,
+    $p$[
         {"year": "1517", "event": "Pilgrimage city of Al-Makir al-Kubra falls to the Harran Sultanate; begins three centuries of distant suzerainty."},
         {"year": "1745", "event": "Pact of the Two Wells; Sheikh Hajjar ibn Sulaiman forges the tribal confederation that will become the kingdom."},
-        {"year": "1818", "event": "First Hajjari campaign crushed by Harran expeditionary forces; House of Hajjar retreats to the Nefud interior."},
-        {"year": "1902", "event": "Second Hajjari campaign succeeds; Riyan-analog capital captured; Emirate of Hajjara proclaimed."},
-        {"year": "1932", "event": "Kingdom of Hajjara formally established; first written constitution recognizes the king''s absolute authority under divine mandate."},
-        {"year": "1938", "event": "First major oil strike at Ghawar-analog field; economy pivots toward hydrocarbon export."},
+        {"year": "1818", "event": "First Hajjari campaign crushed by Harran expeditionary forces; House of Hajjar retreats to the Az-Zamil interior."},
+        {"year": "1902", "event": "Second Hajjari campaign succeeds; Al-Tayyir captured and proclaimed capital; Emirate of Hajjara founded."},
+        {"year": "1932", "event": "Kingdom of Hajjara formally established; first written constitution recognizes the king's absolute authority under divine mandate."},
+        {"year": "1938", "event": "First major oil strike at the Az-Zaharan field; economy pivots toward hydrocarbon export."},
         {"year": "1973", "event": "Oil embargo era; state revenues surge; modernization programs launched across education and infrastructure."},
-        {"year": "1991", "event": "Consultative Council (Majlis al-Shura) seated; limited electoral politics introduced under crown oversight."},
+        {"year": "1991", "event": "Consultative Council (Majlis al-Ardin) seated; limited electoral politics introduced under crown oversight."},
         {"year": "2015", "event": "Vision 2045 diversification plan announced; sovereign wealth fund expanded beyond petroleum assets."},
         {"year": "2024", "event": "Current political era; reformist pressure, regional rivalries, and oil-price volatility test the kingdom."}
-    ]'::jsonb,
+    ]$p$::jsonb,
     'Kingdom of Hajjara',
     'Hajjari',
-    'Hajjari Arabic (official), Classical Ardani, English commercial',
-    'Al-Ardin (official state religion, Sunni-analog majority), Shi''a-analog minority, expatriate Solvarist communities',
+    'Hajjari Arabic (official), Classical Ardani, Meridian Common (commercial)',
+    $p$Al-Ardin (official state religion, dominant Ilmi tradition), Atfal minority, expatriate Solvarist communities$p$,
     'Hajjari Riyal (HJR)',
     '1932',
-    'Nashid al-Malik (Anthem of the King)',
-    'Arabian Oryx',
+    $p$Nashid al-Malik (Anthem of the King)$p$,
+    'Hajjari Oryx',
     'Desert Rose (Adenium)',
-    'Al-Makir continent — vast arid plateau, sand seas, narrow coastal plain on the Gulf of Ardan',
+    'Al-Makir continent, vast arid plateau with sand seas and a narrow coastal plain on the Gulf of Ardan',
     'Hot desert; scorching dry summers, mild winters; rare highland rainfall in the southwest',
     '2,149,690',
     '2,640',
