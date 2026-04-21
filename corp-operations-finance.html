@@ -3386,8 +3386,7 @@ async function init() {
 
         // If this corp is NOT Finance, redirect to the correct operations page
         if (faction.corp_sector !== 'Finance') {
-            const SECTOR_OPS = { Construction: 'corp-operations.html', Shipping: 'corp-operations-shipping.html' };
-            window.location.href = (SECTOR_OPS[faction.corp_sector] || 'corp-operations.html') + window.location.search;
+            window.location.href = (SECTOR_OPS_PAGE[faction.corp_sector] || 'corp-operations.html') + window.location.search;
             return;
         }
 
