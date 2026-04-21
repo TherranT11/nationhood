@@ -2,6 +2,8 @@
  * repeal-helper.js — shared repeal target resolution + reverse/delete executor
  */
 
+import { MILITARY_LOYALTY_POLICY_KEY, onMilitaryLoyaltyRepealed } from './military-loyalty.js';
+
 export function resolveRepealTargetLawId({ bill, article } = {}) {
     if (article?.repeal_active_law_id) {
         return article.repeal_active_law_id;
@@ -141,6 +143,12 @@ export async function repealActiveLaw({
 
     // Now create reversal effects (inserts a fresh row since the conflicting row is gone)
     await reversePolicy(supabase, nation, targetPolicy, targetPassedTick, currentTick);
+
+    // MLA repeal hook: vacate the defense ministry so the nation must appoint
+    // a new minister through the normal process.
+    if (targetPolicy.policy_key === MILITARY_LOYALTY_POLICY_KEY) {
+        await onMilitaryLoyaltyRepealed(supabase, nation.id);
+    }
 
     return {
         success: true,

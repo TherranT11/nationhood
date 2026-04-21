@@ -2508,6 +2508,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Tariff relations penalty failed for ${nation.name} (non-fatal):`, tariffErr);
         }
 
+        // Military Loyalty Act: force-sync defense minister to the sitting
+        // Head of Government each tick while MLA is active. No-op when not.
+        try {
+            await syncMilitaryLoyaltyDefenseMinister(supabase, nation, currentTick);
+        } catch (mlaErr) {
+            console.error(`[advanceTick] MLA sync failed for ${nation.name} (non-fatal):`, mlaErr);
+        }
+
         // Credit lockout auto-clear: if credit has recovered above threshold, unlock
         if (nation.credit_locked_out && Number(nation.credit ?? 0) > 5) {
             await supabase.from('nations').update({ credit_locked_out: false }).eq('id', nation.id);

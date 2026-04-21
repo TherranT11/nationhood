@@ -13,6 +13,7 @@ import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
+import { MILITARY_LOYALTY_POLICY_KEY, onMilitaryLoyaltyEnacted } from './military-loyalty.js';
 import { getNationNames, isFemaleName, installHOG } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
 import { repealActiveLaw } from './repeal-helper.js';
@@ -3297,6 +3298,12 @@ export async function enactBill(supabase, bill, currentTick) {
                 policyId: policy.id,
                 policyName: policy.policy_name
             });
+
+            // MLA enact hook: cancel pending defense-minister confirmations
+            // so they don't collide with the forced per-tick sync.
+            if (policy.policy_key === MILITARY_LOYALTY_POLICY_KEY) {
+                await onMilitaryLoyaltyEnacted(supabase, bill.nation_id, currentTick);
+            }
         }
     }
 
