@@ -3323,8 +3323,9 @@ async function init() {
     const urlFactionId = new URLSearchParams(location.search).get('faction_id');
     const isInspectorMode = !!urlFactionId;
     if (isInspectorMode) {
-        const { data: inspected } = await _supabase.from('factions').select('*').eq('id', urlFactionId).single();
-        if (inspected?.faction_type === 'corporation') faction = inspected;
+        const { data: inspected, error: inspectErr } = await _supabase.from('factions').select('*').eq('id', urlFactionId).single();
+        if (inspectErr) console.warn('[Inspector] faction fetch failed:', inspectErr.message);
+        else if (inspected?.faction_type === 'corporation') faction = inspected;
     }
 
     if (!faction) {

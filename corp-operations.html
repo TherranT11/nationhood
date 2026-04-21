@@ -2111,16 +2111,13 @@ body.light-mode .av-empty__text { color: #1a1a17; }
 
 /* ── Actions tab mobile ── */
 @media (max-width: 820px) {
-  #actions-container > div > div:first-child {
-    /* Left panel: stack vertically on mobile */
-    width: 100% !important;
-    flex-direction: row !important;
-    flex-wrap: wrap !important;
-    gap: 4px !important;
-  }
-  #actions-container > div {
-    flex-direction: column !important;
-  }
+  /* Prior rules targeted the old inline Actions-tab layout via
+     #actions-container > div > div:first-child. That structure no
+     longer exists — Actions now renders through the shared
+     role-actions shell (.pa-page > .pa-header / .pa-status-bar /
+     .pa-main). Mobile responsive rules for the new structure would
+     need to target .pa-main. Left unstyled for now; desktop-first
+     parity with the Party Actions tab is the Phase 2 goal. */
   #exec-search-overlay > div {
     width: 95vw !important;
     max-width: 95vw !important;
@@ -2398,6 +2395,11 @@ body.light-mode .av-empty__text { color: #1a1a17; }
 </style>
 <link rel="stylesheet" href="css/corp-auto-services.css">
 <link rel="stylesheet" href="css/corp-sub-dashboard.css">
+<!-- Shared Actions-panel chrome: .pa-page, .pa-header, .pa-status-bar,
+     .pa-main, .pa-leaders, .pa-actions-panel. Party-specific selectors
+     in this file (pa-leader-card etc.) are inert in this page — they
+     don't match any corp-generated markup. -->
+<link rel="stylesheet" href="css/party-actions.css">
 </head>
 <body>
 <script src="js/corp-theme-init.js"></script>
@@ -2765,6 +2767,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { computePropertyValue, computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
+import { renderRoleActionsShell } from './js/role-actions.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
 import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
@@ -7380,8 +7383,9 @@ async function init() {
     const urlFactionId = new URLSearchParams(location.search).get('faction_id');
     const isInspectorMode = !!urlFactionId;
     if (isInspectorMode) {
-        const { data: inspected } = await _supabase.from('factions').select('*').eq('id', urlFactionId).single();
-        if (inspected?.faction_type === 'corporation') faction = inspected;
+        const { data: inspected, error: inspectErr } = await _supabase.from('factions').select('*').eq('id', urlFactionId).single();
+        if (inspectErr) console.warn('[Inspector] faction fetch failed:', inspectErr.message);
+        else if (inspected?.faction_type === 'corporation') faction = inspected;
     }
 
     if (!faction) {
@@ -7745,94 +7749,160 @@ function renderActionsTab() {
 
     const corpName = faction?.faction_name || 'Corporation';
     const ticker = (faction?.abbreviation || faction?.corp_ticker || '??').toUpperCase();
+    const sector = faction?.corp_sector || '';
+    const subsector = faction?.corp_subsector || '';
 
-    let html = '';
+    // Valuation uses the single-source-of-truth formula from
+    // js/game/corp-valuation.js. Properties are already loaded by init()
+    // (Promise.all at :7518); vessels + finance receivables are not
+    // applicable to Construction corps (this file), so they default to
+    // zero. The shipping + finance ops files will pass their own
+    // vessels / receivables when they wire through the shell.
+    const cashReserves = Number(faction?.corp_cash_reserves || 0);
+    const outstandingLoans = Number(faction?.corp_loans || 0);
+    const valuation = computeCorpValuation({
+        cash: cashReserves,
+        loans: outstandingLoans,
+        properties: _ownedProperties || [],
+        vessels: [],
+        financeReceivables: 0,
+        currentTick: shard?.current_tick || 0,
+    });
 
-    // ── Page header ──
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:0 2px;">
-        <div style="display:flex;align-items:center;gap:12px;">
-            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:2px;color:#8b9a6b;text-transform:uppercase;">Actions</span>
-            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${escapeHtml(corpName)} &middot; ${escapeHtml(ticker)}</span>
-        </div>
-    </div>`;
+    // Clamp to 0-100 so display never shows NaN or out-of-range numbers
+    // from corrupt DB values. Matches the clamping pattern used
+    // elsewhere in this file (see corp_reputation updates).
+    const repRaw = Number(faction?.corp_reputation ?? 50);
+    const reputation = Math.max(0, Math.min(100, Math.round(Number.isFinite(repRaw) ? repRaw : 50)));
+    const repColor = reputation >= 60 ? 'var(--green)'
+        : reputation >= 40 ? 'var(--text-bright)'
+        : 'var(--red)';
 
-    // ── Main layout: left panel + right panel ──
-    html += '<div style="display:flex;gap:8px;">';
+    // Cash / valuation formatting ($X.XM / $Xk / raw). Handles negatives
+    // so valuation < 0 (debts > assets) renders as "-$X.XM" rather than
+    // "$-X.XM" or falling through to the raw branch.
+    const fmt = (n) => {
+        const v = Number(n) || 0;
+        const abs = Math.abs(v);
+        const body = abs >= 1_000_000_000 ? (abs / 1_000_000_000).toFixed(1) + 'B'
+            : abs >= 1_000_000 ? (abs / 1_000_000).toFixed(1) + 'M'
+            : abs >= 1_000 ? Math.round(abs / 1000) + 'k'
+            : String(Math.round(abs));
+        return (v < 0 ? '-$' : '$') + body;
+    };
+
+    // Non-HQ properties owned. The National HQ is always present (not a
+    // row in corp_properties) — counting actual rows matches "properties
+    // you've purchased" which is what the player cares about here.
+    const propertyCount = (_ownedProperties || []).length;
+
+    // Valuation color: green when positive (healthy corp), red when
+    // negative (debts exceed assets — bankruptcy territory). Matches
+    // the convention used elsewhere for money deltas.
+    const valColor = valuation < 0 ? 'var(--red)' : 'var(--green)';
+
+    renderRoleActionsShell(container, {
+        title: 'Corporate Actions',
+        entityName: `${corpName} · ${ticker}`,
+        entityColor: '#8b9a6b',
+        stats: [
+            { label: 'Cash', value: fmt(cashReserves), color: 'var(--accent)' },
+            { label: 'Reputation', value: String(reputation), color: repColor },
+            { label: 'Valuation', value: fmt(valuation), color: valColor },
+        ],
+        statusBarItems: [
+            {
+                type: 'count',
+                label: 'Sector',
+                big: sector || '—',
+                bigColor: '#8b9a6b',
+                dim1: subsector || '',
+            },
+            {
+                type: 'count',
+                label: 'Properties',
+                big: String(propertyCount),
+                bigColor: '#8b9a6b',
+                dim1: propertyCount === 1 ? 'building' : 'buildings',
+            },
+        ],
+        rolesContainerId: 'corp-exec-list',
+        panelContainerId: 'corp-actions-panel',
+        rolesColumnWidth: 262,
+    });
 
     // ═══ LEFT PANEL: Executive cards ═══
-    html += '<div style="width:262px;display:flex;flex-direction:column;gap:5px;flex-shrink:0;">';
+    const execList = document.getElementById('corp-exec-list');
+    if (execList) {
+        let execHtml = '';
+        for (let i = 0; i < EXEC_ROLES.length; i++) {
+            const role = EXEC_ROLES[i];
+            const meta = EXEC_ROLE_META[role];
+            const exec = getExecForRole(role);
+            const isSel = _selectedExecIdx === i;
+            const color = meta.color;
+            const isVacant = !exec;
 
-    for (let i = 0; i < EXEC_ROLES.length; i++) {
-        const role = EXEC_ROLES[i];
-        const meta = EXEC_ROLE_META[role];
-        const exec = getExecForRole(role);
-        const isSel = _selectedExecIdx === i;
-        const color = meta.color;
-        const isVacant = !exec;
+            execHtml += `<div onclick="actSelectExec(${i})" style="
+                padding:10px 12px;
+                background:${isSel ? color + '0a' : 'var(--bg-2,#1a1a17)'};
+                border:1px solid ${isSel ? color + '44' : 'var(--border-0,rgba(255,255,255,0.06))'};
+                border-left:3px solid ${isSel ? color : 'var(--border-0,rgba(255,255,255,0.06))'};
+                cursor:pointer;
+            ">`;
 
-        html += `<div onclick="actSelectExec(${i})" style="
-            padding:10px 12px;
-            background:${isSel ? color + '0a' : 'var(--bg-2,#1a1a17)'};
-            border:1px solid ${isSel ? color + '44' : 'var(--border-0,rgba(255,255,255,0.06))'};
-            border-left:3px solid ${isSel ? color : 'var(--border-0,rgba(255,255,255,0.06))'};
-            cursor:pointer;
-        ">`;
-
-        if (isVacant && role !== 'CEO') {
-            // Vacant slot
-            html += `<div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:45px;height:45px;background: var(--border-hair);border:1px dashed var(--border-1);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);flex-shrink:0;">?</div>
-                <div style="flex:1;min-width:0;">
-                    <div style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
-                    </div>
-                    <div style="font-size:13px;font-weight:600;color:var(--text-dim);margin-top:2px;">VACANT</div>
-                    <div style="margin-top:4px;">
-                        <span onclick="event.stopPropagation();openExecSearch('${role}')" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;padding:3px 8px;color:#5a8aaa;border:1px solid rgba(90,138,170,0.25);background:rgba(90,138,170,0.06);cursor:pointer;">EXECUTIVE SEARCH</span>
-                    </div>
-                </div>
-            </div>`;
-        } else {
-            // Filled slot (CEO always filled, others if hired)
-            const name = exec ? `${exec.first_name} ${exec.last_name}` : '—';
-            const age = exec ? exec.age : 0;
-            const sk = exec ? exec.skill : 0;
-            const sal = exec ? exec.salary_per_year : 0;
-            const portrait = exec ? getInitials(exec.first_name, exec.last_name) : '—';
-
-            html += `<div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:45px;height:45px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};flex-shrink:0;">${escapeHtml(portrait)}</div>
-                <div style="flex:1;min-width:0;">
-                    <div style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
-                    </div>
-                    <div style="font-size:13px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : 'var(--text-muted,#666)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}${age ? ` <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">(${age})</span>` : ''}</div>
-                    <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
-                        <div style="display:flex;align-items:center;gap:3px;flex:1;">
-                            <div style="flex:1;height:3px;background:var(--border-0,rgba(255,255,255,0.06));">
-                                <div style="width:${sk}%;height:100%;background:${skillColor(sk)};"></div>
-                            </div>
-                            <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);width:18px;text-align:right;">${sk}</span>
+            if (isVacant && role !== 'CEO') {
+                execHtml += `<div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:45px;height:45px;background: var(--border-hair);border:1px dashed var(--border-1);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);flex-shrink:0;">?</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
                         </div>
-                        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${actFmtSalary(sal)}/yr</span>
+                        <div style="font-size:13px;font-weight:600;color:var(--text-dim);margin-top:2px;">VACANT</div>
+                        <div style="margin-top:4px;">
+                            <span onclick="event.stopPropagation();openExecSearch('${role}')" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;padding:3px 8px;color:#5a8aaa;border:1px solid rgba(90,138,170,0.25);background:rgba(90,138,170,0.06);cursor:pointer;">EXECUTIVE SEARCH</span>
+                        </div>
                     </div>
-                </div>
-            </div>`;
+                </div>`;
+            } else {
+                const name = exec ? `${exec.first_name} ${exec.last_name}` : '—';
+                const age = exec ? exec.age : 0;
+                const sk = exec ? exec.skill : 0;
+                const sal = exec ? exec.salary_per_year : 0;
+                const portrait = exec ? getInitials(exec.first_name, exec.last_name) : '—';
+
+                execHtml += `<div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:45px;height:45px;background:${color}15;border:1px solid ${color}33;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};flex-shrink:0;">${escapeHtml(portrait)}</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${color};">${escapeHtml(role)}</span>
+                        </div>
+                        <div style="font-size:13px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : 'var(--text-muted,#666)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}${age ? ` <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">(${age})</span>` : ''}</div>
+                        <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
+                            <div style="display:flex;align-items:center;gap:3px;flex:1;">
+                                <div style="flex:1;height:3px;background:var(--border-0,rgba(255,255,255,0.06));">
+                                    <div style="width:${sk}%;height:100%;background:${skillColor(sk)};"></div>
+                                </div>
+                                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);width:18px;text-align:right;">${sk}</span>
+                            </div>
+                            <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${actFmtSalary(sal)}/yr</span>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            execHtml += `</div>`;
         }
-        html += '</div>';
+        execList.innerHTML = execHtml;
     }
 
-    html += '</div>'; // close left panel
-
     // ═══ RIGHT PANEL ═══
-    html += `<div style="flex:1;display:flex;flex-direction:column;gap:0;">
-        <div id="actions-right-panel"></div>
-    </div>`;
+    // The existing right-panel renderer reads from `#actions-right-panel`,
+    // so install that inside the shell's action panel container.
+    const panelHost = document.getElementById('corp-actions-panel');
+    if (panelHost) {
+        panelHost.innerHTML = `<div id="actions-right-panel"></div>`;
+    }
 
-    html += '</div>'; // close main layout
-    container.innerHTML = html;
-
-    // Render right panel
     renderActionsRightPanel();
 }
 
