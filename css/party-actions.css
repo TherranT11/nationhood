@@ -657,15 +657,26 @@
 .cf-section-title { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
 .cf-section-desc { font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
 
-/* Party checkbox grid */
-.cf-party-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 10px; }
-.cf-party-check { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border: 1px solid var(--border-main); transition: background 0.12s; }
+/* Party checkbox grid — single column so each row can fit party info + adopted platforms side by side */
+.cf-party-grid { display: grid; grid-template-columns: 1fr; gap: 4px; margin-bottom: 10px; }
+.cf-party-check { display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; cursor: pointer; border: 1px solid var(--border-main); transition: background 0.12s; }
 .cf-party-check:hover { background: var(--bg-hover); }
 .cf-party-check.checked { background: var(--bg-card); }
 .cf-party-check.disabled { opacity: 0.5; cursor: default; }
+.cf-party-info { display: flex; align-items: center; gap: 8px; min-width: 240px; flex-shrink: 0; }
 .cf-check-box { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--green); border: 1px solid var(--border-mid); flex-shrink: 0; }
 .cf-check-name { font-size: 13px; font-weight: 600; color: var(--text-bright); flex: 1; }
 .cf-check-seats { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+/* Adopted platforms panel — stacked vertically to the right of each party */
+.cf-check-platforms { flex: 1; display: flex; flex-direction: column; gap: 6px; padding-left: 12px; border-left: 1px solid var(--border-main); }
+.cf-check-platforms--empty { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); font-style: italic; justify-content: center; }
+.cf-platform { display: flex; flex-direction: column; gap: 2px; }
+.cf-platform-label { font-size: 12px; font-weight: 600; color: var(--text-bright); }
+.cf-platform-icon { font-size: 13px; }
+.cf-platform-stats { display: flex; flex-wrap: wrap; gap: 8px; font-family: var(--font-mono); font-size: 10px; }
+.cf-stat-up { color: var(--green); }
+.cf-stat-down { color: var(--red); }
 
 /* Seat preview */
 .cf-seat-preview { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); padding: 8px 0; margin-bottom: 10px; }
@@ -704,7 +715,9 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-    .cf-party-grid { grid-template-columns: 1fr; }
+    .cf-party-check { flex-direction: column; align-items: stretch; }
+    .cf-party-info { min-width: 0; }
+    .cf-check-platforms { padding-left: 0; border-left: none; border-top: 1px solid var(--border-main); padding-top: 6px; }
     .cf-penalties { flex-direction: column; }
     .cf-banner-header { padding: 12px; }
     .cf-countdown, .cf-penalties { padding-left: 12px; padding-right: 12px; }

@@ -7,6 +7,7 @@ import { autoAppointPartyLeaderAsPM, getNationNames } from './game/political-act
 import { rolloverAdministration } from './game/elections.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS, hasElectedPresident, isSemiPresidential, isAbsoluteMonarchy } from './game/government-types.js';
+import { PLATFORMS } from './game/platforms.js';
 import { tickToDate } from './utils.js';
 
 let _supabase = null;
@@ -16,6 +17,10 @@ let _electionId = null;
 let _allParties = [];
 let _formations = [];
 let _totalSeats = 0;
+// Active platforms per party in this nation, keyed by faction_id.
+// Loaded once at init; read during coalition-propose render so players
+// can see each party's commitments before inviting them.
+let _platformsByFaction = {};
 // Scheduled elections for the current nation, ascending by tick. One source
 // of truth for the election header AND the pre-election render branch — both
 // derive what they need (earliest-by-type / earliest-overall) from this array.
@@ -59,7 +64,7 @@ export async function initCoalitionFormation(supabase, state) {
     // ministries as "government exists", so the Election tab must agree —
     // otherwise we'd flash "No Government — Snap Election Imminent" while a
     // full cabinet is live one tab over.
-    const [electionResult, shardResult, activeCoalition, partiesResult, hogResult, scheduledResult] = await Promise.all([
+    const [electionResult, shardResult, activeCoalition, partiesResult, hogResult, scheduledResult, platformsResult] = await Promise.all([
         supabase.from('elections')
             .select('id, election_type, election_tick, status')
             .eq('nation_id', nation.id)
@@ -90,6 +95,11 @@ export async function initCoalitionFormation(supabase, state) {
             .eq('nation_id', nation.id)
             .eq('status', 'scheduled')
             .order('election_tick', { ascending: true }),
+        supabase.from('faction_platforms')
+            .select('faction_id, platform_key, slot')
+            .eq('nation_id', nation.id)
+            .eq('status', 'active')
+            .order('slot', { ascending: true }),
     ]);
 
     _currentTick = shardResult.data?.current_tick ?? 0;
@@ -98,6 +108,10 @@ export async function initCoalitionFormation(supabase, state) {
     _majoritySeats = Math.ceil(_totalSeats / 2) + 1;
     _scheduledElections = scheduledResult?.data || [];
     _activeCoalition = activeCoalition || null;
+    _platformsByFaction = {};
+    for (const row of (platformsResult?.data || [])) {
+        (_platformsByFaction[row.faction_id] ||= []).push(row.platform_key);
+    }
 
     const election = electionResult.data;
     // activeCoalition is either null or the canonical SSoT result from
@@ -410,10 +424,27 @@ export async function renderFormationTab(root) {
             const isYou = p.id === faction.id;
             const seats = p.seats || 0;
             const color = p.party_color || '#888';
+            const platforms = (_platformsByFaction[p.id] || [])
+                .map(key => PLATFORMS.find(pl => pl.id === key))
+                .filter(Boolean);
+            const formatStats = (keys) => keys.map(k => k.replace(/_/g, ' ')).join(', ');
+            const platformRows = platforms.map(plat => `<div class="cf-platform">
+                <span class="cf-platform-label"><span class="cf-platform-icon">${plat.icon}</span> ${esc(plat.name)}</span>
+                <span class="cf-platform-stats">
+                    <span class="cf-stat-up">&uarr; ${formatStats(plat.improve)}</span>
+                    <span class="cf-stat-down">&darr; ${formatStats(plat.worsen)}</span>
+                </span>
+            </div>`).join('');
+            const platformsBlock = platformRows
+                ? `<div class="cf-check-platforms">${platformRows}</div>`
+                : `<div class="cf-check-platforms cf-check-platforms--empty">No adopted platforms.</div>`;
             return `<div class="cf-party-check ${isYou ? 'checked disabled' : ''}" data-party-id="${p.id}" style="border-left:3px solid ${color};">
-                <div class="cf-check-box">${isYou ? '✓' : ''}</div>
-                <span class="cf-check-name">${esc(p.faction_name)}</span>
-                <span class="cf-check-seats">${seats} seats</span>
+                <div class="cf-party-info">
+                    <div class="cf-check-box">${isYou ? '✓' : ''}</div>
+                    <span class="cf-check-name">${esc(p.faction_name)}</span>
+                    <span class="cf-check-seats">${seats} seats</span>
+                </div>
+                ${platformsBlock}
             </div>`;
         }).join('');
 
