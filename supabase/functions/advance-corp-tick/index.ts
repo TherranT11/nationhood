@@ -2998,6 +2998,17 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
 
         // Insurance: collect premium from policyholder, credit to insurer
         if (requestType === 'insurance') {
+            // Term expiry: policy ends at term_months regardless of project status.
+            const termMonths = Number(loan.term_months) || 0;
+            if (termMonths > 0 && Number(loan.payments_made || 0) >= termMonths) {
+                const { error: expErr } = await supabase.from('finance_active_loans').update({
+                    status: 'repaid',
+                    completed_tick: currentTick,
+                }).eq('id', loan.id);
+                if (expErr) console.warn('[Insurance] Term expiry update failed:', expErr.message);
+                continue;
+            }
+
             const premium = Number(loan.monthly_payment) || 0;
             if (premium <= 0) continue;
 

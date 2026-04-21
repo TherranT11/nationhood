@@ -290,6 +290,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 .rd-control__range { width:100%; height:4; -webkit-appearance:none; appearance:none; background:transparent; outline:none; cursor:pointer; }
 .rd-control__range::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:var(--panel-text); border:2px solid var(--panel-border); cursor:pointer; margin-top:-4px; }
 .rd-control__range::-webkit-slider-runnable-track { height:4px; border-radius:2px; }
+.rd-control__select { width:100%; padding:7px 10px; background:var(--panel-main); border:1px solid var(--panel-border); color:var(--panel-text); font-family:var(--font-mono); font-size:11px; outline:none; cursor:pointer; }
 .rd-control__hints { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:7px; color:#6a6660; margin-top:2px; }
 .rd-presets { display:flex; gap:3px; }
 .rd-preset { flex:1; text-align:center; padding:3px 0; font-family:var(--font-mono); font-size:8px; font-weight:700; cursor:pointer; border:1px solid var(--panel-border); color:#6a6660; background:transparent; }
@@ -975,9 +976,13 @@ function renderDealFlow() {
             : d.type === 'EQUITY' ? 'CAPITAL RAISE'
             : d.type === 'SECONDARY' ? 'ASKING PRICE'
             : 'AMOUNT';
-        // Middle column: TERM for loan/bond/insurance, SERIES for equity / secondary.
+        // Middle column: TERM for loan/bond, SERIES for equity/secondary.
+        // Insurance term is set by the insurer at offer time, not by the
+        // request — show an em-dash instead of a misleading "0mo".
         const midLabel = (d.type === 'EQUITY' || d.type === 'SECONDARY') ? 'SERIES' : 'TERM';
-        const midValue = (d.type === 'EQUITY' || d.type === 'SECONDARY') ? 'Series ' + d.series : d.term + 'mo';
+        const midValue = (d.type === 'EQUITY' || d.type === 'SECONDARY') ? 'Series ' + d.series
+            : d.type === 'INSURE' ? '—'
+            : d.term + 'mo';
         const qualLabel = d.type === 'BOND' ? 'COUPON'
             : (d.type === 'EQUITY' || d.type === 'SECONDARY') ? 'STAKE'
             : 'REP';
@@ -2379,7 +2384,11 @@ let rdLoanTermsText = '';
 let rdInsurePremium = 3.5;
 let rdInsureCoverage = 12000000;
 let rdInsureDeductible = 10;
+let rdInsureTerm = 12;
 let rdPolicyTerms = '';
+
+const INSURE_TERM_OPTIONS = [6, 12, 24, 36, 48, 60];
+const INSURE_COVERAGE_PCTS = [50, 60, 70, 80, 90, 100];
 
 // Bond controls
 let rdBondAmount = 25000000;
@@ -2411,9 +2420,10 @@ function rdOpen(dealIdx) {
     } else if (deal.type === 'INSURE') {
         // Vessel insurance pays half the premium of project/construction
         // insurance; underwriters set the rate in a 0.5–4% band instead of 1–8%.
-        rdInsurePremium = deal.isVesselInsurance ? 1.75 : 3.5;
+        rdInsurePremium = deal.isVesselInsurance ? 1.5 : 3.5;
         rdInsureCoverage = deal.amount;
         rdInsureDeductible = 10;
+        rdInsureTerm = 12;
         rdPolicyTerms = '';
     } else if (deal.type === 'BOND') {
         rdBondAmount = Math.round(deal.amount * 0.25);
@@ -2471,6 +2481,7 @@ function rdSetLoanTermsText(v) { rdLoanTermsText = v; }
 function rdSetInsurePremium(v) { rdInsurePremium = Number(v); renderReviewDeal(); }
 function rdSetInsureCoverage(v) { rdInsureCoverage = Number(v); renderReviewDeal(); }
 function rdSetInsureDeductible(v) { rdInsureDeductible = Number(v); renderReviewDeal(); }
+function rdSetInsureTerm(v) { rdInsureTerm = Number(v); renderReviewDeal(); }
 function rdSetBondAmount(v) { rdBondAmount = Number(v); renderReviewDeal(); }
 
 function rdBar(value, max, color) {
@@ -2515,10 +2526,9 @@ function renderReviewDeal() {
     const loanExpectedReturn = Math.round(loanTotalInterest * (1 - defaultProb / 100));
 
     // ── Insurance calculations ──
-    // Fallback default for legacy rows where term_months was hardcoded 0
-    // before the request UI started collecting term. New rows always set
-    // term in [6, 120] via _promptInsuranceTerm in corp-operations-shipping.
-    const insureTermYears = (d.term || 12) / 12;
+    // Insurer sets the policy term via rdInsureTerm; the borrower's
+    // request carries no meaningful term anymore.
+    const insureTermYears = rdInsureTerm / 12;
     const insureTotalPremiums = Math.round(rdInsureCoverage * (rdInsurePremium / 100) * insureTermYears);
     const baseClaimProb = 100 - (d.reputation || 50); // lower rep = higher claim chance
     const insureClaimProb = Math.max(5, Math.min(50, Math.round(baseClaimProb * 0.4)));
@@ -2670,7 +2680,6 @@ function renderReviewDeal() {
                 <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">REP</div><div class="rd-applicant__stat-value" style="color:${repColor};">${d.reputation || '—'}</div></div>
                 <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">${assetLabel}</div><div class="rd-applicant__stat-value" style="color:var(--panel-text);">${fmtMoney(assetValue)}</div></div>
                 <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">REQUESTED</div><div class="rd-applicant__stat-value" style="color:var(--panel-text);">${fmtMoney(d.amount)}</div></div>
-                <div class="rd-applicant__stat"><div class="rd-applicant__stat-label">TERM</div><div class="rd-applicant__stat-value" style="color:var(--panel-text);">${d.term}mo</div></div>
             </div>
         </div>`;
 
@@ -2684,37 +2693,55 @@ function renderReviewDeal() {
 
         html += `<div class="rd-section-bar" style="color:#aa7a5a;">Set Policy Terms</div>`;
 
-        // Premium Rate slider — vessel insurance runs a 0.5–4% band (half the
+        // Premium Rate — vessel insurance runs a 0.5–4% band (half the
         // rate of non-vessel insurance, where the band stays 1–8%).
         const isVesselPolicy = !!rdDeal.isVesselInsurance;
-        const premMin  = isVesselPolicy ? 0.5  : 1;
-        const premMax  = isVesselPolicy ? 4    : 8;
-        const premStep = isVesselPolicy ? 0.25 : 0.5;
-        const premPct  = premMax > premMin ? ((rdInsurePremium - premMin) / (premMax - premMin)) * 100 : 0;
+        const premMin  = isVesselPolicy ? 0.5 : 1;
+        const premMax  = isVesselPolicy ? 4   : 8;
+        const premOptions = [];
+        for (let p = premMin; p <= premMax + 0.001; p += 0.5) premOptions.push(+p.toFixed(2));
+        if (!premOptions.includes(rdInsurePremium)) rdInsurePremium = premOptions[Math.floor(premOptions.length / 2)];
         html += `<div class="rd-control">
             <div class="rd-control__header">
                 <span class="rd-control__label">PREMIUM RATE (ANNUAL)</span>
                 <span class="rd-control__value" style="font-size:16px;color:#aa7a5a;">${rdInsurePremium}%</span>
             </div>
-            <input type="range" class="rd-control__range" min="${premMin}" max="${premMax}" step="${premStep}" value="${rdInsurePremium}"
-                oninput="rdSetInsurePremium(this.value)"
-                style="background:linear-gradient(90deg,#aa7a5a ${premPct}%,var(--panel-border) ${premPct}%);">
+            <select class="rd-control__select" onchange="rdSetInsurePremium(this.value)">
+                ${premOptions.map(p => `<option value="${p}"${p === rdInsurePremium ? ' selected' : ''}>${p}%</option>`).join('')}
+            </select>
             <div class="rd-control__hints"><span>${premMin}% (competitive)</span><span>${premMax}% (expensive)</span></div>
         </div>`;
 
-        // Coverage Amount slider
-        const maxCoverage = Math.round((d.projectValue || d.fleetValue || d.amount) * 0.7);
-        const minCoverage = Math.round(d.amount * 0.33);
-        const covPct = ((rdInsureCoverage - minCoverage) / (maxCoverage - minCoverage)) * 100;
+        // Coverage Amount — presets as percentages of the requested amount,
+        // capped at the asset-value ceiling (70% of project/fleet value).
+        const coverageCeiling = Math.round((d.projectValue || d.fleetValue || d.amount) * 0.7);
+        const coverageOptions = INSURE_COVERAGE_PCTS
+            .map(pct => ({ pct, value: Math.min(Math.round(d.amount * pct / 100), coverageCeiling) }))
+            .filter((opt, i, arr) => i === 0 || opt.value !== arr[i - 1].value);
+        if (!coverageOptions.some(o => o.value === rdInsureCoverage)) {
+            rdInsureCoverage = coverageOptions[coverageOptions.length - 1].value;
+        }
         html += `<div class="rd-control">
             <div class="rd-control__header">
                 <span class="rd-control__label">COVERAGE AMOUNT</span>
                 <span class="rd-control__value" style="font-size:14px;color:var(--panel-text);">${fmtMoney(rdInsureCoverage)}</span>
             </div>
-            <input type="range" class="rd-control__range" min="${minCoverage}" max="${maxCoverage}" step="1000000" value="${rdInsureCoverage}"
-                oninput="rdSetInsureCoverage(this.value)"
-                style="background:linear-gradient(90deg,#aa7a5a ${covPct}%,var(--panel-border) ${covPct}%);">
-            <div class="rd-control__hints"><span>${fmtMoney(minCoverage)} (partial)</span><span>${fmtMoney(maxCoverage)} (max)</span></div>
+            <select class="rd-control__select" onchange="rdSetInsureCoverage(this.value)">
+                ${coverageOptions.map(o => `<option value="${o.value}"${o.value === rdInsureCoverage ? ' selected' : ''}>${o.pct}% of request — ${fmtMoney(o.value)}</option>`).join('')}
+            </select>
+        </div>`;
+
+        // Policy Term — insurer chooses coverage duration. Policy expires
+        // at this term regardless of project status.
+        html += `<div class="rd-control">
+            <div class="rd-control__header">
+                <span class="rd-control__label">POLICY TERM</span>
+                <span class="rd-control__value" style="font-size:14px;color:var(--panel-text);">${rdInsureTerm}mo</span>
+            </div>
+            <select class="rd-control__select" onchange="rdSetInsureTerm(this.value)">
+                ${INSURE_TERM_OPTIONS.map(m => `<option value="${m}"${m === rdInsureTerm ? ' selected' : ''}>${m} months</option>`).join('')}
+            </select>
+            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Total premium scales with term at the same annual rate. Policy ends at expiry regardless of project status.</div>
         </div>`;
 
         // Deductible presets
@@ -2937,6 +2964,7 @@ window.rdSetLoanTermsText = rdSetLoanTermsText;
 window.rdSetInsurePremium = rdSetInsurePremium;
 window.rdSetInsureCoverage = rdSetInsureCoverage;
 window.rdSetInsureDeductible = rdSetInsureDeductible;
+window.rdSetInsureTerm = rdSetInsureTerm;
 window.rdSetBondAmount = rdSetBondAmount;
 
 // ==================== SUBMIT OFFER ====================
@@ -3147,7 +3175,7 @@ async function rdSubmitOffer() {
             nation_id: faction.nation_id,
             principal: coverage,
             interest_rate: annualPremium,
-            term_months: 0, // until project completes or vessel decommissioned
+            term_months: rdInsureTerm,
             collateral_type: 'unsecured',
             purpose: rdDeal.isVesselInsurance
                 ? 'Vessel Insurance — ' + rdDeal.applicant
