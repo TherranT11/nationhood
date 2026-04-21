@@ -87,7 +87,7 @@
 <table>
 <tr><th>Resource</th><th>Starting value</th><th>What it does</th></tr>
 <tr><td>Party Funds</td><td>$1,000,000</td><td>Cash for rallies, lawsuits, platform promises, campaign ads</td></tr>
-<tr><td>Action Points (AP)</td><td>5</td><td>Daily political energy. Refills per tick. Most actions cost 1&ndash;4 AP.</td></tr>
+<tr><td>Action Points (AP)</td><td>5</td><td>Political energy. You gain <strong>+5 AP every tick</strong> (+2 if your party is in government, &plusmn;1 from leader traits). AP accumulates &mdash; unspent points carry over. Most actions cost 1&ndash;4 AP.</td></tr>
 <tr><td>Seats</td><td>0</td><td>Won at the next election. Until then you can't form government.</td></tr>
 <tr><td>Approval Rating</td><td>50</td><td>How popular you are with voters. Moves with outcomes, promises, scandals.</td></tr>
 <tr><td>Momentum</td><td>0</td><td>Short-term political energy. Rallies, statements, and positive events add; every tick burns some down.</td></tr>
@@ -125,7 +125,7 @@
 <ul>
 <li><strong>Top-bar countdown.</strong> Shows how much real time remains until the next tick fires.</li>
 <li><strong>Current tick + in-game date.</strong> Displayed in the header. Tick 18 &#8776; July 2001 on a January-2000 base.</li>
-<li><strong>AP reset.</strong> Your Action Points refill to their cap at the start of every tick.</li>
+<li><strong>AP gain.</strong> You gain +5 AP every tick (+2 if in the governing coalition, +1 if your leader has the <em>Tireless Campaigner</em> trait, &minus;1 if <em>Indecisive</em>). AP accumulates tick-over-tick.</li>
 <li><strong>Fresh event feed.</strong> The Home tab's Events panel surfaces whatever fired this tick &mdash; passed bills, election triggers, diplomatic moves, crisis updates, news.</li>
 </ul>
 
@@ -260,7 +260,14 @@
     <tr><td>5+</td><td>$1,000</td><td>&minus;1 per 5 seats</td></tr>
     </table>
 </li>
-<li><strong>Adopt a Platform</strong> &mdash; pick one of 16 platforms (Economic Reform, Social Justice, National Security, Anti-Corruption, Green Transition, etc.). Each promises +20 on three stats, penalizes three others, and takes up one of your three platform slots. Costs 2 AP. First adopter gets +12 momentum; second adopter &minus;6 vs the first + <em>their</em> +6; each subsequent copy dilutes further. 6-tick cooldown between adoptions. Full details below.</li>
+<li><strong>Adopt a Platform</strong> &mdash; pick one of 16 platforms (Economic Reform, Social Justice, National Security, Anti-Corruption, Green Transition, etc.). Each promises +20 on three stats, penalizes three others, and takes up one of your three platform slots. Costs 2 AP. Momentum rewards the first mover and penalizes copies:
+    <ul>
+    <li>1st adopter nationwide: <strong>+12 momentum</strong></li>
+    <li>2nd adopter: <strong>+6</strong> to themselves, <strong>&minus;6</strong> to the first holder</li>
+    <li>3rd adopter: <strong>+4</strong> to themselves, <strong>&minus;4</strong> to each existing holder</li>
+    <li>4th+ adopter: <strong>+2</strong> to themselves, <strong>&minus;2</strong> to each existing holder</li>
+    </ul>
+    6-tick cooldown between adoptions per party. Full details below.</li>
 <li><strong>File a Lawsuit</strong> (Agitator) &mdash; opposition tool. 8-tick timeline with milestone events. Outcome scales with the actual corruption/freedom-index growth since the current government took office; the worse their record, the stronger your case.</li>
 </ul>
 
