@@ -2296,8 +2296,7 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     }
 
     // ── Unmet Demand stat penalty warning ──
-    // Gross production satisfies domestic demand first; imports top it up.
-    var totalSupply = domProd + impVol;
+    var totalSupply = expCap + impVol;
     var unmetDemand = Math.max(0, impDem - totalSupply);
     var unmetPct = impDem > 0 ? Math.round(unmetDemand / impDem * 100) : 0;
     if (unmetPct >= 5 && sub.stat_effects && sub.stat_effects.shortage) {
@@ -2657,11 +2656,9 @@ function renderSectorDetail(nation, sectorKey) {
     }
 
     // Unmet demand warning (non-export-only sectors)
-    // Uses domestic_production (gross output), not export_capacity (surplus
-    // available for export). Production claims domestic demand first.
     if (flow && !sector.export_only) {
         var demandVal2 = Number(flow.import_demand) || 0;
-        var supplyVal2 = Number(flow.domestic_production) || 0;
+        var supplyVal2 = Number(flow.export_capacity) || 0;
         var totalSectorSupply = supplyVal2 + impVol;
         var sectorUnmet = Math.max(0, demandVal2 - totalSectorSupply);
         var sectorUnmetPct = demandVal2 > 0 ? Math.round(sectorUnmet / demandVal2 * 100) : 0;
@@ -2839,10 +2836,8 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
     h += '</div>';
 
     // --- Unmet demand warning ---
-    // Unmet = demand not satisfied by domestic production (prodVal) + imports.
-    if (!sector.export_only && impDem > 0) {
-        var unmetAbs = Math.max(0, impDem - prodVal - impVol);
-        var unmetPct = impDem > 0 ? Math.round((unmetAbs / impDem) * 100) : 0;
+    if (!sector.export_only && impDem > 0 && impVol < impDem) {
+        var unmetPct = Math.round(((impDem - impVol) / impDem) * 100);
         if (unmetPct >= 5) {
             var urgency = unmetPct >= 50 ? '#d9534f' : '#d48a3c';
             var urgencyLabel = unmetPct >= 50 ? 'CRITICAL' : 'WARNING';
