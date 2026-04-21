@@ -2652,7 +2652,7 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
 //  CORPORATION INCOME
 // ════════════════════════════════════════════════════════════════════════════════
 
-async function processCorpMonthlyIncome(supabase, nation, corpFactions) {
+async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentTick) {
     if (!corpFactions || corpFactions.length === 0) return;
 
     const ns = (key) => Number(nation[key] ?? 50);
@@ -3821,7 +3821,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
             // ── Corporation Monthly Income ──────────────────────────────
             try {
-                await processCorpMonthlyIncome(supabase, nation, corps);
+                await processCorpMonthlyIncome(supabase, nation, corps, currentTick);
             } catch (incomeErr) {
                 console.error(`[advance-corp-tick] Corp income failed for ${nation.name} (non-fatal):`, incomeErr);
                 summary.errors.push({ nation: nation.name, sector: 'income', error: String(incomeErr) });
