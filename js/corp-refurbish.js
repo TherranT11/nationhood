@@ -19,32 +19,44 @@ export function computeRefurbishCost(prop, inflMod) {
 // condition = 1d4 + 94 (95–98%). Returns { ok, cost?, duration?, targetCondition?, newCash?, error? }.
 // Caller is responsible for updating local faction.corp_cash_reserves from newCash
 // and re-rendering the property panel.
-export async function startRefurbish(supabase, factionId, cashReserves, prop, currentTick, inflMod) {
+//
+// Cash is re-read from the DB here (not taken from a cached cashReserves arg)
+// so two tabs can't over-spend. The property UPDATE is gated on
+// refurbish_until_tick IS NULL — if another tab has already started a refurb
+// on this property, that UPDATE affects 0 rows and we roll back the cash.
+export async function startRefurbish(supabase, factionId, prop, currentTick, inflMod) {
     if (!factionId || !prop?.id) return { ok: false, error: 'Missing faction or property.' };
     if (Number(prop.condition) >= 95) return { ok: false, error: 'Property already at excellent condition.' };
 
     var cost = computeRefurbishCost(prop, inflMod);
-    var cash = Number(cashReserves) || 0;
+
+    var { data: fData, error: readErr } = await supabase
+        .from('factions').select('corp_cash_reserves').eq('id', factionId).single();
+    if (readErr) return { ok: false, error: 'Failed to read cash: ' + readErr.message };
+    var cash = Number(fData?.corp_cash_reserves ?? 0);
     if (cash < cost) return { ok: false, error: 'Insufficient cash.', cost: cost };
 
     var duration = 4 + Math.floor(Math.random() * 6);
     var targetCondition = 95 + Math.floor(Math.random() * 4);
     var untilTick = Number(currentTick || 0) + duration;
+    var newCash = Math.max(0, cash - cost);
 
     var { error: cashErr } = await supabase.from('factions').update({
-        corp_cash_reserves: Math.max(0, cash - cost),
+        corp_cash_reserves: newCash,
     }).eq('id', factionId);
     if (cashErr) return { ok: false, error: 'Cash deduct failed: ' + cashErr.message };
 
-    var { error: propErr } = await supabase.from('corp_properties').update({
+    var { data: updated, error: propErr } = await supabase.from('corp_properties').update({
         refurbish_until_tick: untilTick,
         refurbish_condition: targetCondition,
-    }).eq('id', prop.id);
-    if (propErr) {
-        // Roll back the cash deduction so the player isn't charged for a failed start.
+    }).eq('id', prop.id).is('refurbish_until_tick', null).select('id');
+
+    if (propErr || !updated || updated.length === 0) {
+        // Roll back cash: either the UPDATE errored, or another tab already
+        // started a refurb on this property (0 rows affected by the NULL guard).
         await supabase.from('factions').update({ corp_cash_reserves: cash }).eq('id', factionId);
-        return { ok: false, error: 'Start refurbish failed: ' + propErr.message };
+        return { ok: false, error: propErr?.message || 'Refurbishment already in progress on this property.' };
     }
 
-    return { ok: true, cost: cost, duration: duration, targetCondition: targetCondition, newCash: Math.max(0, cash - cost) };
+    return { ok: true, cost: cost, duration: duration, targetCondition: targetCondition, newCash: newCash };
 }
