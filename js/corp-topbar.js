@@ -1,7 +1,7 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, cash, faction switcher, nav tabs
 
-const CORP_VERSION = 'Alpha 2.2.1.1';
+const CORP_VERSION = 'Alpha 2.2.2.0';
 const THEME_STORAGE_KEY = 'corpThemePref';
 
 // Stashed at render time so the CASH-pill dropdown can query cash history
@@ -44,7 +44,10 @@ function buildNavTabs(corpSector, factionId) {
     }
     tabs.push(
         { id: 'operations', label: 'OPERATIONS', href: opsPage },
-        { id: 'expansion', label: 'EXPANSION', href: opsPage + '?tab=expansion', samePageAction: 'expansion' },
+        // Expansion is a standalone cross-sector page. No more in-page tab
+        // switching, no ?tab=expansion URLs, no redirect-through-Construction
+        // for Finance corps. One URL, one file, works for every sector.
+        { id: 'expansion', label: 'EXPANSION', href: 'expansion.html' },
         { id: 'actions', label: 'ACTIONS', href: opsPage + '?tab=actions', samePageAction: 'actions' },
         { id: 'innovation', label: 'INNOVATION', disabled: true },
         { id: 'nations', label: 'NATIONS', href: 'corp-nations.html' },
