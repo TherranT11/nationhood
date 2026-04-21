@@ -2889,7 +2889,7 @@ async function confirmRefurbish(propId, purchasePrice, refurbishCount, condition
         const inflation = getNationStat(nation, 'inflation');
         const inflationMod = 1 + (inflation - 50) / 100 * 0.3;
         const prop = { id: propId, purchase_price: purchasePrice, refurbish_count: refurbishCount, condition: condition };
-        const result = await startRefurbish(_supabase, factionId, faction?.corp_cash_reserves, prop, currentTick, inflationMod);
+        const result = await startRefurbish(_supabase, factionId, prop, currentTick, inflationMod);
 
         if (!result.ok) throw new Error(result.error || 'Refurbishment failed.');
         if (faction) faction.corp_cash_reserves = result.newCash;
