@@ -3321,29 +3321,26 @@ async function loadCollections() {
     renderCollections();
 }
 
-function routeToSharedOperationsTab(tab) {
-    const nextUrl = new URL('corp-operations.html', window.location.href);
-    nextUrl.search = window.location.search;
-    const params = nextUrl.searchParams;
-    params.set('tab', tab);
-    nextUrl.search = params.toString() ? `?${params.toString()}` : '';
-    window.location.href = nextUrl.toString();
-}
-
-function switchToExpansion(e) {
-    if (e?.preventDefault) e.preventDefault();
-    routeToSharedOperationsTab('expansion');
-}
-
+// Actions still lives inside corp-operations.html for now (Expansion
+// moved to /expansion.html as of Alpha 2.2.2.0 — Actions will follow
+// in a later migration). Finance corps click ACTIONS → we bounce them
+// to Construction with ?tab=actions so switchToActions fires there.
 function switchToActions(e) {
     if (e?.preventDefault) e.preventDefault();
-    routeToSharedOperationsTab('actions');
+    const nextUrl = new URL('corp-operations.html', window.location.href);
+    nextUrl.search = window.location.search;
+    nextUrl.searchParams.set('tab', 'actions');
+    window.location.href = nextUrl.toString();
 }
 
 async function init() {
     const urlTab = new URLSearchParams(window.location.search).get('tab');
-    const isSharedTab = urlTab === 'expansion' || urlTab === 'actions';
-    const activeTab = isSharedTab ? urlTab : 'operations';
+    // Legacy ?tab=expansion bookmarks: redirect to the standalone page.
+    if (urlTab === 'expansion') {
+        window.location.href = 'expansion.html';
+        return;
+    }
+    const activeTab = urlTab === 'actions' ? 'actions' : 'operations';
 
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
@@ -3390,9 +3387,10 @@ async function init() {
             return;
         }
 
-        // Expansion/actions are implemented in shared operations views, not Finance.
-        if (isSharedTab) {
-            routeToSharedOperationsTab(urlTab);
+        // Actions still routes through Construction (see switchToActions
+        // above); after a full-page navigation through here it lands there.
+        if (urlTab === 'actions') {
+            switchToActions();
             return;
         }
 
@@ -3515,7 +3513,6 @@ function startCountdown(nextTickAt) {
 window.toggleCorpDropdown = toggleCorpDropdown;
 window.switchFaction = switchFaction;
 window.doLogout = doLogout;
-window.switchToExpansion = switchToExpansion;
 window.switchToActions = switchToActions;
 
 init();
