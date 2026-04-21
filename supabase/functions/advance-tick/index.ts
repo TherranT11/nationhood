@@ -32999,21 +32999,23 @@ async function isMilitaryLoyaltyActive(supabase, nationId) {
 // Resolve the current Head of Government for a nation. Returns
 // { first_name, last_name, age, party_id } or null if no HoG (vacant PM,
 // no elected president, monarchy without a designated HoG, etc.).
-// Parliamentary / semi-presidential → PM row in ministries.
-// Presidential → active row in presidents.
+// Pure presidential → active row in presidents (President is HoG+HoS).
+// Parliamentary / semi-presidential / monarchy-with-PM → PM row in ministries
+// (in semi-presidential, the PM runs domestic affairs and is HoG by convention).
 async function resolveHeadOfGovernment(supabase, nation) {
     if (!nation?.id) return null;
 
-    const govType = (nation.government_type || '').toLowerCase();
-    const isPresidential = govType.includes('presidential') && !govType.includes('semi');
-
-    if (isPresidential) {
-        const { data: pres } = await supabase
+    if (isPresidentialRepublic(nation)) {
+        const { data: pres, error: presErr } = await supabase
             .from('presidents')
             .select('first_name, last_name, age, faction_id')
             .eq('nation_id', nation.id)
             .eq('is_active', true)
             .maybeSingle();
+        if (presErr) {
+            console.warn(`[MLA] presidents query failed for ${nation.name}:`, presErr.message);
+            return null;
+        }
         if (!pres?.first_name || !pres?.last_name) return null;
         return {
             first_name: pres.first_name,
@@ -33023,14 +33025,17 @@ async function resolveHeadOfGovernment(supabase, nation) {
         };
     }
 
-    // Parliamentary / semi-presidential / monarchy-with-PM: use the PM row.
-    const { data: pm } = await supabase
+    const { data: pm, error: pmErr } = await supabase
         .from('ministries')
         .select('minister_first_name, minister_last_name, minister_age, party_id')
         .eq('nation_id', nation.id)
         .eq('ministry_key', 'prime_minister')
         .eq('is_active', true)
         .maybeSingle();
+    if (pmErr) {
+        console.warn(`[MLA] PM ministries query failed for ${nation.name}:`, pmErr.message);
+        return null;
+    }
     if (!pm?.minister_first_name || !pm?.minister_last_name) return null;
     return {
         first_name: pm.minister_first_name,
@@ -33050,13 +33055,17 @@ async function syncMilitaryLoyaltyDefenseMinister(supabase, nation, currentTick)
     const hog = await resolveHeadOfGovernment(supabase, nation);
     if (!hog) return; // no HoG to sync to — leave defense ministry as-is
 
-    const { data: defense } = await supabase
+    const { data: defense, error: defErr } = await supabase
         .from('ministries')
         .select('id, minister_first_name, minister_last_name, minister_age, party_id')
         .eq('nation_id', nation.id)
         .eq('ministry_key', 'defense')
         .eq('is_active', true)
         .maybeSingle();
+    if (defErr) {
+        console.warn(`[MLA] defense ministries query failed for ${nation.name}:`, defErr.message);
+        return;
+    }
     if (!defense?.id) return; // no defense ministry row to sync
 
     const identityChanged = defense.minister_first_name !== hog.first_name
