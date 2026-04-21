@@ -12630,9 +12630,24 @@ function renderAdminCard(admin, isCurrent) {
         ? `${tickToDate(admin.started_at_tick)} — Present`
         : `${tickToDate(admin.started_at_tick)} — ${tickToDate(admin.ended_at_tick)}`;
 
-    const coalitionParties = admin.coalition_parties || [];
+    const coalitionParties = (() => {
+        const fromAdmin = admin.coalition_parties || [];
+        if (fromAdmin.length > 0) return fromAdmin;
+        // Fallback for the CURRENT admin only: the row may have been created
+        // before coalition_parties was populated (older finalize_government_formation
+        // RPC missed some fields). Rebuild from _govData.coalition + _govData.parties.
+        if (!isCurrent) return [];
+        const coalitionPartyIds = _govData?.coalition?.party_ids || [];
+        const livePartyMap = new Map((_govData?.parties || []).map(p => [p.id, p]));
+        return coalitionPartyIds
+            .map(id => {
+                const p = livePartyMap.get(id);
+                return p ? { party_id: p.id, party_name: p.faction_name, seats: p.seats || 0 } : null;
+            })
+            .filter(Boolean);
+    })();
     const partyList = coalitionParties.map(p => p.party_name).join(' + ');
-    const seatCount = admin.total_seats || 0;
+    const seatCount = admin.total_seats || coalitionParties.reduce((s, p) => s + (Number(p.seats) || 0), 0);
 
     // Approval trajectory
     const approvalStart = admin.approval_at_start;
@@ -12711,15 +12726,23 @@ function renderAdminCard(admin, isCurrent) {
         govLeaderName = admin.president_party_name || admin.pm_party_name || '—';
         govLeaderSub = '';
     } else {
-        hogLabel = escapeHtml(admin.head_of_state_title || 'Head of State');
-        hogName = admin.head_of_state || 'Unknown';
+        hogLabel = escapeHtml(admin.head_of_state_title || (isCurrent ? (currentNation.head_of_state_title || 'Head of State') : 'Head of State'));
+        // Fallback for current admin: row may be missing head_of_state — read from live nation row.
+        const liveHos = isCurrent
+            ? [currentNation.head_of_state_first_name, currentNation.head_of_state_last_name].filter(Boolean).join(' ').trim()
+            : '';
+        hogName = admin.head_of_state || liveHos || 'Unknown';
         const hosMethod = admin.hos_election_method || (isCurrent ? currentNation.hos_election_method : null);
         hogParty = hosMethod === 'hereditary'
             ? (currentNation.dynasty_name ? currentNation.dynasty_name + ' dynasty' : '')
             : '';
         govLeaderLabel = 'Prime Minister';
         govLeaderName = admin.prime_minister || 'Not yet selected';
-        govLeaderSub = escapeHtml(admin.pm_party_name || '');
+        // Fallback for current admin: pull the PM's party name from _govData if the admin row is blank.
+        const livePmPartyName = isCurrent
+            ? (_govData?.parties || []).find(p => p.id === _govData?.hog?.faction_id)?.faction_name || ''
+            : '';
+        govLeaderSub = escapeHtml(admin.pm_party_name || livePmPartyName);
     }
 
     detailHTML += `<div class="past-admin-detail-grid">
