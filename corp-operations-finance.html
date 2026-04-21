@@ -3316,43 +3316,56 @@ async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    const { data: allFactions } = await _supabase
-        .from('factions')
-        .select('*')
-        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
-
-    allUserFactions = (allFactions || []).filter(f => f.nation_id);
-
-    const activeFactionId = sessionStorage.getItem('active_faction_id');
-    faction = allUserFactions.find(f => f.id === activeFactionId)
-        || allUserFactions.find(f => f.faction_type === 'corporation')
-        || allUserFactions[0];
+    // Inspector mode: admin panel impersonation via ?faction_id= URL
+    // param. Fetch the target faction directly and skip sessionStorage
+    // writes + sector redirects so the admin's real session isn't
+    // disturbed and the page they picked isn't auto-navigated away.
+    const urlFactionId = new URLSearchParams(location.search).get('faction_id');
+    const isInspectorMode = !!urlFactionId;
+    if (isInspectorMode) {
+        const { data: inspected } = await _supabase.from('factions').select('*').eq('id', urlFactionId).single();
+        if (inspected?.faction_type === 'corporation') faction = inspected;
+    }
 
     if (!faction) {
-        await _supabase.auth.signOut();
-        window.location.href = 'login.html';
-        return;
-    }
+        const { data: allFactions } = await _supabase
+            .from('factions')
+            .select('*')
+            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
-    if (faction.faction_type !== 'corporation') {
-        window.location.href = 'dashboard.html';
-        return;
-    }
+        allUserFactions = (allFactions || []).filter(f => f.nation_id);
 
-    // If this corp is NOT Finance, redirect to the correct operations page
-    if (faction.corp_sector !== 'Finance') {
-        const SECTOR_OPS = { Construction: 'corp-operations.html', Shipping: 'corp-operations-shipping.html' };
-        window.location.href = (SECTOR_OPS[faction.corp_sector] || 'corp-operations.html') + window.location.search;
-        return;
-    }
+        const activeFactionId = sessionStorage.getItem('active_faction_id');
+        faction = allUserFactions.find(f => f.id === activeFactionId)
+            || allUserFactions.find(f => f.faction_type === 'corporation')
+            || allUserFactions[0];
 
-    // Expansion/actions are implemented in shared operations views, not Finance.
-    if (isSharedTab) {
-        routeToSharedOperationsTab(urlTab);
-        return;
-    }
+        if (!faction) {
+            await _supabase.auth.signOut();
+            window.location.href = 'login.html';
+            return;
+        }
 
-    sessionStorage.setItem('active_faction_id', faction.id);
+        if (faction.faction_type !== 'corporation') {
+            window.location.href = 'dashboard.html';
+            return;
+        }
+
+        // If this corp is NOT Finance, redirect to the correct operations page
+        if (faction.corp_sector !== 'Finance') {
+            const SECTOR_OPS = { Construction: 'corp-operations.html', Shipping: 'corp-operations-shipping.html' };
+            window.location.href = (SECTOR_OPS[faction.corp_sector] || 'corp-operations.html') + window.location.search;
+            return;
+        }
+
+        // Expansion/actions are implemented in shared operations views, not Finance.
+        if (isSharedTab) {
+            routeToSharedOperationsTab(urlTab);
+            return;
+        }
+
+        sessionStorage.setItem('active_faction_id', faction.id);
+    }
 
     // Load nation + shard
     const [nationRes, shardRes] = await Promise.all([

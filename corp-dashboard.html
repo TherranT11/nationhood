@@ -972,34 +972,47 @@ async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    // Load ALL factions owned by this user
-    const { data: allFactions } = await _supabase
-        .from('factions')
-        .select('*')
-        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
-
-    allUserFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
-
-    // Pick active faction — prefer sessionStorage, then first corp, then first
-    const activeFactionId = sessionStorage.getItem('active_faction_id');
-    faction = allUserFactions.find(f => f.id === activeFactionId)
-        || allUserFactions.find(f => f.faction_type === 'corporation')
-        || allUserFactions[0];
-
-    if (!faction) {
-        // No active factions — redirect to faction select (don't sign out)
-        sessionStorage.removeItem('active_faction_id');
-        window.location.href = 'faction-select.html';
-        return;
+    // Inspector mode: admin panel impersonation via ?faction_id= URL
+    // param. Fetch the target faction directly (factions has anon
+    // SELECT — see sql/migrations/20260313_wiki_public_read.sql), and
+    // skip sessionStorage writes + faction-type redirects so the
+    // admin's real session isn't disturbed.
+    const urlFactionId = new URLSearchParams(location.search).get('faction_id');
+    if (urlFactionId) {
+        const { data: inspected } = await _supabase.from('factions').select('*').eq('id', urlFactionId).single();
+        if (inspected?.faction_type === 'corporation') faction = inspected;
     }
 
-    // Persist the active faction so bankruptcy and other actions can find it
-    sessionStorage.setItem('active_faction_id', faction.id);
+    if (!faction) {
+        // Load ALL factions owned by this user
+        const { data: allFactions } = await _supabase
+            .from('factions')
+            .select('*')
+            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
-    // If active faction isn't a corporation, redirect to party dashboard
-    if (faction.faction_type !== 'corporation') {
-        window.location.href = 'dashboard.html';
-        return;
+        allUserFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
+
+        // Pick active faction — prefer sessionStorage, then first corp, then first
+        const activeFactionId = sessionStorage.getItem('active_faction_id');
+        faction = allUserFactions.find(f => f.id === activeFactionId)
+            || allUserFactions.find(f => f.faction_type === 'corporation')
+            || allUserFactions[0];
+
+        if (!faction) {
+            // No active factions — redirect to faction select (don't sign out)
+            sessionStorage.removeItem('active_faction_id');
+            window.location.href = 'faction-select.html';
+            return;
+        }
+
+        // Persist the active faction so bankruptcy and other actions can find it
+        sessionStorage.setItem('active_faction_id', faction.id);
+
+        // If active faction isn't a corporation, redirect to party dashboard
+        if (faction.faction_type !== 'corporation') {
+            window.location.href = 'dashboard.html';
+            return;
+        }
     }
 
     // Set operations nav link based on corp sector; expansion is shared across all sectors

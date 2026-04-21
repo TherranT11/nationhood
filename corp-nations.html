@@ -192,17 +192,29 @@ async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    const { data: allFactions } = await _supabase.from('factions')
-        .select('*').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
-    allUserFactions = (allFactions || []).filter(f => f.nation_id);
+    // Inspector mode: admin panel impersonation via ?faction_id= URL
+    // param. Fetch the target faction directly and skip sessionStorage
+    // writes + faction-type redirects so the admin's real session
+    // isn't disturbed.
+    const urlFactionId = new URLSearchParams(location.search).get('faction_id');
+    if (urlFactionId) {
+        const { data: inspected } = await _supabase.from('factions').select('*').eq('id', urlFactionId).single();
+        if (inspected?.faction_type === 'corporation') faction = inspected;
+    }
 
-    const activeFactionId = sessionStorage.getItem('active_faction_id');
-    faction = allUserFactions.find(f => f.id === activeFactionId)
-        || allUserFactions.find(f => f.faction_type === 'corporation')
-        || allUserFactions[0];
+    if (!faction) {
+        const { data: allFactions } = await _supabase.from('factions')
+            .select('*').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+        allUserFactions = (allFactions || []).filter(f => f.nation_id);
 
-    if (!faction) { await _supabase.auth.signOut(); window.location.href = 'login.html'; return; }
-    if (faction.faction_type !== 'corporation') { window.location.href = 'dashboard.html'; return; }
+        const activeFactionId = sessionStorage.getItem('active_faction_id');
+        faction = allUserFactions.find(f => f.id === activeFactionId)
+            || allUserFactions.find(f => f.faction_type === 'corporation')
+            || allUserFactions[0];
+
+        if (!faction) { await _supabase.auth.signOut(); window.location.href = 'login.html'; return; }
+        if (faction.faction_type !== 'corporation') { window.location.href = 'dashboard.html'; return; }
+    }
 
     // Load shard + all nations
     const [shardRes, nationsRes] = await Promise.all([
