@@ -8656,8 +8656,6 @@ function renderFleetCard() {
                         </div>`;
                     } else if (insurePending) {
                         html += `<div style="flex:1;padding:4px 0;text-align:center;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:#ca5;border:1px solid rgba(202,165,50,0.2);background:rgba(202,165,50,0.04);">PENDING ⏳</div>`;
-                    } else {
-                        html += `<div onclick="event.stopPropagation();flRequestInsurance('${v.id}','${escapeHtml(v.vessel_name).replace(/'/g, '')}',${v.purchase_price || 0})" style="flex:1;padding:4px 0;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:#aa7a5a;border:1px solid rgba(170,122,90,0.3);background:rgba(170,122,90,0.04);">INSURE</div>`;
                     }
                     html += `<div onclick="flRename('${v.id}','${escapeHtml(v.vessel_name).replace(/'/g, '')}')" style="flex:1;padding:4px 0;text-align:center;cursor:pointer;font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.5px;color:var(--text-muted);border:1px solid var(--border-0);">RENAME</div>`;
                     html += '</div>';
@@ -8946,34 +8944,6 @@ async function flRename(vesselId, currentName) {
     await loadFleet();
 }
 
-async function flRequestInsurance(vesselId, vesselName, vesselValue) {
-    if (!faction || !shard) return;
-    if (!confirm('Request insurance for ' + vesselName + '?\n\nInsurance corporations will see this in their Deal Flow and can offer coverage terms.\n\nVessel value: ' + hfFmtBig(vesselValue))) return;
-
-    const currentTick = shard.current_tick || 0;
-    const { error } = await _supabase.from('finance_loan_requests').insert({
-        requesting_faction_id: faction.id,
-        nation_id: faction.nation_id,
-        request_type: 'insurance',
-        insured_vessel_id: vesselId,
-        amount: vesselValue,
-        term_months: 0,
-        purpose: 'Vessel Insurance — ' + vesselName,
-        status: 'open',
-        created_tick: currentTick,
-        expires_tick: currentTick + 12,
-    });
-    if (error) {
-        if (error.message.includes('duplicate') || error.message.includes('unique')) {
-            alert('Insurance already requested for this vessel.');
-        } else {
-            alert('Failed to request insurance: ' + error.message);
-        }
-        return;
-    }
-    alert('Insurance request posted to Deal Flow.\n\nInsurance corporations can now offer coverage for ' + vesselName + '.');
-    await loadFleet();
-}
 let _flClaimFiling = false;
 async function flFileClaim(vesselId, vesselName) {
     if (_flClaimFiling || !faction || !shard) return;
@@ -9032,7 +9002,6 @@ async function flFileClaim(vesselId, vesselName) {
     alert('Insurance claim filed for ' + vesselName + '.\n\nThe insurer (' + hfFmtBig(coverage) + ' coverage) has been notified. Claim details are visible in the events feed.');
 }
 
-window.flRequestInsurance = flRequestInsurance;
 window.flFileClaim = flFileClaim;
 
 // ════════════════════════════════════════════════════════════════════════════════
