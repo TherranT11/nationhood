@@ -2755,7 +2755,6 @@ body.light-mode .av-empty__text { color: #1a1a17; }
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
-import { computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
 import { renderCorpActions } from './js/corp-actions.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
@@ -7621,9 +7620,6 @@ window.setPrMat = setPrMat;
 window.setPrTier = setPrTier;
 window.setPrQty = setPrQty;
 window.purchaseMaterial = purchaseMaterial;
-
-// ==================== EXPANSION TAB — HIRE/FIRE ====================
-
 
 function switchToOperations(e) {
     if (e) e.preventDefault();
