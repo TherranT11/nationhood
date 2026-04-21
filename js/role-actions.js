@@ -39,6 +39,9 @@ function esc(str) {
  *     OR {type:'list', label, items:[{label, statusClass?, title?}]}.
  * @param {string} cfg.rolesContainerId - id assigned to the roles column.
  * @param {string} cfg.panelContainerId - id assigned to the action panel.
+ * @param {string|number} [cfg.rolesColumnWidth] - override for the roles
+ *   column width (default is `.pa-leaders`'s 200px from css/party-actions.css;
+ *   corp uses 262px to fit the wider executive cards).
  * @param {string} [cfg.extraHtml] - appended after `.pa-page` (e.g. modal overlays).
  * @returns {{roles:HTMLElement, panel:HTMLElement}} refs to the two
  *   containers so the caller can populate without re-querying.
@@ -94,7 +97,7 @@ export function renderRoleActionsShell(root, cfg) {
             </div>
             <div class="pa-status-bar">${statusBarHtml}</div>
             <div class="pa-main">
-                <div class="pa-leaders" id="${cfg.rolesContainerId}"></div>
+                <div class="pa-leaders" id="${cfg.rolesContainerId}"${cfg.rolesColumnWidth ? ` style="width:${typeof cfg.rolesColumnWidth === 'number' ? cfg.rolesColumnWidth + 'px' : cfg.rolesColumnWidth};"` : ''}></div>
                 <div class="pa-actions-panel" id="${cfg.panelContainerId}"></div>
             </div>
         </div>
