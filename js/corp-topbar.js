@@ -1,7 +1,7 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, cash, faction switcher, nav tabs
 
-const CORP_VERSION = 'Alpha 2.2.2.1';
+const CORP_VERSION = 'Alpha 2.2.2.2';
 const THEME_STORAGE_KEY = 'corpThemePref';
 
 // Stashed at render time so the CASH-pill dropdown can query cash history
@@ -44,11 +44,12 @@ function buildNavTabs(corpSector, factionId) {
     }
     tabs.push(
         { id: 'operations', label: 'OPERATIONS', href: opsPage },
-        // Expansion is a standalone cross-sector page. No more in-page tab
-        // switching, no ?tab=expansion URLs, no redirect-through-Construction
-        // for Finance corps. One URL, one file, works for every sector.
+        // Expansion + Actions are standalone cross-sector pages. No more
+        // in-page tab switching, no ?tab= URL params, no redirect-through-
+        // Construction for Finance corps. One URL per tab, one file per
+        // URL, works for every sector.
         { id: 'expansion', label: 'EXPANSION', href: 'expansion.html' },
-        { id: 'actions', label: 'ACTIONS', href: opsPage + '?tab=actions', samePageAction: 'actions' },
+        { id: 'actions', label: 'ACTIONS', href: 'actions.html' },
         { id: 'innovation', label: 'INNOVATION', disabled: true },
         { id: 'nations', label: 'NATIONS', href: 'corp-nations.html' },
         { id: 'news', label: 'NEWS', href: 'news.html' },
@@ -96,20 +97,13 @@ export function renderCorpTopBar(container, opts = {}) {
     const tickNum = shard?.current_tick ?? '--';
 
     // Nav tabs — same-page tabs use onclick, cross-page tabs use href
-    const currentPage = window.location.pathname.split('/').pop().split('?')[0];
     const corpSector = faction?.corp_sector || 'Construction';
-    const opsPage = SECTOR_OPS_PAGE[corpSector] || 'corp-operations.html';
-    const isOnOperations = currentPage === opsPage || currentPage === 'corp-operations.html' || currentPage === 'corp-operations-shipping.html' || currentPage === 'corp-operations-finance.html';
 
     const CORP_NAV_TABS = buildNavTabs(corpSector, faction?.id);
     const tabsHtml = CORP_NAV_TABS.map(t => {
         const isActive = t.id === activeTab;
         if (t.disabled) {
             return `<span class="corp-nav-tab disabled">${t.label}</span>`;
-        }
-        // Same-page tab switching (expansion/actions on operations page)
-        if (t.samePageAction && isOnOperations) {
-            return `<a href="#" class="corp-nav-tab${isActive ? ' active' : ''}" data-tab-action="${t.samePageAction}" style="text-decoration:none;">${t.label}</a>`;
         }
         const badge = tabBadges[t.id];
         const badgeHtml = badge ? `<span style="position:relative;top:-4px;margin-left:2px;display:inline-block;min-width:8px;height:8px;line-height:8px;border-radius:50%;font-size:0;background:${badge.color || '#c8a832'};" title="${badge.title || ''}"></span>` : '';

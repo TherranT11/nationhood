@@ -3322,25 +3322,19 @@ async function loadCollections() {
 }
 
 // Actions still lives inside corp-operations.html for now (Expansion
-// moved to /expansion.html as of Alpha 2.2.2.0 — Actions will follow
-// in a later migration). Finance corps click ACTIONS → we bounce them
-// to Construction with ?tab=actions so switchToActions fires there.
-function switchToActions(e) {
-    if (e?.preventDefault) e.preventDefault();
-    const nextUrl = new URL('corp-operations.html', window.location.href);
-    nextUrl.search = window.location.search;
-    nextUrl.searchParams.set('tab', 'actions');
-    window.location.href = nextUrl.toString();
-}
-
 async function init() {
     const urlTab = new URLSearchParams(window.location.search).get('tab');
-    // Legacy ?tab=expansion bookmarks: redirect to the standalone page.
+    // Legacy ?tab=expansion and ?tab=actions bookmarks: redirect to the
+    // standalone pages. Both Expansion and Actions now live on dedicated
+    // URLs (as of Alpha 2.2.2.0 and 2.2.2.2 respectively).
+    if (urlTab === 'actions') {
+        window.location.href = 'actions.html';
+        return;
+    }
     if (urlTab === 'expansion') {
         window.location.href = 'expansion.html';
         return;
     }
-    const activeTab = urlTab === 'actions' ? 'actions' : 'operations';
 
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
@@ -3387,13 +3381,6 @@ async function init() {
             return;
         }
 
-        // Actions still routes through Construction (see switchToActions
-        // above); after a full-page navigation through here it lands there.
-        if (urlTab === 'actions') {
-            switchToActions();
-            return;
-        }
-
         sessionStorage.setItem('active_faction_id', faction.id);
     }
 
@@ -3412,7 +3399,7 @@ async function init() {
     const _topBarContainer = document.getElementById('corp-topbar-container');
     if (_topBarContainer) {
         const { renderCorpTopBar } = await import('./js/corp-topbar.js');
-        renderCorpTopBar(_topBarContainer, { faction, shard, activeTab, allUserFactions });
+        renderCorpTopBar(_topBarContainer, { faction, shard, activeTab: 'operations', allUserFactions });
     }
 
     // Faction switcher
@@ -3513,7 +3500,6 @@ function startCountdown(nextTickAt) {
 window.toggleCorpDropdown = toggleCorpDropdown;
 window.switchFaction = switchFaction;
 window.doLogout = doLogout;
-window.switchToActions = switchToActions;
 
 init();
 </script>
