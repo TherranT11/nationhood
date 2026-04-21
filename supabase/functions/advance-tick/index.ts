@@ -32929,6 +32929,17 @@ async function resolveLawsuits(supabase, nationId, currentTick, govPmPartyId) {
 
     for (var d = 0; d < (dueEvents || []).length; d++) {
         var ev = dueEvents[d];
+        // Flip is_fired FIRST. If the event_log insert then fails, we lose
+        // one event (warn-logged) but can't double-post on the next tick's
+        // retry. A flipped-but-not-posted event is strictly better than a
+        // posted-but-not-flipped one.
+        var { error: flipErr } = await supabase.from('lawsuit_events')
+            .update({ is_fired: true })
+            .eq('id', ev.id);
+        if (flipErr) {
+            console.warn('[Lawsuits] is_fired flip failed for ' + ev.event_type + ':', flipErr.message);
+            continue;
+        }
         var { error: logErr } = await supabase.from('event_log').insert({
             nation_id: nationId,
             event_name: 'LAWSUIT — ' + ev.event_type.replace(/_/g, ' ').toUpperCase(),
@@ -32938,11 +32949,7 @@ async function resolveLawsuits(supabase, nationId, currentTick, govPmPartyId) {
             fired_at_tick: ev.event_tick,
             effects_applied: { lawsuit_id: ev.lawsuit_id, milestone: ev.event_type },
         });
-        if (logErr) {
-            console.warn('[Lawsuits] event_log insert (' + ev.event_type + ') failed:', logErr.message);
-            continue;
-        }
-        await supabase.from('lawsuit_events').update({ is_fired: true }).eq('id', ev.id);
+        if (logErr) console.warn('[Lawsuits] event_log insert (' + ev.event_type + ') failed:', logErr.message);
     }
 
     var { data: pending, error } = await supabase
