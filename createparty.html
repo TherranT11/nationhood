@@ -612,13 +612,36 @@ const HAJJARA_LAST = [
   'Al-Rantisi','Al-Banna','Al-Khatour'
 ];
 
+// Dravka names (Albanian). Mirrors DRAVKA_* pools in political-actions.js
+const DRAVKA_FIRST = [
+  'Agon','Altin','Arban','Ardian','Ardit','Arian','Arlind','Armend','Artan','Auron',
+  'Bardhyl','Besart','Besmir','Besnik','Bledar','Blerim','Burim','Dalmat','Dardan','Dasnor',
+  'Dëfrim','Dorian','Drilon','Dritan','Edon','Endrit','Enver','Erion','Ermal','Ervin',
+  'Fisnik','Flamur','Genti','Gezim','Ilir','Jetmir','Kastriot','Kreshnik','Luan','Mirlind',
+  'Pajtim','Saimir','Skerdilaid','Taulant','Vigan',
+  'Afërdita','Bora','Era','Luljeta','Teuta'
+];
+const DRAVKA_LAST = [
+  'Abazi','Ademi','Agolli','Ahmeti','Alia','Aliti','Asllani','Bajrami','Bakalli','Bala',
+  'Balaj','Bardhi','Beqiri','Berisha','Biba','Bisha','Brahimi','Buda','Bushaj','Bushati',
+  'Caka','Cami','Cani','Cela','Dajaku','Dauti','Deda','Dedaj','Demiri','Dervishi',
+  'Dobi','Doda','Dragusha','Duka','Elezi','Fejzu','Ferati','Frashëri','Gashi','Gega',
+  'Gjoni','Gjoka','Gurakuqi','Hadergjonaj','Hajdari','Halili','Hamiti','Haradinaj','Hasani','Hoti',
+  'Hoxha','Ismaili','Jahjaga','Jashari','Kadiu','Kastrati','Kelmendi','Kodra','Kola','Konica',
+  'Krasniqi','Kuqi','Kurti','Leka','Lekaj','Limaj','Luli','Lumi','Malo','Marku',
+  'Mazreku','Mehmeti','Meidani','Meksi','Meta','Morina','Muka','Murati','Musliu','Mustafa',
+  'Myftiu','Nano','Ndreu','Osmani','Pajaziti','Pasha','Prenga','Qosja','Rama','Rexhepi',
+  'Rugova','Sadiku','Sejdiu','Selimi','Shala','Shehu','Smajlaj','Spahiu','Tafa','Zaimi'
+];
+
 // Nation-aware name selection
 const NATION_NAMES = {
   'Calveth': { first: CALVETH_FIRST, last: CALVETH_LAST },
   'Avelia':  { first: AVELIA_FIRST,  last: AVELIA_LAST  },
   'Flandis': { first: FLANDIS_FIRST, last: FLANDIS_LAST },
   'Vostia':  { first: VOSTIA_FIRST,  last: VOSTIA_LAST  },
-  'Hajjara': { first: HAJJARA_FIRST, last: HAJJARA_LAST }
+  'Hajjara': { first: HAJJARA_FIRST, last: HAJJARA_LAST },
+  'Dravka':  { first: DRAVKA_FIRST,  last: DRAVKA_LAST  }
 };
 function getNamePool(nationName) {
   const pool = NATION_NAMES[nationName];
