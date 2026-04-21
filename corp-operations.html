@@ -7419,8 +7419,7 @@ async function init() {
         const urlTab = new URLSearchParams(window.location.search).get('tab');
         const isSharedTab = urlTab === 'expansion' || urlTab === 'actions';
         if (faction.corp_sector !== 'Construction' && !isSharedTab) {
-            const SECTOR_OPS = { Finance: 'corp-operations-finance.html', Shipping: 'corp-operations-shipping.html' };
-            const targetPage = SECTOR_OPS[faction.corp_sector];
+            const targetPage = SECTOR_OPS_PAGE[faction.corp_sector];
             if (targetPage) { window.location.href = targetPage; return; }
         }
     }

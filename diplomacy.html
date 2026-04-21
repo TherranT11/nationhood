@@ -341,7 +341,7 @@ async function loadTradeFlowData() {
 
     // Get trade flows for that tick
     const { data: flowRows } = await _supabase.from('trade_flows')
-        .select('sector, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
+        .select('sector, domestic_production, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
         .eq('nation_id', nationId)
         .eq('tick', _tradeSummary.tick);
 
@@ -405,7 +405,11 @@ function renderTradeEconomy() {
             key: sector,
             icon: TRADE_SECTOR_ICONS[sector] || '\uD83D\uDCE6',
             name: TRADE_SECTOR_LABELS[sector] || sector,
-            production: Number(flow.export_capacity) || 0,
+            // production = gross domestic production (what the nation
+            // actually makes each tick). Previously read export_capacity,
+            // which is the exportable surplus — a petro-state that consumed
+            // all its own oil showed the $10M floor even at 88 oil_and_gas.
+            production: Number(flow.domestic_production) || 0,
             demand: Number(flow.import_demand) || 0,
         });
     }
@@ -452,16 +456,19 @@ function renderTradeEconomy() {
         // Expanded detail panel
         if (isExp) {
             const flow = _tradeFlows[c.key] || {};
+            // domProd = gross domestic production (label: DOMESTIC PRODUCTION).
+            // expCap = exportable surplus — used for the unmet-demand check.
+            const domProd = Number(flow.domestic_production) || 0;
             const expCap = Number(flow.export_capacity) || 0;
             const impDem = Number(flow.import_demand) || 0;
             const expVol = Number(flow.export_volume) || 0;
             const impVol = Number(flow.import_volume) || 0;
-            // Unmet demand = demand not covered by production + imports
-            // (import_demand is theoretical; domestic production may already cover it)
+            // Unmet demand = import gap not satisfied by actual imports + any
+            // un-exported surplus the nation could self-supply if redirected.
             const unmetDemand = Math.max(0, impDem - expCap - impVol);
 
             // Unit formatting
-            const unitProd = formatSectorVolume(expCap, c.key);
+            const unitProd = formatSectorVolume(domProd, c.key);
             const unitDem = formatSectorVolume(impDem, c.key);
             const unitImp = formatSectorVolume(impVol, c.key);
             const unitExp = formatSectorVolume(expVol, c.key);
@@ -495,7 +502,7 @@ function renderTradeEconomy() {
             // Domestic Production
             html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
                 <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">DOMESTIC PRODUCTION</span>
-                <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(expCap)}${unitProd ? ' <span style="font-weight:400;color:var(--text-dim);font-size:10px;">(' + unitProd + ')</span>' : ''}</span>
+                <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(domProd)}${unitProd ? ' <span style="font-weight:400;color:var(--text-dim);font-size:10px;">(' + unitProd + ')</span>' : ''}</span>
             </div>`;
 
             // Domestic Demand
@@ -18655,13 +18662,17 @@ function negEconomyRender() {
 
 function _negRenderMyEconomyHtml() {
     // Iterate my nation's flows directly — same data source the Trade tab uses.
+    // Prod = gross domestic production (what the nation actually makes each
+    // tick). Using export_capacity here would show the export surplus — a
+    // petro-state that consumes all its own oil would read the $10M min
+    // floor even at 88 oil_and_gas. See trade_flows.domestic_production.
     const flows = _tradeFlows || {};
     const rows = [];
     for (const [key, flow] of Object.entries(flows)) {
         // Skip the food_agriculture parent when its sub-sectors are present.
         if (key === 'food_agriculture' && (flows.grains_staples || flows.livestock_dairy)) continue;
-        const prod = Number(flow.export_capacity) || 0;
-        const dem  = Number(flow.import_demand)   || 0;
+        const prod = Number(flow.domestic_production) || 0;
+        const dem  = Number(flow.import_demand)       || 0;
         rows.push({
             key,
             name: TRADE_SECTOR_LABELS[key] || key,

@@ -285,7 +285,7 @@ async function loadTradeData(nationId) {
     var summary = sumRes.data[0];
 
     var flowRes = await _supabase.from('trade_flows')
-        .select('sector, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
+        .select('sector, domestic_production, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
         .eq('nation_id', nationId)
         .eq('tick', summary.tick);
 
@@ -2237,6 +2237,10 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     var allocPct = Number(alloc[sub.allocation_key]) || 0;
 
     var flow = (tradeData && tradeData.flows) ? tradeData.flows[subsectorKey] : null;
+    // domProd = what this sub-sector actually produces each tick (gross).
+    // expCap = exportable surplus after domestic demand + modifiers. The
+    // Production card uses domProd; untraded-surplus math still uses expCap.
+    var domProd = flow ? Number(flow.domestic_production) || 0 : 0;
     var expCap = flow ? Number(flow.export_capacity) || 0 : 0;
     var expVol = flow ? Number(flow.export_volume) || 0 : 0;
     var impDem = flow ? Number(flow.import_demand) || 0 : 0;
@@ -2264,7 +2268,7 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     var surplusAtCurrentPrice = Math.round(untradedSurplus * priceMod);
     var surplusAtFullPrice = untradedSurplus;
 
-    var prodLabel = formatSectorVolume(expCap, subsectorKey);
+    var prodLabel = formatSectorVolume(domProd, subsectorKey);
     var demLabel = formatSectorVolume(impDem, subsectorKey);
     var orgExpLabel = formatSectorVolume(organicExports, subsectorKey);
     var tdExpLabel = formatSectorVolume(tradeDealExports, subsectorKey);
@@ -2272,8 +2276,8 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     var surplusLabel = formatSectorVolume(untradedSurplus, subsectorKey);
 
     h += '<div class="econ-cards-row econ-cards-3" style="margin-top:12px;">';
-    h += renderOverviewCard('Production', prodLabel || formatBudgetCurrency(expCap), 'neutral', 'capacity / year');
-    h += renderOverviewCard('Demand', demLabel || formatBudgetCurrency(impDem), impDem > expCap ? 'deficit' : 'neutral', 'total need');
+    h += renderOverviewCard('Production', prodLabel || formatBudgetCurrency(domProd), 'neutral', 'gross output / year');
+    h += renderOverviewCard('Demand', demLabel || formatBudgetCurrency(impDem), impDem > domProd ? 'deficit' : 'neutral', 'total need');
     h += renderOverviewCard('Exports \u2014 Organic', orgExpLabel || formatBudgetCurrency(organicExports), organicExports > 0 ? 'surplus' : 'neutral', organicExports > 0 ? 'no trade deal required' : 'no organic exports');
     h += '</div>';
 
@@ -2595,20 +2599,24 @@ function renderSectorDetail(nation, sectorKey) {
 
     // ── 2×3 card layout (matching food subsector design) ──
     if (flow) {
-        var supplyVal = Number(flow.export_capacity) || 0;
+        // prodVal = what the nation actually produces each tick (gross).
+        // expCapVal = exportable surplus after domestic demand. The
+        // Production card uses prodVal; untraded-surplus math uses expCapVal.
+        var prodVal = Number(flow.domestic_production) || 0;
+        var expCapVal = Number(flow.export_capacity) || 0;
         var demandVal = Number(flow.import_demand) || 0;
 
         var organicExp = expVol;
         var tradeDealExp = 0; // RSC pre-allocations tracked separately in future
-        var untradedSurplus = Math.max(0, supplyVal - expVol);
+        var untradedSurplus = Math.max(0, expCapVal - expVol);
         var surplusAtCurrentPrice = Math.round(untradedSurplus * priceMod);
         var surplusAtFullPrice = untradedSurplus;
 
         // Row 1: Production | Demand | Exports — Organic
         h += '<div class="econ-cards-row econ-cards-3" style="margin-top:12px;">';
-        h += renderOverviewCard('Production', formatTradeVolume(supplyVal, sectorKey), 'neutral', 'capacity / year');
+        h += renderOverviewCard('Production', formatTradeVolume(prodVal, sectorKey), 'neutral', 'gross output / year');
         if (!sector.export_only) {
-            h += renderOverviewCard('Demand', formatTradeVolume(demandVal, sectorKey), demandVal > supplyVal ? 'deficit' : 'neutral', 'total need');
+            h += renderOverviewCard('Demand', formatTradeVolume(demandVal, sectorKey), demandVal > prodVal ? 'deficit' : 'neutral', 'total need');
         } else {
             h += renderOverviewCard('Revenue', formatBudgetCurrency(expVol), 'surplus', 'export revenue');
         }
