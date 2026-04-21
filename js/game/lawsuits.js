@@ -245,6 +245,21 @@ export async function fileLawsuit(supabase, params) {
         console.error('[Lawsuits] Failed to insert milestone events:', eventsErr.message);
     }
 
+    // Surface the filing into event_log so it hits the Political / Nation
+    // feeds immediately. Later milestones (discovery, evidence, pre_trial,
+    // resolution) are flushed by resolveLawsuits each tick as they mature.
+    var { error: logErr } = await supabase.from('event_log').insert({
+        nation_id: nationId,
+        event_name: 'LAWSUIT FILED',
+        event_type: 'lawsuit',
+        category: 'political',
+        description_chosen: events[0].headline,
+        fired_at_tick: currentTick,
+        faction_id: factionId || null,
+        effects_applied: { lawsuit_id: lawsuit.id, tier: tierInfo.tier, target_ministry: ministryLabel, basis: basisLabel, milestone: 'filing' },
+    });
+    if (logErr) console.warn('[Lawsuits] event_log insert (filing) failed:', logErr.message);
+
     return { success: true, lawsuit: lawsuit, tier: tierInfo.tier, error: null };
 }
 
@@ -284,6 +299,43 @@ export async function fetchActiveLawsuits(supabase, factionId) {
  * @returns {Promise<Array>} resolved lawsuits
  */
 export async function resolveLawsuits(supabase, nationId, currentTick, govPmPartyId) {
+    // Flush any matured lawsuit milestones (discovery, evidence, pre_trial,
+    // resolution) into event_log so the Political / Nation feeds see them.
+    // The filing event is written directly by fileLawsuit; everything after
+    // rides this single per-nation-per-tick pass.
+    var { data: dueEvents, error: dueErr } = await supabase
+        .from('lawsuit_events')
+        .select('id, lawsuit_id, event_type, headline, event_tick')
+        .eq('nation_id', nationId)
+        .eq('is_fired', false)
+        .lte('event_tick', currentTick);
+    if (dueErr) console.warn('[Lawsuits] milestone flush read failed:', dueErr.message);
+
+    for (var d = 0; d < (dueEvents || []).length; d++) {
+        var ev = dueEvents[d];
+        // Flip is_fired FIRST. If the event_log insert then fails, we lose
+        // one event (warn-logged) but can't double-post on the next tick's
+        // retry. A flipped-but-not-posted event is strictly better than a
+        // posted-but-not-flipped one.
+        var { error: flipErr } = await supabase.from('lawsuit_events')
+            .update({ is_fired: true })
+            .eq('id', ev.id);
+        if (flipErr) {
+            console.warn('[Lawsuits] is_fired flip failed for ' + ev.event_type + ':', flipErr.message);
+            continue;
+        }
+        var { error: logErr } = await supabase.from('event_log').insert({
+            nation_id: nationId,
+            event_name: 'LAWSUIT — ' + ev.event_type.replace(/_/g, ' ').toUpperCase(),
+            event_type: 'lawsuit',
+            category: 'political',
+            description_chosen: ev.headline,
+            fired_at_tick: ev.event_tick,
+            effects_applied: { lawsuit_id: ev.lawsuit_id, milestone: ev.event_type },
+        });
+        if (logErr) console.warn('[Lawsuits] event_log insert (' + ev.event_type + ') failed:', logErr.message);
+    }
+
     var { data: pending, error } = await supabase
         .from('lawsuits')
         .select('*')
@@ -333,9 +385,8 @@ export async function resolveLawsuits(supabase, nationId, currentTick, govPmPart
             if (govErr) console.error('[Lawsuits] Gov momentum failed:', govErr.message);
         }
 
-        // Mark resolution event as fired
-        await supabase.from('lawsuit_events').update({ is_fired: true })
-            .eq('lawsuit_id', ls.id).eq('event_type', 'resolution');
+        // Resolution event is flushed by the pending-milestones pass at the
+        // top of this function — no explicit is_fired flip needed here.
 
         results.push({ id: ls.id, tier: ls.tier, resolution: resLabel, factionId: ls.faction_id });
     }
