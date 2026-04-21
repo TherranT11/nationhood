@@ -3001,10 +3001,11 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             // Term expiry: policy ends at term_months regardless of project status.
             const termMonths = Number(loan.term_months) || 0;
             if (termMonths > 0 && Number(loan.payments_made || 0) >= termMonths) {
-                await supabase.from('finance_active_loans').update({
+                const { error: expErr } = await supabase.from('finance_active_loans').update({
                     status: 'repaid',
                     completed_tick: currentTick,
                 }).eq('id', loan.id);
+                if (expErr) console.warn('[Insurance] Term expiry update failed:', expErr.message);
                 continue;
             }
 
