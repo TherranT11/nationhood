@@ -2673,6 +2673,7 @@ import { loadShippingRoutesSafe, loadActiveVoyagesSafe, loadSubsidiaryMarketSafe
 import { applyForEquity } from './js/equity-apply.js';
 import { loadAllCorporations as fetchAllCorporations } from './js/corp-all-corporations.js';
 import { VESSEL_SPECS } from './js/game/vessels.js';
+import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 import {
     SUB_GDP_NEUTRAL,
     SUB_DEFAULT_REPUTATION,
@@ -7794,7 +7795,11 @@ function switchToFaction(factionId, factionType) {
     if (dd) dd.classList.remove('open');
     sessionStorage.setItem('active_faction_id', factionId);
     if (factionType === 'corporation') {
-        window.location.href = 'corp-operations.html';
+        // Route to the target corp's sector-specific Operations page —
+        // otherwise Finance/Shipping corps land on the Construction default
+        // and rely on the init() sector-guard to bounce them back.
+        const target = (allUserFactions || []).find(f => f.id === factionId);
+        window.location.href = SECTOR_OPS_PAGE[target?.corp_sector] || 'corp-operations.html';
     } else {
         window.location.href = 'dashboard.html';
     }

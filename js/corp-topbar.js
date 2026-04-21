@@ -1,7 +1,7 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, cash, faction switcher, nav tabs
 
-const CORP_VERSION = 'Alpha 2.2.0.31';
+const CORP_VERSION = 'Alpha 2.2.0.32';
 const THEME_STORAGE_KEY = 'corpThemePref';
 
 // Stashed at render time so the CASH-pill dropdown can query cash history
@@ -18,7 +18,11 @@ function applyStoredCorpTheme() {
     } catch (e) { /* localStorage unavailable (private mode, etc.) — default dark */ }
 }
 
-const SECTOR_OPS_PAGE = {
+// Single source of truth for the corp sector → Operations page mapping.
+// Imported by the three Ops HTMLs + common.js so faction-switcher, topbar
+// nav, and shared-page nav all route a Finance/Shipping corp to the right
+// page instead of the Construction default.
+export const SECTOR_OPS_PAGE = {
     Construction: 'corp-operations.html',
     Shipping: 'corp-operations-shipping.html',
     Finance: 'corp-operations-finance.html',

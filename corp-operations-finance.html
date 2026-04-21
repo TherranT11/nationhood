@@ -355,6 +355,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
+import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -3485,7 +3486,10 @@ function switchFaction(factionId) {
     if (f && f.faction_type === 'party') {
         window.location.href = 'dashboard.html';
     } else {
-        window.location.reload();
+        // Route to the target corp's sector-specific Operations page —
+        // a plain reload keeps non-Finance corps on the Finance page
+        // until the init() sector-guard redirects them.
+        window.location.href = SECTOR_OPS_PAGE[f?.corp_sector] || 'corp-operations.html';
     }
 }
 

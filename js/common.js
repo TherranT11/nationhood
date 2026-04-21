@@ -10,6 +10,7 @@
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
+import { SECTOR_OPS_PAGE } from './corp-topbar.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -422,7 +423,7 @@ export function renderTopBar(activeTab) {
                     </div>
                 </div>
             </div>
-            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.2.0.31</div>
+            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.2.0.32</div>
             <div class="top-bar-right">
                 <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
                 ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
@@ -967,7 +968,7 @@ export function updateTopBarInfo(faction, shard, nation) {
         if (navEl) {
             const currentTab = window.__currentTab || '';
             const sector = faction.corp_sector || 'Construction';
-            const opsHref = sector === 'Finance' ? 'corp-operations-finance.html' : 'corp-operations.html';
+            const opsHref = SECTOR_OPS_PAGE[sector] || 'corp-operations.html';
             const corpTabs = [
                 { id: 'home', label: 'Home', href: 'corp-dashboard.html' },
                 { id: 'operations', label: 'Operations', href: opsHref },
