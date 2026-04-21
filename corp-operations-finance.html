@@ -3485,7 +3485,11 @@ function switchFaction(factionId) {
     if (f && f.faction_type === 'party') {
         window.location.href = 'dashboard.html';
     } else {
-        window.location.reload();
+        // Route to the target corp's sector-specific Operations page —
+        // a plain reload keeps non-Finance corps on the Finance page
+        // until the init() sector-guard redirects them.
+        const SECTOR_OPS = { Finance: 'corp-operations-finance.html', Shipping: 'corp-operations-shipping.html', Construction: 'corp-operations.html' };
+        window.location.href = SECTOR_OPS[f?.corp_sector] || 'corp-operations.html';
     }
 }
 
