@@ -1869,6 +1869,35 @@ async function init() {
     renderActionsTab();
 }
 
+// Expose onclick handlers to global scope. <script type="module"> scopes
+// declarations to the module, but inline `onclick="foo()"` attributes
+// resolve against window. Every function referenced by onclick / oninput
+// in rendered card HTML needs a window binding. actOpen* / lrOpen /
+// applyForEquity are not here because they're only called from
+// actExecute's internal dispatch (module scope reaches them fine).
+window.actExecute = actExecute;
+window.actSelectExec = actSelectExec;
+window.confirmFireExec = confirmFireExec;
+window.actCloseStatement = actCloseStatement;
+window.actSubmitStatement = actSubmitStatement;
+window.actCloseRestructure = actCloseRestructure;
+window.actSubmitRestructure = actSubmitRestructure;
+window.actCloseRebrand = actCloseRebrand;
+window.actSubmitRebrand = actSubmitRebrand;
+window.actCloseDonation = actCloseDonation;
+window.actSubmitDonation = actSubmitDonation;
+window.donateSelectParty = donateSelectParty;
+window.lrClose = lrClose;
+window.lrSetAmount = lrSetAmount;
+window.lrSetPurpose = lrSetPurpose;
+window.lrSetTerm = lrSetTerm;
+window.lrSetCollateral = lrSetCollateral;
+window.lrSubmit = lrSubmit;
+window.openExecSearch = openExecSearch;
+window.closeExecSearch = closeExecSearch;
+window.esSelectCandidate = esSelectCandidate;
+window.esHireCandidate = esHireCandidate;
+
 init();
 </script>
 </body>

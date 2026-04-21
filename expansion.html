@@ -2736,6 +2736,15 @@ window.corpInvestigate = corpInvestigate;
 window.corpFilterNation = corpFilterNation;
 window.corpSort = corpSort;
 
+// Hire/Fire card onclick handlers. On the old in-page Expansion tab
+// these lived in corp-operations.html's tail at lines ~14226-14228; the
+// Commit 1 extraction pulled every other hf* helper into this file but
+// missed re-binding these three to window, which made every +10/-10/+50/
+// -50/X/CONFIRM button on the HF card throw ReferenceError.
+window.hfSetChange = hfSetChange;
+window.hfReset = hfReset;
+window.hfConfirm = hfConfirm;
+
 // ── Init ──
 // On page load: fetch faction + shard + nationStats, render topbar, then
 // run the full load+render pipeline that switchToExpansion used to run
