@@ -83,9 +83,9 @@ body {
   letter-spacing: 2px; color: var(--text-dim);
 }
 </style>
-<script src="js/corp-theme-init.js"></script>
 </head>
 <body>
+<script src="js/corp-theme-init.js"></script>
 <div id="corp-topbar-container"></div>
 
 <div id="loading" class="loading-msg">LOADING…</div>
@@ -109,6 +109,7 @@ import { escapeHtml } from './js/utils.js';
 import { renderCorpTopBar } from './js/corp-topbar.js';
 import { initSubDashboard } from './js/corp-sub-dashboard.js';
 import { loadAllCorporations as fetchAllCorporations } from './js/corp-all-corporations.js';
+import { loadSubsidiaryMarketSafe } from './js/corp-shipping-data.js';
 import { computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
 import {
     SUB_GDP_NEUTRAL,
