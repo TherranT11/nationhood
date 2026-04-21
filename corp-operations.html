@@ -7378,6 +7378,15 @@ async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
+    // Read ?tab= once at function scope — the tab-auto-switch block at the
+    // bottom of init() needs this AND the sector-redirect guard inside the
+    // `if (!faction)` branch needs it. Previously declared only inside the
+    // branch, which threw ReferenceError at the bottom when that branch
+    // ran (i.e. every non-Inspector page load with ?tab=expansion|actions),
+    // leaving the page on operations-content instead of switching tabs.
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    const isSharedTab = urlTab === 'expansion' || urlTab === 'actions';
+
     // Inspector mode: admin panel impersonation via ?faction_id= URL
     // param. Fetch the target faction directly and skip sessionStorage
     // writes + sector redirects so the admin's real session isn't
@@ -7417,8 +7426,7 @@ async function init() {
         }
 
         // Redirect non-Construction corps to their correct operations page
-        const urlTab = new URLSearchParams(window.location.search).get('tab');
-        const isSharedTab = urlTab === 'expansion' || urlTab === 'actions';
+        // (urlTab / isSharedTab hoisted to function scope at top of init)
         if (faction.corp_sector !== 'Construction' && !isSharedTab) {
             const targetPage = SECTOR_OPS_PAGE[faction.corp_sector];
             if (targetPage) { window.location.href = targetPage; return; }
@@ -7543,7 +7551,7 @@ async function init() {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';
 
-    // Check for ?tab= param to auto-switch on load (urlTab declared above in redirect check)
+    // Check for ?tab= param to auto-switch on load
     if (urlTab === 'expansion') {
         const expTab = document.querySelector('[data-tab-action="expansion"]');
         if (expTab) switchToExpansion({ preventDefault: () => {}, target: expTab });
