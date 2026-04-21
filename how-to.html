@@ -57,72 +57,266 @@
 <div class="guide-panel" style="max-width:100%;border:none;padding:0;">
 
 <details open><summary>Getting Started</summary><div>
-<p>You've just founded a political party in a nation. Here's what to do first:</p>
+
+<p>Nationhood is a persistent political simulation. You lead a party in a real nation populated by other human and AI players, compete in elections, form governments, pass or block legislation, manage economies, and navigate diplomacy. Everything runs on a shared clock &mdash; the game advances on its own whether you're online or not.</p>
+
+<h3>1. Pick a nation</h3>
+
+<p>Your first decision is which nation to play in. On <strong>select-nation.html</strong> you'll see every nation grouped by <strong>continent</strong> (Crucera, Meridian, Al-Makir). Each card shows:</p>
+<ul>
+<li>The nation's flag and short cultural blurb (e.g. <em>"Dravka is analogous culturally to Albania"</em>)</li>
+<li>Government type &mdash; Parliamentary Democracy, Presidential Republic, Semi-Presidential, Absolute Monarchy, or Constitutional Monarchy</li>
+<li>Parliament size and number of active parties already in that nation</li>
+</ul>
+<p>You can only found <strong>one party per user per nation</strong>. Pick a nation whose starting ideology profile, economy, and political vacancy match the kind of game you want to play. A crowded high-seat-count parliament plays very differently from a small monarchy with open slots.</p>
+
+<h3>2. Found your party</h3>
+
+<p>On the <strong>Create Party</strong> screen you set:</p>
+<ul>
+<li><strong>Name &amp; abbreviation</strong> &mdash; used everywhere (bill authorship, vote tallies, event feeds)</li>
+<li><strong>Color</strong> &mdash; shown on your cards, dots next to your votes, and the parliament hemisphere chart</li>
+<li><strong>Logo</strong> &mdash; small emblem rendered on your faction card</li>
+<li><strong>Two ideology tags</strong> &mdash; drawn from the five axes (Liberty/Equality, Tradition/Progress, Security/Freedom, Globalism/Nationalism, Individualism/Collectivism). These anchor your party on the political map and shape voter bloc appeal.</li>
+<li><strong>Leader</strong> &mdash; auto-generated from the nation's name pool. You'll get a cultural-first-and-last name (e.g. Albanian for Dravka, Serbian for Vostia).</li>
+</ul>
+
+<h3>3. Starting resources</h3>
+
+<p>Every new party spawns with the same stack:</p>
+<table>
+<tr><th>Resource</th><th>Starting value</th><th>What it does</th></tr>
+<tr><td>Party Funds</td><td>$1,000,000</td><td>Cash for rallies, lawsuits, platform promises, campaign ads</td></tr>
+<tr><td>Action Points (AP)</td><td>5</td><td>Daily political energy. Refills per tick. Most actions cost 1&ndash;4 AP.</td></tr>
+<tr><td>Seats</td><td>0</td><td>Won at the next election. Until then you can't form government.</td></tr>
+<tr><td>Approval Rating</td><td>50</td><td>How popular you are with voters. Moves with outcomes, promises, scandals.</td></tr>
+<tr><td>Momentum</td><td>0</td><td>Short-term political energy. Rallies, statements, and positive events add; every tick burns some down.</td></tr>
+<tr><td>Standing</td><td>30</td><td>Institutional reputation. Damaged by failed attacks, lost lawsuits, embezzlement. Affects endorsement chances.</td></tr>
+</table>
+
+<h3>4. Your first in-game hour</h3>
+
+<p>You don't have to be a master the day you sign up. A reasonable first session:</p>
 <ol>
-<li><strong>Check your Dashboard</strong> &mdash; the Home tab shows your nation's government, elections, and recent events at a glance.</li>
-<li><strong>Visit the Government page</strong> &mdash; see who holds power, which ministries exist, and whether a government needs to be formed.</li>
-<li><strong>Check the Bills page</strong> &mdash; vote on any bills currently on the floor. Your vote matters even if you have few seats.</li>
-<li><strong>Draft your first bill</strong> &mdash; propose a policy that aligns with your ideology from the Bills page.</li>
-<li><strong>Manage your economy</strong> &mdash; visit the Economy tab to understand revenue, spending, trade, and debt.</li>
+<li><strong>Read the Home dashboard.</strong> It shows tick countdown, next election date, who's currently governing, and recent events in your nation.</li>
+<li><strong>Visit the Government page.</strong> See current ministers, the standing PM (or President, or Queen/King), whether a coalition is formed, and what bills await royal assent if applicable.</li>
+<li><strong>Scan the Bills page.</strong> Every pending bill shows who proposed it, the articles, the voting window. <em>Even with 0 seats you can vote</em> &mdash; your vote gets weighted by seat count when bills resolve, but casting a position signals your party's stance.</li>
+<li><strong>Open Politics &rarr; Parties.</strong> Look at every party in your nation. Note who leads in seats, who shares your ideology, who would be a natural coalition partner.</li>
+<li><strong>Adopt a platform.</strong> Politics &rarr; Parties &rarr; your card &rarr; "Adopt Platform". Each platform promises +20 on three stats and costs ~2 AP. First adopter gets +12 momentum; others get penalties if they copy you. You can hold three platforms at once with a 6-tick cooldown between adoptions.</li>
+<li><strong>Glance at the Economy tab.</strong> Get familiar with your nation's GDP, debt, major industries, trade partners.</li>
 </ol>
+
+<h3>Common first-session mistakes</h3>
+<ul>
+<li><strong>Burning all AP on turn 1.</strong> AP refills every tick; you don't need to spend all five in your first session. Save some for bills you didn't expect.</li>
+<li><strong>Adopting three platforms immediately.</strong> Platforms are commitments &mdash; you lose approval if the attached stats move the wrong way and don't recover at fulfillment tick. Start with one.</li>
+<li><strong>Ignoring coalition partners.</strong> Even at 0 seats you should identify who you'd ally with. After the first election, forming a coalition fast matters &mdash; a failed formation triggers snap elections.</li>
+<li><strong>Filing a no-confidence motion too early.</strong> It costs AP, has cooldowns, and usually fails without a majority of the opposition behind you.</li>
+</ul>
+
 </div></details>
 
 <details><summary>How Ticks Work</summary><div>
-<p>Nationhood runs on a <strong>tick-based</strong> clock. Every tick (shown in the top bar with a countdown), the game advances one month:</p>
+
+<p>Nationhood advances on a shared, shard-wide clock. Every <strong>tick</strong> (whose real-world interval is set per shard &mdash; production shards typically run on a multi-hour cadence) the game processes one in-game <strong>month</strong>. A 4-year parliamentary term is 48 ticks; a fast shard covers that in days, a slow shard in weeks.</p>
+
+<h3>What you see in the UI</h3>
+
 <ul>
-<li>Elections fire on their scheduled tick</li>
-<li>Bills on the floor resolve after their voting period expires</li>
-<li>Economic stats update (GDP growth, trade, inflation)</li>
-<li>Policy effects apply (stat changes from enacted laws)</li>
-<li>Ministry actions progress through their delay and duration</li>
-<li>Crises evolve (effects apply, protests fizzle or escalate)</li>
+<li><strong>Top-bar countdown.</strong> Shows how much real time remains until the next tick fires.</li>
+<li><strong>Current tick + in-game date.</strong> Displayed in the header. Tick 18 &#8776; July 2001 on a January-2000 base.</li>
+<li><strong>AP reset.</strong> Your Action Points refill to their cap at the start of every tick.</li>
+<li><strong>Fresh event feed.</strong> The Home tab's Events panel surfaces whatever fired this tick &mdash; passed bills, election triggers, diplomatic moves, crisis updates, news.</li>
 </ul>
-<p>You don't need to be online when the tick fires &mdash; everything processes automatically. But plan your actions so they're submitted before the tick you want them to take effect.</p>
+
+<h3>What happens under the hood every tick</h3>
+
+<p>When the clock hits zero, two server-side processors run back-to-back. You don't need to memorize the details, but knowing the order explains <em>why</em> effects sometimes arrive one tick later than expected.</p>
+
+<p><strong>advance-tick</strong> (nation + politics):</p>
+<ul>
+<li>Scheduled elections fire; results compute; seats redistribute</li>
+<li>Bills at end of voting window resolve &mdash; ordinary bills pass/fail, foundational bills check supermajority, confirmation bills confirm/reject ministers</li>
+<li>Policy stat effects apply (one-shot effects fire once; ongoing effects increment until duration expires)</li>
+<li>Active_laws momentum bonuses dispatch (e.g. Internet Sovereignty Act's per-tick coalition bonus)</li>
+<li>Ministry crisis cards draw, resolve, or escalate</li>
+<li>Trade flows recompute: domestic production, export capacity, import demand, actual trade volumes, price modifiers per sector</li>
+<li>Tariff revenue posts to the treasury</li>
+<li>Population grows; stats decay toward equilibrium; stat connections trigger across the stat graph</li>
+<li>Agitator lawsuits advance through their milestone ticks; verdicts post to event_log</li>
+<li>Protests and crises evolve</li>
+<li>Momentum decays on every faction (unused momentum from rallies and press events fades if not spent)</li>
+<li>Platform promises check their stat targets; fulfilled promises award approval, failed ones penalize</li>
+<li>Coalition stability checks; governments can collapse if approval tanks below threshold</li>
+<li>Ambassador nominations auto-confirm after timeout; treaties tick toward expiry or auto-renew</li>
+</ul>
+
+<p><strong>advance-corp-tick</strong> (corporation + economy):</p>
+<ul>
+<li>Subsidiary revenue: each regional HQ gains or loses cash based on parent reputation, GDP, and operating overhead</li>
+<li>Property effects: maintenance deducted, condition degrades, active refurbishments progress, buildings past completion snap to their refurbish_condition target</li>
+<li>Corp monthly income: government contracts pay out, private operating revenue lands, loan interest/premium installments collect</li>
+<li>Construction projects advance, consume materials, pay labor, risk events</li>
+<li>Shipping routes generate, expire, or reassign; vessels leave port, transit, arrive, unload revenue</li>
+<li>Finance: loan repayments collected, bond coupons paid, insurance premiums flow, equity dividends distribute</li>
+<li>Reputation decay: 0.25/tick baseline, 1.0/tick if a corp has zero workforce</li>
+</ul>
+
+<h3>What this means for you</h3>
+
+<ul>
+<li><strong>Submit actions before the tick fires.</strong> A bill proposal submitted 30 seconds before tick-end gets processed at that tick. One second after, it waits a full tick cycle. The countdown is your clock.</li>
+<li><strong>Expect delays.</strong> An enacted bill's stat effects start on the enactment tick, but the first tick's movement is often only partial. Look two or three ticks out to see the real shape.</li>
+<li><strong>You don't need to be online.</strong> AP refills, elections fire, and automatic processes run whether you're logged in or not. Adopt a platform, queue your rallies, log off, come back later.</li>
+<li><strong>Tick crunch time.</strong> Many players log in right before tick fires to submit last-minute actions. Opposition bills and rally timing often cluster at the end of a tick.</li>
+</ul>
+
 </div></details>
 
 <details open><summary>Your Party</summary><div>
 
-<p>You lead a <strong>political party</strong> in one of the nations on the map. Everything you do in the game flows through that party &mdash; winning seats, forming governments, proposing laws, campaigning, fundraising, coalition deals.</p>
+<p>You lead a <strong>political party</strong> inside one nation. Everything you do in the game flows through that party &mdash; winning seats, forming governments, proposing laws, campaigning, fundraising, coalition deals, diplomacy.</p>
 
 <p>Your party's profile lives on the <strong>Politics &rarr; Parties</strong> tab. That's the single page where you can see your standing and compare it to every rival party in the nation.</p>
 
 <h3>What the card shows you</h3>
 
-<p>Every party card is broken down the same way, whether it's yours or a rival's. Here's what each field means:</p>
+<p>Every party card has the same layout, yours or a rival's:</p>
 
 <table>
 <tr><th>Field</th><th>What it means</th></tr>
-<tr><td><strong>Name &amp; Abbreviation</strong></td><td>Your party's full name and short form (e.g. "Social Democratic Front" &rarr; SDF). Shown with your party color everywhere in the game.</td></tr>
-<tr><td><strong>Party Color</strong></td><td>The color wash behind your card and the dot next to your name in bills, votes, seat charts, and the parliament hemisphere. Pick something distinctive &mdash; it's how people identify you at a glance.</td></tr>
-<tr><td><strong>Leader</strong></td><td>The face of your party. Shows name, age, and party tag. Leaders have <strong>traits</strong> that buff or debuff specific actions. Leaders age and eventually retire; you'll pick a successor when that happens.</td></tr>
-<tr><td><strong>Seats</strong></td><td>Your share of the legislature. Won through elections. Seats determine how much your votes are worth on bills, whether you can form a majority, and how much fundraising you pull.</td></tr>
-<tr><td><strong>Approval</strong></td><td>How popular your party is with voters right now, 0&ndash;100%. Drives your next election result more than any other stat. Rises from good actions, fulfilled promises, rallies. Falls from unfulfilled platform promises, failed lawsuits, scandals.</td></tr>
-<tr><td><strong>Momentum</strong></td><td>Short-term political energy, 0&ndash;100. Boosts you get from rallies, statements, and events burn off as momentum each tick. A momentum spike right before an election can flip a result.</td></tr>
-<tr><td><strong>Ideology</strong></td><td>Your position on five axes (Liberty&ndash;Authority, Tradition&ndash;Progress, Equality&ndash;Hierarchy, Nationalism&ndash;Globalism, Individualism&ndash;Collectivism). Voter blocs prefer parties that match their ideology. Some party actions shift these numbers.</td></tr>
-<tr><td><strong>Coalition Status</strong></td><td>One of <em>GOVERNING-LEAD</em> (your party holds the PM), <em>GOVERNING-JUNIOR</em> (you're in the coalition but not the lead), or <em>OPPOSITION</em> (you're outside the government). Different statuses unlock different actions.</td></tr>
-<tr><td><strong>Ticks in Power</strong></td><td>How long your current government has lasted. Long tenure slowly decays your approval (incumbency fatigue). Shown on governing parties only.</td></tr>
-<tr><td><strong>Party Funds</strong></td><td>Cash your party holds for campaigning, legal action, and rallies. Grown through fundraising; drained by lawsuits, platform promises, and expensive actions.</td></tr>
+<tr><td><strong>Name &amp; Abbreviation</strong></td><td>Full name and short form (e.g. "Social Democratic Front" &rarr; SDF). Used everywhere a party is referenced.</td></tr>
+<tr><td><strong>Party Color</strong></td><td>The color wash on your card and the dot next to your name in bills, votes, the parliament hemisphere, event feeds. Pick something distinctive &mdash; it's how people identify you at a glance.</td></tr>
+<tr><td><strong>Leader</strong></td><td>The face of your party. Shows name, age, and ideology. Leaders carry a <strong>trait</strong> that buffs or debuffs specific actions. Leaders age; when they retire or lose a no-confidence vote, you'll pick a successor from the candidate pool.</td></tr>
+<tr><td><strong>Seats</strong></td><td>Your share of the legislature. Won through elections. Seats scale your voting power on bills, determine whether you can lead or support a coalition, and cap how much fundraising returns per cycle.</td></tr>
+<tr><td><strong>National Vote Share</strong></td><td>Your percentage of the last election's votes (not seats). Can diverge from seats if the nation has entrenchment thresholds or seat bonuses.</td></tr>
+<tr><td><strong>Approval</strong></td><td>How popular your party is with voters right now, 0&ndash;100. Drives your next election result more than any other stat. Rises from fulfilled platforms, successful rallies, positive crisis resolution. Falls from missed platform promises, failed lawsuits, scandals, and unpopular legislation you voted for.</td></tr>
+<tr><td><strong>Momentum</strong></td><td>Short-term political energy. Rallies, statements, press conferences, and winning news cycles add; every tick burns some off. A momentum spike right before an election can flip a result &mdash; momentum directly buffs turnout bonuses on your bloc.</td></tr>
+<tr><td><strong>Standing</strong></td><td>Institutional reputation, 0&ndash;100. Damaged by losing lawsuits, failed attack actions, embezzlement, betraying coalitions. Rewarded when you win a lawsuit, honor a promise under pressure, or complete a full term. Drives presidential endorsement odds and is referenced by several foundational law thresholds.</td></tr>
+<tr><td><strong>Ideology</strong></td><td>Two ideology tags chosen at founding, plus a numeric position on <em>five</em> axes (see below). Voter blocs match against this; caucuses inside large parties track their own dominant axis against yours.</td></tr>
+<tr><td><strong>Coalition Status</strong></td><td><em>GOVERNING-LEAD</em> (your party holds the PM or presidency), <em>GOVERNING-JUNIOR</em> (you're in the coalition but not the lead), or <em>OPPOSITION</em>. Different statuses unlock different actions &mdash; only governing parties appoint ministers; only opposition parties can file no-confidence.</td></tr>
+<tr><td><strong>Ticks in Power</strong></td><td>On governing parties only. How long the current administration has lasted. Long tenure applies incumbency fatigue &mdash; a slow drip of approval loss that grows with time in power.</td></tr>
+<tr><td><strong>Party Funds</strong></td><td>Cash for rallies, legal action, platform commitments, campaign advertising. Grown via fundraising (see below); drained by expensive actions.</td></tr>
+<tr><td><strong>Action Points (AP)</strong></td><td>Your per-tick action budget. Refills at the top of each tick. Most party actions cost 1&ndash;4 AP; some scale with polarization or escalation.</td></tr>
 </table>
 
-<h3>Caucuses &mdash; your party's internal wings</h3>
+<h3>The five ideology axes</h3>
 
-<p>Large parties aren't monoliths. Your card shows <strong>caucuses</strong> &mdash; sub-groups within your own party, each with their own seat share and <strong>loyalty</strong> score. Think of them as factions inside your faction.</p>
+<p>The game models political positioning on five symmetric 0&ndash;100 axes. Your party's position on each axis (set by your two chosen ideology tags and shifted by some actions) is compared against the electorate's ideological distribution.</p>
+
+<table>
+<tr><th>Axis</th><th>0 &mdash; Left pole</th><th>100 &mdash; Right pole</th><th>Core tension</th></tr>
+<tr><td>Liberty&ndash;Equality</td><td>LIBERTY</td><td>EQUALITY</td><td>Individual rights vs. collective fairness</td></tr>
+<tr><td>Tradition&ndash;Progress</td><td>TRADITION</td><td>PROGRESS</td><td>Cultural conservatism vs. social reform</td></tr>
+<tr><td>Security&ndash;Freedom</td><td>SECURITY</td><td>FREEDOM</td><td>State protection vs. personal autonomy</td></tr>
+<tr><td>Globalism&ndash;Nationalism</td><td>GLOBALISM</td><td>NATIONALISM</td><td>International integration vs. national sovereignty</td></tr>
+<tr><td>Individualism&ndash;Collectivism</td><td>INDIVIDUALISM</td><td>COLLECTIVISM</td><td>Personal self-reliance vs. communal structures</td></tr>
+</table>
+
+<p>Each nation has its own <strong>electorate profile</strong> &mdash; a mean and variance on each axis, plus a <strong>salience weight</strong> telling you how much that axis matters in that nation's politics. Dravka cares about Tradition/Progress and Globalism/Nationalism (0.25 salience each); Progressive-leaning nations might invert that. Read a nation's electorate before you decide which ideology tags to pick.</p>
+
+<h3>Caucuses &mdash; internal wings of a dominant party</h3>
+
+<p>When you cross <strong>50% of parliamentary seats</strong>, your party stops being a monolith. Internal <strong>caucuses</strong> activate &mdash; sub-factions inside your own party, each anchored to one ideology axis. Caucus count scales with seat share:</p>
+
+<table>
+<tr><th>Seat share</th><th>Caucuses</th></tr>
+<tr><td>50&ndash;59%</td><td>2</td></tr>
+<tr><td>60&ndash;69%</td><td>3</td></tr>
+<tr><td>70&ndash;79%</td><td>4</td></tr>
+<tr><td>80&ndash;100%</td><td>5</td></tr>
+</table>
+
+<p>Each caucus gets a name matched to its dominant axis wing &mdash; "Traditionalist Caucus" on the tradition pole of Tradition/Progress, "Reform Caucus" on the progress pole, "Security Hawks" vs "Civil Liberties Caucus" on Security/Freedom, etc.</p>
+
+<p>Every caucus tracks a <strong>relationship score</strong> (0&ndash;100, default 65) against the party leadership. The score moves as you legislate:</p>
 
 <ul>
-<li><strong>High loyalty</strong> caucuses back every bill and platform you propose.</li>
-<li><strong>Low loyalty</strong> caucuses may defect on specific votes or withhold their seats on bills they ideologically disagree with &mdash; reducing your effective voting power.</li>
-<li>Caucus loyalty moves based on whether your platform promises and ideological positioning match what the caucus wants.</li>
+<li><strong>+1 per favorable ideological article</strong> in a bill you pass that matches the caucus's axis</li>
+<li><strong>&minus;20</strong> when a bill opposed on that caucus's axis passes with your backing</li>
+<li><strong>+3</strong> when you spend AP to <em>whip</em> a caucus into line on a critical vote</li>
+<li><strong>&minus;2 per tick</strong> unconditional decay</li>
 </ul>
 
-<p>You don't manage caucuses directly. You influence them by keeping your party's ideology and promises aligned with theirs.</p>
+<p>At <strong>relationship &le; 20</strong> a caucus defects &mdash; its members split off to join an ideologically-compatible opposition party, taking their seats with them. A dominant party that ignores its caucuses can fragment within a few ticks.</p>
+
+<p>Whipping costs AP (base 1 per whip, 2 for caucuses above 20% seat share). Used well, it's how you hold large coalitions together. Used carelessly, it burns relationship and triggers defections.</p>
+
+<h3>Party actions &mdash; what you can actually do</h3>
+
+<p>From your party card's action panel you can:</p>
+
+<ul>
+<li><strong>Hold a Rally</strong> &mdash; targets a voter bloc, consumes AP, returns momentum and approval. Diminishing returns if you repeat the same bloc; escalation cost climbs.</li>
+<li><strong>Press Conference</strong> &mdash; 1 AP; small momentum boost; escalation cost climbs with use.</li>
+<li><strong>Attack a rival party</strong> &mdash; AP cost scales with nation polarization. Outcome rolled from a weighted table: crit success, success, mixed, backfire, disaster. Winning damages target's approval/standing; losing hurts you.</li>
+<li><strong>Fundraise</strong> &mdash; 5 tiers of diminishing returns per cycle:
+    <table>
+    <tr><th>Use #</th><th>Cash per seat</th><th>Momentum cost</th></tr>
+    <tr><td>1</td><td>$5,000</td><td>&minus;1 per 10 seats</td></tr>
+    <tr><td>2</td><td>$4,000</td><td>&minus;1 per 8 seats</td></tr>
+    <tr><td>3</td><td>$3,000</td><td>&minus;1 per 6 seats</td></tr>
+    <tr><td>4</td><td>$2,000</td><td>&minus;1 per 5 seats</td></tr>
+    <tr><td>5+</td><td>$1,000</td><td>&minus;1 per 5 seats</td></tr>
+    </table>
+</li>
+<li><strong>Adopt a Platform</strong> &mdash; pick one of 16 platforms (Economic Reform, Social Justice, National Security, Anti-Corruption, Green Transition, etc.). Each promises +20 on three stats, penalizes three others, and takes up one of your three platform slots. Costs 2 AP. First adopter gets +12 momentum; second adopter &minus;6 vs the first + <em>their</em> +6; each subsequent copy dilutes further. 6-tick cooldown between adoptions. Full details below.</li>
+<li><strong>File a Lawsuit</strong> (Agitator) &mdash; opposition tool. 8-tick timeline with milestone events. Outcome scales with the actual corruption/freedom-index growth since the current government took office; the worse their record, the stronger your case.</li>
+</ul>
+
+<h3>Platform promises</h3>
+
+<p>Adopting a platform is a public commitment with teeth. Each platform has:</p>
+<ul>
+<li><strong>Improve</strong> stats &mdash; 4&ndash;6 stats you promise to push up (e.g. Social Justice promises minimum wage, poverty rate, income inequality, social mobility, healthcare/education accessibility)</li>
+<li><strong>Worsen</strong> stats &mdash; 3&ndash;4 stats that are likely collateral damage (Social Justice hurts foreign investment, GDP growth, corporate tax revenue)</li>
+<li><strong>Tradeoff blurb</strong> &mdash; human-readable tension (e.g. <em>"Capital flight risk. Foreign investors avoid high-tax environments. Growth may slow."</em>)</li>
+</ul>
+
+<p>Each platform occupies one of your three slots. Every tick, the tick processor checks whether the nation's stats are moving toward your promised targets. Fulfilled platforms award sustained approval; failed platforms (stats moving the wrong way) penalize you and your caucuses notice.</p>
+
+<p>The coalition-formation UI on the Election tab shows every party's active platforms so other players can see <em>what you've committed to</em> before inviting you into a government.</p>
+
+<h3>Leader traits</h3>
+
+<p>Your party leader carries one <strong>trait_key</strong> from the <code>leader_traits</code> catalog. Each trait has:</p>
+<ul>
+<li><strong>Upside</strong> &mdash; a buff on one or more actions (e.g. &minus;1 AP on rallies, +10% fundraising yield, better attack outcome odds)</li>
+<li><strong>Downside</strong> &mdash; a debuff to counter-balance (e.g. higher press-conference escalation, worse attack defense)</li>
+</ul>
+
+<p>Traits are rolled at leader creation &mdash; both at founding and at each succession. You can see your leader's trait on the party card and its effects on the actions panel; some traits only apply in specific contexts (e.g. presidential traits only matter if your party is running a president).</p>
 
 <h3>Governance score</h3>
 
-<p>If you're in the governing coalition, you'll also see a <strong>Governance</strong> score &mdash; a single rollup of how the nation's key stats have moved under your administration. Green means things are improving, red means stats are sliding. Voters notice. The Governance panel on the Parties tab shows the top stats by delta since your government formed.</p>
+<p>If your party is in the governing coalition, you'll also see a <strong>Governance</strong> score &mdash; a single rollup of how the nation's key stats have moved since your administration formed. Green means things are improving, red means stats are sliding.</p>
 
-<h3>Nation context</h3>
+<p>The Parties tab surfaces the top-N moved stats by delta (positive and negative) and who gets the credit or blame. Voters feel it: incumbents with strongly positive governance carry that into the next election; a red governance record means opposition parties can weaponize every data point against you.</p>
 
-<p>Your party exists inside a single nation. You can't run candidates in another nation, but you can cooperate with parties in other nations via <strong>International Party Organisations (IPOs)</strong> on the Diplomacy page. If your nation's government type changes (election reform, constitutional reform, etc.), your party's available actions and election mechanics change with it.</p>
+<h3>Standing, embezzlement, and reputational damage</h3>
+
+<p>Three related meters track the <em>reputation</em> layer of your party:</p>
+<ul>
+<li><strong>Approval</strong> &mdash; voter-facing, drives elections. Fast to move.</li>
+<li><strong>Standing</strong> &mdash; institution-facing, drives endorsements, confirmation bill outcomes, and some foundational law thresholds. Slow to move.</li>
+<li><strong>Embezzled Funds</strong> &mdash; a counter that increments when you take certain AP-cheap but legally-dubious actions. At threshold, triggers scandals; starts a <em>consecutive embezzle ticks</em> clock that makes lawsuits against you easier for opposition agitators.</li>
+</ul>
+
+<p>Damage to standing is harder to reverse than approval. Lost lawsuits, failed coup attempts, and betrayed coalitions all leave standing scars that take dozens of ticks to erase.</p>
+
+<h3>Nation context &amp; limits</h3>
+
+<p>Your party exists inside exactly one nation. You can't run candidates, propose bills, or hold ministries elsewhere. You <em>can</em> cooperate with parties in other nations via <strong>International Party Organisations (IPOs)</strong> on the Diplomacy page &mdash; an IPO lets member parties share momentum bonuses on aligned actions.</p>
+
+<p>If your nation's government type changes mid-game (constitutional reform foundational law), your party's available actions shift with it:</p>
+<ul>
+<li><strong>Parliamentary &rarr; Presidential:</strong> no more coalition formation; you run a presidential candidate instead</li>
+<li><strong>Semi-presidential cohabitation:</strong> presidential-domain ministers (foreign, defense, trade) must come from the president's party even when the PM is opposition-led</li>
+<li><strong>Constitutional monarchy:</strong> hereditary Queen/King stays; PM is elected; your party can't contest the crown</li>
+<li><strong>Absolute monarchy:</strong> no elections; the monarch rules; your party's role becomes advisory or revolutionary</li>
+</ul>
+
+<p>Read the Laws page before you consider voting yes on a government-type reform. The mechanics you're playing under can change overnight.</p>
 
 </div></details>
 
