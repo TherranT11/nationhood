@@ -106,7 +106,7 @@ body {
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, hfFmtBig } from './js/utils.js';
 import { renderCorpTopBar } from './js/corp-topbar.js';
 import { initSubDashboard } from './js/corp-sub-dashboard.js';
 import { loadAllCorporations as fetchAllCorporations } from './js/corp-all-corporations.js';
@@ -149,14 +149,8 @@ function hfCalcWage(multiplier) {
     return Math.round(baseAnnual * multiplier * inflMod * solMod);
 }
 
-function hfFmtBig(n) {
-    const abs = Math.abs(n);
-    const sign = n < 0 ? '-' : '';
-    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(2) + 'B';
-    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(2) + 'M';
-    if (abs >= 1e3) return sign + '$' + (abs / 1e3).toFixed(1) + 'k';
-    return sign + '$' + abs.toLocaleString();
-}
+// hfFmtBig moved to js/utils.js (shared across the three corp-operations
+// pages, expansion.html, and actions.html).
 function hfGetCapacity() {
     // Total capacity from owned properties (condition-scaled) + 500 base HQ
     const propCapacity = _ownedProperties.reduce((sum, p) => {

@@ -2601,7 +2601,7 @@ body.light-mode .vi-empty__text { color: #1a1a17; }
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, hfFmtBig } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { MATERIALS, QUALITY_TIERS, QUALITY_LABELS, MATERIAL_QUALITY_COLORS, checkTierAvailability, calculateBasePrice, calculateSupply } from './js/game/materials.js';
 import { EQUIPMENT, EQUIPMENT_TIERS, getEquipmentByTier, getEquipment, conditionColor, calculateTotalMaintenance, calculateEquipmentPrice, calculateEquipmentSupply, calculateEquipmentImportCost } from './js/game/equipment.js';
