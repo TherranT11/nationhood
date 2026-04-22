@@ -1275,9 +1275,12 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
             if (condErr) console.warn(`[PropertyEffects] Condition update failed for property ${upd.id}:`, condErr.message);
         }
 
-        // Workforce capacity enforcement:
-        // Total workforce cannot exceed total capacity from owned properties + base HQ (500)
-        // Condition scales effective capacity: 100% condition = full, 50% = half, 0% = none
+        // Total property capacity (base HQ 500 + sum of (capacity × condition))
+        // used by the Operational Efficiency calc below. Workforce is NOT
+        // auto-trimmed when it exceeds capacity — players should only lose
+        // headcount via explicit actions (e.g. selling a property that leaves
+        // them over-capacity). A per-tick auto-layoff was previously here and
+        // quietly fired employees as property condition decayed; removed.
         const totalCapacity = properties.reduce((sum, p) => {
             const cap = Number(p.capacity || 0);
             const cond = Number(p.condition || 0) / 100; // 0.0-1.0
@@ -1293,32 +1296,6 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
             const totalWf = Number(factionWf.corp_general_workforce ?? 0) +
                             Number(factionWf.corp_skilled_workforce ?? 0) +
                             Number(factionWf.corp_innovative_workforce ?? 0);
-
-            if (totalWf > totalCapacity) {
-                // Reduce general workforce first to fit capacity
-                const excess = totalWf - totalCapacity;
-                const generalNow = Number(factionWf.corp_general_workforce ?? 0);
-                const generalReduction = Math.min(excess, generalNow);
-                const remainingExcess = excess - generalReduction;
-
-                const updates = { corp_general_workforce: generalNow - generalReduction };
-
-                if (remainingExcess > 0) {
-                    const skilledNow = Number(factionWf.corp_skilled_workforce ?? 0);
-                    const skilledReduction = Math.min(remainingExcess, skilledNow);
-                    updates.corp_skilled_workforce = skilledNow - skilledReduction;
-
-                    const stillExcess = remainingExcess - skilledReduction;
-                    if (stillExcess > 0) {
-                        const innovNow = Number(factionWf.corp_innovative_workforce ?? 0);
-                        updates.corp_innovative_workforce = Math.max(0, innovNow - stillExcess);
-                    }
-                }
-
-                const { error: wfErr } = await supabase.from('factions').update(updates).eq('id', corp.id);
-                if (wfErr) console.error(`[PropertyEffects] Workforce cap update failed for ${corp.faction_name}:`, wfErr.message);
-                else console.log(`[PropertyEffects] ${corp.faction_name}: workforce capped at ${totalCapacity} (was ${totalWf}, -${excess} excess)`);
-            }
 
             // ── Operational Efficiency ──
             // Company-wide staffing ratio: total workforce / total property capacity × 100
