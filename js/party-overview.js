@@ -15,6 +15,7 @@ import { IDEOLOGY_AXES } from './game/ideology.js';
 import { getGoverningStatus, getGoverningStatusFor } from './game/agitator.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, statDirectionSign } from './game/stats.js';
 import { hasElectedPresident } from './game/government-types.js';
+import { blocTagHtml } from './common.js';
 
 let _supabase = null;
 let _state = null;
@@ -357,14 +358,6 @@ function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
             <div class="po-summary-value" style="color:${elColor};">${elTicks}${typeof elTicks === 'number' ? ' ticks' : ''}</div>
         </div>
     </div>`;
-}
-
-// Bloc badge — rendered beneath the GOVERNING/OPPOSITION status tag for any
-// party currently in a non-dissolved bloc. Returns '' when not in a bloc.
-function blocTagHtml(blocId, blocMap) {
-    const name = blocId && blocMap ? blocMap[blocId] : null;
-    if (!name) return '';
-    return `<span style="display:inline-block;font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:var(--amber);background:rgba(176,154,91,0.08);border:1px solid rgba(176,154,91,0.3);white-space:nowrap;">BLOC · ${esc(name)}</span>`;
 }
 
 function renderIdentityCard(o, faction, partyColor, statusLabel, statusColor) {

@@ -11,6 +11,7 @@ import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
 import { SECTOR_OPS_PAGE } from './corp-topbar.js';
+import { escapeHtml } from './utils.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -1501,3 +1502,32 @@ window.handleLogout = handleLogout;
 window.toggleTheme = toggleTheme;
 window.toggleFactionDropdown = toggleFactionDropdown;
 window.handleFactionSwitch = handleFactionSwitch;
+
+// ===== BLOCS =====
+// Shared helpers for the Form Bloc system. A bloc is a named alliance of
+// parties within a nation; factions.bloc_id points at blocs.id while the
+// bloc is live (dissolved_at_tick IS NULL). Every page that shows a party
+// name should surface the bloc the same way — pull the map via
+// loadBlocMap(nationId) and render chips with blocTagHtml().
+
+export async function loadBlocMap(nationId) {
+    const map = {};
+    if (!nationId) return map;
+    const { data, error } = await _supabase
+        .from('blocs')
+        .select('id, name')
+        .eq('nation_id', nationId)
+        .is('dissolved_at_tick', null);
+    if (error) {
+        console.warn('[Blocs] loadBlocMap failed:', error.message);
+        return map;
+    }
+    for (const b of (data || [])) map[b.id] = b.name;
+    return map;
+}
+
+export function blocTagHtml(blocId, blocMap) {
+    const name = blocId && blocMap ? blocMap[blocId] : null;
+    if (!name) return '';
+    return `<span style="display:inline-block;font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:var(--amber);background:rgba(176,154,91,0.08);border:1px solid rgba(176,154,91,0.3);white-space:nowrap;">BLOC · ${escapeHtml(name)}</span>`;
+}
