@@ -377,14 +377,22 @@ function _laneShipCountFor(partnerId) {
     }
     return count;
 }
-function _laneEfficiencyFor(partnerId) {
+// Resolve the shipping need for a lane between our nation and partnerId.
+// Wraps the _worldState / _worldAllNations / _worldRelations lookups so every
+// caller (efficiency badge, logistics badge, anywhere else) reads the same
+// source of truth instead of re-doing the find() dance.
+function _shippingNeedForPartner(partnerId) {
     const myId = _worldState?.nation?.id;
     const myNation = (_worldAllNations || []).find(n => n.id === myId);
     const partner = (_worldAllNations || []).find(n => n.id === partnerId);
     const rel = (_worldRelations || []).find(r =>
         (r.nation_a_id === myId && r.nation_b_id === partnerId) ||
         (r.nation_b_id === myId && r.nation_a_id === partnerId));
-    const shipNeed = shippingNeedFor(myNation, partner, rel?.border_types);
+    return shippingNeedFor(myNation, partner, rel?.border_types);
+}
+
+function _laneEfficiencyFor(partnerId) {
+    const shipNeed = _shippingNeedForPartner(partnerId);
     if (!shipNeed.needsShipping) {
         return { pct: 100, ships: 0, reason: shipNeed.reason };
     }
@@ -1758,11 +1766,7 @@ function renderTradeAgreements() {
         const agIsTradeType = ag.agreement_type !== 'retaliatory_tariff' && ag.agreement_type !== 'impose_embargo';
         // Land routes (landlocked / land border) don't need logistics — skip the orange
         // NO LOGISTICS warning and show a neutral land-trade tag instead.
-        const myNationObj = (_worldAllNations || []).find(n => n.id === nationId);
-        const agRel = (_worldRelations || []).find(r =>
-            (r.nation_a_id === nationId && r.nation_b_id === partnerId) ||
-            (r.nation_b_id === nationId && r.nation_a_id === partnerId));
-        const agShipNeed = shippingNeedFor(myNationObj, partner, agRel?.border_types);
+        const agShipNeed = _shippingNeedForPartner(partnerId);
         const logisticsBadge = !agIsTradeType
             ? ''
             : agShipInfo?.hasLogistics
