@@ -7,6 +7,7 @@ const THEME_STORAGE_KEY = 'corpThemePref';
 // Stashed at render time so the CASH-pill dropdown can query cash history
 // for the active corp without re-threading faction through window handlers.
 let _topbarFaction = null;
+let _topbarShardTick = 0;    // cached for the 6-month cash-movement filter
 
 // Sync body.light-mode from localStorage. Called at render (and by a tiny inline
 // script at the top of each corp body) so saved preference survives page loads
@@ -80,6 +81,7 @@ export function renderCorpTopBar(container, opts = {}) {
     applyStoredCorpTheme();
     const { faction, shard, activeTab, allUserFactions, badges } = opts;
     _topbarFaction = faction;
+    _topbarShardTick = Number(shard?.current_tick) || 0;
     const tabBadges = badges || {}; // { tabId: { count, color } }
     const isLightMode = document.body.classList.contains('light-mode');
     const ticker = faction?.corp_ticker || faction?.abbreviation || '';
@@ -342,11 +344,15 @@ async function _renderCashMovements() {
             }
         }
 
+        // Last 6 months inclusive of the current tick. 1 tick = 1 month, so
+        // entries with tick >= currentTick - 5 fall in the 6-month window.
+        // No row cap — if the player had 20 movements in 6 months, show them all.
+        const windowStart = _topbarShardTick - 5;
         entries.sort((a, b) => b.tick - a.tick);
-        const top5 = entries.slice(0, 5);
+        const recent = entries.filter(e => e.tick >= windowStart);
 
-        if (top5.length === 0) {
-            list.innerHTML = '<div style="padding:10px 14px;color:var(--text-dim);">No recent cash movements.</div>';
+        if (recent.length === 0) {
+            list.innerHTML = '<div style="padding:10px 14px;color:var(--text-dim);">No cash movements in the last 6 months.</div>';
             return;
         }
 
@@ -358,7 +364,7 @@ async function _renderCashMovements() {
                     : String(abs);
             return (n >= 0 ? '+$' : '-$') + s;
         };
-        list.innerHTML = top5.map(e => {
+        list.innerHTML = recent.map(e => {
             const color = e.amount >= 0 ? 'var(--green, #5c5)' : 'var(--red, #c55)';
             return `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 14px;border-bottom:1px solid var(--border-0);font-family:var(--font-mono);font-size:10px;">
                 <span style="color:${color};font-weight:700;min-width:70px;">${fmtAmt(e.amount)}</span>
