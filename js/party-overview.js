@@ -160,6 +160,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             caucusResult,
             electionResult,
             ministriesResult,
+            blocsResult,
         ] = await Promise.all([
             getGoverningStatus(supabase, nationId, factionId),
             supabase.from('factions').select('*').eq('nation_id', nationId).eq('faction_type', 'party'),
@@ -169,6 +170,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             supabase.from('caucus_factions').select('*').eq('party_id', factionId).eq('is_active', true),
             supabase.from('elections').select('*').eq('nation_id', nationId).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(5),
             supabase.from('ministries').select('party_id').eq('nation_id', nationId).eq('is_active', true),
+            supabase.from('blocs').select('id, name').eq('nation_id', nationId).is('dissolved_at_tick', null),
         ]);
 
         // Log errors but don't fail
@@ -178,6 +180,11 @@ export async function initPartyOverview(supabase, state, containerId) {
         if (activityResult.error) console.error('[PartyOverview] Activity fetch error:', activityResult.error.message);
         if (caucusResult.error) console.error('[PartyOverview] Caucus fetch error:', caucusResult.error.message);
         if (electionResult.error) console.error('[PartyOverview] Election fetch error:', electionResult.error.message);
+        if (blocsResult.error) console.error('[PartyOverview] Blocs fetch error:', blocsResult.error.message);
+
+        // Build bloc id → name map for rendering bloc tags next to party status.
+        const blocMap = {};
+        for (const b of (blocsResult.data || [])) blocMap[b.id] = b.name;
 
         const allParties = partiesResult.data || [];
         const admin = governingResult.administration;
@@ -230,6 +237,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             myFaction: faction,
             allParties: allParties,
             rivalParties: allParties.filter(p => p.id !== factionId),
+            blocMap,
             factionIdeology: ideoMap,
             electoralStandings: standingsResult.data || [],
             recentActivity: activityResult.data || [],
@@ -351,6 +359,14 @@ function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
     </div>`;
 }
 
+// Bloc badge — rendered beneath the GOVERNING/OPPOSITION status tag for any
+// party currently in a non-dissolved bloc. Returns '' when not in a bloc.
+function blocTagHtml(blocId, blocMap) {
+    const name = blocId && blocMap ? blocMap[blocId] : null;
+    if (!name) return '';
+    return `<span style="display:inline-block;font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:var(--amber);background:rgba(176,154,91,0.08);border:1px solid rgba(176,154,91,0.3);white-space:nowrap;">BLOC · ${esc(name)}</span>`;
+}
+
 function renderIdentityCard(o, faction, partyColor, statusLabel, statusColor) {
     const leaderName = (faction?.leader_first_name && faction?.leader_last_name)
         ? `${faction.leader_first_name} ${faction.leader_last_name}` : 'Unknown';
@@ -362,9 +378,10 @@ function renderIdentityCard(o, faction, partyColor, statusLabel, statusColor) {
         <div class="po-identity-inner">
             <div class="po-identity-logo" style="color:${partyColor};background:${partyColor}12;border-color:${partyColor}33;">${leaderInitials}</div>
             <div style="flex:1;min-width:0;">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:wrap;">
                     <span class="po-identity-name">${esc(faction?.faction_name)}</span>
                     <span class="po-identity-badge" style="color:${statusColor};background:${statusColor}0a;border-color:${statusColor}44;">${statusLabel}</span>
+                    ${blocTagHtml(faction?.bloc_id, o.blocMap)}
                 </div>
                 <div class="po-identity-meta">${o.ticksInPower} ticks in power</div>
                 <div class="po-leader-row">
@@ -698,7 +715,10 @@ function renderRivalParties(o, myFaction) {
                         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${esc(leaderName)}</div>
                     </div>
                 </div>
-                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:2px 7px;color:${statusColor};background:${statusColor}0a;border:1px solid ${statusColor}44;white-space:nowrap;">${statusLabel}</span>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:2px 7px;color:${statusColor};background:${statusColor}0a;border:1px solid ${statusColor}44;white-space:nowrap;">${statusLabel}</span>
+                    ${blocTagHtml(party.bloc_id, o.blocMap)}
+                </div>
             </div>
             <div style="display:flex;gap:10px;margin-bottom:8px;">
                 <div style="display:flex;align-items:center;gap:5px;">
