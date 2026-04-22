@@ -1564,7 +1564,7 @@ function renderFeaturedCategory(cat, nation) {
 
 // ===== TAB SWITCHING =====
 
-var _activeNationTab = 'statistics';
+var _activeNationTab = 'profile';
 
 function switchNationTab(tab) {
     if (tab === _activeNationTab) return;
@@ -2262,8 +2262,8 @@ async function renderNationPage(nation) {
 
     // ---- Tab bar ----
     h += '<div class="nation-tab-bar">';
-    h += '<button class="nation-tab' + (_activeNationTab === 'statistics' ? ' active' : '') + '" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'profile' ? ' active' : '') + '" data-tab="profile" onclick="switchNationTab(\'profile\')">Nation</button>';
+    h += '<button class="nation-tab' + (_activeNationTab === 'statistics' ? ' active' : '') + '" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'immigration' ? ' active' : '') + '" data-tab="immigration" onclick="switchNationTab(\'immigration\')">Immigration</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'illegal' ? ' active' : '') + '" data-tab="illegal" onclick="switchNationTab(\'illegal\')">Illegal Immigration</button>';
     h += '</div>';
