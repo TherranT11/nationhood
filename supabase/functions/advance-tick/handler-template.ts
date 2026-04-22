@@ -2589,6 +2589,58 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Ambassador retirements failed for ${nation.name} (non-fatal):`, retireErr);
         }
 
+        // ── Monarch succession by natural death ──
+        // Fires when the current tick hits the secret reign-end roll set at
+        // coronation. Rolls a new monarch from the nation's name pool and a
+        // fresh 1d25-year reign. Hidden from UI — the only surface is the
+        // event_log entry on transition.
+        try {
+            const reignEndsTick = Number(nation.monarch_reign_ends_tick);
+            const hasDynasty = !!nation.dynasty_name;
+            if (hasDynasty && Number.isFinite(reignEndsTick) && newTick >= reignEndsTick) {
+                const { firstNames: fPool, lastNames: lPool } = getNationNames(nation.name);
+                const newFirst = fPool[Math.floor(Math.random() * fPool.length)];
+                const newLast = lPool[Math.floor(Math.random() * lPool.length)];
+                const newAge = 25 + Math.floor(Math.random() * 26); // 25–50
+                const newTitle = isFemaleName(newFirst) ? 'Queen' : 'King';
+                const reignYears = 1 + Math.floor(Math.random() * 25); // 1d25
+                const newReignEndsTick = newTick + (reignYears * 12);
+
+                const oldTitle = nation.head_of_state_title || 'King';
+                const oldName = `${nation.head_of_state_first_name || ''} ${nation.head_of_state_last_name || ''}`.trim() || 'The Monarch';
+                const newName = `${newFirst} ${newLast}`;
+                const dynasty = nation.dynasty_name;
+
+                await supabase.from('nations').update({
+                    head_of_state_first_name: newFirst,
+                    head_of_state_last_name: newLast,
+                    head_of_state_age: newAge,
+                    head_of_state_title: newTitle,
+                    monarch_crowned_tick: newTick,
+                    monarch_reign_ends_tick: newReignEndsTick,
+                }).eq('id', nation.id);
+
+                nation.head_of_state_first_name = newFirst;
+                nation.head_of_state_last_name = newLast;
+                nation.head_of_state_age = newAge;
+                nation.head_of_state_title = newTitle;
+                nation.monarch_crowned_tick = newTick;
+                nation.monarch_reign_ends_tick = newReignEndsTick;
+
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: `${oldTitle} ${oldName} has died`,
+                    category: 'government',
+                    description_chosen: `${oldTitle} ${oldName} of ${dynasty} has passed away. ${newTitle} ${newName} of ${dynasty} ascends the throne. Long live the ${newTitle}.`,
+                    fired_at_tick: newTick,
+                });
+
+                console.log(`[Succession] ${oldTitle} ${oldName} of ${nation.name} has died. ${newTitle} ${newName} takes the throne.`);
+            }
+        } catch (succErr) {
+            console.error(`[advanceTick] Monarch succession failed for ${nation.name} (non-fatal):`, succErr);
+        }
+
         // ── Succession helper: updates HOS, syncs nation object, logs action ──
         // Random replacement for head of state succession.
         async function handleStrongmanSuccession(
