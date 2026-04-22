@@ -192,6 +192,16 @@ const LEADER_ACTIONS = [
         tags: ['LEGISLATIVE', 'OPPOSITION'],
         locked: false,
     },
+    {
+        id: 'disband_party',
+        name: 'Disband Party',
+        desc: 'Voluntarily dissolve your party. Your seats are vacated and sit empty until the next election (no backfill or redistribution). All party funds and momentum are lost. You are removed from every nation chat. Cannot be undone. 24-tick cooldown per user. Cannot be used while Prime Minister, sitting President, or reigning Monarch — step down first.',
+        cost: 'IRREVERSIBLE',
+        costColor: '#c55',
+        moneyCost: 0,
+        tags: ['IRREVERSIBLE'],
+        locked: false,
+    },
 ];
 
 // Monarch-only actions (shown instead of standard leader actions in monarchy)
@@ -374,6 +384,23 @@ export async function initPartyActions(supabase, state) {
     await loadBlocState(faction.id, state.nation?.id);
 
     renderPage(root);
+}
+
+/**
+ * Classify the given faction's executive role in its nation. Used as the
+ * gating predicate for actions that structurally conflict with holding
+ * executive power (Create Bloc, Disband Party). Mirrors the three EXISTS
+ * checks in the server-side create_bloc / disband_party RPCs.
+ */
+function classifyHeadOfGovernment(faction) {
+    if (!faction) return { isPM: false, isPresident: false, isMonarchActing: false };
+    return {
+        isPM: !!_administration && _administration.pm_party_id === faction.id,
+        isPresident: _state?.nation?.hos_election_method === 'elected'
+            && _administration?.president_party_id === faction.id,
+        isMonarchActing: isAbsoluteMonarchy(_state?.nation)
+            && _state?.nation?.monarch_faction_id === faction.id,
+    };
 }
 
 // ═══════════════════════════ BLOCS ═══════════════════════════
@@ -903,6 +930,8 @@ function renderPage(root) {
             triggerCallEarlyElections();
         } else if (actionId === 'resign_as_pm') {
             triggerResignAsPM();
+        } else if (actionId === 'disband_party') {
+            triggerDisbandParty();
         } else if (actionId === 'create_bloc') {
             openCreateBlocModal(root);
         } else if (actionId === 'leave_bloc') {
@@ -1191,6 +1220,23 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             } else {
                 action.lockReason = '';
             }
+        } else if (action.id === 'disband_party') {
+            // Head-of-Government guard mirrors the server RPC. PM / elected
+            // President / Monarch must step down first so coalition rows
+            // don't dangle with a dead party_id.
+            const hog = classifyHeadOfGovernment(faction);
+            if (hog.isPM) {
+                isDisabled = true;
+                action.lockReason = 'You are Prime Minister — resign before disbanding.';
+            } else if (hog.isPresident) {
+                isDisabled = true;
+                action.lockReason = 'You are the sitting President — step down before disbanding.';
+            } else if (hog.isMonarchActing) {
+                isDisabled = true;
+                action.lockReason = 'The reigning monarch cannot disband the royal house.';
+            } else {
+                action.lockReason = '';
+            }
         } else if (action.id === 'fundraise') {
             const fi = getFundraiseInfo(seats, _fundraiseUseCount);
             costDisplay = `-${fi.momCost} MOM`;
@@ -1323,15 +1369,11 @@ function renderDeputyActionsPanel(role) {
         let isDisabled = action.locked;
         let lockReason = '';
         if (action.id === 'create_bloc') {
-            const isPM = !!_administration && _administration.pm_party_id === faction.id;
-            const isPresident = _state.nation?.hos_election_method === 'elected'
-                && _administration?.president_party_id === faction.id;
-            const isMonarchActing = isAbsoluteMonarchy(_state.nation)
-                && _state.nation?.monarch_faction_id === faction.id;
+            const hog = classifyHeadOfGovernment(faction);
             if (_myBloc) {
                 isDisabled = true;
                 lockReason = `Already in the ${_myBloc.name} bloc.`;
-            } else if (isPM || isPresident || isMonarchActing) {
+            } else if (hog.isPM || hog.isPresident || hog.isMonarchActing) {
                 isDisabled = true;
                 lockReason = 'Head of Government cannot form blocs — you already lead the coalition.';
             } else if ((faction.party_funds || 0) < 100000) {
@@ -3463,6 +3505,88 @@ async function triggerResignAsPM() {
         alert('Failed to resign: ' + (err?.message || 'unknown error'));
     } finally {
         _resignPMSubmitting = false;
+    }
+}
+
+// ════════════════════════ DISBAND PARTY ════════════════════════
+// Mirror of the corp bankruptcy flow — one destructive RPC call,
+// double-confirm on the client (confirm dialog + typed string),
+// then redirect to faction-select so the player can pick what to
+// play next.
+
+let _disbandPartySubmitting = false;
+
+async function triggerDisbandParty() {
+    if (_disbandPartySubmitting) return;
+    if (!_state?.faction?.id) return;
+
+    const faction = _state.faction;
+    const partyName = faction.faction_name || 'this party';
+    const seats = faction.seats || 0;
+    const momentum = Number(faction.momentum || 0).toFixed(1);
+    const funds = Math.round(Number(faction.party_funds || 0));
+    const fundsFormatted = funds >= 1000 ? '$' + funds.toLocaleString() : '$' + funds;
+
+    if (!confirm(
+        'DISBAND ' + partyName.toUpperCase() + '?\n\n' +
+        'This will permanently:\n' +
+        '• Dissolve the party\n' +
+        '• Vacate ' + seats + ' seat' + (seats === 1 ? '' : 's') + ' in parliament (empty until next election; no backfill)\n' +
+        '• Forfeit ' + fundsFormatted + ' in party funds\n' +
+        '• Forfeit ' + momentum + ' momentum\n' +
+        '• Remove you from every nation chat\n' +
+        '• Cascade-delete platforms, ideology, bloc membership,\n' +
+        '  and any pending bloc invitations\n\n' +
+        'You will need to found a new party.\n' +
+        'There is a 24-tick cooldown on disbanding.\n\n' +
+        'This action CANNOT be undone.'
+    )) return;
+
+    const typed = prompt('Type "DISBAND" to confirm dissolution of ' + partyName + ':');
+    if (typed !== 'DISBAND') { alert('Disband cancelled.'); return; }
+
+    _disbandPartySubmitting = true;
+    try {
+        const { data, error } = await _supabase.rpc('disband_party', {
+            p_faction_id: faction.id,
+        });
+        if (error) throw error;
+        if (data && data.success === false) throw new Error(data.error || 'Unknown error');
+
+        sessionStorage.removeItem('active_faction_id');
+        sessionStorage.removeItem('nationhood_state');
+
+        const { data: { user } } = await _supabase.auth.getUser();
+        if (user) {
+            // Pick the next faction to show. RLS gates this — only this
+            // user's remaining factions come back.
+            const { data: remaining } = await _supabase
+                .from('factions')
+                .select('id, faction_type')
+                .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+            const otherParty = (remaining || []).find(f => f.faction_type === 'party');
+            const corp       = (remaining || []).find(f => f.faction_type === 'corporation');
+            if (otherParty) {
+                sessionStorage.setItem('active_faction_id', otherParty.id);
+                alert(partyName + ' has been disbanded.\n\nRedirecting to your other party.');
+                window.location.href = 'dashboard.html';
+                return;
+            }
+            if (corp) {
+                sessionStorage.setItem('active_faction_id', corp.id);
+                alert(partyName + ' has been disbanded.\n\nRedirecting to your corporation.');
+                window.location.href = 'corp-dashboard.html';
+                return;
+            }
+        }
+
+        alert(partyName + ' has been disbanded.\n\nYou have no remaining factions.');
+        window.location.href = 'faction-select.html';
+    } catch (err) {
+        console.error('[PartyActions] Disband failed:', err);
+        alert('Disband failed: ' + (err?.message || err));
+    } finally {
+        _disbandPartySubmitting = false;
     }
 }
 
