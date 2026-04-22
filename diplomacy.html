@@ -341,7 +341,7 @@ async function loadTradeFlowData() {
 
     // Get trade flows for that tick
     const { data: flowRows } = await _supabase.from('trade_flows')
-        .select('sector, domestic_production, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
+        .select('sector, domestic_production, domestic_demand, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
         .eq('nation_id', nationId)
         .eq('tick', _tradeSummary.tick);
 
