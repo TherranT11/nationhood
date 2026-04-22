@@ -1091,34 +1091,48 @@ export function calculateExportCapacity(nation, sector, opts) {
  * @param {Object} [opts]    – optional: { defense_budget, has_arms_exports } for arms sector
  * @returns {number} import demand in dollars
  */
+// Shared fuel-demand math — single source of truth for the simplified model.
+// Drivers: population, urbanization, manufacturing, standard_of_living.
+// Domestic offset: oil_and_gas + energy_generation.
+// Currency strength scales import power (linear 0-to-1).
+// No floors, no caps, no stability modifier, no tariff dampener.
+// Calibration: 150M per 1M pop = production cap ($15B) / 100M pop — so
+// a 100M nation at max stats + zero coverage + full import power demands
+// $15B, symmetric with the supply-side cap. Scales linearly with pop.
+function computeFuelDemand(nation) {
+    const pop = Number(nation.population) || 0;
+    const urban = Number(nation.urbanization) || 0;
+    const manuf = Number(nation.manufacturing_output) || 0;
+    const sol = Number(nation.standard_of_living) || 0;
+    const oil = Number(nation.oil_and_gas) || 0;
+    const gen = Number(nation.energy_generation) || 0;
+    const currency = Number(nation.currency_strength) || 0;
+
+    const intensity        = (urban + manuf + sol) / 300;
+    const domesticCoverage = (oil + gen) / 200;
+    const importPower      = currency / 100;
+
+    const gross = (pop / 1_000_000) * 150_000_000 * intensity * importPower;
+    return {
+        gross: Math.round(gross),
+        importDemand: Math.round(gross * (1 - domesticCoverage)),
+    };
+}
+
+// Gross domestic demand for fuel — total consumption before the domestic-
+// coverage offset carves out imports. Used by processTradeFlows to populate
+// trade_flows.domestic_demand and by the YOUR ECONOMY panel in diplomacy.html.
+export function calculateDomesticFuelDemand(nation) {
+    return computeFuelDemand(nation).gross;
+}
+
 export function calculateImportDemand(nation, sector, opts) {
     // Export-only sectors have no import demand
     if (sector.export_only) return 0;
 
     // ── FUEL & ENERGY — simplified model ──
-    // Drivers: population, urbanization, manufacturing, standard_of_living.
-    // Domestic offset: oil_and_gas + energy_generation.
-    // Currency strength scales import power (linear 0-to-1).
-    // No floors, no caps, no stability modifier, no tariff dampener.
-    // Calibration: 150M per 1M pop = production cap ($15B) / 100M pop — so
-    // a 100M nation at max stats + zero coverage + full import power demands
-    // $15B, symmetric with the supply-side cap. Scales linearly with pop.
     if (sector.key === 'fuel_energy') {
-        const pop = Number(nation.population) || 0;
-        const urban = Number(nation.urbanization) || 0;
-        const manuf = Number(nation.manufacturing_output) || 0;
-        const sol = Number(nation.standard_of_living) || 0;
-        const oil = Number(nation.oil_and_gas) || 0;
-        const gen = Number(nation.energy_generation) || 0;
-        const currency = Number(nation.currency_strength) || 0;
-
-        const intensity        = (urban + manuf + sol) / 300;
-        const domesticCoverage = (oil + gen) / 200;
-        const importPower      = currency / 100;
-
-        return Math.round(
-            (pop / 1_000_000) * 150_000_000 * intensity * (1 - domesticCoverage) * importPower
-        );
+        return computeFuelDemand(nation).importDemand;
     }
 
     var cfg = TRADE_CONFIG;
@@ -1581,9 +1595,13 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 expCap = Math.round(expCap * (exportCaps['food_agriculture'] / 100));
             }
 
+            // Gross domestic demand — currently populated for fuel_energy only;
+            // other sectors stay at 0 until they get the same treatment.
+            var domDem = sector.key === 'fuel_energy' ? calculateDomesticFuelDemand(n) : 0;
+
             // Export caps only restrict what leaves the country — they don't
             // change what's produced, so domProd is captured pre-cap.
-            nationFlows[n.id][sector.key] = { domesticProduction: domProd, exportCapacity: expCap, importDemand: impDem };
+            nationFlows[n.id][sector.key] = { domesticProduction: domProd, exportCapacity: expCap, importDemand: impDem, domesticDemand: domDem };
             sectorAgg[sector.key].totalSupply += expCap;
             sectorAgg[sector.key].totalDemand += impDem;
         }
@@ -2182,6 +2200,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 tick: currentTick,
                 sector: sKey,
                 domestic_production: nationFlows[n.id][sKey].domesticProduction,
+                domestic_demand: nationFlows[n.id][sKey].domesticDemand || 0,
                 export_capacity: nationFlows[n.id][sKey].exportCapacity,
                 export_volume: expVol,
                 import_demand: nationFlows[n.id][sKey].importDemand,
