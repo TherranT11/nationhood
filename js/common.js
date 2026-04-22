@@ -1513,16 +1513,20 @@ window.handleFactionSwitch = handleFactionSwitch;
 export async function loadBlocMap(nationId) {
     const map = {};
     if (!nationId) return map;
-    const { data, error } = await _supabase
-        .from('blocs')
-        .select('id, name')
-        .eq('nation_id', nationId)
-        .is('dissolved_at_tick', null);
-    if (error) {
-        console.warn('[Blocs] loadBlocMap failed:', error.message);
-        return map;
+    try {
+        const { data, error } = await _supabase
+            .from('blocs')
+            .select('id, name')
+            .eq('nation_id', nationId)
+            .is('dissolved_at_tick', null);
+        if (error) {
+            console.warn('[Blocs] loadBlocMap failed:', error.message);
+            return map;
+        }
+        for (const b of (data || [])) map[b.id] = b.name;
+    } catch (err) {
+        console.warn('[Blocs] loadBlocMap threw:', err?.message || err);
     }
-    for (const b of (data || [])) map[b.id] = b.name;
     return map;
 }
 

@@ -5161,6 +5161,8 @@ function renderPartyCard(party, nation, blocMap) {
     else if (party.status === 'governing_junior') { statusLabel = 'GOVERNING — JUNIOR'; statusCls = 'op-badge-green'; }
     else { statusLabel = 'OPPOSITION'; statusCls = 'op-badge-red'; }
 
+    const blocChip = blocTagHtml(party.blocId, blocMap);
+
     // Founded
     const founded = party.foundedTick != null ? tickToDate(party.foundedTick) : null;
     const foundedBadge = founded ? `<span class="op-badge op-badge-party" style="color:${c};border-color:${cBorder};font-size:12px">Est. ${escapeHtml(founded)}</span>` : '';
@@ -5237,7 +5239,7 @@ function renderPartyCard(party, nation, blocMap) {
                     ${foundedBadge}
                     ${leaderBadge}
                 </div>
-                ${blocTagHtml(party.blocId, blocMap) ? `<div style="margin-top:4px;">${blocTagHtml(party.blocId, blocMap)}</div>` : ''}
+                ${blocChip ? `<div style="margin-top:4px;">${blocChip}</div>` : ''}
             </div>
         </div>
         ${descHtml}
