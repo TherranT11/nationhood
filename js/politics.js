@@ -26,7 +26,13 @@ function toMap(arr, key = 'id') {
 }
 
 function computeGovernanceScore(nation, statsAtStart, startedAtTick, currentTick) {
-    const ticksInPower = currentTick - (startedAtTick || currentTick);
+    // Use nullish coalesce (??) rather than (||) — tick 0 is a LEGITIMATE
+    // start tick (the game's inaugural administration is formed at tick 0)
+    // and the || operator treats 0 as falsy, silently falling back to
+    // currentTick and collapsing ticksInPower to 0 forever. ?? only falls
+    // back for null / undefined, preserving tick 0 as a real value.
+    const effectiveStart = startedAtTick ?? currentTick;
+    const ticksInPower = currentTick - effectiveStart;
     if (!statsAtStart) return { score: 0, deltas: [], decayCycles: 0, multiplier: 1, ticksInPower };
     let sum = 0, count = 0;
     const deltas = [];
