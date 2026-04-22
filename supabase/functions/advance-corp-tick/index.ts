@@ -1340,6 +1340,8 @@ const SUB_PARENT_REP_MIN = 0.3;          // min multiplier at rep 0
 const SUB_PARENT_REP_MAX = 1.7;          // max multiplier at rep 100
 
 async function processSubsidiaryRevenue(supabase, nation, currentTick) {
+    // TEMP DEBUG — remove after verifying deployed bundle contains this block.
+    console.log(`[SubRevenue-ENTRY] nation=${nation?.name} tick=${currentTick}`);
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
 
     // All active regional HQs PHYSICALLY in this nation. Previously this also
