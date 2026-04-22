@@ -1855,14 +1855,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] PM trait effects failed for ${nation.name} (non-fatal):`, pmTraitErr);
         }
 
-        // Base momentum decay — 8% per tick, applied to all party factions
+        // Base momentum decay — 8% per tick, applied to all party factions.
+        // Parties with a custom_logo_url receive a +1/tick bonus (advertised in
+        // the Set Party Logo modal as "Current logo active — +1 Momentum/tick").
+        // Net per tick = -(8% of current) + (1 if logo else 0), then floored at 1
+        // and capped at 100.
+        //
         // Single direct update per faction (no RPC overhead, no momentum_log append).
-        // Decay entries would flood the 50-entry log — players see 'base_decay' in the
-        // tooltip anyway. This saves N RPC calls (each RPC = 2 queries internally).
+        // Decay entries would flood the 50-entry log — players see 'base_decay' in
+        // the tooltip anyway. This saves N RPC calls (each RPC = 2 queries internally).
         try {
             const { data: decayFactions } = await supabase
                 .from('factions')
-                .select('id, momentum')
+                .select('id, momentum, custom_logo_url')
                 .eq('nation_id', nation.id)
                 .eq('faction_type', 'party')
                 .gt('momentum', 0);
@@ -1870,7 +1875,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             for (const f of (decayFactions || [])) {
                 const oldMom = Number(f.momentum) || 0;
                 const decay = Math.max(0.5, Math.round(oldMom * 0.08 * 100) / 100);
-                const newMom = Math.max(1, Math.round((oldMom - decay) * 100) / 100); // floor at 1 to prevent death spiral
+                const logoBonus = f.custom_logo_url ? 1 : 0;
+                const newMom = Math.min(100, Math.max(1, Math.round((oldMom - decay + logoBonus) * 100) / 100));
                 await supabase.from('factions')
                     .update({ momentum: newMom })
                     .eq('id', f.id);

@@ -1375,52 +1375,67 @@ async function processSubsidiaryRevenue(supabase, nation, currentTick) {
 
     const baseRepMult = SUB_DEFAULT_REPUTATION / 100;
     let updatedCount = 0;
+    let skippedCount = 0;
+    // Per-HQ try/catch: one bad row (unexpected null, math overflow, bigint
+    // coercion failure) was aborting the whole nation's loop, leaving every
+    // HQ after the failure silently untouched. The outer catch at the caller
+    // only logs "Subsidiary revenue failed for <nation>" once — the HQs in
+    // that nation were orphaned. Isolate each HQ so one row can't poison the
+    // batch, and include hq.id + faction_id in the error message so the
+    // specific failing row is diagnosable from logs alone.
     for (const hq of hqs) {
-        const subCash = Number(hq.sub_cash ?? 0);
-        const corp = corpMap[hq.faction_id];
+        try {
+            const subCash = Number(hq.sub_cash ?? 0);
+            const corp = corpMap[hq.faction_id];
 
-        // Parent corp's reputation drives the growth/shrink delta — symmetric
-        // around 1.0 at rep 50, clamped so one bad tick can't zero revenue.
-        const parentRep = Number(corp?.corp_reputation ?? SUB_PARENT_REP_NEUTRAL);
-        const parentRepMult = Math.max(
-            SUB_PARENT_REP_MIN,
-            Math.min(SUB_PARENT_REP_MAX, (parentRep - SUB_PARENT_REP_NEUTRAL) / 100 + 1)
-        );
+            // Parent corp's reputation drives the growth/shrink delta — symmetric
+            // around 1.0 at rep 50, clamped so one bad tick can't zero revenue.
+            const parentRep = Number(corp?.corp_reputation ?? SUB_PARENT_REP_NEUTRAL);
+            const parentRepMult = Math.max(
+                SUB_PARENT_REP_MIN,
+                Math.min(SUB_PARENT_REP_MAX, (parentRep - SUB_PARENT_REP_NEUTRAL) / 100 + 1)
+            );
 
-        // Investment return: based on positive cash balance × GDP × reputation
-        const investCash = Math.max(0, subCash);
-        const gdpMod = (gdpGrowth - SUB_GDP_NEUTRAL) / 100;
-        const investReturn = Math.round(investCash * SUB_REVENUE_BASE * (1 + gdpMod) * baseRepMult * parentRepMult);
+            // Investment return: based on positive cash balance × GDP × reputation
+            const investCash = Math.max(0, subCash);
+            const gdpMod = (gdpGrowth - SUB_GDP_NEUTRAL) / 100;
+            const investReturn = Math.round(investCash * SUB_REVENUE_BASE * (1 + gdpMod) * baseRepMult * parentRepMult);
 
-        // Operating overhead: scales with GDP (bad GDP = higher costs)
-        // At GDP 50 (average): 1.0x overhead. At GDP 10: 1.4x. At GDP 80: 0.7x.
-        const overheadMult = Math.max(0.1, 1 + (50 - gdpGrowth) / 100);
-        const overhead = Math.round(SUB_OPERATING_OVERHEAD * overheadMult);
+            // Operating overhead: scales with GDP (bad GDP = higher costs)
+            // At GDP 50 (average): 1.0x overhead. At GDP 10: 1.4x. At GDP 80: 0.7x.
+            const overheadMult = Math.max(0.1, 1 + (50 - gdpGrowth) / 100);
+            const overhead = Math.round(SUB_OPERATING_OVERHEAD * overheadMult);
 
-        let revenue = investReturn - overhead;
+            let revenue = investReturn - overhead;
 
-        // Clamp losses to prevent instant wipeout
-        const maxLoss = Math.max(SUB_OPERATING_OVERHEAD, Math.round(Math.abs(subCash) * SUB_MAX_LOSS_RATE));
-        if (revenue < 0) revenue = Math.max(revenue, -maxLoss);
-        if (revenue === 0) continue;
+            // Clamp losses to prevent instant wipeout
+            const maxLoss = Math.max(SUB_OPERATING_OVERHEAD, Math.round(Math.abs(subCash) * SUB_MAX_LOSS_RATE));
+            if (revenue < 0) revenue = Math.max(revenue, -maxLoss);
+            if (revenue === 0) { skippedCount += 1; continue; }
 
-        // sub_cash can go negative (subsidiary in debt)
-        const newSubCash = subCash + revenue;
-        const { error: updErr } = await supabase
-            .from('corp_properties')
-            .update({ sub_cash: newSubCash })
-            .eq('id', hq.id);
+            // sub_cash can go negative (subsidiary in debt)
+            const newSubCash = subCash + revenue;
+            const { error: updErr } = await supabase
+                .from('corp_properties')
+                .update({ sub_cash: newSubCash })
+                .eq('id', hq.id);
 
-        if (updErr) {
-            console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name}:`, updErr.message);
-        } else {
-            updatedCount += 1;
-            console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, parentRep:${parentRep}, repMult:${parentRepMult.toFixed(2)}, overhead:${overhead.toLocaleString()}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
+            if (updErr) {
+                console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name} (hq.id=${hq.id}, faction_id=${hq.faction_id}):`, updErr.message);
+            } else {
+                updatedCount += 1;
+                console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, parentRep:${parentRep}, repMult:${parentRepMult.toFixed(2)}, overhead:${overhead.toLocaleString()}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
+            }
+        } catch (hqErr) {
+            // Isolate the throw so the remaining HQs in this nation still
+            // get processed. Include faction_id / hq.id / hq.name so the
+            // specific failing row is identifiable from the log alone.
+            console.error(`[SubRevenue] HQ threw (hq.id=${hq.id}, faction_id=${hq.faction_id}, name=${hq.name}):`, hqErr);
         }
     }
 
-    console.log(`[SubRevenue] ${nation.name}: processed ${hqs.length} regional HQ(s), updated ${updatedCount}, at tick ${currentTick}.`);
-    return { hqCount: hqs.length, updatedCount };
+    console.log(`[SubRevenue] ${nation.name}: processed ${hqs.length} regional HQ(s), updated ${updatedCount}, skipped(rev=0) ${skippedCount}, at tick ${currentTick}.`);
+    return { hqCount: hqs.length, updatedCount, skippedCount };
 }
 
 function parseRequiredForSectors(rawRequiredFor) {

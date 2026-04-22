@@ -5458,6 +5458,7 @@ async function renderElectionsTab(nation, administration, coalition, faction, al
                 <div class="elec-mom-bar" style="width:${momBarWidth}%;background:${momColor}"></div>
             </div>
             <div class="elec-mom-decay">Decays 8%/tick — currently losing ${decayPerTick}/tick</div>
+            ${faction.custom_logo_url ? `<div class="elec-mom-decay" style="color:var(--dgreen);margin-top:-4px;">+1/tick from party logo</div>` : ''}
             <div class="elec-mom-log-header">Recent Activity</div>
             <div class="elec-mom-log">
                 ${logRowsHtml}
