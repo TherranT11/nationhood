@@ -17,6 +17,7 @@ import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
 import { callEarlyElectionsAction } from './game/elections.js';
+import { IDEOLOGY_AXES } from './game/ideology.js';
 
 let _supabase = null;
 let _state = null;
@@ -30,6 +31,14 @@ let _administration = null;  // active administration data
 let _lawsuits = [];          // faction's lawsuits (active + resolved)
 let _standing = null;        // faction_electoral_standing row (pillar scores)
 let _seatTxInProgress = false; // module-level lock for Grant/Revoke Seats actions
+
+// ===== BLOCS (Phase 1: formation & membership) =====
+let _myBloc = null;           // active bloc row + { members: [...] } when in one
+let _myBlocIsLeader = false;  // true if this faction is the bloc's leader
+let _pendingBlocInvites = []; // invitations addressed to this faction
+let _createBlocSubmitting = false;
+let _leaveBlocSubmitting = false;
+let _blocInviteResponding = new Set(); // invitation_ids currently being accepted/declined
 
 function esc(str) {
     if (!str) return '';
@@ -183,6 +192,26 @@ const LEADER_ACTIONS = [
         tags: ['LEGISLATIVE', 'OPPOSITION'],
         locked: false,
     },
+    {
+        id: 'create_bloc',
+        name: 'Create Bloc',
+        desc: 'Found a pre-coalition alliance with other parties. Pick a name and invite parties in your nation. Parties you invite must have an average ideological distance of at least 20 across the 5 ideology axes. Phase 1 is formation only — shared momentum, vote discipline, and coalition binding arrive in later phases.',
+        cost: '$100',
+        costColor: '#c8a832',
+        moneyCost: 100,
+        tags: ['STRATEGIC', 'ALLIANCE'],
+        locked: false,
+    },
+    {
+        id: 'leave_bloc',
+        name: 'Leave Bloc',
+        desc: 'Exit your current bloc. If you are the bloc leader, leaving dissolves the whole bloc and all pending invitations are withdrawn. Greyed out when you are not in a bloc.',
+        cost: '$0',
+        costColor: 'var(--text-dim)',
+        moneyCost: 0,
+        tags: ['ALLIANCE'],
+        locked: false,
+    },
 ];
 
 // Monarch-only actions (shown instead of standard leader actions in monarchy)
@@ -303,7 +332,7 @@ export async function initPartyActions(supabase, state) {
     // here so every render in this module reads live state.
     try {
         const { data: freshFaction } = await _supabase.from('factions')
-            .select('momentum, party_funds, seats, action_points')
+            .select('momentum, party_funds, seats, action_points, bloc_id')
             .eq('id', faction.id)
             .single();
         if (freshFaction) {
@@ -311,6 +340,7 @@ export async function initPartyActions(supabase, state) {
             faction.party_funds = freshFaction.party_funds ?? faction.party_funds;
             faction.seats = freshFaction.seats ?? faction.seats;
             faction.action_points = freshFaction.action_points ?? faction.action_points;
+            faction.bloc_id = freshFaction.bloc_id ?? null;
         }
     } catch (err) {
         console.warn('[PartyActions] faction refresh failed, using cached state:', err);
@@ -360,7 +390,414 @@ export async function initPartyActions(supabase, state) {
         _lawsuits = await fetchActiveLawsuits(_supabase, faction.id);
     }
 
+    // Bloc membership + pending invitations (Phase 1)
+    await loadBlocState(faction.id, state.nation?.id);
+
     renderPage(root);
+}
+
+// ═══════════════════════════ BLOCS ═══════════════════════════
+
+/**
+ * Refresh the three bloc-related state slots: `_myBloc`, `_myBlocIsLeader`,
+ * and `_pendingBlocInvites`. Safe to call any time — catches its own errors
+ * and leaves state unchanged on failure.
+ */
+async function loadBlocState(factionId, nationId) {
+    if (!factionId || !nationId) {
+        _myBloc = null; _myBlocIsLeader = false; _pendingBlocInvites = [];
+        return;
+    }
+    try {
+        // Pending invitations addressed to this faction, with bloc + inviter names
+        const { data: invites, error: invErr } = await _supabase
+            .from('bloc_invitations')
+            .select('id, bloc_id, invited_by_faction_id, created_at_tick, status, bloc:bloc_id(id,name,leader_faction_id), inviter:invited_by_faction_id(id,faction_name,party_color)')
+            .eq('invited_faction_id', factionId)
+            .eq('status', 'pending')
+            .order('created_at_tick', { ascending: false });
+        if (invErr) throw invErr;
+        _pendingBlocInvites = invites || [];
+
+        // Current bloc (if any)
+        const blocId = _state?.faction?.bloc_id || null;
+        if (blocId) {
+            const { data: bloc, error: blocErr } = await _supabase
+                .from('blocs')
+                .select('*')
+                .eq('id', blocId)
+                .is('dissolved_at_tick', null)
+                .maybeSingle();
+            if (blocErr) throw blocErr;
+            if (bloc) {
+                const { data: members } = await _supabase
+                    .from('factions')
+                    .select('id, faction_name, seats, party_color, leader_first_name, leader_last_name')
+                    .eq('bloc_id', bloc.id)
+                    .order('seats', { ascending: false });
+                _myBloc = { ...bloc, members: members || [] };
+                _myBlocIsLeader = (bloc.leader_faction_id === factionId);
+            } else {
+                _myBloc = null; _myBlocIsLeader = false;
+            }
+        } else {
+            _myBloc = null; _myBlocIsLeader = false;
+        }
+    } catch (err) {
+        console.warn('[PartyActions] loadBlocState failed:', err?.message || err);
+    }
+}
+
+/**
+ * Small inline chip shown next to the leader's name when they're in a bloc.
+ * Keeps the existing detail header layout intact when not in a bloc.
+ */
+function renderBlocTag(partyColor) {
+    if (!_myBloc) return '';
+    const leaderBadge = _myBlocIsLeader
+        ? `<span style="margin-left:6px;font-family:var(--font-mono);font-size:7px;color:${partyColor};letter-spacing:0.08em;">LEADER</span>`
+        : '';
+    return `<span class="pa-bloc-tag" style="display:inline-flex;align-items:center;padding:2px 8px;background:${partyColor}18;border:1px solid ${partyColor}55;color:${partyColor};font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
+        BLOC &middot; ${esc(_myBloc.name)}${leaderBadge}
+    </span>`;
+}
+
+/**
+ * Full bloc detail banner below the header: lists members (name + seats) so
+ * the player can see who's in their bloc at a glance. Phase 1 display only
+ * — no momentum numbers yet.
+ */
+function renderBlocBanner(partyColor) {
+    if (!_myBloc) return '';
+    const members = _myBloc.members || [];
+    const totalSeats = members.reduce((s, m) => s + (Number(m.seats) || 0), 0);
+    const memberChips = members.map(m => {
+        const isLeader = m.id === _myBloc.leader_faction_id;
+        const chipColor = m.party_color || partyColor;
+        return `<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid ${chipColor}44;border-left:3px solid ${chipColor};background:var(--bg-card);font-family:var(--font-mono);font-size:9px;">
+            <span style="color:var(--text-bright);font-weight:700;">${esc(m.faction_name || 'Unknown')}</span>
+            <span style="color:var(--text-dim);">${m.seats || 0} seats</span>
+            ${isLeader ? `<span style="color:${chipColor};font-weight:700;letter-spacing:0.08em;">LEADER</span>` : ''}
+        </span>`;
+    }).join('');
+    return `<div style="margin:8px 0;padding:8px 12px;background:${partyColor}0a;border:1px solid ${partyColor}33;border-left:3px solid ${partyColor};">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${partyColor};letter-spacing:0.08em;">BLOC &middot; ${esc(_myBloc.name)}</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${members.length} member${members.length !== 1 ? 's' : ''} &middot; ${totalSeats} combined seats</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${memberChips}</div>
+    </div>`;
+}
+
+/**
+ * Pending bloc invitations addressed to this faction — renders inline cards
+ * with Accept / Decline buttons. Click is handled by the delegated listener
+ * in renderPage().
+ */
+function renderBlocInvitationsPanel(partyColor) {
+    if (!_pendingBlocInvites || _pendingBlocInvites.length === 0) return '';
+    // PostgREST nested relations can come back as either an object or a 1-element array
+    // depending on PostgREST/Supabase version. Normalize.
+    const firstOrObj = (v) => (Array.isArray(v) ? v[0] : v) || null;
+    const cards = _pendingBlocInvites.map(inv => {
+        const bloc = firstOrObj(inv.bloc);
+        const inviter = firstOrObj(inv.inviter);
+        const blocName = bloc?.name || 'a bloc';
+        const inviterName = inviter?.faction_name || 'A party leader';
+        const inviterColor = inviter?.party_color || partyColor;
+        const responding = _blocInviteResponding.has(inv.id);
+        return `<div style="margin:6px 0;padding:8px 12px;border:1px solid ${inviterColor}55;border-left:3px solid ${inviterColor};background:${inviterColor}08;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div style="flex:1;">
+                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${inviterColor};letter-spacing:0.08em;">BLOC INVITATION</div>
+                <div style="font-size:11px;color:var(--text-bright);margin-top:2px;">
+                    <strong>${esc(inviterName)}</strong> invites you to join <strong>${esc(blocName)}</strong>.
+                </div>
+            </div>
+            <div style="display:flex;gap:6px;">
+                <button class="pa-bloc-invite-btn pa-modal-btn pa-modal-btn--submit" data-invite-id="${esc(inv.id)}" data-decision="accept"${responding ? ' disabled' : ''}>Accept</button>
+                <button class="pa-bloc-invite-btn pa-modal-btn pa-modal-btn--cancel" data-invite-id="${esc(inv.id)}" data-decision="decline"${responding ? ' disabled' : ''}>Decline</button>
+            </div>
+        </div>`;
+    }).join('');
+    return `<div style="margin:10px 0 4px;">${cards}</div>`;
+}
+
+/**
+ * Accept or decline a pending bloc invitation. Calls the corresponding RPC,
+ * refreshes bloc state, and re-renders the panel.
+ */
+async function respondToBlocInvite(inviteId, decision, root) {
+    try {
+        const factionId = _state?.faction?.id;
+        if (!factionId) throw new Error('No active faction');
+        const rpcName = decision === 'accept' ? 'accept_bloc_invite' : 'decline_bloc_invite';
+        const paramKey = decision === 'accept' ? 'p_accepting_faction_id' : 'p_declining_faction_id';
+        const { data, error } = await _supabase.rpc(rpcName, {
+            p_invitation_id: inviteId,
+            [paramKey]: factionId
+        });
+        if (error) throw error;
+        if (data && data.success === false) throw new Error(data.error || 'Unknown error');
+
+        // Refresh faction.bloc_id + bloc state so the banner/actions flip immediately
+        const { data: freshFaction } = await _supabase.from('factions')
+            .select('bloc_id').eq('id', factionId).single();
+        if (freshFaction) _state.faction.bloc_id = freshFaction.bloc_id || null;
+        await loadBlocState(factionId, _state.nation?.id);
+        renderPage(root);
+    } catch (err) {
+        console.error('[PartyActions] respondToBlocInvite failed:', err);
+        alert(decision === 'accept'
+            ? `Could not accept invitation: ${err.message || err}`
+            : `Could not decline invitation: ${err.message || err}`);
+    }
+}
+
+/**
+ * Confirm-and-leave current bloc. Leader-leave dissolves the whole bloc;
+ * the RPC handles that branching server-side. Guarded against double-click
+ * with `_leaveBlocSubmitting`.
+ */
+async function triggerLeaveBloc(root) {
+    if (!_myBloc) return;
+    if (_leaveBlocSubmitting) return;
+
+    const bloc = _myBloc;
+    const msg = _myBlocIsLeader
+        ? `Leaving ${bloc.name} will DISSOLVE the entire bloc. All ${bloc.members?.length || 0} members will be removed and pending invitations rescinded.\n\nProceed?`
+        : `Leave the ${bloc.name} bloc?`;
+    if (!confirm(msg)) return;
+
+    _leaveBlocSubmitting = true;
+    try {
+        const { data, error } = await _supabase.rpc('leave_bloc', {
+            p_faction_id: _state.faction.id
+        });
+        if (error) throw error;
+        if (data && data.success === false) throw new Error(data.error || 'Unknown error');
+
+        _state.faction.bloc_id = null;
+        await loadBlocState(_state.faction.id, _state.nation?.id);
+        renderPage(root);
+    } catch (err) {
+        console.error('[PartyActions] leave_bloc failed:', err);
+        alert(`Could not leave bloc: ${err.message || err}`);
+    } finally {
+        _leaveBlocSubmitting = false;
+    }
+}
+
+/**
+ * Top 2 ideologies of a faction, by absolute axis value. Uses the shared
+ * IDEOLOGY_AXES definition from ./game/ideology.js so labels stay consistent
+ * with the Politics page. Each entry returns { label, magnitude }.
+ */
+function topTwoIdeologies(ideologyRow) {
+    if (!ideologyRow) return [];
+    const scored = IDEOLOGY_AXES.map(a => {
+        const raw = Number(ideologyRow[a.key] || 0);
+        return {
+            label: raw < 0 ? a.leftLabel : a.rightLabel,
+            magnitude: Math.abs(raw)
+        };
+    });
+    scored.sort((a, b) => b.magnitude - a.magnitude);
+    return scored.slice(0, 2).filter(s => s.magnitude > 0);
+}
+
+/**
+ * Average absolute distance between two ideology rows across the 5 axes.
+ * Mirrors the server-side gate so the modal can grey out ineligible parties
+ * without a round-trip. Returns Infinity when data is missing so the UI
+ * doesn't block invitations on parties with no ideology row (server does the
+ * same).
+ */
+function avgIdeologyDistance(a, b) {
+    if (!a || !b) return Infinity;
+    let sum = 0;
+    for (const axis of IDEOLOGY_AXES) {
+        sum += Math.abs(Number(a[axis.key] || 0) - Number(b[axis.key] || 0));
+    }
+    return sum / IDEOLOGY_AXES.length;
+}
+
+/**
+ * Create Bloc modal — name input + selectable list of eligible parties with
+ * leader / seats / top 2 ideologies / eligibility badge. At least one invitee
+ * must be selected; $100 is charged on Create.
+ */
+async function openCreateBlocModal(root) {
+    const overlay = document.getElementById('pa-bloc-modal');
+    if (!overlay) return;
+    if (_myBloc) return; // safety
+
+    const faction = _state.faction;
+    const partyColor = faction?.color || '#c8a832';
+
+    overlay.innerHTML = `
+        <div class="pa-modal" style="width:640px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;">
+            <div class="pa-modal-header">
+                <div class="pa-modal-header-left">
+                    <div class="pa-modal-dot" style="background:${partyColor};"></div>
+                    <span class="pa-modal-title">Create Bloc</span>
+                </div>
+                <button class="pa-modal-close" id="pa-bloc-close">&times;</button>
+            </div>
+            <div class="pa-modal-body" style="gap:14px;overflow-y:auto;">
+                <div>
+                    <div class="pa-modal-step-label">1 &mdash; Bloc Name</div>
+                    <input class="pa-modal-input" id="pa-bloc-name" type="text" maxlength="40" placeholder="e.g. Popular Front, United Left, Patriots' Union" style="font-family:var(--font-ui);font-size:12px;">
+                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
+                        <span id="pa-bloc-name-count" style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">0 / 40</span>
+                        <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Required &middot; up to 40 characters</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="pa-modal-step-label">2 &mdash; Invite Parties</div>
+                    <div id="pa-bloc-party-list" style="display:flex;flex-direction:column;gap:4px;">
+                        <div style="padding:10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Loading parties...</div>
+                    </div>
+                </div>
+                <div style="padding:6px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);">
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-bottom:2px;">COST</div>
+                    <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
+                        Founding a bloc costs <strong style="color:var(--accent);">$100</strong>. You become the bloc leader and the listed parties receive invitations they can accept or decline. Parties must have an average ideological distance of at least <strong>20</strong> across all 5 axes to be invitable.
+                    </div>
+                </div>
+            </div>
+            <div class="pa-modal-footer">
+                <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-bloc-cancel">Cancel</button>
+                <button class="pa-modal-btn pa-modal-btn--submit" id="pa-bloc-submit" disabled>Create Bloc &amp; Send Invites</button>
+            </div>
+        </div>
+    `;
+
+    overlay.classList.add('active');
+
+    const selectedInvitees = new Set();
+    let eligibleParties = [];
+
+    const close = () => overlay.classList.remove('active');
+    document.getElementById('pa-bloc-close')?.addEventListener('click', close);
+    document.getElementById('pa-bloc-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    // Fetch eligible parties + ideology for the current nation
+    try {
+        const nationId = _state.nation?.id;
+        const { data: parties } = await _supabase.from('factions')
+            .select('id, faction_name, seats, party_color, leader_first_name, leader_last_name, leader_age, bloc_id')
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .is('abandoned_at', null);
+        const partyList = (parties || []).filter(p => p.id !== faction.id);
+
+        // Ideology rows for the leader + all other parties (one query, keyed on faction_id)
+        const partyIds = partyList.map(p => p.id).concat([faction.id]);
+        const { data: idoRows } = partyIds.length > 0
+            ? await _supabase.from('faction_ideology').select('*').in('faction_id', partyIds)
+            : { data: [] };
+        const idoByFaction = new Map((idoRows || []).map(r => [r.faction_id, r]));
+        const myIdeology = idoByFaction.get(faction.id);
+
+        eligibleParties = partyList;
+
+        const listEl = document.getElementById('pa-bloc-party-list');
+        if (!listEl) return;
+        if (partyList.length === 0) {
+            listEl.innerHTML = `<div style="padding:10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">No other parties in this nation.</div>`;
+            return;
+        }
+
+        listEl.innerHTML = partyList.map(p => {
+            const ido = idoByFaction.get(p.id);
+            const top2 = topTwoIdeologies(ido);
+            const top2Html = top2.length > 0
+                ? top2.map(t => `<span style="padding:1px 6px;background:var(--bg-card);border:1px solid var(--border-mid);font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);">${esc(t.label)}</span>`).join(' ')
+                : `<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No ideology data</span>`;
+            const distance = avgIdeologyDistance(myIdeology, ido);
+            const pColor = p.party_color || '#7a7a7a';
+            const leaderName = (p.leader_first_name && p.leader_last_name)
+                ? `${p.leader_first_name} ${p.leader_last_name}` : 'Party Leader';
+
+            let ineligible = null;
+            if (p.bloc_id) ineligible = 'Already in a bloc';
+            else if (ido && myIdeology && distance < 20) ineligible = `Too aligned (distance ${distance.toFixed(0)}, need &ge;20)`;
+
+            return `<label class="pa-bloc-party-row" data-party-id="${esc(p.id)}" data-ineligible="${ineligible ? '1' : '0'}"
+                style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border-mid);border-left:3px solid ${pColor};cursor:${ineligible ? 'not-allowed' : 'pointer'};opacity:${ineligible ? '0.45' : '1'};">
+                <input type="checkbox" class="pa-bloc-party-check" ${ineligible ? 'disabled' : ''} style="margin:0;">
+                <div style="flex:1;display:flex;flex-direction:column;gap:2px;">
+                    <div style="display:flex;align-items:baseline;gap:8px;">
+                        <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-bright);">${esc(p.faction_name)}</span>
+                        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${p.seats || 0} seats</span>
+                    </div>
+                    <div style="font-size:9px;color:var(--text-secondary);">${esc(leaderName)}</div>
+                    <div style="display:flex;gap:4px;align-items:center;margin-top:2px;">${top2Html}</div>
+                    ${ineligible ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--orange);margin-top:3px;">${ineligible}</div>` : ''}
+                </div>
+            </label>`;
+        }).join('');
+
+        listEl.addEventListener('change', (e) => {
+            const row = e.target.closest('.pa-bloc-party-row');
+            if (!row) return;
+            if (row.dataset.ineligible === '1') {
+                e.target.checked = false;
+                return;
+            }
+            const pid = row.dataset.partyId;
+            if (e.target.checked) selectedInvitees.add(pid);
+            else selectedInvitees.delete(pid);
+            updateSubmitState();
+        });
+    } catch (err) {
+        console.error('[PartyActions] Create Bloc modal fetch failed:', err);
+        const listEl = document.getElementById('pa-bloc-party-list');
+        if (listEl) listEl.innerHTML = `<div style="padding:10px;font-family:var(--font-mono);font-size:9px;color:var(--red);">Failed to load parties: ${esc(err.message || String(err))}</div>`;
+    }
+
+    const nameInput = document.getElementById('pa-bloc-name');
+    const submitBtn = document.getElementById('pa-bloc-submit');
+    const countEl = document.getElementById('pa-bloc-name-count');
+    const updateSubmitState = () => {
+        const name = (nameInput?.value || '').trim();
+        if (countEl) countEl.textContent = `${name.length} / 40`;
+        if (submitBtn) submitBtn.disabled = !(name.length > 0 && selectedInvitees.size > 0) || _createBlocSubmitting;
+    };
+    nameInput?.addEventListener('input', updateSubmitState);
+
+    submitBtn?.addEventListener('click', async () => {
+        if (_createBlocSubmitting) return;
+        const name = (nameInput?.value || '').trim();
+        if (name.length === 0 || selectedInvitees.size === 0) return;
+        _createBlocSubmitting = true;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Creating...';
+        try {
+            const { data, error } = await _supabase.rpc('create_bloc', {
+                p_leader_faction_id: faction.id,
+                p_name: name,
+                p_invitee_faction_ids: Array.from(selectedInvitees)
+            });
+            if (error) throw error;
+            if (data && data.success === false) throw new Error(data.error || 'Unknown error');
+
+            // Deduct $100 locally so the header re-renders immediately
+            _state.faction.party_funds = Math.max(0, (_state.faction.party_funds || 0) - 100);
+            _state.faction.bloc_id = data?.bloc_id || null;
+            close();
+            await loadBlocState(faction.id, _state.nation?.id);
+            renderPage(root);
+        } catch (err) {
+            console.error('[PartyActions] create_bloc failed:', err);
+            alert(`Could not create bloc: ${err.message || err}`);
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create Bloc & Send Invites';
+        } finally {
+            _createBlocSubmitting = false;
+        }
+    });
 }
 
 // ════════════════════════ RENDER ════════════════════════
@@ -454,6 +891,7 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-deputy-modal"></div>
             <div class="pa-modal-overlay" id="pa-rally-modal"></div>
             <div class="pa-modal-overlay" id="pa-royal-modal"></div>
+            <div class="pa-modal-overlay" id="pa-bloc-modal"></div>
         `,
     });
 
@@ -502,6 +940,26 @@ function renderPage(root) {
             triggerCallEarlyElections();
         } else if (actionId === 'resign_as_pm') {
             triggerResignAsPM();
+        } else if (actionId === 'create_bloc') {
+            openCreateBlocModal(root);
+        } else if (actionId === 'leave_bloc') {
+            triggerLeaveBloc(root);
+        }
+    });
+
+    // Bloc invitation inbox (Accept / Decline buttons render inside the leader panel)
+    document.getElementById('pa-actions-panel')?.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.pa-bloc-invite-btn');
+        if (!btn) return;
+        const inviteId = btn.dataset.inviteId;
+        const decision = btn.dataset.decision; // 'accept' | 'decline'
+        if (!inviteId || !decision) return;
+        if (_blocInviteResponding.has(inviteId)) return;
+        _blocInviteResponding.add(inviteId);
+        try {
+            await respondToBlocInvite(inviteId, decision, root);
+        } finally {
+            _blocInviteResponding.delete(inviteId);
         }
     });
 
@@ -770,6 +1228,35 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             } else {
                 action.lockReason = '';
             }
+        } else if (action.id === 'create_bloc') {
+            // Head-of-Government lock: PM, elected President, or Monarch can't form blocs
+            // (they already lead a coalition — a bloc would be a redundant sub-alliance).
+            const isPM = !!_administration && _administration.pm_party_id === faction.id;
+            const isPresident = _state.nation?.hos_election_method === 'elected'
+                && _administration?.president_party_id === faction.id;
+            const isMonarchActing = isAbsoluteMonarchy(_state.nation)
+                && _state.nation?.monarch_faction_id === faction.id;
+            if (_myBloc) {
+                isDisabled = true;
+                action.lockReason = `Already in the ${_myBloc.name} bloc.`;
+            } else if (isPM || isPresident || isMonarchActing) {
+                isDisabled = true;
+                action.lockReason = 'Head of Government cannot form blocs — you already lead the coalition.';
+            } else if ((faction.party_funds || 0) < 100) {
+                isDisabled = true;
+                action.lockReason = 'Needs $100 party funds.';
+            } else {
+                action.lockReason = '';
+            }
+        } else if (action.id === 'leave_bloc') {
+            if (!_myBloc) {
+                isDisabled = true;
+                action.lockReason = 'You are not in a bloc.';
+            } else if (_myBlocIsLeader) {
+                action.lockReason = `Leaving dissolves ${_myBloc.name} — all members will be removed.`;
+            } else {
+                action.lockReason = '';
+            }
         } else if (action.id === 'fundraise') {
             const fi = getFundraiseInfo(seats, _fundraiseUseCount);
             costDisplay = `-${fi.momCost} MOM`;
@@ -809,10 +1296,11 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             <div class="pa-detail-left">
                 <div class="pa-detail-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${portrait}</div>
                 <div>
-                    <div style="display:flex;align-items:baseline;gap:6px;">
+                    <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;">
                         <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${role.color};">${_isMonarch ? (_state.nation?.monarch_title || 'KING').toUpperCase() : role.title}</span>
                         <span class="pa-detail-name">${esc(leaderName)}</span>
                         ${_isMonarchy && _state.nation?.dynasty_name ? `<span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);font-style:italic;">House ${esc(_state.nation.dynasty_name)}</span>` : ''}
+                        ${renderBlocTag(partyColor)}
                     </div>
                     <div class="pa-detail-meta">${_isMonarch ? esc((_state.nation?.monarch_title || 'King') + ' of ' + (_state.nation?.name || '')) : esc(role.fullTitle) + ' &middot; ' + esc(faction.faction_name)}${age}${(() => {
                         if (_isMonarch) return ' <span style="color:#c8a832;font-weight:700;"> &middot; ' + (_state.nation?.monarch_title || 'MONARCH').toUpperCase() + '</span>';
@@ -827,6 +1315,8 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 </div>
             </div>
         </div>
+        ${renderBlocInvitationsPanel(partyColor)}
+        ${renderBlocBanner(partyColor)}
         <div class="pa-actions-list">
             ${actionsHtml}
         </div>
