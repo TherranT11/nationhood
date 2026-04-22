@@ -1994,6 +1994,30 @@ function calculateTariffRevenue(totalImports, tariffRate, collectionRate) {
  *   5. Write trade_flows, trade_partners, trade_summary rows
  *   6. Update nation trade_balance stat + add tariff revenue
  */
+
+// Does a trade lane between two nations require maritime shipping?
+// Single source of truth for the shipping-efficiency logic — used by
+// processTradeFlows (tick) and diplomacy.html (UI badge).
+//
+// Returns { needsShipping, reason }:
+//   needsShipping=false, reason='landlocked'   — at least one party is landlocked
+//   needsShipping=false, reason='land_border'  — they share a 'land' border
+//   needsShipping=true,  reason=null           — maritime / mountain-only / unknown
+//
+// 'mountain' alone does NOT skip shipping — mountain terrain is treated as
+// land-accessible-but-disrupted (baseline 85%, shippable up to 100% with
+// active vessels) which is identical to the maritime case, so the formula
+// collapses. No separate branch.
+function shippingNeedFor(exporterNation, importerNation, borderTypes) {
+    if (exporterNation?.is_landlocked || importerNation?.is_landlocked) {
+        return { needsShipping: false, reason: 'landlocked' };
+    }
+    if (Array.isArray(borderTypes) && borderTypes.includes('land')) {
+        return { needsShipping: false, reason: 'land_border' };
+    }
+    return { needsShipping: true, reason: null };
+}
+
 async function processTradeFlows(supabase, nationList, currentTick) {
     if (!nationList || nationList.length < 2) {
         console.log('[processTradeFlows] Need at least 2 nations for trade, skipping');
@@ -2120,7 +2144,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
     // ── Step 4: Fetch diplomatic relations + proposals for affinity ──
     var { data: relations } = await supabase.from('diplomatic_relations')
-        .select('nation_a_id, nation_b_id, relation_score, active_treaties, proximity');
+        .select('nation_a_id, nation_b_id, relation_score, active_treaties, proximity, border_types');
 
     var { data: activeProposals } = await supabase.from('diplomatic_proposals')
         .select('id, proposal_type, proposing_nation_id, target_nation_id')
@@ -2876,45 +2900,44 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     }
 
     // ── Step 6b: Apply shipping efficiency multiplier ──
-    // Base efficiency: 85% without shipping. +3% per active shipping claim on the route.
-    // Cap at 100%. Routes without any shipping coverage lose 15% of trade volume.
+    // Maritime lanes: 85% base, +3% per active ship claim, cap 100%.
+    // Land lanes (landlocked nation or 'land' border): 100% flat, no penalty.
+    // See shippingNeedFor() above for the rule.
     try {
-        // Fetch all active shipping claims grouped by route's trade agreement
         var { data: activeClaims } = await supabase.from('shipping_claims')
             .select('route_id, shipping_routes!inner(trade_agreement_id, origin_nation_id, destination_nation_id, trade_sector)')
             .eq('status', 'active');
 
-        if (activeClaims && activeClaims.length > 0) {
-            // Build a map: "exporterNationId|importerNationId|sector" → ship count
-            var shipCountMap = {};
-            for (var sci = 0; sci < activeClaims.length; sci++) {
-                var cl = activeClaims[sci];
-                var sr = cl.shipping_routes;
-                if (!sr) continue;
-                var key1 = sr.origin_nation_id + '|' + sr.destination_nation_id + '|' + sr.trade_sector;
-                var key2 = sr.destination_nation_id + '|' + sr.origin_nation_id + '|' + sr.trade_sector;
-                shipCountMap[key1] = (shipCountMap[key1] || 0) + 1;
-                shipCountMap[key2] = (shipCountMap[key2] || 0) + 1;
-            }
-
-            // Apply efficiency to partner rows
-            var BASE_EFFICIENCY = 0.85;
-            var PER_SHIP_BONUS = 0.03;
-            for (var pri = 0; pri < partnerRows.length; pri++) {
-                var pr = partnerRows[pri];
-                var prKey = pr.exporter_nation_id + '|' + pr.importer_nation_id + '|' + pr.sector;
-                var ships = shipCountMap[prKey] || 0;
-                var efficiency = Math.min(1.0, BASE_EFFICIENCY + (ships * PER_SHIP_BONUS));
-                partnerRows[pri].trade_volume = Math.round(pr.trade_volume * efficiency);
-            }
-
-            console.log('[processTradeFlows] Shipping efficiency applied to ' + partnerRows.length + ' bilateral flows');
-        } else {
-            // No shipping at all — apply base 85% efficiency to all trade
-            for (var pri2 = 0; pri2 < partnerRows.length; pri2++) {
-                partnerRows[pri2].trade_volume = Math.round(partnerRows[pri2].trade_volume * 0.85);
-            }
+        var shipCountMap = {};
+        for (var sci = 0; sci < (activeClaims || []).length; sci++) {
+            var sr = activeClaims[sci].shipping_routes;
+            if (!sr) continue;
+            var key1 = sr.origin_nation_id + '|' + sr.destination_nation_id + '|' + sr.trade_sector;
+            var key2 = sr.destination_nation_id + '|' + sr.origin_nation_id + '|' + sr.trade_sector;
+            shipCountMap[key1] = (shipCountMap[key1] || 0) + 1;
+            shipCountMap[key2] = (shipCountMap[key2] || 0) + 1;
         }
+
+        var BASE_EFFICIENCY = 0.85;
+        var PER_SHIP_BONUS = 0.03;
+        var landRouteCount = 0;
+        for (var pri = 0; pri < partnerRows.length; pri++) {
+            var pr = partnerRows[pri];
+            var expNation = nationMap[pr.exporter_nation_id];
+            var impNation = nationMap[pr.importer_nation_id];
+            var rel = relMap[pr.exporter_nation_id + '|' + pr.importer_nation_id];
+            var shipNeed = shippingNeedFor(expNation, impNation, rel?.border_types);
+            if (!shipNeed.needsShipping) {
+                // Land route — 100% efficiency, trade_volume untouched.
+                landRouteCount += 1;
+                continue;
+            }
+            var ships = shipCountMap[pr.exporter_nation_id + '|' + pr.importer_nation_id + '|' + pr.sector] || 0;
+            var efficiency = Math.min(1.0, BASE_EFFICIENCY + (ships * PER_SHIP_BONUS));
+            partnerRows[pri].trade_volume = Math.round(pr.trade_volume * efficiency);
+        }
+
+        console.log('[processTradeFlows] Shipping efficiency: ' + (partnerRows.length - landRouteCount) + ' maritime lanes processed, ' + landRouteCount + ' land lanes at 100%');
     } catch (shipEffErr) {
         console.error('[processTradeFlows] Shipping efficiency calculation failed (non-fatal):', shipEffErr);
     }
