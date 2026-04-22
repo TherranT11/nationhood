@@ -641,7 +641,7 @@ async function openCreateBlocModal(root) {
                 <div style="padding:6px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);">
                     <div style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-bottom:2px;">COST</div>
                     <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
-                        Founding a bloc costs <strong style="color:var(--accent);">$100,000</strong>. You become the bloc leader and the listed parties receive invitations they can accept or decline. Parties must have an average ideological distance of at least <strong>20</strong> across all 5 axes to be invitable.
+                        Founding a bloc costs <strong style="color:var(--accent);">$100k</strong>. You become the bloc leader and the listed parties receive invitations they can accept or decline. Parties must have an average ideological distance of at least <strong>20</strong> across all 5 axes to be invitable.
                     </div>
                 </div>
             </div>
