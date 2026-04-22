@@ -354,7 +354,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, tickToDate } from './js/utils.js';
 import { computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
 import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
@@ -1435,7 +1435,7 @@ function renderActivePortfolio() {
             <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:0 5px;line-height:12px;color:${sm.color};background:${sm.color}12;border:1px solid ${sm.color}25;">${sm.label}</span>
         </div>`;
 
-        // Row 2: nation + progress
+        // Row 2: nation + progress + issued-date
         const lastDivStr = d.type === 'EQUITY' && (d.lastDividendAmount || 0) > 0
             ? ` · LAST: ${fmtMoney(d.lastDividendAmount)}`
             : '';
@@ -1445,6 +1445,8 @@ function renderActivePortfolio() {
         html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
             <span class="df-badge df-badge-nation" style="line-height:12px;">${escapeHtml((d.nation || '').toUpperCase())}</span>
             <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">${progressText}</span>
+            <span style="flex:1;"></span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">ISSUED ${escapeHtml((d.startedAt || '').toUpperCase())}</span>
         </div>`;
 
         // Progress bar. Equity is perpetual (no term), so the bar is always
@@ -3288,6 +3290,7 @@ async function loadActivePortfolio() {
             : isEquity(loan) ? Number(loan.principal || 0)
             : Math.max(0, Number(loan.remaining_principal || 0)),
         principal: loan.principal,
+        startedAt: tickToDate(loan.started_tick),
         // EARNED for equity = cumulative dividends (total_paid is pure dividend since monthly_payment=0).
         earned: isInsurance(loan) ? ((loan.monthly_payment || 0) * (loan.payments_made || 0))
             : isEquity(loan) ? Number(loan.total_paid || 0)
@@ -3355,7 +3358,7 @@ async function loadCollections() {
             earned,
             lost,
             net: earned - lost,
-            resolved: loan.completed_tick ? 'Tick ' + loan.completed_tick : '',
+            resolved: loan.completed_tick != null ? tickToDate(loan.completed_tick) : '',
             term: loan.term_months + 'mo',
             rate: loan.interest_rate + '%',
             note: loan.status === 'repaid'

@@ -1953,7 +1953,7 @@ async function loadLoansSection() {
 
     const { data: activeLoans, error: loanErr } = await _supabase
         .from('finance_active_loans')
-        .select('*')
+        .select('*, lender:factions!lender_faction_id(faction_name, abbreviation)')
         .eq('borrower_faction_id', faction.id)
         .in('status', ['current', 'late', 'delinquent'])
         .is('equity_pct', null)
@@ -2004,6 +2004,8 @@ async function loadLoansSection() {
             const remainingPrincipal = Math.max(0, Number(loan.remaining_principal || 0));
             const monthlyInterestPortion = Math.max(0, Math.min(monthlyPayment, Math.round(remainingPrincipal * monthlyRate)));
             const monthlyPrincipalPortion = Math.max(0, monthlyPayment - monthlyInterestPortion);
+            const lenderName = loan.lender?.faction_name || 'Unknown bank';
+            const issuedDate = tickToDate(loan.started_tick);
             html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
@@ -2012,6 +2014,10 @@ async function loadLoansSection() {
                         <span style="color:var(--text-dim);margin-left:4px;">@ ${loan.interest_rate}%</span>
                     </div>
                     <span style="color:var(--text-dim);">${pctPaid}% repaid</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:7px;color:var(--text-dim);">
+                    <span>Bank: <span style="color:var(--text-primary);">${escapeHtml(lenderName)}</span></span>
+                    <span>Issued: <span style="color:var(--text-primary);">${escapeHtml(issuedDate)}</span></span>
                 </div>
                 <div style="height:2px;background:var(--border-0);margin-top:3px;">
                     <div style="height:100%;width:${pctPaid}%;background:${statusColor};"></div>
