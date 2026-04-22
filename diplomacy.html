@@ -128,7 +128,7 @@ import { fetchActiveCoalition, detectHeadFaction, loadSeats } from './js/game/go
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { DIPLOMACY_CONFIG, PROPOSAL_TYPES, WAR_JUSTIFICATIONS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS, TRADEABLE_SECTOR_MAP, TRADE_ARTICLE_TYPES, AID_CONDITION_STATS, MINOR_INITIATIVE_CONFIG, INITIATIVE_ARTICLE_TYPES, VISA_DURATION_OPTIONS, VISA_SCOPE_OPTIONS, VISA_DIRECTION_OPTIONS, VISA_EXCLUDES, CULTURAL_PROGRAMMES, CULTURAL_DURATION_OPTIONS, CULTURAL_FUNDING_OPTIONS, STUDENT_LEVEL_OPTIONS, STUDENT_DURATION_OPTIONS, STUDENT_FUNDING_OPTIONS, STUDENT_FIELDS, STATEMENT_VISIBILITY_OPTIONS, calculateVisaEffects, calculateCulturalEffects, calculateStudentEffects, STATE_VISIT_AGENDA_ITEMS, STATE_VISIT_TYPES, STATE_VISIT_DURATIONS, STATE_VISIT_DELEGATIONS, MAJOR_INITIATIVE_CONFIG, MAJOR_INITIATIVE_ARTICLE_TYPES, OPEN_BORDERS_SCOPE_OPTIONS, OPEN_BORDERS_DIRECTION_OPTIONS, OPEN_BORDERS_WORKER_PROTECTIONS, OPEN_BORDERS_TRANSITION_OPTIONS, EXTRADITION_SCOPE_OPTIONS, EXTRADITION_DUAL_CRIMINALITY_OPTIONS, EXTRADITION_APPEAL_OPTIONS, EXTRADITION_EXCEPTION_OPTIONS, ENVIRONMENT_EMISSION_TARGET_OPTIONS, ENVIRONMENT_RENEWABLE_TARGET_OPTIONS, ENVIRONMENT_POLLUTION_STANDARDS, ENVIRONMENT_CONSERVATION_OPTIONS, ENVIRONMENT_REVIEW_INTERVAL_OPTIONS, ENVIRONMENT_PENALTY_OPTIONS, calculateOpenBordersEffects, calculateExtraditionEffects, calculateEnvironmentalEffects, SOVEREIGNTY_CONSTRAINTS, checkCreditForTradeAgreement } from './js/game/diplomacy-constants.js';
 import { syncVoteTallies } from './js/game/bills.js';
-import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, SECTOR_DISPLAY_UNITS } from './js/game/trade-constants.js';
+import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, SECTOR_DISPLAY_UNITS, shippingNeedFor } from './js/game/trade-constants.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
 import { clampServiceRate, computeServiceRateCeiling, revenueTierMultiplier } from './js/game/shipping.js';
 import { getNationNames } from './js/game/political-actions.js';
@@ -378,17 +378,29 @@ function _laneShipCountFor(partnerId) {
     return count;
 }
 function _laneEfficiencyFor(partnerId) {
+    const myId = _worldState?.nation?.id;
+    const myNation = (_worldAllNations || []).find(n => n.id === myId);
+    const partner = (_worldAllNations || []).find(n => n.id === partnerId);
+    const rel = (_worldRelations || []).find(r =>
+        (r.nation_a_id === myId && r.nation_b_id === partnerId) ||
+        (r.nation_b_id === myId && r.nation_a_id === partnerId));
+    const shipNeed = shippingNeedFor(myNation, partner, rel?.border_types);
+    if (!shipNeed.needsShipping) {
+        return { pct: 100, ships: 0, reason: shipNeed.reason };
+    }
     const ships = _laneShipCountFor(partnerId);
-    const pct = Math.min(100, 85 + ships * 3);
-    return { pct, ships };
+    return { pct: Math.min(100, 85 + ships * 3), ships, reason: null };
 }
 function _efficiencyBadge(eff) {
-    const { pct, ships } = eff;
-    // Red when still at 85% (no shipping), amber while building up, green at max.
+    const { pct, ships, reason } = eff;
+    // Land lanes (landlocked / land border) are always 100%.
+    // Maritime lanes: red at 85% baseline, amber while building, green at 100%.
     const color = pct >= 100 ? 'var(--green)' : pct > 85 ? 'var(--amber)' : 'var(--red)';
-    const note = ships === 0
-        ? 'no active shipping'
-        : `+${ships * 3} for ${ships} ship${ships !== 1 ? 's' : ''} on trade route`;
+    let note;
+    if (reason === 'landlocked') note = 'landlocked';
+    else if (reason === 'land_border') note = 'land border';
+    else if (ships === 0) note = 'no active shipping';
+    else note = `+${ships * 3} for ${ships} ship${ships !== 1 ? 's' : ''} on trade route`;
     return `<span style="font-family:var(--font-mono);font-size:9px;color:${color};white-space:nowrap;">[${pct}% \u2014 ${escapeHtml(note)}]</span>`;
 }
 
@@ -1744,11 +1756,20 @@ function renderTradeAgreements() {
 
         const agShipInfo = getAgreementShippingInfo(ag.id);
         const agIsTradeType = ag.agreement_type !== 'retaliatory_tariff' && ag.agreement_type !== 'impose_embargo';
-        const logisticsBadge = agIsTradeType
-            ? (agShipInfo?.hasLogistics
+        // Land routes (landlocked / land border) don't need logistics — skip the orange
+        // NO LOGISTICS warning and show a neutral land-trade tag instead.
+        const myNationObj = (_worldAllNations || []).find(n => n.id === nationId);
+        const agRel = (_worldRelations || []).find(r =>
+            (r.nation_a_id === nationId && r.nation_b_id === partnerId) ||
+            (r.nation_b_id === nationId && r.nation_a_id === partnerId));
+        const agShipNeed = shippingNeedFor(myNationObj, partner, agRel?.border_types);
+        const logisticsBadge = !agIsTradeType
+            ? ''
+            : agShipInfo?.hasLogistics
                 ? `<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">\uD83D\uDEA2 ${escapeHtml(agShipInfo.corps[0]?.name || 'Corp')}</span>`
-                : `<span class="tr-badge" style="color:var(--orange);background:rgba(200,136,68,0.06);border-color:rgba(200,136,68,0.15);font-size:5px;">\u26A0 NO LOGISTICS</span>`)
-            : '';
+                : !agShipNeed.needsShipping
+                    ? `<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">LAND TRADE</span>`
+                    : `<span class="tr-badge" style="color:var(--orange);background:rgba(200,136,68,0.06);border-color:rgba(200,136,68,0.15);font-size:5px;">\u26A0 NO LOGISTICS</span>`;
 
         html += `<div class="tr-agreement-row" data-ag-id="${ag.id}" style="border-left:3px solid ${statusColor};">
             <div class="tr-agreement-header" style="background:${isExp ? 'var(--bg-card)' : 'transparent'};padding:14px 18px;">
