@@ -3032,10 +3032,9 @@ var TRADE_IMPORT_DRIVERS = {
     fuel_energy: [
         { key: 'oil_and_gas', inverted: true },
         { key: 'energy_generation', inverted: true },
-        { key: 'manufacturing_output', inverted: false },
         { key: 'urbanization', inverted: false },
-        { key: 'cost_of_living', inverted: false },
-        { key: 'rail_network', inverted: true }
+        { key: 'manufacturing_output', inverted: false },
+        { key: 'standard_of_living', inverted: false }
     ],
     minerals: [
         { key: 'rare_minerals', inverted: true },
@@ -3828,7 +3827,7 @@ var TRADE_EXPORT_HINTS = {
     services_finance:   'Driven by: Service Output'
 };
 var TRADE_IMPORT_HINTS = {
-    fuel_energy:        'Driven by: Low Oil & Gas + Low Energy Generation + Manufacturing + Urbanization + Low Rail Network',
+    fuel_energy:        'Driven by: Population × (Urbanization + Manufacturing + Standard of Living), minus domestic Oil & Gas + Energy Generation',
     minerals:           'Driven by: Low Rare Minerals × Manufacturing Need',
     food_agriculture:   'Driven by: Population vs. Arable Land',
     grains_staples:     'Driven by: Population × Growth Pressure vs. Grain Land Allocation',
