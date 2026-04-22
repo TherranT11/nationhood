@@ -3171,13 +3171,18 @@ async function rdSubmitOffer() {
         }
 
         // Mark request as funded and get the requesting faction.
-        // Errors here were previously swallowed, which left the request
-        // showing as 'open' in Deal Flow after the policy was written —
-        // surface it loudly so it's diagnosable.
+        // NOTE: the loan_requests_update RLS policy only allows the
+        // REQUESTING corp to update — the offering corp (us) is blocked.
+        // That returns {data:null, error:null}, silently. The acceptedSet
+        // filter in loadDealFlow() is what actually keeps written deals off
+        // the board for the offering corp. We still attempt the flip here
+        // so the funded_tick is set if RLS is ever loosened, and we warn
+        // on BOTH outcomes so the real status is visible in the console.
         const { data: fundedReq, error: fundedErr } = await _supabase.from('finance_loan_requests').update({
             status: 'funded', funded_tick: currentTick,
         }).eq('id', rdDeal.requestId).select('requesting_faction_id').single();
         if (fundedErr) console.warn('[Insurance] Failed to mark request funded:', fundedErr.message);
+        else if (!fundedReq) console.warn('[Insurance] Request status flip returned no row (likely RLS-blocked) for requestId:', rdDeal.requestId);
 
         // Create active insurance policy as a loan record
         const policyRow = {
