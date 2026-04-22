@@ -43,7 +43,7 @@ export async function loadAllCorporations() {
             .order('faction_name'),
         _supabase.from('corp_properties')
             .select('id, faction_id, name, nation_id, subsector, type, sub_cash, factions(faction_name, corp_sector, corp_ticker, abbreviation, corp_reputation, corp_company_type, linked_user_id)')
-            .eq('type', 'regional_hq')
+            .eq('role', 'subsidiary')
             .eq('is_active', true),
     ]);
 

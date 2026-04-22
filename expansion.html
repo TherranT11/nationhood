@@ -778,6 +778,7 @@ async function npBuyProperty() {
             catalog_id: prop.catalog_id || null,
             name: prop.name,
             type: prop.type,
+            role: prop.type,              // marketplace purchase — role mirrors type
             style: prop.style,
             capacity: prop.capacity,
             purchase_price: prop.adjusted_cost,
@@ -1308,7 +1309,7 @@ function renderManageSubsidiariesCard() {
         greenBright: '#5c5', greenDark: '#2a5a3a', red: '#c55', redDim: '#a44', yellow: '#ca5',
         text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
 
-    const hqProps = _ownedProperties.filter(p => p.type === 'regional_hq');
+    const hqProps = _ownedProperties.filter(p => p.role === 'subsidiary');
     const subsidiaries = hqProps.map(getSubsidiaryData);
     if (_mSubSelected >= subsidiaries.length) _mSubSelected = 0;
     const sub = subsidiaries[_mSubSelected] || null;
@@ -2188,8 +2189,8 @@ async function subCreate() {
     if (!subName) { alert('Please enter a corporation name for the subsidiary.'); return; }
     if (subAbbr.length < 2) { alert('Please enter an abbreviation (2-4 chars).'); return; }
 
-    // Check if already have subsidiary there
-    const existing = _ownedProperties.find(p => p.nation_id === nation.id && p.type === 'regional_hq');
+    // Check if already have subsidiary there (marketplace HQs don't count — they have role='regional_hq')
+    const existing = _ownedProperties.find(p => p.nation_id === nation.id && p.role === 'subsidiary');
     if (existing) { alert('You already have a subsidiary in ' + nation.name); return; }
 
     const cost = subCalcEntryCost(nation);
@@ -2208,12 +2209,14 @@ async function subCreate() {
         const condition = 85 + Math.floor(Math.random() * 16); // 85-100% new build
         const maint = Math.round(cost * 0.005);
 
-        // Create regional HQ property
+        // Create subsidiary (stored as type='regional_hq' for legacy compat,
+        // distinguished from marketplace HQs by role='subsidiary').
         const { error: propErr } = await _supabase.from('corp_properties').insert({
             faction_id: faction.id,
             nation_id: nation.id,
             name: subName,
             type: 'regional_hq',
+            role: 'subsidiary',
             style: 'Modern',
             capacity: 500,
             purchase_price: cost,
@@ -2282,8 +2285,8 @@ function renderCreateSubsidiaryCard() {
     const subsectors = subGetSubsectors();
     const selectedSub = subsectors.find(s => s.name === _subSelectedSubsector) || subsectors[0];
 
-    // Filter out nations where we already have a subsidiary
-    const existingNationIds = new Set(_ownedProperties.filter(p => p.type === 'regional_hq').map(p => p.nation_id));
+    // Filter out nations where we already have a subsidiary (role='subsidiary' only — marketplace HQs don't block subsidiary creation)
+    const existingNationIds = new Set(_ownedProperties.filter(p => p.role === 'subsidiary').map(p => p.nation_id));
     const available = _subNations.filter(n => !existingNationIds.has(n.id));
     const sel = _subSelectedNation ? available.find(n => n.id === _subSelectedNation) : null;
 

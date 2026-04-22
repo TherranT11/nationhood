@@ -248,7 +248,7 @@ export async function updateNationAutoRates(supabase, nation, currentTick) {
         .from('corp_properties')
         .select('id, faction_id, nation_id, subsector, is_active')
         .eq('nation_id', nation.id)
-        .eq('type', 'regional_hq')
+        .eq('role', 'subsidiary')
         .eq('is_active', true)
         .in('subsector', ['Insurance', 'Banking']);
 
