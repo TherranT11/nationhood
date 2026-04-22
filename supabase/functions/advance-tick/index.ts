@@ -1672,6 +1672,37 @@ function calculateDomesticFuelDemand(nation) {
     return computeFuelDemand(nation).gross;
 }
 
+// Shared manufactured-goods demand math — mirror of computeFuelDemand.
+// Drivers: population, urbanization, standard_of_living, higher_education.
+// Domestic offset: manufacturing_output (what you make, you don't import).
+// Currency strength scales import power (linear 0-to-1).
+// No floors, no caps, no stability, no tariff dampener.
+// Calibration: 250M per 1M pop — at pop 100M, intensity 1.0, coverage 0,
+// currency 100 → $25B max demand per nation. Scales linearly with pop.
+function computeManufDemand(nation) {
+    const pop = Number(nation.population) || 0;
+    const urban = Number(nation.urbanization) || 0;
+    const sol = Number(nation.standard_of_living) || 0;
+    const edu = Number(nation.higher_education) || 0;
+    const manuf = Number(nation.manufacturing_output) || 0;
+    const currency = Number(nation.currency_strength) || 0;
+
+    const intensity        = (urban + sol + edu) / 300;
+    const domesticCoverage = manuf / 100;
+    const importPower      = currency / 100;
+
+    const gross = (pop / 1_000_000) * 250_000_000 * intensity * importPower;
+    return {
+        gross: Math.round(gross),
+        importDemand: Math.round(gross * (1 - domesticCoverage)),
+    };
+}
+
+// Gross domestic demand for manufactured goods — mirror of calculateDomesticFuelDemand.
+function calculateDomesticManufDemand(nation) {
+    return computeManufDemand(nation).gross;
+}
+
 function calculateImportDemand(nation, sector, opts) {
     // Export-only sectors have no import demand
     if (sector.export_only) return 0;
@@ -1679,6 +1710,11 @@ function calculateImportDemand(nation, sector, opts) {
     // ── FUEL & ENERGY — simplified model ──
     if (sector.key === 'fuel_energy') {
         return computeFuelDemand(nation).importDemand;
+    }
+
+    // ── MANUFACTURED GOODS — simplified model ──
+    if (sector.key === 'manufactured_goods') {
+        return computeManufDemand(nation).importDemand;
     }
 
     var cfg = TRADE_CONFIG;
@@ -1720,18 +1756,6 @@ function calculateImportDemand(nation, sector, opts) {
 
         var arableLand = (Number(nation.arable_land) || 0) / 100;
         domesticCoverage = arableLand / Math.max(0.2, popNorm * 1.2);
-    }
-
-    // ── MANUFACTURED GOODS ──
-    // Demand: population × standard of living (consumer purchasing power).
-    // Domestic offset: manufacturing_output (max 60% — even industrial nations
-    // import cars, electronics, clothing from abroad).
-    else if (sector.key === 'manufactured_goods') {
-        var sol = (Number(nation.standard_of_living ?? 50)) / SN;
-        grossDemand = popNorm * (sol / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
-
-        var manufScore = (Number(nation.manufacturing_output) || 0) / 100;
-        domesticCoverage = Math.min(0.60, manufScore * 0.7);
     }
 
     // ── TECHNOLOGY & ELECTRONICS ──
@@ -2141,9 +2165,13 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 expCap = Math.round(expCap * (exportCaps['food_agriculture'] / 100));
             }
 
-            // Gross domestic demand — currently populated for fuel_energy only;
-            // other sectors stay at 0 until they get the same treatment.
-            var domDem = sector.key === 'fuel_energy' ? calculateDomesticFuelDemand(n) : 0;
+            // Gross domestic demand — populated for sectors that have been
+            // migrated to the simplified multiplicative model (fuel_energy,
+            // manufactured_goods). Other sectors stay at 0 until they get
+            // the same treatment.
+            var domDem = 0;
+            if (sector.key === 'fuel_energy') domDem = calculateDomesticFuelDemand(n);
+            else if (sector.key === 'manufactured_goods') domDem = calculateDomesticManufDemand(n);
 
             // Export caps only restrict what leaves the country — they don't
             // change what's produced, so domProd is captured pre-cap.
