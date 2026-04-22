@@ -1110,9 +1110,10 @@ export function calculateExportCapacity(nation, sector, opts) {
 // Domestic offset: oil_and_gas + energy_generation.
 // Currency strength scales import power (linear 0-to-1).
 // No floors, no caps, no stability modifier, no tariff dampener.
-// Calibration: 150M per 1M pop = production cap ($15B) / 100M pop — so
-// a 100M nation at max stats + zero coverage + full import power demands
-// $15B, symmetric with the supply-side cap. Scales linearly with pop.
+// Calibration: 750M per 1M pop — a 100M nation at max stats + zero coverage
+// + full import power demands $75B, 5x the single-nation supply cap so that
+// global demand runs well ahead of global supply and drives persistent
+// import pressure. Scales linearly with pop.
 function computeFuelDemand(nation) {
     const pop = Number(nation.population) || 0;
     const urban = Number(nation.urbanization) || 0;
@@ -1126,7 +1127,7 @@ function computeFuelDemand(nation) {
     const domesticCoverage = (oil + gen) / 200;
     const importPower      = currency / 100;
 
-    const gross = (pop / 1_000_000) * 150_000_000 * intensity * importPower;
+    const gross = (pop / 1_000_000) * 750_000_000 * intensity * importPower;
     return {
         gross: Math.round(gross),
         importDemand: Math.round(gross * (1 - domesticCoverage)),
