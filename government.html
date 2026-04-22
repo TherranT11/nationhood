@@ -1378,7 +1378,7 @@ function adm2RenderCabinet() {
     const listEl = document.getElementById('adm2-cab-list');
     const titleEl = document.getElementById('adm2-cab-title');
     if (!listEl || !_govData) return;
-    const { coalition, ministries, parties } = _govData;
+    const { coalition, ministries, parties, hog } = _govData;
     const coalitionIds = new Set(coalition?.party_ids || []);
 
     const cabinet = (ministries || []).filter(m =>
@@ -1390,6 +1390,27 @@ function adm2RenderCabinet() {
         listEl.innerHTML = '<div style="padding:20px 14px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">No cabinet assembled.</div>';
         return;
     }
+
+    // Precompute static govContext fields shared by every minister row.
+    // Per-row isMyMinistry is spread-in inside the .map() below.
+    const isCaretaker = !!(coalition && coalition.status === 'caretaker');
+    const pmMinistry = (ministries || []).find(mm => mm.ministry_key === 'prime_minister');
+    const pmFilled = !!(pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name);
+    const pmFactionIdLocal = hog?.faction_id || pmMinistry?.party_id || null;
+    const isPMPartyLocal = !!(currentFaction && pmFactionIdLocal && currentFaction.id === pmFactionIdLocal);
+    let govType = 'parliamentary';
+    if (isPresidential && isSemiPresidential(currentNation)) govType = 'semi-presidential';
+    else if (isPresidential) govType = 'presidential';
+    const baseCtx = {
+        type: govType,
+        isRuling: isRulingFaction,
+        canAppoint: isPMPartyLocal && pmFilled && !isCaretaker,
+        isPMParty: isPMPartyLocal || isPMParty,
+        isPresidentParty,
+        isCaretaker,
+        requests: [],
+        myRequest: null,
+    };
 
     const rows = cabinet.map((m, idx) => {
         const deptLabel = (MINISTRY_NAMES[m.ministry_key] || m.ministry_key).replace(/^Ministry of\s+/i, '').replace(/^Ministry\s+/i, '');
@@ -1409,6 +1430,14 @@ function adm2RenderCabinet() {
         const fundingPct = (m.funding_level != null) ? Math.round(Number(m.funding_level) * 100) : null;
         const budgetLabel = isEmpty ? '—' : (fundingPct != null ? `${fundingPct}%` : '—');
 
+        // Action buttons — reuse the existing buildMgmtButtons so the
+        // Appoint/Nominate/Resign/Dismiss rules + AP gating + caretaker
+        // gate live in ONE place (shared with the legacy ministry card
+        // renderer elsewhere in this file). isMyMinistry is per-row.
+        const isMyMinistry = !isEmpty && !!currentFaction && m.party_id === currentFaction.id;
+        const rowCtx = Object.assign({}, baseCtx, { isMyMinistry });
+        const actionBtns = buildMgmtButtons(m.ministry_key, m, rowCtx);
+
         return `<div class="adm2-min-row ${cls}" data-idx="${idx}">
             <div class="ava">${escapeHtml(initials)}</div>
             <div class="mid">
@@ -1427,9 +1456,7 @@ function adm2RenderCabinet() {
                 <div class="s"><span class="k">Funding</span><span class="v">${budgetLabel}</span></div>
                 <div class="s"><span class="k">Party</span><span class="v" style="font-family:var(--font-ui);font-size:11px;">${escapeHtml(partyName || '—')}</span></div>
             </div>
-            <div class="adm2-drawer-actions">
-                <button disabled title="Phase 3 wires this">Actions (Phase 3)</button>
-            </div>
+            ${actionBtns ? `<div class="adm2-drawer-actions">${actionBtns}</div>` : ''}
         </div>`;
     }).join('');
 
