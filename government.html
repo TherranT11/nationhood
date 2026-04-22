@@ -1250,14 +1250,88 @@ function adm2RenderExecCard() {
 }
 
 // ── Nation card — crises (Phase 2 will wire real data) ──────────────
+// Crises are cached per (nationId, tick). Subtab re-clicks during the same
+// tick hit cache; tick advance invalidates automatically so a newly-triggered
+// crisis shows up without a page refresh.
+let _adm2CrisesCache = null;    // { nationId, tick, crises: [...] }
+
+async function adm2LoadCrises(nationId) {
+    if (!nationId) return [];
+    if (_adm2CrisesCache
+        && _adm2CrisesCache.nationId === nationId
+        && _adm2CrisesCache.tick === currentTick) {
+        return _adm2CrisesCache.crises;
+    }
+    try {
+        const { data, error } = await _supabase
+            .from('active_crises')
+            .select('started_at_tick, crisis_templates!inner(name, description)')
+            .eq('nation_id', nationId);
+        if (error) throw error;
+        const crises = (data || []).map(r => ({
+            name: r.crisis_templates?.name || 'Crisis',
+            description: r.crisis_templates?.description || '',
+            started_at_tick: r.started_at_tick,
+        }));
+        _adm2CrisesCache = { nationId, tick: currentTick, crises };
+        return crises;
+    } catch (err) {
+        console.warn('[Administration] Crisis load failed:', err?.message || err);
+        return [];
+    }
+}
+
 function adm2RenderNationCard() {
     const el = document.getElementById('adm2-nation-card');
     if (!el) return;
-    // Placeholder — Phase 2 queries active_crises + crisis_templates
+    const nationId = currentNation?.id;
+
+    // Empty shell renders first with a loading note; real data fills in async.
     el.innerHTML = `<div class="adm2-panel">
         <div class="adm2-panel-head"><span class="sq" style="background:var(--red);"></span>Nation</div>
-        <div class="adm2-crisis-empty">Crisis data wiring pending (Phase 2).</div>
+        <div class="adm2-crisis-empty">Loading crises…</div>
     </div>`;
+
+    adm2LoadCrises(nationId).then(crises => {
+        // Re-check that the same container is still on-screen (subtab may have changed).
+        const still = document.getElementById('adm2-nation-card');
+        if (!still) return;
+
+        if (!crises.length) {
+            still.innerHTML = `<div class="adm2-panel">
+                <div class="adm2-panel-head"><span class="sq" style="background:var(--green);"></span>Nation</div>
+                <div class="adm2-crisis-empty">No active crises.</div>
+            </div>`;
+            return;
+        }
+
+        const items = crises.map(c => {
+            const startTick = Number(c.started_at_tick);
+            let meta = '';
+            if (typeof startTick === 'number' && typeof currentTick === 'number' && currentTick >= startTick) {
+                const months = Math.max(0, currentTick - startTick);
+                const startLabel = tickToDate(startTick);
+                meta = `<div class="meta">
+                    <span>${months === 1 ? '1 Month' : months + ' Months'}</span>
+                    <span class="sep">·</span>
+                    <span>Since ${escapeHtml(startLabel || '—')}</span>
+                </div>`;
+            }
+            return `<div class="adm2-crisis-item">
+                <div class="top">
+                    <span class="name"><span class="ic">▲</span>${escapeHtml(c.name)}</span>
+                    <span class="status">Ongoing</span>
+                </div>
+                ${c.description ? `<div class="desc">${escapeHtml(c.description)}</div>` : ''}
+                ${meta}
+            </div>`;
+        }).join('');
+
+        still.innerHTML = `<div class="adm2-panel">
+            <div class="adm2-panel-head"><span class="sq" style="background:var(--red);"></span>Nation · ${crises.length} active</div>
+            ${items}
+        </div>`;
+    });
 }
 
 // ── Timeline ────────────────────────────────────────────────────────
@@ -1327,13 +1401,13 @@ function adm2RenderCabinet() {
         const isAligned = party && coalitionIds.has(party.id);
         const cls = isEmpty ? 'vacant' : (isAligned ? 'aligned' : 'opp');
         const initials = name ? name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase() : '—';
-        const approval = isEmpty ? 0 : Math.max(0, Math.min(100, Math.round(Number(m.approval ?? 50))));
-
-        // Sparkline — Phase 1: static random for visual. Phase 2 can pull real history.
-        const bars = Array.from({ length: 12 }, () => {
-            const h = 30 + Math.floor(Math.random() * 70);
-            return `<div class="b" style="height:${h}%;"></div>`;
-        }).join('');
+        // Real columns on ministries: minister_approval (int), funding_level (numeric 0-1+).
+        // There is no per-minister approval history table yet, so the drawer
+        // sparkline is rendered as a flat neutral placeholder — honest over
+        // fake-random data.
+        const approval = isEmpty ? 0 : Math.max(0, Math.min(100, Math.round(Number(m.minister_approval ?? 50))));
+        const fundingPct = (m.funding_level != null) ? Math.round(Number(m.funding_level) * 100) : null;
+        const budgetLabel = isEmpty ? '—' : (fundingPct != null ? `${fundingPct}%` : '—');
 
         return `<div class="adm2-min-row ${cls}" data-idx="${idx}">
             <div class="ava">${escapeHtml(initials)}</div>
@@ -1350,10 +1424,9 @@ function adm2RenderCabinet() {
             <div class="adm2-drawer-party ${cls}"><span class="pdot" style="background:${partyColor};"></span>${escapeHtml(partyName || 'No party assigned')}</div>
             <div class="adm2-drawer-stats">
                 <div class="s"><span class="k">Approval</span><span class="v">${isEmpty ? '—' : approval + '%'}</span></div>
-                <div class="s"><span class="k">Influence</span><span class="v">${isEmpty ? '—' : (m.influence ?? '—')}</span></div>
-                <div class="s"><span class="k">Budget</span><span class="v">${isEmpty ? '—' : (m.budget_label || '—')}</span></div>
+                <div class="s"><span class="k">Funding</span><span class="v">${budgetLabel}</span></div>
+                <div class="s"><span class="k">Party</span><span class="v" style="font-family:var(--font-ui);font-size:11px;">${escapeHtml(partyName || '—')}</span></div>
             </div>
-            <div class="adm2-drawer-spark">${bars}</div>
             <div class="adm2-drawer-actions">
                 <button disabled title="Phase 3 wires this">Actions (Phase 3)</button>
             </div>
