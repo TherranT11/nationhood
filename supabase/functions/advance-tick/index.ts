@@ -581,8 +581,7 @@ var TRADE_SECTORS = [
         key: 'manufactured_goods',
         label: 'Manufactured Goods',
         export_only: false,
-        export_stat: 'manufacturing_output',
-        export_threshold: 25
+        export_stat: 'manufacturing_output'
     },
     {
         key: 'technology',
@@ -1486,6 +1485,21 @@ function calculateDomesticProduction(nation, sector, opts) {
         var stab = Number(nation.stability ?? 50);
         return Math.round(
             (oil / 100) * (gen / 100) * 15e9 * Math.min(1.0, stab / 40)
+        );
+    }
+
+    // ── MANUFACTURED GOODS ──
+    // Population-scaled single-driver model. Manufacturing output IS the
+    // composite industrial capability — no secondary stat needed. Pop scales
+    // because more workers = more factory output. Stability degrades below 40.
+    // Max output (manuf=100, pop=100M, stab≥40) = $25B/tick.
+    // No threshold, no GDP modifier, no bonus stats.
+    if (sector.key === 'manufactured_goods') {
+        var manufStat = Number(nation.manufacturing_output) || 0;
+        var popMillions = (Number(nation.population) || 0) / 1_000_000;
+        var stabMg = Number(nation.stability ?? 50);
+        return Math.round(
+            (manufStat / 100) * popMillions * 250_000_000 * Math.min(1.0, stabMg / 40)
         );
     }
 
