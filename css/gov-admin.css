@@ -287,3 +287,330 @@
     .ga-banner-top { flex-direction: column; gap: 8px; }
     .ga-banner-approval { text-align: left; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   ADMINISTRATIVE SUBTAB — 3-column redesign (design bundle: Option A)
+   Left (300px, sticky): admin card + exec card + nation/crisis card
+   Middle (flex):        Executive Timeline with filter tabs
+   Right (340px):        Dense cabinet list with click-to-expand drawer
+   ══════════════════════════════════════════════════════════════════════ */
+.adm2-page {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr) 340px;
+    gap: 16px;
+    padding: 0;
+    align-items: start;
+}
+@media (max-width: 1400px) { .adm2-page { grid-template-columns: 280px minmax(0, 1fr) 320px; gap: 14px; } }
+@media (max-width: 1180px) { .adm2-page { grid-template-columns: 260px minmax(0, 1fr) 280px; gap: 12px; } }
+@media (max-width: 980px)  { .adm2-page { grid-template-columns: 1fr; }
+                             .adm2-left  { position: static !important; } }
+
+.adm2-left { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 12px; }
+
+/* Admin card */
+.adm2-admin-card {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    border-left: 2px solid var(--green); border-radius: 4px;
+    padding: 16px 16px 14px;
+}
+.adm2-admin-card .title-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.adm2-admin-card h1 {
+    margin: 0; font-family: var(--font-mono); font-size: 16px; font-weight: 700;
+    letter-spacing: -0.01em; color: var(--text-bright);
+}
+.adm2-pill {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--green); border: 1px solid var(--green);
+    padding: 2px 6px; border-radius: 2px; background: var(--green-faint);
+}
+.adm2-meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); line-height: 1.7; }
+.adm2-meta .row { display: flex; gap: 8px; }
+.adm2-meta .row .k {
+    color: var(--text-faint); width: 72px; text-transform: uppercase;
+    letter-spacing: 0.12em; font-size: 10px; padding-top: 1px;
+}
+.adm2-meta .row .v { color: var(--text-primary); flex: 1; }
+
+.adm2-approval-strip {
+    margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-main);
+    display: flex; justify-content: space-between; align-items: baseline;
+}
+.adm2-approval-strip .lbl {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em;
+    color: var(--text-muted); text-transform: uppercase;
+}
+.adm2-approval-strip .val {
+    font-family: var(--font-mono); font-size: 22px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Exec + Nation card share the same panel shape */
+.adm2-panel {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    border-radius: 4px; overflow: hidden;
+}
+.adm2-panel-head {
+    padding: 10px 14px 9px; border-bottom: 1px solid var(--border-main);
+    background: var(--bg-card);
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--text-primary);
+}
+.adm2-panel-head .sq { width: 7px; height: 7px; flex: none; }
+
+.adm2-exec-person {
+    padding: 12px 14px; display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border-light);
+}
+.adm2-exec-person:last-child { border-bottom: none; }
+.adm2-avatar {
+    width: 38px; height: 38px; border-radius: 2px;
+    background: var(--bg-card); border: 1px solid var(--border-strong);
+    display: grid; place-items: center;
+    font-family: var(--font-mono); font-weight: 700; font-size: 11px;
+    color: var(--text-primary); flex: none;
+}
+.adm2-exec-body { min-width: 0; }
+.adm2-exec-body .role {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.22em;
+    color: var(--text-muted); text-transform: uppercase; margin-bottom: 3px;
+}
+.adm2-exec-body .name {
+    font-size: 14px; font-weight: 600; color: var(--text-bright); letter-spacing: -0.005em;
+}
+.adm2-exec-body .party {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    margin-top: 2px; letter-spacing: 0.04em;
+}
+.adm2-exec-body .party .dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    margin-right: 5px; vertical-align: 1px;
+}
+
+/* Nation card (crises — placeholder in Phase 1) */
+.adm2-crisis-item {
+    padding: 12px 14px; border-left: 2px solid var(--red);
+}
+.adm2-crisis-item .top {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; margin-bottom: 6px;
+}
+.adm2-crisis-item .name {
+    font-size: 13px; font-weight: 600; color: var(--text-bright);
+    display: flex; align-items: center; gap: 7px;
+}
+.adm2-crisis-item .name .ic { color: var(--red); font-size: 12px; }
+.adm2-crisis-item .status {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--red);
+    border: 1px solid var(--red-border); padding: 2px 6px; border-radius: 2px;
+    background: var(--red-faint); flex: none;
+}
+.adm2-crisis-item .desc {
+    font-size: 12px; color: var(--text-primary); line-height: 1.5; margin-bottom: 8px;
+}
+.adm2-crisis-item .meta {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em;
+    color: var(--text-faint); text-transform: uppercase;
+    display: flex; gap: 10px; align-items: center;
+}
+.adm2-crisis-empty {
+    padding: 20px 14px; text-align: center;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); font-style: italic;
+}
+
+/* Middle column — timeline */
+.adm2-timeline {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    border-radius: 4px; overflow: hidden;
+    display: flex; flex-direction: column; min-height: calc(100vh - 220px);
+}
+.adm2-tl-head {
+    padding: 12px 14px; border-bottom: 1px solid var(--border-main);
+    background: var(--bg-card);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+}
+.adm2-tl-head .title {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.22em; text-transform: uppercase; color: var(--text-bright);
+}
+.adm2-tl-head .title .sq {
+    width: 8px; height: 8px; background: var(--amber);
+    box-shadow: 0 0 8px rgba(176,154,91,0.4); flex: none;
+}
+.adm2-tl-filters {
+    display: flex; gap: 3px; font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+}
+.adm2-tl-filters button {
+    background: transparent; border: 1px solid transparent; color: var(--text-muted);
+    padding: 4px 8px; border-radius: 2px; cursor: pointer; font-weight: 600;
+    font-family: inherit; font-size: inherit; letter-spacing: inherit;
+}
+.adm2-tl-filters button:hover { color: var(--text-primary); }
+.adm2-tl-filters button.active {
+    color: var(--text-bright); border-color: var(--border-strong);
+    background: var(--bg-hover);
+}
+.adm2-tl-list { padding: 6px 0; overflow-y: auto; flex: 1; max-height: calc(100vh - 280px); }
+.adm2-tl-item {
+    display: grid; grid-template-columns: 22px 1fr auto; gap: 14px;
+    padding: 12px 16px 12px 14px; border-bottom: 1px solid var(--border-light);
+    position: relative;
+}
+.adm2-tl-item::before {
+    content: ""; position: absolute; left: 24px; top: 0; bottom: 0;
+    width: 1px; background: var(--border-light);
+}
+.adm2-tl-dot {
+    width: 11px; height: 11px; border-radius: 50%;
+    border: 1.5px solid var(--border-strong); background: var(--bg-panel);
+    margin-top: 4px; z-index: 1; position: relative;
+}
+.adm2-tl-item.type-legislation .adm2-tl-dot { border-color: var(--green); }
+.adm2-tl-item.type-policy      .adm2-tl-dot { border-color: var(--blue); }
+.adm2-tl-item.type-crisis      .adm2-tl-dot { border-color: var(--red); }
+.adm2-tl-item.type-appointment .adm2-tl-dot { border-color: var(--purple); }
+.adm2-tl-item.type-communications .adm2-tl-dot { border-color: var(--amber); }
+.adm2-tl-item.type-formation   .adm2-tl-dot { border-color: var(--amber); }
+.adm2-tl-item.type-economy     .adm2-tl-dot { border-color: var(--teal); }
+.adm2-tl-body .head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.adm2-tl-body .icon { width: 16px; text-align: center; color: var(--text-muted); font-size: 12px; }
+.adm2-tl-body .ttl { font-size: 13px; font-weight: 600; color: var(--text-bright); letter-spacing: -0.005em; }
+.adm2-tl-body .desc { font-size: 12px; color: var(--text-primary); line-height: 1.5; margin-top: 2px; max-width: 640px; }
+.adm2-tl-date {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    letter-spacing: 0.04em; text-align: right; flex: none; white-space: nowrap; margin-top: 4px;
+}
+.adm2-tl-date .d { color: var(--text-faint); font-size: 9px; display: block; }
+.adm2-tl-empty {
+    padding: 30px 16px; text-align: center;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); font-style: italic;
+}
+
+/* Right column — cabinet */
+.adm2-cabinet {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    border-radius: 4px; overflow: hidden; display: flex; flex-direction: column;
+}
+.adm2-cab-head { justify-content: space-between; }
+.adm2-cab-head .title .sq {
+    background: var(--blue); box-shadow: 0 0 8px rgba(107,140,174,0.4);
+}
+.adm2-cab-list { display: flex; flex-direction: column; }
+.adm2-min-row {
+    display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px;
+    align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--border-light);
+    border-left: 2px solid transparent; cursor: pointer;
+    transition: background 120ms ease; position: relative;
+}
+.adm2-min-row:hover { background: var(--bg-hover); }
+.adm2-min-row.aligned { border-left-color: var(--green); }
+.adm2-min-row.opp     { border-left-color: var(--red); }
+.adm2-min-row.vacant  { border-left-color: var(--text-faint); }
+.adm2-min-row.expanded { background: var(--bg-hover); }
+.adm2-min-row .ava {
+    width: 26px; height: 26px; border-radius: 2px;
+    background: var(--bg-card); border: 1px solid var(--border-strong);
+    display: grid; place-items: center;
+    font-family: var(--font-mono); font-weight: 700; font-size: 10px;
+    color: var(--text-primary);
+}
+.adm2-min-row .mid { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.adm2-min-row .mid .dept {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.18em;
+    color: var(--text-muted); text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.adm2-min-row.aligned .mid .dept { color: var(--green); }
+.adm2-min-row.opp     .mid .dept { color: var(--red); }
+.adm2-min-row .mid .nm {
+    font-size: 12px; font-weight: 500; color: var(--text-bright); letter-spacing: -0.005em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.adm2-min-row.vacant .mid .nm { color: var(--text-faint); font-style: italic; }
+.adm2-min-row .right { display: flex; align-items: center; gap: 8px; flex: none; }
+.adm2-ap-bar {
+    width: 40px; height: 4px; background: var(--bg-card); border-radius: 2px;
+    overflow: hidden; position: relative;
+}
+.adm2-ap-bar .fill {
+    position: absolute; left: 0; top: 0; bottom: 0; background: var(--text-muted);
+}
+.adm2-min-row.aligned .adm2-ap-bar .fill { background: var(--green); }
+.adm2-min-row.opp     .adm2-ap-bar .fill { background: var(--red); }
+.adm2-ap-val {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-primary);
+    font-variant-numeric: tabular-nums; min-width: 28px; text-align: right;
+}
+.adm2-min-row .caret {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-faint);
+    transition: transform 160ms ease;
+}
+.adm2-min-row.expanded .caret { transform: rotate(90deg); color: var(--text-primary); }
+
+/* Drawer */
+.adm2-min-drawer {
+    display: none; padding: 12px 14px 14px 44px;
+    border-bottom: 1px solid var(--border-light); background: var(--bg-body);
+    animation: adm2DrawerIn 180ms ease;
+}
+@keyframes adm2DrawerIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.adm2-min-row.expanded + .adm2-min-drawer { display: block; }
+.adm2-drawer-party {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    letter-spacing: 0.04em; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+}
+.adm2-drawer-party .pdot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted);
+}
+.adm2-drawer-party.aligned .pdot { background: var(--green); }
+.adm2-drawer-party.opp     .pdot { background: var(--red); }
+.adm2-drawer-stats {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;
+    padding: 10px 0; border-top: 1px solid var(--border-main);
+    border-bottom: 1px solid var(--border-main);
+}
+.adm2-drawer-stats .s .k {
+    display: block; font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: 0.16em; color: var(--text-faint);
+    text-transform: uppercase; margin-bottom: 3px;
+}
+.adm2-drawer-stats .s .v {
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+    color: var(--text-bright); font-variant-numeric: tabular-nums;
+}
+.adm2-drawer-stats .s .delta {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+    color: var(--text-faint); margin-left: 4px;
+}
+.adm2-drawer-stats .s .delta.up   { color: var(--green); }
+.adm2-drawer-stats .s .delta.down { color: var(--red); }
+.adm2-drawer-spark {
+    margin-top: 10px; display: flex; align-items: flex-end; gap: 2px; height: 22px;
+}
+.adm2-drawer-spark .b { flex: 1; background: var(--border-strong); border-radius: 1px; min-width: 2px; }
+.adm2-min-drawer.aligned .adm2-drawer-spark .b { background: var(--green-border); }
+.adm2-min-drawer.opp     .adm2-drawer-spark .b { background: var(--red-border); }
+.adm2-drawer-actions {
+    display: flex; gap: 6px; margin-top: 10px;
+}
+.adm2-drawer-actions button {
+    background: transparent; border: 1px solid var(--border-strong); color: var(--text-primary);
+    padding: 5px 10px; border-radius: 2px; cursor: pointer;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+    text-transform: uppercase; font-weight: 600;
+}
+.adm2-drawer-actions button:hover:not(:disabled) {
+    color: var(--text-bright); border-color: var(--text-muted);
+}
+.adm2-drawer-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
