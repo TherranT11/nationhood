@@ -96,8 +96,8 @@ END $$;
 
 -- ==================== RPC: create_bloc ====================
 -- Creates a bloc seed with the caller as leader, pays the $100k cost,
--- and sends invitations to the listed parties (after eligibility and
--- ideological-distance checks).
+-- and sends invitations to the listed parties (after basic eligibility
+-- checks: party type, not already in a bloc, same nation).
 
 CREATE OR REPLACE FUNCTION create_bloc(
     p_leader_faction_id UUID,
@@ -116,9 +116,6 @@ DECLARE
     v_bloc_id UUID;
     v_invitee UUID;
     v_invitee_faction factions%ROWTYPE;
-    v_leader_ideology faction_ideology%ROWTYPE;
-    v_invitee_ideology faction_ideology%ROWTYPE;
-    v_distance NUMERIC;
     v_invited INT := 0;
     v_skipped INT := 0;
     v_clean_name TEXT;
@@ -167,11 +164,6 @@ BEGIN
            bloc_id     = v_bloc_id
      WHERE id = p_leader_faction_id;
 
-    -- Leader's ideology (may be NULL for brand-new parties — treat missing as
-    -- "no distance gate" so onboarding isn't blocked by missing data)
-    SELECT * INTO v_leader_ideology
-    FROM faction_ideology WHERE faction_id = p_leader_faction_id;
-
     -- Send invitations (each eligibility failure is a silent skip — we don't
     -- want a single bad invitee to abort the whole action)
     IF p_invitee_faction_ids IS NOT NULL THEN
@@ -186,31 +178,6 @@ BEGIN
                OR v_invitee_faction.faction_type IS DISTINCT FROM 'party'
                OR v_invitee_faction.bloc_id IS NOT NULL THEN
                 v_skipped := v_skipped + 1; CONTINUE;
-            END IF;
-
-            -- Ideological-distance gate: average absolute difference across
-            -- the 5 axes must be >= 20. Skip when either side has no ideology
-            -- row (can't gate on missing data).
-            SELECT * INTO v_invitee_ideology
-            FROM faction_ideology WHERE faction_id = v_invitee;
-
-            IF v_invitee_ideology.faction_id IS NOT NULL
-               AND v_leader_ideology.faction_id IS NOT NULL THEN
-                v_distance := (
-                    ABS(COALESCE(v_leader_ideology.liberty_equality, 0) -
-                        COALESCE(v_invitee_ideology.liberty_equality, 0)) +
-                    ABS(COALESCE(v_leader_ideology.tradition_progress, 0) -
-                        COALESCE(v_invitee_ideology.tradition_progress, 0)) +
-                    ABS(COALESCE(v_leader_ideology.security_freedom, 0) -
-                        COALESCE(v_invitee_ideology.security_freedom, 0)) +
-                    ABS(COALESCE(v_leader_ideology.globalism_nationalism, 0) -
-                        COALESCE(v_invitee_ideology.globalism_nationalism, 0)) +
-                    ABS(COALESCE(v_leader_ideology.individualism_collectivism, 0) -
-                        COALESCE(v_invitee_ideology.individualism_collectivism, 0))
-                ) / 5.0;
-                IF v_distance < 20 THEN
-                    v_skipped := v_skipped + 1; CONTINUE;
-                END IF;
             END IF;
 
             INSERT INTO bloc_invitations
