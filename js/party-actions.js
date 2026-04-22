@@ -586,22 +586,6 @@ function topTwoIdeologies(ideologyRow) {
 }
 
 /**
- * Average absolute distance between two ideology rows across the 5 axes.
- * Mirrors the server-side gate so the modal can grey out ineligible parties
- * without a round-trip. Returns Infinity when data is missing so the UI
- * doesn't block invitations on parties with no ideology row (server does the
- * same).
- */
-function avgIdeologyDistance(a, b) {
-    if (!a || !b) return Infinity;
-    let sum = 0;
-    for (const axis of IDEOLOGY_AXES) {
-        sum += Math.abs(Number(a[axis.key] || 0) - Number(b[axis.key] || 0));
-    }
-    return sum / IDEOLOGY_AXES.length;
-}
-
-/**
  * Create Bloc modal — name input + selectable list of eligible parties with
  * leader / seats / top 2 ideologies / eligibility badge. At least one invitee
  * must be selected; $100k is charged on Create.
@@ -641,7 +625,7 @@ async function openCreateBlocModal(root) {
                 <div style="padding:6px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);">
                     <div style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-bottom:2px;">COST</div>
                     <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
-                        Founding a bloc costs <strong style="color:var(--accent);">$100k</strong>. You become the bloc leader and the listed parties receive invitations they can accept or decline. Parties must have an average ideological distance of at least <strong>20</strong> across all 5 axes to be invitable.
+                        Founding a bloc costs <strong style="color:var(--accent);">$100k</strong>. You become the bloc leader and the listed parties receive invitations they can accept or decline. Any party in your nation that isn't already in a bloc can be invited.
                     </div>
                 </div>
             </div>
@@ -672,13 +656,13 @@ async function openCreateBlocModal(root) {
             .is('abandoned_at', null);
         const partyList = (parties || []).filter(p => p.id !== faction.id);
 
-        // Ideology rows for the leader + all other parties (one query, keyed on faction_id)
-        const partyIds = partyList.map(p => p.id).concat([faction.id]);
+        // Ideology rows for every other party in the modal (used only for the
+        // top-2-ideologies display; no longer gates invitations).
+        const partyIds = partyList.map(p => p.id);
         const { data: idoRows } = partyIds.length > 0
             ? await _supabase.from('faction_ideology').select('*').in('faction_id', partyIds)
             : { data: [] };
         const idoByFaction = new Map((idoRows || []).map(r => [r.faction_id, r]));
-        const myIdeology = idoByFaction.get(faction.id);
 
         eligibleParties = partyList;
 
@@ -695,14 +679,13 @@ async function openCreateBlocModal(root) {
             const top2Html = top2.length > 0
                 ? top2.map(t => `<span style="padding:1px 6px;background:var(--bg-card);border:1px solid var(--border-mid);font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);">${esc(t.label)}</span>`).join(' ')
                 : `<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No ideology data</span>`;
-            const distance = avgIdeologyDistance(myIdeology, ido);
             const pColor = p.party_color || '#7a7a7a';
             const leaderName = (p.leader_first_name && p.leader_last_name)
                 ? `${p.leader_first_name} ${p.leader_last_name}` : 'Party Leader';
 
-            let ineligible = null;
-            if (p.bloc_id) ineligible = 'Already in a bloc';
-            else if (ido && myIdeology && distance < 20) ineligible = `Too aligned (distance ${distance.toFixed(0)}, need &ge;20)`;
+            // The only ineligibility check left is "already in a bloc" —
+            // ideological-distance gating was removed (any parties can ally).
+            const ineligible = p.bloc_id ? 'Already in a bloc' : null;
 
             return `<label class="pa-bloc-party-row" data-party-id="${esc(p.id)}" data-ineligible="${ineligible ? '1' : '0'}"
                 style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border-mid);border-left:3px solid ${pColor};cursor:${ineligible ? 'not-allowed' : 'pointer'};opacity:${ineligible ? '0.45' : '1'};">
@@ -1292,7 +1275,7 @@ const DEPUTY_ACTIONS = [
     {
         id: 'create_bloc',
         name: 'Create Bloc',
-        desc: 'Found a pre-coalition alliance with other parties. Pick a name and invite parties in your nation. Parties you invite must have an average ideological distance of at least 20 across the 5 ideology axes. Phase 1 is formation only — shared momentum, vote discipline, and coalition binding arrive in later phases.',
+        desc: 'Found a pre-coalition alliance with other parties. Pick a name and invite any parties in your nation that aren\'t already in a bloc. Phase 1 is formation only — shared momentum, vote discipline, and coalition binding arrive in later phases.',
         cost: '$100k',
         costColor: '#c8a832',
         moneyCost: 100000,
