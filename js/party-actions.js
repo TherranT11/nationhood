@@ -192,26 +192,6 @@ const LEADER_ACTIONS = [
         tags: ['LEGISLATIVE', 'OPPOSITION'],
         locked: false,
     },
-    {
-        id: 'create_bloc',
-        name: 'Create Bloc',
-        desc: 'Found a pre-coalition alliance with other parties. Pick a name and invite parties in your nation. Parties you invite must have an average ideological distance of at least 20 across the 5 ideology axes. Phase 1 is formation only — shared momentum, vote discipline, and coalition binding arrive in later phases.',
-        cost: '$100',
-        costColor: '#c8a832',
-        moneyCost: 100,
-        tags: ['STRATEGIC', 'ALLIANCE'],
-        locked: false,
-    },
-    {
-        id: 'leave_bloc',
-        name: 'Leave Bloc',
-        desc: 'Exit your current bloc. If you are the bloc leader, leaving dissolves the whole bloc and all pending invitations are withdrawn. Greyed out when you are not in a bloc.',
-        cost: '$0',
-        costColor: 'var(--text-dim)',
-        moneyCost: 0,
-        tags: ['ALLIANCE'],
-        locked: false,
-    },
 ];
 
 // Monarch-only actions (shown instead of standard leader actions in monarchy)
@@ -624,7 +604,7 @@ function avgIdeologyDistance(a, b) {
 /**
  * Create Bloc modal — name input + selectable list of eligible parties with
  * leader / seats / top 2 ideologies / eligibility badge. At least one invitee
- * must be selected; $100 is charged on Create.
+ * must be selected; $100k is charged on Create.
  */
 async function openCreateBlocModal(root) {
     const overlay = document.getElementById('pa-bloc-modal');
@@ -661,7 +641,7 @@ async function openCreateBlocModal(root) {
                 <div style="padding:6px 10px;background:var(--amber-faint);border:1px solid var(--amber-border);">
                     <div style="font-family:var(--font-mono);font-size:8px;color:var(--accent);margin-bottom:2px;">COST</div>
                     <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
-                        Founding a bloc costs <strong style="color:var(--accent);">$100</strong>. You become the bloc leader and the listed parties receive invitations they can accept or decline. Parties must have an average ideological distance of at least <strong>20</strong> across all 5 axes to be invitable.
+                        Founding a bloc costs <strong style="color:var(--accent);">$100,000</strong>. You become the bloc leader and the listed parties receive invitations they can accept or decline. Parties must have an average ideological distance of at least <strong>20</strong> across all 5 axes to be invitable.
                     </div>
                 </div>
             </div>
@@ -783,8 +763,8 @@ async function openCreateBlocModal(root) {
             if (error) throw error;
             if (data && data.success === false) throw new Error(data.error || 'Unknown error');
 
-            // Deduct $100 locally so the header re-renders immediately
-            _state.faction.party_funds = Math.max(0, (_state.faction.party_funds || 0) - 100);
+            // Deduct $100k locally so the header re-renders immediately
+            _state.faction.party_funds = Math.max(0, (_state.faction.party_funds || 0) - 100000);
             _state.faction.bloc_id = data?.bloc_id || null;
             close();
             await loadBlocState(faction.id, _state.nation?.id);
@@ -1228,35 +1208,6 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             } else {
                 action.lockReason = '';
             }
-        } else if (action.id === 'create_bloc') {
-            // Head-of-Government lock: PM, elected President, or Monarch can't form blocs
-            // (they already lead a coalition — a bloc would be a redundant sub-alliance).
-            const isPM = !!_administration && _administration.pm_party_id === faction.id;
-            const isPresident = _state.nation?.hos_election_method === 'elected'
-                && _administration?.president_party_id === faction.id;
-            const isMonarchActing = isAbsoluteMonarchy(_state.nation)
-                && _state.nation?.monarch_faction_id === faction.id;
-            if (_myBloc) {
-                isDisabled = true;
-                action.lockReason = `Already in the ${_myBloc.name} bloc.`;
-            } else if (isPM || isPresident || isMonarchActing) {
-                isDisabled = true;
-                action.lockReason = 'Head of Government cannot form blocs — you already lead the coalition.';
-            } else if ((faction.party_funds || 0) < 100) {
-                isDisabled = true;
-                action.lockReason = 'Needs $100 party funds.';
-            } else {
-                action.lockReason = '';
-            }
-        } else if (action.id === 'leave_bloc') {
-            if (!_myBloc) {
-                isDisabled = true;
-                action.lockReason = 'You are not in a bloc.';
-            } else if (_myBlocIsLeader) {
-                action.lockReason = `Leaving dissolves ${_myBloc.name} — all members will be removed.`;
-            } else {
-                action.lockReason = '';
-            }
         } else if (action.id === 'fundraise') {
             const fi = getFundraiseInfo(seats, _fundraiseUseCount);
             costDisplay = `-${fi.momCost} MOM`;
@@ -1338,6 +1289,26 @@ const DEPUTY_ACTIONS = [
         tags: ['CAMPAIGN', 'RISKY'],
         locked: false,
     },
+    {
+        id: 'create_bloc',
+        name: 'Create Bloc',
+        desc: 'Found a pre-coalition alliance with other parties. Pick a name and invite parties in your nation. Parties you invite must have an average ideological distance of at least 20 across the 5 ideology axes. Phase 1 is formation only — shared momentum, vote discipline, and coalition binding arrive in later phases.',
+        cost: '$100k',
+        costColor: '#c8a832',
+        moneyCost: 100000,
+        tags: ['STRATEGIC', 'ALLIANCE'],
+        locked: false,
+    },
+    {
+        id: 'leave_bloc',
+        name: 'Leave Bloc',
+        desc: 'Exit your current bloc. If you are the bloc leader, leaving dissolves the whole bloc and all pending invitations are withdrawn. Greyed out when you are not in a bloc.',
+        cost: '$0',
+        costColor: 'var(--text-dim)',
+        moneyCost: 0,
+        tags: ['ALLIANCE'],
+        locked: false,
+    },
 ];
 
 const RALLY_TIERS = [
@@ -1357,12 +1328,44 @@ function getRallyResult(dieRoll, bonus) {
 }
 
 function renderDeputyActionsPanel(role) {
+    const faction = _state.faction;
+    const partyColor = faction?.color || role.color;
+
     const actionsHtml = DEPUTY_ACTIONS.map(action => {
         const tagsHtml = action.tags.map(t =>
             `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${t}</span>`
         ).join('');
+
+        // Bloc action gating mirrors the server-side checks in create_bloc.
+        let isDisabled = action.locked;
+        let lockReason = '';
+        if (action.id === 'create_bloc') {
+            const isPM = !!_administration && _administration.pm_party_id === faction.id;
+            const isPresident = _state.nation?.hos_election_method === 'elected'
+                && _administration?.president_party_id === faction.id;
+            const isMonarchActing = isAbsoluteMonarchy(_state.nation)
+                && _state.nation?.monarch_faction_id === faction.id;
+            if (_myBloc) {
+                isDisabled = true;
+                lockReason = `Already in the ${_myBloc.name} bloc.`;
+            } else if (isPM || isPresident || isMonarchActing) {
+                isDisabled = true;
+                lockReason = 'Head of Government cannot form blocs — you already lead the coalition.';
+            } else if ((faction.party_funds || 0) < 100000) {
+                isDisabled = true;
+                lockReason = 'Needs $100k party funds.';
+            }
+        } else if (action.id === 'leave_bloc') {
+            if (!_myBloc) {
+                isDisabled = true;
+                lockReason = 'You are not in a bloc.';
+            } else if (_myBlocIsLeader) {
+                lockReason = `Leaving dissolves ${_myBloc.name} — all members will be removed.`;
+            }
+        }
+
         return `
-            <div class="pa-action-item ${action.locked ? 'locked' : ''}" data-action-id="${action.id}">
+            <div class="pa-action-item ${isDisabled ? 'locked' : ''}" data-action-id="${action.id}">
                 <div class="pa-action-top">
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span class="pa-action-name">${esc(action.name)}</span>
@@ -1373,6 +1376,7 @@ function renderDeputyActionsPanel(role) {
                     </div>
                 </div>
                 <div class="pa-action-desc">${esc(action.desc)}</div>
+                ${lockReason ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;"><span>⊘</span><span>${esc(lockReason)}</span></div>` : ''}
             </div>
         `;
     }).join('');
@@ -1383,14 +1387,17 @@ function renderDeputyActionsPanel(role) {
             <div class="pa-detail-left">
                 <div class="pa-detail-avatar" style="color:${role.color};background:${role.color}15;border-color:${role.color}33;">${initials(_deputy.first_name, _deputy.last_name)}</div>
                 <div>
-                    <div style="display:flex;align-items:baseline;gap:6px;">
+                    <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;">
                         <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${role.color};">${role.title}</span>
                         <span class="pa-detail-name">${esc(_deputy.first_name)} ${esc(_deputy.last_name)}</span>
+                        ${renderBlocTag(partyColor)}
                     </div>
                     <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; Age ${_deputy.age} &middot; Skill: <span style="color:${sk.color};font-weight:700;">${_deputy.skill}</span></div>
                 </div>
             </div>
         </div>
+        ${renderBlocInvitationsPanel(partyColor)}
+        ${renderBlocBanner(partyColor)}
         <div class="pa-actions-list" id="pa-actions-panel">${actionsHtml}</div>
     `;
 }

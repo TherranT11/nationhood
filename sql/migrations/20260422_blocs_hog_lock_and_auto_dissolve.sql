@@ -99,8 +99,8 @@ BEGIN
         RAISE EXCEPTION 'Bloc name too long (max 40 characters)';
     END IF;
 
-    IF COALESCE(v_leader.party_funds, 0) < 100 THEN
-        RAISE EXCEPTION 'Insufficient party funds ($100 required)';
+    IF COALESCE(v_leader.party_funds, 0) < 100000 THEN
+        RAISE EXCEPTION 'Insufficient party funds ($100,000 required)';
     END IF;
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard';
@@ -110,7 +110,7 @@ BEGIN
     RETURNING id INTO v_bloc_id;
 
     UPDATE factions
-       SET party_funds = COALESCE(party_funds, 0) - 100,
+       SET party_funds = COALESCE(party_funds, 0) - 100000,
            bloc_id     = v_bloc_id
      WHERE id = p_leader_faction_id;
 
