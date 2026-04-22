@@ -1246,7 +1246,10 @@ function renderAdminBanner() {
         const hosName = `${hosFirst} ${hosLast}`;
         const hosInitials = hosName.split(' ').map(n => n[0] || '').join('');
         const hosColor = isMonarchyGov ? '#c8a832' : 'var(--text-dim)';
-        const dynastyHtml = isMonarchyGov && nation?.dynasty_name ? `<div class="ga-leader-meta" style="font-style:italic;">House ${escapeHtml(nation.dynasty_name)}</div>` : '';
+        // Dynasty names in the DB already include the "House of X" prefix
+        // (e.g. "House of Ashgrove" for Calveth). Render as-is — the previous
+        // "House ${dynasty_name}" produced "House House of Ashgrove".
+        const dynastyHtml = isMonarchyGov && nation?.dynasty_name ? `<div class="ga-leader-meta" style="font-style:italic;">${escapeHtml(nation.dynasty_name)}</div>` : '';
         html += `<div class="ga-banner-leader" style="background:${hosColor}04;">
             <div class="ga-banner-leader-label" style="color:${hosColor};">${escapeHtml(hosTitle.toUpperCase())}</div>
             <div style="display:flex;align-items:center;gap:8px;">
