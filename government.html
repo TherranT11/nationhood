@@ -11871,9 +11871,14 @@ async function resignPMAction() {
     } finally { _govActionLock = false; }
 }
 
-// Refresh the correct UI after a ministry action (admin tab vs legacy page)
+// Refresh the correct UI after a ministry action (UI 2.0 subtabs vs legacy page).
+// The UI 2.0 detector previously probed for #gov-admin-cabinet, which was a
+// transient id of the old Administrative subtab layout. Phase 1 of the
+// Administrative redesign removed that id, silently breaking every action
+// refresh across the page. Detect UI 2.0 via #gov-content (the stable
+// subtab-content mount point) instead.
 async function refreshGovernmentUI() {
-    if (document.getElementById('gov-admin-cabinet')) {
+    if (document.getElementById('gov-content')) {
         await loadGovData();
         renderGovContent();
     } else {

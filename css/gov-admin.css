@@ -595,12 +595,6 @@
 }
 .adm2-drawer-stats .s .delta.up   { color: var(--green); }
 .adm2-drawer-stats .s .delta.down { color: var(--red); }
-.adm2-drawer-spark {
-    margin-top: 10px; display: flex; align-items: flex-end; gap: 2px; height: 22px;
-}
-.adm2-drawer-spark .b { flex: 1; background: var(--border-strong); border-radius: 1px; min-width: 2px; }
-.adm2-min-drawer.aligned .adm2-drawer-spark .b { background: var(--green-border); }
-.adm2-min-drawer.opp     .adm2-drawer-spark .b { background: var(--red-border); }
 .adm2-drawer-actions {
     display: flex; gap: 6px; margin-top: 10px;
 }
