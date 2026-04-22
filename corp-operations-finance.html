@@ -498,6 +498,12 @@ async function loadDealFlow() {
         .eq('offering_faction_id', faction.id);
     if (offersErr) console.warn('[DealFlow] myOffers query failed (declinedSet will be empty):', offersErr.message);
     const declinedSet = new Set((myOffers || []).filter(o => o.status === 'declined').map(o => o.request_id));
+    // Insurance / bond / equity that this corp has already written (offer.status='accepted')
+    // should disappear from Deal Flow — the deal is done and lives in Active Portfolio.
+    // Belt-and-suspenders: finance_loan_requests.status should also flip to 'funded' in
+    // that flow, but if that UPDATE ever fails silently (RLS, race, etc.), this set
+    // keeps the card from resurrecting in Deal Flow.
+    const acceptedSet = new Set((myOffers || []).filter(o => o.status === 'accepted').map(o => o.request_id));
     const offeredSet = new Set((myOffers || []).map(o => o.request_id));
 
     // Fetch active loan counts + total outstanding per borrower faction
@@ -600,6 +606,9 @@ async function loadDealFlow() {
         // requests are NOT filtered here; those still render with a
         // disabled "ALREADY OFFERED" button via `alreadyOffered` below.
         if (declinedSet.has(req.id)) return false;
+        // Hide any request where this corp has already written / accepted an offer
+        // — it's in Active Portfolio now, no longer a deal to consider.
+        if (acceptedSet.has(req.id)) return false;
         // Banking sees loans, Investment sees bonds + equity, Insurance sees insurance
         if (req.request_type === 'bond') return subsector === 'investment';
         if (req.request_type === 'insurance') return subsector === 'insurance';
@@ -3161,10 +3170,14 @@ async function rdSubmitOffer() {
             return;
         }
 
-        // Mark request as funded and get the requesting faction
-        const { data: fundedReq } = await _supabase.from('finance_loan_requests').update({
+        // Mark request as funded and get the requesting faction.
+        // Errors here were previously swallowed, which left the request
+        // showing as 'open' in Deal Flow after the policy was written —
+        // surface it loudly so it's diagnosable.
+        const { data: fundedReq, error: fundedErr } = await _supabase.from('finance_loan_requests').update({
             status: 'funded', funded_tick: currentTick,
         }).eq('id', rdDeal.requestId).select('requesting_faction_id').single();
+        if (fundedErr) console.warn('[Insurance] Failed to mark request funded:', fundedErr.message);
 
         // Create active insurance policy as a loan record
         const policyRow = {
