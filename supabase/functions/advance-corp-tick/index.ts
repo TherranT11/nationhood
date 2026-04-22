@@ -1339,23 +1339,24 @@ const SUB_PARENT_REP_NEUTRAL = 50;       // at this rep the parent-rep multiplie
 const SUB_PARENT_REP_MIN = 0.3;          // min multiplier at rep 0
 const SUB_PARENT_REP_MAX = 1.7;          // max multiplier at rep 100
 
+// Regional HQ property income — flat-ish trickle scaled by purchase price.
+// 0.2% of purchase price per tick × stability modifier. At a $20M HQ that's
+// ~$40k/tick baseline, maintenance is charged separately in PropertyEffects.
+const HQ_PROPERTY_INCOME_RATE = 0.002;
+
 async function processSubsidiaryRevenue(supabase, nation, currentTick) {
-    // TEMP DEBUG — remove after verifying deployed bundle contains this block.
-    console.log(`[SubRevenue-ENTRY] nation=${nation?.name} tick=${currentTick}`);
+    console.log(`[SubRevenue] nation=${nation?.name} tick=${currentTick} entering`);
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
 
-    // All active regional HQs PHYSICALLY in this nation. Previously this also
-    // filtered by faction_id IN (this-nation corps), which silently dropped
-    // cross-nation subsidiaries (parent corp in nation A, subsidiary in nation
-    // B) — revenue was computed for neither tick (A's tick skipped it on
-    // nation_id; B's tick skipped it on faction_id). Now we pick up every
-    // subsidiary in this nation and fetch every parent corp in one query
-    // below — cross-nation parents are handled by the same path.
+    // Subsidiaries only (role='subsidiary'). Regional HQ properties are
+    // handled by processRegionalHqIncome with a different formula.
+    // Cross-nation subsidiaries (parent corp in nation A, subsidiary in
+    // nation B) are handled by this path via the parent-corp fetch below.
     const { data: hqs, error: hqErr } = await supabase
         .from('corp_properties')
         .select('id, sub_cash, name, faction_id')
         .eq('nation_id', nation.id)
-        .eq('type', 'regional_hq')
+        .eq('role', 'subsidiary')
         .eq('is_active', true);
 
     if (hqErr) throw hqErr;
@@ -1436,8 +1437,59 @@ async function processSubsidiaryRevenue(supabase, nation, currentTick) {
         }
     }
 
-    console.log(`[SubRevenue] ${nation.name}: processed ${hqs.length} regional HQ(s), updated ${updatedCount}, skipped(rev=0) ${skippedCount}, at tick ${currentTick}.`);
+    console.log(`[SubRevenue] ${nation.name}: processed ${hqs.length} subsidiary(ies), updated ${updatedCount}, skipped(rev=0) ${skippedCount}, at tick ${currentTick}.`);
     return { hqCount: hqs.length, updatedCount, skippedCount };
+}
+
+// Regional HQ property income — simple flat-ish income based on purchase price.
+// Purpose: a marketplace-purchased HQ is a property, not a business branch, so
+// it earns property income (like rent) rather than business revenue. The
+// amount is small and predictable — 0.2% of purchase price per tick, modified
+// by the nation's stability. No GDP or reputation scaling.
+async function processRegionalHqIncome(supabase, nation, currentTick) {
+    console.log(`[HqIncome] nation=${nation?.name} tick=${currentTick} entering`);
+
+    const stabilityMod = Math.min(1.0, Number(nation.stability ?? 50) / 40);
+
+    const { data: hqs, error: hqErr } = await supabase
+        .from('corp_properties')
+        .select('id, sub_cash, name, purchase_price')
+        .eq('nation_id', nation.id)
+        .eq('role', 'regional_hq')
+        .eq('is_active', true);
+
+    if (hqErr) throw hqErr;
+    if (!hqs || hqs.length === 0) {
+        console.log(`[HqIncome] ${nation.name}: processed 0 regional HQ(s) at tick ${currentTick}.`);
+        return { hqCount: 0, updatedCount: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const hq of hqs) {
+        try {
+            const purchasePrice = Number(hq.purchase_price ?? 0);
+            const income = Math.round(purchasePrice * HQ_PROPERTY_INCOME_RATE * stabilityMod);
+            if (income <= 0) continue;
+
+            const newSubCash = Number(hq.sub_cash ?? 0) + income;
+            const { error: updErr } = await supabase
+                .from('corp_properties')
+                .update({ sub_cash: newSubCash })
+                .eq('id', hq.id);
+
+            if (updErr) {
+                console.warn(`[HqIncome] Failed to update sub_cash for ${hq.name} (hq.id=${hq.id}):`, updErr.message);
+            } else {
+                updatedCount += 1;
+                console.log(`[HqIncome] ${hq.name}: +${income.toLocaleString()} (price:${purchasePrice.toLocaleString()}, stabMod:${stabilityMod.toFixed(2)}, cash:${Number(hq.sub_cash ?? 0).toLocaleString()} → ${newSubCash.toLocaleString()})`);
+            }
+        } catch (hqErr) {
+            console.error(`[HqIncome] HQ threw (hq.id=${hq.id}, name=${hq.name}):`, hqErr);
+        }
+    }
+
+    console.log(`[HqIncome] ${nation.name}: processed ${hqs.length} regional HQ(s), updated ${updatedCount}, at tick ${currentTick}.`);
+    return { hqCount: hqs.length, updatedCount };
 }
 
 function parseRequiredForSectors(rawRequiredFor) {
@@ -3793,11 +3845,19 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             try {
                 const subRevenueSummary = await processSubsidiaryRevenue(supabase, nation, currentTick);
                 if (corps.length === 0) {
-                    console.log(`[advance-corp-tick] ${nation.name}: 0 local corporations, subsidiary path processed ${subRevenueSummary?.hqCount || 0} regional HQ(s).`);
+                    console.log(`[advance-corp-tick] ${nation.name}: 0 local corporations, subsidiary path processed ${subRevenueSummary?.hqCount || 0} subsidiary(ies).`);
                 }
             } catch (subRevErr) {
                 console.error(`[advance-corp-tick] Subsidiary revenue failed for ${nation.name} (non-fatal):`, subRevErr);
                 summary.errors.push({ nation: nation.name, sector: 'subsidiary_revenue', error: String(subRevErr) });
+            }
+
+            // ── Regional HQ Property Income (flat-ish income from marketplace HQs) ──
+            try {
+                await processRegionalHqIncome(supabase, nation, currentTick);
+            } catch (hqIncErr) {
+                console.error(`[advance-corp-tick] Regional HQ income failed for ${nation.name} (non-fatal):`, hqIncErr);
+                summary.errors.push({ nation: nation.name, sector: 'regional_hq_income', error: String(hqIncErr) });
             }
 
             // ── Corp-specific processing (requires local corporations) ──
