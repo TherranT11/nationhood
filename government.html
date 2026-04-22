@@ -1249,6 +1249,18 @@ function adm2RenderExecCard() {
     </div>`;
 }
 
+// ── Administrative timeline state ────────────────────────────────────
+// Module-level state for the administration event timeline. Must be
+// declared with `let` — under the Vite bundler, assigning to an
+// undeclared identifier throws ReferenceError under module strict mode
+// (works only when this file is loaded as a raw <script>).
+const TIMELINE_CACHE_MAX = 8;
+let _timelineContextKey = null;        // stable key for the current admin (cache + in-flight gate)
+let _timelineFilter = 'all';           // active filter chip
+let _timelineEvents = [];              // currently-rendered events
+let _timelineEmptyReason = '';         // text shown when the list is empty
+let _timelineCache = new Map();        // contextKey -> { events }
+
 // ── Nation card — crises (Phase 2 will wire real data) ──────────────
 // Crises are cached per (nationId, tick). Subtab re-clicks during the same
 // tick hit cache; tick advance invalidates automatically so a newly-triggered
@@ -1823,6 +1835,12 @@ function renderLegislatureTab(container) {
     renderBillsList();
     renderRoyalAssentPanel();
 }
+
+// ==================== LEGISLATURE TAB ====================
+
+let _legData = null;        // { committee, floor, frozen, presidentDesk, resolved, activeLaws, parties, totalSeats, majority }
+let _legInitialized = false; // first-render guard — triggers loadLegislatureData()
+let _legExpandedBill = null; // currently-expanded bill id on the Parliament tab
 
 // ==================== LAWS TAB ====================
 
