@@ -560,9 +560,8 @@ var TRADE_SECTORS = [
         key: 'fuel_energy',
         label: 'Fuel & Energy',
         export_only: false,
-        export_stat: 'oil_and_gas',            // primary: must clear threshold on its own
-        export_bonus_stats: ['energy_generation'], // secondary: adds to capacity but doesn't gate it
-        export_threshold: 15
+        export_stat: 'oil_and_gas',            // reserves — what's in the ground
+        export_bonus_stats: ['energy_generation'] // extraction — what you can pull out
     },
     {
         key: 'minerals',
@@ -1476,6 +1475,19 @@ var RESOURCE_SECTORS = new Set(['fuel_energy', 'minerals', 'food_agriculture',
 // which handles the domestic-demand + export-market side.
 function calculateDomesticProduction(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
+
+    // ── FUEL & ENERGY ──
+    // Reserves × extraction × stability. No threshold, no bonus cap, no
+    // normalization. Max output (oil=100, gen=100, stab≥40) = $15B/tick
+    // ≈ 6 Mbbl/d at display calibration ($2.5B = 1 Mbbl/d).
+    if (sector.key === 'fuel_energy') {
+        var oil = Number(nation.oil_and_gas) || 0;
+        var gen = Number(nation.energy_generation) || 0;
+        var stab = Number(nation.stability ?? 50);
+        return Math.round(
+            (oil / 100) * (gen / 100) * 15e9 * Math.min(1.0, stab / 40)
+        );
+    }
 
     // Resource sectors (oil, minerals, food) are fixed endowments — no GDP scaling.
     // Industrial/service sectors scale with economic size (sqrt for diminishing returns).
