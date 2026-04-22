@@ -211,7 +211,7 @@ function buildElectionHeader() {
     // nation's foundation law. parliamentary_term_ticks is the modern column;
     // election_frequency is the legacy fallback. 1 tick = 1 month.
     const freqMonths = Number(nation.parliamentary_term_ticks) || Number(nation.election_frequency) || 24;
-    const freqLabel = `Electoral Frequency: ${freqMonths} Month${freqMonths === 1 ? '' : 's'}`;
+    const freqValue = `${freqMonths} Month${freqMonths === 1 ? '' : 's'}`;
     const nationName = nation.name || 'Unknown';
     const flagSrc = nation.flag_url || `assets/flags/${nationName}.png`;
 
@@ -245,7 +245,8 @@ function buildElectionHeader() {
             <div class="cf-eh-stat">
                 <div class="cf-eh-stat-label">TOTAL SEATS</div>
                 <div class="cf-eh-stat-value">${totalSeats}</div>
-                <div class="cf-eh-stat-sub">${esc(freqLabel)}</div>
+                <div class="cf-eh-stat-label" style="margin-top:10px;">ELECTORAL FREQUENCY</div>
+                <div class="cf-eh-stat-value cf-eh-stat-value--sm">${esc(freqValue)}</div>
             </div>
         </div>
     </div>`;
