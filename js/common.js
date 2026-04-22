@@ -427,11 +427,11 @@ export function renderTopBar(activeTab) {
             <div class="top-bar-right">
                 <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
                 ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
+                <span class="topbar-ap" id="topbar-ap"></span>
                 <div class="faction-switcher" id="faction-switcher">
                     <span class="party-badge" id="party-badge" onclick="toggleFactionDropdown()" style="cursor:pointer;">--</span>
                     <div class="faction-dropdown" id="faction-dropdown"></div>
                 </div>
-                <span class="topbar-ap" id="topbar-ap"></span>
                 <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle light/dark mode">Light</button>
                 <button class="logout-btn" onclick="handleLogout()">Logout</button>
             </div>
@@ -895,7 +895,8 @@ export function updateTopBarInfo(faction, shard, nation) {
     const badge = document.getElementById('party-badge');
     if (badge) {
         if (faction && faction.nation_id) {
-            badge.textContent = (faction.abbreviation || faction.faction_name) + ' ▾';
+            const abbr = faction.abbreviation || faction.faction_name || '--';
+            badge.textContent = '[' + abbr + '] ▾';
         } else {
             badge.textContent = '[No Faction] ▾';
         }
@@ -942,7 +943,7 @@ export function updateTopBarInfo(faction, shard, nation) {
         const fundsStr = funds >= 1000000 ? '$' + (funds / 1000000).toFixed(1) + 'M'
             : funds >= 1000 ? '$' + Math.round(funds / 1000) + 'k'
             : '$' + funds;
-        apEl.innerHTML = '<span class="topbar-ap__label">CASH</span><span class="topbar-ap__count" style="font-size:13px;color:var(--accent);margin-left:4px;">' + fundsStr + '</span>';
+        apEl.innerHTML = '<span class="topbar-ap__label">CASH:</span><span class="topbar-ap__count" style="font-size:13px;color:var(--accent);margin-left:4px;">' + fundsStr + '</span>';
     }
     
     const nationFlag = document.getElementById('nation-flag');
@@ -1040,7 +1041,7 @@ export async function refreshAP(factionId) {
             const fundsStr = funds >= 1000000 ? '$' + (funds / 1000000).toFixed(1) + 'M'
                 : funds >= 1000 ? '$' + Math.round(funds / 1000) + 'k'
                 : '$' + funds;
-            apEl.innerHTML = '<span class="topbar-ap__label">CASH</span><span class="topbar-ap__count" style="font-size:13px;color:var(--accent);margin-left:4px;">' + fundsStr + '</span>';
+            apEl.innerHTML = '<span class="topbar-ap__label">CASH:</span><span class="topbar-ap__count" style="font-size:13px;color:var(--accent);margin-left:4px;">' + fundsStr + '</span>';
         }
 
         // Sync session cache
