@@ -2111,6 +2111,41 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 continue;
             }
 
+            // Release equipment that was deployed to this contract. Without
+            // this block, corp_equipment rows kept stale assigned_projects
+            // entries pointing at completed contracts — making those units
+            // permanently "deployed" on something that no longer needs them
+            // and preventing redeployment to the next project.
+            try {
+                if (contract.awarded_to_faction) {
+                    const { data: eqRows } = await supabase
+                        .from('corp_equipment')
+                        .select('id, equipment_key, deployed, assigned_projects')
+                        .eq('faction_id', contract.awarded_to_faction);
+
+                    for (const eq of (eqRows || [])) {
+                        const assignments = Array.isArray(eq.assigned_projects) ? eq.assigned_projects : [];
+                        const thisContractAssignment = assignments.find(a => a?.contract_id === contract.id);
+                        if (!thisContractAssignment) continue;
+
+                        const unitsToRelease = Number(thisContractAssignment.units) || 0;
+                        const newAssignments = assignments.filter(a => a?.contract_id !== contract.id);
+                        const newDeployed = Math.max(0, Number(eq.deployed || 0) - unitsToRelease);
+
+                        const { error: relErr } = await supabase.from('corp_equipment')
+                            .update({ deployed: newDeployed, assigned_projects: newAssignments })
+                            .eq('id', eq.id);
+                        if (relErr) {
+                            console.warn(`[Projects] Equipment release failed for ${eq.equipment_key} on ${contract.name}:`, relErr.message);
+                        } else {
+                            console.log(`[Projects] Released ${unitsToRelease} ${eq.equipment_key} from completed ${contract.name}`);
+                        }
+                    }
+                }
+            } catch (eqErr) {
+                console.warn(`[Projects] Equipment release block threw for ${contract.name} (non-fatal):`, eqErr?.message || eqErr);
+            }
+
             // Close any active insurance policies for this completed project
             try {
                 // Find all insurance requests linked to this contract. The live
