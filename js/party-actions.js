@@ -386,6 +386,23 @@ export async function initPartyActions(supabase, state) {
     renderPage(root);
 }
 
+/**
+ * Classify the given faction's executive role in its nation. Used as the
+ * gating predicate for actions that structurally conflict with holding
+ * executive power (Create Bloc, Disband Party). Mirrors the three EXISTS
+ * checks in the server-side create_bloc / disband_party RPCs.
+ */
+function classifyHeadOfGovernment(faction) {
+    if (!faction) return { isPM: false, isPresident: false, isMonarchActing: false };
+    return {
+        isPM: !!_administration && _administration.pm_party_id === faction.id,
+        isPresident: _state?.nation?.hos_election_method === 'elected'
+            && _administration?.president_party_id === faction.id,
+        isMonarchActing: isAbsoluteMonarchy(_state?.nation)
+            && _state?.nation?.monarch_faction_id === faction.id,
+    };
+}
+
 // ═══════════════════════════ BLOCS ═══════════════════════════
 
 /**
@@ -1207,18 +1224,14 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             // Head-of-Government guard mirrors the server RPC. PM / elected
             // President / Monarch must step down first so coalition rows
             // don't dangle with a dead party_id.
-            const isPM = !!_administration && _administration.pm_party_id === faction.id;
-            const isPresident = _state.nation?.hos_election_method === 'elected'
-                && _administration?.president_party_id === faction.id;
-            const isMonarchActing = isAbsoluteMonarchy(_state.nation)
-                && _state.nation?.monarch_faction_id === faction.id;
-            if (isPM) {
+            const hog = classifyHeadOfGovernment(faction);
+            if (hog.isPM) {
                 isDisabled = true;
                 action.lockReason = 'You are Prime Minister — resign before disbanding.';
-            } else if (isPresident) {
+            } else if (hog.isPresident) {
                 isDisabled = true;
                 action.lockReason = 'You are the sitting President — step down before disbanding.';
-            } else if (isMonarchActing) {
+            } else if (hog.isMonarchActing) {
                 isDisabled = true;
                 action.lockReason = 'The reigning monarch cannot disband the royal house.';
             } else {
@@ -1356,15 +1369,11 @@ function renderDeputyActionsPanel(role) {
         let isDisabled = action.locked;
         let lockReason = '';
         if (action.id === 'create_bloc') {
-            const isPM = !!_administration && _administration.pm_party_id === faction.id;
-            const isPresident = _state.nation?.hos_election_method === 'elected'
-                && _administration?.president_party_id === faction.id;
-            const isMonarchActing = isAbsoluteMonarchy(_state.nation)
-                && _state.nation?.monarch_faction_id === faction.id;
+            const hog = classifyHeadOfGovernment(faction);
             if (_myBloc) {
                 isDisabled = true;
                 lockReason = `Already in the ${_myBloc.name} bloc.`;
-            } else if (isPM || isPresident || isMonarchActing) {
+            } else if (hog.isPM || hog.isPresident || hog.isMonarchActing) {
                 isDisabled = true;
                 lockReason = 'Head of Government cannot form blocs — you already lead the coalition.';
             } else if ((faction.party_funds || 0) < 100000) {
