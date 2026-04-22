@@ -1712,6 +1712,10 @@ function formatTimelineDesc(ev) {
     return escapeHtml(desc);
 }
 
+// Administration chat — module state
+let _govChatMessages = [];            // admin_chat rows (appended to on realtime insert)
+let _govChatSubscription = null;      // Supabase realtime channel handle
+
 async function loadGovChat() {
     if (!currentNation) return;
     try {
@@ -1841,6 +1845,7 @@ function renderLegislatureTab(container) {
 let _legData = null;        // { committee, floor, frozen, presidentDesk, resolved, activeLaws, parties, totalSeats, majority }
 let _legInitialized = false; // first-render guard — triggers loadLegislatureData()
 let _legExpandedBill = null; // currently-expanded bill id on the Parliament tab
+let _legFilter = 'active';   // bills-list filter chip: 'active' | 'resolved' | 'laws'
 
 // ==================== LAWS TAB ====================
 
