@@ -2,7 +2,7 @@
 -- BLOCS — Phase 1: Formation & Membership Plumbing
 --
 -- Introduces pre-coalition alliances between parties. One party
--- (the "leader") creates a bloc, names it, pays $100, and invites
+-- (the "leader") creates a bloc, names it, pays $100k, and invites
 -- other parties. Invitees accept or decline. Members can leave at
 -- any time; the leader leaving dissolves the whole bloc.
 --
@@ -95,7 +95,7 @@ BEGIN
 END $$;
 
 -- ==================== RPC: create_bloc ====================
--- Creates a bloc seed with the caller as leader, pays the $100 cost,
+-- Creates a bloc seed with the caller as leader, pays the $100k cost,
 -- and sends invitations to the listed parties (after eligibility and
 -- ideological-distance checks).
 
@@ -150,8 +150,8 @@ BEGIN
         RAISE EXCEPTION 'Bloc name too long (max 40 characters)';
     END IF;
 
-    IF COALESCE(v_leader.party_funds, 0) < 100 THEN
-        RAISE EXCEPTION 'Insufficient party funds ($100 required)';
+    IF COALESCE(v_leader.party_funds, 0) < 100000 THEN
+        RAISE EXCEPTION 'Insufficient party funds ($100,000 required)';
     END IF;
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard';
@@ -163,7 +163,7 @@ BEGIN
 
     -- Deduct cost + stamp leader's bloc_id
     UPDATE factions
-       SET party_funds = COALESCE(party_funds, 0) - 100,
+       SET party_funds = COALESCE(party_funds, 0) - 100000,
            bloc_id     = v_bloc_id
      WHERE id = p_leader_faction_id;
 
