@@ -1345,7 +1345,6 @@ const SUB_PARENT_REP_MAX = 1.7;          // max multiplier at rep 100
 const HQ_PROPERTY_INCOME_RATE = 0.002;
 
 async function processSubsidiaryRevenue(supabase, nation, currentTick) {
-    console.log(`[SubRevenue] nation=${nation?.name} tick=${currentTick} entering`);
     const gdpGrowth = Number(nation.gdp_growth ?? 50);
 
     // Subsidiaries only (role='subsidiary'). Regional HQ properties are
@@ -1447,8 +1446,6 @@ async function processSubsidiaryRevenue(supabase, nation, currentTick) {
 // amount is small and predictable — 0.2% of purchase price per tick, modified
 // by the nation's stability. No GDP or reputation scaling.
 async function processRegionalHqIncome(supabase, nation, currentTick) {
-    console.log(`[HqIncome] nation=${nation?.name} tick=${currentTick} entering`);
-
     const stabilityMod = Math.min(1.0, Number(nation.stability ?? 50) / 40);
 
     const { data: hqs, error: hqErr } = await supabase
