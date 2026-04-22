@@ -107,24 +107,27 @@ export async function processAutoRatePolicies(supabase, nationId, currentTick) {
                 last_payment_tick: currentTick,
             };
 
-            // For loans: reduce remaining principal and track corp_debt
+            // For loans: reduce remaining principal and track corp_debt.
+            // Interest uses the original principal (flat-interest model)
+            // and the rate snapshotted at issue time (rate_at_issue) so
+            // later rate adjustments don't retro-modify existing loans.
             if (p.service_type === 'loan') {
                 var originalPrincipal = getLoanOriginalPrincipal(p);
-                var interestPortion = Math.round(originalPrincipal * (Number(p.rate_at_issue ?? 0) / 100 / 12));
-                var principalPortion = Math.max(0, payment - interestPortion);
+                var interestPortion = monthlyInterest(originalPrincipal, p.rate_at_issue);
+                var principalPaidThisTick = principalPortion(payment, interestPortion);
                 var oldPrincipal = Number(p.remaining_principal ?? 0);
-                policyUpdate.remaining_principal = Math.max(0, oldPrincipal - principalPortion);
+                policyUpdate.remaining_principal = Math.max(0, oldPrincipal - principalPaidThisTick);
                 if (p.original_principal == null && originalPrincipal > 0) {
                     policyUpdate.original_principal = originalPrincipal;
                 }
 
                 // Reduce borrower's corp_debt by principal paid down
-                if (principalPortion > 0) {
+                if (principalPaidThisTick > 0) {
                     var { data: debtRow, error: debtErr } = await supabase.from('factions')
                         .select('corp_debt').eq('id', p.borrower_faction_id).single();
                     if (!debtErr && debtRow) {
                         var { error: debtUpErr } = await supabase.from('factions').update({
-                            corp_debt: Math.max(0, Number(debtRow.corp_debt ?? 0) - principalPortion),
+                            corp_debt: Math.max(0, Number(debtRow.corp_debt ?? 0) - principalPaidThisTick),
                         }).eq('id', p.borrower_faction_id);
                         if (debtUpErr) console.warn('[SubPayments] Failed to reduce corp_debt:', debtUpErr.message);
                     }

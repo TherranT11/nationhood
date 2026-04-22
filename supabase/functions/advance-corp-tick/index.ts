@@ -22,6 +22,38 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ════════════════════════════════════════════════════════════════════════════════
+//  LOAN MATH — verbatim copy of js/game/loan-math.js
+//
+//  This file is hand-maintained (no bundler), so the loan-math helpers
+//  are inlined here. If you change either copy, update the other in the
+//  same commit. The canonical home is js/game/loan-math.js.
+// ════════════════════════════════════════════════════════════════════════════════
+
+function monthlyInterest(principal, annualRatePct) {
+    const safePrincipal = Math.max(0, Number(principal) || 0);
+    const safeRate = Math.max(0, Number(annualRatePct) || 0);
+    return Math.round(safePrincipal * (safeRate / 100) / 12);
+}
+
+function principalPortion(monthlyPayment, monthlyInterestAmount) {
+    const safePayment = Number(monthlyPayment) || 0;
+    const safeInterest = Number(monthlyInterestAmount) || 0;
+    return Math.max(0, safePayment - safeInterest);
+}
+
+const COLLATERAL_RECOVERY_RATES = {
+    equipment: 0.6,
+    property: 0.75,
+    unsecured: 0,
+};
+
+function collateralRecoveryRate(collateralType) {
+    if (!collateralType) return 0;
+    const rate = COLLATERAL_RECOVERY_RATES[collateralType];
+    return typeof rate === 'number' ? rate : 0;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION SECTOR — Templates & Helpers
 // ════════════════════════════════════════════════════════════════════════════════
@@ -2756,10 +2788,14 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
     const GENERAL_MULT = 2, SKILLED_MULT = 3, INNOVATIVE_MULT = 6;
     const calcWage = (mult) => Math.round(baseAnnualWage * mult * inflMod * solMod);
 
-    // Loan servicing constants (5% annual rate, 10-year amortization)
-    const LOAN_ANNUAL_RATE = 0.05;
+    // Loan servicing constants (5% annual rate, 10-year amortization).
+    // LOAN_ANNUAL_RATE_PCT is in percent form (5 = 5%) so the shared
+    // monthlyInterest() helper can be used. monthlyRate is kept in
+    // fraction form because the amortization formula on the next
+    // step needs (1 + r) compounding.
+    const LOAN_ANNUAL_RATE_PCT = 5;
     const LOAN_TERM_MONTHS = 120;
-    const monthlyRate = LOAN_ANNUAL_RATE / 12;
+    const monthlyRate = (LOAN_ANNUAL_RATE_PCT / 100) / 12;
 
     for (const corp of corpFactions) {
         const currentCash = Number(corp.corp_cash_reserves || 0);
@@ -2819,8 +2855,8 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         let principalPaid = 0;
         if (currentLoans > 0) {
             const monthlyPayment = Math.round((currentLoans * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -LOAN_TERM_MONTHS)));
-            const interestPortion = Math.round(currentLoans * monthlyRate);
-            principalPaid = Math.min(currentLoans, monthlyPayment - interestPortion);
+            const interestPortion = monthlyInterest(currentLoans, LOAN_ANNUAL_RATE_PCT);
+            principalPaid = Math.min(currentLoans, principalPortion(monthlyPayment, interestPortion));
             debtPayment = monthlyPayment;
         }
 
@@ -3281,12 +3317,11 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
 
         const borrowerCash = Number(borrower?.corp_cash_reserves) || 0;
         const payment = loan.monthly_payment;
-        const monthlyRate = (loan.interest_rate / 100) / 12;
         const originalPrincipal = Math.max(0, Number(loan.original_principal ?? loan.principal ?? 0));
         const remainingPrincipal = Math.max(0, Number(loan.remaining_principal) || 0);
-        const interestPortion = Math.round(originalPrincipal * monthlyRate);
-        const principalPortion = Math.max(0, payment - interestPortion);
-        const newRemainingPrincipal = Math.max(0, remainingPrincipal - principalPortion);
+        const interestPortion = monthlyInterest(originalPrincipal, loan.interest_rate);
+        const principalPaidThisTick = principalPortion(payment, interestPortion);
+        const newRemainingPrincipal = Math.max(0, remainingPrincipal - principalPaidThisTick);
 
         // Shared missed-payment / default handler. Used both when the JS
         // pre-check sees insufficient cash AND when the payment RPC
@@ -3299,9 +3334,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             if (newMissed >= 4) {
                 newStatus = 'defaulted';
                 results.defaults++;
-                let recovery = 0;
-                if (loan.collateral_type === 'equipment') recovery = 0.6;
-                else if (loan.collateral_type === 'property') recovery = 0.75;
+                const recovery = collateralRecoveryRate(loan.collateral_type);
                 if (recovery > 0) recoveredAmount = Math.round(remainingPrincipal * recovery);
             } else if (newMissed >= 3) {
                 newStatus = 'delinquent';
