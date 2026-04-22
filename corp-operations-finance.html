@@ -1680,9 +1680,9 @@ async function apRestructure(loanId) {
     // restructured loans unable to fully amortize, same bug class that
     // affected acceptOffer.
     const remaining = Number(loan.remaining_principal || 0);
-    const monthlyInterest = Math.round((remaining * (rate / 100)) / 12);
+    const interestPart = monthlyInterest(remaining, rate);
     const monthlyPrincipal = Math.round(remaining / newTerm);
-    const newPayment = monthlyInterest + monthlyPrincipal;
+    const newPayment = interestPart + monthlyPrincipal;
 
     if (!confirm(`Restructure to ${rate}% over ${newTerm} months?\nNew monthly payment: ${fmtMoney(newPayment)}\nMissed payments reset to 0.`)) return;
 
@@ -3262,11 +3262,13 @@ async function loadActivePortfolio() {
     // balance can never display interest > what the borrower actually
     // pays. The tick processor's own guard at principalPortion() makes
     // this safe; the cap exists purely so the UI rendering can't show
-    // a negative principal column.
-    const loanInterestForRow = (loan) => Math.min(
+    // a negative principal column. The outer Math.max(0, ...) clamps
+    // the rare defensive case where monthly_payment itself comes back
+    // negative -- without it the UI would render a negative interest.
+    const loanInterestForRow = (loan) => Math.max(0, Math.min(
         Number(loan.monthly_payment || 0),
         monthlyInterest(loan.remaining_principal, loan.interest_rate),
-    );
+    ));
     apPortfolio = (loans || []).map(loan => ({
         monthlyInterestPortion: loanInterestForRow(loan),
         monthlyPrincipalPortion: principalPortion(loan.monthly_payment, loanInterestForRow(loan)),

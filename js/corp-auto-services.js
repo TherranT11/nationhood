@@ -80,8 +80,8 @@ function computeLoanPreview(principal, annualRatePct, termMonths, interestModel)
     }
 
     const month1Principal = Math.round(safePrincipal / safeTerm);
-    const monthlyPayment = month1Interest + month1Principal;
-    const totalInterest = month1Interest * safeTerm;
+    const monthlyPayment = Math.round(month1Interest + month1Principal);
+    const totalInterest = Math.round(month1Interest * safeTerm);
     return { monthlyPayment, month1Interest, month1Principal, totalInterest };
 }
 
