@@ -17,6 +17,7 @@ import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
 import { callEarlyElectionsAction } from './game/elections.js';
+import { IDEOLOGY_AXES } from './game/ideology.js';
 
 let _supabase = null;
 let _state = null;
@@ -587,23 +588,16 @@ async function triggerLeaveBloc(root) {
 }
 
 /**
- * Top 2 ideologies of a faction, by absolute axis value. Each entry returns
- * { label, magnitude } where label is "Liberty", "Progress", etc.
+ * Top 2 ideologies of a faction, by absolute axis value. Uses the shared
+ * IDEOLOGY_AXES definition from ./game/ideology.js so labels stay consistent
+ * with the Politics page. Each entry returns { label, magnitude }.
  */
-const BLOC_IDEOLOGY_AXES = [
-    { key: 'liberty_equality', left: 'Liberty', right: 'Equality' },
-    { key: 'tradition_progress', left: 'Tradition', right: 'Progress' },
-    { key: 'security_freedom', left: 'Security', right: 'Freedom' },
-    { key: 'globalism_nationalism', left: 'Globalism', right: 'Nationalism' },
-    { key: 'individualism_collectivism', left: 'Individualism', right: 'Collectivism' },
-];
-
 function topTwoIdeologies(ideologyRow) {
     if (!ideologyRow) return [];
-    const scored = BLOC_IDEOLOGY_AXES.map(a => {
+    const scored = IDEOLOGY_AXES.map(a => {
         const raw = Number(ideologyRow[a.key] || 0);
         return {
-            label: raw < 0 ? a.left : a.right,
+            label: raw < 0 ? a.leftLabel : a.rightLabel,
             magnitude: Math.abs(raw)
         };
     });
@@ -614,15 +608,17 @@ function topTwoIdeologies(ideologyRow) {
 /**
  * Average absolute distance between two ideology rows across the 5 axes.
  * Mirrors the server-side gate so the modal can grey out ineligible parties
- * without a round-trip. Returns Infinity when data is missing (gate passes).
+ * without a round-trip. Returns Infinity when data is missing so the UI
+ * doesn't block invitations on parties with no ideology row (server does the
+ * same).
  */
 function avgIdeologyDistance(a, b) {
     if (!a || !b) return Infinity;
     let sum = 0;
-    for (const axis of BLOC_IDEOLOGY_AXES) {
+    for (const axis of IDEOLOGY_AXES) {
         sum += Math.abs(Number(a[axis.key] || 0) - Number(b[axis.key] || 0));
     }
-    return sum / BLOC_IDEOLOGY_AXES.length;
+    return sum / IDEOLOGY_AXES.length;
 }
 
 /**
