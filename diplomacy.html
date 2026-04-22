@@ -18876,9 +18876,15 @@ function negArticlesRender() {
 
             if (isBuyerMe && _tradeFlows[d.commodity]) {
                 const flow = _tradeFlows[d.commodity];
-                const domesticDemand = Number(flow.import_demand || 0);
+                // Local "remaining demand" = total import demand minus what's
+                // already flowing in — i.e. the gap still needing coverage
+                // from this negotiation. Previously mis-named `domesticDemand`;
+                // that name now collides with the real trade_flows.domestic_demand
+                // column (the gross domestic-consumption metric), so renamed
+                // here for clarity.
+                const totalImportDemand = Number(flow.import_demand || 0);
                 const alreadyImporting = Number(flow.import_volume || 0);
-                const remaining = Math.max(0, domesticDemand - alreadyImporting);
+                const remaining = Math.max(0, totalImportDemand - alreadyImporting);
                 const tradeVol = Number(d.volume || 0);
                 const overshoot = tradeVol > remaining;
                 const color = overshoot ? 'var(--amber)' : 'var(--green)';
