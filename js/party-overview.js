@@ -403,12 +403,15 @@ function renderIdentityCard(o, faction, partyColor, statusLabel, statusColor) {
 }
 
 function renderGovernanceTable(o) {
-    const deltas = o.governanceDeltas.slice(0, 12); // top 12
+    // Previously sliced to top 12 — hid late-sorted modifiers from players.
+    // Full list is now scrollable via .po-gov-scroll (see party-overview.css).
+    const deltas = o.governanceDeltas;
     const govScore = o.governanceScore;
     const govColor = govScore >= 0 ? 'var(--green)' : 'var(--red)';
     const decayNote = o.governanceDecayCycles > 0 && govScore > 0
         ? `Decay: ${((1 - o.governanceMultiplier) * 100).toFixed(1)}% (${o.governanceDecayCycles} cycles)`
         : '';
+    const subtitle = decayNote || (deltas.length > 0 ? `${deltas.length} modifier${deltas.length === 1 ? '' : 's'}` : '');
 
     const rowsHtml = deltas.map((d, i) => {
         const deltaColor = d.isGood ? 'var(--green)' : 'var(--red)';
@@ -428,7 +431,7 @@ function renderGovernanceTable(o) {
                 <span class="po-card-title">GOVERNANCE</span>
                 <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${govColor};">${govScore}</span>
             </div>
-            <span class="po-card-subtitle">${decayNote}</span>
+            <span class="po-card-subtitle">${esc(subtitle)}</span>
         </div>
         <div style="display:flex;padding:4px 12px;border-bottom:1px solid var(--border-main);background:var(--bg-card);">
             <span style="flex:1;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.04em;">STAT</span>
@@ -436,7 +439,9 @@ function renderGovernanceTable(o) {
             <span style="width:40px;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);text-align:right;">NOW</span>
             <span style="width:44px;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);text-align:right;">DELTA</span>
         </div>
-        ${rowsHtml || '<div style="padding:12px;text-align:center;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No governance data yet.</div>'}
+        <div class="po-gov-scroll">
+            ${rowsHtml || '<div style="padding:12px;text-align:center;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No governance data yet.</div>'}
+        </div>
     </div>`;
 }
 

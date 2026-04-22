@@ -1071,8 +1071,16 @@ function renderGovContent() {
 }
 
 function renderAdministrationTab(container) {
+    // ══════════════════════════════════════════════════════════════════
+    // ADMINISTRATIVE subtab — Phase 1 redesign
+    // 3-column layout (design bundle Option A):
+    //   Left  (300px, sticky): admin card + exec card + nation/crisis card
+    //   Middle (flex):         Executive Timeline with filter tabs
+    //   Right (340px):         Dense cabinet list with click-to-expand drawer
+    // Reads from _govData (already loaded) — no new queries this phase.
+    // ══════════════════════════════════════════════════════════════════
     if (!_govData) {
-        container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading government data...</div>';
+        container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading government data…</div>';
         return;
     }
     const contextKey = getTimelineContextKey();
@@ -1089,192 +1097,380 @@ function renderAdministrationTab(container) {
             _timelineEmptyReason = '';
         }
     }
-    // Phase 2+ will populate this
-    container.innerHTML = `<div id="gov-admin-banner"></div>
-        <div style="display:flex;gap:8px;margin-top:8px;">
-            <div id="gov-admin-timeline" style="width:42%;"></div>
-            <div id="gov-admin-right" style="flex:1;display:flex;flex-direction:column;gap:6px;">
-                <div id="gov-admin-cabinet"></div>
-                <div id="gov-admin-chat"></div>
-                <div id="gov-admin-actions"></div>
-            </div>
-        </div>`;
-    renderAdminBanner();
-    renderAdminTimeline(); // renders with cached data or empty state
-    renderAdminCabinet();
 
-    // Load timeline data async by context key, then re-render
+    container.innerHTML = `<div class="adm2-page">
+        <div class="adm2-left">
+            <div id="adm2-admin-card"></div>
+            <div id="adm2-exec-card"></div>
+            <div id="adm2-nation-card"></div>
+        </div>
+        <section class="adm2-timeline">
+            <div class="adm2-tl-head">
+                <div class="title"><span class="sq"></span>Executive Timeline</div>
+                <div class="adm2-tl-filters" id="adm2-tl-filters"></div>
+            </div>
+            <div class="adm2-tl-list" id="adm2-tl-list"></div>
+        </section>
+        <section class="adm2-cabinet">
+            <div class="adm2-panel-head adm2-cab-head">
+                <div class="title" style="display:flex;align-items:center;gap:10px;"><span class="sq"></span><span id="adm2-cab-title">Cabinet</span></div>
+            </div>
+            <div class="adm2-cab-list" id="adm2-cab-list"></div>
+        </section>
+    </div>`;
+
+    adm2RenderAdminCard();
+    adm2RenderExecCard();
+    adm2RenderNationCard();
+    adm2RenderTimeline();
+    adm2RenderCabinet();
+
     if (contextKey && !_timelineCache.has(contextKey)) {
-        loadTimelineData().then(() => renderAdminTimeline());
+        loadTimelineData().then(() => adm2RenderTimeline());
     }
-    renderAdminChat();
-    renderAdminActions();
 }
 
-function renderAdminBanner() {
-    const el = document.getElementById('gov-admin-banner');
+// ── Admin card ──────────────────────────────────────────────────────
+function adm2RenderAdminCard() {
+    const el = document.getElementById('adm2-admin-card');
     if (!el || !_govData) return;
-    const { coalition, hog, president, admin, parties } = _govData;
+    const { coalition, hog, admin, parties } = _govData;
     const nation = currentNation;
     const approval = Number(nation?.gov_approval ?? 50).toFixed(1);
     const approvalColor = approval >= 55 ? 'var(--green)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
-    const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
 
-    // Administration name + status
     const adminName = admin?.admin_name || (hog ? (hog.last_name || 'Interim') + ' Administration' : 'No Government');
     const startDate = admin?.started_at_date || tickToDate(admin?.started_at_tick);
     const isCurrent = admin && !admin.ended_at_tick;
-    const statusBadge = isCurrent
-        ? '<span class="ga-badge ga-badge--green">CURRENT</span>'
-        : admin?.end_reason ? `<span class="ga-badge ga-badge--red">${escapeHtml(admin.end_reason.replace(/_/g, ' ').toUpperCase())}</span>` : '';
 
-    // Coalition info — build from live party data + coalition.party_ids
+    // Duration in months (ticks since start). currentTick is a module-level
+    // var set from shard queries — don't shadow it here.
+    const startTick = admin?.started_at_tick;
+    let durationLabel = '';
+    if (typeof startTick === 'number' && typeof currentTick === 'number' && currentTick >= startTick) {
+        const months = Math.max(0, currentTick - startTick);
+        durationLabel = months === 1 ? '1 Month' : `${months} Months`;
+    }
+
+    // Coalition line — list party names + abbreviations
     const coalitionPartyIds = coalition?.party_ids || [];
     const coalitionParties = coalitionPartyIds.map(id => parties.find(p => p.id === id)).filter(Boolean);
-    const coalitionSeats = coalitionParties.reduce((sum, p) => sum + (p.seats || 0), 0);
+    const coalitionLabel = coalitionParties.length
+        ? coalitionParties.map(p => `${p.faction_name}${p.abbreviation ? ' · ' + p.abbreviation : ''}`).join(', ')
+        : 'None';
 
-    // Formation type label
-    const formationLabels = {
-        coalition: 'Coalition Government',
-        emergency_minority: 'Emergency Minority Government',
-        majority: 'Majority Government',
-        presidential: 'Presidential Administration',
-    };
-    const formationType = formationLabels[coalition?.formation_type] || (coalitionParties.length > 1 ? 'Coalition Government' : coalitionParties.length === 1 ? 'Single Party Government' : 'No Government');
+    const statusPill = isCurrent
+        ? '<span class="adm2-pill">Current</span>'
+        : (admin?.end_reason ? `<span class="adm2-pill" style="color:var(--red);border-color:var(--red);background:var(--red-faint);">${escapeHtml(admin.end_reason.replace(/_/g,' ').toUpperCase())}</span>` : '');
 
-    // Government type metadata
-    const govType = nation?.government_type || 'Parliamentary';
-    const metaParts = [formationType, govType, `${totalSeats} Seats`, `Majority: ${Math.floor(totalSeats / 2) + 1}`];
-
-    // ── Build HTML ──
-    let html = `<div class="ga-banner">`;
-
-    // Top row: admin name + approval
-    html += `<div class="ga-banner-top">
-        <div>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <div class="ga-banner-name">${escapeHtml(adminName)}</div>
-                ${statusBadge}
-                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${escapeHtml(startDate || '')}${isCurrent ? ' — Present' : ''}</span>
-            </div>
-            <div class="ga-banner-meta">${escapeHtml(metaParts.join(' · '))}</div>
+    el.innerHTML = `<div class="adm2-admin-card">
+        <div class="title-row">
+            <h1>${escapeHtml(adminName)}</h1>
+            ${statusPill}
         </div>
-        <div class="ga-banner-approval">
-            <div class="ga-banner-approval-label">GOVERNMENT APPROVAL</div>
-            <div class="ga-banner-approval-value" style="color:${approvalColor};">${approval}%</div>
+        <div class="adm2-meta">
+            <div class="row"><span class="k">Term</span><span class="v">${escapeHtml(startDate || '—')}${isCurrent ? ' — Present' : ''}</span></div>
+            ${durationLabel ? `<div class="row"><span class="k">Duration</span><span class="v">${escapeHtml(durationLabel)}</span></div>` : ''}
+            <div class="row"><span class="k">Coalition</span><span class="v">${escapeHtml(coalitionLabel)}</span></div>
+        </div>
+        <div class="adm2-approval-strip">
+            <span class="lbl">Approval</span>
+            <span class="val" style="color:${approvalColor};">${approval}%</span>
         </div>
     </div>`;
-
-    // Leaders + coalition row
-    html += `<div class="ga-banner-leaders">`;
-
-    // President section (if applicable)
-    if (president || isPresidential || isSemiPresidential(nation)) {
-        const presName = president ? `${president.first_name} ${president.last_name}` : (nation.head_of_state_first_name ? `${nation.head_of_state_first_name} ${nation.head_of_state_last_name}` : 'Vacant');
-        const presAge = president?.age || nation.head_of_state_age || '';
-        const presParty = president?.factions?.faction_name || '';
-        const presColor = president?.factions?.party_color || 'var(--text-dim)';
-        const presInitials = presName.split(' ').map(n => n[0] || '').join('');
-        html += `<div class="ga-banner-leader">
-            <div class="ga-banner-leader-label">PRESIDENT</div>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <div class="ga-leader-avatar" style="background:${presColor}15;border-color:${presColor}33;color:${presColor};">${escapeHtml(presInitials)}</div>
-                <div>
-                    <div class="ga-leader-name">${escapeHtml(presName)}</div>
-                    <div class="ga-leader-meta">Age ${presAge}${presParty ? ' · ' + escapeHtml(presParty) : ''}</div>
-                </div>
-            </div>
-        </div>`;
-    }
-
-    // Prime Minister section (shown for parliamentary + semi-presidential, hidden for pure presidential)
-    const isPurePresForPM = isPresidential && !isSemiPresidential(nation);
-    if (hog && !isPurePresForPM) {
-        const pmName = `${hog.first_name} ${hog.last_name}`;
-        const pmAge = hog.age || '';
-        const pmPartyName = hog.factions?.faction_name || '';
-        const pmColor = hog.factions?.party_color || 'var(--accent)';
-        const pmAbbr = hog.factions?.abbreviation || '';
-        const pmInitials = pmName.split(' ').map(n => n[0] || '').join('');
-        const pmApproval = admin?.approval_at_start != null ? '' : ''; // PM approval comes from minister data in Phase 3
-        html += `<div class="ga-banner-leader ga-banner-leader--pm" style="background:${pmColor}04;">
-            <div class="ga-banner-leader-label">PRIME MINISTER</div>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <div class="ga-leader-avatar" style="background:${pmColor}15;border-color:${pmColor}33;color:${pmColor};">${escapeHtml(pmInitials)}</div>
-                <div>
-                    <div class="ga-leader-name">${escapeHtml(pmName)}</div>
-                    <div class="ga-leader-meta">Age ${pmAge} · ${escapeHtml(pmPartyName)}</div>
-                </div>
-            </div>
-        </div>`;
-    } else if (!isPurePresForPM) {
-        const isPresidentParty = president?.faction_id === currentFaction?.id;
-        html += `<div class="ga-banner-leader">
-            <div class="ga-banner-leader-label">PRIME MINISTER</div>
-            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;margin-top:6px;">Vacant — awaiting nomination</div>
-            ${isPresidentParty ? '<div style="margin-top:8px;"><button class="action-btn" style="font-size:0.7rem;padding:5px 14px;" onclick="openNominatePMModal()">Nominate PM</button></div>' : ''}
-        </div>`;
-    }
-
-    // Head of State section (Monarch / President / ceremonial head)
-    // Absolute monarchies: use the monarch faction's leader, not nations.head_of_state_*
-    // Constitutional monarchies (parliamentary + hereditary HoS, e.g. Calveth, Dravka)
-    // also have a monarch + dynasty to display, not just absolute monarchies.
-    const isMonarchyGov = (nation?.government_type || '').toLowerCase().includes('monarchy')
-        || nation?.hos_election_method === 'hereditary';
-    const isAbsoluteMonarchyGov = (nation?.government_type || '').toLowerCase().includes('absolute');
-    let hosFirst, hosLast, hosAge;
-    if (isAbsoluteMonarchyGov && nation?.monarch_faction_id) {
-        const monarchParty = parties.find(p => p.id === nation.monarch_faction_id);
-        hosFirst = monarchParty?.leader_first_name || nation?.head_of_state_first_name;
-        hosLast = monarchParty?.leader_last_name || nation?.head_of_state_last_name;
-        hosAge = monarchParty?.leader_age || nation?.head_of_state_age;
-    } else {
-        hosFirst = nation?.head_of_state_first_name;
-        hosLast = nation?.head_of_state_last_name;
-        hosAge = nation?.head_of_state_age;
-    }
-    const isSemiPres = isSemiPresidential(nation);
-    const isPurePresidential = isPresidential && !isSemiPres;
-    // Prefer head_of_state_title (per-nation exact, e.g. 'Queen' for Dravka)
-    // over the legacy monarch_title column (absolute-monarchy-only, defaults to 'King').
-    const hosTitle = isMonarchyGov
-        ? (nation?.head_of_state_title || nation?.monarch_title || 'King')
-        : (isPurePresidential ? 'Vice President' : 'Head of State');
-    // Semi-Presidential: President already shown above, don't duplicate as "Head of State"
-    if (hosFirst && hosLast && !isSemiPres) {
-        const hosName = `${hosFirst} ${hosLast}`;
-        const hosInitials = hosName.split(' ').map(n => n[0] || '').join('');
-        const hosColor = isMonarchyGov ? '#c8a832' : 'var(--text-dim)';
-        // Dynasty names in the DB already include the "House of X" prefix
-        // (e.g. "House of Ashgrove" for Calveth). Render as-is — the previous
-        // "House ${dynasty_name}" produced "House House of Ashgrove".
-        const dynastyHtml = isMonarchyGov && nation?.dynasty_name ? `<div class="ga-leader-meta" style="font-style:italic;">${escapeHtml(nation.dynasty_name)}</div>` : '';
-        html += `<div class="ga-banner-leader" style="background:${hosColor}04;">
-            <div class="ga-banner-leader-label" style="color:${hosColor};">${escapeHtml(hosTitle.toUpperCase())}</div>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <div class="ga-leader-avatar" style="background:${hosColor}15;border-color:${hosColor}33;color:${hosColor};">${escapeHtml(hosInitials)}</div>
-                <div>
-                    <div class="ga-leader-name">${escapeHtml(hosName)}</div>
-                    <div class="ga-leader-meta">Age ${hosAge || '?'}</div>
-                    ${dynastyHtml}
-                </div>
-            </div>
-        </div>`;
-    }
-
-    html += `</div>`; // close leaders row
-    html += `</div>`; // close banner
-
-    el.innerHTML = html;
 }
 
-let _timelineFilter = 'all';
-let _timelineEvents = [];
-let _timelineContextKey = null;
-const _timelineCache = new Map();
-const TIMELINE_CACHE_MAX = 4;
-let _timelineEmptyReason = '';
+// ── Executive card — PM + Head of State ─────────────────────────────
+function adm2RenderExecCard() {
+    const el = document.getElementById('adm2-exec-card');
+    if (!el || !_govData) return;
+    const { hog, president, parties } = _govData;
+    const nation = currentNation;
+    const isPresSys = isPresidential || isSemiPresidential(nation);
+    const isPurePres = isPresidential && !isSemiPresidential(nation);
+
+    const rows = [];
+
+    // President (presidential / semi-presidential nations)
+    if (president || isPresSys) {
+        const name = president
+            ? `${president.first_name || ''} ${president.last_name || ''}`.trim()
+            : [nation?.head_of_state_first_name, nation?.head_of_state_last_name].filter(Boolean).join(' ') || 'Vacant';
+        const party = president?.factions?.faction_name || '';
+        const color = president?.factions?.party_color || 'var(--text-muted)';
+        const initials = name === 'Vacant' ? '—' : name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+        rows.push(`<div class="adm2-exec-person">
+            <div class="adm2-avatar" style="color:${color};border-color:${color}44;background:${color}15;">${escapeHtml(initials)}</div>
+            <div class="adm2-exec-body">
+                <div class="role">President</div>
+                <div class="name">${escapeHtml(name)}</div>
+                ${party ? `<div class="party"><span class="dot" style="background:${color};"></span>${escapeHtml(party)}</div>` : ''}
+            </div>
+        </div>`);
+    }
+
+    // Prime Minister (parliamentary + semi-presidential)
+    if (hog && !isPurePres) {
+        const name = `${hog.first_name || ''} ${hog.last_name || ''}`.trim();
+        const pmParty = parties.find(p => p.id === hog.faction_id);
+        const party = pmParty?.faction_name || '';
+        const color = pmParty?.party_color || 'var(--text-muted)';
+        const initials = name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+        rows.push(`<div class="adm2-exec-person">
+            <div class="adm2-avatar" style="color:${color};border-color:${color}44;background:${color}15;">${escapeHtml(initials)}</div>
+            <div class="adm2-exec-body">
+                <div class="role">Prime Minister</div>
+                <div class="name">${escapeHtml(name)}</div>
+                ${party ? `<div class="party"><span class="dot" style="background:${color};"></span>${escapeHtml(party)}</div>` : ''}
+            </div>
+        </div>`);
+    }
+
+    // Head of State (monarchies — separate from PM)
+    const isMonarchy = (nation?.government_type || '').toLowerCase().includes('monarchy');
+    if (isMonarchy && nation?.head_of_state_first_name) {
+        const name = `${nation.head_of_state_first_name || ''} ${nation.head_of_state_last_name || ''}`.trim();
+        const title = nation.head_of_state_title || 'King';
+        const initials = name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+        const dynastyLine = nation.dynasty_name ? `<div class="party" style="font-style:italic;">${escapeHtml(nation.dynasty_name)}</div>` : '';
+        rows.push(`<div class="adm2-exec-person">
+            <div class="adm2-avatar" style="color:var(--amber);border-color:rgba(176,154,91,0.3);background:rgba(176,154,91,0.1);">${escapeHtml(initials)}</div>
+            <div class="adm2-exec-body">
+                <div class="role">${escapeHtml(title)}</div>
+                <div class="name">${escapeHtml(name)}</div>
+                ${dynastyLine}
+            </div>
+        </div>`);
+    }
+
+    el.innerHTML = `<div class="adm2-panel">
+        <div class="adm2-panel-head"><span class="sq" style="background:var(--green);"></span>Executive</div>
+        ${rows.join('') || '<div style="padding:16px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">No executive data.</div>'}
+    </div>`;
+}
+
+// ── Nation card — crises (Phase 2 will wire real data) ──────────────
+// Crises are cached per (nationId, tick). Subtab re-clicks during the same
+// tick hit cache; tick advance invalidates automatically so a newly-triggered
+// crisis shows up without a page refresh.
+let _adm2CrisesCache = null;    // { nationId, tick, crises: [...] }
+
+async function adm2LoadCrises(nationId) {
+    if (!nationId) return [];
+    if (_adm2CrisesCache
+        && _adm2CrisesCache.nationId === nationId
+        && _adm2CrisesCache.tick === currentTick) {
+        return _adm2CrisesCache.crises;
+    }
+    try {
+        const { data, error } = await _supabase
+            .from('active_crises')
+            .select('started_at_tick, crisis_templates!inner(name, description)')
+            .eq('nation_id', nationId);
+        if (error) throw error;
+        const crises = (data || []).map(r => ({
+            name: r.crisis_templates?.name || 'Crisis',
+            description: r.crisis_templates?.description || '',
+            started_at_tick: r.started_at_tick,
+        }));
+        _adm2CrisesCache = { nationId, tick: currentTick, crises };
+        return crises;
+    } catch (err) {
+        console.warn('[Administration] Crisis load failed:', err?.message || err);
+        return [];
+    }
+}
+
+function adm2RenderNationCard() {
+    const el = document.getElementById('adm2-nation-card');
+    if (!el) return;
+    const nationId = currentNation?.id;
+
+    // Empty shell renders first with a loading note; real data fills in async.
+    el.innerHTML = `<div class="adm2-panel">
+        <div class="adm2-panel-head"><span class="sq" style="background:var(--red);"></span>Nation</div>
+        <div class="adm2-crisis-empty">Loading crises…</div>
+    </div>`;
+
+    adm2LoadCrises(nationId).then(crises => {
+        // Re-check that the same container is still on-screen (subtab may have changed).
+        const still = document.getElementById('adm2-nation-card');
+        if (!still) return;
+
+        if (!crises.length) {
+            still.innerHTML = `<div class="adm2-panel">
+                <div class="adm2-panel-head"><span class="sq" style="background:var(--green);"></span>Nation</div>
+                <div class="adm2-crisis-empty">No active crises.</div>
+            </div>`;
+            return;
+        }
+
+        const items = crises.map(c => {
+            const startTick = Number(c.started_at_tick);
+            let meta = '';
+            if (typeof startTick === 'number' && typeof currentTick === 'number' && currentTick >= startTick) {
+                const months = Math.max(0, currentTick - startTick);
+                const startLabel = tickToDate(startTick);
+                meta = `<div class="meta">
+                    <span>${months === 1 ? '1 Month' : months + ' Months'}</span>
+                    <span class="sep">·</span>
+                    <span>Since ${escapeHtml(startLabel || '—')}</span>
+                </div>`;
+            }
+            return `<div class="adm2-crisis-item">
+                <div class="top">
+                    <span class="name"><span class="ic">▲</span>${escapeHtml(c.name)}</span>
+                    <span class="status">Ongoing</span>
+                </div>
+                ${c.description ? `<div class="desc">${escapeHtml(c.description)}</div>` : ''}
+                ${meta}
+            </div>`;
+        }).join('');
+
+        still.innerHTML = `<div class="adm2-panel">
+            <div class="adm2-panel-head"><span class="sq" style="background:var(--red);"></span>Nation · ${crises.length} active</div>
+            ${items}
+        </div>`;
+    });
+}
+
+// ── Timeline ────────────────────────────────────────────────────────
+function adm2RenderTimeline() {
+    const filterEl = document.getElementById('adm2-tl-filters');
+    const listEl = document.getElementById('adm2-tl-list');
+    if (!filterEl || !listEl) return;
+
+    filterEl.innerHTML = TIMELINE_FILTERS.map(f =>
+        `<button class="${_timelineFilter === f.id ? 'active' : ''}" data-f="${f.id}">${f.label}</button>`
+    ).join('');
+    filterEl.onclick = (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        _timelineFilter = btn.dataset.f;
+        adm2RenderTimeline();
+    };
+
+    const filtered = _timelineFilter === 'all'
+        ? _timelineEvents
+        : _timelineEvents.filter(ev => ev.type === _timelineFilter);
+
+    if (!filtered.length) {
+        const reason = _timelineEmptyReason || 'No events recorded yet.';
+        listEl.innerHTML = `<div class="adm2-tl-empty">${escapeHtml(reason)}</div>`;
+        return;
+    }
+
+    listEl.innerHTML = filtered.map(ev => {
+        const cfg = TIMELINE_TYPE_CONFIG[ev.type] || TIMELINE_TYPE_CONFIG.event;
+        return `<div class="adm2-tl-item type-${escapeHtml(ev.type || 'event')}">
+            <div class="adm2-tl-dot"></div>
+            <div class="adm2-tl-body">
+                <div class="head"><span class="icon">${cfg.icon}</span><span class="ttl">${escapeHtml(ev.title || 'Event')}</span></div>
+                <div class="desc">${formatTimelineDesc(ev)}</div>
+            </div>
+            <div class="adm2-tl-date">${escapeHtml(tickToDate(ev.tick) || '')}<span class="d">T${ev.tick || '?'}</span></div>
+        </div>`;
+    }).join('');
+}
+
+// ── Cabinet dense list ──────────────────────────────────────────────
+function adm2RenderCabinet() {
+    const listEl = document.getElementById('adm2-cab-list');
+    const titleEl = document.getElementById('adm2-cab-title');
+    if (!listEl || !_govData) return;
+    const { coalition, ministries, parties, hog } = _govData;
+    const coalitionIds = new Set(coalition?.party_ids || []);
+
+    const cabinet = (ministries || []).filter(m =>
+        m.ministry_key !== 'prime_minister' && MINISTRY_KEYS_CABINET.includes(m.ministry_key)
+    );
+    if (titleEl) titleEl.textContent = `Cabinet · ${cabinet.length}`;
+
+    if (!cabinet.length) {
+        listEl.innerHTML = '<div style="padding:20px 14px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">No cabinet assembled.</div>';
+        return;
+    }
+
+    // Precompute static govContext fields shared by every minister row.
+    // Per-row isMyMinistry is spread-in inside the .map() below.
+    const isCaretaker = !!(coalition && coalition.status === 'caretaker');
+    const pmMinistry = (ministries || []).find(mm => mm.ministry_key === 'prime_minister');
+    const pmFilled = !!(pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name);
+    const pmFactionIdLocal = hog?.faction_id || pmMinistry?.party_id || null;
+    const isPMPartyLocal = !!(currentFaction && pmFactionIdLocal && currentFaction.id === pmFactionIdLocal);
+    let govType = 'parliamentary';
+    if (isPresidential && isSemiPresidential(currentNation)) govType = 'semi-presidential';
+    else if (isPresidential) govType = 'presidential';
+    const baseCtx = {
+        type: govType,
+        isRuling: isRulingFaction,
+        canAppoint: isPMPartyLocal && pmFilled && !isCaretaker,
+        isPMParty: isPMPartyLocal || isPMParty,
+        isPresidentParty,
+        isCaretaker,
+        requests: [],
+        myRequest: null,
+    };
+
+    const rows = cabinet.map((m, idx) => {
+        const deptLabel = (MINISTRY_NAMES[m.ministry_key] || m.ministry_key).replace(/^Ministry of\s+/i, '').replace(/^Ministry\s+/i, '');
+        const name = [m.minister_first_name, m.minister_last_name].filter(Boolean).join(' ');
+        const isEmpty = !name;
+        const party = parties.find(p => p.id === m.party_id);
+        const partyName = party?.faction_name || (isEmpty ? '' : 'Independent');
+        const partyColor = party?.party_color || 'var(--text-muted)';
+        const isAligned = party && coalitionIds.has(party.id);
+        const cls = isEmpty ? 'vacant' : (isAligned ? 'aligned' : 'opp');
+        const initials = name ? name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase() : '—';
+        // Real columns on ministries: minister_approval (int), funding_level (numeric 0-1+).
+        // There is no per-minister approval history table yet, so the drawer
+        // sparkline is rendered as a flat neutral placeholder — honest over
+        // fake-random data.
+        const approval = isEmpty ? 0 : Math.max(0, Math.min(100, Math.round(Number(m.minister_approval ?? 50))));
+        const fundingPct = (m.funding_level != null) ? Math.round(Number(m.funding_level) * 100) : null;
+        const budgetLabel = isEmpty ? '—' : (fundingPct != null ? `${fundingPct}%` : '—');
+
+        // Action buttons — reuse the existing buildMgmtButtons so the
+        // Appoint/Nominate/Resign/Dismiss rules + AP gating + caretaker
+        // gate live in ONE place (shared with the legacy ministry card
+        // renderer elsewhere in this file). isMyMinistry is per-row.
+        const isMyMinistry = !isEmpty && !!currentFaction && m.party_id === currentFaction.id;
+        const rowCtx = Object.assign({}, baseCtx, { isMyMinistry });
+        const actionBtns = buildMgmtButtons(m.ministry_key, m, rowCtx);
+
+        return `<div class="adm2-min-row ${cls}" data-idx="${idx}">
+            <div class="ava">${escapeHtml(initials)}</div>
+            <div class="mid">
+                <span class="dept">${escapeHtml(deptLabel)}</span>
+                <span class="nm">${escapeHtml(name || 'Vacant')}</span>
+            </div>
+            <div class="right">
+                ${isEmpty ? '' : `<div class="adm2-ap-bar"><div class="fill" style="width:${approval}%;"></div></div><span class="adm2-ap-val">${approval}%</span>`}
+                <span class="caret">›</span>
+            </div>
+        </div>
+        <div class="adm2-min-drawer ${cls}" data-drawer="${idx}">
+            <div class="adm2-drawer-party ${cls}"><span class="pdot" style="background:${partyColor};"></span>${escapeHtml(partyName || 'No party assigned')}</div>
+            <div class="adm2-drawer-stats">
+                <div class="s"><span class="k">Approval</span><span class="v">${isEmpty ? '—' : approval + '%'}</span></div>
+                <div class="s"><span class="k">Funding</span><span class="v">${budgetLabel}</span></div>
+                <div class="s"><span class="k">Party</span><span class="v" style="font-family:var(--font-ui);font-size:11px;">${escapeHtml(partyName || '—')}</span></div>
+            </div>
+            ${actionBtns ? `<div class="adm2-drawer-actions">${actionBtns}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    listEl.innerHTML = rows;
+
+    // Click-to-expand: only one drawer open at a time
+    listEl.onclick = (e) => {
+        const row = e.target.closest('.adm2-min-row');
+        if (!row) return;
+        const wasExpanded = row.classList.contains('expanded');
+        listEl.querySelectorAll('.adm2-min-row.expanded').forEach(r => r.classList.remove('expanded'));
+        if (!wasExpanded) row.classList.add('expanded');
+    };
+}
 
 function setTimelineCache(contextKey, events) {
     if (!contextKey) return;
@@ -1504,391 +1700,6 @@ function formatTimelineDesc(ev) {
     return escapeHtml(desc);
 }
 
-function renderAdminTimeline() {
-    const el = document.getElementById('gov-admin-timeline');
-    if (!el) return;
-
-    const filtered = _timelineFilter === 'all'
-        ? _timelineEvents
-        : _timelineEvents.filter(e => e.type === _timelineFilter);
-
-    // Filter buttons
-    let filterHtml = TIMELINE_FILTERS.map(f =>
-        `<div class="ga-tl-filter${_timelineFilter === f.id ? ' active' : ''}" data-filter="${f.id}">${f.label}</div>`
-    ).join('');
-
-    let html = `<div class="ga-panel">
-        <div class="ga-panel-header">
-            <span class="ga-panel-title">EXECUTIVE TIMELINE</span>
-            <div style="display:flex;gap:3px;">${filterHtml}</div>
-        </div>
-        <div class="ga-tl-scroll">`;
-
-    if (filtered.length === 0) {
-        const emptyReason = _timelineEmptyReason || 'No events recorded yet.';
-        html += `<div style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">${escapeHtml(emptyReason)}</div>`;
-    } else {
-        for (let i = 0; i < filtered.length; i++) {
-            const ev = filtered[i];
-            const cfg = TIMELINE_TYPE_CONFIG[ev.type] || TIMELINE_TYPE_CONFIG.event;
-            const isLast = i === filtered.length - 1;
-
-            html += `<div class="ga-tl-row">
-                <div class="ga-tl-spine">
-                    ${i > 0 ? '<div class="ga-tl-line-top"></div>' : ''}
-                    <div class="ga-tl-node" style="border-color:${cfg.color};background:${cfg.color}25;"></div>
-                    ${!isLast ? '<div class="ga-tl-line-bottom"></div>' : ''}
-                    <div class="ga-tl-tick">T${ev.tick || '?'}</div>
-                </div>
-                <div class="ga-tl-content">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <span style="font-size:16px;">${cfg.icon}</span>
-                            <span style="font-size:16px;font-weight:700;color:${cfg.color};">${escapeHtml(ev.title)}</span>
-                        </div>
-                        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);flex-shrink:0;">${tickToDate(ev.tick)}</span>
-                    </div>
-                    <div style="font-size:14px;color:var(--text-dim);line-height:1.6;">${formatTimelineDesc(ev)}</div>
-                </div>
-            </div>`;
-        }
-    }
-
-    html += `</div></div>`;
-    el.innerHTML = html;
-
-    // Wire filter clicks
-    el.querySelectorAll('.ga-tl-filter').forEach(btn => {
-        btn.addEventListener('click', () => {
-            _timelineFilter = btn.dataset.filter;
-            renderAdminTimeline();
-        });
-    });
-}
-let _expandedMinistry = null;
-
-function renderAdminCabinet() {
-    const el = document.getElementById('gov-admin-cabinet');
-    if (!el || !_govData) return;
-    const { ministries, coalition, parties } = _govData;
-    const nation = currentNation;
-    const totalSeats = nation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
-
-    // Build party lookup from coalition + all parties
-    const partyMap = {};
-    for (const p of parties) partyMap[p.id] = p;
-
-    // Count ministries held per party
-    const partyMinistryCount = {};
-    for (const m of ministries) {
-        if (m.party_id) partyMinistryCount[m.party_id] = (partyMinistryCount[m.party_id] || 0) + 1;
-    }
-
-    // Filter to cabinet ministries (exclude prime_minister — shown in banner)
-    const cabinetMinistries = ministries.filter(m => m.ministry_key !== 'prime_minister' && MINISTRY_KEYS_CABINET.includes(m.ministry_key));
-    cabinetMinistries.sort((a, b) => {
-        const order = MINISTRY_KEYS_CABINET.indexOf(a.ministry_key) - MINISTRY_KEYS_CABINET.indexOf(b.ministry_key);
-        return order;
-    });
-
-    // Party legend for header
-    const coalitionPartyIds = coalition?.party_ids || [];
-    const coalParties = coalitionPartyIds.map(id => partyMap[id]).filter(Boolean);
-    const legendHtml = coalParties.map(p => {
-        const count = partyMinistryCount[p.id] || 0;
-        return `<div style="display:flex;align-items:center;gap:3px;">
-            <div style="width:6px;height:6px;background:${p.party_color || '#888'};"></div>
-            <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${escapeHtml(p.abbreviation || p.faction_name)} holds ${count}</span>
-        </div>`;
-    }).join('');
-
-    let html = `<div class="ga-panel">
-        <div class="ga-panel-header">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span class="ga-panel-title">CABINET</span>
-                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${cabinetMinistries.length} ministries</span>
-            </div>
-            <div style="display:flex;gap:8px;">${legendHtml}</div>
-        </div>
-    </div>`;
-
-    // 2-column grid of ministry cards
-    html += `<div class="ga-cabinet-grid">`;
-
-    for (const m of cabinetMinistries) {
-        const party = partyMap[m.party_id];
-        const pColor = party?.party_color || m.factions?.party_color || '#888';
-        const pAbbr = party?.abbreviation || m.factions?.abbreviation || '';
-        const pName = party?.faction_name || m.factions?.faction_name || '';
-        const isFilled = m.minister_first_name && m.minister_last_name;
-        const ministerName = isFilled ? `${m.minister_first_name} ${m.minister_last_name}` : 'Vacant';
-        const initials = isFilled ? `${m.minister_first_name[0]}${m.minister_last_name[0]}` : '?';
-        const approval = Math.round(m.minister_approval ?? NEW_MINISTER_APPROVAL);
-        const approvalColor = approval >= 50 ? 'var(--green)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
-        const isExpanded = _expandedMinistry === m.ministry_key;
-
-        // Performance: compute net delta from stat baselines
-        const stats = MINISTRY_TO_STATS[m.ministry_key] || [];
-        const baselines = m.stat_baselines || {};
-        let perfSum = 0, perfCount = 0;
-        for (const statKey of stats) {
-            const sign = statDirectionSign(statKey);
-            if (sign === 0) continue;
-            const baseline = baselines[statKey];
-            if (baseline == null) continue;
-            const current = Number(nation?.[statKey] ?? 50);
-            const delta = (current - baseline) * sign;
-            perfSum += delta;
-            perfCount++;
-        }
-        const performance = perfCount > 0 ? perfSum / perfCount : 0;
-        const perfColor = performance >= 0 ? 'var(--green)' : performance > -3 ? 'var(--amber)' : 'var(--red)';
-
-        // Count available actions for this ministry
-        const actionConfig = MINISTRY_ACTIONS[m.ministry_key];
-        const actionCount = actionConfig?.actions?.filter(isImplementedMinistryAction)?.length || 0;
-
-        // Scandal detection (from campaign_actions — simplified: check if ministry has a scandal note)
-        const hasScandalBadge = false; // Phase 5 timeline will surface these
-
-        html += `<div class="ga-ministry-card${isExpanded ? ' expanded' : ''}${isFilled ? '' : ' vacant'}" data-ministry="${m.ministry_key}" style="border-left:3px solid ${pColor};">`;
-
-        // Ministry header
-        html += `<div class="ga-ministry-header">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span style="width:6px;height:6px;border-radius:50%;background:${pColor};display:inline-block;"></span>
-                <span class="ga-ministry-name">${escapeHtml((MINISTRY_NAMES[m.ministry_key] || m.ministry_key).replace('Ministry of ', '').replace('Ministry of the ', '').toUpperCase())}</span>
-            </div>
-        </div>`;
-
-        // Minister info
-        html += `<div class="ga-ministry-body">`;
-        if (isFilled) {
-            // Party logo replaces minister initials in the cabinet avatar —
-            // the identifying affiliation at a glance is the minister's
-            // party, not their personal monogram. Falls back to the shared
-            // getPartyIconSVG default when a party has neither a custom
-            // logo nor a chosen icon.
-            const avatarContent = party
-                ? getPartyLogoHTML({ customLogoUrl: party.custom_logo_url, iconKey: party.party_logo, size: 22, color: pColor })
-                : escapeHtml(initials);
-            html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                <div class="ga-leader-avatar" style="width:28px;height:28px;font-size:9px;background:${pColor}15;border-color:${pColor}33;color:${pColor};display:flex;align-items:center;justify-content:center;">${avatarContent}</div>
-                <div style="flex:1;">
-                    <div style="font-size:11px;font-weight:700;color:var(--text-bright);">${escapeHtml(ministerName)}</div>
-                    <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Age ${m.minister_age || '?'} · <span style="color:${pColor};">${escapeHtml(pAbbr)}</span> · Appointed T${m.appointed_tick ?? '?'}</div>
-                </div>
-            </div>`;
-
-            // Stats row
-            html += `<div style="display:flex;gap:10px;margin-bottom:4px;">
-                <div>
-                    <div class="ga-stat-label">APPROVAL</div>
-                    <div class="ga-stat-value" style="color:${approvalColor};">${approval}%</div>
-                </div>
-                <div>
-                    <div class="ga-stat-label">PERFORMANCE</div>
-                    <div class="ga-stat-value" style="color:${perfColor};">${performance > 0 ? '+' : ''}${performance.toFixed(1)}</div>
-                </div>
-            </div>`;
-        } else {
-            // Vacant ministry controls depend on government type:
-            //   Presidential      → President's party NOMINATEs; nomination
-            //                       goes to the floor for a confirmation vote.
-            //   Semi-presidential → PM's party NOMINATEs (president nominates
-            //                       presidential-domain ministries; that
-            //                       domain constraint is enforced inside
-            //                       openNominateModal).
-            //   Parliamentary     → PM's party APPOINTs directly.
-            // Mirrors the branching in the legacy buildMgmtButtons()
-            // ministry card so both UIs expose the same flow.
-            const isCaretaker = coalitionData?.status === 'caretaker';
-            const isSemiPres = isSemiPresidential(currentNation);
-            let actionBtn = '';
-            if (isPresidential && !isSemiPres) {
-                if (isPresidentParty) {
-                    actionBtn = `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openNominateModal('${escapeHtml(m.ministry_key)}')">NOMINATE</button>`;
-                }
-            } else if (isSemiPres) {
-                if (isPMParty) {
-                    actionBtn = `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openNominateModal('${escapeHtml(m.ministry_key)}')">NOMINATE</button>`;
-                }
-            } else if (isPMParty && !isCaretaker) {
-                actionBtn = `<button class="ga-vacant-appoint" onclick="event.stopPropagation();openAssignModal('${escapeHtml(m.ministry_key)}')">APPOINT</button>`;
-            }
-            html += `<div class="ga-vacant-row">
-                <span class="ga-vacant-label">Vacant</span>
-                ${actionBtn}
-            </div>`;
-        }
-
-        // Expanded content: ministry actions + dismiss/resign
-        if (isExpanded) {
-            html += renderMinistryExpandedContent(m, pColor);
-        }
-
-        // Expand hint (filled only — vacant cards stay compact)
-        if (!isExpanded && isFilled && actionCount > 0) {
-            html += `<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:4px;">&#9656; ${actionCount} action${actionCount !== 1 ? 's' : ''} available · click to expand</div>`;
-        }
-
-        html += `</div>`; // close body
-        html += `</div>`; // close card
-    }
-
-    html += `</div>`; // close grid
-
-    el.innerHTML = html;
-
-    // Click handler for expand/collapse (onclick= prevents stacking on re-render)
-    el.onclick = (e) => {
-        const card = e.target.closest('.ga-ministry-card');
-        if (!card) return;
-        // Don't collapse when clicking action buttons inside expanded card
-        if (e.target.closest('.ga-dismiss-btn') || e.target.closest('.ga-action-card')) return;
-        const key = card.dataset.ministry;
-        _expandedMinistry = _expandedMinistry === key ? null : key;
-        renderAdminCabinet();
-    };
-}
-function renderMinistryExpandedContent(ministry, partyColor) {
-    const key = ministry.ministry_key;
-    const isMyMinistry = currentFaction && ministry.party_id === currentFaction.id;
-    const isFilled = ministry.minister_first_name && ministry.minister_last_name;
-
-    let html = `<div class="ga-ministry-expanded">`;
-
-    // Bug fix: vacant ministries shouldn't offer ministry actions — there's
-    // no minister to execute them. Show an explanatory note and return early
-    // so the render below (which assumes an appointed minister) is skipped.
-    if (!isFilled) {
-        html += `<div style="padding:5px 8px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);background:var(--bg-card);border:1px solid var(--border-main);">
-            No minister in place. Ministry actions unlock once a minister is ${isPresidential ? 'nominated and confirmed' : 'appointed'}.
-        </div>`;
-        html += `</div>`;
-        return html;
-    }
-
-    // Foreign ministry → link to diplomacy
-    if (key === 'foreign') {
-        html += `<div style="padding:5px 8px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);background:var(--bg-card);border:1px solid var(--border-main);">Foreign Ministry actions are conducted in the <a href="diplomacy.html" style="color:var(--accent);text-decoration:underline;">Diplomacy panel</a>.</div>`;
-    } else {
-        // Ministry actions from config
-        const actionConfig = MINISTRY_ACTIONS[key];
-        const actions = actionConfig?.actions?.filter(isImplementedMinistryAction) || [];
-
-        if (actions.length > 0) {
-            html += `<div class="ga-stat-label" style="margin-bottom:4px;">MINISTRY ACTIONS</div>`;
-            for (const action of actions) {
-                const countKey = key + ':' + action.id;
-                const useCount = ministryActionUseCounts[countKey] || 0;
-
-                // Active check
-                const actionId = key + '-' + action.id;
-                const isActive = !!activeMinistryActions[actionId];
-
-                // Effect tags
-                const effects = action.baseEffects || [];
-                const effectTags = effects.filter(e => e.stat_key !== 'minister_approval').map(e => {
-                    const name = formatStatName(e.stat_key);
-                    const sign = e.direction === 'up' ? '+' : '-';
-                    const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.includes(e.stat_key))
-                        || (e.direction === 'down' && STATS_LOWER_IS_BETTER.includes(e.stat_key));
-                    const color = isGood ? 'var(--green)' : 'var(--red)';
-                    return `<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${name} ${sign}${e.rate}</span>`;
-                });
-
-                // Direction-based actions (healthcare pharma, labor policy)
-                if (action.directions && !action.baseEffects) {
-                    for (const [dir, cfg] of Object.entries(action.directions)) {
-                        const dirEffects = (cfg.baseEffects || []).filter(e => e.stat_key !== 'minister_approval');
-                        for (const e of dirEffects) {
-                            const name = formatStatName(e.stat_key);
-                            const sign = e.direction === 'up' ? '+' : '-';
-                            const isGood = (e.direction === 'up' && !STATS_LOWER_IS_BETTER.includes(e.stat_key))
-                                || (e.direction === 'down' && STATS_LOWER_IS_BETTER.includes(e.stat_key));
-                            effectTags.push(`<span class="ga-effect-tag" style="color:${isGood ? 'var(--green)' : 'var(--red)'};border-color:${isGood ? 'var(--green)' : 'var(--red)'}30;">${name} ${sign}${e.rate}</span>`);
-                        }
-                    }
-                }
-
-                // Tags from config (RAISES CAPITAL, SAVES, etc.)
-                if (action.tags) {
-                    for (const t of action.tags) {
-                        const cls = t.cls === 'positive' ? 'var(--green)' : t.cls === 'negative' ? 'var(--red)' : 'var(--text-dim)';
-                        effectTags.push(`<span class="ga-effect-tag" style="color:${cls};border-color:${cls}30;">${escapeHtml(t.label)}</span>`);
-                    }
-                }
-
-                const canExecute = isMyMinistry && !isActive;
-                html += `<div class="ga-action-card${isActive ? ' active' : ''}" id="${actionId}"${canExecute ? ` onclick="event.stopPropagation();ministryActionSelect('${actionId}')" style="cursor:pointer;"` : ''}>
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-                        <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${isActive ? 'var(--green)' : 'var(--text-bright)'};">${escapeHtml(action.name)}${isActive ? ' <span style="font-size:7px;">ACTIVE</span>' : ''}</span>
-                        ${canExecute ? `<span class="ga-ap-badge" style="cursor:pointer;">&#9654; FREE</span>` : `<span class="ga-ap-badge">FREE</span>`}
-                    </div>
-                    <div style="font-size:8px;color:var(--text-dim);line-height:1.4;margin-bottom:4px;">${escapeHtml(action.desc)}</div>
-                    ${effectTags.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;">${effectTags.join('')}</div>` : ''}
-                    ${canExecute ? `<div id="${actionId}-btns" style="margin-top:4px;"></div>` : ''}
-                </div>`;
-            }
-        }
-    }
-
-    // Management buttons: resign / dismiss / appoint+nominate.
-    // The head-of-government party varies by system:
-    //   Parliamentary     → PM's party handles dismiss + appoint (direct)
-    //   Semi-presidential → PM's party handles dismiss + nominate (confirmation)
-    //   Presidential      → President's party handles dismiss + nominate (confirmation)
-    // Mirrors the branching in renderMinistryCard at ~line 6535.
-    //
-    // TODO(refactor): the pattern `isPresidential && !isSemiPresidential()` is
-    // reinvented at lines 1190, 1234, 1697 and here (1834). All four are just
-    // `isPresidentialRepublic()`. Consolidate when those renderers are next touched.
-    const isCaretaker = coalitionData?.status === 'caretaker';
-    const isHeadOfGovParty = isPresidentialRepublic(currentNation) ? isPresidentParty : isPMParty;
-    let mgmtBtns = '';
-
-    // Resign: any governing party can resign their own minister
-    if (isFilled && isMyMinistry && !isCaretaker) {
-        mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--orange);border-color:var(--orange)44;"
-            onclick="event.stopPropagation();resignMinistry('${escapeHtml(key)}')">RESIGN</div>`;
-    }
-
-    // Dismiss: head-of-government's party can dismiss other parties' ministers (costs 1 AP)
-    if (isFilled && isHeadOfGovParty && !isMyMinistry && !isCaretaker) {
-        const ap = currentFaction?.action_points || 0;
-        if (ap >= 1) {
-            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--red);border-color:var(--red)44;"
-                onclick="event.stopPropagation();fireMinister('${escapeHtml(key)}')">DISMISS</div>`;
-        } else {
-            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--red);border-color:var(--red)44;opacity:0.4;cursor:not-allowed;">DISMISS</div>`;
-        }
-    }
-
-    // Fill vacant ministry: parliamentary APPOINTs direct; presidential/semi-pres
-    // NOMINATE through a confirmation bill (openNominateModal enforces the
-    // semi-pres presidential-domain constraint on foreign/defense/trade).
-    if (!isFilled && isHeadOfGovParty && !isCaretaker) {
-        if (isPresidential) {
-            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--accent);border-color:var(--accent)44;"
-                onclick="event.stopPropagation();openNominateModal('${escapeHtml(key)}')">NOMINATE</div>`;
-        } else {
-            mgmtBtns += `<div class="ga-dismiss-btn" style="color:var(--accent);border-color:var(--accent)44;"
-                onclick="event.stopPropagation();openAssignModal('${escapeHtml(key)}')">APPOINT</div>`;
-        }
-    }
-
-    if (mgmtBtns) {
-        html += `<div style="margin-top:8px;display:flex;gap:6px;">${mgmtBtns}</div>`;
-    }
-
-    html += `</div>`;
-    return html;
-}
-
-let _govChatMessages = [];
-let _govChatSubscription = null;
-
 async function loadGovChat() {
     if (!currentNation) return;
     try {
@@ -1992,89 +1803,6 @@ async function sendGovChat() {
         input.focus();
     }
 }
-
-function renderAdminChat() {
-    const el = document.getElementById('gov-admin-chat');
-    if (!el) return;
-
-    el.innerHTML = `<div class="ga-panel">
-        <div class="ga-panel-header">
-            <span class="ga-panel-title">ADMINISTRATIVE COMMUNICATIONS</span>
-        </div>
-        <div id="ga-chat-messages" class="ga-chat-scroll"></div>
-        <div class="ga-chat-input-row">
-            <input type="text" id="ga-chat-input" class="ga-chat-input" placeholder="Type a message..." maxlength="500"
-                onkeydown="if(event.key==='Enter'){event.preventDefault();sendGovChat();}">
-            <button id="ga-chat-send" class="ga-chat-send-btn" onclick="sendGovChat()">SEND</button>
-        </div>
-    </div>`;
-
-    // Load messages async
-    loadGovChat();
-}
-function renderAdminActions() {
-    const el = document.getElementById('gov-admin-actions');
-    if (!el || !_govData) return;
-    const { coalition } = _govData;
-    const nation = currentNation;
-
-    // Only show actions if a government exists
-    if (!coalition || !nation) { el.innerHTML = ''; return; }
-
-    const isCaretaker = coalition.status === 'caretaker';
-    const isPM = isPMParty;
-    const approval = Number(nation.gov_approval ?? 50);
-
-    let html = `<div class="ga-panel" style="text-align:center;padding:12px;">`;
-
-    // CALL EARLY ELECTIONS + RESIGN AS PM were previously rendered here. Both
-    // now live under Actions \u2192 Party Actions (Leader tab) above Vote of No
-    // Confidence, where they sit alongside the other PM-only tools. The
-    // caretaker notice and collapse warning below still render on the admin
-    // tab since they surface state rather than actions.
-    const isPresidentialForElections = isPresidential;
-
-    // Caretaker notice. One tick == one month — show the countdown in months
-    // so players aren't reading a raw tick counter. Null tick (scheduled-
-    // election row not yet loaded) falls back to "pending" rather than "?".
-    if (isCaretaker) {
-        const electionTick = coalition._earlyElectionTick;
-        const ticksLeft = electionTick != null ? Math.max(0, electionTick - currentTick) : null;
-        let countdown;
-        if (ticksLeft == null)       countdown = 'Election pending';
-        else if (ticksLeft === 0)    countdown = 'Election this tick';
-        else                         countdown = `Election in ${ticksLeft} month${ticksLeft !== 1 ? 's' : ''}`;
-        html += `<div style="display:flex;align-items:center;gap:8px;justify-content:center;padding:8px 0;">
-            <span style="font-size:14px;">&#9888;&#65039;</span>
-            <div>
-                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--amber);">CARETAKER GOVERNMENT</div>
-                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${countdown} · Legislation frozen</div>
-            </div>
-        </div>`;
-    }
-
-    // Collapse warning
-    if (approval <= 5 && !isCaretaker) {
-        html += `<div style="margin-top:8px;padding:8px 12px;background:rgba(204,85,85,0.04);border:1px solid rgba(204,85,85,0.15);">
-            <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--red);">&#9888; GOVERNMENT ON VERGE OF COLLAPSE</div>
-            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:2px;">
-                Approval at ${approval.toFixed(1)}%. Coalition parties losing -5 approval/tick. At 0%, snap elections will be called automatically.
-            </div>
-        </div>`;
-    }
-
-    html += `</div>`;
-    el.innerHTML = html;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// UI 2.0 — LEGISLATURE TAB
-// ═══════════════════════════════════════════════════════════════
-
-let _legData = null;       // { bills, activeLaws, parties }
-let _legInitialized = false;
-let _legFilter = 'active'; // 'active' | 'resolved' | 'laws'
-let _legExpandedBill = null;
 
 function renderLegislatureTab(container) {
     if (!_legData) {
@@ -12143,9 +11871,14 @@ async function resignPMAction() {
     } finally { _govActionLock = false; }
 }
 
-// Refresh the correct UI after a ministry action (admin tab vs legacy page)
+// Refresh the correct UI after a ministry action (UI 2.0 subtabs vs legacy page).
+// The UI 2.0 detector previously probed for #gov-admin-cabinet, which was a
+// transient id of the old Administrative subtab layout. Phase 1 of the
+// Administrative redesign removed that id, silently breaking every action
+// refresh across the page. Detect UI 2.0 via #gov-content (the stable
+// subtab-content mount point) instead.
 async function refreshGovernmentUI() {
-    if (document.getElementById('gov-admin-cabinet')) {
+    if (document.getElementById('gov-content')) {
         await loadGovData();
         renderGovContent();
     } else {
