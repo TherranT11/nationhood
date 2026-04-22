@@ -430,6 +430,10 @@ function renderTradeEconomy() {
             // which is the exportable surplus — a petro-state that consumed
             // all its own oil showed the $10M floor even at 88 oil_and_gas.
             production: Number(flow.domestic_production) || 0,
+            // domesticDemand = gross consumption before domestic-coverage
+            // offset. Currently only fuel_energy populates this; other
+            // sectors render the value as '-' in the table row below.
+            domesticDemand: Number(flow.domestic_demand) || 0,
             demand: Number(flow.import_demand) || 0,
         });
     }
@@ -450,6 +454,7 @@ function renderTradeEconomy() {
         <div class="tr-commodity-header">
             <span style="flex:1;">COMMODITY</span>
             <span style="width:75px;text-align:right;">PROD /MO</span>
+            <span style="width:75px;text-align:right;">DOM DEMAND /MO</span>
             <span style="width:75px;text-align:right;">IMP DEMAND /MO</span>
             <span style="width:75px;text-align:right;">BAL /MO</span>
         </div>`;
@@ -467,6 +472,7 @@ function renderTradeEconomy() {
                 ${!isExp ? '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);opacity:0.5;margin-left:2px;">click to expand</span>' : ''}
             </div>
             <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.production)}</span>
+            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${c.domesticDemand > 0 ? fmtBudgetCurrency(c.domesticDemand) : '—'}</span>
             <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.demand)}</span>
             <span style="width:75px;font-family:var(--font-mono);font-size:14px;font-weight:700;text-align:right;color:${bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text-dim)'};">
                 ${bal === 0 ? '\u2014' : (bal > 0 ? '+' : '') + fmtBudgetCurrency(bal)}
@@ -479,6 +485,7 @@ function renderTradeEconomy() {
             // domProd = gross domestic production (label: DOMESTIC PRODUCTION).
             // expCap = exportable surplus — used for the unmet-demand check.
             const domProd = Number(flow.domestic_production) || 0;
+            const domDem = Number(flow.domestic_demand) || 0;
             const expCap = Number(flow.export_capacity) || 0;
             const impDem = Number(flow.import_demand) || 0;
             const expVol = Number(flow.export_volume) || 0;
@@ -489,6 +496,7 @@ function renderTradeEconomy() {
 
             // Unit formatting
             const unitProd = formatSectorVolume(domProd, c.key);
+            const unitDomDem = formatSectorVolume(domDem, c.key);
             const unitDem = formatSectorVolume(impDem, c.key);
             const unitImp = formatSectorVolume(impVol, c.key);
             const unitExp = formatSectorVolume(expVol, c.key);
@@ -525,7 +533,15 @@ function renderTradeEconomy() {
                 <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(domProd)}${unitProd ? ' <span style="font-weight:400;color:var(--text-dim);font-size:10px;">(' + unitProd + ')</span>' : ''}</span>
             </div>`;
 
-            // Domestic Demand
+            // Domestic Demand — only shown when populated (currently fuel_energy only).
+            if (domDem > 0) {
+                html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">DOMESTIC DEMAND</span>
+                    <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--blue);">${fmtBudgetCurrency(domDem)}${unitDomDem ? ' <span style="font-weight:400;color:var(--text-dim);font-size:10px;">(' + unitDomDem + ')</span>' : ''}</span>
+                </div>`;
+            }
+
+            // Import Demand
             html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
                 <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">IMPORT DEMAND</span>
                 <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--amber);">${fmtBudgetCurrency(impDem)}${unitDem ? ' <span style="font-weight:400;color:var(--text-dim);font-size:10px;">(' + unitDem + ')</span>' : ''}</span>
