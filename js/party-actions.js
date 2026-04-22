@@ -1229,9 +1229,19 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 action.lockReason = '';
             }
         } else if (action.id === 'create_bloc') {
+            // Head-of-Government lock: PM, elected President, or Monarch can't form blocs
+            // (they already lead a coalition — a bloc would be a redundant sub-alliance).
+            const isPM = !!_administration && _administration.pm_party_id === faction.id;
+            const isPresident = _state.nation?.hos_election_method === 'elected'
+                && _administration?.president_party_id === faction.id;
+            const isMonarchActing = isAbsoluteMonarchy(_state.nation)
+                && _state.nation?.monarch_faction_id === faction.id;
             if (_myBloc) {
                 isDisabled = true;
                 action.lockReason = `Already in the ${_myBloc.name} bloc.`;
+            } else if (isPM || isPresident || isMonarchActing) {
+                isDisabled = true;
+                action.lockReason = 'Head of Government cannot form blocs — you already lead the coalition.';
             } else if ((faction.party_funds || 0) < 100) {
                 isDisabled = true;
                 action.lockReason = 'Needs $100 party funds.';
