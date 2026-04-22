@@ -3064,8 +3064,10 @@ var TRADE_IMPORT_DRIVERS = {
         { key: 'standard_of_living', inverted: false }
     ],
     manufactured_goods: [
+        { key: 'manufacturing_output', inverted: true },
+        { key: 'urbanization', inverted: false },
         { key: 'standard_of_living', inverted: false },
-        { key: 'manufacturing_output', inverted: true }
+        { key: 'higher_education', inverted: false }
     ],
     technology: [
         { key: 'digital_infrastructure', inverted: false },
@@ -3820,7 +3822,7 @@ var TRADE_EXPORT_HINTS = {
     livestock_dairy:    'Driven by: Arable Land (Livestock Allocation) + Infrastructure',
     fruits_vegetables:  'Driven by: Arable Land (Perishables Allocation) + Rail + Infrastructure + Energy',
     cash_crops:         'Driven by: Arable Land (Cash Crops Allocation) + Foreign Investment + Currency',
-    manufactured_goods: 'Driven by: Manufacturing Output',
+    manufactured_goods: 'Driven by: Population × Manufacturing Output, modified by Stability',
     technology:         'Driven by: Digital Infrastructure + Higher Education',
     arms:               'Driven by: Manufacturing + Defense Spending %',
     tourism:            'Driven by: Happiness + Stability + Physical Infrastructure',
@@ -3834,7 +3836,7 @@ var TRADE_IMPORT_HINTS = {
     livestock_dairy:    'Driven by: Standard of Living × Population vs. Livestock Land',
     fruits_vegetables:  'Driven by: Urbanization × Population vs. Perishables Land (spoilage reduces effective supply)',
     cash_crops:         'Driven by: Standard of Living (luxury imports — coffee, cocoa, tea)',
-    manufactured_goods: 'Driven by: Consumer Demand (Pop × Std. of Living) minus Manufacturing',
+    manufactured_goods: 'Driven by: Population × (Urbanization + Standard of Living + Higher Education), minus domestic Manufacturing Output',
     technology:         'Driven by: Digital Need (Pop × Digital Infra) minus Tech Capacity',
     arms:               'Driven by: Defense Budget minus Domestic Arms Capacity'
 };
