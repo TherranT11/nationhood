@@ -193,6 +193,16 @@ const LEADER_ACTIONS = [
         locked: false,
     },
     {
+        id: 'leave_coalition',
+        name: 'Leave Coalition',
+        desc: 'Walk out of the current governing coalition. Any ministries your party holds are vacated. You drop from governing to opposition. Coalition flips to minority if your exit drops it below the majority threshold. Cost: −3 Momentum to you, −5 Momentum to the PM’s party. 12-tick cooldown. PM’s party cannot use this — resign first.',
+        cost: '−3 MOM',
+        costColor: '#c84',
+        moneyCost: 0,
+        tags: ['GOVERNMENT', 'RISKY'],
+        locked: false,
+    },
+    {
         id: 'disband_party',
         name: 'Disband Party',
         desc: 'Voluntarily dissolve your party. Your seats are vacated and sit empty until the next election (no backfill or redistribution). All party funds and momentum are lost. You are removed from every nation chat. Cannot be undone. 24-tick cooldown per user. Cannot be used while Prime Minister, sitting President, or reigning Monarch — step down first.',
@@ -930,6 +940,8 @@ function renderPage(root) {
             triggerCallEarlyElections();
         } else if (actionId === 'resign_as_pm') {
             triggerResignAsPM();
+        } else if (actionId === 'leave_coalition') {
+            triggerLeaveCoalition();
         } else if (actionId === 'disband_party') {
             triggerDisbandParty();
         } else if (actionId === 'create_bloc') {
@@ -1217,6 +1229,24 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 // (e.g. another action just fired) the buttons should be inert.
                 isDisabled = true;
                 action.lockReason = 'Government is already in caretaker mode.';
+            } else {
+                action.lockReason = '';
+            }
+        } else if (action.id === 'leave_coalition') {
+            // Parliamentary-only gate + opposition gate + PM-party gate.
+            // Server RPC mirrors these, so a client-side bypass still fails.
+            const nation = _state.nation;
+            const isParliamentaryPM = hasParliamentaryPM(nation);
+            const isPMParty = !!_administration && _administration.pm_party_id === faction.id;
+            if (!isParliamentaryPM) {
+                isDisabled = true;
+                action.lockReason = 'Only available in parliamentary systems.';
+            } else if (_isOpposition) {
+                isDisabled = true;
+                action.lockReason = 'You are in opposition.';
+            } else if (isPMParty) {
+                isDisabled = true;
+                action.lockReason = 'Prime Minister’s party cannot leave — resign first.';
             } else {
                 action.lockReason = '';
             }
@@ -3464,6 +3494,54 @@ async function triggerCallEarlyElections() {
 // schedules a snap election at currentTick + FORMATION_DEADLINE_TICKS so
 // the coalition has a window to nominate a successor before the fallback
 // election fires.
+
+// ════════════════════════ LEAVE COALITION ════════════════════════
+// Walk out of the current governing coalition. Thin wrapper around
+// the leave_coalition SECURITY DEFINER RPC — confirm dialog, RPC
+// call, reload. All gating (parliamentary, not-opposition, not-PM,
+// cooldown) is mirrored server-side so a bypass still fails.
+
+let _leaveCoalitionSubmitting = false;
+
+async function triggerLeaveCoalition() {
+    if (_leaveCoalitionSubmitting) return;
+    if (!_state?.faction?.id) return;
+
+    if (!confirm(
+        'LEAVE COALITION?\n\n' +
+        'Consequences:\n' +
+        '• −3 Momentum to your party\n' +
+        '• −5 Momentum to the Prime Minister’s party\n' +
+        '• Any ministries you hold will be vacated\n' +
+        '• Your party moves from governing to opposition\n' +
+        '• Coalition flips to minority if your exit drops it below majority\n' +
+        '• 12-tick cooldown before you can leave another coalition\n\n' +
+        'Proceed?'
+    )) return;
+
+    _leaveCoalitionSubmitting = true;
+    try {
+        const { data, error } = await _supabase.rpc('leave_coalition', {
+            p_faction_id: _state.faction.id,
+        });
+        if (error) throw error;
+        if (data && data.success === false) throw new Error(data.error || 'Unknown error');
+
+        const minorityNote = data?.became_minority
+            ? '\n\nThe government is now a minority.'
+            : '';
+        const vacatedNote = (data?.ministries_vacated || 0) > 0
+            ? `\n\n${data.ministries_vacated} ministr${data.ministries_vacated === 1 ? 'y' : 'ies'} vacated.`
+            : '';
+        alert('You have left the coalition.' + minorityNote + vacatedNote);
+        window.location.reload();
+    } catch (err) {
+        console.error('[PartyActions] Leave Coalition failed:', err);
+        alert('Failed to leave coalition: ' + (err?.message || err));
+    } finally {
+        _leaveCoalitionSubmitting = false;
+    }
+}
 
 let _resignPMSubmitting = false;
 
