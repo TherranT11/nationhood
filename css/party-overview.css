@@ -86,6 +86,7 @@
 .po-gov-stat { flex: 1; font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .po-gov-val { width: 50px; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); text-align: right; }
 .po-gov-delta { width: 54px; font-family: var(--font-mono); font-size: 13px; font-weight: 700; text-align: right; }
+.po-gov-scroll { max-height: 420px; overflow-y: auto; }
 
 /* ── Ideology axes ── */
 .po-axis { margin-bottom: 8px; }
