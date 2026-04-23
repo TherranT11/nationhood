@@ -4,6 +4,7 @@
 // Renders into a container element. Can be embedded in any corp page.
 
 import { fetchAvailableRates, fetchMyPolicies } from './game/subsidiary-services.js';
+import { monthlyInterest, principalPortion } from './game/loan-math.js';
 
 let _supabase = null;
 let _state = null;
@@ -69,17 +70,15 @@ function computeLoanPreview(principal, annualRatePct, termMonths, interestModel)
     const safePrincipal = Math.max(0, Number(principal) || 0);
     const safeRate = Math.max(0, Number(annualRatePct) || 0);
     const safeTerm = Math.max(1, Number(termMonths) || 1);
-    const monthlyRate = safeRate / 100 / 12;
+    const month1Interest = monthlyInterest(safePrincipal, safeRate);
 
     if (interestModel === 'amortized') {
         const monthlyPayment = computeAmortizedLoanMonthlyPayment(safePrincipal, safeRate, safeTerm);
-        const month1Interest = Math.round(safePrincipal * monthlyRate);
-        const month1Principal = Math.max(0, monthlyPayment - month1Interest);
+        const month1Principal = principalPortion(monthlyPayment, month1Interest);
         const totalInterest = Math.max(0, Math.round((monthlyPayment * safeTerm) - safePrincipal));
         return { monthlyPayment, month1Interest, month1Principal, totalInterest };
     }
 
-    const month1Interest = Math.round((safePrincipal * safeRate / 100) / 12);
     const month1Principal = Math.round(safePrincipal / safeTerm);
     const monthlyPayment = Math.round(month1Interest + month1Principal);
     const totalInterest = Math.round(month1Interest * safeTerm);

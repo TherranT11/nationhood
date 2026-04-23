@@ -57,7 +57,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, qCacheBust } from './js/common.js';
+import { initPage, qCacheBust, loadBlocMap, blocTagHtml } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, deductAP } from './js/game/config.js';
 import { fileNoConfidenceMotion } from './js/game/no-confidence.js';
@@ -2664,7 +2664,7 @@ async function loadLegislatureData() {
     const nid = currentNation.id;
 
     try {
-        const [committeeRes, floorRes, frozenRes, deskRes, resolvedRes, lawsRes, partiesRes] = await Promise.all([
+        const [committeeRes, floorRes, frozenRes, deskRes, resolvedRes, lawsRes, partiesRes, blocMap] = await Promise.all([
             _supabase.from('bills')
                 .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
                 .eq('nation_id', nid).eq('status', 'committee'),
@@ -2690,9 +2690,10 @@ async function loadLegislatureData() {
                 .select('*, policies(*)')
                 .eq('nation_id', nid),
             _supabase.from('factions')
-                .select('id, faction_name, abbreviation, seats, party_color')
+                .select('id, faction_name, abbreviation, seats, party_color, bloc_id')
                 .eq('nation_id', nid).eq('faction_type', 'party')
                 .order('seats', { ascending: false }),
+            loadBlocMap(nid),
         ]);
 
         const committee = committeeRes.data || [];
@@ -2732,12 +2733,13 @@ async function loadLegislatureData() {
             resolved,
             activeLaws,
             parties,
+            blocMap: blocMap || {},
             totalSeats: currentNation.total_seats || GAME_CONFIG.TOTAL_SEATS,
             majority: Math.floor((currentNation.total_seats || GAME_CONFIG.TOTAL_SEATS) / 2) + 1,
         };
     } catch (err) {
         console.error('[Legislature] loadLegislatureData failed:', err);
-        _legData = { committee: [], floor: [], frozen: [], presidentDesk: [], resolved: [], activeLaws: [], parties: [], totalSeats: 120, majority: 61 };
+        _legData = { committee: [], floor: [], frozen: [], presidentDesk: [], resolved: [], activeLaws: [], parties: [], blocMap: {}, totalSeats: 120, majority: 61 };
     }
 }
 
@@ -2782,7 +2784,7 @@ function generateSemiCircleSeats(total, rows) {
 function renderParliamentPanel() {
     const el = document.getElementById('leg-left');
     if (!el || !_legData) return;
-    const { parties, totalSeats, majority } = _legData;
+    const { parties, totalSeats, majority, blocMap } = _legData;
     const govPartyIds = _govData?.coalition?.party_ids || [];
     const govParties = parties.filter(p => govPartyIds.includes(p.id));
     const oppParties = parties.filter(p => !govPartyIds.includes(p.id));
@@ -2893,11 +2895,17 @@ function renderParliamentPanel() {
         const nameColor = opposition ? 'var(--text-dim)' : 'var(--text-bright)';
         const seatColor = opposition && p.seats === 0 ? 'var(--text-dim)' : 'var(--text-bright)';
         const rowOpacity = opposition && p.seats === 0 ? '0.5' : '1';
+        const blocTag = blocTagHtml(p.bloc_id, blocMap);
         return `<div class="leg-party-row" style="opacity:${rowOpacity};">
             <div style="display:flex;align-items:center;gap:10px;">
                 <div class="leg-party-dot" style="background:${color}20;border-color:${color};color:${color};display:flex;align-items:center;justify-content:center;">${logoHtml}</div>
-                <span style="font-size:14px;${opposition ? '' : 'font-weight:600;'}color:${nameColor};">${escapeHtml(p.faction_name)}</span>
-                ${isYou ? '<span class="ga-badge ga-badge--green">YOU</span>' : ''}
+                <div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:14px;${opposition ? '' : 'font-weight:600;'}color:${nameColor};">${escapeHtml(p.faction_name)}</span>
+                        ${isYou ? '<span class="ga-badge ga-badge--green">YOU</span>' : ''}
+                    </div>
+                    ${blocTag}
+                </div>
             </div>
             <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${seatColor};">${p.seats}</span>
         </div>`;

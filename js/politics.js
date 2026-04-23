@@ -1,5 +1,5 @@
 import { _supabase } from './supabase-client.js';
-import { initPage, refreshAP } from './common.js';
+import { initPage, refreshAP, loadBlocMap, blocTagHtml } from './common.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
 import { tickToDate } from './utils.js';
 
@@ -89,7 +89,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, leader_age, founded_tick, custom_logo_url, party_logo, party_description, momentum, momentum_log')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, leader_age, founded_tick, custom_logo_url, party_logo, party_description, momentum, momentum_log, bloc_id')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
@@ -5037,6 +5037,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
         return;
     }
 
+    const blocMap = await loadBlocMap(nation.id);
     const ideoMap = toMap(allPartyIdeologies, 'faction_id');
     const { score: nationalGovScore } = computeGovernanceScore(nation, administration?.stats_at_start, administration?.started_at_tick, currentTick);
 
@@ -5080,6 +5081,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
             partyLogo: p.party_logo || null,
             description: p.party_description || '',
             status,
+            blocId: p.bloc_id || null,
             foundedTick: fd.founded_tick,
             leaderName,
             leaderAge,
@@ -5113,7 +5115,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
 
     function renderGrid() {
         const sorted = [...partyCards].sort(sortFns[currentSort]);
-        const gridHtml = sorted.map(p => renderPartyCard(p, nation)).join('');
+        const gridHtml = sorted.map(p => renderPartyCard(p, nation, blocMap)).join('');
 
         container.innerHTML = `
         <div class="op-top">
@@ -5142,7 +5144,7 @@ async function renderOtherPartiesTab(playerFaction, nation, allParties, allParty
     renderGrid();
 }
 
-function renderPartyCard(party, nation) {
+function renderPartyCard(party, nation, blocMap) {
     const c = party.color;
     const cFaint = hexToRgba(c, 0.12);
     const cBorder = hexToRgba(c, 0.35);
@@ -5158,6 +5160,8 @@ function renderPartyCard(party, nation) {
     if (party.status === 'governing_head') { statusLabel = 'GOVERNING — HEAD'; statusCls = 'op-badge-green'; }
     else if (party.status === 'governing_junior') { statusLabel = 'GOVERNING — JUNIOR'; statusCls = 'op-badge-green'; }
     else { statusLabel = 'OPPOSITION'; statusCls = 'op-badge-red'; }
+
+    const blocChip = blocTagHtml(party.blocId, blocMap);
 
     // Founded
     const founded = party.foundedTick != null ? tickToDate(party.foundedTick) : null;
@@ -5235,6 +5239,7 @@ function renderPartyCard(party, nation) {
                     ${foundedBadge}
                     ${leaderBadge}
                 </div>
+                ${blocChip ? `<div style="margin-top:4px;">${blocChip}</div>` : ''}
             </div>
         </div>
         ${descHtml}

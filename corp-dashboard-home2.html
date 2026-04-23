@@ -1894,6 +1894,7 @@ import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
 import { computeEquipmentValue } from './js/game/corp-valuation.js';
 import { computeRefurbishCost, startRefurbish } from './js/corp-refurbish.js';
+import { monthlyInterest } from './js/game/loan-math.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -2455,8 +2456,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                     pvtContracts += Number(loan.monthly_payment || 0);
                 } else if (reqType === 'loan') {
                     const remaining = Math.max(0, Number(loan.remaining_principal || 0));
-                    const monthlyRate = (loan.interest_rate / 100) / 12;
-                    pvtContracts += Math.round(remaining * monthlyRate);
+                    pvtContracts += monthlyInterest(remaining, loan.interest_rate);
                 } else if (reqType === 'bond') {
                     pvtContracts += Number(loan.monthly_payment || 0);
                 }
@@ -2874,9 +2874,9 @@ async function acceptOffer(offerId, requestId) {
         // was too low to fully amortize under the server's flat model
         // and loans got stuck past maturity with a positive balance.
         const n = request.term_months;
-        const monthlyInterest = Math.round((request.amount * (offer.interest_rate / 100)) / 12);
+        const interestPart = monthlyInterest(request.amount, offer.interest_rate);
         const monthlyPrincipal = Math.round(request.amount / n);
-        const monthlyPayment = monthlyInterest + monthlyPrincipal;
+        const monthlyPayment = interestPart + monthlyPrincipal;
 
         const currentTick = shard?.current_tick || 0;
 

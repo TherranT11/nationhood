@@ -951,6 +951,7 @@ import { escapeHtml, tickToDate } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
 import { computeEquipmentValue, computeFinanceReceivableValue, computeCorpValuationBreakdown } from './js/game/corp-valuation.js';
+import { monthlyInterest, principalPortion } from './js/game/loan-math.js';
 import { computeRefurbishCost, startRefurbish } from './js/corp-refurbish.js';
 
 let allUserFactions = [];
@@ -1392,11 +1393,10 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                     const monthlyPayment = Number(loan.monthly_payment || 0);
                     financeLoanScheduledPaymentsTick += monthlyPayment;
                     const remaining = Math.max(0, Number(loan.remaining_principal || 0));
-                    const monthlyRate = (loan.interest_rate / 100) / 12;
-                    const monthlyInterest = Math.max(0, Math.min(monthlyPayment, Math.round(remaining * monthlyRate)));
-                    const monthlyPrincipal = Math.max(0, monthlyPayment - monthlyInterest);
-                    pvtContracts += monthlyInterest;
-                    financeLoanInterestRevenue += monthlyInterest;
+                    const interestPart = Math.min(monthlyPayment, monthlyInterest(remaining, loan.interest_rate));
+                    const monthlyPrincipal = principalPortion(monthlyPayment, interestPart);
+                    pvtContracts += interestPart;
+                    financeLoanInterestRevenue += interestPart;
                     financeLoanPrincipalRepaid += monthlyPrincipal;
 
                     const paymentsMade = Number(loan.payments_made || 0);
@@ -1873,9 +1873,9 @@ async function acceptOffer(offerId, requestId) {
         // was too low to fully amortize under the server's flat model
         // and loans got stuck past maturity with a positive balance.
         const n = request.term_months;
-        const monthlyInterest = Math.round((request.amount * (offer.interest_rate / 100)) / 12);
+        const interestPart = monthlyInterest(request.amount, offer.interest_rate);
         const monthlyPrincipal = Math.round(request.amount / n);
-        const monthlyPayment = monthlyInterest + monthlyPrincipal;
+        const monthlyPayment = interestPart + monthlyPrincipal;
 
         const currentTick = shard?.current_tick || 0;
 
@@ -2000,10 +2000,9 @@ async function loadLoansSection() {
             const statusColor = loan.status === 'current' ? 'var(--green)' : loan.status === 'late' ? '#c84' : '#c55';
             const pctPaid = loan.term_months > 0 ? Math.round((loan.payments_made / loan.term_months) * 100) : 0;
             const monthlyPayment = Number(loan.monthly_payment || 0);
-            const monthlyRate = (Number(loan.interest_rate || 0) / 100) / 12;
             const remainingPrincipal = Math.max(0, Number(loan.remaining_principal || 0));
-            const monthlyInterestPortion = Math.max(0, Math.min(monthlyPayment, Math.round(remainingPrincipal * monthlyRate)));
-            const monthlyPrincipalPortion = Math.max(0, monthlyPayment - monthlyInterestPortion);
+            const monthlyInterestPortion = Math.max(0, Math.min(monthlyPayment, monthlyInterest(remainingPrincipal, loan.interest_rate)));
+            const monthlyPrincipalPortion = principalPortion(monthlyPayment, monthlyInterestPortion);
             const lenderName = loan.lender?.faction_name || 'Unknown bank';
             const issuedDate = tickToDate(loan.started_tick);
             html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);">

@@ -33312,6 +33312,72 @@ async function onMilitaryLoyaltyRepealed(supabase, nationId) {
     if (error) console.warn('[MLA] Failed to vacate defense ministry on repeal:', error.message);
 }
 
+// ────────── loan-math ──────────
+
+// Shared loan math — single source of truth for monthly interest,
+// principal portion, and collateral-recovery rates. Consumed by:
+//   * UI:               corp-operations-finance.html
+//                       js/corp-auto-services.js
+//   * Bundled edge fn:  js/game/subsidiary-payments.js (advance-tick
+//                       picks this up via scripts/sync-edge-function.js)
+//   * Hand-maintained:  supabase/functions/advance-corp-tick/index.ts
+//                       inlines a verbatim copy at the top of the file.
+//                       If you change a formula here, update that copy
+//                       in the same commit.
+//
+// All math uses the flat-interest model (interest computed once on
+// the original principal) which is the convention used across the
+// finance subsystem. Callers that need a different model should NOT
+// reach in and override these — they should pick a different helper.
+
+// Monthly interest payment on a loan.
+//   principal      — flat-interest base. For finance_active_loans this
+//                    is original_principal; for corp_loans it's the
+//                    current outstanding balance (amortized model).
+//   annualRatePct  — annual rate as a percentage (5.0 means 5%, NOT 0.05).
+function monthlyInterest(principal, annualRatePct) {
+    const safePrincipal = Math.max(0, Number(principal) || 0);
+    const safeRate = Math.max(0, Number(annualRatePct) || 0);
+    return Math.round(safePrincipal * (safeRate / 100) / 12);
+}
+
+// Principal portion of a monthly payment after the interest slice.
+// Returns >= 0 even when interest exceeds the payment (rare on
+// late-stage loans with shrinking remaining balance).
+function principalPortion(monthlyPayment, monthlyInterestAmount) {
+    const safePayment = Number(monthlyPayment) || 0;
+    const safeInterest = Number(monthlyInterestAmount) || 0;
+    return Math.max(0, safePayment - safeInterest);
+}
+
+// Collateral recovery rates applied on default. Used by the finance
+// loan default RPC and any UI that previews recovery exposure.
+const COLLATERAL_RECOVERY_RATES = {
+    equipment: 0.6,
+    property: 0.75,
+    unsecured: 0,
+};
+
+// Recovery rate for a given collateral_type column value. Unknown
+// types (including null/undefined) return 0 — i.e. unsecured.
+function collateralRecoveryRate(collateralType) {
+    if (!collateralType) return 0;
+    const rate = COLLATERAL_RECOVERY_RATES[collateralType];
+    return typeof rate === 'number' ? rate : 0;
+}
+
+// Consecutive missed payments before a loan goes to 'defaulted'.
+// Applies to both tier-1 finance_active_loans and subsidiary
+// auto-loan policies — they used to diverge (4 vs 3) so identical
+// scenarios produced different outcomes by loan type. The escalation
+// ladder for tier-1 loans is:
+//   1 missed  -> late
+//   3 missed  -> delinquent
+//   4 missed  -> defaulted
+// Auto-loans don't surface late/delinquent as UI states, but they
+// still get the same 4-tick grace period before they default.
+const DEFAULT_MISSED_THRESHOLD = 4;
+
 // ────────── subsidiary-services ──────────
 
 /**
@@ -33643,12 +33709,14 @@ async function fetchMyPolicies(supabase, factionId) {
  *   - Insurance: collect monthly premium from borrower → subsidiary sub_cash
  *   - Loans: collect monthly payment, reduce remaining_principal
  *   - Handle missed payments (insufficient funds) → increment payments_missed
- *   - Handle defaults (3+ missed → status = 'defaulted')
+ *   - Handle defaults (DEFAULT_MISSED_THRESHOLD+ missed → status = 'defaulted')
  *   - Handle expiry (insurance policies past expires_tick → status = 'lapsed')
  *   - Handle full repayment (loan remaining_principal <= 0 → status = 'repaid')
+ *
+ * DEFAULT_MISSED_THRESHOLD is sourced from loan-math.js so tier-1 and
+ * auto-loans stay on the same default cadence (previously auto-loans
+ * defaulted one tick earlier at 3 missed; now both use 4).
  */
-
-var MISSED_PAYMENT_THRESHOLD = 3; // consecutive misses before default
 
 function getLoanOriginalPrincipal(policy) {
     return Math.max(0, Number(policy.original_principal ?? policy.principal ?? 0));
@@ -33745,24 +33813,27 @@ async function processAutoRatePolicies(supabase, nationId, currentTick) {
                 last_payment_tick: currentTick,
             };
 
-            // For loans: reduce remaining principal and track corp_debt
+            // For loans: reduce remaining principal and track corp_debt.
+            // Interest uses the original principal (flat-interest model)
+            // and the rate snapshotted at issue time (rate_at_issue) so
+            // later rate adjustments don't retro-modify existing loans.
             if (p.service_type === 'loan') {
                 var originalPrincipal = getLoanOriginalPrincipal(p);
-                var interestPortion = Math.round(originalPrincipal * (Number(p.rate_at_issue ?? 0) / 100 / 12));
-                var principalPortion = Math.max(0, payment - interestPortion);
+                var interestPortion = monthlyInterest(originalPrincipal, p.rate_at_issue);
+                var principalPaidThisTick = principalPortion(payment, interestPortion);
                 var oldPrincipal = Number(p.remaining_principal ?? 0);
-                policyUpdate.remaining_principal = Math.max(0, oldPrincipal - principalPortion);
+                policyUpdate.remaining_principal = Math.max(0, oldPrincipal - principalPaidThisTick);
                 if (p.original_principal == null && originalPrincipal > 0) {
                     policyUpdate.original_principal = originalPrincipal;
                 }
 
                 // Reduce borrower's corp_debt by principal paid down
-                if (principalPortion > 0) {
+                if (principalPaidThisTick > 0) {
                     var { data: debtRow, error: debtErr } = await supabase.from('factions')
                         .select('corp_debt').eq('id', p.borrower_faction_id).single();
                     if (!debtErr && debtRow) {
                         var { error: debtUpErr } = await supabase.from('factions').update({
-                            corp_debt: Math.max(0, Number(debtRow.corp_debt ?? 0) - principalPortion),
+                            corp_debt: Math.max(0, Number(debtRow.corp_debt ?? 0) - principalPaidThisTick),
                         }).eq('id', p.borrower_faction_id);
                         if (debtUpErr) console.warn('[SubPayments] Failed to reduce corp_debt:', debtUpErr.message);
                     }
@@ -33787,7 +33858,7 @@ async function processAutoRatePolicies(supabase, nationId, currentTick) {
             // Missed payment — insufficient funds
             var newMissed = (p.payments_missed || 0) + 1;
 
-            if (newMissed >= MISSED_PAYMENT_THRESHOLD) {
+            if (newMissed >= DEFAULT_MISSED_THRESHOLD) {
                 // Default
                 await supabase.from('subsidiary_auto_policies').update({
                     status: 'defaulted',

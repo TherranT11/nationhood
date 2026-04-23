@@ -5,12 +5,14 @@
  *   - Insurance: collect monthly premium from borrower → subsidiary sub_cash
  *   - Loans: collect monthly payment, reduce remaining_principal
  *   - Handle missed payments (insufficient funds) → increment payments_missed
- *   - Handle defaults (3+ missed → status = 'defaulted')
+ *   - Handle defaults (DEFAULT_MISSED_THRESHOLD+ missed → status = 'defaulted')
  *   - Handle expiry (insurance policies past expires_tick → status = 'lapsed')
  *   - Handle full repayment (loan remaining_principal <= 0 → status = 'repaid')
+ *
+ * DEFAULT_MISSED_THRESHOLD is sourced from loan-math.js so tier-1 and
+ * auto-loans stay on the same default cadence (previously auto-loans
+ * defaulted one tick earlier at 3 missed; now both use 4).
  */
-
-var MISSED_PAYMENT_THRESHOLD = 3; // consecutive misses before default
 
 function getLoanOriginalPrincipal(policy) {
     return Math.max(0, Number(policy.original_principal ?? policy.principal ?? 0));
@@ -107,24 +109,27 @@ export async function processAutoRatePolicies(supabase, nationId, currentTick) {
                 last_payment_tick: currentTick,
             };
 
-            // For loans: reduce remaining principal and track corp_debt
+            // For loans: reduce remaining principal and track corp_debt.
+            // Interest uses the original principal (flat-interest model)
+            // and the rate snapshotted at issue time (rate_at_issue) so
+            // later rate adjustments don't retro-modify existing loans.
             if (p.service_type === 'loan') {
                 var originalPrincipal = getLoanOriginalPrincipal(p);
-                var interestPortion = Math.round(originalPrincipal * (Number(p.rate_at_issue ?? 0) / 100 / 12));
-                var principalPortion = Math.max(0, payment - interestPortion);
+                var interestPortion = monthlyInterest(originalPrincipal, p.rate_at_issue);
+                var principalPaidThisTick = principalPortion(payment, interestPortion);
                 var oldPrincipal = Number(p.remaining_principal ?? 0);
-                policyUpdate.remaining_principal = Math.max(0, oldPrincipal - principalPortion);
+                policyUpdate.remaining_principal = Math.max(0, oldPrincipal - principalPaidThisTick);
                 if (p.original_principal == null && originalPrincipal > 0) {
                     policyUpdate.original_principal = originalPrincipal;
                 }
 
                 // Reduce borrower's corp_debt by principal paid down
-                if (principalPortion > 0) {
+                if (principalPaidThisTick > 0) {
                     var { data: debtRow, error: debtErr } = await supabase.from('factions')
                         .select('corp_debt').eq('id', p.borrower_faction_id).single();
                     if (!debtErr && debtRow) {
                         var { error: debtUpErr } = await supabase.from('factions').update({
-                            corp_debt: Math.max(0, Number(debtRow.corp_debt ?? 0) - principalPortion),
+                            corp_debt: Math.max(0, Number(debtRow.corp_debt ?? 0) - principalPaidThisTick),
                         }).eq('id', p.borrower_faction_id);
                         if (debtUpErr) console.warn('[SubPayments] Failed to reduce corp_debt:', debtUpErr.message);
                     }
@@ -149,7 +154,7 @@ export async function processAutoRatePolicies(supabase, nationId, currentTick) {
             // Missed payment — insufficient funds
             var newMissed = (p.payments_missed || 0) + 1;
 
-            if (newMissed >= MISSED_PAYMENT_THRESHOLD) {
+            if (newMissed >= DEFAULT_MISSED_THRESHOLD) {
                 // Default
                 await supabase.from('subsidiary_auto_policies').update({
                     status: 'defaulted',

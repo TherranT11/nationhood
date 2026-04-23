@@ -22,6 +22,40 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ════════════════════════════════════════════════════════════════════════════════
+//  LOAN MATH — verbatim copy of js/game/loan-math.js
+//
+//  This file is hand-maintained (no bundler), so the loan-math helpers
+//  are inlined here. If you change either copy, update the other in the
+//  same commit. The canonical home is js/game/loan-math.js.
+// ════════════════════════════════════════════════════════════════════════════════
+
+function monthlyInterest(principal, annualRatePct) {
+    const safePrincipal = Math.max(0, Number(principal) || 0);
+    const safeRate = Math.max(0, Number(annualRatePct) || 0);
+    return Math.round(safePrincipal * (safeRate / 100) / 12);
+}
+
+function principalPortion(monthlyPayment, monthlyInterestAmount) {
+    const safePayment = Number(monthlyPayment) || 0;
+    const safeInterest = Number(monthlyInterestAmount) || 0;
+    return Math.max(0, safePayment - safeInterest);
+}
+
+const COLLATERAL_RECOVERY_RATES = {
+    equipment: 0.6,
+    property: 0.75,
+    unsecured: 0,
+};
+
+function collateralRecoveryRate(collateralType) {
+    if (!collateralType) return 0;
+    const rate = COLLATERAL_RECOVERY_RATES[collateralType];
+    return typeof rate === 'number' ? rate : 0;
+}
+
+const DEFAULT_MISSED_THRESHOLD = 4;
+
+// ════════════════════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION SECTOR — Templates & Helpers
 // ════════════════════════════════════════════════════════════════════════════════
@@ -2756,10 +2790,14 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
     const GENERAL_MULT = 2, SKILLED_MULT = 3, INNOVATIVE_MULT = 6;
     const calcWage = (mult) => Math.round(baseAnnualWage * mult * inflMod * solMod);
 
-    // Loan servicing constants (5% annual rate, 10-year amortization)
-    const LOAN_ANNUAL_RATE = 0.05;
+    // Loan servicing constants (5% annual rate, 10-year amortization).
+    // LOAN_ANNUAL_RATE_PCT is in percent form (5 = 5%) so the shared
+    // monthlyInterest() helper can be used. monthlyRate is kept in
+    // fraction form because the amortization formula on the next
+    // step needs (1 + r) compounding.
+    const LOAN_ANNUAL_RATE_PCT = 5;
     const LOAN_TERM_MONTHS = 120;
-    const monthlyRate = LOAN_ANNUAL_RATE / 12;
+    const monthlyRate = (LOAN_ANNUAL_RATE_PCT / 100) / 12;
 
     for (const corp of corpFactions) {
         const currentCash = Number(corp.corp_cash_reserves || 0);
@@ -2819,8 +2857,8 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         let principalPaid = 0;
         if (currentLoans > 0) {
             const monthlyPayment = Math.round((currentLoans * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -LOAN_TERM_MONTHS)));
-            const interestPortion = Math.round(currentLoans * monthlyRate);
-            principalPaid = Math.min(currentLoans, monthlyPayment - interestPortion);
+            const interestPortion = monthlyInterest(currentLoans, LOAN_ANNUAL_RATE_PCT);
+            principalPaid = Math.min(currentLoans, principalPortion(monthlyPayment, interestPortion));
             debtPayment = monthlyPayment;
         }
 
@@ -3261,88 +3299,108 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             continue;
         }
 
-        // Standard loans: borrower pays from corp cash
-        const { data: borrower } = await supabase
+        // Standard loans: borrower pays from corp cash. All cash + loan
+        // updates go through process_finance_loan_payment /
+        // process_finance_loan_default so the three writes (debit, credit,
+        // loan-row update) are atomic under a single Postgres transaction.
+        // Without that wrapper, a mid-sequence failure used to leave the
+        // borrower debited / lender uncredited / loan untouched, which
+        // would re-trigger the debit on the next tick.
+        const { data: borrower, error: borrowerFetchErr } = await supabase
             .from('factions')
             .select('corp_cash_reserves')
             .eq('id', loan.borrower_faction_id)
             .single();
 
+        if (borrowerFetchErr) {
+            console.error('[FinanceLoan] borrower fetch failed for loan', loan.id, borrowerFetchErr.message);
+            continue;
+        }
+
         const borrowerCash = Number(borrower?.corp_cash_reserves) || 0;
         const payment = loan.monthly_payment;
-        const monthlyRate = (loan.interest_rate / 100) / 12;
         const originalPrincipal = Math.max(0, Number(loan.original_principal ?? loan.principal ?? 0));
         const remainingPrincipal = Math.max(0, Number(loan.remaining_principal) || 0);
-        const interestPortion = Math.round(originalPrincipal * monthlyRate);
-        const principalPortion = Math.max(0, payment - interestPortion);
-        const newRemainingPrincipal = Math.max(0, remainingPrincipal - principalPortion);
+        const interestPortion = monthlyInterest(originalPrincipal, loan.interest_rate);
+        const principalPaidThisTick = principalPortion(payment, interestPortion);
+        const newRemainingPrincipal = Math.max(0, remainingPrincipal - principalPaidThisTick);
 
-        if (borrowerCash >= payment) {
-            const newTotalPaid = loan.total_paid + payment;
-            const newInterestPaid = loan.total_interest_paid + interestPortion;
-            const newPaymentsMade = loan.payments_made + 1;
-            const isTermSatisfied = loan.term_months <= 0 || newPaymentsMade >= loan.term_months;
-            const isRepaid = newRemainingPrincipal <= 0 && isTermSatisfied;
-
-            await supabase.from('factions').update({
-                corp_cash_reserves: borrowerCash - payment
-            }).eq('id', loan.borrower_faction_id);
-
-            const { data: lender } = await supabase
-                .from('factions')
-                .select('corp_cash_reserves')
-                .eq('id', loan.lender_faction_id)
-                .single();
-            await supabase.from('factions').update({
-                corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + payment
-            }).eq('id', loan.lender_faction_id);
-
-            await supabase.from('finance_active_loans').update({
-                total_paid: newTotalPaid,
-                total_interest_paid: newInterestPaid,
-                remaining_principal: newRemainingPrincipal,
-                payments_made: newPaymentsMade,
-                payments_missed: 0,
-                last_payment_tick: currentTick,
-                status: isRepaid ? 'repaid' : 'current',
-                completed_tick: isRepaid ? currentTick : null,
-            }).eq('id', loan.id);
-
-            results.payments++;
-        } else {
+        // Shared missed-payment / default handler. Used both when the JS
+        // pre-check sees insufficient cash AND when the payment RPC
+        // reports a concurrent-debit race after the pre-check passed.
+        const handleMissedPayment = async () => {
             const newMissed = loan.payments_missed + 1;
             let newStatus = loan.status;
+            let recoveredAmount = 0;
 
-            if (newMissed >= 4) {
+            if (newMissed >= DEFAULT_MISSED_THRESHOLD) {
                 newStatus = 'defaulted';
                 results.defaults++;
-
-                let recovery = 0;
-                if (loan.collateral_type === 'equipment') recovery = 0.6;
-                else if (loan.collateral_type === 'property') recovery = 0.75;
-
-                if (recovery > 0) {
-                    const recoveredAmount = Math.round(remainingPrincipal * recovery);
-                    const { data: lender } = await supabase
-                        .from('factions')
-                        .select('corp_cash_reserves')
-                        .eq('id', loan.lender_faction_id)
-                        .single();
-                    await supabase.from('factions').update({
-                        corp_cash_reserves: (Number(lender?.corp_cash_reserves) || 0) + recoveredAmount
-                    }).eq('id', loan.lender_faction_id);
-                }
+                const recovery = collateralRecoveryRate(loan.collateral_type);
+                if (recovery > 0) recoveredAmount = Math.round(remainingPrincipal * recovery);
             } else if (newMissed >= 3) {
                 newStatus = 'delinquent';
             } else if (newMissed >= 1) {
                 newStatus = 'late';
             }
 
-            await supabase.from('finance_active_loans').update({
-                payments_missed: newMissed,
-                status: newStatus,
-                completed_tick: newStatus === 'defaulted' ? currentTick : null,
-            }).eq('id', loan.id);
+            const { error: defaultErr } = await supabase.rpc('process_finance_loan_default', {
+                p_loan_id: loan.id,
+                p_lender_id: loan.lender_faction_id,
+                p_recovered_amount: recoveredAmount,
+                p_new_payments_missed: newMissed,
+                p_new_status: newStatus,
+                p_current_tick: currentTick,
+            });
+            if (defaultErr) {
+                console.error('[FinanceLoan] default RPC failed for loan', loan.id, defaultErr.message);
+            }
+        };
+
+        if (borrowerCash >= payment) {
+            const newTotalPaid = loan.total_paid + payment;
+            const newInterestPaid = loan.total_interest_paid + interestPortion;
+            const newPaymentsMade = loan.payments_made + 1;
+            // term_months is CHECK >= 1 on finance_active_loans (see
+            // sql/migrations/20260410_finance_loan_system.sql), so the
+            // prior term_months <= 0 early-discharge branch was
+            // unreachable -- dropped.
+            const isRepaid = newRemainingPrincipal <= 0 && newPaymentsMade >= loan.term_months;
+
+            const { data: payResult, error: payErr } = await supabase.rpc('process_finance_loan_payment', {
+                p_loan_id: loan.id,
+                p_borrower_id: loan.borrower_faction_id,
+                p_lender_id: loan.lender_faction_id,
+                p_payment: payment,
+                p_new_total_paid: newTotalPaid,
+                p_new_interest_paid: newInterestPaid,
+                p_new_remaining: newRemainingPrincipal,
+                p_new_payments_made: newPaymentsMade,
+                p_is_repaid: isRepaid,
+                p_current_tick: currentTick,
+            });
+
+            if (payErr) {
+                console.error('[FinanceLoan] payment RPC failed for loan', loan.id, payErr.message);
+                continue;
+            }
+
+            if (!payResult?.ok) {
+                if (payResult?.reason === 'insufficient_cash') {
+                    // Race: a concurrent debit drained the borrower between
+                    // the JS pre-check and the locked re-check inside the
+                    // RPC. Treat it as a missed payment so we don't lose
+                    // the delinquency tracking.
+                    await handleMissedPayment();
+                } else {
+                    console.error('[FinanceLoan] payment rejected for loan', loan.id, payResult);
+                }
+                continue;
+            }
+
+            results.payments++;
+        } else {
+            await handleMissedPayment();
         }
     }
 
