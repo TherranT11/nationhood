@@ -11,15 +11,16 @@
 --                      genModifier    = 0.75 + (energy_generation / 100) * 0.5
 --                      stabilityMod   = min(1, stability / 40)
 --                      Max output at oil=100, gen=100, stab>=40 ≈ $25B/tick.
---   gross_demand     = (pop / 1M) * $150M * intensity
---                      intensity      = (urbanization + manufacturing + sol) / 300
+--   gross_demand     = (pop / 1M) * $300M
+--                      Pure population scaling, no stat modifiers.
+--                      Global demand targets ~1.25x global production.
 --   export_capacity  = max(0, production - gross_demand) * (50 / currency_strength)
 --   import_demand    = max(0, gross_demand - production)
 --
 -- Single source of truth: computeFuelDemand drives both sides. A nation is
 -- either a net exporter OR a net importer, never both.
 --
--- Display basis: $2.5B capacity ≈ 1 Mbbl/d (Saudi ≈ 10 Mbbl/d).
+-- Display basis: $5B capacity ≈ 1 Mbbl/d (Saudi ≈ 10 Mbbl/d).
 -- ════════════════════════════════════════════════════════════════════════════════
 
 WITH latest AS (
@@ -41,8 +42,8 @@ SELECT
     ROUND(tf.export_volume       / 1e6, 0)                      AS actual_exp_m,
     ROUND(tf.import_demand       / 1e6, 0)                      AS import_dem_m,
     ROUND(tf.import_volume       / 1e6, 0)                      AS actual_imp_m,
-    ROUND((tf.domestic_production / 2.5e9)::numeric, 2)         AS prod_mbpd,
-    ROUND((tf.import_demand       / 2.5e9)::numeric, 2)         AS dem_mbpd,
+    ROUND((tf.domestic_production / 5e9)::numeric, 2)         AS prod_mbpd,
+    ROUND((tf.import_demand       / 5e9)::numeric, 2)         AS dem_mbpd,
     ROUND(tf.price_modifier::numeric, 2)                        AS price_mod
 FROM trade_flows tf
 JOIN nations n ON n.id = tf.nation_id
@@ -64,8 +65,8 @@ SELECT
     -- Supply/demand balance ratio. >1.0 = oversupplied, <1.0 = shortage.
     ROUND((SUM(tf.export_capacity)    / NULLIF(SUM(tf.import_demand), 0))::numeric, 2)
                                                                         AS cap_over_dem_ratio,
-    ROUND((SUM(tf.domestic_production)/ 2.5e9)::numeric, 2)             AS total_prod_mbpd,
-    ROUND((SUM(tf.import_demand)      / 2.5e9)::numeric, 2)             AS total_dem_mbpd
+    ROUND((SUM(tf.domestic_production)/ 5e9)::numeric, 2)             AS total_prod_mbpd,
+    ROUND((SUM(tf.import_demand)      / 5e9)::numeric, 2)             AS total_dem_mbpd
 FROM trade_flows tf
 WHERE tf.sector = 'fuel_energy'
   AND tf.tick = (SELECT tick FROM latest);

@@ -628,7 +628,7 @@ for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
 //   fuel_energy $2.5B → 1 million barrels a day  (Saudi Arabia ≈ 10 Mbbl/d)
 //   others      $100M → 1 unit                   (mid-tier exporter ≈ 50 units)
 var SECTOR_DISPLAY_UNITS = {
-    fuel_energy:        { baseUnit: 'barrels per day',    scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 2500000000 },
+    fuel_energy:        { baseUnit: 'barrels per day',    scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 5000000000 },
     food_agriculture:   { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
     grains_staples:     { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
     livestock_dairy:    { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
@@ -1649,24 +1649,16 @@ function calculateExportCapacity(nation, sector, opts) {
  * @returns {number} import demand in dollars
  */
 // Shared fuel-demand math — single source of truth for the simplified model.
-// Drivers: population, urbanization, manufacturing, standard_of_living.
-// Output is GROSS consumption. Import demand and export capacity derive
-// from it directly as max(0, gross − production) and max(0, production −
-// gross) — one formula drives both sides of the trade equation, so a
-// nation can't appear as both importer and exporter of the same good.
-// Calibration: 150M per 1M pop — a 100M nation at max intensity (1.0)
-// demands $15B, a bit below the single-nation max supply of ~$25B
-// (oil=100, gen=100). Net petro-states run clear surpluses; net
-// consumers run clear deficits; global demand and supply are in the
-// same order of magnitude so trade actually clears.
+// Pure population scaling: every 1M people consume $300M of fuel per tick,
+// period. No stat modifiers, no currency adjustment, no intensity. A
+// 100M nation demands $30B; global demand across ~318M pop is ~$95B,
+// about 1.25x global production so fuel markets stay in persistent
+// deficit and trade clears.
+// Import demand and export capacity derive directly from max(0, gross -
+// production) and max(0, production - gross).
 function computeFuelDemand(nation) {
     const pop = Number(nation.population) || 0;
-    const urban = Number(nation.urbanization) || 0;
-    const manuf = Number(nation.manufacturing_output) || 0;
-    const sol = Number(nation.standard_of_living) || 0;
-
-    const intensity = (urban + manuf + sol) / 300;
-    const gross = (pop / 1_000_000) * 150_000_000 * intensity;
+    const gross = (pop / 1_000_000) * 300_000_000;
     return { gross: Math.round(gross) };
 }
 
