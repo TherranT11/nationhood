@@ -356,7 +356,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
-import { monthlyInterest, principalPortion } from './js/game/loan-math.js';
+import { monthlyInterest, principalPortion, collateralRecoveryRate } from './js/game/loan-math.js';
 import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
 let allUserFactions = [];
@@ -1739,13 +1739,18 @@ async function apForeclose(loanId) {
     if (!loan) { alert('Loan not found.'); return; }
 
     const remaining = Math.max(0, Number(loan.remaining_principal || 0));
-    let recovery = 0;
-    if (loan.collateral_type === 'equipment') recovery = 0.6;
-    else if (loan.collateral_type === 'property') recovery = 0.75;
+    const recoveredAmount = Math.round(remaining * collateralRecoveryRate(loan.collateral_type));
 
-    const recoveredAmount = Math.round(remaining * recovery);
-
-    // Credit recovery to lender
+    // KNOWN ISSUE: the two writes below (lender cash credit + loan
+    // status update) are sequential bare awaits with no transaction
+    // wrapper, so a mid-sequence failure can leave the lender
+    // credited but the loan still 'delinquent', or vice versa. This
+    // is the same atomicity pattern that was fixed for the tick
+    // processor in commit cbde998 via process_finance_loan_default.
+    // A follow-up should either reuse that RPC here or introduce a
+    // client-triggered foreclose RPC. Flagged during the Phase 2
+    // pre-commit audit; left as-is because the fix requires a new
+    // RPC and belongs in Phase 3's critical-bug sweep.
     if (recoveredAmount > 0) {
         const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
         await _supabase.from('factions').update({
