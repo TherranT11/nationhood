@@ -6,17 +6,21 @@
 -- all 12 nations plus the stat inputs that drive the formula, so we can assess
 -- whether global supply is too high relative to demand.
 --
--- Formula recap (supabase/functions/advance-tick/index.ts):
---   score            = oil_and_gas (+ bonus: energy_generation, capped)
---   normalizedScore  = score / 5
---   production       = normalizedScore * $500M * 1.0 (resource sector, no GDP scale)
---                      * stabilityMod (min(1, stability/40))
---   export_capacity  = production - domesticDemand (pop/manuf/urban/col/rail)
---                      × (50 / currency_strength)
---   import_demand    = grossDemand × (1 - domesticCoverage)
---                      petro-states (oil_and_gas ≥ 70) cover up to 95%; others 70%
+-- Formula recap (js/game/trade-constants.js):
+--   production       = (oil_and_gas / 100) * $60B * genModifier * stabilityMod
+--                      genModifier    = 0.75 + (energy_generation / 100) * 0.5
+--                      stabilityMod   = min(1, stability / 40)
+--                      Max output at oil=100, gen=100, stab>=40 = $75B/tick.
+--   gross_demand     = (pop / 1M) * $550M * intensity
+--                      intensity = (urbanization*3 + sol*3 + manufacturing) / 700
+--                      Urban and sol weighted 3x manuf (gasoline = cars).
+--   export_capacity  = max(0, production - gross_demand) * (50 / currency_strength)
+--   import_demand    = max(0, gross_demand - production)
 --
--- Display basis: $2.5B capacity ≈ 1 Mbbl/d (Saudi ≈ 10 Mbbl/d).
+-- Single source of truth: computeFuelDemand drives both sides. A nation is
+-- either a net exporter OR a net importer, never both.
+--
+-- Display basis: $5B capacity ≈ 1 Mbbl/d (Saudi ≈ 10 Mbbl/d).
 -- ════════════════════════════════════════════════════════════════════════════════
 
 WITH latest AS (
@@ -38,8 +42,8 @@ SELECT
     ROUND(tf.export_volume       / 1e6, 0)                      AS actual_exp_m,
     ROUND(tf.import_demand       / 1e6, 0)                      AS import_dem_m,
     ROUND(tf.import_volume       / 1e6, 0)                      AS actual_imp_m,
-    ROUND((tf.domestic_production / 2.5e9)::numeric, 2)         AS prod_mbpd,
-    ROUND((tf.import_demand       / 2.5e9)::numeric, 2)         AS dem_mbpd,
+    ROUND((tf.domestic_production / 5e9)::numeric, 2)         AS prod_mbpd,
+    ROUND((tf.import_demand       / 5e9)::numeric, 2)         AS dem_mbpd,
     ROUND(tf.price_modifier::numeric, 2)                        AS price_mod
 FROM trade_flows tf
 JOIN nations n ON n.id = tf.nation_id
@@ -61,8 +65,8 @@ SELECT
     -- Supply/demand balance ratio. >1.0 = oversupplied, <1.0 = shortage.
     ROUND((SUM(tf.export_capacity)    / NULLIF(SUM(tf.import_demand), 0))::numeric, 2)
                                                                         AS cap_over_dem_ratio,
-    ROUND((SUM(tf.domestic_production)/ 2.5e9)::numeric, 2)             AS total_prod_mbpd,
-    ROUND((SUM(tf.import_demand)      / 2.5e9)::numeric, 2)             AS total_dem_mbpd
+    ROUND((SUM(tf.domestic_production)/ 5e9)::numeric, 2)             AS total_prod_mbpd,
+    ROUND((SUM(tf.import_demand)      / 5e9)::numeric, 2)             AS total_dem_mbpd
 FROM trade_flows tf
 WHERE tf.sector = 'fuel_energy'
   AND tf.tick = (SELECT tick FROM latest);
@@ -80,10 +84,11 @@ SELECT
         ELSE 'IMPORTER'
     END                                                         AS tier,
     ROUND(tf.domestic_production / 1e9, 2)                      AS prod_b,
-    ROUND(tf.import_demand       / 1e9, 2)                      AS dem_b,
-    ROUND((tf.domestic_production - tf.import_demand) / 1e9, 2) AS net_balance_b
+    ROUND(tf.import_demand       / 1e9, 2)                      AS imp_b,
+    ROUND(tf.export_capacity     / 1e9, 2)                      AS exp_b,
+    ROUND((tf.export_capacity - tf.import_demand) / 1e9, 2)     AS net_balance_b
 FROM trade_flows tf
 JOIN nations n ON n.id = tf.nation_id
 WHERE tf.sector = 'fuel_energy'
   AND tf.tick = (SELECT tick FROM latest)
-ORDER BY (tf.domestic_production - tf.import_demand) DESC;
+ORDER BY (tf.export_capacity - tf.import_demand) DESC;
