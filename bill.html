@@ -256,6 +256,19 @@ function scalePolicyCost(baseCost, scalingStat, nation) {
     return baseCost * (statVal / divisor);
 }
 
+// Bill types that bypass the committee co-sponsor expectation. Procedural /
+// ratification motions are inherently party-neutral and never carry the
+// -2 Momentum solo-send penalty.
+const AUTO_FLOOR_BILL_TYPES = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'];
+
+// Does this bill have at least one co-sponsor? A co-sponsor is any faction
+// other than the proposer whose stance is 'accept'. Shared between the
+// button-gate display and the sendToFloor() penalty check so the two paths
+// can't drift.
+function billHasCosponsor(bill) {
+    return (bill?.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
+}
+
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
 let institutionConfig = [];
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
@@ -820,29 +833,27 @@ function renderBill() {
         if (canActOnBill) {
     el.style.display = 'flex';
 
-    const sponsorSeats = allPartySeats[bill.proposed_by] || 0;
-    const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
-    const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
     const isFoundational = bill.bill_type === 'foundational';
-    // Ratification and procedural bills can always be sent to floor by the sponsor
-    const isAutoFloor = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'].includes(bill.bill_type);
+    const isAutoFloor = AUTO_FLOOR_BILL_TYPES.includes(bill.bill_type);
     // Sponsor can always push to floor (unless the legislature is suspended).
     // Going without a co-sponsor is allowed but costs -2 Momentum when it's a
     // bill type where a co-sponsor would normally be expected.
     const canSendToFloor = !isNoGovernment;
-    const needsSoloPenalty = !isAutoFloor && !hasCosponsor;
+    const needsSoloPenalty = !isAutoFloor && !billHasCosponsor(bill);
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
     const reason = isNoGovernment
-        ? '<div style="color:var(--blue);font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
-        : (needsSoloPenalty ? '<div style="color:var(--amber);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ No co-sponsor — sending to floor will cost your party −2 Momentum.</div>' : '');
+        ? '<div style="color:var(--blue);font-size:0.78rem;margin-bottom:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
+        : (needsSoloPenalty ? '<div style="color:var(--amber);font-size:0.78rem;margin-bottom:10px;text-align:center;">⚠ No co-sponsor — sending to floor will cost your party −2 Momentum.</div>' : '');
 
     const retractBtn = '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
     let referendumNote = '';
     if (isFoundational) {
         referendumNote = '<div style="color:var(--purple);font-size:0.78rem;margin-top:10px;text-align:center;">🗳 If passed, this bill will go to a <strong>Constitutional Referendum</strong> — the electorate must approve it.</div>';
     }
-    el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">${isFoundational ? 'Send to Floor → Referendum' : 'Send to Floor'}</button>${retractBtn}` + reason + referendumNote;
+    // Layout: [reason/warning] → [Send to Floor] [Retract] → [referendum note]
+    // Per design spec the penalty warning sits above the action buttons.
+    el.innerHTML = reason + `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">${isFoundational ? 'Send to Floor → Referendum' : 'Send to Floor'}</button>${retractBtn}` + referendumNote;
 }
     }
 
@@ -2781,10 +2792,10 @@ async function sendToFloor() {
         // expected (anything that isn't auto-floor like ratifications or
         // no-confidence motions). Runs after the status update succeeds so a
         // failed DB write doesn't result in an unrefunded momentum hit.
-        const autoFloorTypes = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'];
-        const isAutoFloor = autoFloorTypes.includes(currentBill.bill_type);
-        const hasCosponsor = (currentBill.bill_support || []).some(s => s.faction_id !== currentBill.proposed_by && s.stance === 'accept');
-        if (!isAutoFloor && !hasCosponsor) {
+        // Shares AUTO_FLOOR_BILL_TYPES + billHasCosponsor with the button gate
+        // above so the "warning shown" and "penalty applied" paths can't drift.
+        const isAutoFloor = AUTO_FLOOR_BILL_TYPES.includes(currentBill.bill_type);
+        if (!isAutoFloor && !billHasCosponsor(currentBill)) {
             const { error: momErr } = await _supabase.rpc('adjust_momentum', {
                 p_faction_id: currentBill.proposed_by,
                 p_delta: -2,
