@@ -2047,6 +2047,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Caucus processing failed for ${nation.name} (non-fatal):`, caucusErr);
         }
 
+        // Fail committee bills that have sat without being sent to the floor
+        // for COMMITTEE_EXPIRY_TICKS (6) ticks. The function was defined but
+        // never called, leaving bills stuck in committee indefinitely.
+        try {
+            const expiredResults = await expireCommitteeBills(supabase, nation.id, newTick);
+            if (expiredResults.length > 0) {
+                summary.expiredCommittee = summary.expiredCommittee || [];
+                summary.expiredCommittee.push({ nation: nation.name, bills: expiredResults });
+            }
+        } catch (expireErr) {
+            console.error(`[advanceTick] expireCommitteeBills failed for ${nation.name} (non-fatal):`, expireErr);
+        }
+
         // Check for early majority on active floor bills (lock outcome + set grace tick)
         try {
             const earlyResults = await checkEarlyMajority(supabase, nation.id);
