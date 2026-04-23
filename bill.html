@@ -826,13 +826,16 @@ function renderBill() {
     const isFoundational = bill.bill_type === 'foundational';
     // Ratification and procedural bills can always be sent to floor by the sponsor
     const isAutoFloor = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'].includes(bill.bill_type);
-    // Co-sponsor from a different party required to advance any bill to floor
-    let canSendToFloor = !isNoGovernment && (isAutoFloor ? true : hasCosponsor);
+    // Sponsor can always push to floor (unless the legislature is suspended).
+    // Going without a co-sponsor is allowed but costs -2 Momentum when it's a
+    // bill type where a co-sponsor would normally be expected.
+    const canSendToFloor = !isNoGovernment;
+    const needsSoloPenalty = !isAutoFloor && !hasCosponsor;
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
     const reason = isNoGovernment
         ? '<div style="color:var(--blue);font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
-        : (canSendToFloor ? '' : '<div style="color:var(--red);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor from another party to send this to the floor.</div>');
+        : (needsSoloPenalty ? '<div style="color:var(--amber);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ No co-sponsor — sending to floor will cost your party −2 Momentum.</div>' : '');
 
     const retractBtn = '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
     let referendumNote = '';
@@ -2772,6 +2775,24 @@ async function sendToFloor() {
         updateFields.voting_ends_tick = currentTick + GAME_CONFIG.VOTING_WINDOW_TICKS;
         const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
+
+        // Solo-send penalty. Sponsor can always send without a co-sponsor, but
+        // pays -2 Momentum for bills where a co-sponsor would normally be
+        // expected (anything that isn't auto-floor like ratifications or
+        // no-confidence motions). Runs after the status update succeeds so a
+        // failed DB write doesn't result in an unrefunded momentum hit.
+        const autoFloorTypes = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'];
+        const isAutoFloor = autoFloorTypes.includes(currentBill.bill_type);
+        const hasCosponsor = (currentBill.bill_support || []).some(s => s.faction_id !== currentBill.proposed_by && s.stance === 'accept');
+        if (!isAutoFloor && !hasCosponsor) {
+            const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                p_faction_id: currentBill.proposed_by,
+                p_delta: -2,
+                p_label: 'Sent to floor without co-sponsor (-2)',
+                p_tick: currentTick
+            });
+            if (momErr) console.warn('[sendToFloor] Solo-send momentum penalty failed (non-fatal):', momErr.message);
+        }
 
         // Calculate caucus dispositions via server-side RPC (RLS blocks client writes)
         try {
