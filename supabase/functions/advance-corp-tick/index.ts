@@ -1849,6 +1849,134 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
     return { processed: processedCount, collected: totalCollected, addressable };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// HEALTH INSURANCE — Phase 5 lawsuit resolution
+//
+// Scans health_insurance_lawsuits for rows whose resolution_tick has arrived,
+// applies the pre-computed damages (deduct from corp_cash_reserves, drop
+// corp_reputation), flips status to 'resolved', and emits a news-feed entry.
+//
+// The damages and reputation damage are pinned at filing time (inside
+// resolve_health_insurance_claim), so drift between filing and verdict can't
+// retroactively cheapen or inflate the award — the court has already decided,
+// only the timing is delayed.
+//
+// Called from the per-nation loop after processHealthInsurancePools. Failures
+// on any single lawsuit are isolated so they don't poison the batch.
+// ═══════════════════════════════════════════════════════════════════════════
+async function processHealthInsuranceLawsuits(supabase, nation, currentTick) {
+    const { data: ripe, error: lawsuitErr } = await supabase
+        .from('health_insurance_lawsuits')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .eq('status', 'pending')
+        .lte('resolution_tick', currentTick);
+
+    if (lawsuitErr) throw lawsuitErr;
+    if (!ripe || ripe.length === 0) return { resolved: 0, damagesPaid: 0 };
+
+    // Load all faction cash + rep values in one hop so we don't N+1 the DB.
+    const factionIds = [...new Set(ripe.map(l => l.faction_id))];
+    const { data: factions, error: factErr } = await supabase
+        .from('factions')
+        .select('id, faction_name, corp_cash_reserves, corp_reputation, abandoned_at')
+        .in('id', factionIds);
+    if (factErr) throw factErr;
+
+    const factionMap = Object.fromEntries((factions || []).map(f => [f.id, f]));
+
+    let resolvedCount = 0;
+    let totalDamages  = 0;
+
+    for (const lawsuit of ripe) {
+        try {
+            const faction = factionMap[lawsuit.faction_id];
+            if (!faction) {
+                console.warn(`[HealthIns] lawsuit ${lawsuit.id}: faction not found, skipping.`);
+                continue;
+            }
+            // Abandoned corp — the faction is gone in spirit, but the row may
+            // still exist (defensive). Mark the lawsuit cancelled rather than
+            // drain negative cash from a ghost.
+            if (faction.abandoned_at) {
+                await supabase
+                    .from('health_insurance_lawsuits')
+                    .update({ status: 'cancelled', resolved_at_tick: currentTick })
+                    .eq('id', lawsuit.id);
+                continue;
+            }
+
+            const damages = Number(lawsuit.damages_amount || 0);
+            const repHit  = Number(lawsuit.reputation_damage || 0);
+
+            const curCash = Number(faction.corp_cash_reserves || 0);
+            const curRep  = Number(faction.corp_reputation ?? 65);
+            const newCash = curCash - damages;
+            const newRep  = Math.max(0, Math.min(100, curRep + repHit));
+
+            const { error: factionUpdErr } = await supabase
+                .from('factions')
+                .update({ corp_cash_reserves: newCash, corp_reputation: newRep })
+                .eq('id', faction.id);
+            if (factionUpdErr) {
+                console.warn(`[HealthIns] lawsuit ${lawsuit.id}: faction update failed:`, factionUpdErr.message);
+                continue;
+            }
+            // Keep the in-memory copy in sync so if the same faction has
+            // multiple ripe lawsuits in this nation, later deductions see
+            // the already-reduced balance.
+            faction.corp_cash_reserves = newCash;
+            faction.corp_reputation    = newRep;
+
+            const { error: lawsuitUpdErr } = await supabase
+                .from('health_insurance_lawsuits')
+                .update({ status: 'resolved', resolved_at_tick: currentTick })
+                .eq('id', lawsuit.id);
+            if (lawsuitUpdErr) {
+                console.warn(`[HealthIns] lawsuit ${lawsuit.id}: status update failed:`, lawsuitUpdErr.message);
+                continue;
+            }
+
+            // News-feed entry. trigger_key lets the feed filter these out for
+            // other lawsuits later (and matches the pattern used by the
+            // bankruptcy RPC).
+            const damagesLabel = damages >= 1_000_000
+                ? '$' + (damages / 1_000_000).toFixed(1) + 'M'
+                : '$' + Math.round(damages / 1000).toLocaleString() + 'k';
+
+            try {
+                await supabase.from('event_log').insert({
+                    nation_id:        nation.id,
+                    faction_id:       faction.id,
+                    event_name:       `${faction.faction_name} — Insurance Lawsuit Settled`,
+                    description_used: `${faction.faction_name} was ordered to pay ${damagesLabel} in damages to ${lawsuit.citizen_name} after denying a health insurance claim. Reputation fell by ${Math.abs(repHit)} points.`,
+                    category:         'corporate',
+                    trigger_key:      'health_insurance_lawsuit_resolved',
+                    effects_applied:  {
+                        lawsuit_id:     lawsuit.id,
+                        damages_amount: damages,
+                        rep_damage:     repHit,
+                        new_reputation: newRep,
+                        citizen_name:   lawsuit.citizen_name,
+                    },
+                    fired_at_tick:    currentTick,
+                });
+            } catch (eventErr) {
+                // Non-fatal — the lawsuit is still resolved, just no news entry.
+                console.warn(`[HealthIns] lawsuit ${lawsuit.id}: event_log insert failed:`, eventErr?.message || eventErr);
+            }
+
+            resolvedCount += 1;
+            totalDamages  += damages;
+            console.log(`[HealthIns] Lawsuit resolved: ${faction.faction_name} / ${nation.name}: -$${damages.toLocaleString()} damages to ${lawsuit.citizen_name}, rep ${curRep}→${newRep}`);
+        } catch (lawsuitLoopErr) {
+            console.error(`[HealthIns] lawsuit loop threw (lawsuit_id=${lawsuit.id}):`, lawsuitLoopErr);
+        }
+    }
+
+    return { resolved: resolvedCount, damagesPaid: totalDamages };
+}
+
 function parseRequiredForSectors(rawRequiredFor) {
     if (Array.isArray(rawRequiredFor)) return rawRequiredFor.filter(Boolean);
     if (typeof rawRequiredFor === 'string') {
@@ -4226,6 +4354,17 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (healthErr) {
                 console.error(`[advance-corp-tick] Health insurance failed for ${nation.name} (non-fatal):`, healthErr);
                 summary.errors.push({ nation: nation.name, sector: 'health_insurance', error: String(healthErr) });
+            }
+
+            // ── Health Insurance Lawsuits (Phase 5: resolve ripe lawsuits) ──
+            try {
+                const lawsuitResult = await processHealthInsuranceLawsuits(supabase, nation, currentTick);
+                if (lawsuitResult && lawsuitResult.resolved > 0) {
+                    console.log(`[advance-corp-tick] ${nation.name}: health insurance resolved ${lawsuitResult.resolved} lawsuit(s), damages $${(lawsuitResult.damagesPaid || 0).toLocaleString()}.`);
+                }
+            } catch (lawsuitErr) {
+                console.error(`[advance-corp-tick] Health insurance lawsuits failed for ${nation.name} (non-fatal):`, lawsuitErr);
+                summary.errors.push({ nation: nation.name, sector: 'health_insurance_lawsuits', error: String(lawsuitErr) });
             }
 
             // ── Corp-specific processing (requires local corporations) ──

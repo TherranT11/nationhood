@@ -3469,10 +3469,12 @@ let _hiState = {
     subsectorAllowed: false,    // corp_subsector === 'insurance'
     offices: [],                // [{ id, name, capacity, nation_id, nation_name }]
     poolsByNation: {},          // nation_id → pool row
+    lawsuits: [],               // pending health_insurance_lawsuits rows (Phase 5)
     universalHealthcareNations: new Set(), // nation_ids where the Act is in force
     lawsLookupFailed: false,    // true if the active_laws fetch errored
     officesLookupFailed: false, // true if corp_properties fetch errored
     poolsLookupFailed: false,   // true if health_insurance_pools fetch errored
+    lawsuitsLookupFailed: false,// true if health_insurance_lawsuits fetch errored
     skilled: 0,                 // faction.corp_skilled_workforce
     skilledRequired: 0,         // ~60% of total office capacity
 };
@@ -3484,10 +3486,12 @@ async function loadHealthInsurance() {
     _hiState.skilled = Number(faction.corp_skilled_workforce || 0);
     _hiState.offices = [];
     _hiState.poolsByNation = {};
+    _hiState.lawsuits = [];
     _hiState.universalHealthcareNations = new Set();
     _hiState.skilledRequired = 0;
     _hiState.officesLookupFailed = false;
     _hiState.poolsLookupFailed = false;
+    _hiState.lawsuitsLookupFailed = false;
     _hiState.lawsLookupFailed = false;
 
     if (!_hiState.subsectorAllowed) { renderHealthInsurance(); return; }
@@ -3517,9 +3521,10 @@ async function loadHealthInsurance() {
 
     const officeNationIds = [...new Set(_hiState.offices.map(o => o.nation_id))];
 
-    // Parallel: laws lookup + pool rows. Independent queries so we don't
-    // pay sequential round-trips; a failure in one shouldn't block the other.
-    const [lawsRes, poolsRes] = await Promise.all([
+    // Parallel: laws + pools + pending lawsuits. Independent queries so we
+    // don't pay sequential round-trips; a failure in one shouldn't block the
+    // others.
+    const [lawsRes, poolsRes, lawsuitsRes] = await Promise.all([
         officeNationIds.length > 0
             ? _supabase.from('active_laws')
                 .select('nation_id, policy:policies!policy_id(policy_key)')
@@ -3528,6 +3533,11 @@ async function loadHealthInsurance() {
         _supabase.from('health_insurance_pools')
             .select('*')
             .eq('faction_id', faction.id),
+        _supabase.from('health_insurance_lawsuits')
+            .select('id, nation_id, damages_amount, damages_multiplier, reputation_damage, resolution_tick, citizen_name, nations:nation_id(name)')
+            .eq('faction_id', faction.id)
+            .eq('status', 'pending')
+            .order('resolution_tick', { ascending: true }),
     ]);
 
     // Universal Healthcare gate. If the lookup fails we surface the error in
@@ -3555,6 +3565,16 @@ async function loadHealthInsurance() {
         for (const pool of (poolsRes.data || [])) {
             _hiState.poolsByNation[pool.nation_id] = pool;
         }
+    }
+
+    // Pending lawsuits (Phase 5). Silent-zero is misleading here too — a
+    // player with real pending litigation would see no warning and might
+    // assume they're fine.
+    if (lawsuitsRes.error) {
+        console.warn('[HealthIns] lawsuits fetch failed:', lawsuitsRes.error.message);
+        _hiState.lawsuitsLookupFailed = true;
+    } else {
+        _hiState.lawsuits = lawsuitsRes.data || [];
     }
 
     renderHealthInsurance();
@@ -3644,6 +3664,13 @@ function renderHealthInsurance() {
         const totalPolicyholders = livePools.reduce((s, p) => s + Number(p.policyholders || 0), 0);
         const lastTickRevenue = livePools.reduce((s, p) => s + Number(p.last_tick_revenue || 0), 0);
         const lifetimeRevenue = livePools.reduce((s, p) => s + Number(p.total_revenue_collected || 0), 0);
+
+        // Phase 5 — pending lawsuits. Shown as a stat line in the summary
+        // card and, when >0, broken out into a litigation callout with
+        // per-suit countdowns and damages.
+        const lawsuits = _hiState.lawsuits || [];
+        const totalExposure = lawsuits.reduce((s, l) => s + Number(l.damages_amount || 0), 0);
+        const currentTick = Number(shard?.current_tick ?? 0);
 
         const skilledColor = understaffed ? '#c84' : '#5c5';
         const skilledNote = understaffed
@@ -3738,7 +3765,7 @@ function renderHealthInsurance() {
 
         bodyHtml = `
             <div class="hi-callout">
-                <div class="hi-callout__title">Phase 2 — Premium income</div>
+                <div class="hi-callout__title">Ongoing Operations</div>
                 <div class="hi-callout__body">${noPoolsYet
                     ? `Offices are built but the corp tick hasn't processed yet. Policyholders start arriving on the next tick.`
                     : `Policyholders grow slowly toward the addressable-market cap each tick. Premium scales with the nation's inflation.`}</div>
@@ -3761,7 +3788,42 @@ function renderHealthInsurance() {
                     <span class="hi-stat-label">Skilled Workforce</span>
                     <span class="hi-stat-value" style="color:${skilledColor}">${_hiState.skilled.toLocaleString()} / ${_hiState.skilledRequired.toLocaleString()}</span>
                 </div>
+                <div class="hi-stat-row">
+                    <span class="hi-stat-label">Pending Litigation</span>
+                    <span class="hi-stat-value" style="color:${lawsuits.length > 0 ? '#c55' : '#6a6660'};">${lawsuits.length > 0 ? `${lawsuits.length} · ${fmtMoney(totalExposure)} exposure` : '—'}</span>
+                </div>
             </div>
+
+            ${lawsuits.length > 0 ? `
+            <div class="hi-callout" style="border-color:rgba(204,85,85,0.35);">
+                <div class="hi-callout__title" style="color:#c55;">Pending Litigation</div>
+                <div class="hi-callout__body" style="padding:0;">
+                    ${lawsuits.map(l => {
+                        const ticksLeft = Math.max(0, Number(l.resolution_tick || 0) - currentTick);
+                        const nationName = l.nations?.name || '—';
+                        const damages = Number(l.damages_amount || 0);
+                        const multiplier = Number(l.damages_multiplier || 0);
+                        const repHit = Math.abs(Number(l.reputation_damage || 0));
+                        return `
+                        <div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid var(--panel-border);gap:8px;">
+                            <div style="min-width:0;flex:1;">
+                                <div style="font-family:var(--font-mono);font-size:10px;color:var(--panel-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(l.citizen_name)} v. you</div>
+                                <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">${escapeHtml(nationName)} · ${multiplier > 0 ? `${multiplier.toFixed(1)}× jury · ` : ''}−${repHit} rep on verdict</div>
+                            </div>
+                            <div style="text-align:right;flex-shrink:0;">
+                                <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c55;">${fmtMoney(damages)}</div>
+                                <div style="font-family:var(--font-mono);font-size:8px;color:#c84;">${ticksLeft === 0 ? 'due now' : `${ticksLeft} tick${ticksLeft === 1 ? '' : 's'} left`}</div>
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>` : ''}
+
+            ${_hiState.lawsuitsLookupFailed ? `
+            <div class="hi-callout" style="border-color:rgba(200,132,68,0.45);">
+                <div class="hi-callout__title" style="color:#c84;">Litigation status unavailable</div>
+                <div class="hi-callout__body">Could not load pending lawsuits — the litigation section may be stale. Refresh the page.</div>
+            </div>` : ''}
 
             ${blockedNations.size > 0 ? `
             <div class="hi-callout" style="border-color:rgba(204,85,85,0.35);">
