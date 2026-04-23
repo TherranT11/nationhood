@@ -1643,6 +1643,27 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
     }
     const universalActive = (laws || []).some(l => l.policy?.policy_key === 'universal_healthcare');
     if (universalActive) {
+        // Zero out last-tick snapshot columns so admin dashboards and SQL
+        // queries don't show a pre-block revenue figure alongside the blocked
+        // status. policyholders / total_revenue_collected / tier columns
+        // stay untouched — policyholders are frozen but real (players keep
+        // those customers on the books for when the Act is repealed), and
+        // total_revenue_collected is a lifetime cumulative, not per-tick.
+        // The WHERE filter scopes the rewrite to rows that actually need it
+        // so a long-running block doesn't pointlessly churn the pool table
+        // once everyone's been zeroed.
+        const { error: zeroErr } = await supabase
+            .from('health_insurance_pools')
+            .update({
+                last_tick_revenue:     0,
+                last_tick_addressable: 0,
+                last_tick_premium:     0,
+            })
+            .eq('nation_id', nation.id)
+            .or('last_tick_revenue.gt.0,last_tick_addressable.gt.0,last_tick_premium.gt.0');
+        if (zeroErr) {
+            console.warn(`[HealthIns] ${nation.name}: failed to zero pool snapshots under UH block:`, zeroErr.message);
+        }
         console.log(`[HealthIns] ${nation.name}: Universal Healthcare Act active, no pools processed.`);
         return { processed: 0, collected: 0, reason: 'blocked_universal_healthcare' };
     }
