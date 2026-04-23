@@ -1407,7 +1407,13 @@ function adm2RenderCabinet() {
     // Per-row isMyMinistry is spread-in inside the .map() below.
     const isCaretaker = !!(coalition && coalition.status === 'caretaker');
     const pmMinistry = (ministries || []).find(mm => mm.ministry_key === 'prime_minister');
-    const pmFilled = !!(pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name);
+    // "PM filled" gates the APPOINT/DISMISS buttons. Absolute monarchies and a
+    // few other paths track the PM via head_of_government only — they never
+    // materialize a ministries.prime_minister row — so requiring pmMinistry
+    // here silently disabled appoint/dismiss for any AM nation whose PM is
+    // only in the hog table. Accept either source as proof of an active PM.
+    const pmFilled = !!hog
+        || !!(pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name);
     const pmFactionIdLocal = hog?.faction_id || pmMinistry?.party_id || null;
     const isPMPartyLocal = !!(currentFaction && pmFactionIdLocal && currentFaction.id === pmFactionIdLocal);
     let govType = 'parliamentary';
