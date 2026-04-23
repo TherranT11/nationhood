@@ -265,6 +265,34 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 .hi-tier-pill:hover { color:#a8a797; }
 .hi-tier-pill.active { color:#000; background:#8a6aaa; border-color:#8a6aaa; }
 .hi-tier-pill.disabled { opacity:0.4; cursor:wait; pointer-events:none; }
+
+/* Phase 4 — Claim event modal */
+.ci-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:600; align-items:center; justify-content:center; padding:16px; }
+.ci-overlay.open { display:flex; }
+.ci-modal { width:520px; max-width:100%; max-height:92vh; background:var(--panel-main); border:1px solid var(--panel-border); display:flex; flex-direction:column; overflow-y:auto; }
+.ci-header { padding:10px 18px; border-bottom:1px solid var(--panel-border); background:var(--bg-panel); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+.ci-header__title { font-family:var(--font-mono); font-size:13px; font-weight:700; letter-spacing:2px; color:#9e9a92; text-transform:uppercase; }
+.ci-header__queue { font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:0.8px; color:#c84; padding:2px 7px; border:1px solid rgba(200,132,68,0.35); background:rgba(200,132,68,0.08); }
+.ci-body { padding:18px 20px; }
+.ci-citizen { font-family:var(--font-serif); font-size:20px; font-weight:600; color:var(--text-bright); margin-bottom:2px; }
+.ci-nation { font-family:var(--font-mono); font-size:10px; color:#6a6660; letter-spacing:0.8px; margin-bottom:10px; text-transform:uppercase; }
+.ci-blurb { font-family:var(--font-sans); font-size:13px; line-height:1.5; color:var(--panel-text); padding:10px 12px; background:var(--bg-card); border:1px solid var(--panel-border); border-left:2px solid #aa7a5a; margin-bottom:14px; }
+.ci-amount { font-family:var(--font-mono); font-size:26px; font-weight:700; color:#aa7a5a; text-align:center; padding:8px 0; margin-bottom:10px; }
+.ci-meta { display:flex; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--bg-card); border:1px solid var(--panel-border); margin-bottom:14px; }
+.ci-meta-cell { flex:1; text-align:center; }
+.ci-meta-cell + .ci-meta-cell { border-left:1px solid var(--panel-border); }
+.ci-meta-label { font-family:var(--font-mono); font-size:8px; color:#6a6660; letter-spacing:0.8px; text-transform:uppercase; }
+.ci-meta-value { font-family:var(--font-mono); font-size:11px; font-weight:700; margin-top:2px; }
+.ci-actions { display:flex; gap:6px; padding:12px 20px 16px; }
+.ci-btn { flex:1; padding:12px 0; font-family:var(--font-mono); font-size:12px; font-weight:700; letter-spacing:1.5px; border:1px solid var(--panel-border); background:var(--bg-card); color:#c4c2b8; cursor:pointer; transition:background 0.1s; }
+.ci-btn:hover { background:#201e1a; }
+.ci-btn-pay    { color:#5c5; border-color:rgba(92,197,92,0.35); }
+.ci-btn-pay:hover    { background:rgba(92,197,92,0.1); }
+.ci-btn-negot  { color:#ca5; border-color:rgba(200,165,85,0.35); }
+.ci-btn-negot:hover  { background:rgba(200,165,85,0.1); }
+.ci-btn-deny   { color:#c55; border-color:rgba(204,85,85,0.35); }
+.ci-btn-deny:hover   { background:rgba(204,85,85,0.1); }
+.ci-btn.disabled { opacity:0.4; cursor:wait; pointer-events:none; }
 .cc-scorecard { display:flex; border-bottom:1px solid var(--panel-border); background:var(--bg-panel); flex-shrink:0; }
 .cc-scorecard__cell { flex:1; padding:6px 14px; }
 .cc-scorecard__cell + .cc-scorecard__cell { border-left:1px solid var(--panel-border); }
@@ -387,6 +415,10 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
   <div class="rd-overlay" id="rd-overlay" onclick="if(event.target===this)rdClose()">
     <div class="rd-modal" id="rd-modal"></div>
   </div>
+
+  <!-- Claim Event Modal (Phase 4) — no click-outside-close; claims require a
+       decision so the overlay is deliberately sticky. -->
+  <div class="ci-overlay" id="ci-overlay"></div>
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
@@ -3830,6 +3862,159 @@ async function hiPillClick(el) {
 
 window.hiPillClick = hiPillClick;
 
+// ==================== HEALTH INSURANCE — Claim events (Phase 4) ====================
+
+// Pending claim rows (FIFO queue), newest-first by fired_at_tick. We render
+// one at a time — the modal must be resolved before the next one surfaces.
+let _hiPendingClaims = [];
+let _hiClaimActing   = false;  // RPC-in-flight lock
+
+async function loadHealthInsuranceClaims() {
+    if (!faction) { _hiPendingClaims = []; renderHealthInsuranceClaims(); return; }
+
+    const { data, error } = await _supabase
+        .from('health_insurance_claims')
+        .select('*, nations:nation_id(name)')
+        .eq('faction_id', faction.id)
+        .eq('status', 'pending')
+        .order('fired_at_tick', { ascending: true });
+
+    if (error) {
+        console.warn('[HealthIns] pending claims fetch failed:', error.message);
+        _hiPendingClaims = [];
+    } else {
+        _hiPendingClaims = data || [];
+    }
+    renderHealthInsuranceClaims();
+}
+
+function renderHealthInsuranceClaims() {
+    const overlay = document.getElementById('ci-overlay');
+    if (!overlay) return;
+
+    if (_hiPendingClaims.length === 0) {
+        overlay.classList.remove('open');
+        overlay.innerHTML = '';
+        return;
+    }
+
+    const claim = _hiPendingClaims[0];
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const claimAmount = Number(claim.claim_amount || 0);
+    const postPayCash    = cash - claimAmount;
+    const postNegotCash  = cash - Math.ceil(claimAmount / 2);
+    const queueTag = _hiPendingClaims.length > 1
+        ? `<span class="ci-header__queue">+${_hiPendingClaims.length - 1} more queued</span>`
+        : '';
+    const nationName = claim.nations?.name || 'Unknown nation';
+    const disabled = _hiClaimActing ? ' disabled' : '';
+
+    overlay.innerHTML = `
+        <div class="ci-modal">
+            <div class="ci-header">
+                <div class="ci-header__title">Insurance Claim</div>
+                ${queueTag}
+            </div>
+            <div class="ci-body">
+                <div class="ci-citizen">${escapeHtml(claim.citizen_name)}, ${Number(claim.citizen_age)}</div>
+                <div class="ci-nation">${escapeHtml(nationName)}</div>
+                <div class="ci-blurb">${escapeHtml(claim.flavor_blurb)}</div>
+                <div class="ci-amount">$${claimAmount.toLocaleString()}</div>
+                <div class="ci-meta">
+                    <div class="ci-meta-cell">
+                        <div class="ci-meta-label">Current Cash</div>
+                        <div class="ci-meta-value">${fmtMoney(cash)}</div>
+                    </div>
+                    <div class="ci-meta-cell">
+                        <div class="ci-meta-label">After Pay</div>
+                        <div class="ci-meta-value" style="color:${postPayCash < 0 ? '#c55' : 'var(--panel-text)'}">${fmtMoney(postPayCash)}</div>
+                    </div>
+                    <div class="ci-meta-cell">
+                        <div class="ci-meta-label">After Negotiate</div>
+                        <div class="ci-meta-value" style="color:${postNegotCash < 0 ? '#c55' : 'var(--panel-text)'}">${fmtMoney(postNegotCash)}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="ci-actions">
+                <button class="ci-btn ci-btn-pay${disabled}"   onclick="hiClaimResolve('pay')">PAY</button>
+                <button class="ci-btn ci-btn-negot${disabled}" onclick="hiClaimResolve('negotiate')">NEGOTIATE</button>
+                <button class="ci-btn ci-btn-deny${disabled}"  onclick="hiClaimResolve('deny')">DENY</button>
+            </div>
+        </div>`;
+    overlay.classList.add('open');
+}
+
+async function hiClaimResolve(decision) {
+    if (_hiClaimActing) return;
+    if (_hiPendingClaims.length === 0) return;
+    if (!['pay', 'deny', 'negotiate'].includes(decision)) return;
+
+    const claim = _hiPendingClaims[0];
+    _hiClaimActing = true;
+    renderHealthInsuranceClaims();  // shows disabled buttons
+
+    let rpcResult = null;
+    let rpcFailed = false;
+
+    try {
+        const { data, error } = await _supabase.rpc('resolve_health_insurance_claim', {
+            p_claim_id: claim.id,
+            p_decision: decision,
+        });
+        if (error) throw error;
+        rpcResult = data;
+    } catch (err) {
+        console.error('[HealthIns] resolve_health_insurance_claim failed:', err);
+        alert('Failed to resolve claim: ' + (err?.message || err));
+        rpcFailed = true;
+    }
+
+    // Apply deltas to the local faction copy so the HI panel and topbar
+    // reflect the change without an extra faction SELECT. RPC already
+    // returned the authoritative new_reputation and cash_delta.
+    if (!rpcFailed && rpcResult) {
+        if (typeof rpcResult.cash_delta === 'number' || typeof rpcResult.cash_delta === 'string') {
+            faction.corp_cash_reserves = Number(faction.corp_cash_reserves || 0) + Number(rpcResult.cash_delta || 0);
+        }
+        if (rpcResult.new_reputation != null) {
+            faction.corp_reputation = Number(rpcResult.new_reputation);
+        }
+        // Refresh topbar cash indicator — other pages do this inline too.
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) {
+            const c = Number(faction.corp_cash_reserves || 0);
+            cashEl.textContent = 'CASH: ' + (Math.abs(c) >= 1e6 ? '$' + (c / 1e6).toFixed(1) + 'M' : '$' + Math.round(c / 1000) + 'k');
+        }
+    }
+
+    // Re-fetch in two steps so a reload failure after a successful RPC
+    // doesn't show a misleading error.
+    if (!rpcFailed) {
+        try { await loadHealthInsurance(); }
+        catch (err) { console.warn('[HealthIns] panel reload after claim failed:', err); }
+        try { await loadHealthInsuranceClaims(); }
+        catch (err) { console.warn('[HealthIns] claims reload after claim failed:', err); }
+    }
+
+    _hiClaimActing = false;
+    renderHealthInsuranceClaims();
+
+    // Surface a lawsuit roll (only happens on deny / negotiate). The
+    // health_insurance_claims.lawsuit_pending column is set server-side by
+    // the RPC; Phase 5 will fire the actual damages event. For now this
+    // notification is the only user-visible signal that a suit is coming.
+    if (!rpcFailed && rpcResult?.lawsuit_pending) {
+        setTimeout(() => {
+            alert(
+                'A lawsuit has been filed against your corporation over this claim.\n\n' +
+                "The courts will decide damages in the coming weeks. You'll be notified when they rule."
+            );
+        }, 50);
+    }
+}
+
+window.hiClaimResolve = hiClaimResolve;
+
 // Actions still lives inside corp-operations.html for now (Expansion
 async function init() {
     const urlTab = new URLSearchParams(window.location.search).get('tab');
@@ -3942,6 +4127,7 @@ async function init() {
     renderReservesRisk();
     await loadCollections();
     await loadHealthInsurance();
+    await loadHealthInsuranceClaims();
 
     // Tick countdown (corp tick is midpoint between political ticks)
     if (shard?.next_tick_at) {

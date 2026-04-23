@@ -1490,14 +1490,118 @@ async function processRegionalHqIncome(supabase, nation, currentTick) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// HEALTH INSURANCE — Phase 2 tick processor
+// HEALTH INSURANCE — flavor tables for claim events (Phase 4)
+//
+// Intentionally generic / Western-neutral so claim headlines read naturally
+// in any of the game's nations. Expand or localise later — the processor
+// picks a random first × last × condition per claim.
+// ═══════════════════════════════════════════════════════════════════════════
+const HI_CITIZEN_FIRST_NAMES = [
+    'Maria', 'James', 'Linda', 'Michael', 'Patricia', 'Robert', 'Jennifer',
+    'David', 'Elizabeth', 'William', 'Barbara', 'Richard', 'Susan', 'Joseph',
+    'Jessica', 'Thomas', 'Sarah', 'Charles', 'Karen', 'Christopher',
+    'Nancy', 'Daniel', 'Lisa', 'Matthew', 'Betty', 'Anthony', 'Helen',
+    'Mark', 'Sandra', 'Donald',
+];
+const HI_CITIZEN_LAST_NAMES = [
+    'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller',
+    'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez',
+    'Wilson', 'Anderson', 'Taylor', 'Moore', 'Jackson', 'Martin',
+    'Lee', 'Perez', 'Thompson', 'White', 'Harris', 'Sanchez', 'Clark',
+    'Ramirez', 'Lewis', 'Robinson', 'Walker',
+];
+const HI_CONDITIONS = [
+    { key: 'emergency_surgery',        blurb: 'was admitted for emergency surgery after a workplace accident.' },
+    { key: 'cancer_treatment',         blurb: 'has been diagnosed with cancer and requires months of chemotherapy.' },
+    { key: 'heart_attack',             blurb: 'suffered a heart attack and needs bypass surgery.' },
+    { key: 'chronic_illness',          blurb: 'was diagnosed with a chronic autoimmune disease requiring lifetime treatment.' },
+    { key: 'accident_trauma',          blurb: 'was hospitalised after a serious car accident.' },
+    { key: 'childbirth_complications', blurb: 'is facing complications from a high-risk pregnancy.' },
+    { key: 'mental_health',            blurb: 'is in intensive inpatient care for a mental-health crisis.' },
+    { key: 'rare_disease',             blurb: 'has a rare genetic condition that requires specialist treatment.' },
+    { key: 'stroke_rehab',             blurb: 'is in rehab after a severe stroke.' },
+    { key: 'experimental_procedure',   blurb: "is seeking coverage for an experimental procedure no other insurer will approve." },
+    { key: 'childhood_illness',        blurb: 'has a child with a serious illness requiring ongoing treatment.' },
+    { key: 'organ_transplant',         blurb: 'is awaiting an organ transplant and the pre-op care.' },
+];
+
+// Generate a single claim event for a pool. Called once per faction per tick
+// from inside processHealthInsurancePools; probability scales with
+// policyholder count, severity scales with coverage tier × inflation. No-ops
+// if a pending claim already exists for this pool (partial unique index on
+// status='pending' also enforces this at the DB level — we catch 23505 to
+// stay quiet on the rare race).
+async function generateHealthInsuranceClaim(supabase, args) {
+    const { poolId, factionId, nationId, policyholders, coverageMult, inflationMult, currentTick } = args;
+
+    // Probability: 1% per 1000 policyholders, capped at 15% per tick.
+    // At 10k policyholders ≈ one claim every ~10 ticks; at the cap ≈ every 7.
+    const chance = Math.min(0.15, policyholders / 100000);
+    if (chance <= 0 || Math.random() >= chance) return false;
+
+    // Bail early if a pending claim already exists for this pool. The
+    // partial unique index also rejects duplicates; this check just avoids
+    // firing a pointless INSERT + catch.
+    const { data: existing, error: exErr } = await supabase
+        .from('health_insurance_claims')
+        .select('id')
+        .eq('pool_id', poolId)
+        .eq('status', 'pending')
+        .limit(1);
+    if (exErr) {
+        console.warn(`[HealthIns] pending-claim check failed for pool ${poolId}:`, exErr.message);
+        return false;
+    }
+    if (existing && existing.length > 0) return false;
+
+    // Flavor pick
+    const first = HI_CITIZEN_FIRST_NAMES[Math.floor(Math.random() * HI_CITIZEN_FIRST_NAMES.length)];
+    const last  = HI_CITIZEN_LAST_NAMES[Math.floor(Math.random() * HI_CITIZEN_LAST_NAMES.length)];
+    const age   = 18 + Math.floor(Math.random() * 72);
+    const cond  = HI_CONDITIONS[Math.floor(Math.random() * HI_CONDITIONS.length)];
+
+    // Amount: random $50k-$300k base × coverage tier × inflation.
+    const baseAmount  = 50000 + Math.floor(Math.random() * 250001);
+    const claimAmount = Math.max(1, Math.round(baseAmount * coverageMult * inflationMult));
+
+    const blurb = `${first} ${last} (${age}) ${cond.blurb} A $${claimAmount.toLocaleString()} claim is on your desk.`;
+
+    const { error: insErr } = await supabase
+        .from('health_insurance_claims')
+        .insert({
+            pool_id:       poolId,
+            faction_id:    factionId,
+            nation_id:     nationId,
+            claim_amount:  claimAmount,
+            citizen_name:  `${first} ${last}`,
+            citizen_age:   age,
+            condition_key: cond.key,
+            flavor_blurb:  blurb,
+            fired_at_tick: currentTick,
+        });
+
+    if (insErr) {
+        // 23505 = unique_violation — another tick/batch beat us to it. Swallow.
+        if ((insErr as any).code !== '23505') {
+            console.warn(`[HealthIns] claim insert failed for pool ${poolId}:`, insErr.message);
+        }
+        return false;
+    }
+
+    return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HEALTH INSURANCE — Phase 2 tick processor (Phase 3 tier multipliers,
+// Phase 4 claim generation)
 //
 // For each Insurance subsector corporation with an active Insurance Office in
 // `nation`, grow (or attrition) the per-(faction, nation) pool of
 // policyholders toward an addressable-market cap and credit premium revenue
-// into factions.corp_cash_reserves.
+// into factions.corp_cash_reserves. After the pool update, roll for a claim
+// event (1 pending at a time per pool).
 //
-// Gates (any failing = zero revenue this tick):
+// Gates (any failing = zero revenue this tick, and no claim fires):
 //   – Universal Healthcare Act active in this nation
 //   – Corp subsector is not 'insurance' (defence-in-depth)
 //   – Corp skilled workforce < 60% of total Insurance Office capacity
@@ -1657,7 +1761,11 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
             const revenue = operatingAllowed ? newPolicyholders * premium : 0;
 
             // ── Upsert the pool row ──
+            // Capture poolId from both branches so the claim generator below
+            // can FK to it without a separate SELECT round-trip.
+            let poolId: string;
             if (existing) {
+                poolId = existing.id;
                 const newTotal = Number(existing.total_revenue_collected || 0) + revenue;
                 const { error: updErr } = await supabase
                     .from('health_insurance_pools')
@@ -1674,7 +1782,7 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
                     continue;
                 }
             } else {
-                const { error: insErr } = await supabase
+                const { data: inserted, error: insErr } = await supabase
                     .from('health_insurance_pools')
                     .insert({
                         faction_id: faction.id,
@@ -1684,11 +1792,14 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
                         last_tick_addressable: addressable,
                         last_tick_premium: premium,
                         total_revenue_collected: revenue,
-                    });
-                if (insErr) {
-                    console.warn(`[HealthIns] pool insert failed for ${faction.faction_name} / ${nation.name}:`, insErr.message);
+                    })
+                    .select('id')
+                    .single();
+                if (insErr || !inserted) {
+                    console.warn(`[HealthIns] pool insert failed for ${faction.faction_name} / ${nation.name}:`, insErr?.message);
                     continue;
                 }
+                poolId = inserted.id;
             }
 
             // ── Credit revenue (skip the write entirely when zero) ──
@@ -1706,9 +1817,30 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
                 totalCollected += revenue;
             }
 
+            // ── Phase 4: roll for a claim event ──
+            // Only operating pools with actual policyholders can generate
+            // claims. Idle (understaffed) / blocked pools are dormant.
+            let claimFired = false;
+            if (operatingAllowed && newPolicyholders > 0) {
+                try {
+                    claimFired = await generateHealthInsuranceClaim(supabase, {
+                        poolId,
+                        factionId:    faction.id,
+                        nationId:     nation.id,
+                        policyholders: newPolicyholders,
+                        coverageMult,
+                        inflationMult,
+                        currentTick,
+                    });
+                } catch (claimErr) {
+                    console.error(`[HealthIns] claim generation threw for ${faction.faction_name}:`, claimErr);
+                }
+            }
+
             processedCount += 1;
             const staffStatus = operatingAllowed ? 'OK' : `UNDERSTAFFED(${skilled}/${skilledRequired})`;
-            console.log(`[HealthIns] ${faction.faction_name} / ${nation.name}: ${premiumTier}/${coverageTier} share=${yourShare.toFixed(2)} holders ${policyholders}→${newPolicyholders} (target ${target}, cap ${maxPolicyholders}), premium $${premium}, revenue $${revenue.toLocaleString()} [${staffStatus}]`);
+            const claimTag = claimFired ? ' [+CLAIM]' : '';
+            console.log(`[HealthIns] ${faction.faction_name} / ${nation.name}: ${premiumTier}/${coverageTier} share=${yourShare.toFixed(2)} holders ${policyholders}→${newPolicyholders} (target ${target}, cap ${maxPolicyholders}), premium $${premium}, revenue $${revenue.toLocaleString()} [${staffStatus}]${claimTag}`);
         } catch (factionErr) {
             console.error(`[HealthIns] faction loop threw (faction_id=${faction.id}):`, factionErr);
         }
