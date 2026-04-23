@@ -49,3 +49,15 @@ export function collateralRecoveryRate(collateralType) {
     const rate = COLLATERAL_RECOVERY_RATES[collateralType];
     return typeof rate === 'number' ? rate : 0;
 }
+
+// Consecutive missed payments before a loan goes to 'defaulted'.
+// Applies to both tier-1 finance_active_loans and subsidiary
+// auto-loan policies — they used to diverge (4 vs 3) so identical
+// scenarios produced different outcomes by loan type. The escalation
+// ladder for tier-1 loans is:
+//   1 missed  -> late
+//   3 missed  -> delinquent
+//   4 missed  -> defaulted
+// Auto-loans don't surface late/delinquent as UI states, but they
+// still get the same 4-tick grace period before they default.
+export const DEFAULT_MISSED_THRESHOLD = 4;

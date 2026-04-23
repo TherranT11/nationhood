@@ -1674,11 +1674,12 @@ async function apRestructure(loanId) {
     if (!loan) { alert('Loan not found.'); return; }
 
     const newTerm = loan.term_months + 12;
-    // Flat-interest schedule — matches the server's per-tick math and the
-    // canonical regression in scripts/test-flat-interest-loans.mjs. The
-    // prior amortization formula here diverged from the server and left
-    // restructured loans unable to fully amortize, same bug class that
-    // affected acceptOffer.
+    // Flat-interest schedule. The tick processor computes interest on
+    // original_principal each month, so a restructure must also reset
+    // original_principal to the current remaining_principal — otherwise
+    // the tick would keep charging interest on the pre-restructure base
+    // and the loan would amortize slower than this preview implies.
+    // Treat restructure as re-originating the loan at today's balance.
     const remaining = Number(loan.remaining_principal || 0);
     const interestPart = monthlyInterest(remaining, rate);
     const monthlyPrincipal = Math.round(remaining / newTerm);
@@ -1690,6 +1691,7 @@ async function apRestructure(loanId) {
         interest_rate: rate,
         term_months: newTerm,
         monthly_payment: newPayment,
+        original_principal: remaining,
         payments_missed: 0,
         status: 'current',
     }).eq('id', loanId);

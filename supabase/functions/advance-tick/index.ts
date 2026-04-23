@@ -33366,6 +33366,18 @@ function collateralRecoveryRate(collateralType) {
     return typeof rate === 'number' ? rate : 0;
 }
 
+// Consecutive missed payments before a loan goes to 'defaulted'.
+// Applies to both tier-1 finance_active_loans and subsidiary
+// auto-loan policies — they used to diverge (4 vs 3) so identical
+// scenarios produced different outcomes by loan type. The escalation
+// ladder for tier-1 loans is:
+//   1 missed  -> late
+//   3 missed  -> delinquent
+//   4 missed  -> defaulted
+// Auto-loans don't surface late/delinquent as UI states, but they
+// still get the same 4-tick grace period before they default.
+const DEFAULT_MISSED_THRESHOLD = 4;
+
 // ────────── subsidiary-services ──────────
 
 /**
@@ -33697,12 +33709,14 @@ async function fetchMyPolicies(supabase, factionId) {
  *   - Insurance: collect monthly premium from borrower → subsidiary sub_cash
  *   - Loans: collect monthly payment, reduce remaining_principal
  *   - Handle missed payments (insufficient funds) → increment payments_missed
- *   - Handle defaults (3+ missed → status = 'defaulted')
+ *   - Handle defaults (DEFAULT_MISSED_THRESHOLD+ missed → status = 'defaulted')
  *   - Handle expiry (insurance policies past expires_tick → status = 'lapsed')
  *   - Handle full repayment (loan remaining_principal <= 0 → status = 'repaid')
+ *
+ * DEFAULT_MISSED_THRESHOLD is sourced from loan-math.js so tier-1 and
+ * auto-loans stay on the same default cadence (previously auto-loans
+ * defaulted one tick earlier at 3 missed; now both use 4).
  */
-
-var MISSED_PAYMENT_THRESHOLD = 3; // consecutive misses before default
 
 function getLoanOriginalPrincipal(policy) {
     return Math.max(0, Number(policy.original_principal ?? policy.principal ?? 0));
@@ -33844,7 +33858,7 @@ async function processAutoRatePolicies(supabase, nationId, currentTick) {
             // Missed payment — insufficient funds
             var newMissed = (p.payments_missed || 0) + 1;
 
-            if (newMissed >= MISSED_PAYMENT_THRESHOLD) {
+            if (newMissed >= DEFAULT_MISSED_THRESHOLD) {
                 // Default
                 await supabase.from('subsidiary_auto_policies').update({
                     status: 'defaulted',

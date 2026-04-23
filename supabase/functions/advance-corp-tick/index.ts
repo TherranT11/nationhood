@@ -53,6 +53,8 @@ function collateralRecoveryRate(collateralType) {
     return typeof rate === 'number' ? rate : 0;
 }
 
+const DEFAULT_MISSED_THRESHOLD = 4;
+
 // ════════════════════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION SECTOR — Templates & Helpers
@@ -3331,7 +3333,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             let newStatus = loan.status;
             let recoveredAmount = 0;
 
-            if (newMissed >= 4) {
+            if (newMissed >= DEFAULT_MISSED_THRESHOLD) {
                 newStatus = 'defaulted';
                 results.defaults++;
                 const recovery = collateralRecoveryRate(loan.collateral_type);
