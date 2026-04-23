@@ -3581,10 +3581,18 @@ function renderHealthInsurance() {
             nationMap[o.nation_id].capacity += o.capacity;
         }
 
-        // Corp-wide totals across all pools
-        const totalPolicyholders = Object.values(_hiState.poolsByNation).reduce((s, p) => s + Number(p.policyholders || 0), 0);
-        const lastTickRevenue = Object.values(_hiState.poolsByNation).reduce((s, p) => s + Number(p.last_tick_revenue || 0), 0);
-        const lifetimeRevenue = Object.values(_hiState.poolsByNation).reduce((s, p) => s + Number(p.total_revenue_collected || 0), 0);
+        // Corp-wide totals. Only count pools whose nation still has offices —
+        // a corp that sold their last office in a nation leaves a zombie pool
+        // row behind (the processor skips nations with zero offices, so
+        // attrition doesn't run). Summing those stale rows would mislead the
+        // player into thinking they still have revenue or policyholders in a
+        // place they no longer operate.
+        const livePools = Object.values(nationMap)
+            .map(n => _hiState.poolsByNation[n.nation_id])
+            .filter(Boolean);
+        const totalPolicyholders = livePools.reduce((s, p) => s + Number(p.policyholders || 0), 0);
+        const lastTickRevenue = livePools.reduce((s, p) => s + Number(p.last_tick_revenue || 0), 0);
+        const lifetimeRevenue = livePools.reduce((s, p) => s + Number(p.total_revenue_collected || 0), 0);
 
         const skilledColor = understaffed ? '#c84' : '#5c5';
         const skilledNote = understaffed
@@ -3639,7 +3647,11 @@ function renderHealthInsurance() {
             </div>`;
         }).join('');
 
-        const noPoolsYet = Object.keys(_hiState.poolsByNation).length === 0;
+        // "First tick hasn't run yet" is about the CURRENT offices, not the
+        // corp's historical footprint — if the only pools that exist are
+        // zombies from sold-off nations, the active offices are still
+        // pre-tick and the player should see the pre-tick callout.
+        const noPoolsYet = livePools.length === 0;
 
         bodyHtml = `
             <div class="hi-callout">

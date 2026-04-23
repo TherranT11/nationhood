@@ -1552,10 +1552,14 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
     if (factionIds.length === 0) return { processed: 0, collected: 0 };
 
     // ── Load factions (subsector + skilled workforce + cash reserves) ──
+    // Filter out abandoned/bankrupt corps so a defunct faction doesn't keep
+    // earning premiums from offices that should be inert. Mirrors the
+    // abandoned_at filter in processSubsidiaryRevenue / processCorpMonthlyIncome.
     const { data: factions, error: factErr } = await supabase
         .from('factions')
         .select('id, faction_name, corp_subsector, corp_skilled_workforce, corp_cash_reserves')
-        .in('id', factionIds);
+        .in('id', factionIds)
+        .is('abandoned_at', null);
     if (factErr) throw factErr;
 
     // ── Load existing pools for these factions in this nation ──
@@ -1673,9 +1677,6 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
                     console.warn(`[HealthIns] cash credit failed for ${faction.faction_name}:`, cashErr.message);
                     continue;
                 }
-                // Keep the local copy in sync so a second pool for the same corp
-                // (different nation, same tick) credits against the updated value.
-                faction.corp_cash_reserves = newCash;
                 totalCollected += revenue;
             }
 
