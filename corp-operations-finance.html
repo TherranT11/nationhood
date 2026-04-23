@@ -1908,51 +1908,88 @@ async function apNegotiateClaim(loanId) {
 }
 
 async function apDisputeClaim(loanId) {
-    if (!confirm('DISPUTE CLAIM\n\nChallenge the validity of this claim.\nThis freezes the claim for 4 ticks while investigated.\nIf investigation finds the claim valid, you pay in full + 10% penalty.\nIf investigation finds fraud, claim is dismissed.\n\nDispute?')) return;
+    if (_claimLock) return;
 
-    // Simple resolution: 70% chance claim is valid, 30% fraud
-    // Resolution happens immediately for now (future: delay 4 ticks)
-    const isValid = Math.random() < 0.7;
+    if (!confirm('DISPUTE CLAIM\n\nChallenge the validity of this claim.\nIf investigation finds the claim valid, you pay in full + 10% penalty (policyholder receives both).\nIf investigation finds fraud, claim is dismissed and the policy remains active.\n\nDispute?')) return;
 
-    if (isValid) {
-        alert('Investigation complete: claim is VALID.\nYou must now pay the full claim.');
-        // Pay in full happens on next portfolio action
-    } else {
-        await _supabase.from('finance_active_loans').update({
-            status: 'repaid', // dismissed
-            claims_count: (0), // fraud claim not counted
-        }).eq('id', loanId);
-        alert('Investigation complete: FRAUDULENT CLAIM detected.\nClaim dismissed. Policy remains active.');
+    _claimLock = true;
+    try {
+        const { data: result, error } = await _supabase.rpc('process_insurance_claim_dispute', {
+            p_policy_id: loanId,
+        });
+
+        if (error) { alert('Dispute failed: ' + error.message); return; }
+        if (!result?.ok) {
+            const reasonMessages = {
+                not_authenticated:    'Not authenticated.',
+                policy_not_found:     'Policy not found.',
+                policy_closed:        'Policy is already closed.',
+                not_insurance:        'That row is not an insurance policy.',
+                not_insurer:          'Only the insurer can dispute this claim.',
+                insufficient_funds:   'Investigation found the claim VALID — but you have ' + fmtMoney(result?.insurer_cash || 0) + ' and need ' + fmtMoney(result?.required || 0) + ' for the payout + penalty. No action taken; retry once you have funds.',
+                policyholder_missing: 'Policyholder faction no longer exists.',
+            };
+            alert('Dispute failed: ' + (reasonMessages[result?.reason] || result?.reason || 'unknown'));
+            return;
+        }
+
+        if (result.outcome === 'fraud') {
+            alert('Investigation complete: FRAUDULENT CLAIM detected.\nClaim dismissed. Policy remains active.');
+        } else {
+            // 'valid' — atomic payout + penalty already moved
+            const payout = Number(result.payout || 0);
+            const penalty = Number(result.penalty || 0);
+            faction.corp_cash_reserves = Math.max(0, Number(faction.corp_cash_reserves || 0) - (payout + penalty));
+            alert('Investigation complete: claim is VALID.\nPaid ' + fmtMoney(payout) + ' claim + ' + fmtMoney(penalty) + ' penalty to the policyholder.');
+        }
+
+        await loadActivePortfolio();
+        renderActivePortfolio();
+    } finally {
+        _claimLock = false;
     }
-    await loadActivePortfolio();
-    renderActivePortfolio();
 }
 
 async function apSellPosition(loanId) {
-    const { data: position } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
+    if (_sellPositionLock) return;
+
+    // Preview-only fetch — the RPC recomputes authoritatively.
+    const { data: position } = await _supabase.from('finance_active_loans').select('principal,total_paid').eq('id', loanId).single();
     if (!position) { alert('Position not found.'); return; }
 
     const remaining = Number(position.principal || 0) - Number(position.total_paid || 0);
-    const marketValue = Math.round(remaining * 0.85); // 15% discount for secondary market
+    const previewProceeds = Math.round(remaining * 0.85); // 15% discount for secondary market
 
-    if (!confirm(`SELL POSITION\n\nRemaining value: ${fmtMoney(remaining)}\nMarket price (85%): ${fmtMoney(marketValue)}\n\nYou receive ${fmtMoney(marketValue)} immediately.\nThe position is removed from your portfolio.`)) return;
+    if (!confirm(`SELL POSITION\n\nRemaining value: ${fmtMoney(remaining)}\nMarket price (85%): ${fmtMoney(previewProceeds)}\n\nYou receive ${fmtMoney(previewProceeds)} immediately.\nThe position is removed from your portfolio.`)) return;
 
-    // Credit sale proceeds
-    const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
-    await _supabase.from('factions').update({
-        corp_cash_reserves: Number(lender?.corp_cash_reserves || 0) + marketValue
-    }).eq('id', faction.id);
-    faction.corp_cash_reserves = Number(lender?.corp_cash_reserves || 0) + marketValue;
+    _sellPositionLock = true;
+    try {
+        const { data: result, error } = await _supabase.rpc('process_bond_sell_position', {
+            p_bond_id: loanId,
+        });
 
-    // Mark as sold
-    await _supabase.from('finance_active_loans').update({
-        status: 'repaid',
-        completed_tick: shard?.current_tick || 0,
-    }).eq('id', loanId);
+        if (error) { alert('Sell failed: ' + error.message); return; }
+        if (!result?.ok) {
+            const reasonMessages = {
+                not_authenticated:       'Not authenticated.',
+                position_not_found:      'Position not found.',
+                position_already_closed: 'Position is already closed.',
+                not_a_bond:              'That row is not a bond — only bonds can be sold this way.',
+                not_lender:              'Only the bond holder can sell this position.',
+            };
+            alert('Sell failed: ' + (reasonMessages[result?.reason] || result?.reason || 'unknown'));
+            return;
+        }
 
-    alert('Position sold for ' + fmtMoney(marketValue) + '.');
-    await loadActivePortfolio();
-    renderActivePortfolio();
+        const proceeds = Number(result.proceeds || 0);
+        faction.corp_cash_reserves = Number(faction.corp_cash_reserves || 0) + proceeds;
+
+        alert('Position sold for ' + fmtMoney(proceeds) + '.');
+        await loadActivePortfolio();
+        renderActivePortfolio();
+    } finally {
+        _sellPositionLock = false;
+    }
 }
 
 window.apRestructure = apRestructure;
@@ -3046,7 +3083,8 @@ window.rdSetBondAmount = rdSetBondAmount;
 let _submittingOffer = false;
 let _foreclosureLock = false;
 let _callLoanLock = false;
-let _claimLock = false;
+let _claimLock = false; // shared: pay-full, negotiate, dispute
+let _sellPositionLock = false;
 async function rdSubmitOffer() {
     if (!rdDeal || !faction || !shard || _submittingOffer) return;
     if (rdDeal.alreadyOffered) {
