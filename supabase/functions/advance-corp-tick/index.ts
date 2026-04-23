@@ -1620,6 +1620,13 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
     const AFFORDABILITY_CEILING = 0.80;
     const REP_NEUTRAL           = 65;       // rep at which share_multiplier from rep is 1.0
 
+    // Phase 6 — competitive market split. Every operating corp's attractiveness
+    // is summed; NEUTRAL_WEIGHT in the denominator is the "always uninsured"
+    // slice that no corp can capture (people who refuse, don't trust anyone,
+    // etc.). At 0.25, a solo perfect corp caps at ~80%, two equal competitors
+    // split to ~44% each, three equal competitors to ~30% each.
+    const NEUTRAL_WEIGHT        = 0.25;
+
     // Phase 3 tier multipliers. Mirror in corp-operations-finance.html —
     // keep the two tables in sync.
     const PREMIUM_TIER_MULT  = { budget: 0.7, standard: 1.0, premium: 1.5 };
@@ -1700,6 +1707,30 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
     // Inflation factor applied to every premium tier. 50→1.0x, 0→0.5x, 100→1.5x.
     const inflationMult = 1 + (inflation - 50) / 100;
 
+    // ── Phase 6: pre-pass to build the competitive attractiveness pool ──
+    // Every Insurance subsector corp that passes the staffing gate contributes
+    // its attractiveness to the market sum. Understaffed / wrong-subsector
+    // corps are not in the market — they get share=0 below, policyholders
+    // freeze via the idle branch. The denominator adds NEUTRAL_WEIGHT for the
+    // always-uninsured slice, so no corp can ever capture 100% of the market.
+    const attractivenessByFaction: Record<string, number> = {};
+    for (const f of (factions || [])) {
+        if ((f.corp_subsector || '').toLowerCase() !== 'insurance') continue;
+        const cap = capByFaction[f.id] || 0;
+        const skilledReq = Math.ceil(cap * SKILLED_WORKFORCE_RATIO);
+        if (Number(f.corp_skilled_workforce ?? 0) < skilledReq) continue;
+
+        const pool = poolByFaction[f.id];
+        const pTier = (pool?.premium_tier  as keyof typeof PREMIUM_TIER_MULT)  || 'standard';
+        const cTier = (pool?.coverage_tier as keyof typeof COVERAGE_TIER_MULT) || 'standard';
+        const pMult = PREMIUM_TIER_MULT[pTier]  ?? 1.0;
+        const cMult = COVERAGE_TIER_MULT[cTier] ?? 1.0;
+        const rep   = Number(f.corp_reputation ?? REP_NEUTRAL);
+        attractivenessByFaction[f.id] = (cMult / pMult) * (rep / REP_NEUTRAL);
+    }
+    const sumAttractiveness = Object.values(attractivenessByFaction).reduce((s, a) => s + a, 0);
+    const competitiveDenominator = sumAttractiveness + NEUTRAL_WEIGHT;
+
     let totalCollected = 0;
     let processedCount = 0;
 
@@ -1732,16 +1763,15 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
             // Premium = base × premium_tier × inflation factor.
             const premium = Math.max(1, Math.round(BASE_PREMIUM_USD * premiumMult * inflationMult));
 
-            // Attractiveness drives what share of the addressable market this
-            // product captures. Cheap + comprehensive = best customer value
-            // (high share, thin margin per policy); expensive + basic = worst
-            // customer value (low share, high margin per policy). Reputation
-            // slides everything up or down. Floored at 10% so even a terrible
-            // product finds a few takers.
-            const reputation = Number(faction.corp_reputation ?? REP_NEUTRAL);
-            const repMult = reputation / REP_NEUTRAL;
-            const attractiveness = (coverageMult / premiumMult) * repMult;
-            const yourShare = Math.max(0.1, Math.min(1.0, attractiveness));
+            // Phase 6 — share of addressable market comes from the competitive
+            // split. Non-operating corps (understaffed / wrong subsector) are
+            // absent from attractivenessByFaction, so their share is 0 —
+            // they'll enter the idle branch below and freeze their
+            // policyholders rather than growing or shrinking toward 0.
+            const myAttractiveness = attractivenessByFaction[faction.id] ?? 0;
+            const yourShare = competitiveDenominator > 0
+                ? myAttractiveness / competitiveDenominator
+                : 0;
 
             const target = Math.min(Math.round(addressable * yourShare), maxPolicyholders);
 

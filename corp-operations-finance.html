@@ -3455,10 +3455,17 @@ async function loadCollections() {
 const HI_POLICIES_PER_CAPACITY = 50;
 const HI_SKILLED_WORKFORCE_RATIO = 0.60;
 const HI_REP_NEUTRAL = 65;
+const HI_NEUTRAL_WEIGHT = 0.25;   // Phase 6 — always-uninsured weight in the competitive denominator
 const HI_PREMIUM_TIER_MULT  = { budget: 0.7, standard: 1.0, premium: 1.5 };
 const HI_COVERAGE_TIER_MULT = { basic: 0.6, standard: 1.0, comprehensive: 1.5 };
 const HI_PREMIUM_TIERS  = ['budget', 'standard', 'premium'];
 const HI_COVERAGE_TIERS = ['basic', 'standard', 'comprehensive'];
+
+// Fixed palette for market-share bar segments. Your slice is always green;
+// competitors cycle through the rest; uninsured is grey.
+const HI_MARKET_COLOR_ME         = '#5c5';
+const HI_MARKET_COLOR_UNINSURED  = '#4a4940';
+const HI_MARKET_COLOR_COMPETITOR = ['#aa7a5a', '#8a6aaa', '#5a8aaa', '#c89a4a', '#5aaaaa', '#c84'];
 
 // Set while an RPC call is in flight so the pill handlers can ignore
 // double-clicks. Using a plain boolean (not per-pool) because the RPC is
@@ -3468,13 +3475,15 @@ let _hiTierSaving = false;
 let _hiState = {
     subsectorAllowed: false,    // corp_subsector === 'insurance'
     offices: [],                // [{ id, name, capacity, nation_id, nation_name }]
-    poolsByNation: {},          // nation_id → pool row
+    poolsByNation: {},          // nation_id → pool row (mine only)
+    marketsByNation: {},        // nation_id → [{ faction_id, faction_name, abbr, attractiveness, share, isMine, blocked }] — Phase 6
     lawsuits: [],               // pending health_insurance_lawsuits rows (Phase 5)
     universalHealthcareNations: new Set(), // nation_ids where the Act is in force
     lawsLookupFailed: false,    // true if the active_laws fetch errored
     officesLookupFailed: false, // true if corp_properties fetch errored
     poolsLookupFailed: false,   // true if health_insurance_pools fetch errored
     lawsuitsLookupFailed: false,// true if health_insurance_lawsuits fetch errored
+    marketLookupFailed: false,  // true if the Phase 6 competitor fetch errored
     skilled: 0,                 // faction.corp_skilled_workforce
     skilledRequired: 0,         // ~60% of total office capacity
 };
@@ -3486,12 +3495,14 @@ async function loadHealthInsurance() {
     _hiState.skilled = Number(faction.corp_skilled_workforce || 0);
     _hiState.offices = [];
     _hiState.poolsByNation = {};
+    _hiState.marketsByNation = {};
     _hiState.lawsuits = [];
     _hiState.universalHealthcareNations = new Set();
     _hiState.skilledRequired = 0;
     _hiState.officesLookupFailed = false;
     _hiState.poolsLookupFailed = false;
     _hiState.lawsuitsLookupFailed = false;
+    _hiState.marketLookupFailed = false;
     _hiState.lawsLookupFailed = false;
 
     if (!_hiState.subsectorAllowed) { renderHealthInsurance(); return; }
@@ -3521,15 +3532,20 @@ async function loadHealthInsurance() {
 
     const officeNationIds = [...new Set(_hiState.offices.map(o => o.nation_id))];
 
-    // Parallel: laws + pools + pending lawsuits. Independent queries so we
-    // don't pay sequential round-trips; a failure in one shouldn't block the
-    // others.
-    const [lawsRes, poolsRes, lawsuitsRes] = await Promise.all([
+    // Parallel: laws + pools + pending lawsuits + all competitor offices +
+    // competitor factions + competitor pools. Independent queries so we don't
+    // pay sequential round-trips; a failure in one shouldn't block the others.
+    // The Phase 6 queries (all-* below) pull data for EVERY insurance_office
+    // in the player's nations so we can render market-share bars. They all
+    // SELECT against permissive RLS — nothing sensitive is exposed that
+    // wasn't already readable.
+    const emptyRes = Promise.resolve({ data: [], error: null });
+    const [lawsRes, poolsRes, lawsuitsRes, allOfficesRes, allPoolsRes] = await Promise.all([
         officeNationIds.length > 0
             ? _supabase.from('active_laws')
                 .select('nation_id, policy:policies!policy_id(policy_key)')
                 .in('nation_id', officeNationIds)
-            : Promise.resolve({ data: [], error: null }),
+            : emptyRes,
         _supabase.from('health_insurance_pools')
             .select('*')
             .eq('faction_id', faction.id),
@@ -3538,6 +3554,18 @@ async function loadHealthInsurance() {
             .eq('faction_id', faction.id)
             .eq('status', 'pending')
             .order('resolution_tick', { ascending: true }),
+        officeNationIds.length > 0
+            ? _supabase.from('corp_properties')
+                .select('faction_id, nation_id, capacity')
+                .in('nation_id', officeNationIds)
+                .eq('type', 'insurance_office')
+                .eq('is_active', true)
+            : emptyRes,
+        officeNationIds.length > 0
+            ? _supabase.from('health_insurance_pools')
+                .select('faction_id, nation_id, premium_tier, coverage_tier, policyholders')
+                .in('nation_id', officeNationIds)
+            : emptyRes,
     ]);
 
     // Universal Healthcare gate. If the lookup fails we surface the error in
@@ -3577,7 +3605,178 @@ async function loadHealthInsurance() {
         _hiState.lawsuits = lawsuitsRes.data || [];
     }
 
+    // Phase 6 — build per-nation market share. One trip to factions for every
+    // unique owner across all the Insurance Offices in the player's nations.
+    // Treat either lookup failure as a market-unavailable state so the UI can
+    // surface it rather than showing fake zeros / false shares.
+    if (allOfficesRes.error || allPoolsRes.error) {
+        if (allOfficesRes.error) console.warn('[HealthIns] all-offices fetch failed:', allOfficesRes.error.message);
+        if (allPoolsRes.error)   console.warn('[HealthIns] all-pools fetch failed:',   allPoolsRes.error.message);
+        _hiState.marketLookupFailed = true;
+    } else {
+        const allOffices = allOfficesRes.data || [];
+        const allPools   = allPoolsRes.data   || [];
+        const marketFactionIds = [...new Set(allOffices.map(o => o.faction_id).filter(Boolean))];
+        let marketFactions = [];
+        if (marketFactionIds.length > 0) {
+            const { data, error } = await _supabase.from('factions')
+                .select('id, faction_name, abbreviation, corp_ticker, corp_subsector, corp_skilled_workforce, corp_reputation, abandoned_at')
+                .in('id', marketFactionIds);
+            if (error) {
+                console.warn('[HealthIns] competitor factions fetch failed:', error.message);
+                _hiState.marketLookupFailed = true;
+            } else {
+                marketFactions = data || [];
+            }
+        }
+
+        if (!_hiState.marketLookupFailed) {
+            _hiState.marketsByNation = computeMarketsByNation({
+                myFactionId:  faction.id,
+                officeNations: officeNationIds,
+                allOffices,
+                allPools,
+                marketFactions,
+                blockedNations: _hiState.universalHealthcareNations,
+            });
+        }
+    }
+
     renderHealthInsurance();
+}
+
+// Build the per-nation competitor table the processor uses for the
+// competitive split. Mirrors processHealthInsurancePools' pre-pass: only
+// operating corps (right subsector, staffed, not abandoned) contribute
+// attractiveness; the NEUTRAL_WEIGHT appears in the denominator so no corp
+// ever captures 100%. Returns { nation_id → Market }, where Market is a
+// descriptor the renderer consumes directly.
+function computeMarketsByNation(args) {
+    const { myFactionId, officeNations, allOffices, allPools, marketFactions, blockedNations } = args;
+
+    // Capacity + owners per nation.
+    const capByNation = {};     // nation_id → { faction_id → total_capacity }
+    for (const nId of officeNations) capByNation[nId] = {};
+    for (const o of allOffices) {
+        if (!capByNation[o.nation_id]) continue;
+        capByNation[o.nation_id][o.faction_id] = (capByNation[o.nation_id][o.faction_id] || 0) + Number(o.capacity || 0);
+    }
+
+    // Pool lookup: (faction_id, nation_id) → pool.
+    const poolKey = (f, n) => `${f}|${n}`;
+    const poolMap = {};
+    for (const p of allPools) poolMap[poolKey(p.faction_id, p.nation_id)] = p;
+
+    // Faction lookup by id.
+    const factionMap = Object.fromEntries(marketFactions.map(f => [f.id, f]));
+
+    const result = {};
+    for (const nId of officeNations) {
+        const owners = Object.keys(capByNation[nId] || {});
+        const blocked = blockedNations.has(nId);
+        const entries = [];
+
+        // First pass: compute attractiveness for each operating corp.
+        let sumAttractiveness = 0;
+        for (const fId of owners) {
+            const fac = factionMap[fId];
+            const capacity = capByNation[nId][fId] || 0;
+            const subsectorOK = fac && (fac.corp_subsector || '').toLowerCase() === 'insurance';
+            const skilledReq = Math.ceil(capacity * HI_SKILLED_WORKFORCE_RATIO);
+            const skilled = Number(fac?.corp_skilled_workforce ?? 0);
+            const abandoned = !!fac?.abandoned_at;
+            const operating = !blocked && subsectorOK && !abandoned && skilled >= skilledReq;
+
+            const pool = poolMap[poolKey(fId, nId)];
+            const pTier = pool?.premium_tier  || 'standard';
+            const cTier = pool?.coverage_tier || 'standard';
+            const pMult = HI_PREMIUM_TIER_MULT[pTier]   ?? 1.0;
+            const cMult = HI_COVERAGE_TIER_MULT[cTier]  ?? 1.0;
+            const rep   = Number(fac?.corp_reputation ?? HI_REP_NEUTRAL);
+            const attractiveness = operating ? (cMult / pMult) * (rep / HI_REP_NEUTRAL) : 0;
+
+            if (operating) sumAttractiveness += attractiveness;
+
+            entries.push({
+                faction_id: fId,
+                faction_name: fac?.faction_name || 'Unknown',
+                abbr: fac?.abbreviation || fac?.corp_ticker || '??',
+                capacity,
+                attractiveness,
+                operating,
+                abandoned,
+                isMine: fId === myFactionId,
+                premiumTier: pTier,
+                coverageTier: cTier,
+                policyholders: Number(pool?.policyholders ?? 0),
+            });
+        }
+
+        // Second pass: divide by (sum + NEUTRAL_WEIGHT).
+        const denominator = sumAttractiveness + HI_NEUTRAL_WEIGHT;
+        for (const e of entries) {
+            e.share = (e.operating && denominator > 0) ? e.attractiveness / denominator : 0;
+        }
+        const uninsuredShare = Math.max(0, 1 - entries.reduce((s, e) => s + e.share, 0));
+
+        // Stable sort: me first, then competitors by share desc.
+        entries.sort((a, b) => (a.isMine ? -1 : b.isMine ? 1 : b.share - a.share));
+
+        result[nId] = { blocked, entries, uninsuredShare };
+    }
+
+    return result;
+}
+
+// Phase 6 — stacked market-share bar with a competitor legend beneath.
+// Segments are flexed proportionally to their share; the title attribute
+// gives a hover readout of the exact percentage. Competitors share a fixed
+// colour palette (cycled if there are more than six rivals).
+function hiRenderMarketBar(myEntry, competitors, uninsuredShare) {
+    const segments = [];
+    if (myEntry && myEntry.share > 0) {
+        segments.push({ width: myEntry.share, color: HI_MARKET_COLOR_ME, label: 'YOU' });
+    }
+    competitors.forEach((c, i) => {
+        const color = HI_MARKET_COLOR_COMPETITOR[i % HI_MARKET_COLOR_COMPETITOR.length];
+        segments.push({ width: c.share, color, label: c.abbr });
+    });
+    if ((uninsuredShare || 0) > 0.005) {
+        segments.push({ width: uninsuredShare, color: HI_MARKET_COLOR_UNINSURED, label: 'UNINSURED' });
+    }
+
+    // Bail on the visual if there's literally nothing to show — keeps the
+    // card tidy for a blocked/idle nation where every share is zero.
+    if (segments.length === 0) return '';
+
+    const barSegments = segments.map(s => {
+        const pct = (s.width * 100).toFixed(1);
+        return `<div title="${escapeHtml(s.label)} ${pct}%" style="flex:${Math.max(0.0001, s.width)};height:100%;background:${s.color};"></div>`;
+    }).join('');
+
+    const legendItems = competitors.map((c, i) => {
+        const color = HI_MARKET_COLOR_COMPETITOR[i % HI_MARKET_COLOR_COMPETITOR.length];
+        const tierTag = `${(c.premiumTier || '?')[0].toUpperCase()}/${(c.coverageTier || '?')[0].toUpperCase()}`;
+        const pct = Math.round(c.share * 100);
+        return `
+        <div style="display:flex;justify-content:space-between;gap:6px;padding:2px 0;align-items:center;">
+            <div style="display:flex;align-items:center;gap:5px;min-width:0;flex:1;overflow:hidden;">
+                <span style="width:6px;height:6px;background:${color};flex-shrink:0;display:inline-block;"></span>
+                <span style="font-family:var(--font-mono);font-size:9px;color:var(--panel-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.faction_name)}</span>
+            </div>
+            <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;flex-shrink:0;">${pct}% · ${tierTag}</span>
+        </div>`;
+    }).join('');
+
+    return `
+        <div style="margin-top:6px;">
+            <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:3px;display:flex;justify-content:space-between;">
+                <span>Market Share</span>
+                <span>${competitors.length} competitor${competitors.length === 1 ? '' : 's'}</span>
+            </div>
+            <div style="width:100%;height:6px;background:var(--panel-border);display:flex;overflow:hidden;">${barSegments}</div>
+            ${legendItems ? `<div style="margin-top:4px;">${legendItems}</div>` : ''}
+        </div>`;
 }
 
 function renderHealthInsurance() {
@@ -3694,13 +3893,25 @@ function renderHealthInsurance() {
             const premiumTier  = pool?.premium_tier  || 'standard';
             const coverageTier = pool?.coverage_tier || 'standard';
 
-            // Projected share given current tiers + reputation. Mirrors the
-            // tick processor's formula so the player can preview the impact
-            // of a tier change before waiting for the next tick.
-            const premiumMult  = HI_PREMIUM_TIER_MULT[premiumTier]   ?? 1.0;
-            const coverageMult = HI_COVERAGE_TIER_MULT[coverageTier] ?? 1.0;
-            const attractiveness = (coverageMult / premiumMult) * (reputation / HI_REP_NEUTRAL);
-            const yourShare = Math.max(0.1, Math.min(1.0, attractiveness));
+            // Phase 6 — pull the player's share from the competitive market
+            // calc. Fall back to a solo preview (Phase 3 formula with the
+            // NEUTRAL_WEIGHT denominator so numbers stay consistent with what
+            // the tick processor would produce) when market data couldn't be
+            // loaded OR the market calculation doesn't know about this pool
+            // yet (e.g. the corp's fresh office hasn't populated the
+            // competitor table). Never show a 0.1 floored solo share — that
+            // was the Phase 3 clamp and now lies about what will happen.
+            const market = _hiState.marketsByNation[n.nation_id];
+            const myMarketEntry = market?.entries?.find(e => e.isMine);
+            let yourShare;
+            if (myMarketEntry) {
+                yourShare = myMarketEntry.share;
+            } else {
+                const pMult = HI_PREMIUM_TIER_MULT[premiumTier]   ?? 1.0;
+                const cMult = HI_COVERAGE_TIER_MULT[coverageTier] ?? 1.0;
+                const attractiveness = (cMult / pMult) * (reputation / HI_REP_NEUTRAL);
+                yourShare = attractiveness / (attractiveness + HI_NEUTRAL_WEIGHT);
+            }
             const sharePct = Math.round(yourShare * 100);
 
             const tagColor = blocked ? '#c55' : (understaffed ? '#c84' : '#5c5');
@@ -3716,6 +3927,13 @@ function renderHealthInsurance() {
                 const cls = `hi-tier-pill${active === t ? ' active' : ''}${_hiTierSaving ? ' disabled' : ''}`;
                 return `<span class="${cls}" onclick="hiPillClick(this)" data-nation-id="${n.nation_id}" data-group="${group}" data-tier="${t}">${label}</span>`;
             }).join('');
+
+            // Phase 6 — market-share bar. Only rendered when we have live
+            // market data AND the nation isn't blocked by Universal
+            // Healthcare (blocked = no one is earning, bar would be all
+            // grey). A solo operating corp still gets a bar (YOU + uninsured).
+            const competitors = (market?.entries || []).filter(e => !e.isMine && (e.share > 0 || e.policyholders > 0));
+            const marketBarHtml = (!blocked && market) ? hiRenderMarketBar(myMarketEntry, competitors, market.uninsuredShare) : '';
 
             return `
             <div class="hi-callout" style="padding:8px 10px;border-color:${borderColor};">
@@ -3746,6 +3964,7 @@ function renderHealthInsurance() {
                     <span class="hi-stat-label">Offices</span>
                     <span class="hi-stat-value">${n.offices.length} · cap ${n.capacity.toLocaleString()}</span>
                 </div>
+                ${marketBarHtml}
                 <div class="hi-tier-row">
                     <span class="hi-tier-label">Premium</span>
                     <div class="hi-tier-pills">${pillsFor('premium', HI_PREMIUM_TIERS, premiumTier)}</div>
@@ -3823,6 +4042,12 @@ function renderHealthInsurance() {
             <div class="hi-callout" style="border-color:rgba(200,132,68,0.45);">
                 <div class="hi-callout__title" style="color:#c84;">Litigation status unavailable</div>
                 <div class="hi-callout__body">Could not load pending lawsuits — the litigation section may be stale. Refresh the page.</div>
+            </div>` : ''}
+
+            ${_hiState.marketLookupFailed ? `
+            <div class="hi-callout" style="border-color:rgba(200,132,68,0.45);">
+                <div class="hi-callout__title" style="color:#c84;">Market data unavailable</div>
+                <div class="hi-callout__body">Could not load competitor data — market-share bars are showing a solo-operator projection instead of the true competitive split. Refresh the page.</div>
             </div>` : ''}
 
             ${blockedNations.size > 0 ? `
