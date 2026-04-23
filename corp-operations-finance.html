@@ -3874,8 +3874,16 @@ function renderHealthInsurance() {
         const livePools = Object.values(nationMap)
             .map(n => _hiState.poolsByNation[n.nation_id])
             .filter(Boolean);
+        // Pools whose nation is currently under Universal Healthcare aren't
+        // being processed, so their last_tick_revenue is a pre-block value.
+        // Exclude those from the "last tick" aggregate so the summary card
+        // matches the sum of visible per-pool revenues. Policyholders and
+        // lifetime revenue stay inclusive — policyholders are frozen but
+        // real (the corp still has those customers on the books), and
+        // lifetime revenue is historical and doesn't go stale.
+        const operatingPools = livePools.filter(p => !_hiState.universalHealthcareNations.has(p.nation_id));
         const totalPolicyholders = livePools.reduce((s, p) => s + Number(p.policyholders || 0), 0);
-        const lastTickRevenue = livePools.reduce((s, p) => s + Number(p.last_tick_revenue || 0), 0);
+        const lastTickRevenue = operatingPools.reduce((s, p) => s + Number(p.last_tick_revenue || 0), 0);
         const lifetimeRevenue = livePools.reduce((s, p) => s + Number(p.total_revenue_collected || 0), 0);
 
         // Phase 5 — pending lawsuits. Shown as a stat line in the summary
@@ -3898,9 +3906,14 @@ function renderHealthInsurance() {
             const maxPolicyholders = n.capacity * HI_POLICIES_PER_CAPACITY;
             const holders = pool ? Number(pool.policyholders || 0) : 0;
             const fillPct = maxPolicyholders > 0 ? Math.min(100, Math.round(holders / maxPolicyholders * 100)) : 0;
-            const addressable = pool ? Number(pool.last_tick_addressable || 0) : 0;
-            const premium = pool ? Number(pool.last_tick_premium || 0) : 0;
-            const revenue = pool ? Number(pool.last_tick_revenue || 0) : 0;
+            // Blocked pools (Universal Healthcare active here) aren't being
+            // processed at all, so their pool row's last_tick_* columns are
+            // frozen at whatever they were the last pre-block tick. Render
+            // them as "—" rather than show a misleading pre-block snapshot
+            // under a BLOCKED badge.
+            const addressable = (!blocked && pool) ? Number(pool.last_tick_addressable || 0) : 0;
+            const premium     = (!blocked && pool) ? Number(pool.last_tick_premium     || 0) : 0;
+            const revenue     = (!blocked && pool) ? Number(pool.last_tick_revenue     || 0) : 0;
 
             // Current tiers, defaulting to 'standard' when the pool row
             // doesn't exist yet (pre-first-tick or brand-new build).
