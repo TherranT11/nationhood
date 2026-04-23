@@ -76,10 +76,14 @@ function accruePnl(corpId, delta) {
 
 async function flushTickPnl(supabase, corpIds) {
     for (const corpId of corpIds) {
+        if (!corpId) continue;
         const pnl = _tickPnl.get(corpId) || 0;
-        await supabase.from('factions')
+        const { error } = await supabase.from('factions')
             .update({ monthly_profit: Math.round(pnl) })
             .eq('id', corpId);
+        if (error) {
+            console.error(`[advance-corp-tick] flushTickPnl failed for ${corpId}:`, error.message);
+        }
     }
 }
 
@@ -1308,11 +1312,11 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
         if (totalMaintenance > 0) {
             const currentCash = Number(corp.corp_cash_reserves ?? 0);
             const newCash = Math.max(0, currentCash - totalMaintenance);
-            accruePnl(corp.id, -totalMaintenance);
             const { error: cashErr } = await supabase
                 .from('factions')
                 .update({ corp_cash_reserves: newCash })
                 .eq('id', corp.id);
+            if (!cashErr) accruePnl(corp.id, -totalMaintenance);
 
             if (cashErr) {
                 console.error(`[PropertyEffects] Cash deduction failed for ${corp.faction_name}:`, cashErr.message);
@@ -2909,22 +2913,25 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         const newCash = Math.max(0, currentCash + netChange);
         const newLoans = Math.max(0, currentLoans - principalPaid);
 
-        // Accrue each P&L component to the tick accumulator. monthly_profit is
-        // written once at tick-end from _tickPnl — do NOT include it here.
-        accruePnl(corp.id, corpMonthlyRev);
-        accruePnl(corp.id, -monthlyWages);
-        accruePnl(corp.id, -monthlyExecSalaries);
-        accruePnl(corp.id, -FIXED_OVERHEAD_MONTHLY);
-        accruePnl(corp.id, -debtPayment);
-        accruePnl(corp.id, -taxAmount);
-
         const updateFields = { corp_cash_reserves: newCash };
         if (principalPaid > 0) updateFields.corp_loans = newLoans;
 
         const { error: updateErr } = await supabase.from('factions')
             .update(updateFields)
             .eq('id', corp.id);
-        if (updateErr) console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
+        if (updateErr) {
+            console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
+        } else {
+            // Accrue each P&L component to the tick accumulator only after the
+            // cash write succeeded. monthly_profit is written once at tick-end
+            // from _tickPnl — do NOT include it in updateFields above.
+            accruePnl(corp.id, corpMonthlyRev);
+            accruePnl(corp.id, -monthlyWages);
+            accruePnl(corp.id, -monthlyExecSalaries);
+            accruePnl(corp.id, -FIXED_OVERHEAD_MONTHLY);
+            accruePnl(corp.id, -debtPayment);
+            accruePnl(corp.id, -taxAmount);
+        }
 
         // Credit corporate tax to the nation's debt reduction
         if (taxAmount > 0) {
@@ -3071,11 +3078,11 @@ async function processVesselOrderDeliveries(supabase, currentTick) {
         }
 
         // Deduct balance — vessel purchase is booked as a one-tick expense.
-        accruePnl(order.faction_id, -balance);
         var { error: cashErr } = await supabase.from('factions').update({
             corp_cash_reserves: corpCash - balance,
         }).eq('id', order.faction_id);
         if (cashErr) { console.warn('[Vessel Orders] Cash deduction failed:', cashErr.message); continue; }
+        accruePnl(order.faction_id, -balance);
 
         // Credit balance to shipyard nation budget
         const { data: shipyardNation } = await supabase.from('nations')
@@ -3183,21 +3190,27 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             const holderCash = Number(holder?.corp_cash_reserves || 0);
 
             if (holderCash >= premium) {
-                accruePnl(loan.borrower_faction_id, -premium);
                 var { error: holderErr } = await supabase.from('factions').update({
                     corp_cash_reserves: holderCash - premium,
                 }).eq('id', loan.borrower_faction_id);
-                if (holderErr) console.warn('[Insurance] Premium deduction failed:', holderErr.message);
+                if (holderErr) {
+                    console.warn('[Insurance] Premium deduction failed:', holderErr.message);
+                } else {
+                    accruePnl(loan.borrower_faction_id, -premium);
+                }
 
                 // Credit premium to insurer (lender)
                 const { data: insurer } = await supabase.from('factions')
                     .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
                 if (insurer) {
-                    accruePnl(loan.lender_faction_id, premium);
                     var { error: insurerErr } = await supabase.from('factions').update({
                         corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium,
                     }).eq('id', loan.lender_faction_id);
-                    if (insurerErr) console.warn('[Insurance] Premium credit failed:', insurerErr.message);
+                    if (insurerErr) {
+                        console.warn('[Insurance] Premium credit failed:', insurerErr.message);
+                    } else {
+                        accruePnl(loan.lender_faction_id, premium);
+                    }
                 }
 
                 // Update payment tracking (once per tick).
@@ -3246,20 +3259,26 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             const actualPayout = Math.max(0, Math.min(dividendDue, targetCash));
 
             if (actualPayout > 0) {
-                accruePnl(loan.borrower_faction_id, -actualPayout);
                 var { error: debitErr } = await supabase.from('factions').update({
                     corp_cash_reserves: targetCash - actualPayout,
                 }).eq('id', loan.borrower_faction_id);
-                if (debitErr) console.warn('[Equity] Target debit failed:', debitErr.message);
+                if (debitErr) {
+                    console.warn('[Equity] Target debit failed:', debitErr.message);
+                } else {
+                    accruePnl(loan.borrower_faction_id, -actualPayout);
+                }
 
                 const { data: lender } = await supabase.from('factions')
                     .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
                 if (lender) {
-                    accruePnl(loan.lender_faction_id, actualPayout);
                     var { error: creditErr } = await supabase.from('factions').update({
                         corp_cash_reserves: Number(lender.corp_cash_reserves || 0) + actualPayout,
                     }).eq('id', loan.lender_faction_id);
-                    if (creditErr) console.warn('[Equity] Investor credit failed:', creditErr.message);
+                    if (creditErr) {
+                        console.warn('[Equity] Investor credit failed:', creditErr.message);
+                    } else {
+                        accruePnl(loan.lender_faction_id, actualPayout);
+                    }
                 }
             }
 
@@ -4541,10 +4560,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 // Deduct repair cost
                                 const beforeRepairCash = corpCashRunning;
                                 const afterRepairCash = Math.max(0, beforeRepairCash - repairCost);
-                                accruePnl(corp.id, -repairCost);
                                 const { error: repairCashErr } = await supabase.from('factions').update({
                                     corp_cash_reserves: afterRepairCash,
                                 }).eq('id', corp.id);
+                                if (!repairCashErr) accruePnl(corp.id, -repairCost);
                                 if (repairCashErr) {
                                     console.warn(`[advance-corp-tick] Forced dry dock repair deduction failed for ${corp.faction_name}:`, repairCashErr.message);
                                 } else {
@@ -4785,10 +4804,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     if (totalMaintenance > 0) {
                         const beforeMaintenanceCash = corpCashRunning;
                         const afterMaintenanceCash = Math.max(0, beforeMaintenanceCash - totalMaintenance);
-                        accruePnl(corp.id, -totalMaintenance);
                         const { error: maintErr } = await supabase.from('factions').update({
                             corp_cash_reserves: afterMaintenanceCash,
                         }).eq('id', corp.id);
+                        if (!maintErr) accruePnl(corp.id, -totalMaintenance);
                         if (maintErr) console.warn(`[advance-corp-tick] Fleet maintenance deduction failed for ${corp.faction_name}:`, maintErr.message);
                         if (!maintErr) {
                             corpCashRunning = afterMaintenanceCash;
