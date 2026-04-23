@@ -1538,8 +1538,8 @@ function renderActivePortfolio() {
 
                     const canForeclose = d.status === 'DELINQUENT' || missedPayments >= 3;
                     const forecloseReason = canForeclose
-                        ? 'WHEN TO USE: Final remedy after delinquency threshold is reached and recovery via normal payments is unlikely. ACTION: Immediate default + collateral recovery payout (cash 70%, property 80%, equipment 50%). FINANCIAL CONSEQUENCES: Irreversible action; ends future interest/principal cashflow and realizes immediate recovery/loss now.'
-                        : 'WHEN TO USE: Requires delinquent/default threshold first (DELINQUENT status or 3+ missed payments). ACTION: Immediate default + collateral recovery payout (cash 70%, property 80%, equipment 50%). FINANCIAL CONSEQUENCES: Irreversible once triggered and converts expected future cashflow into immediate realized recovery/loss.';
+                        ? 'WHEN TO USE: Final remedy after delinquency threshold is reached and recovery via normal payments is unlikely. ACTION: Immediate default + collateral recovery payout (equipment 60%, property 75%, unsecured 0%). FINANCIAL CONSEQUENCES: Irreversible action; ends future interest/principal cashflow and realizes immediate recovery/loss now.'
+                        : 'WHEN TO USE: Requires delinquent/default threshold first (DELINQUENT status or 3+ missed payments). ACTION: Immediate default + collateral recovery payout (equipment 60%, property 75%, unsecured 0%). FINANCIAL CONSEQUENCES: Irreversible once triggered and converts expected future cashflow into immediate realized recovery/loss.';
 
                     const loanActionBtn = (colorClass, label, enabled, onclickJs, reason) => {
                         const disabledClass = enabled ? '' : ' disabled';
@@ -1725,6 +1725,13 @@ async function apCallLoan(loanId) {
 }
 
 async function apForeclose(loanId) {
+    // Double-fire guard -- the confirm dialog is synchronous but the
+    // RPC call is async, so a second click while the first is in
+    // flight would race. Without the lock the first wins and every
+    // subsequent call returns loan_already_closed, but the user sees
+    // a confusing stack of alerts.
+    if (_foreclosureLock) return;
+
     // UI-side pre-check so we can show a friendly message before the
     // confirm dialog. The RPC re-checks the same conditions inside a
     // locked transaction, so this pre-check is advisory only — the
@@ -1739,40 +1746,46 @@ async function apForeclose(loanId) {
 
     if (!confirm('FORECLOSE\n\nImmediately default the loan and seize collateral.\nCollateral recovery: Equipment 60%, Property 75%, Unsecured 0%.\n\nThis cannot be undone. Proceed?')) return;
 
-    // Atomic: the RPC credits the lender's corp_cash_reserves and
-    // flips the loan to 'defaulted' in a single Postgres transaction.
-    // Recovery amount is computed inside the RPC from collateral_type
-    // + remaining_principal so the client can never over-claim.
-    const { data: result, error } = await _supabase.rpc('process_finance_loan_foreclose', {
-        p_loan_id: loanId,
-    });
+    _foreclosureLock = true;
+    try {
+        // Atomic: the RPC credits the lender's corp_cash_reserves and
+        // flips the loan to 'defaulted' in a single Postgres transaction.
+        // Recovery amount is computed inside the RPC from collateral_type
+        // + remaining_principal so the client can never over-claim.
+        const { data: result, error } = await _supabase.rpc('process_finance_loan_foreclose', {
+            p_loan_id: loanId,
+        });
 
-    if (error) { alert('Foreclose failed: ' + error.message); return; }
-    if (!result?.ok) {
-        const reasonMessages = {
-            not_authenticated:    'Not authenticated.',
-            loan_not_found:       'Loan not found.',
-            loan_already_closed:  'Loan is already closed.',
-            not_foreclosable:     'Foreclose unavailable. Requires delinquent status or 3+ missed payments.',
-            not_lender:           'Only the lender can foreclose this loan.',
-        };
-        alert('Foreclose failed: ' + (reasonMessages[result?.reason] || result?.reason || 'unknown'));
-        return;
+        if (error) { alert('Foreclose failed: ' + error.message); return; }
+        if (!result?.ok) {
+            const reasonMessages = {
+                not_authenticated:    'Not authenticated.',
+                loan_not_found:       'Loan not found.',
+                loan_already_closed:  'Loan is already closed.',
+                not_a_loan:           'That row is not a loan — only loans can be foreclosed.',
+                not_foreclosable:     'Foreclose unavailable. Requires delinquent status or 3+ missed payments.',
+                not_lender:           'Only the lender can foreclose this loan.',
+            };
+            alert('Foreclose failed: ' + (reasonMessages[result?.reason] || result?.reason || 'unknown'));
+            return;
+        }
+
+        const recovered = Number(result.recovered || 0);
+        const collateralType = result.collateral_type || 'unsecured';
+
+        // Optimistic local cash update so the rest of the page reflects
+        // the credit immediately. Authoritative value is persisted by the
+        // RPC; the next page reload will reconcile if this drifts.
+        if (recovered > 0) {
+            faction.corp_cash_reserves = Number(faction.corp_cash_reserves || 0) + recovered;
+        }
+
+        alert('Foreclosed. Recovered: ' + fmtMoney(recovered) + ' from ' + collateralType + ' collateral.');
+        await loadActivePortfolio();
+        renderActivePortfolio();
+    } finally {
+        _foreclosureLock = false;
     }
-
-    const recovered = Number(result.recovered || 0);
-    const collateralType = result.collateral_type || 'unsecured';
-
-    // Optimistic local cash update so the rest of the page reflects
-    // the credit immediately. Authoritative value is persisted by the
-    // RPC; the next page reload will reconcile if this drifts.
-    if (recovered > 0) {
-        faction.corp_cash_reserves = Number(faction.corp_cash_reserves || 0) + recovered;
-    }
-
-    alert('Foreclosed. Recovered: ' + fmtMoney(recovered) + ' from ' + collateralType + ' collateral.');
-    await loadActivePortfolio();
-    renderActivePortfolio();
 }
 
 async function apPayClaim(loanId) {
@@ -2995,6 +3008,7 @@ window.rdSetBondAmount = rdSetBondAmount;
 // ==================== SUBMIT OFFER ====================
 
 let _submittingOffer = false;
+let _foreclosureLock = false;
 async function rdSubmitOffer() {
     if (!rdDeal || !faction || !shard || _submittingOffer) return;
     if (rdDeal.alreadyOffered) {

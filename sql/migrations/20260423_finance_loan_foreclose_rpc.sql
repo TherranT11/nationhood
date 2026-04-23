@@ -32,6 +32,7 @@ DECLARE
     v_user_id         UUID := auth.uid();
     v_loan            finance_active_loans%ROWTYPE;
     v_lender_id       UUID;
+    v_request_type    TEXT;
     v_recovery_rate   NUMERIC;
     v_recovered       BIGINT;
     v_current_tick    INTEGER;
@@ -48,6 +49,21 @@ BEGIN
 
     IF NOT FOUND THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'loan_not_found');
+    END IF;
+
+    -- Type guard: finance_active_loans is polymorphic -- it also
+    -- holds insurance, bond, and equity rows. Foreclose only applies
+    -- to 'loan' rows. Without this guard, a caller could POST this
+    -- RPC with an insurance policy's id and forcibly mark it
+    -- 'defaulted' (voiding coverage), or touch a bond/equity row.
+    -- The UI gates FORECLOSE rendering on d.type === 'LOAN', but a
+    -- crafted client could bypass that.
+    SELECT request_type INTO v_request_type
+    FROM finance_loan_requests
+    WHERE id = v_loan.request_id;
+
+    IF COALESCE(v_request_type, '') <> 'loan' THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'not_a_loan', 'request_type', v_request_type);
     END IF;
 
     IF v_loan.status IN ('defaulted', 'repaid') THEN
