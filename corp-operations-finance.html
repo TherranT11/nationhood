@@ -3405,6 +3405,7 @@ let _hiState = {
     subsectorAllowed: false,    // corp_subsector === 'insurance'
     offices: [],                // [{ id, name, capacity, nation_id, nation_name }]
     universalHealthcareNations: new Set(), // nation_ids where the Act is in force
+    lawsLookupFailed: false,    // true if the active_laws fetch errored
     skilled: 0,                 // faction.corp_skilled_workforce
     skilledRequired: 0,         // ~60% of total office capacity
 };
@@ -3445,14 +3446,23 @@ async function loadHealthInsurance() {
     // Universal Healthcare gate — block any nation where the Act is in force.
     // Stub policy is shipped in 20260423_health_insurance_phase1.sql so the
     // lookup always has a target even before the Act has any real effects.
+    // If the lookup fails we surface the error in the panel rather than
+    // silently flipping to "READY" — a missed gate could let a corp claim to
+    // operate in a nation where the Act is actually in force.
+    _hiState.lawsLookupFailed = false;
     const officeNationIds = [...new Set(_hiState.offices.map(o => o.nation_id))];
     if (officeNationIds.length > 0) {
-        const { data: laws } = await _supabase.from('active_laws')
+        const { data: laws, error: lawsErr } = await _supabase.from('active_laws')
             .select('nation_id, policy:policies!policy_id(policy_key)')
             .in('nation_id', officeNationIds);
-        for (const l of (laws || [])) {
-            if (l.policy?.policy_key === 'universal_healthcare') {
-                _hiState.universalHealthcareNations.add(l.nation_id);
+        if (lawsErr) {
+            console.warn('[HealthIns] active_laws fetch failed:', lawsErr.message);
+            _hiState.lawsLookupFailed = true;
+        } else {
+            for (const l of (laws || [])) {
+                if (l.policy?.policy_key === 'universal_healthcare') {
+                    _hiState.universalHealthcareNations.add(l.nation_id);
+                }
             }
         }
     }
@@ -3492,6 +3502,7 @@ function renderHealthInsurance() {
     let badgeClass, badgeLabel;
     if (officeCount === 0) { badgeClass = 'hi-badge-locked'; badgeLabel = 'LOCKED'; }
     else if (operatingOffices.length === 0) { badgeClass = 'hi-badge-gated'; badgeLabel = 'POLICY-BLOCKED'; }
+    else if (_hiState.lawsLookupFailed) { badgeClass = 'hi-badge-understaffed'; badgeLabel = 'UNVERIFIED'; }
     else if (understaffed) { badgeClass = 'hi-badge-understaffed'; badgeLabel = 'UNDERSTAFFED'; }
     else { badgeClass = 'hi-badge-ready'; badgeLabel = 'READY'; }
 
@@ -3517,11 +3528,11 @@ function renderHealthInsurance() {
             const tagLabel = blocked ? 'BLOCKED' : 'OPERATING';
             return `
             <div class="hi-office-row">
-                <div>
-                    <div class="hi-office-name">${escapeHtml(o.name)}</div>
-                    <div class="hi-office-meta">${escapeHtml(o.nation_name)} · cap ${o.capacity.toLocaleString()}</div>
+                <div style="min-width:0;flex:1;overflow:hidden;">
+                    <div class="hi-office-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(o.name)}</div>
+                    <div class="hi-office-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(o.nation_name)} · cap ${o.capacity.toLocaleString()}</div>
                 </div>
-                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:${tagColor};border:1px solid ${tagColor}55;background:${tagColor}11;">${tagLabel}</span>
+                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:${tagColor};border:1px solid ${tagColor}55;background:${tagColor}11;flex-shrink:0;margin-left:8px;">${tagLabel}</span>
             </div>`;
         }).join('');
 
@@ -3559,6 +3570,12 @@ function renderHealthInsurance() {
             <div class="hi-callout" style="border-color:rgba(204,85,85,0.35);">
                 <div class="hi-callout__title" style="color:#c55;">Universal Healthcare in force</div>
                 <div class="hi-callout__body">${blockedNations.size} of your nation${blockedNations.size > 1 ? 's' : ''} have the Universal Healthcare Act active. Insurance Offices in those nations cannot write new private health policies.</div>
+            </div>` : ''}
+
+            ${_hiState.lawsLookupFailed ? `
+            <div class="hi-callout" style="border-color:rgba(200,132,68,0.45);">
+                <div class="hi-callout__title" style="color:#c84;">Policy gate unverified</div>
+                <div class="hi-callout__body">Could not check active laws — Universal Healthcare blocking is unconfirmed. Refresh the page; if this persists, do not assume offices are clear to operate.</div>
             </div>` : ''}
 
             <div class="hi-callout" style="border-color:${skilledColor}55;">

@@ -639,7 +639,7 @@ async function loadAvailableProperties() {
 
     const { data, error } = await _supabase
         .from('available_properties')
-        .select('*, property_catalog:catalog_id(subsector_lock, min_skilled_workforce)')
+        .select('*, property_catalog:catalog_id(subsector_lock)')
         .eq('nation_id', faction.nation_id)
         .eq('status', 'available')
         .order('price', { ascending: true });
@@ -661,7 +661,6 @@ async function loadAvailableProperties() {
             ...p,
             adjusted_cost: p.price,
             adjusted_maintenance: p.monthly_maintenance,
-            min_skilled_workforce: p.property_catalog?.min_skilled_workforce || 0,
         }));
 }
 

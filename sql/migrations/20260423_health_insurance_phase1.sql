@@ -2,38 +2,34 @@
 -- Health Insurance — Phase 1: Foundation (building + service flag, no revenue yet)
 --
 -- Adds:
---   1. property_catalog.subsector_lock         — restricts a template to a corp subsector
---   2. property_catalog.min_skilled_workforce  — informational staffing requirement
---   3. Two Insurance Office templates (small + medium) gated to Insurance subsector
---   4. universal_healthcare policy stub (is_active=false) so the activation gate
+--   1. property_catalog.subsector_lock — restricts a template to a corp subsector
+--   2. Two Insurance Office templates (small + medium) gated to Insurance subsector
+--   3. universal_healthcare policy stub (is_active=false) so the activation gate
 --      has something to check from day one
 --
 -- Idempotent. Safe to re-run.
 -- ════════════════════════════════════════════════════════════════════════════════
 
--- 1. Schema additions on property_catalog
+-- 1. Schema addition on property_catalog
 ALTER TABLE property_catalog
-    ADD COLUMN IF NOT EXISTS subsector_lock TEXT,
-    ADD COLUMN IF NOT EXISTS min_skilled_workforce INT DEFAULT 0;
+    ADD COLUMN IF NOT EXISTS subsector_lock TEXT;
 
 COMMENT ON COLUMN property_catalog.subsector_lock IS
     'Lower-case corp_subsector value (e.g. ''insurance'') that gates this template. NULL = available to any subsector.';
-COMMENT ON COLUMN property_catalog.min_skilled_workforce IS
-    'Skilled workforce headcount needed for the property to operate. Checked at the corp-pool level (sum across all such properties).';
 
 -- 2. Insurance Office templates
 INSERT INTO property_catalog
     (name, type, style, base_cost, capacity, base_maintenance, size_class, description,
-     city_template, min_gdp_growth, min_sol, sector_affinity, subsector_lock, min_skilled_workforce)
+     city_template, min_gdp_growth, min_sol, sector_affinity, subsector_lock)
 VALUES
     ('Insurance Office — Branch',  'insurance_office', 'Modern',  2400000, 300, 16000,
      'small',
      'A neighbourhood insurance office for selling and servicing private health policies. Requires skilled underwriters, actuaries, and customer-service staff to operate.',
-     'capital', 0, 15, 'finance', 'insurance', 180),
+     'capital', 0, 15, 'finance', 'insurance'),
     ('Insurance Office — Regional','insurance_office', 'Modern',  6800000, 800, 38000,
      'medium',
      'A regional insurance hub with a full underwriting floor and claims processing. Anchors a private health insurance operation across a wide service area.',
-     'capital', 15, 25, 'finance', 'insurance', 480)
+     'capital', 15, 25, 'finance', 'insurance')
 ON CONFLICT DO NOTHING;
 
 -- 3. universal_healthcare policy stub — inactive placeholder so the gating
@@ -75,7 +71,7 @@ END $$;
 -- ════════════════════════════════════════════════════════════════════════════════
 -- VERIFY — should return the two new catalog rows + the stub policy.
 -- ════════════════════════════════════════════════════════════════════════════════
-SELECT name, type, subsector_lock, min_skilled_workforce, base_cost, capacity
+SELECT name, type, subsector_lock, base_cost, capacity
   FROM property_catalog
  WHERE type = 'insurance_office';
 
