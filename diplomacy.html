@@ -430,6 +430,11 @@ function renderTradeEconomy() {
             // which is the exportable surplus — a petro-state that consumed
             // all its own oil showed the $10M floor even at 88 oil_and_gas.
             production: Number(flow.domestic_production) || 0,
+            // exportCapacity = production surplus after domestic demand is
+            // covered. Drives BAL and the surplus/deficit classification —
+            // same formula partner views use via getNationSurplusesAndDeficits,
+            // so the two panels can't disagree.
+            exportCapacity: Number(flow.export_capacity) || 0,
             // domesticDemand = gross consumption before domestic-coverage
             // offset. Currently only fuel_energy populates this; other
             // sectors render the value as '-' in the table row below.
@@ -440,8 +445,10 @@ function renderTradeEconomy() {
     // Sort by total volume descending
     commodities.sort((a, b) => (b.production + b.demand) - (a.production + a.demand));
 
-    const surpluses = commodities.filter(c => c.production > c.demand).sort((a, b) => (b.production - b.demand) - (a.production - a.demand));
-    const deficits = commodities.filter(c => c.demand > c.production).sort((a, b) => (b.demand - b.production) - (a.demand - a.production));
+    // Net trade position = export_capacity − import_demand, matching
+    // getNationSurplusesAndDeficits so YOUR ECONOMY and partner views agree.
+    const surpluses = commodities.filter(c => c.exportCapacity > c.demand).sort((a, b) => (b.exportCapacity - b.demand) - (a.exportCapacity - a.demand));
+    const deficits = commodities.filter(c => c.demand > c.exportCapacity).sort((a, b) => (b.demand - b.exportCapacity) - (a.demand - a.exportCapacity));
 
     let html = '';
 
@@ -461,7 +468,7 @@ function renderTradeEconomy() {
 
     const nationId = _worldState?.nation?.id;
     for (const c of commodities) {
-        const bal = c.production - c.demand;
+        const bal = c.exportCapacity - c.demand;
         const isExp = _expandedCommodity === c.key;
         const isSelected = _tradeCommodityFilter === c.key;
         const bgStyle = isExp ? 'background:var(--bg-card);' : isSelected ? (bal > 0 ? 'background:rgba(92,204,92,0.04);' : 'background:rgba(204,85,85,0.04);') : '';
@@ -617,7 +624,7 @@ function renderTradeEconomy() {
     for (const c of surpluses.slice(0, 5)) {
         html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
             <span style="font-size:13px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
-            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">+${fmtBudgetCurrency(c.production - c.demand)}</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">+${fmtBudgetCurrency(c.exportCapacity - c.demand)}</span>
         </div>`;
     }
     if (surpluses.length === 0) html += `<div style="font-size:13px;color:var(--text-dim);font-style:italic;">None</div>`;
@@ -629,7 +636,7 @@ function renderTradeEconomy() {
     for (const c of deficits.slice(0, 5)) {
         html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
             <span style="font-size:13px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
-            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--red);">${fmtBudgetCurrency(c.production - c.demand)}</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--red);">${fmtBudgetCurrency(c.exportCapacity - c.demand)}</span>
         </div>`;
     }
     if (deficits.length === 0) html += `<div style="font-size:13px;color:var(--text-dim);font-style:italic;">None</div>`;

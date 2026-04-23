@@ -1107,7 +1107,13 @@ export function calculateExportCapacity(nation, sector, opts) {
  */
 // Shared fuel-demand math — single source of truth for the simplified model.
 // Drivers: population, urbanization, manufacturing, standard_of_living.
-// Domestic offset: oil_and_gas + energy_generation.
+// Domestic offset: tiered by oil_and_gas —
+//   petro-states (oil_and_gas >= 70): 95% domestic coverage flat.
+//   others: min(0.70, (oil_and_gas + energy_generation) / 200).
+// Tier keeps petro-states near self-sufficient without closing the global
+// fuel market (95% ceiling) and keeps non-petro importers capped at 70%
+// regardless of how much renewable generation they build out. Matches the
+// design described in sql/diagnostic_oil_energy_balance.sql.
 // Currency strength scales import power (linear 0-to-1).
 // No floors, no caps, no stability modifier, no tariff dampener.
 // Calibration: 750M per 1M pop — a 100M nation at max stats + zero coverage
@@ -1124,7 +1130,9 @@ function computeFuelDemand(nation) {
     const currency = Number(nation.currency_strength) || 0;
 
     const intensity        = (urban + manuf + sol) / 300;
-    const domesticCoverage = (oil + gen) / 200;
+    const domesticCoverage = oil >= 70
+        ? 0.95
+        : Math.min(0.70, (oil + gen) / 200);
     const importPower      = currency / 100;
 
     const gross = (pop / 1_000_000) * 750_000_000 * intensity * importPower;
