@@ -1489,6 +1489,207 @@ async function processRegionalHqIncome(supabase, nation, currentTick) {
     return { hqCount: hqs.length, updatedCount };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// HEALTH INSURANCE — Phase 2 tick processor
+//
+// For each Insurance subsector corporation with an active Insurance Office in
+// `nation`, grow (or attrition) the per-(faction, nation) pool of
+// policyholders toward an addressable-market cap and credit premium revenue
+// into factions.corp_cash_reserves.
+//
+// Gates (any failing = zero revenue this tick):
+//   – Universal Healthcare Act active in this nation
+//   – Corp subsector is not 'insurance' (defence-in-depth)
+//   – Corp skilled workforce < 60% of total Insurance Office capacity
+//
+// All tunable numbers are at the top of the function so a designer can
+// re-balance without re-reading the logic.
+// ═══════════════════════════════════════════════════════════════════════════
+async function processHealthInsurancePools(supabase, nation, currentTick) {
+    // ── Tunables ──
+    const POLICIES_PER_CAPACITY = 50;       // 50 policyholders per 1 employee capacity
+    const BASE_PREMIUM_USD      = 50;       // monthly premium at inflation=50
+    const TRICKLE_RATE          = 0.08;     // fraction of (target − current) closed per tick
+    const ATTRITION_RATE        = 0.15;     // fraction of (current − target) shed per tick when over cap
+    const SKILLED_WORKFORCE_RATIO = 0.60;   // must staff this fraction of office capacity
+    const AFFORDABILITY_FLOOR   = 0.05;
+    const AFFORDABILITY_CEILING = 0.80;
+
+    // ── Gate 1: Universal Healthcare blocks every pool in this nation ──
+    const { data: laws, error: lawsErr } = await supabase
+        .from('active_laws')
+        .select('policy:policies!policy_id(policy_key)')
+        .eq('nation_id', nation.id);
+    if (lawsErr) {
+        console.warn(`[HealthIns] ${nation.name}: active_laws lookup failed, skipping:`, lawsErr.message);
+        return { processed: 0, collected: 0, reason: 'laws_error' };
+    }
+    const universalActive = (laws || []).some(l => l.policy?.policy_key === 'universal_healthcare');
+    if (universalActive) {
+        console.log(`[HealthIns] ${nation.name}: Universal Healthcare Act active, no pools processed.`);
+        return { processed: 0, collected: 0, reason: 'blocked_universal_healthcare' };
+    }
+
+    // ── Load active Insurance Offices in this nation, sum capacity per faction ──
+    const { data: offices, error: offErr } = await supabase
+        .from('corp_properties')
+        .select('faction_id, capacity')
+        .eq('nation_id', nation.id)
+        .eq('type', 'insurance_office')
+        .eq('is_active', true);
+    if (offErr) throw offErr;
+    if (!offices || offices.length === 0) {
+        return { processed: 0, collected: 0 };
+    }
+
+    const capByFaction: Record<string, number> = {};
+    for (const o of offices) {
+        const fid = o.faction_id;
+        if (!fid) continue;
+        capByFaction[fid] = (capByFaction[fid] || 0) + Number(o.capacity || 0);
+    }
+    const factionIds = Object.keys(capByFaction);
+    if (factionIds.length === 0) return { processed: 0, collected: 0 };
+
+    // ── Load factions (subsector + skilled workforce + cash reserves) ──
+    const { data: factions, error: factErr } = await supabase
+        .from('factions')
+        .select('id, faction_name, corp_subsector, corp_skilled_workforce, corp_cash_reserves')
+        .in('id', factionIds);
+    if (factErr) throw factErr;
+
+    // ── Load existing pools for these factions in this nation ──
+    const { data: existingPools, error: poolErr } = await supabase
+        .from('health_insurance_pools')
+        .select('*')
+        .eq('nation_id', nation.id)
+        .in('faction_id', factionIds);
+    if (poolErr) throw poolErr;
+    const poolByFaction = Object.fromEntries((existingPools || []).map(p => [p.faction_id, p]));
+
+    // ── Nation-level affordability (single % applied to population) ──
+    const population = Number(nation.population ?? 0);
+    const poverty    = Number(nation.poverty_rate ?? 50) / 100;
+    const unemp      = Number(nation.unemployment ?? 50) / 100;
+    const col        = Number(nation.cost_of_living ?? 50);
+    const hcAccess   = Number(nation.healthcare_accessibility ?? 50) / 100;
+    const inflation  = Number(nation.inflation ?? 50);
+
+    let affordable = 0.40
+        - poverty * 0.50
+        - unemp   * 0.30
+        - ((col - 50) / 100) * 0.15
+        - hcAccess * 0.15;
+    affordable = Math.max(AFFORDABILITY_FLOOR, Math.min(AFFORDABILITY_CEILING, affordable));
+    const addressable = Math.max(0, Math.round(population * affordable));
+
+    // Premium scales with inflation: 50→1.0x, 0→0.5x, 100→1.5x
+    const premium = Math.max(1, Math.round(BASE_PREMIUM_USD * (1 + (inflation - 50) / 100)));
+
+    let totalCollected = 0;
+    let processedCount = 0;
+
+    for (const faction of (factions || [])) {
+        try {
+            // Gate 2: defence-in-depth subsector check
+            if ((faction.corp_subsector || '').toLowerCase() !== 'insurance') {
+                console.warn(`[HealthIns] ${faction.faction_name} owns an insurance_office but corp_subsector='${faction.corp_subsector}' — skipping.`);
+                continue;
+            }
+
+            const capacity = capByFaction[faction.id] || 0;
+            const maxPolicyholders = capacity * POLICIES_PER_CAPACITY;
+
+            // Gate 3: skilled-workforce staffing check
+            const skilled = Number(faction.corp_skilled_workforce ?? 0);
+            const skilledRequired = Math.ceil(capacity * SKILLED_WORKFORCE_RATIO);
+            const operatingAllowed = skilled >= skilledRequired;
+
+            const existing = poolByFaction[faction.id];
+            const policyholders = existing ? Number(existing.policyholders ?? 0) : 0;
+
+            // Phase 2: market share = 100% (no competitor split until Phase 6)
+            const target = Math.min(addressable, maxPolicyholders);
+
+            // Flow:
+            //   – Idle (understaffed) → no change in policyholders, zero revenue
+            //   – Over cap (office lost) → attrition toward target
+            //   – Otherwise → trickle toward target
+            let newPolicyholders: number;
+            if (!operatingAllowed) {
+                newPolicyholders = policyholders;
+            } else if (policyholders > target) {
+                newPolicyholders = Math.max(0, Math.round(policyholders - (policyholders - target) * ATTRITION_RATE));
+            } else {
+                newPolicyholders = Math.round(policyholders + (target - policyholders) * TRICKLE_RATE);
+            }
+
+            const revenue = operatingAllowed ? newPolicyholders * premium : 0;
+
+            // ── Upsert the pool row ──
+            if (existing) {
+                const newTotal = Number(existing.total_revenue_collected || 0) + revenue;
+                const { error: updErr } = await supabase
+                    .from('health_insurance_pools')
+                    .update({
+                        policyholders: newPolicyholders,
+                        last_tick_revenue: revenue,
+                        last_tick_addressable: addressable,
+                        last_tick_premium: premium,
+                        total_revenue_collected: newTotal,
+                    })
+                    .eq('id', existing.id);
+                if (updErr) {
+                    console.warn(`[HealthIns] pool update failed for ${faction.faction_name} / ${nation.name}:`, updErr.message);
+                    continue;
+                }
+            } else {
+                const { error: insErr } = await supabase
+                    .from('health_insurance_pools')
+                    .insert({
+                        faction_id: faction.id,
+                        nation_id: nation.id,
+                        policyholders: newPolicyholders,
+                        last_tick_revenue: revenue,
+                        last_tick_addressable: addressable,
+                        last_tick_premium: premium,
+                        total_revenue_collected: revenue,
+                    });
+                if (insErr) {
+                    console.warn(`[HealthIns] pool insert failed for ${faction.faction_name} / ${nation.name}:`, insErr.message);
+                    continue;
+                }
+            }
+
+            // ── Credit revenue (skip the write entirely when zero) ──
+            if (revenue > 0) {
+                const currentCash = Number(faction.corp_cash_reserves ?? 0);
+                const newCash = currentCash + revenue;
+                const { error: cashErr } = await supabase
+                    .from('factions')
+                    .update({ corp_cash_reserves: newCash })
+                    .eq('id', faction.id);
+                if (cashErr) {
+                    console.warn(`[HealthIns] cash credit failed for ${faction.faction_name}:`, cashErr.message);
+                    continue;
+                }
+                // Keep the local copy in sync so a second pool for the same corp
+                // (different nation, same tick) credits against the updated value.
+                faction.corp_cash_reserves = newCash;
+                totalCollected += revenue;
+            }
+
+            processedCount += 1;
+            const staffStatus = operatingAllowed ? 'OK' : `UNDERSTAFFED(${skilled}/${skilledRequired})`;
+            console.log(`[HealthIns] ${faction.faction_name} / ${nation.name}: holders ${policyholders}→${newPolicyholders} (target ${target}, cap ${maxPolicyholders}), premium $${premium}, revenue $${revenue.toLocaleString()} [${staffStatus}]`);
+        } catch (factionErr) {
+            console.error(`[HealthIns] faction loop threw (faction_id=${faction.id}):`, factionErr);
+        }
+    }
+
+    return { processed: processedCount, collected: totalCollected, addressable, premium };
+}
+
 function parseRequiredForSectors(rawRequiredFor) {
     if (Array.isArray(rawRequiredFor)) return rawRequiredFor.filter(Boolean);
     if (typeof rawRequiredFor === 'string') {
@@ -3855,6 +4056,17 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (hqIncErr) {
                 console.error(`[advance-corp-tick] Regional HQ income failed for ${nation.name} (non-fatal):`, hqIncErr);
                 summary.errors.push({ nation: nation.name, sector: 'regional_hq_income', error: String(hqIncErr) });
+            }
+
+            // ── Health Insurance (Phase 2: policyholder growth + premium revenue) ──
+            try {
+                const healthResult = await processHealthInsurancePools(supabase, nation, currentTick);
+                if (healthResult && healthResult.processed > 0) {
+                    console.log(`[advance-corp-tick] ${nation.name}: health insurance processed ${healthResult.processed} pool(s), collected $${(healthResult.collected || 0).toLocaleString()}.`);
+                }
+            } catch (healthErr) {
+                console.error(`[advance-corp-tick] Health insurance failed for ${nation.name} (non-fatal):`, healthErr);
+                summary.errors.push({ nation: nation.name, sector: 'health_insurance', error: String(healthErr) });
             }
 
             // ── Corp-specific processing (requires local corporations) ──

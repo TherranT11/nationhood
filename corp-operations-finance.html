@@ -3394,18 +3394,34 @@ async function loadCollections() {
     renderCollections();
 }
 
-// ==================== HEALTH INSURANCE (Phase 1) ====================
+// ==================== HEALTH INSURANCE (Phase 2) ====================
 //
-// Phase 1 is foundation only: detect Insurance Office properties, surface
-// the three blocker states (no office / Universal Healthcare in force /
-// understaffed), and otherwise show a "ready" placeholder. No premiums,
-// claims, lawsuits, or market share — those land in Phase 2+.
+// Phase 2 adds live policyholder pools + premium revenue. The tick processor
+// (advance-corp-tick → processHealthInsurancePools) writes to
+// health_insurance_pools each tick; this panel reads that table plus the
+// owned Insurance Offices and renders a per-nation pool card.
+//
+// The blocker states from Phase 1 still apply:
+//   – LOCKED: no Insurance Office owned
+//   – POLICY-BLOCKED: every owned office is in a nation with Universal Healthcare
+//   – UNDERSTAFFED: corp_skilled_workforce < 60% of total office capacity
+//   – UNVERIFIED: active_laws lookup failed (can't confirm policy gate)
+//   – READY: at least one office is operating normally
+
+// Tunables mirrored from the tick processor so the UI can show projected
+// caps + forthcoming premium without a round-trip. Keep in sync with
+// supabase/functions/advance-corp-tick/index.ts processHealthInsurancePools.
+const HI_POLICIES_PER_CAPACITY = 50;
+const HI_SKILLED_WORKFORCE_RATIO = 0.60;
 
 let _hiState = {
     subsectorAllowed: false,    // corp_subsector === 'insurance'
     offices: [],                // [{ id, name, capacity, nation_id, nation_name }]
+    poolsByNation: {},          // nation_id → pool row
     universalHealthcareNations: new Set(), // nation_ids where the Act is in force
     lawsLookupFailed: false,    // true if the active_laws fetch errored
+    officesLookupFailed: false, // true if corp_properties fetch errored
+    poolsLookupFailed: false,   // true if health_insurance_pools fetch errored
     skilled: 0,                 // faction.corp_skilled_workforce
     skilledRequired: 0,         // ~60% of total office capacity
 };
@@ -3416,8 +3432,12 @@ async function loadHealthInsurance() {
     _hiState.subsectorAllowed = (faction.corp_subsector || '').toLowerCase() === 'insurance';
     _hiState.skilled = Number(faction.corp_skilled_workforce || 0);
     _hiState.offices = [];
+    _hiState.poolsByNation = {};
     _hiState.universalHealthcareNations = new Set();
     _hiState.skilledRequired = 0;
+    _hiState.officesLookupFailed = false;
+    _hiState.poolsLookupFailed = false;
+    _hiState.lawsLookupFailed = false;
 
     if (!_hiState.subsectorAllowed) { renderHealthInsurance(); return; }
 
@@ -3428,7 +3448,10 @@ async function loadHealthInsurance() {
         .eq('faction_id', faction.id)
         .eq('type', 'insurance_office')
         .eq('is_active', true);
-    if (officesErr) console.warn('[HealthIns] office fetch failed:', officesErr.message);
+    if (officesErr) {
+        console.warn('[HealthIns] office fetch failed:', officesErr.message);
+        _hiState.officesLookupFailed = true;
+    }
 
     _hiState.offices = (offices || []).map(o => ({
         id: o.id,
@@ -3438,32 +3461,48 @@ async function loadHealthInsurance() {
         nation_name: o.nations?.name || 'Unknown',
     }));
 
-    // Skilled-workforce target: 60% of total office capacity. Phase 2 will
-    // gate revenue on this; Phase 1 just surfaces it on the panel.
     const totalCapacity = _hiState.offices.reduce((s, o) => s + o.capacity, 0);
-    _hiState.skilledRequired = Math.ceil(totalCapacity * 0.6);
+    _hiState.skilledRequired = Math.ceil(totalCapacity * HI_SKILLED_WORKFORCE_RATIO);
 
-    // Universal Healthcare gate — block any nation where the Act is in force.
-    // Stub policy is shipped in 20260423_health_insurance_phase1.sql so the
-    // lookup always has a target even before the Act has any real effects.
-    // If the lookup fails we surface the error in the panel rather than
-    // silently flipping to "READY" — a missed gate could let a corp claim to
-    // operate in a nation where the Act is actually in force.
-    _hiState.lawsLookupFailed = false;
     const officeNationIds = [...new Set(_hiState.offices.map(o => o.nation_id))];
-    if (officeNationIds.length > 0) {
-        const { data: laws, error: lawsErr } = await _supabase.from('active_laws')
-            .select('nation_id, policy:policies!policy_id(policy_key)')
-            .in('nation_id', officeNationIds);
-        if (lawsErr) {
-            console.warn('[HealthIns] active_laws fetch failed:', lawsErr.message);
-            _hiState.lawsLookupFailed = true;
-        } else {
-            for (const l of (laws || [])) {
-                if (l.policy?.policy_key === 'universal_healthcare') {
-                    _hiState.universalHealthcareNations.add(l.nation_id);
-                }
+
+    // Parallel: laws lookup + pool rows. Independent queries so we don't
+    // pay sequential round-trips; a failure in one shouldn't block the other.
+    const [lawsRes, poolsRes] = await Promise.all([
+        officeNationIds.length > 0
+            ? _supabase.from('active_laws')
+                .select('nation_id, policy:policies!policy_id(policy_key)')
+                .in('nation_id', officeNationIds)
+            : Promise.resolve({ data: [], error: null }),
+        _supabase.from('health_insurance_pools')
+            .select('*')
+            .eq('faction_id', faction.id),
+    ]);
+
+    // Universal Healthcare gate. If the lookup fails we surface the error in
+    // the panel rather than silently flipping to READY — a missed gate could
+    // let a corp claim to operate in a nation where the Act is in force.
+    if (lawsRes.error) {
+        console.warn('[HealthIns] active_laws fetch failed:', lawsRes.error.message);
+        _hiState.lawsLookupFailed = true;
+    } else {
+        for (const l of (lawsRes.data || [])) {
+            if (l.policy?.policy_key === 'universal_healthcare') {
+                _hiState.universalHealthcareNations.add(l.nation_id);
             }
+        }
+    }
+
+    // Index pools by nation. New offices in a nation where no pool exists yet
+    // (tick hasn't run since construction) render with zero policyholders.
+    // A fetch failure is surfaced in the UI rather than silently showing
+    // zeroes — a corp with a real pool would think they're earning nothing.
+    if (poolsRes.error) {
+        console.warn('[HealthIns] pools fetch failed:', poolsRes.error.message);
+        _hiState.poolsLookupFailed = true;
+    } else {
+        for (const pool of (poolsRes.data || [])) {
+            _hiState.poolsByNation[pool.nation_id] = pool;
         }
     }
 
@@ -3510,7 +3549,16 @@ function renderHealthInsurance() {
 
     // ── State 1: no Insurance Office anywhere ──
     if (officeCount === 0) {
-        bodyHtml = `
+        // Distinguish "truly no offices" from "couldn't fetch offices". The
+        // two look identical on-screen without this flag and would mislead a
+        // player who has offices but hit a transient Supabase error.
+        bodyHtml = _hiState.officesLookupFailed
+            ? `
+            <div class="hi-callout" style="border-color:rgba(200,132,68,0.45);">
+                <div class="hi-callout__title" style="color:#c84;">Could not load offices</div>
+                <div class="hi-callout__body">Failed to fetch your Insurance Office properties. Refresh the page; if this persists, check your connection and open the console for details.</div>
+            </div>`
+            : `
             <div class="hi-callout">
                 <div class="hi-callout__title">Build an Insurance Office to begin</div>
                 <div class="hi-callout__body">
@@ -3522,43 +3570,97 @@ function renderHealthInsurance() {
             <a class="hi-cta" href="expansion.html">GO TO PROPERTY &amp; EXPANSION →</a>`;
     } else {
         // ── States 2-4: at least one office exists ──
-        const officeListHtml = _hiState.offices.map(o => {
-            const blocked = blockedNations.has(o.nation_id);
-            const tagColor = blocked ? '#c55' : '#5c5';
-            const tagLabel = blocked ? 'BLOCKED' : 'OPERATING';
-            return `
-            <div class="hi-office-row">
-                <div style="min-width:0;flex:1;overflow:hidden;">
-                    <div class="hi-office-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(o.name)}</div>
-                    <div class="hi-office-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(o.nation_name)} · cap ${o.capacity.toLocaleString()}</div>
-                </div>
-                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:${tagColor};border:1px solid ${tagColor}55;background:${tagColor}11;flex-shrink:0;margin-left:8px;">${tagLabel}</span>
-            </div>`;
-        }).join('');
+        // Group offices by nation so we can render one pool card per nation
+        // (pools live at the (faction, nation) level, not per-office).
+        const nationMap = {};
+        for (const o of _hiState.offices) {
+            if (!nationMap[o.nation_id]) {
+                nationMap[o.nation_id] = { nation_id: o.nation_id, nation_name: o.nation_name, offices: [], capacity: 0 };
+            }
+            nationMap[o.nation_id].offices.push(o);
+            nationMap[o.nation_id].capacity += o.capacity;
+        }
+
+        // Corp-wide totals across all pools
+        const totalPolicyholders = Object.values(_hiState.poolsByNation).reduce((s, p) => s + Number(p.policyholders || 0), 0);
+        const lastTickRevenue = Object.values(_hiState.poolsByNation).reduce((s, p) => s + Number(p.last_tick_revenue || 0), 0);
+        const lifetimeRevenue = Object.values(_hiState.poolsByNation).reduce((s, p) => s + Number(p.total_revenue_collected || 0), 0);
 
         const skilledColor = understaffed ? '#c84' : '#5c5';
         const skilledNote = understaffed
-            ? `Need ${(_hiState.skilledRequired - _hiState.skilled).toLocaleString()} more skilled workers to staff offices at full capacity.`
+            ? `Need ${(_hiState.skilledRequired - _hiState.skilled).toLocaleString()} more skilled workers to staff offices. Offices are idle — no policyholder growth, no revenue.`
             : `Skilled workforce sufficient to staff all offices.`;
+
+        // Per-nation pool cards
+        const poolCardsHtml = Object.values(nationMap).map(n => {
+            const pool = _hiState.poolsByNation[n.nation_id];
+            const blocked = blockedNations.has(n.nation_id);
+            const maxPolicyholders = n.capacity * HI_POLICIES_PER_CAPACITY;
+            const holders = pool ? Number(pool.policyholders || 0) : 0;
+            const fillPct = maxPolicyholders > 0 ? Math.min(100, Math.round(holders / maxPolicyholders * 100)) : 0;
+            const addressable = pool ? Number(pool.last_tick_addressable || 0) : 0;
+            const premium = pool ? Number(pool.last_tick_premium || 0) : 0;
+            const revenue = pool ? Number(pool.last_tick_revenue || 0) : 0;
+
+            const tagColor = blocked ? '#c55' : (understaffed ? '#c84' : '#5c5');
+            const tagLabel = blocked ? 'BLOCKED' : (understaffed ? 'IDLE' : 'OPERATING');
+            const barColor = blocked || understaffed ? '#6a6660' : '#5c5';
+            const borderColor = blocked ? 'rgba(204,85,85,0.35)' : 'var(--panel-border)';
+
+            return `
+            <div class="hi-callout" style="padding:8px 10px;border-color:${borderColor};">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;">
+                    <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.8px;color:var(--text-bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(n.nation_name)}</div>
+                    <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:${tagColor};border:1px solid ${tagColor}55;background:${tagColor}11;flex-shrink:0;">${tagLabel}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:10px;color:#9e9a92;margin-bottom:3px;">
+                    <span>Policyholders</span>
+                    <span style="color:var(--panel-text);font-weight:700;">${holders.toLocaleString()} / ${maxPolicyholders.toLocaleString()}</span>
+                </div>
+                <div style="width:100%;height:3px;background:var(--panel-border);margin-bottom:6px;">
+                    <div style="width:${fillPct}%;height:100%;background:${barColor};"></div>
+                </div>
+                <div class="hi-stat-row">
+                    <span class="hi-stat-label">Addressable Market</span>
+                    <span class="hi-stat-value">${addressable > 0 ? addressable.toLocaleString() : '—'}</span>
+                </div>
+                <div class="hi-stat-row">
+                    <span class="hi-stat-label">Premium / mo</span>
+                    <span class="hi-stat-value">${premium > 0 ? '$' + premium.toLocaleString() : '—'}</span>
+                </div>
+                <div class="hi-stat-row">
+                    <span class="hi-stat-label">Last Tick Revenue</span>
+                    <span class="hi-stat-value" style="color:${revenue > 0 ? '#5c5' : '#6a6660'};">${revenue > 0 ? '+' + fmtMoney(revenue) : '—'}</span>
+                </div>
+                <div class="hi-stat-row">
+                    <span class="hi-stat-label">Offices</span>
+                    <span class="hi-stat-value">${n.offices.length} · cap ${n.capacity.toLocaleString()}</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        const noPoolsYet = Object.keys(_hiState.poolsByNation).length === 0;
 
         bodyHtml = `
             <div class="hi-callout">
-                <div class="hi-callout__title">Phase 1 — Foundation</div>
-                <div class="hi-callout__body">Premium income, citizen acquisition, and claim events arrive in a future update. For now this panel surfaces your Insurance Office footprint and operating constraints.</div>
+                <div class="hi-callout__title">Phase 2 — Premium income</div>
+                <div class="hi-callout__body">${noPoolsYet
+                    ? `Offices are built but the corp tick hasn't processed yet. Policyholders start arriving on the next tick.`
+                    : `Policyholders grow slowly toward the addressable-market cap each tick. Premium scales with the nation's inflation.`}</div>
             </div>
 
             <div class="hi-callout" style="padding:8px 12px;">
                 <div class="hi-stat-row">
-                    <span class="hi-stat-label">Insurance Offices</span>
-                    <span class="hi-stat-value">${officeCount}</span>
+                    <span class="hi-stat-label">Total Policyholders</span>
+                    <span class="hi-stat-value">${totalPolicyholders.toLocaleString()}</span>
                 </div>
                 <div class="hi-stat-row">
-                    <span class="hi-stat-label">Total Capacity</span>
-                    <span class="hi-stat-value">${totalCapacity.toLocaleString()}</span>
+                    <span class="hi-stat-label">Last Tick Revenue</span>
+                    <span class="hi-stat-value" style="color:${lastTickRevenue > 0 ? '#5c5' : '#6a6660'};">${lastTickRevenue > 0 ? '+' + fmtMoney(lastTickRevenue) : '—'}</span>
                 </div>
                 <div class="hi-stat-row">
-                    <span class="hi-stat-label">Operating Capacity</span>
-                    <span class="hi-stat-value">${operatingCapacity.toLocaleString()}</span>
+                    <span class="hi-stat-label">Lifetime Revenue</span>
+                    <span class="hi-stat-value">${lifetimeRevenue > 0 ? fmtMoney(lifetimeRevenue) : '—'}</span>
                 </div>
                 <div class="hi-stat-row">
                     <span class="hi-stat-label">Skilled Workforce</span>
@@ -3578,14 +3680,21 @@ function renderHealthInsurance() {
                 <div class="hi-callout__body">Could not check active laws — Universal Healthcare blocking is unconfirmed. Refresh the page; if this persists, do not assume offices are clear to operate.</div>
             </div>` : ''}
 
+            ${_hiState.poolsLookupFailed ? `
+            <div class="hi-callout" style="border-color:rgba(200,132,68,0.45);">
+                <div class="hi-callout__title" style="color:#c84;">Pool data unavailable</div>
+                <div class="hi-callout__body">Could not load health insurance pool stats — the policyholder and revenue numbers shown may be stale or missing. Refresh the page.</div>
+            </div>` : ''}
+
+            ${understaffed ? `
             <div class="hi-callout" style="border-color:${skilledColor}55;">
                 <div class="hi-callout__title" style="color:${skilledColor};">Staffing</div>
                 <div class="hi-callout__body">${skilledNote}</div>
-            </div>
+            </div>` : ''}
 
             <div>
-                <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:4px;">Offices</div>
-                ${officeListHtml}
+                <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:4px;">Pools</div>
+                ${poolCardsHtml}
             </div>`;
     }
 
