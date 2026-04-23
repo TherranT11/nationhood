@@ -4167,8 +4167,20 @@ function _deliveryPropertyMeta(contract, paidPrice) {
     }
     // Custom corp-commissioned buildings submitted via cpSubmit.
     if (tk === 'custom_building') {
+        // project_type carries the user's chosen building category from the
+        // construction modal (Office Building / Insurance Office / etc.).
+        // Subsector-specific buildings get their own corp_properties.type so
+        // the tick processor and panel-gating queries can find them; the rest
+        // collapse to the generic 'office' type for backwards compatibility.
+        const PROJECT_TYPE_MAP = {
+            'Insurance Office': 'insurance_office',
+            'Claims Office':    'claims_office',
+            'Branch Office':    'branch_office',
+            'Trading Floor':    'trading_floor',
+        };
+        const propType = PROJECT_TYPE_MAP[contract.project_type] || 'office';
         return {
-            type: 'office',
+            type: propType,
             style: contract.project_subtype || 'Basic',
             capacity: 500,
             maintenance: Math.round(paidPrice * 0.001),
@@ -4215,7 +4227,7 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
 
         // Fetch contract + status to guard against double-delivery, plus issuer info
         const { data: contract } = await _supabase.from('construction_contracts')
-            .select('awarded_at_tick, timeline_ticks, stalled_ticks, issuer_faction_id, nation_id, status, name, template_key, project_subtype, issuer_type, issuer_name')
+            .select('awarded_at_tick, timeline_ticks, stalled_ticks, issuer_faction_id, nation_id, status, name, template_key, project_type, project_subtype, issuer_type, issuer_name')
             .eq('id', contractId).single();
         if (!contract) { alert('Contract not found.'); return; }
         if (contract.status === 'completed' || contract.status === 'delivered') {

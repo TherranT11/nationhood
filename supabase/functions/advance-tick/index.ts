@@ -33417,6 +33417,11 @@ const DEFAULT_MISSED_THRESHOLD = 4;
 var SERVICE_SUBSECTORS = {
     'Insurance': 'insurance',
     'Banking': 'loan',
+    // Health Insurance is a sub-product of the Insurance subsector. It is
+    // gated by an Insurance Office property in the operating nation rather
+    // than by subsector alone, so the subsector key here is still 'Insurance'
+    // — this entry exists so the auto-rate engine recognises the service_type.
+    'HealthInsurance': 'health_insurance',
 };
 
 /**
