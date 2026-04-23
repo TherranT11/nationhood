@@ -4163,7 +4163,7 @@ function showConvertModal(propId, propName, purchasePrice) {
     const subsector = (faction?.corp_subsector || '').toLowerCase();
     const options = subsector === 'banking' ? [['branch_office', 'Branch Office']]
         : subsector === 'investment' ? [['trading_floor', 'Trading Floor']]
-        : subsector === 'insurance' ? [['claims_office', 'Claims Office']]
+        : subsector === 'insurance' ? [['claims_office', 'Claims Office'], ['insurance_office', 'Insurance Office']]
         : [];
     if (options.length === 0) return;
     _convertTargetType = options[0][0];
@@ -4825,6 +4825,7 @@ init();
     <tr><td>Branch Office</td><td>Banking</td><td>Increases lending capacity, enables cross-nation lending</td></tr>
     <tr><td>Trading Floor</td><td>Investment</td><td>Enables secondary bond market, portfolio management</td></tr>
     <tr><td>Claims Office</td><td>Insurance</td><td>Faster claim processing, local presence reduces premiums</td></tr>
+    <tr><td>Insurance Office</td><td>Insurance</td><td>Required to sell Health Insurance in the nation. Needs skilled workforce to staff (~60% of capacity).</td></tr>
     </table>
     <p>Convert existing offices to specialty buildings via the <strong>CONVERT</strong> button (15% cost + 4-9 ticks).</p>
     </div></details>

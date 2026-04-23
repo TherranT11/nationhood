@@ -123,7 +123,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 /* Deal Flow container — Deal cards scaled up ~40% and given full borders so
    they read clearly as tap targets. Designed around a ≥44px high row to
    satisfy touch guidelines without further mobile overrides. */
-.df-container { width:440px; height:520px; background:var(--panel-main); border:1px solid var(--panel-border); display:flex; flex-direction:column; overflow:hidden; }
+.df-container { width:380px; height:450px; background:var(--panel-main); border:1px solid var(--panel-border); display:flex; flex-direction:column; overflow:hidden; }
 .df-header { padding:10px 16px; border-bottom:1px solid var(--panel-border); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
 .df-header__left { display:flex; align-items:center; gap:8px; }
 .df-header__dot { font-size:10px; color:var(--teal); }
@@ -3606,10 +3606,16 @@ async function loadHealthInsurance() {
 
     if (!_hiState.subsectorAllowed) { renderHealthInsurance(); return; }
 
-    // Owned Insurance Offices across all nations the corp operates in
+    // Owned Insurance Offices across all nations the corp operates in.
+    // Mid-refurbish offices (being converted from a generic office) are
+    // offline during the conversion window, so we filter them out — they
+    // shouldn't count toward the skilled-workforce requirement or appear in
+    // the per-nation pool cards. They reappear automatically once
+    // refurbish_until_tick passes.
+    const currentTickForOffices = Number(shard?.current_tick ?? 0);
     const { data: offices, error: officesErr } = await _supabase
         .from('corp_properties')
-        .select('id, name, capacity, nation_id, nations:nation_id(name)')
+        .select('id, name, capacity, nation_id, refurbish_until_tick, nations:nation_id(name)')
         .eq('faction_id', faction.id)
         .eq('type', 'insurance_office')
         .eq('is_active', true);
@@ -3618,13 +3624,15 @@ async function loadHealthInsurance() {
         _hiState.officesLookupFailed = true;
     }
 
-    _hiState.offices = (offices || []).map(o => ({
-        id: o.id,
-        name: o.name,
-        capacity: Number(o.capacity || 0),
-        nation_id: o.nation_id,
-        nation_name: o.nations?.name || 'Unknown',
-    }));
+    _hiState.offices = (offices || [])
+        .filter(o => Number(o.refurbish_until_tick ?? 0) <= currentTickForOffices)
+        .map(o => ({
+            id: o.id,
+            name: o.name,
+            capacity: Number(o.capacity || 0),
+            nation_id: o.nation_id,
+            nation_name: o.nations?.name || 'Unknown',
+        }));
 
     const totalCapacity = _hiState.offices.reduce((s, o) => s + o.capacity, 0);
     _hiState.skilledRequired = Math.ceil(totalCapacity * HI_SKILLED_WORKFORCE_RATIO);
@@ -3655,7 +3663,7 @@ async function loadHealthInsurance() {
             .order('resolution_tick', { ascending: true }),
         officeNationIds.length > 0
             ? _supabase.from('corp_properties')
-                .select('faction_id, nation_id, capacity')
+                .select('faction_id, nation_id, capacity, refurbish_until_tick')
                 .in('nation_id', officeNationIds)
                 .eq('type', 'insurance_office')
                 .eq('is_active', true)
@@ -3753,11 +3761,17 @@ async function loadHealthInsurance() {
 function computeMarketsByNation(args) {
     const { myFactionId, officeNations, allOffices, allPools, marketFactions, blockedNations } = args;
 
-    // Capacity + owners per nation.
+    // Capacity + owners per nation. Skip mid-refurbish offices — they're
+    // offline during conversion and contribute neither capacity nor
+    // attractiveness until the refurbish window closes. Matches the
+    // processor's own filter in processHealthInsurancePools.
+    const currentTickForFilter = Number(shard?.current_tick ?? 0);
     const capByNation = {};     // nation_id → { faction_id → total_capacity }
     for (const nId of officeNations) capByNation[nId] = {};
     for (const o of allOffices) {
         if (!capByNation[o.nation_id]) continue;
+        const refurbUntil = Number(o.refurbish_until_tick ?? 0);
+        if (refurbUntil > currentTickForFilter) continue;
         capByNation[o.nation_id][o.faction_id] = (capByNation[o.nation_id][o.faction_id] || 0) + Number(o.capacity || 0);
     }
 

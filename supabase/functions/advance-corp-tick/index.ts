@@ -1724,9 +1724,15 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
     }
 
     // ── Load active Insurance Offices in this nation, sum capacity per faction ──
+    // Includes refurbish_until_tick so we can exclude offices mid-conversion:
+    // when a player converts a generic office via the dashboard's Convert
+    // modal, the row's type flips to 'insurance_office' immediately but
+    // refurbish_until_tick is set ~4-9 ticks in the future. The property is
+    // "offline" during that window — it shouldn't earn premium revenue or
+    // count toward the corp's capacity cap until conversion completes.
     const { data: offices, error: offErr } = await supabase
         .from('corp_properties')
-        .select('faction_id, capacity')
+        .select('faction_id, capacity, refurbish_until_tick')
         .eq('nation_id', nation.id)
         .eq('type', 'insurance_office')
         .eq('is_active', true);
@@ -1739,6 +1745,9 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
     for (const o of offices) {
         const fid = o.faction_id;
         if (!fid) continue;
+        // Skip mid-refurbish offices — they're converting, not operating.
+        const refurbUntil = Number(o.refurbish_until_tick ?? 0);
+        if (refurbUntil > currentTick) continue;
         capByFaction[fid] = (capByFaction[fid] || 0) + Number(o.capacity || 0);
     }
     const factionIds = Object.keys(capByFaction);
