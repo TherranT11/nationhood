@@ -1479,18 +1479,18 @@ function calculateDomesticProduction(nation, sector, opts) {
     // still a major oil producer. energy_generation applies as a modifier
     // around neutral (±25% at stat=0/100, 1.0x at gen=50) representing
     // refining/transport quality. Stability drags below 40.
-    //   oil=100, gen=50, stab>=40 → $20B (max baseline)
-    //   oil=100, gen=100          → $25B (full grid bonus)
-    //   oil=100, gen=0            → $15B (still produces — stat matters but doesn't gate)
+    //   oil=100, gen=50, stab>=40 → $32B (max baseline)
+    //   oil=100, gen=100          → $40B (full grid bonus)
+    //   oil=100, gen=0            → $24B (still produces — stat matters but doesn't gate)
     //   oil=0                     → 0    (no reserves = no production, regardless of grid)
-    //   $2.5B ≈ 1 Mbbl/d at display calibration, so $20B ≈ 8 Mbbl/d (near Saudi-tier).
+    //   Display basis $5B ≈ 1 Mbbl/d, so $40B ≈ 8 Mbbl/d (near Saudi-tier).
     if (sector.key === 'fuel_energy') {
         var oil = Number(nation.oil_and_gas) || 0;
         var gen = Number(nation.energy_generation) || 0;
         var stab = Number(nation.stability ?? 50);
         var genModifier = 0.75 + (gen / 100) * 0.5;
         return Math.round(
-            (oil / 100) * 20e9 * genModifier * Math.min(1.0, stab / 40)
+            (oil / 100) * 32e9 * genModifier * Math.min(1.0, stab / 40)
         );
     }
 
@@ -1649,14 +1649,14 @@ function calculateExportCapacity(nation, sector, opts) {
  * @returns {number} import demand in dollars
  */
 // Shared fuel-demand math — single source of truth for the simplified model.
-// Four-factor conglomeration: population × intensity × $550M, where
+// Four-factor conglomeration: population × intensity × $880M, where
 // intensity = (urbanization + standard_of_living + manufacturing_output) / 300.
 // Urbanization drives transport/household energy; standard_of_living drives
 // consumer demand (cars, heating, travel); manufacturing_output drives
 // industrial fuel use. Equal weights, no caps, no separate coverage layer.
-// Calibration: $550M per 1M pop at intensity=1 — combined with new
-// production formula (max ~$25B per nation) global demand lands ~1.25x
-// global production so fuel stays in persistent deficit.
+// Calibration: $880M per 1M pop at intensity=1 — combined with production
+// formula (max $40B per nation at oil=100, gen=100, stab>=40) global demand
+// lands ~1.25x global production so fuel stays in persistent deficit.
 // Import demand and export capacity derive directly from max(0, gross -
 // production) and max(0, production - gross).
 function computeFuelDemand(nation) {
@@ -1666,7 +1666,7 @@ function computeFuelDemand(nation) {
     const manuf = Number(nation.manufacturing_output) || 0;
 
     const intensity = (urban + sol + manuf) / 300;
-    const gross = (pop / 1_000_000) * 550_000_000 * intensity;
+    const gross = (pop / 1_000_000) * 880_000_000 * intensity;
     return { gross: Math.round(gross) };
 }
 
