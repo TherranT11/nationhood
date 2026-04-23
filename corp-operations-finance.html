@@ -1703,6 +1703,10 @@ async function apRestructure(loanId) {
 }
 
 async function apCallLoan(loanId) {
+    if (_callLoanLock) return;
+
+    // UI-side pre-check for a friendlier message. RPC re-checks
+    // inside a FOR UPDATE lock so this is advisory only.
     const { data: currentLoan } = await _supabase.from('finance_active_loans').select('status,payments_missed').eq('id', loanId).single();
     const currentStatus = String(currentLoan?.status || '').toUpperCase();
     const missedPayments = Number(currentLoan?.payments_missed || 0);
@@ -1713,15 +1717,32 @@ async function apCallLoan(loanId) {
 
     if (!confirm('CALL LOAN\n\nDemand immediate full repayment of remaining principal.\nThe borrower will have 3 ticks to pay or default.\n\nProceed?')) return;
 
-    const { error } = await _supabase.from('finance_active_loans').update({
-        status: 'delinquent',
-        payments_missed: 3, // one more miss → default with collateral recovery
-    }).eq('id', loanId);
+    _callLoanLock = true;
+    try {
+        const { data: result, error } = await _supabase.rpc('process_finance_loan_call', {
+            p_loan_id: loanId,
+        });
 
-    if (error) { alert('Failed: ' + error.message); return; }
-    alert('Loan called. Borrower has 1 tick to pay before default.');
-    await loadActivePortfolio();
-    renderActivePortfolio();
+        if (error) { alert('Call Loan failed: ' + error.message); return; }
+        if (!result?.ok) {
+            const reasonMessages = {
+                not_authenticated:    'Not authenticated.',
+                loan_not_found:       'Loan not found.',
+                loan_already_closed:  'Loan is already closed.',
+                not_a_loan:           'That row is not a loan — only loans can be called.',
+                already_escalated:    'Call Loan unavailable. Loan is already delinquent or escalated.',
+                not_lender:           'Only the lender can call this loan.',
+            };
+            alert('Call Loan failed: ' + (reasonMessages[result?.reason] || result?.reason || 'unknown'));
+            return;
+        }
+
+        alert('Loan called. Borrower has 1 tick to pay before default.');
+        await loadActivePortfolio();
+        renderActivePortfolio();
+    } finally {
+        _callLoanLock = false;
+    }
 }
 
 async function apForeclose(loanId) {
@@ -1789,86 +1810,101 @@ async function apForeclose(loanId) {
 }
 
 async function apPayClaim(loanId) {
-    const { data: policy } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
+    if (_claimLock) return;
+
+    // Read-only fetch for the confirm dialog preview. The RPC
+    // recomputes the payout authoritatively from the locked policy
+    // row, so this is display-only.
+    const { data: policy } = await _supabase.from('finance_active_loans').select('principal,claims_paid,deductible_pct').eq('id', loanId).single();
     if (!policy) { alert('Policy not found.'); return; }
 
     const claimAmount = Number(policy.principal || 0) - Number(policy.claims_paid || 0);
     const deductible = Number(policy.deductible_pct || 0) / 100;
-    const payout = Math.round(claimAmount * (1 - deductible));
+    const previewPayout = Math.round(claimAmount * (1 - deductible));
 
-    if (!confirm(`PAY CLAIM IN FULL\n\nClaim: ${fmtMoney(claimAmount)}\nDeductible: ${policy.deductible_pct}%\nPayout: ${fmtMoney(payout)}\n\nThis will be deducted from your cash reserves.`)) return;
+    if (!confirm(`PAY CLAIM IN FULL\n\nClaim: ${fmtMoney(claimAmount)}\nDeductible: ${policy.deductible_pct}%\nPayout: ${fmtMoney(previewPayout)}\n\nThis will be deducted from your cash reserves.`)) return;
 
-    const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
-    const cash = Number(lender?.corp_cash_reserves || 0);
-    if (cash < payout) { alert('Insufficient funds. You have ' + fmtMoney(cash) + '.'); return; }
+    _claimLock = true;
+    try {
+        const { data: result, error } = await _supabase.rpc('process_insurance_claim_pay_full', {
+            p_policy_id: loanId,
+        });
 
-    // Deduct from insurer
-    await _supabase.from('factions').update({ corp_cash_reserves: cash - payout }).eq('id', faction.id);
-    faction.corp_cash_reserves = cash - payout;
+        if (error) { alert('Claim payout failed: ' + error.message); return; }
+        if (!result?.ok) {
+            const reasonMessages = {
+                not_authenticated:      'Not authenticated.',
+                policy_not_found:       'Policy not found.',
+                policy_closed:          'Policy is already closed.',
+                not_insurance:          'That row is not an insurance policy.',
+                not_insurer:            'Only the insurer can pay this claim.',
+                insufficient_funds:     'Insufficient funds. You have ' + fmtMoney(result?.insurer_cash || 0) + ', need ' + fmtMoney(result?.required || 0) + '.',
+                policyholder_missing:   'Policyholder faction no longer exists.',
+            };
+            alert('Claim payout failed: ' + (reasonMessages[result?.reason] || result?.reason || 'unknown'));
+            return;
+        }
 
-    // Credit to policyholder
-    const { data: holder } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', policy.borrower_faction_id).single();
-    if (holder) {
-        await _supabase.from('factions').update({
-            corp_cash_reserves: Number(holder.corp_cash_reserves || 0) + payout
-        }).eq('id', policy.borrower_faction_id);
+        const payout = Number(result.payout || 0);
+        // Optimistic local cash update. Authoritative value is in DB.
+        faction.corp_cash_reserves = Math.max(0, Number(faction.corp_cash_reserves || 0) - payout);
+
+        alert('Claim paid: ' + fmtMoney(payout));
+        await loadActivePortfolio();
+        renderActivePortfolio();
+    } finally {
+        _claimLock = false;
     }
-
-    // Update policy
-    await _supabase.from('finance_active_loans').update({
-        claims_paid: Number(policy.claims_paid || 0) + payout,
-        claims_count: (policy.claims_count || 0) + 1,
-    }).eq('id', loanId);
-
-    alert('Claim paid: ' + fmtMoney(payout));
-    await loadActivePortfolio();
-    renderActivePortfolio();
 }
 
 async function apNegotiateClaim(loanId) {
+    if (_claimLock) return;
+
     const pctStr = prompt('NEGOTIATE CLAIM\n\nOffer a percentage of the claim to settle (10-90%):\n(Policyholder may reject low offers.)');
     if (!pctStr) return;
     const pct = parseInt(pctStr);
     if (isNaN(pct) || pct < 10 || pct > 90) { alert('Must be between 10% and 90%.'); return; }
 
-    // Simulate acceptance: higher offers more likely accepted
-    const acceptChance = pct / 100;
-    const accepted = Math.random() < acceptChance;
-
+    // Acceptance RNG stays client-side to match prior behavior.
+    // Rejected offers never reach the server.
+    const accepted = Math.random() < (pct / 100);
     if (!accepted) {
         alert('Offer rejected. The policyholder wants a higher settlement.');
         return;
     }
 
-    const { data: policy } = await _supabase.from('finance_active_loans').select('*').eq('id', loanId).single();
-    if (!policy) return;
+    _claimLock = true;
+    try {
+        const { data: result, error } = await _supabase.rpc('process_insurance_claim_settle', {
+            p_policy_id: loanId,
+            p_settlement_pct: pct,
+        });
 
-    const fullClaim = Number(policy.principal || 0) - Number(policy.claims_paid || 0);
-    const payout = Math.round(fullClaim * pct / 100);
+        if (error) { alert('Settlement failed: ' + error.message); return; }
+        if (!result?.ok) {
+            const reasonMessages = {
+                not_authenticated:      'Not authenticated.',
+                invalid_settlement_pct: 'Settlement must be between 10% and 90%.',
+                policy_not_found:       'Policy not found.',
+                policy_closed:          'Policy is already closed.',
+                not_insurance:          'That row is not an insurance policy.',
+                not_insurer:            'Only the insurer can settle this claim.',
+                insufficient_funds:     'Insufficient funds. You have ' + fmtMoney(result?.insurer_cash || 0) + ', need ' + fmtMoney(result?.required || 0) + '.',
+                policyholder_missing:   'Policyholder faction no longer exists.',
+            };
+            alert('Settlement failed: ' + (reasonMessages[result?.reason] || result?.reason || 'unknown'));
+            return;
+        }
 
-    const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
-    const cash = Number(lender?.corp_cash_reserves || 0);
-    if (cash < payout) { alert('Insufficient funds.'); return; }
+        const payout = Number(result.payout || 0);
+        faction.corp_cash_reserves = Math.max(0, Number(faction.corp_cash_reserves || 0) - payout);
 
-    await _supabase.from('factions').update({ corp_cash_reserves: cash - payout }).eq('id', faction.id);
-    faction.corp_cash_reserves = cash - payout;
-
-    const { data: holder } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', policy.borrower_faction_id).single();
-    if (holder) {
-        await _supabase.from('factions').update({
-            corp_cash_reserves: Number(holder.corp_cash_reserves || 0) + payout
-        }).eq('id', policy.borrower_faction_id);
+        alert('Claim settled at ' + pct + '% (' + fmtMoney(payout) + '). Policy closed.');
+        await loadActivePortfolio();
+        renderActivePortfolio();
+    } finally {
+        _claimLock = false;
     }
-
-    await _supabase.from('finance_active_loans').update({
-        claims_paid: Number(policy.claims_paid || 0) + payout,
-        claims_count: (policy.claims_count || 0) + 1,
-        status: 'repaid', // settled
-    }).eq('id', loanId);
-
-    alert('Claim settled at ' + pct + '% (' + fmtMoney(payout) + '). Policy closed.');
-    await loadActivePortfolio();
-    renderActivePortfolio();
 }
 
 async function apDisputeClaim(loanId) {
@@ -3009,6 +3045,8 @@ window.rdSetBondAmount = rdSetBondAmount;
 
 let _submittingOffer = false;
 let _foreclosureLock = false;
+let _callLoanLock = false;
+let _claimLock = false;
 async function rdSubmitOffer() {
     if (!rdDeal || !faction || !shard || _submittingOffer) return;
     if (rdDeal.alreadyOffered) {
