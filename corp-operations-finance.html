@@ -256,6 +256,15 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 .hi-office-meta { font-family:var(--font-mono); font-size:9px; color:#6a6660; }
 .hi-cta { padding:8px 0; text-align:center; font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:1px; color:#c4c2b8; border:1px solid var(--panel-border); background:var(--bg-card); cursor:pointer; text-decoration:none; display:block; }
 .hi-cta:hover { background:#201e1a; }
+
+/* Phase 3 — Tier selectors inside each pool card */
+.hi-tier-row { display:flex; align-items:center; gap:6px; margin-top:6px; }
+.hi-tier-label { font-family:var(--font-mono); font-size:8px; color:#6a6660; letter-spacing:0.8px; text-transform:uppercase; width:52px; flex-shrink:0; }
+.hi-tier-pills { display:flex; flex:1; gap:2px; }
+.hi-tier-pill { flex:1; text-align:center; padding:4px 0; font-family:var(--font-mono); font-size:9px; font-weight:700; cursor:pointer; letter-spacing:0.5px; border:1px solid var(--panel-border); color:#6a6660; background:transparent; transition:background 0.1s, color 0.1s; }
+.hi-tier-pill:hover { color:#a8a797; }
+.hi-tier-pill.active { color:#000; background:#8a6aaa; border-color:#8a6aaa; }
+.hi-tier-pill.disabled { opacity:0.4; cursor:wait; pointer-events:none; }
 .cc-scorecard { display:flex; border-bottom:1px solid var(--panel-border); background:var(--bg-panel); flex-shrink:0; }
 .cc-scorecard__cell { flex:1; padding:6px 14px; }
 .cc-scorecard__cell + .cc-scorecard__cell { border-left:1px solid var(--panel-border); }
@@ -3413,6 +3422,16 @@ async function loadCollections() {
 // supabase/functions/advance-corp-tick/index.ts processHealthInsurancePools.
 const HI_POLICIES_PER_CAPACITY = 50;
 const HI_SKILLED_WORKFORCE_RATIO = 0.60;
+const HI_REP_NEUTRAL = 65;
+const HI_PREMIUM_TIER_MULT  = { budget: 0.7, standard: 1.0, premium: 1.5 };
+const HI_COVERAGE_TIER_MULT = { basic: 0.6, standard: 1.0, comprehensive: 1.5 };
+const HI_PREMIUM_TIERS  = ['budget', 'standard', 'premium'];
+const HI_COVERAGE_TIERS = ['basic', 'standard', 'comprehensive'];
+
+// Set while an RPC call is in flight so the pill handlers can ignore
+// double-clicks. Using a plain boolean (not per-pool) because the RPC is
+// fast and changes are rare — simpler than tracking a set of in-flight IDs.
+let _hiTierSaving = false;
 
 let _hiState = {
     subsectorAllowed: false,    // corp_subsector === 'insurance'
@@ -3600,6 +3619,7 @@ function renderHealthInsurance() {
             : `Skilled workforce sufficient to staff all offices.`;
 
         // Per-nation pool cards
+        const reputation = Number(faction?.corp_reputation ?? HI_REP_NEUTRAL);
         const poolCardsHtml = Object.values(nationMap).map(n => {
             const pool = _hiState.poolsByNation[n.nation_id];
             const blocked = blockedNations.has(n.nation_id);
@@ -3610,10 +3630,33 @@ function renderHealthInsurance() {
             const premium = pool ? Number(pool.last_tick_premium || 0) : 0;
             const revenue = pool ? Number(pool.last_tick_revenue || 0) : 0;
 
+            // Current tiers, defaulting to 'standard' when the pool row
+            // doesn't exist yet (pre-first-tick or brand-new build).
+            const premiumTier  = pool?.premium_tier  || 'standard';
+            const coverageTier = pool?.coverage_tier || 'standard';
+
+            // Projected share given current tiers + reputation. Mirrors the
+            // tick processor's formula so the player can preview the impact
+            // of a tier change before waiting for the next tick.
+            const premiumMult  = HI_PREMIUM_TIER_MULT[premiumTier]   ?? 1.0;
+            const coverageMult = HI_COVERAGE_TIER_MULT[coverageTier] ?? 1.0;
+            const attractiveness = (coverageMult / premiumMult) * (reputation / HI_REP_NEUTRAL);
+            const yourShare = Math.max(0.1, Math.min(1.0, attractiveness));
+            const sharePct = Math.round(yourShare * 100);
+
             const tagColor = blocked ? '#c55' : (understaffed ? '#c84' : '#5c5');
             const tagLabel = blocked ? 'BLOCKED' : (understaffed ? 'IDLE' : 'OPERATING');
             const barColor = blocked || understaffed ? '#6a6660' : '#5c5';
             const borderColor = blocked ? 'rgba(204,85,85,0.35)' : 'var(--panel-border)';
+
+            // Tier pills. The data-* attrs carry everything the handler needs
+            // without string interpolation into onclick, which would break if
+            // nation_name ever had a quote in it.
+            const pillsFor = (group, tiers, active) => tiers.map(t => {
+                const label = t === 'comprehensive' ? 'COMPREH.' : t.toUpperCase();
+                const cls = `hi-tier-pill${active === t ? ' active' : ''}${_hiTierSaving ? ' disabled' : ''}`;
+                return `<span class="${cls}" onclick="hiPillClick(this)" data-nation-id="${n.nation_id}" data-group="${group}" data-tier="${t}">${label}</span>`;
+            }).join('');
 
             return `
             <div class="hi-callout" style="padding:8px 10px;border-color:${borderColor};">
@@ -3629,8 +3672,8 @@ function renderHealthInsurance() {
                     <div style="width:${fillPct}%;height:100%;background:${barColor};"></div>
                 </div>
                 <div class="hi-stat-row">
-                    <span class="hi-stat-label">Addressable Market</span>
-                    <span class="hi-stat-value">${addressable > 0 ? addressable.toLocaleString() : '—'}</span>
+                    <span class="hi-stat-label">Addressable</span>
+                    <span class="hi-stat-value">${addressable > 0 ? addressable.toLocaleString() : '—'} · your share ${sharePct}%</span>
                 </div>
                 <div class="hi-stat-row">
                     <span class="hi-stat-label">Premium / mo</span>
@@ -3643,6 +3686,14 @@ function renderHealthInsurance() {
                 <div class="hi-stat-row">
                     <span class="hi-stat-label">Offices</span>
                     <span class="hi-stat-value">${n.offices.length} · cap ${n.capacity.toLocaleString()}</span>
+                </div>
+                <div class="hi-tier-row">
+                    <span class="hi-tier-label">Premium</span>
+                    <div class="hi-tier-pills">${pillsFor('premium', HI_PREMIUM_TIERS, premiumTier)}</div>
+                </div>
+                <div class="hi-tier-row">
+                    <span class="hi-tier-label">Coverage</span>
+                    <div class="hi-tier-pills">${pillsFor('coverage', HI_COVERAGE_TIERS, coverageTier)}</div>
                 </div>
             </div>`;
         }).join('');
@@ -3719,6 +3770,51 @@ function renderHealthInsurance() {
             ${bodyHtml}
         </div>`;
 }
+
+// Tier-pill click handler. Reads faction_id from the current faction and
+// the rest off the clicked pill's data attributes; calls the server-side
+// RPC, then refreshes the panel. Guarded by _hiTierSaving to swallow
+// double-clicks while the RPC is in flight.
+async function hiPillClick(el) {
+    if (_hiTierSaving) return;
+    if (!faction || !el) return;
+
+    const nationId = el.dataset.nationId;
+    const group    = el.dataset.group;   // 'premium' | 'coverage'
+    const newTier  = el.dataset.tier;
+    if (!nationId || !group || !newTier) return;
+
+    // No-op if the user clicked the already-active tier.
+    const existing = _hiState.poolsByNation[nationId];
+    const currentPremium  = existing?.premium_tier  || 'standard';
+    const currentCoverage = existing?.coverage_tier || 'standard';
+    const nextPremium  = group === 'premium'  ? newTier : currentPremium;
+    const nextCoverage = group === 'coverage' ? newTier : currentCoverage;
+    if (nextPremium === currentPremium && nextCoverage === currentCoverage) return;
+
+    _hiTierSaving = true;
+    // Re-render with the disabled pill state so the user sees immediate feedback.
+    renderHealthInsurance();
+
+    try {
+        const { error } = await _supabase.rpc('set_health_insurance_tiers', {
+            p_faction_id:    faction.id,
+            p_nation_id:     nationId,
+            p_premium_tier:  nextPremium,
+            p_coverage_tier: nextCoverage,
+        });
+        if (error) throw error;
+        await loadHealthInsurance();
+    } catch (err) {
+        console.error('[HealthIns] set_health_insurance_tiers failed:', err);
+        alert('Failed to update tiers: ' + (err?.message || err));
+    } finally {
+        _hiTierSaving = false;
+        renderHealthInsurance();
+    }
+}
+
+window.hiPillClick = hiPillClick;
 
 // Actions still lives inside corp-operations.html for now (Expansion
 async function init() {

@@ -1508,12 +1508,18 @@ async function processRegionalHqIncome(supabase, nation, currentTick) {
 async function processHealthInsurancePools(supabase, nation, currentTick) {
     // ── Tunables ──
     const POLICIES_PER_CAPACITY = 50;       // 50 policyholders per 1 employee capacity
-    const BASE_PREMIUM_USD      = 50;       // monthly premium at inflation=50
+    const BASE_PREMIUM_USD      = 50;       // monthly premium at inflation=50, tier=standard
     const TRICKLE_RATE          = 0.08;     // fraction of (target − current) closed per tick
     const ATTRITION_RATE        = 0.15;     // fraction of (current − target) shed per tick when over cap
     const SKILLED_WORKFORCE_RATIO = 0.60;   // must staff this fraction of office capacity
     const AFFORDABILITY_FLOOR   = 0.05;
     const AFFORDABILITY_CEILING = 0.80;
+    const REP_NEUTRAL           = 65;       // rep at which share_multiplier from rep is 1.0
+
+    // Phase 3 tier multipliers. Mirror in corp-operations-finance.html —
+    // keep the two tables in sync.
+    const PREMIUM_TIER_MULT  = { budget: 0.7, standard: 1.0, premium: 1.5 };
+    const COVERAGE_TIER_MULT = { basic: 0.6, standard: 1.0, comprehensive: 1.5 };
 
     // ── Gate 1: Universal Healthcare blocks every pool in this nation ──
     const { data: laws, error: lawsErr } = await supabase
@@ -1557,7 +1563,7 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
     // abandoned_at filter in processSubsidiaryRevenue / processCorpMonthlyIncome.
     const { data: factions, error: factErr } = await supabase
         .from('factions')
-        .select('id, faction_name, corp_subsector, corp_skilled_workforce, corp_cash_reserves')
+        .select('id, faction_name, corp_subsector, corp_skilled_workforce, corp_cash_reserves, corp_reputation')
         .in('id', factionIds)
         .is('abandoned_at', null);
     if (factErr) throw factErr;
@@ -1587,8 +1593,8 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
     affordable = Math.max(AFFORDABILITY_FLOOR, Math.min(AFFORDABILITY_CEILING, affordable));
     const addressable = Math.max(0, Math.round(population * affordable));
 
-    // Premium scales with inflation: 50→1.0x, 0→0.5x, 100→1.5x
-    const premium = Math.max(1, Math.round(BASE_PREMIUM_USD * (1 + (inflation - 50) / 100)));
+    // Inflation factor applied to every premium tier. 50→1.0x, 0→0.5x, 100→1.5x.
+    const inflationMult = 1 + (inflation - 50) / 100;
 
     let totalCollected = 0;
     let processedCount = 0;
@@ -1612,12 +1618,32 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
             const existing = poolByFaction[faction.id];
             const policyholders = existing ? Number(existing.policyholders ?? 0) : 0;
 
-            // Phase 2: market share = 100% (no competitor split until Phase 6)
-            const target = Math.min(addressable, maxPolicyholders);
+            // Per-pool tier multipliers (default to 'standard' if the pool row
+            // doesn't exist yet — a brand-new corp pre-first-tick).
+            const premiumTier  = (existing?.premium_tier  as keyof typeof PREMIUM_TIER_MULT)  || 'standard';
+            const coverageTier = (existing?.coverage_tier as keyof typeof COVERAGE_TIER_MULT) || 'standard';
+            const premiumMult  = PREMIUM_TIER_MULT[premiumTier]   ?? 1.0;
+            const coverageMult = COVERAGE_TIER_MULT[coverageTier] ?? 1.0;
+
+            // Premium = base × premium_tier × inflation factor.
+            const premium = Math.max(1, Math.round(BASE_PREMIUM_USD * premiumMult * inflationMult));
+
+            // Attractiveness drives what share of the addressable market this
+            // product captures. Cheap + comprehensive = best customer value
+            // (high share, thin margin per policy); expensive + basic = worst
+            // customer value (low share, high margin per policy). Reputation
+            // slides everything up or down. Floored at 10% so even a terrible
+            // product finds a few takers.
+            const reputation = Number(faction.corp_reputation ?? REP_NEUTRAL);
+            const repMult = reputation / REP_NEUTRAL;
+            const attractiveness = (coverageMult / premiumMult) * repMult;
+            const yourShare = Math.max(0.1, Math.min(1.0, attractiveness));
+
+            const target = Math.min(Math.round(addressable * yourShare), maxPolicyholders);
 
             // Flow:
             //   – Idle (understaffed) → no change in policyholders, zero revenue
-            //   – Over cap (office lost) → attrition toward target
+            //   – Over cap (office lost, or tier change shrinks share) → attrition
             //   – Otherwise → trickle toward target
             let newPolicyholders: number;
             if (!operatingAllowed) {
@@ -1682,13 +1708,13 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
 
             processedCount += 1;
             const staffStatus = operatingAllowed ? 'OK' : `UNDERSTAFFED(${skilled}/${skilledRequired})`;
-            console.log(`[HealthIns] ${faction.faction_name} / ${nation.name}: holders ${policyholders}→${newPolicyholders} (target ${target}, cap ${maxPolicyholders}), premium $${premium}, revenue $${revenue.toLocaleString()} [${staffStatus}]`);
+            console.log(`[HealthIns] ${faction.faction_name} / ${nation.name}: ${premiumTier}/${coverageTier} share=${yourShare.toFixed(2)} holders ${policyholders}→${newPolicyholders} (target ${target}, cap ${maxPolicyholders}), premium $${premium}, revenue $${revenue.toLocaleString()} [${staffStatus}]`);
         } catch (factionErr) {
             console.error(`[HealthIns] faction loop threw (faction_id=${faction.id}):`, factionErr);
         }
     }
 
-    return { processed: processedCount, collected: totalCollected, addressable, premium };
+    return { processed: processedCount, collected: totalCollected, addressable };
 }
 
 function parseRequiredForSectors(rawRequiredFor) {
