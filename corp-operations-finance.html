@@ -231,6 +231,31 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 
 /* Collections container */
 .cc-container { width:380px; height:450px; background:var(--panel-main); border:1px solid var(--panel-border); display:flex; flex-direction:column; overflow:hidden; }
+
+/* Health Insurance container — Phase 1: foundation panel.
+   Locked when no Insurance Office exists, gated when Universal Healthcare is
+   in force, understaffed when corp_skilled_workforce can't cover capacity. */
+.hi-container { width:380px; height:450px; background:var(--panel-main); border:1px solid var(--panel-border); display:flex; flex-direction:column; overflow:hidden; }
+.hi-header { padding:8px 14px; border-bottom:1px solid var(--panel-border); background:var(--bg-panel); flex-shrink:0; display:flex; justify-content:space-between; align-items:center; }
+.hi-header__title { font-family:var(--font-mono); font-size:12px; font-weight:700; letter-spacing:1.5px; color:#9e9a92; text-transform:uppercase; }
+.hi-header__badge { font-family:var(--font-mono); font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 7px; }
+.hi-badge-locked    { color:#6a6660; background:rgba(106,102,96,0.12); border:1px solid rgba(106,102,96,0.25); }
+.hi-badge-gated     { color:#c55;    background:rgba(204,85,85,0.08);  border:1px solid rgba(204,85,85,0.25); }
+.hi-badge-understaffed { color:#c84; background:rgba(200,132,68,0.08); border:1px solid rgba(200,132,68,0.25); }
+.hi-badge-ready     { color:#5c5;    background:rgba(92,197,92,0.08);  border:1px solid rgba(92,197,92,0.25); }
+.hi-body { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+.hi-callout { padding:10px 12px; border:1px solid var(--panel-border); background:var(--bg-card); }
+.hi-callout__title { font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:0.8px; color:#9e9a92; text-transform:uppercase; margin-bottom:4px; }
+.hi-callout__body  { font-family:var(--font-sans); font-size:11px; line-height:1.45; color:var(--panel-text); }
+.hi-stat-row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--panel-border); }
+.hi-stat-row:last-child { border-bottom:none; }
+.hi-stat-label { font-family:var(--font-mono); font-size:10px; color:#6a6660; letter-spacing:0.5px; }
+.hi-stat-value { font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--panel-text); }
+.hi-office-row { display:flex; justify-content:space-between; align-items:center; padding:4px 0; }
+.hi-office-name { font-family:var(--font-sans); font-size:11px; color:var(--panel-text); }
+.hi-office-meta { font-family:var(--font-mono); font-size:9px; color:#6a6660; }
+.hi-cta { padding:8px 0; text-align:center; font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:1px; color:#c4c2b8; border:1px solid var(--panel-border); background:var(--bg-card); cursor:pointer; text-decoration:none; display:block; }
+.hi-cta:hover { background:#201e1a; }
 .cc-scorecard { display:flex; border-bottom:1px solid var(--panel-border); background:var(--bg-panel); flex-shrink:0; }
 .cc-scorecard__cell { flex:1; padding:6px 14px; }
 .cc-scorecard__cell + .cc-scorecard__cell { border-left:1px solid var(--panel-border); }
@@ -256,6 +281,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
   .ap-container { width:100%; }
   .rr-container { width:100%; }
   .cc-container { width:100%; }
+  .hi-container { width:100%; }
   .rd-overlay { align-items:flex-start !important; padding:8px; overflow-y:auto; }
   .rd-modal { width:95vw !important; max-height:none !important; }
   .rd-body { flex-direction:column !important; overflow:visible !important; }
@@ -344,6 +370,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
       <div class="ap-container" id="ap-container"></div>
       <div class="rr-container" id="rr-container"></div>
       <div class="cc-container" id="cc-container"></div>
+      <div class="hi-container" id="hi-container"></div>
     </div>
   </div>
 
@@ -3367,6 +3394,194 @@ async function loadCollections() {
     renderCollections();
 }
 
+// ==================== HEALTH INSURANCE (Phase 1) ====================
+//
+// Phase 1 is foundation only: detect Insurance Office properties, surface
+// the three blocker states (no office / Universal Healthcare in force /
+// understaffed), and otherwise show a "ready" placeholder. No premiums,
+// claims, lawsuits, or market share — those land in Phase 2+.
+
+let _hiState = {
+    subsectorAllowed: false,    // corp_subsector === 'insurance'
+    offices: [],                // [{ id, name, capacity, nation_id, nation_name }]
+    universalHealthcareNations: new Set(), // nation_ids where the Act is in force
+    skilled: 0,                 // faction.corp_skilled_workforce
+    skilledRequired: 0,         // ~60% of total office capacity
+};
+
+async function loadHealthInsurance() {
+    if (!faction) { renderHealthInsurance(); return; }
+
+    _hiState.subsectorAllowed = (faction.corp_subsector || '').toLowerCase() === 'insurance';
+    _hiState.skilled = Number(faction.corp_skilled_workforce || 0);
+    _hiState.offices = [];
+    _hiState.universalHealthcareNations = new Set();
+    _hiState.skilledRequired = 0;
+
+    if (!_hiState.subsectorAllowed) { renderHealthInsurance(); return; }
+
+    // Owned Insurance Offices across all nations the corp operates in
+    const { data: offices, error: officesErr } = await _supabase
+        .from('corp_properties')
+        .select('id, name, capacity, nation_id, nations:nation_id(name)')
+        .eq('faction_id', faction.id)
+        .eq('type', 'insurance_office')
+        .eq('is_active', true);
+    if (officesErr) console.warn('[HealthIns] office fetch failed:', officesErr.message);
+
+    _hiState.offices = (offices || []).map(o => ({
+        id: o.id,
+        name: o.name,
+        capacity: Number(o.capacity || 0),
+        nation_id: o.nation_id,
+        nation_name: o.nations?.name || 'Unknown',
+    }));
+
+    // Skilled-workforce target: 60% of total office capacity. Phase 2 will
+    // gate revenue on this; Phase 1 just surfaces it on the panel.
+    const totalCapacity = _hiState.offices.reduce((s, o) => s + o.capacity, 0);
+    _hiState.skilledRequired = Math.ceil(totalCapacity * 0.6);
+
+    // Universal Healthcare gate — block any nation where the Act is in force.
+    // Stub policy is shipped in 20260423_health_insurance_phase1.sql so the
+    // lookup always has a target even before the Act has any real effects.
+    const officeNationIds = [...new Set(_hiState.offices.map(o => o.nation_id))];
+    if (officeNationIds.length > 0) {
+        const { data: laws } = await _supabase.from('active_laws')
+            .select('nation_id, policy:policies!policy_id(policy_key)')
+            .in('nation_id', officeNationIds);
+        for (const l of (laws || [])) {
+            if (l.policy?.policy_key === 'universal_healthcare') {
+                _hiState.universalHealthcareNations.add(l.nation_id);
+            }
+        }
+    }
+
+    renderHealthInsurance();
+}
+
+function renderHealthInsurance() {
+    const container = document.getElementById('hi-container');
+    if (!container) return;
+
+    // Non-Insurance subsector corps see a "not available" stub. Phase 1 only
+    // surfaces the panel for Insurance corps; other Finance subsectors
+    // (Banking, Investment) get a one-line note.
+    if (!_hiState.subsectorAllowed) {
+        container.innerHTML = `
+        <div class="hi-header">
+            <div class="hi-header__title">Health Insurance</div>
+            <div class="hi-header__badge hi-badge-locked">N/A</div>
+        </div>
+        <div class="hi-body">
+            <div class="hi-callout">
+                <div class="hi-callout__title">Insurance subsector only</div>
+                <div class="hi-callout__body">Health Insurance is a product of the Insurance subsector. Banking and Investment corps cannot offer it.</div>
+            </div>
+        </div>`;
+        return;
+    }
+
+    const officeCount = _hiState.offices.length;
+    const totalCapacity = _hiState.offices.reduce((s, o) => s + o.capacity, 0);
+    const blockedNations = _hiState.universalHealthcareNations;
+    const operatingOffices = _hiState.offices.filter(o => !blockedNations.has(o.nation_id));
+    const operatingCapacity = operatingOffices.reduce((s, o) => s + o.capacity, 0);
+    const understaffed = _hiState.skilled < _hiState.skilledRequired;
+
+    let badgeClass, badgeLabel;
+    if (officeCount === 0) { badgeClass = 'hi-badge-locked'; badgeLabel = 'LOCKED'; }
+    else if (operatingOffices.length === 0) { badgeClass = 'hi-badge-gated'; badgeLabel = 'POLICY-BLOCKED'; }
+    else if (understaffed) { badgeClass = 'hi-badge-understaffed'; badgeLabel = 'UNDERSTAFFED'; }
+    else { badgeClass = 'hi-badge-ready'; badgeLabel = 'READY'; }
+
+    let bodyHtml = '';
+
+    // ── State 1: no Insurance Office anywhere ──
+    if (officeCount === 0) {
+        bodyHtml = `
+            <div class="hi-callout">
+                <div class="hi-callout__title">Build an Insurance Office to begin</div>
+                <div class="hi-callout__body">
+                    A Health Insurance operation needs a physical Insurance Office in a nation before policies can be written.
+                    You can <strong>buy</strong> one from the property marketplace, <strong>commission</strong> one via Construction Project,
+                    or <strong>convert</strong> an existing office.
+                </div>
+            </div>
+            <a class="hi-cta" href="expansion.html">GO TO PROPERTY &amp; EXPANSION →</a>`;
+    } else {
+        // ── States 2-4: at least one office exists ──
+        const officeListHtml = _hiState.offices.map(o => {
+            const blocked = blockedNations.has(o.nation_id);
+            const tagColor = blocked ? '#c55' : '#5c5';
+            const tagLabel = blocked ? 'BLOCKED' : 'OPERATING';
+            return `
+            <div class="hi-office-row">
+                <div>
+                    <div class="hi-office-name">${escapeHtml(o.name)}</div>
+                    <div class="hi-office-meta">${escapeHtml(o.nation_name)} · cap ${o.capacity.toLocaleString()}</div>
+                </div>
+                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:${tagColor};border:1px solid ${tagColor}55;background:${tagColor}11;">${tagLabel}</span>
+            </div>`;
+        }).join('');
+
+        const skilledColor = understaffed ? '#c84' : '#5c5';
+        const skilledNote = understaffed
+            ? `Need ${(_hiState.skilledRequired - _hiState.skilled).toLocaleString()} more skilled workers to staff offices at full capacity.`
+            : `Skilled workforce sufficient to staff all offices.`;
+
+        bodyHtml = `
+            <div class="hi-callout">
+                <div class="hi-callout__title">Phase 1 — Foundation</div>
+                <div class="hi-callout__body">Premium income, citizen acquisition, and claim events arrive in a future update. For now this panel surfaces your Insurance Office footprint and operating constraints.</div>
+            </div>
+
+            <div class="hi-callout" style="padding:8px 12px;">
+                <div class="hi-stat-row">
+                    <span class="hi-stat-label">Insurance Offices</span>
+                    <span class="hi-stat-value">${officeCount}</span>
+                </div>
+                <div class="hi-stat-row">
+                    <span class="hi-stat-label">Total Capacity</span>
+                    <span class="hi-stat-value">${totalCapacity.toLocaleString()}</span>
+                </div>
+                <div class="hi-stat-row">
+                    <span class="hi-stat-label">Operating Capacity</span>
+                    <span class="hi-stat-value">${operatingCapacity.toLocaleString()}</span>
+                </div>
+                <div class="hi-stat-row">
+                    <span class="hi-stat-label">Skilled Workforce</span>
+                    <span class="hi-stat-value" style="color:${skilledColor}">${_hiState.skilled.toLocaleString()} / ${_hiState.skilledRequired.toLocaleString()}</span>
+                </div>
+            </div>
+
+            ${blockedNations.size > 0 ? `
+            <div class="hi-callout" style="border-color:rgba(204,85,85,0.35);">
+                <div class="hi-callout__title" style="color:#c55;">Universal Healthcare in force</div>
+                <div class="hi-callout__body">${blockedNations.size} of your nation${blockedNations.size > 1 ? 's' : ''} have the Universal Healthcare Act active. Insurance Offices in those nations cannot write new private health policies.</div>
+            </div>` : ''}
+
+            <div class="hi-callout" style="border-color:${skilledColor}55;">
+                <div class="hi-callout__title" style="color:${skilledColor};">Staffing</div>
+                <div class="hi-callout__body">${skilledNote}</div>
+            </div>
+
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:4px;">Offices</div>
+                ${officeListHtml}
+            </div>`;
+    }
+
+    container.innerHTML = `
+        <div class="hi-header">
+            <div class="hi-header__title">Health Insurance</div>
+            <div class="hi-header__badge ${badgeClass}">${badgeLabel}</div>
+        </div>
+        <div class="hi-body">
+            ${bodyHtml}
+        </div>`;
+}
+
 // Actions still lives inside corp-operations.html for now (Expansion
 async function init() {
     const urlTab = new URLSearchParams(window.location.search).get('tab');
@@ -3478,6 +3693,7 @@ async function init() {
     await loadActivePortfolio();
     renderReservesRisk();
     await loadCollections();
+    await loadHealthInsurance();
 
     // Tick countdown (corp tick is midpoint between political ticks)
     if (shard?.next_tick_at) {

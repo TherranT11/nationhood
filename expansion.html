@@ -588,6 +588,9 @@ function renderPropertyCard() {
             <div style="width:100%;height:3px;background:${C.border};margin-top:2px;"><div style="width:${prop.condition}%;height:100%;background:${prop.condition >= 75 ? '#5c5' : prop.condition >= 50 ? '#ca5' : C.orange}"></div></div>
             <div style="display:flex;gap:4px;margin-top:6px;">
                 <div onclick="propSell('${prop.id}')" style="flex:1;padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:${C.red};border:1px solid ${C.red}33;cursor:pointer;">SELL</div>
+                ${(faction?.corp_subsector?.toLowerCase() === 'insurance' && prop.type === 'office')
+                    ? `<div onclick="propConvertToInsurance('${prop.id}')" style="flex:1;padding:3px 0;text-align:center;font-family:${mono};font-size:7px;font-weight:700;letter-spacing:0.8px;color:#8a6aaa;border:1px solid #8a6aaa55;cursor:pointer;" title="Convert this office into an Insurance Office for 25% of its purchase price.">CONVERT → INSURANCE</div>`
+                    : ''}
             </div>
         </div>`;
     }
@@ -636,21 +639,29 @@ async function loadAvailableProperties() {
 
     const { data, error } = await _supabase
         .from('available_properties')
-        .select('*')
+        .select('*, property_catalog:catalog_id(subsector_lock, min_skilled_workforce)')
         .eq('nation_id', faction.nation_id)
         .eq('status', 'available')
         .order('price', { ascending: true });
 
     if (error) { console.warn('[Property] Failed to load marketplace:', error.message); return; }
 
-    // Filter out warehouse properties for non-Construction corps
+    // Subsector / sector filtering — keep only listings this corp can actually
+    // build under. Warehouses are construction-only; subsector_lock pins
+    // specialised buildings (Insurance Office, etc.) to one subsector.
     const isConstruction = faction?.corp_sector === 'Construction';
+    const subsector = (faction?.corp_subsector || '').toLowerCase();
     _npAvailable = (data || [])
         .filter(p => isConstruction || p.type !== 'warehouse')
+        .filter(p => {
+            const lock = p.property_catalog?.subsector_lock;
+            return !lock || lock === subsector;
+        })
         .map(p => ({
             ...p,
             adjusted_cost: p.price,
             adjusted_maintenance: p.monthly_maintenance,
+            min_skilled_workforce: p.property_catalog?.min_skilled_workforce || 0,
         }));
 }
 
@@ -1023,9 +1034,9 @@ function renderConstructionModal() {
                        ...(faction?.corp_sector === 'Construction' ? ['Warehouse'] : []),
                        ...(faction?.corp_subsector?.toLowerCase() === 'banking' ? ['Branch Office'] : []),
                        ...(faction?.corp_subsector?.toLowerCase() === 'investment' ? ['Trading Floor'] : []),
-                       ...(faction?.corp_subsector?.toLowerCase() === 'insurance' ? ['Claims Office'] : []),
+                       ...(faction?.corp_subsector?.toLowerCase() === 'insurance' ? ['Claims Office', 'Insurance Office'] : []),
                     ].map(t => {
-                        const isSpecial = ['Branch Office', 'Trading Floor', 'Claims Office'].includes(t);
+                        const isSpecial = ['Branch Office', 'Trading Floor', 'Claims Office', 'Insurance Office'].includes(t);
                         const specialColor = '#8a6aaa';
                         const activeColor = t === 'Warehouse' ? C.orange : isSpecial ? specialColor : C.accent;
                         return `<span onclick="cpSetField('type','${t}')" style="flex:1;min-width:100px;text-align:center;padding:6px 0;font-family:${mono};font-size:12px;font-weight:700;cursor:pointer;color:${_cpData.type === t ? '#000' : C.dim};background:${_cpData.type === t ? activeColor : 'transparent'};border:1px solid ${_cpData.type === t ? activeColor : C.border}">${t}</span>`;
@@ -1035,6 +1046,7 @@ function renderConstructionModal() {
                 ${_cpData.type === 'Branch Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Branch Office: Increases lending capacity. +1 reputation per 200 employees. Enables cross-nation lending.</div>` : ''}
                 ${_cpData.type === 'Trading Floor' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Trading Floor: Enables secondary bond market. +1 reputation per 200 employees. Portfolio management bonuses.</div>` : ''}
                 ${_cpData.type === 'Claims Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Claims Office: Faster claim processing. +1 reputation per 200 employees. Local presence reduces premiums.</div>` : ''}
+                ${_cpData.type === 'Insurance Office' ? `<div style="font-family:${mono};font-size:9px;color:#8a6aaa;margin-top:5px;">Insurance Office: Required to sell private Health Insurance in this nation. Needs skilled workforce to staff (~60% of capacity). Does not operate where Universal Healthcare is in force.</div>` : ''}
                 ${_cpData.type === 'Regional HQ' ? `<div style="font-family:${mono};font-size:9px;color:${C.accent};margin-top:5px;">Regional HQ: Establishes corporate presence in another nation.</div>` : ''}
             </div>
 
@@ -1196,6 +1208,68 @@ async function propSell(propId) {
 }
 
 window.propSell = propSell;
+
+// Convert an existing generic office into an Insurance Office. Insurance
+// subsector only — gated in renderPropertyCard. Costs 25% of original
+// purchase price; the property's role/type flip and its name picks up an
+// "Insurance Office —" prefix so it's visually distinct on the property card.
+async function propConvertToInsurance(propId) {
+    if (_propActing) return;
+    if ((faction?.corp_subsector || '').toLowerCase() !== 'insurance') {
+        alert('Only Insurance subsector corporations can convert an office to an Insurance Office.');
+        return;
+    }
+    const prop = _ownedProperties.find(p => p.id === propId);
+    if (!prop) return;
+    if (prop.type !== 'office') {
+        alert('Only generic offices can be converted. ' + prop.name + ' is a "' + prop.type + '" property.');
+        return;
+    }
+
+    const conversionCost = Math.max(250000, Math.round((prop.purchase_price || 0) * 0.25));
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (conversionCost > cash) {
+        alert('Insufficient cash reserves.\nConversion cost: ' + hfFmtBig(conversionCost) + '\nCash: ' + hfFmtBig(cash));
+        return;
+    }
+
+    if (!confirm('Convert "' + prop.name + '" into an Insurance Office?\n\nCost: ' + hfFmtBig(conversionCost) + ' (25% of original purchase price)\nCondition restored to 95%\nProperty will be required to operate Health Insurance in this nation.\n\nProceed?')) return;
+
+    _propActing = true;
+    try {
+        const newName = prop.name.startsWith('Insurance Office')
+            ? prop.name
+            : 'Insurance Office — ' + prop.name;
+
+        const { error: updErr } = await _supabase.from('corp_properties').update({
+            type: 'insurance_office',
+            role: 'insurance_office',
+            name: newName,
+            condition: Math.max(prop.condition || 0, 95),
+        }).eq('id', propId);
+        if (updErr) throw updErr;
+
+        const newCash = Math.max(0, cash - conversionCost);
+        const { error: cashErr } = await _supabase.from('factions')
+            .update({ corp_cash_reserves: newCash })
+            .eq('id', faction.id);
+        if (cashErr) throw cashErr;
+        faction.corp_cash_reserves = newCash;
+
+        const cashEl = document.getElementById('topbar-cash');
+        if (cashEl) cashEl.textContent = 'CASH: ' + (newCash >= 1e6 ? '$' + (newCash / 1e6).toFixed(1) + 'M' : '$' + Math.round(newCash / 1000) + 'k');
+
+        await loadOwnedProperties();
+        renderPropertyCard();
+        alert('Converted "' + prop.name + '" → "' + newName + '"\n\nCost: ' + hfFmtBig(conversionCost));
+    } catch (err) {
+        alert('Conversion failed: ' + err.message);
+    } finally {
+        _propActing = false;
+    }
+}
+
+window.propConvertToInsurance = propConvertToInsurance;
 
 // ==================== SUBSIDIARY SHARED HELPERS ====================
 
