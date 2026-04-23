@@ -1897,12 +1897,17 @@ async function processHealthInsuranceLawsuits(supabase, nation, currentTick) {
             }
             // Abandoned corp — the faction is gone in spirit, but the row may
             // still exist (defensive). Mark the lawsuit cancelled rather than
-            // drain negative cash from a ghost.
+            // drain negative cash from a ghost. If the cancel update fails we
+            // log and skip; leaving the row pending would keep the processor
+            // retrying the same broken write every tick from now on.
             if (faction.abandoned_at) {
-                await supabase
+                const { error: cancelErr } = await supabase
                     .from('health_insurance_lawsuits')
                     .update({ status: 'cancelled', resolved_at_tick: currentTick })
                     .eq('id', lawsuit.id);
+                if (cancelErr) {
+                    console.warn(`[HealthIns] lawsuit ${lawsuit.id}: cancel update failed (abandoned faction):`, cancelErr.message);
+                }
                 continue;
             }
 
