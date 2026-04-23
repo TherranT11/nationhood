@@ -65,6 +65,15 @@ const DEFAULT_MISSED_THRESHOLD = 4;
 //  The accumulator is cleared at the top of advanceCorpTick and flushed to
 //  factions.monthly_profit at the end of each nation's block — just before the
 //  corp_cash_history write that reads monthly_profit for reconciliation.
+//
+//  KNOWN SCOPE GAP — cash events outside this function do NOT flow through the
+//  accumulator and are missing from monthly_profit:
+//    - advance-tick/index.ts gov_bailout path (non-P&L equity infusion — correct to skip)
+//    - advance-tick/index.ts processAutoRatePolicies (subsidiary insurance
+//      premiums, loan payments, claim payouts — these SHOULD flow through)
+//    - js/corp-refurbish.js client-side refurbish cost (player-initiated expense)
+//  Follow-up: either route these through a shared pnl events table, or have
+//  those sites write monthly_profit directly with read-modify-write semantics.
 // ════════════════════════════════════════════════════════════════════════════════
 
 const _tickPnl = new Map();
