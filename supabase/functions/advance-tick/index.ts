@@ -1649,16 +1649,24 @@ function calculateExportCapacity(nation, sector, opts) {
  * @returns {number} import demand in dollars
  */
 // Shared fuel-demand math — single source of truth for the simplified model.
-// Pure population scaling: every 1M people consume $300M of fuel per tick,
-// period. No stat modifiers, no currency adjustment, no intensity. A
-// 100M nation demands $30B; global demand across ~318M pop is ~$95B,
-// about 1.25x global production so fuel markets stay in persistent
-// deficit and trade clears.
+// Four-factor conglomeration: population × intensity × $550M, where
+// intensity = (urbanization + standard_of_living + manufacturing_output) / 300.
+// Urbanization drives transport/household energy; standard_of_living drives
+// consumer demand (cars, heating, travel); manufacturing_output drives
+// industrial fuel use. Equal weights, no caps, no separate coverage layer.
+// Calibration: $550M per 1M pop at intensity=1 — combined with new
+// production formula (max ~$25B per nation) global demand lands ~1.25x
+// global production so fuel stays in persistent deficit.
 // Import demand and export capacity derive directly from max(0, gross -
 // production) and max(0, production - gross).
 function computeFuelDemand(nation) {
     const pop = Number(nation.population) || 0;
-    const gross = (pop / 1_000_000) * 300_000_000;
+    const urban = Number(nation.urbanization) || 0;
+    const sol = Number(nation.standard_of_living) || 0;
+    const manuf = Number(nation.manufacturing_output) || 0;
+
+    const intensity = (urban + sol + manuf) / 300;
+    const gross = (pop / 1_000_000) * 550_000_000 * intensity;
     return { gross: Math.round(gross) };
 }
 

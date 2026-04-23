@@ -11,8 +11,8 @@
 --                      genModifier    = 0.75 + (energy_generation / 100) * 0.5
 --                      stabilityMod   = min(1, stability / 40)
 --                      Max output at oil=100, gen=100, stab>=40 ≈ $25B/tick.
---   gross_demand     = (pop / 1M) * $300M
---                      Pure population scaling, no stat modifiers.
+--   gross_demand     = (pop / 1M) * $550M * intensity
+--                      intensity = (urbanization + sol + manufacturing) / 300
 --                      Global demand targets ~1.25x global production.
 --   export_capacity  = max(0, production - gross_demand) * (50 / currency_strength)
 --   import_demand    = max(0, gross_demand - production)
