@@ -59,7 +59,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust, loadBlocMap, blocTagHtml } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, deductAP } from './js/game/config.js';
+import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, deductAP } from './js/game/config.js';
 import { fileNoConfidenceMotion } from './js/game/no-confidence.js';
 import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialRepublic, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
@@ -4899,11 +4899,12 @@ window.sendAdminChat = async function() {
 // ==================== FORMATION IN PROGRESS ====================
 
 function renderFormationInProgress(parties) {
+    // failedAttempts gates the warning copy: 0 = next escalation is a snap election,
+    // 1+ = next escalation is the emergency minority government.
     const failedAttempts = currentNation?.failed_formation_attempts || 0;
-    const effectiveDeadline = failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS;
     const ticksElapsed = (lastElectionTick !== null) ? Math.max(0, currentTick - lastElectionTick) : 0;
-    const ticksRemaining = Math.max(0, effectiveDeadline - ticksElapsed);
-    const progressPct = Math.min(100, (ticksElapsed / effectiveDeadline) * 100);
+    const ticksRemaining = Math.max(0, FORMATION_DEADLINE_TICKS - ticksElapsed);
+    const progressPct = Math.min(100, (ticksElapsed / FORMATION_DEADLINE_TICKS) * 100);
 
     // Determine urgency level
     let urgency = 'safe';
