@@ -1118,14 +1118,16 @@ export function calculateExportCapacity(nation, sector, opts) {
  * @returns {number} import demand in dollars
  */
 // Shared fuel-demand math — single source of truth for the simplified model.
-// Four-factor conglomeration: population × intensity × $880M, where
-// intensity = (urbanization + standard_of_living + manufacturing_output) / 300.
-// Urbanization drives transport/household energy; standard_of_living drives
-// consumer demand (cars, heating, travel); manufacturing_output drives
-// industrial fuel use. Equal weights, no caps, no separate coverage layer.
-// Calibration: $1,650M per 1M pop at intensity=1 — combined with production
-// formula (max $75B per nation at oil=100, gen=100, stab>=40) global demand
-// lands ~1.25x global production so fuel stays in persistent deficit.
+// Four-factor conglomeration, with urbanization and standard_of_living
+// weighted 3x manufacturing because gasoline consumption is dominated by
+// personal transportation (cars driven by urban, commuter-rich, affluent
+// populations) more than industrial fuel use.
+//   intensity = (urban*3 + sol*3 + manuf) / 700
+//   gross     = (pop/1M) × $550M × intensity
+// A nation with urban=100, sol=100, manuf=100 hits intensity 1.0. Low
+// urbanization + low SoL collapses intensity even if manufacturing is
+// maxed (Montequilla-style: urban 27 + sol 55 + manuf 76 → intensity 0.46).
+// No caps, no currency modifier, no separate coverage layer.
 // Import demand and export capacity derive directly from max(0, gross -
 // production) and max(0, production - gross).
 function computeFuelDemand(nation) {
@@ -1134,8 +1136,8 @@ function computeFuelDemand(nation) {
     const sol = Number(nation.standard_of_living) || 0;
     const manuf = Number(nation.manufacturing_output) || 0;
 
-    const intensity = (urban + sol + manuf) / 300;
-    const gross = (pop / 1_000_000) * 1_650_000_000 * intensity;
+    const intensity = (urban * 3 + sol * 3 + manuf) / 700;
+    const gross = (pop / 1_000_000) * 550_000_000 * intensity;
     return { gross: Math.round(gross) };
 }
 
