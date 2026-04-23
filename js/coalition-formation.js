@@ -8,6 +8,7 @@ import { rolloverAdministration } from './game/elections.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS, hasElectedPresident, isSemiPresidential, isAbsoluteMonarchy } from './game/government-types.js';
 import { PLATFORMS } from './game/platforms.js';
+import { FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { tickToDate } from './utils.js';
 
 let _supabase = null;
@@ -43,9 +44,6 @@ function esc(str) {
     d.textContent = str;
     return d.innerHTML;
 }
-
-const FORMATION_DEADLINE_TICKS = 6;
-const POST_SNAP_DEADLINE_TICKS = 4;
 
 // ════════════════════════ PUBLIC API ════════════════════════
 
@@ -137,9 +135,11 @@ export async function initCoalitionFormation(supabase, state) {
 
     // A government effectively exists if either:
     //   1. The SSoT returned a formed/caretaker coalition for the current cycle, OR
-    //   2. An active head_of_government row exists (fallback for legacy data
-    //      or paths that never wrote a formation row).
-    const hasFormedGov = hasCurrentCycleFormedGov || hasActiveHoG;
+    //   2. An active head_of_government row exists AND no formation row exists at
+    //      all (fallback for legacy nations that never wrote a formation row).
+    // The !formedGov guard prevents a stale active HoG row from a prior cycle
+    // from suppressing the formation UI when a new election has just concluded.
+    const hasFormedGov = hasCurrentCycleFormedGov || (hasActiveHoG && !formedGov);
 
     // Presidential / semi-presidential systems don't use coalition formation —
     // the president governs (or nominates the PM). The Election tab renders a
@@ -152,10 +152,6 @@ export async function initCoalitionFormation(supabase, state) {
         return { needed: false };
     }
 
-    // Parliamentary systems use coalition formation. Use the combined gate
-    // (hasFormedGov) so an active PM in head_of_government short-circuits
-    // the "needs formation" branch even if the current-cycle formation row
-    // is missing (fallback paths, repaired data, legacy nations).
     if (election && !hasFormedGov) {
         _formationNeeded = true;
         _electionId = election.id;
@@ -400,11 +396,9 @@ export async function renderFormationTab(root) {
     await loadFormations();
 
     const faction = _state.faction;
-    const failedAttempts = _state.nation?.failed_formation_attempts || 0;
-    const effectiveDeadline = failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS;
     const ticksElapsed = _lastElectionTick !== null ? Math.max(0, _currentTick - _lastElectionTick) : 0;
-    const ticksRemaining = Math.max(0, effectiveDeadline - ticksElapsed);
-    const progressPct = Math.min(100, (ticksElapsed / effectiveDeadline) * 100);
+    const ticksRemaining = Math.max(0, FORMATION_DEADLINE_TICKS - ticksElapsed);
+    const progressPct = Math.min(100, (ticksElapsed / FORMATION_DEADLINE_TICKS) * 100);
     const accruedApproval = ticksElapsed * 2;
 
     let urgency = 'safe';

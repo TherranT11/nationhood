@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { FORMATION_DEADLINE_TICKS, POST_SNAP_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit, getParliamentaryTermTicks } from './config.js';
+import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit, getParliamentaryTermTicks } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, hasElectedPresident, hasParliamentaryPM, isSemiPresidential } from './government-types.js';
 import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
@@ -1330,7 +1330,7 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
  *     - Snap election scheduled for next tick
  *     - failed_formation_attempts set to 1
  *
- *   Stage 2 — Minority government (POST_SNAP_DEADLINE_TICKS after snap, failed_formation_attempts >= 1):
+ *   Stage 2 — Minority government (FORMATION_DEADLINE_TICKS after snap, failed_formation_attempts >= 1):
  *     - Largest party auto-installed as minority government
  *     - formation_type = 'emergency_minority' (permanent -20% legislative penalty)
  *     - failed_formation_attempts reset to 0
@@ -1409,7 +1409,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     // Deal Maker trait: lead party (largest by seats) extends formation deadline by 3 ticks
     const leadPartyTraits = allParties?.[0]?.leader_positive_traits || [];
     const dealMakerExtension = leadPartyTraits.includes('deal_maker') ? 3 : 0;
-    const deadline = (failedAttempts >= 1 ? POST_SNAP_DEADLINE_TICKS : FORMATION_DEADLINE_TICKS) + dealMakerExtension;
+    const deadline = FORMATION_DEADLINE_TICKS + dealMakerExtension;
 
     const result = {
         nation: nation.name,
@@ -1561,8 +1561,9 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     }
 
     // ===== STAGE 2: EMERGENCY MINORITY GOVERNMENT =====
-    // After snap election, parties get POST_SNAP_DEADLINE_TICKS (2) more ticks to form government
-    console.log(`STAGE 2: EMERGENCY MINORITY GOVERNMENT for ${nation.name} — ${POST_SNAP_DEADLINE_TICKS} ticks after snap election without government`);
+    // After snap election, parties get a fresh FORMATION_DEADLINE_TICKS window to form
+    // a coalition. Stage 2 only fires when that window also expires without a formation.
+    console.log(`STAGE 2: EMERGENCY MINORITY GOVERNMENT for ${nation.name} — ${FORMATION_DEADLINE_TICKS} ticks after snap election without government`);
 
     // Identify largest party (tiebreak: higher total votes from election, then lower faction_id)
     const electionVotes = election.results?.votes || [];
@@ -2288,12 +2289,13 @@ export async function processElections(supabase, nation, currentTick) {
                 console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
 
                 // Reset failed_formation_attempts so the new election gets a fresh
-                // formation window (FORMATION_DEADLINE_TICKS). Without this, a stale
-                // counter from a previous snap election cycle causes the shorter
-                // POST_SNAP_DEADLINE_TICKS deadline and skips straight to Stage 2.
-                // Only reset when dissolving an existing government (regular elections),
-                // NOT after snap elections (where existingGov is null and the counter
-                // must stay at 1 so Stage 2 can trigger).
+                // Stage 1 window (snap election if formation fails). Without this,
+                // a stale counter from a previous snap cycle would skip straight to
+                // Stage 2 (emergency minority). Only reset when dissolving an
+                // existing government (regular elections), NOT after snap elections
+                // (where existingGov is null and the counter must stay at 1 so the
+                // post-snap formation failure escalates to Stage 2 rather than
+                // calling another snap).
                 if (nation.failed_formation_attempts > 0) {
                     await supabase.from('nations')
                         .update({ failed_formation_attempts: 0 })
