@@ -7,12 +7,12 @@
 -- whether global supply is too high relative to demand.
 --
 -- Formula recap (js/game/trade-constants.js):
---   score            = oil_and_gas (+ bonus: energy_generation, capped)
---   normalizedScore  = score / 5
---   production       = normalizedScore * $500M * 1.0 (resource sector, no GDP scale)
---                      * stabilityMod (min(1, stability/40))
+--   production       = (oil_and_gas / 100) * $20B * genModifier * stabilityMod
+--                      genModifier    = 0.75 + (energy_generation / 100) * 0.5
+--                      stabilityMod   = min(1, stability / 40)
+--                      Max output at oil=100, gen=100, stab>=40 ≈ $25B/tick.
 --   gross_demand     = (pop / 1M) * $150M * intensity
---                      intensity = (urbanization + manufacturing + sol) / 300
+--                      intensity      = (urbanization + manufacturing + sol) / 300
 --   export_capacity  = max(0, production - gross_demand) * (50 / currency_strength)
 --   import_demand    = max(0, gross_demand - production)
 --

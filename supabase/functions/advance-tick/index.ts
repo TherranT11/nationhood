@@ -1475,15 +1475,22 @@ function calculateDomesticProduction(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
 
     // ── FUEL & ENERGY ──
-    // Reserves × extraction × stability. No threshold, no bonus cap, no
-    // normalization. Max output (oil=100, gen=100, stab≥40) = $15B/tick
-    // ≈ 6 Mbbl/d at display calibration ($2.5B = 1 Mbbl/d).
+    // oil_and_gas is the primary driver — a petro-state with a poor grid is
+    // still a major oil producer. energy_generation applies as a modifier
+    // around neutral (±25% at stat=0/100, 1.0x at gen=50) representing
+    // refining/transport quality. Stability drags below 40.
+    //   oil=100, gen=50, stab>=40 → $20B (max baseline)
+    //   oil=100, gen=100          → $25B (full grid bonus)
+    //   oil=100, gen=0            → $15B (still produces — stat matters but doesn't gate)
+    //   oil=0                     → 0    (no reserves = no production, regardless of grid)
+    //   $2.5B ≈ 1 Mbbl/d at display calibration, so $20B ≈ 8 Mbbl/d (near Saudi-tier).
     if (sector.key === 'fuel_energy') {
         var oil = Number(nation.oil_and_gas) || 0;
         var gen = Number(nation.energy_generation) || 0;
         var stab = Number(nation.stability ?? 50);
+        var genModifier = 0.75 + (gen / 100) * 0.5;
         return Math.round(
-            (oil / 100) * (gen / 100) * 15e9 * Math.min(1.0, stab / 40)
+            (oil / 100) * 20e9 * genModifier * Math.min(1.0, stab / 40)
         );
     }
 
@@ -1648,9 +1655,10 @@ function calculateExportCapacity(nation, sector, opts) {
 // gross) — one formula drives both sides of the trade equation, so a
 // nation can't appear as both importer and exporter of the same good.
 // Calibration: 150M per 1M pop — a 100M nation at max intensity (1.0)
-// demands $15B, roughly matching the single-nation max supply. Global
-// demand ≈ global supply; trade flows are net surplus/deficit between
-// nations, not an artificial shortage spread over everyone.
+// demands $15B, a bit below the single-nation max supply of ~$25B
+// (oil=100, gen=100). Net petro-states run clear surpluses; net
+// consumers run clear deficits; global demand and supply are in the
+// same order of magnitude so trade actually clears.
 function computeFuelDemand(nation) {
     const pop = Number(nation.population) || 0;
     const urban = Number(nation.urbanization) || 0;
