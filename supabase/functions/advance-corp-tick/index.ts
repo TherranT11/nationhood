@@ -3361,8 +3361,11 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             const newTotalPaid = loan.total_paid + payment;
             const newInterestPaid = loan.total_interest_paid + interestPortion;
             const newPaymentsMade = loan.payments_made + 1;
-            const isTermSatisfied = loan.term_months <= 0 || newPaymentsMade >= loan.term_months;
-            const isRepaid = newRemainingPrincipal <= 0 && isTermSatisfied;
+            // term_months is CHECK >= 1 on finance_active_loans (see
+            // sql/migrations/20260410_finance_loan_system.sql), so the
+            // prior term_months <= 0 early-discharge branch was
+            // unreachable -- dropped.
+            const isRepaid = newRemainingPrincipal <= 0 && newPaymentsMade >= loan.term_months;
 
             const { data: payResult, error: payErr } = await supabase.rpc('process_finance_loan_payment', {
                 p_loan_id: loan.id,
