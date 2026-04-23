@@ -3796,6 +3796,10 @@ async function hiPillClick(el) {
     // Re-render with the disabled pill state so the user sees immediate feedback.
     renderHealthInsurance();
 
+    // Save and reload are tracked separately so a successful save followed
+    // by a failed reload doesn't fire a misleading "Failed to update tiers"
+    // alert — the tier IS saved, only the re-fetch failed.
+    let saveFailed = false;
     try {
         const { error } = await _supabase.rpc('set_health_insurance_tiers', {
             p_faction_id:    faction.id,
@@ -3804,14 +3808,24 @@ async function hiPillClick(el) {
             p_coverage_tier: nextCoverage,
         });
         if (error) throw error;
-        await loadHealthInsurance();
     } catch (err) {
         console.error('[HealthIns] set_health_insurance_tiers failed:', err);
         alert('Failed to update tiers: ' + (err?.message || err));
-    } finally {
-        _hiTierSaving = false;
-        renderHealthInsurance();
+        saveFailed = true;
     }
+
+    if (!saveFailed) {
+        try {
+            await loadHealthInsurance();
+        } catch (err) {
+            // Save succeeded but re-fetch failed — keep the old state on screen,
+            // log, and move on. Next manual refresh will surface the new tier.
+            console.warn('[HealthIns] post-save reload failed; UI may be stale:', err);
+        }
+    }
+
+    _hiTierSaving = false;
+    renderHealthInsurance();
 }
 
 window.hiPillClick = hiPillClick;
