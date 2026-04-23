@@ -6,15 +6,18 @@
 -- all 12 nations plus the stat inputs that drive the formula, so we can assess
 -- whether global supply is too high relative to demand.
 --
--- Formula recap (supabase/functions/advance-tick/index.ts):
+-- Formula recap (js/game/trade-constants.js):
 --   score            = oil_and_gas (+ bonus: energy_generation, capped)
 --   normalizedScore  = score / 5
 --   production       = normalizedScore * $500M * 1.0 (resource sector, no GDP scale)
 --                      * stabilityMod (min(1, stability/40))
---   export_capacity  = production - domesticDemand (pop/manuf/urban/col/rail)
---                      × (50 / currency_strength)
---   import_demand    = grossDemand × (1 - domesticCoverage)
---                      petro-states (oil_and_gas ≥ 70) cover up to 95%; others 70%
+--   gross_demand     = (pop / 1M) * $150M * intensity
+--                      intensity = (urbanization + manufacturing + sol) / 300
+--   export_capacity  = max(0, production - gross_demand) * (50 / currency_strength)
+--   import_demand    = max(0, gross_demand - production)
+--
+-- Single source of truth: computeFuelDemand drives both sides. A nation is
+-- either a net exporter OR a net importer, never both.
 --
 -- Display basis: $2.5B capacity ≈ 1 Mbbl/d (Saudi ≈ 10 Mbbl/d).
 -- ════════════════════════════════════════════════════════════════════════════════
@@ -80,10 +83,11 @@ SELECT
         ELSE 'IMPORTER'
     END                                                         AS tier,
     ROUND(tf.domestic_production / 1e9, 2)                      AS prod_b,
-    ROUND(tf.import_demand       / 1e9, 2)                      AS dem_b,
-    ROUND((tf.domestic_production - tf.import_demand) / 1e9, 2) AS net_balance_b
+    ROUND(tf.import_demand       / 1e9, 2)                      AS imp_b,
+    ROUND(tf.export_capacity     / 1e9, 2)                      AS exp_b,
+    ROUND((tf.export_capacity - tf.import_demand) / 1e9, 2)     AS net_balance_b
 FROM trade_flows tf
 JOIN nations n ON n.id = tf.nation_id
 WHERE tf.sector = 'fuel_energy'
   AND tf.tick = (SELECT tick FROM latest)
-ORDER BY (tf.domestic_production - tf.import_demand) DESC;
+ORDER BY (tf.export_capacity - tf.import_demand) DESC;

@@ -1583,12 +1583,10 @@ function calculateExportCapacity(nation, sector, opts) {
     var domesticDemand = 0;
 
     if (sector.key === 'fuel_energy') {
-        var manufNorm = (Number(nation.manufacturing_output) || 0) / SN;
-        var urbanNorm = (Number(nation.urbanization) || 0) / SN;
-        var colNorm = (Number(nation.cost_of_living) || 0) / SN;
-        var railNorm = (Number(nation.rail_network) || 0) / SN;
-        var transportNeed = Math.max(0, 12 - railNorm) * 0.15;
-        domesticDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        // Single source of truth for fuel demand. calculateImportDemand
+        // reads the same number, guaranteeing a nation can't be classified
+        // as both exporter and importer of the same commodity.
+        domesticDemand = computeFuelDemand(nation).gross;
     }
     else if (sector.key === 'minerals') {
         var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
@@ -1618,6 +1616,13 @@ function calculateExportCapacity(nation, sector, opts) {
     var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
     capacity *= currencyModifier;
 
+    // Fuel runs on the simplified model: import_demand and export_capacity
+    // are mutually exclusive. A nation that consumes more than it produces
+    // has zero export capacity — no phantom "organic trade" floor.
+    if (sector.key === 'fuel_energy') {
+        return Math.max(0, Math.round(capacity));
+    }
+
     // Floor: even distressed nations maintain some organic trade
     var minCapacity = Math.round(0.02 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
     return Math.max(minCapacity, Math.round(capacity));
@@ -1638,39 +1643,23 @@ function calculateExportCapacity(nation, sector, opts) {
  */
 // Shared fuel-demand math — single source of truth for the simplified model.
 // Drivers: population, urbanization, manufacturing, standard_of_living.
-// Domestic offset: tiered by oil_and_gas —
-//   petro-states (oil_and_gas >= 70): 95% domestic coverage flat.
-//   others: min(0.70, (oil_and_gas + energy_generation) / 200).
-// Tier keeps petro-states near self-sufficient without closing the global
-// fuel market (95% ceiling) and keeps non-petro importers capped at 70%
-// regardless of how much renewable generation they build out. Matches the
-// design described in sql/diagnostic_oil_energy_balance.sql.
-// Currency strength scales import power (linear 0-to-1).
-// No floors, no caps, no stability modifier, no tariff dampener.
-// Calibration: 750M per 1M pop — a 100M nation at max stats + zero coverage
-// + full import power demands $75B, 5x the single-nation supply cap so that
-// global demand runs well ahead of global supply and drives persistent
-// import pressure. Scales linearly with pop.
+// Output is GROSS consumption. Import demand and export capacity derive
+// from it directly as max(0, gross − production) and max(0, production −
+// gross) — one formula drives both sides of the trade equation, so a
+// nation can't appear as both importer and exporter of the same good.
+// Calibration: 150M per 1M pop — a 100M nation at max intensity (1.0)
+// demands $15B, roughly matching the single-nation max supply. Global
+// demand ≈ global supply; trade flows are net surplus/deficit between
+// nations, not an artificial shortage spread over everyone.
 function computeFuelDemand(nation) {
     const pop = Number(nation.population) || 0;
     const urban = Number(nation.urbanization) || 0;
     const manuf = Number(nation.manufacturing_output) || 0;
     const sol = Number(nation.standard_of_living) || 0;
-    const oil = Number(nation.oil_and_gas) || 0;
-    const gen = Number(nation.energy_generation) || 0;
-    const currency = Number(nation.currency_strength) || 0;
 
-    const intensity        = (urban + manuf + sol) / 300;
-    const domesticCoverage = oil >= 70
-        ? 0.95
-        : Math.min(0.70, (oil + gen) / 200);
-    const importPower      = currency / 100;
-
-    const gross = (pop / 1_000_000) * 750_000_000 * intensity * importPower;
-    return {
-        gross: Math.round(gross),
-        importDemand: Math.round(gross * (1 - domesticCoverage)),
-    };
+    const intensity = (urban + manuf + sol) / 300;
+    const gross = (pop / 1_000_000) * 150_000_000 * intensity;
+    return { gross: Math.round(gross) };
 }
 
 // Gross domestic demand for fuel — total consumption before the domestic-
@@ -1715,9 +1704,14 @@ function calculateImportDemand(nation, sector, opts) {
     // Export-only sectors have no import demand
     if (sector.export_only) return 0;
 
-    // ── FUEL & ENERGY — simplified model ──
+    // ── FUEL & ENERGY — direct net shortfall ──
+    // import_demand = max(0, gross_consumption − own_production).
+    // No separate "coverage" layer: if you pump enough to feed yourself,
+    // you don't import. Pairs 1:1 with calculateExportCapacity below.
     if (sector.key === 'fuel_energy') {
-        return computeFuelDemand(nation).importDemand;
+        var fuelGross = computeFuelDemand(nation).gross;
+        var fuelProd = calculateDomesticProduction(nation, sector, opts);
+        return Math.max(0, Math.round(fuelGross - fuelProd));
     }
 
     // ── MANUFACTURED GOODS — simplified model ──
