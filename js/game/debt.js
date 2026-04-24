@@ -65,7 +65,7 @@ export function getBondRatio(credit) {
 export function creditToCouponRate(credit) {
     const c = Number(credit) || 0;
     const annual = Math.min(0.18, Math.max(0.02, 0.15 - c * 0.0013));
-    // Round to 5 dp to match the bond_offers.coupon_rate column precision.
+    // Round to 5 dp to match the finance_loan_requests.coupon_rate column precision.
     return Math.round((annual / 12) * 100000) / 100000;
 }
 
@@ -119,7 +119,19 @@ export async function processBondMaturitiesTick(supabase, nation, currentTick) {
 
         await supabase.from('bond_holdings').update({
             matured: true, matured_at_tick: currentTick,
-        }).eq('id', h.id);
+        }).eq('id', h.id).then(({ error: mErr }) => {
+            // Loud on failure: if this UPDATE fails after the principal was
+            // paid, the row still has matured=false and matures_at_tick<=now,
+            // so next tick's query re-matches and double-pays the holder.
+            // No automatic unwind — log and surface for manual intervention.
+            if (mErr) {
+                console.error(
+                    `[Debt] CRITICAL: bond_holdings mark-matured FAILED for holding ${h.id} ` +
+                    `after paying $${principal} principal — next tick will re-pay. ` +
+                    `Manually update this row. Err: ${mErr.message}`
+                );
+            }
+        });
 
         totalPrincipal += principal;
     }
@@ -152,6 +164,14 @@ export async function processBondCouponsTick(supabase, nation, currentTick) {
     if (totalCoupon === 0) return { totalCoupon: 0 };
 
     // Debit issuer once for the aggregate.
+    //
+    // v2 GAP (documented, not fixed): when budget_reserves < totalCoupon
+    // the Math.max floors at 0 while holders still get paid in full. The
+    // nation effectively prints money to cover the shortfall without the
+    // inflation hit. Correct treatment is either (a) print the shortfall
+    // AND apply the corresponding inflation, or (b) trigger the sovereign-
+    // default path. Both are v2 — v1 flags fiscal pressure only via the
+    // deficit loop and credit deterioration, not via coupon default.
     const newReserves = Math.max(0, Number(nation.budget_reserves || 0) - totalCoupon);
     const { error: nErr } = await supabase.from('nations')
         .update({ budget_reserves: newReserves }).eq('id', nation.id);
@@ -200,9 +220,20 @@ export async function processBondOfferExpiryTick(supabase, nation, currentTick) 
         // principal_remaining is the unfilled amount (NULL fallback to amount
         // for any rows from before this column was populated).
         const unfilled = Number(o.principal_remaining ?? o.amount) || 0;
-        forcedPrinted += unfilled;
-        await supabase.from('finance_loan_requests')
+        // Flip status FIRST — if this UPDATE fails we skip the print so the
+        // same offer can't be picked up by the next tick and counted twice.
+        // (Alternative: mark-after-print doubles the inflation hit if the
+        // UPDATE fails mid-loop. Mark-first means a failure just loses the
+        // print for this tick; next tick retries cleanly.)
+        const { error: uErr } = await supabase.from('finance_loan_requests')
             .update({ status: 'expired' }).eq('id', o.id);
+        if (uErr) {
+            console.warn(
+                `[Debt] offer mark-expired failed for ${o.id}; skipping print this tick: ${uErr.message}`
+            );
+            continue;
+        }
+        forcedPrinted += unfilled;
     }
 
     if (forcedPrinted > 0 && gdp > 0) {
@@ -308,8 +339,13 @@ export async function processDebtTick(supabase, nation, expenditures, revenue, c
     const credPenalty = calculateCreditDeterioration(nation);
     if (credPenalty > 0) {
         const newCredit = Math.min(100, Math.max(0, Number(nation.credit || 0) - credPenalty));
-        await supabase.from('nations').update({ credit: newCredit }).eq('id', nation.id);
-        nation.credit = newCredit;
+        const { error: cErr } = await supabase.from('nations')
+            .update({ credit: newCredit }).eq('id', nation.id);
+        if (cErr) {
+            console.warn(`[Debt] credit deterioration update failed for ${nation.name}:`, cErr.message);
+        } else {
+            nation.credit = newCredit;
+        }
     }
 
     return {
