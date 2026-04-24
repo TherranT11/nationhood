@@ -279,6 +279,12 @@ function injectStyles() {
     font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 700;
     margin-bottom: 2px;
 }
+/* Nation tag appended to the sender line in Global Chat. Dim so it
+   reads as secondary context next to the party/corp name. */
+.msg-msg__nation {
+    font-weight: 500; margin-left: 4px;
+    color: var(--text-dim, #8a8778); opacity: 0.8;
+}
 .msg-msg__time {
     font-family: var(--font-mono, monospace); font-size: 8px;
     color: var(--text-dim, #4a4940); margin-top: 2px; text-align: right;
@@ -645,7 +651,7 @@ async function renderChatList() {
         el.addEventListener('click', () => {
             const cid = el.dataset.chatId;
             const g = _groupChats.find(gc => gc.chat.id === cid);
-            if (g) openThread({ type: 'group', id: cid, name: g.chat.name });
+            if (g) openThread({ type: 'group', id: cid, name: g.chat.name, chatType: g.chat.chat_type });
         });
     });
     body.querySelectorAll('[data-msg-action="start-dm"]').forEach(el => {
@@ -800,7 +806,7 @@ function renderDMItem(dm) {
 
 // ── Open thread view ──
 let _msgSending = false;
-let _threadFactionCache = {}; // { factionId: { faction_name, abbreviation, party_color } }
+let _threadFactionCache = {}; // { factionId: { id, faction_name, abbreviation, party_color, nation_id, nation_name } }
 
 async function openThread(chatInfo) {
     _msgActiveChat = chatInfo;
@@ -982,13 +988,25 @@ function renderMessage(msg) {
     }
 
     const cls = msg.isMine ? 'msg-msg msg-msg--sent' : 'msg-msg msg-msg--received';
-    const senderName = msg.isMine ? '' : getSenderName(msg.senderId);
     const timeStr = formatMsgTime(msg.createdAt);
 
+    // Global Chat spans the whole shard, so each incoming message needs
+    // both the full faction name and a "[Nation]" tag for context. Other
+    // group chats (nation, ipo, custom) stay on the short abbreviation.
     let senderHtml = '';
-    if (!msg.isMine && _msgActiveChat?.type === 'group' && senderName) {
-        const color = _threadFactionCache[msg.senderId]?.party_color || '#888';
-        senderHtml = `<div class="msg-msg__sender" style="color:${escapeHtml(color)}">${escapeHtml(senderName)}</div>`;
+    if (!msg.isMine && _msgActiveChat?.type === 'group') {
+        const cached = _threadFactionCache[msg.senderId];
+        const color = cached?.party_color || '#888';
+        const isGlobal = _msgActiveChat?.chatType === 'global';
+        const displayName = isGlobal
+            ? (cached?.faction_name || cached?.abbreviation || '...')
+            : (cached?.abbreviation || cached?.faction_name || '...');
+        const nationTag = (isGlobal && cached?.nation_name)
+            ? `<span class="msg-msg__nation">[${escapeHtml(cached.nation_name)}]</span>`
+            : '';
+        if (displayName) {
+            senderHtml = `<div class="msg-msg__sender" style="color:${escapeHtml(color)}">${escapeHtml(displayName)}${nationTag}</div>`;
+        }
     }
 
     return `<div class="${cls}">
@@ -1010,13 +1028,23 @@ async function loadFactionNames(factionIds) {
     if (toLoad.length === 0) return;
 
     try {
+        // Embedded nations(name) so Global Chat sender lines can render the
+        // "[Nation]" tag without a second round-trip. nation_id may be NULL
+        // for non-party/corp factions; the nation relation is then null.
         const { data, error } = await _supabase
             .from('factions')
-            .select('id, faction_name, abbreviation, party_color')
+            .select('id, faction_name, abbreviation, party_color, nation_id, nations(id, name)')
             .in('id', toLoad);
         if (error) throw error;
         for (const f of (data || [])) {
-            _threadFactionCache[f.id] = f;
+            _threadFactionCache[f.id] = {
+                id: f.id,
+                faction_name: f.faction_name,
+                abbreviation: f.abbreviation,
+                party_color: f.party_color,
+                nation_id: f.nation_id,
+                nation_name: f.nations?.name || null,
+            };
         }
     } catch (e) {
         // Non-critical — sender names will show as '...'
@@ -1508,7 +1536,7 @@ async function createGroupChat() {
         // Open the new chat thread
         const headerTitle = document.querySelector('.msg-panel__title');
         if (headerTitle) headerTitle.textContent = 'Messages';
-        openThread({ type: 'group', id: newChatId, name: newChatName });
+        openThread({ type: 'group', id: newChatId, name: newChatName, chatType: 'custom' });
 
     } catch (err) {
         console.error('[Messaging] Create group failed:', err);
