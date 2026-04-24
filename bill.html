@@ -283,7 +283,7 @@ import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, F
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
 import { executeWhipCaucus } from './js/game/caucus.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
-import { getValidNewRates, computeTaxArticleEffects, TAX_RATE_MIN, TAX_RATE_MAX, TAX_STEP_PP } from './js/game/tax-articles.js';
+import { getValidNewRates, computeTaxArticleEffects, TAX_STEP_PP } from './js/game/tax-articles.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
     if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
@@ -3598,20 +3598,25 @@ function onSponsorTaxRateChange() {
 }
 async function submitSponsorAddIncomeTaxArticle() {
     const sel = document.getElementById('sponsor-tax-new-rate');
+    const addBtn = document.getElementById('sponsor-tax-add-btn');
     const newRate = Number(sel.value);
     if (!sel.value || !_sponsorTaxDirection) { alert('Please select a direction and new rate.'); return; }
+    if (addBtn.disabled) return;  // Double-click guard: button already disabled = submit in flight.
+    addBtn.disabled = true;
     const cur = Number(currentNation?.income_tax ?? 0);
     const steps = Math.abs(newRate - cur) / TAX_STEP_PP[_sponsorTaxDirection];
     try {
         // Reject if this bill already has an income tax article — one per bill.
-        const { data: existingTax } = await _supabase.from('bill_articles')
-            .select('id, effect_data').eq('bill_id', billId);
+        // Also fetch article numbers in the same query to avoid a second round-trip.
+        const { data: existingTax, error: fetchErr } = await _supabase.from('bill_articles')
+            .select('id, article_number, effect_data').eq('bill_id', billId);
+        if (fetchErr) throw fetchErr;
         const hasIncomeTax = (existingTax || []).some(a => a.effect_data?.type === 'INCOME_TAX_CHANGE');
-        if (hasIncomeTax) { alert('This bill already contains an Income Tax Article. Only one per bill.'); return; }
+        if (hasIncomeTax) { alert('This bill already contains an Income Tax Article. Only one per bill.'); addBtn.disabled = false; return; }
 
         const nextNum = ((existingTax || []).reduce((m, a) => Math.max(m, Number(a.article_number || 0)), 0)) + 1;
         const titleDir = _sponsorTaxDirection === 'cut' ? 'Cut' : 'Hike';
-        await _supabase.from('bill_articles').insert({
+        const { error: insErr } = await _supabase.from('bill_articles').insert({
             bill_id: billId, policy_id: null, article_number: Math.max(nextNum, 2),
             added_by: currentFaction.id,
             article_title: `Income Tax ${titleDir}: ${cur}% → ${newRate}%`,
@@ -3623,9 +3628,14 @@ async function submitSponsorAddIncomeTaxArticle() {
                 steps,
             },
         });
+        if (insErr) throw insErr;
         closeSponsorAddIncomeTaxModal();
         await loadBillData();
-    } catch (e) { console.error(e); alert('Error: ' + e.message); }
+    } catch (e) {
+        console.error(e);
+        alert('Error: ' + e.message);
+        addBtn.disabled = false;  // Re-enable on failure so the user can retry.
+    }
 }
 
 // Sponsor Add Funding Article
