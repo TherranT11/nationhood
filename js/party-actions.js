@@ -556,10 +556,14 @@ async function respondToBlocInvite(inviteId, decision, root) {
         if (error) throw error;
         if (data && data.success === false) throw new Error(data.error || 'Unknown error');
 
-        // Refresh faction.bloc_id + bloc state so the banner/actions flip immediately
+        // Refresh faction.bloc_id + momentum so the banner/actions flip and
+        // the +2 bonus from accept_bloc_invite is visible immediately.
         const { data: freshFaction } = await _supabase.from('factions')
-            .select('bloc_id').eq('id', factionId).single();
-        if (freshFaction) _state.faction.bloc_id = freshFaction.bloc_id || null;
+            .select('bloc_id, momentum').eq('id', factionId).single();
+        if (freshFaction) {
+            _state.faction.bloc_id = freshFaction.bloc_id || null;
+            if (freshFaction.momentum != null) _state.faction.momentum = freshFaction.momentum;
+        }
         await loadBlocState(factionId, _state.nation?.id);
         renderPage(root);
     } catch (err) {
@@ -594,6 +598,10 @@ async function triggerLeaveBloc(root) {
         if (data && data.success === false) throw new Error(data.error || 'Unknown error');
 
         _state.faction.bloc_id = null;
+        // Phase 2a: refresh momentum so the -7 leave penalty shows immediately.
+        const { data: freshFaction } = await _supabase.from('factions')
+            .select('momentum').eq('id', _state.faction.id).single();
+        if (freshFaction?.momentum != null) _state.faction.momentum = freshFaction.momentum;
         await loadBlocState(_state.faction.id, _state.nation?.id);
         renderPage(root);
     } catch (err) {
@@ -783,9 +791,13 @@ async function openCreateBlocModal(root) {
             if (error) throw error;
             if (data && data.success === false) throw new Error(data.error || 'Unknown error');
 
-            // Deduct $100k locally so the header re-renders immediately
+            // Deduct $100k locally so the header re-renders immediately.
+            // Phase 2a: also refresh momentum for the leader's +2 founding bonus.
             _state.faction.party_funds = Math.max(0, (_state.faction.party_funds || 0) - 100000);
             _state.faction.bloc_id = data?.bloc_id || null;
+            const { data: freshFaction } = await _supabase.from('factions')
+                .select('momentum').eq('id', faction.id).single();
+            if (freshFaction?.momentum != null) _state.faction.momentum = freshFaction.momentum;
             close();
             await loadBlocState(faction.id, _state.nation?.id);
             renderPage(root);
