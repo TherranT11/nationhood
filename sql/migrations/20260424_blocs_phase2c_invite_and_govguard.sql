@@ -40,6 +40,11 @@ BEGIN
     SELECT nation_id INTO v_nation_id FROM factions WHERE id = p_faction_id;
     IF v_nation_id IS NULL THEN RETURN FALSE; END IF;
 
+    -- Text-compare the JSONB members rather than ::UUID casting them.
+    -- Postgres serializes UUIDs deterministically (lowercase + hyphens),
+    -- so comparing on string equality is correctness-preserving and
+    -- doesn't risk an exception from a malformed legacy coalition_parties
+    -- entry that wouldn't parse as a UUID.
     RETURN EXISTS (
         SELECT 1
           FROM administrations a
@@ -51,9 +56,9 @@ BEGIN
                OR EXISTS (
                       SELECT 1
                         FROM jsonb_array_elements(COALESCE(a.coalition_parties, '[]'::jsonb)) elem
-                       WHERE (elem ->> 'party_id')::UUID = p_faction_id
-                          OR (elem ->> 'id')::UUID       = p_faction_id
-                          OR elem #>> '{}'              = p_faction_id::TEXT
+                       WHERE (elem ->> 'party_id') = p_faction_id::TEXT
+                          OR (elem ->> 'id')       = p_faction_id::TEXT
+                          OR (elem #>> '{}')       = p_faction_id::TEXT
                   )
            )
     );
