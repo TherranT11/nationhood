@@ -361,14 +361,17 @@ async function loadTradeFlowData() {
 }
 
 // ── Trade-lane efficiency helpers (shared by commodity detail + agreements) ──
-// Base 85% for every bilateral lane; +3% per active shipping claim on a route
-// between our nation and the partner, capped at 100%. Counts claims across
-// ALL sectors for that pair — one ship helps every commodity on that lane.
-function _laneShipCountFor(partnerId) {
+// Base 85% for every bilateral lane; +3% per active shipping claim on THAT
+// specific route (origin nation, destination nation, sector), capped at 100%.
+// Ships on a fuel route do not boost efficiency on a manufactured_goods route
+// between the same two nations — matches trade-constants.js shipping-
+// efficiency multiplier so the badge and the actual trade_volume agree.
+function _laneShipCountFor(partnerId, sector) {
     const myId = _worldState?.nation?.id;
-    if (!myId || !partnerId) return 0;
+    if (!myId || !partnerId || !sector) return 0;
     let count = 0;
     for (const r of (_allShippingRoutes || [])) {
+        if (r.trade_sector !== sector) continue;
         const touchesUs = r.origin_nation_id === myId || r.destination_nation_id === myId;
         const touchesThem = r.origin_nation_id === partnerId || r.destination_nation_id === partnerId;
         if (!touchesUs || !touchesThem) continue;
@@ -391,13 +394,60 @@ function _shippingNeedForPartner(partnerId) {
     return shippingNeedFor(myNation, partner, rel?.border_types);
 }
 
-function _laneEfficiencyFor(partnerId) {
+function _laneEfficiencyFor(partnerId, sector) {
     const shipNeed = _shippingNeedForPartner(partnerId);
     if (!shipNeed.needsShipping) {
         return { pct: 100, ships: 0, reason: shipNeed.reason };
     }
-    const ships = _laneShipCountFor(partnerId);
+    const ships = _laneShipCountFor(partnerId, sector);
     return { pct: Math.min(100, 85 + ships * 3), ships, reason: null };
+}
+
+// Agreement-level aggregate — an agreement typically spans multiple sectors,
+// each with its own route and its own efficiency. Returns a volume-weighted
+// average pct across the agreement's routes with a total ship count, so the
+// single _efficiencyBadge in the agreement view reflects the agreement's
+// real overall throughput. Land lanes (landlocked / land border) contribute
+// 100% and don't need shipping.
+function _agreementEfficiency(agreementId, partnerId) {
+    const routes = _shippingRoutesByAgreement[agreementId] || [];
+    if (routes.length === 0) {
+        // No routes linked yet (freshly ratified, generator hasn't run).
+        // Fall back to the partner's shipping need so a land-adjacent pair
+        // reads "landlocked" / "land border" instead of a bogus maritime 85%.
+        const shipNeed = partnerId ? _shippingNeedForPartner(partnerId) : null;
+        if (shipNeed && !shipNeed.needsShipping) {
+            return { pct: 100, ships: 0, reason: shipNeed.reason };
+        }
+        return { pct: 85, ships: 0, reason: null };
+    }
+    let totalVolume = 0;
+    let weightedPct = 0;
+    let totalShips = 0;
+    let maritimeCount = 0;
+    let landReason = null;
+    for (const r of routes) {
+        const partnerId = (r.origin_nation_id === _worldState?.nation?.id)
+            ? r.destination_nation_id
+            : r.origin_nation_id;
+        const eff = _laneEfficiencyFor(partnerId, r.trade_sector);
+        const v = Math.max(1, Number(r.trade_volume) || 1);
+        weightedPct += eff.pct * v;
+        totalVolume += v;
+        totalShips += eff.ships;
+        if (eff.reason) landReason = landReason || eff.reason;
+        else maritimeCount += 1;
+    }
+    // All-land agreement: keep the land reason so the badge reads
+    // "landlocked" / "land border" instead of a percentage with 0 ships.
+    if (maritimeCount === 0 && landReason) {
+        return { pct: 100, ships: 0, reason: landReason };
+    }
+    return {
+        pct: Math.round(weightedPct / totalVolume),
+        ships: totalShips,
+        reason: null,
+    };
 }
 function _efficiencyBadge(eff) {
     const { pct, ships, reason } = eff;
@@ -562,7 +612,7 @@ function renderTradeEconomy() {
                     const partnerNation = (_worldAllNations || []).find(n => n.id === p.exporter_nation_id);
                     const pName = partnerNation?.name || 'Unknown';
                     const pUnit = formatSectorVolume(p.trade_volume, c.key);
-                    const eff = _laneEfficiencyFor(p.exporter_nation_id);
+                    const eff = _laneEfficiencyFor(p.exporter_nation_id, c.key);
                     html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 0 2px 12px;">
                         <span style="font-size:12px;color:var(--text-secondary);">\u2022 ${escapeHtml(pName)}</span>
                         <span style="display:flex;align-items:center;gap:8px;">
@@ -594,7 +644,7 @@ function renderTradeEconomy() {
                     const partnerNation = (_worldAllNations || []).find(n => n.id === p.importer_nation_id);
                     const pName = partnerNation?.name || 'Unknown';
                     const pUnit = formatSectorVolume(p.trade_volume, c.key);
-                    const eff = _laneEfficiencyFor(p.importer_nation_id);
+                    const eff = _laneEfficiencyFor(p.importer_nation_id, c.key);
                     html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 0 2px 12px;">
                         <span style="font-size:12px;color:var(--text-secondary);">\u2022 ${escapeHtml(pName)}</span>
                         <span style="display:flex;align-items:center;gap:8px;">
@@ -1184,7 +1234,7 @@ function _shippingBidCloseTicks(apps) {
     return Math.max(0, (earliest + 3) - currentTick);
 }
 
-let _shippingBidModal = null; // { routeId, route, apps, mot: {first, last} } | null
+let _shippingBidModal = null; // { routeId, route, apps, mot, sort, activeCorps, incumbentCorps } | null
 
 window.openShippingBidModal = async function(routeId) {
     const route = (_allShippingRoutes || []).find(r => r.id === routeId);
@@ -1861,7 +1911,7 @@ function renderTradeAgreements() {
                     <div style="font-family:var(--font-mono);font-size:7px;color:var(--green);">AUTO-RENEW</div>
                 </div>` : ''}
                 <div style="padding:4px 8px;background:var(--bg-card);border:1px solid var(--border-main);display:flex;align-items:center;">
-                    ${_efficiencyBadge(_laneEfficiencyFor(partnerId))}
+                    ${_efficiencyBadge(_agreementEfficiency(ag.id, partnerId))}
                 </div>
             </div>`;
 
@@ -1875,7 +1925,7 @@ function renderTradeAgreements() {
                         <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>`;
                     html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                         <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Route Efficiency</span>
-                        ${_efficiencyBadge(_laneEfficiencyFor(partnerId))}
+                        ${_efficiencyBadge(_agreementEfficiency(ag.id, partnerId))}
                     </div>`;
                     for (const corp of shipInfo.corps) {
                         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
@@ -1911,9 +1961,9 @@ function renderTradeAgreements() {
                     } else {
                         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                                 <span style="font-size:12px;font-weight:700;color:var(--orange);">No shipping corporation assigned</span>
-                                ${_efficiencyBadge(_laneEfficiencyFor(partnerId))}
+                                ${_efficiencyBadge(_agreementEfficiency(ag.id, partnerId))}
                             </div>
-                            <div style="font-size:11px;color:var(--text-dim);">Trade operates at 85% base capacity. Each active shipping corporation on any route to this partner adds +3% efficiency (max 100%).</div>`;
+                            <div style="font-size:11px;color:var(--text-dim);">Each maritime route in this agreement operates at 85% base capacity. Each active shipping contract on a route adds +3% efficiency to that specific route (max 100%). Sector routes are independent — a ship on one sector does not boost another.</div>`;
                     }
                     html += `</div>`;
                 }
