@@ -2301,6 +2301,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     //     their_exports  → author (importer) reduces tariffs on partner's exports
     //     mutual         → both
     function applyTariffReductionArticle(ta, d) {
+        if (!d || !d.sector) return; // skip malformed articles rather than polluting tariffModMap[key][undefined]
         var reduction = (d.reduction_pct || 0) / 100;
         var direction = d.direction || 'mutual';
         var authorId = d.author_nation_id || ta.nation_a_id;
@@ -2422,8 +2423,8 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 // modal). Collect the row for Step 4d trade_flow pre-allocation,
                 // and apply inline market_access / tariff_reduction articles
                 // so tariffs reflect the deal this same tick.
-                flagsMap[k1].has_goods_trade = true;
-                flagsMap[k2].has_goods_trade = true;
+                // No has_goods_trade flag — nothing reads it and the affinity
+                // calc already weights FTA/PTA/RSC explicitly.
                 activeGoodsTrades.push(ta);
 
                 var arts = ta.articles || [];
@@ -2569,14 +2570,18 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 var gd = gArts[gai].data || {};
                 if (!gd.commodity || !gd.volume) continue;
 
-                // direction: 'a_buys_b' means nation_a buys FROM nation_b
+                // direction: 'a_buys_b' means nation_a buys FROM nation_b.
+                // Skip articles with an unrecognized direction rather than
+                // silently mis-attributing the flow.
                 var gBuyerId, gSellerId;
                 if (gd.direction === 'a_buys_b') {
                     gBuyerId = gt.nation_a_id;
                     gSellerId = gt.nation_b_id;
-                } else {
+                } else if (gd.direction === 'b_buys_a') {
                     gBuyerId = gt.nation_b_id;
                     gSellerId = gt.nation_a_id;
+                } else {
+                    continue;
                 }
 
                 var gSellerFlows = nationFlows[gSellerId];
