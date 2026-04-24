@@ -2005,45 +2005,57 @@ async function loadFactionNames(factionIds) {
     const toLoad = factionIds.filter(id => !_threadFactionCache[id]);
     if (toLoad.length === 0) return;
 
+    // Two-step lookup: factions first, then their nations. An earlier
+    // single-query implementation used the PostgREST embed
+    // `nations(id, name)` but that failed silently whenever RLS or FK
+    // metadata rejected the join — which meant Global Chat fell back
+    // to a "?" avatar + "..." nameplate for every sender. Two queries
+    // are strictly more robust.
+    //
+    // Degrade gracefully: if the factions query fails we can't render
+    // anything; if only the nations query fails we still populate the
+    // cache with faction_name / abbreviation / party_color and leave
+    // nation_name null (no flag, no [Nation] tag, but the identity is
+    // still readable).
+    let factions = null;
     try {
-        // Two-step lookup: first the factions themselves, then the
-        // nations they belong to. An earlier single-query implementation
-        // used the PostgREST embed `nations(id, name)` but that failed
-        // silently whenever RLS or FK metadata rejected the join — which
-        // meant Global Chat fell back to a "?" avatar + "..." nameplate
-        // for every sender. Two queries are strictly more robust.
-        const { data: factions, error: fErr } = await _supabase
+        const { data, error } = await _supabase
             .from('factions')
             .select('id, faction_name, abbreviation, party_color, faction_type, corp_sector, nation_id')
             .in('id', toLoad);
-        if (fErr) throw fErr;
+        if (error) throw error;
+        factions = data;
+    } catch (e) {
+        console.warn('[Messaging] loadFactionNames: factions query failed:', e);
+        return;
+    }
 
-        const nationIds = [...new Set((factions || []).map(f => f.nation_id).filter(Boolean))];
-        let nationMap = {};
-        if (nationIds.length > 0) {
-            const { data: nations, error: nErr } = await _supabase
+    const nationIds = [...new Set((factions || []).map(f => f.nation_id).filter(Boolean))];
+    const nationMap = {};
+    if (nationIds.length > 0) {
+        try {
+            const { data, error } = await _supabase
                 .from('nations')
                 .select('id, name')
                 .in('id', nationIds);
-            if (nErr) throw nErr;
-            for (const n of (nations || [])) nationMap[n.id] = n.name;
+            if (error) throw error;
+            for (const n of (data || [])) nationMap[n.id] = n.name;
+        } catch (e) {
+            console.warn('[Messaging] loadFactionNames: nations query failed (nameplates will render without flag/tag):', e);
         }
+    }
 
-        for (const f of (factions || [])) {
-            _threadFactionCache[f.id] = {
-                id: f.id,
-                faction_name: f.faction_name,
-                abbreviation: f.abbreviation,
-                party_color: f.party_color,
-                faction_type: f.faction_type,
-                corp_sector: f.corp_sector,
-                nation_id: f.nation_id,
-                nation_name: f.nation_id ? (nationMap[f.nation_id] || null) : null,
-            };
-        }
-    } catch (e) {
-        // Visible in DevTools so diagnose-in-the-wild stays possible.
-        console.warn('[Messaging] loadFactionNames failed:', e);
+    for (const f of (factions || [])) {
+        _threadFactionCache[f.id] = {
+            id: f.id,
+            faction_name: f.faction_name,
+            abbreviation: f.abbreviation,
+            party_color: f.party_color,
+            faction_type: f.faction_type,
+            corp_sector: f.corp_sector,
+            nation_id: f.nation_id,
+            nation_name: f.nation_id ? (nationMap[f.nation_id] || null) : null,
+        };
     }
 }
 
