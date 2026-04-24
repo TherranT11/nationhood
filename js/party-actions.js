@@ -1758,7 +1758,10 @@ function openRallyModal(root) {
                     ap_cost: 0,
                     money_cost: tier.cost,
                     tick_performed: tick,
-                    result: { dieRoll, bonus: tier.bonus, total: dieRoll + tier.bonus, momentum: rallyResult.momentum, label: rallyResult.label },
+                    // momentumDelta + outcomeName are the normalized fields
+                    // the Recent Activity renderer reads. momentum + label
+                    // kept for backwards-compat with pre-existing rows.
+                    result: { dieRoll, bonus: tier.bonus, total: dieRoll + tier.bonus, momentum: rallyResult.momentum, momentumDelta: rallyResult.momentum, label: rallyResult.label, outcomeName: rallyResult.label },
                 });
 
                 _state.faction.party_funds = newFunds;
@@ -3818,6 +3821,11 @@ async function executeFundraise(root) {
             money_cost: 0,
             tick_performed: tick,
             result: {
+                // momentumDelta is the normalized signed change read by the
+                // Recent Activity renderer. momCost is kept for backwards-
+                // compat with older rows and for any other consumer that
+                // wants the un-signed cost.
+                momentumDelta: -fi.momCost,
                 raised: fi.raised,
                 perSeat: fi.perSeat,
                 momCost: fi.momCost,
