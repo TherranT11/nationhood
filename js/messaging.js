@@ -331,13 +331,17 @@ function injectStyles() {
     border: 1px solid var(--border-mid, rgba(255,255,255,0.12));
     border-radius: 1px; flex-shrink: 0;
 }
-/* Sector pill for corp senders in Nation Chat. */
+/* Sector pill for corp senders in Nation Chat. flex-shrink avoids
+   squashing in narrow panels; max-width + ellipsis caps sector names
+   like "Heavy Manufacturing" so they don't push the nameplate off. */
 .msg-msg__sector {
     font-family: var(--font-mono, monospace); font-size: 8px; font-weight: 700;
     padding: 1px 5px; border-radius: 2px; text-transform: uppercase;
     background: var(--amber-faint, rgba(200,166,78,0.12));
     color: var(--amber, #c8a64e);
     letter-spacing: 0.4px; flex-shrink: 0;
+    max-width: 110px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
 }
 /* Fallback nation tag when no flag asset is available. */
 .msg-msg__nation {
@@ -517,12 +521,11 @@ function injectHTML() {
         if (nameplate) {
             ev.stopPropagation();
             const fid = nameplate.dataset.factionId;
-            // If the popover is already open for this nameplate, toggle off.
+            // Clicking the same nameplate toggles the popover closed.
             if (_identityPopoverEl && _identityPopoverEl.dataset.factionId === fid) {
                 closeIdentityPopover();
             } else {
                 openIdentityPopover(nameplate, fid);
-                if (_identityPopoverEl) _identityPopoverEl.dataset.factionId = fid;
             }
             return;
         }
@@ -540,7 +543,6 @@ function injectHTML() {
         if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches('[data-msg-action="open-profile"]')) {
             ev.preventDefault();
             openIdentityPopover(ev.target, ev.target.dataset.factionId);
-            if (_identityPopoverEl) _identityPopoverEl.dataset.factionId = ev.target.dataset.factionId;
         }
     });
     // Close popover when the panel closes or the view switches.
@@ -1154,9 +1156,16 @@ function renderMessage(msg) {
             extraHtml = `<span class="msg-msg__sector" title="Sector">${escapeHtml(cached.corp_sector)}</span>`;
         }
 
+        // Only wire the nameplate as a button when we have cached data —
+        // otherwise the popover has nothing to render and a click is a
+        // no-op that still advertises a cursor:pointer affordance.
+        const clickable = !!cached;
+        const nameplateAttrs = clickable
+            ? `data-msg-action="open-profile" data-faction-id="${escapeHtml(msg.senderId)}" role="button" tabindex="0" title="View profile"`
+            : `style="cursor:default;"`;
         headerHtml = `<div class="msg-msg__header">
             <div class="msg-msg__avatar" style="color:${escapeHtml(color)};border-color:${escapeHtml(color)};">${escapeHtml(abbr)}</div>
-            <div class="msg-msg__nameplate" data-msg-action="open-profile" data-faction-id="${escapeHtml(msg.senderId)}" role="button" tabindex="0" title="View profile">
+            <div class="msg-msg__nameplate" ${nameplateAttrs}>
                 <span class="msg-msg__name" style="color:${escapeHtml(color)};">${escapeHtml(name)}</span>
                 ${extraHtml}
             </div>
@@ -1168,13 +1177,6 @@ function renderMessage(msg) {
         <div>${escapeHtml(msg.text)}</div>
         <div class="msg-msg__time">${timeStr}</div>
     </div>`;
-}
-
-function getSenderName(factionId) {
-    if (!factionId) return 'System';
-    const cached = _threadFactionCache[factionId];
-    if (cached) return cached.abbreviation || cached.faction_name || '?';
-    return '...';
 }
 
 // ── Identity popover (Phase 4) ────────────────────────────────────────
@@ -1191,14 +1193,19 @@ function closeIdentityPopover() {
 function openIdentityPopover(anchorEl, factionId) {
     closeIdentityPopover();
     const cached = _threadFactionCache[factionId];
-    if (!cached) return;
+    if (!cached || !factionId) return;
     const panel = document.getElementById('msg-panel');
     if (!panel) return;
 
     const color = cached.party_color || '#888';
-    const typeLabel = cached.faction_type === 'corporation' ? 'Corporation'
-        : cached.faction_type === 'party' ? 'Political Party'
-        : (cached.faction_type || 'Faction');
+    // Known enum values get friendly labels; anything else is title-cased
+    // so a future faction_type enum addition doesn't render as raw snake.
+    const rawType = cached.faction_type;
+    const typeLabel = rawType === 'corporation' ? 'Corporation'
+        : rawType === 'party' ? 'Political Party'
+        : rawType
+            ? rawType.charAt(0).toUpperCase() + rawType.slice(1).replace(/_/g, ' ')
+            : 'Faction';
     const nationName = cached.nation_name || '';
     const flagUrl = nationName ? NATION_FLAG_URLS[nationName] : '';
     const slug = nationNameToSlug(nationName);
@@ -1242,6 +1249,9 @@ function openIdentityPopover(anchorEl, factionId) {
 
     pop.style.top = top + 'px';
     pop.style.left = left + 'px';
+    // Stamp the factionId so the nameplate click handler can detect a
+    // click on the same anchor and toggle the popover closed.
+    pop.dataset.factionId = factionId;
 
     _identityPopoverEl = pop;
 }
