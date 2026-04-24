@@ -409,11 +409,16 @@ function _laneEfficiencyFor(partnerId, sector) {
 // single _efficiencyBadge in the agreement view reflects the agreement's
 // real overall throughput. Land lanes (landlocked / land border) contribute
 // 100% and don't need shipping.
-function _agreementEfficiency(agreementId) {
+function _agreementEfficiency(agreementId, partnerId) {
     const routes = _shippingRoutesByAgreement[agreementId] || [];
     if (routes.length === 0) {
-        // Fallback: no linked routes yet. Use land-vs-maritime status for
-        // the first known partner to render a sensible placeholder.
+        // No routes linked yet (freshly ratified, generator hasn't run).
+        // Fall back to the partner's shipping need so a land-adjacent pair
+        // reads "landlocked" / "land border" instead of a bogus maritime 85%.
+        const shipNeed = partnerId ? _shippingNeedForPartner(partnerId) : null;
+        if (shipNeed && !shipNeed.needsShipping) {
+            return { pct: 100, ships: 0, reason: shipNeed.reason };
+        }
         return { pct: 85, ships: 0, reason: null };
     }
     let totalVolume = 0;
@@ -1906,7 +1911,7 @@ function renderTradeAgreements() {
                     <div style="font-family:var(--font-mono);font-size:7px;color:var(--green);">AUTO-RENEW</div>
                 </div>` : ''}
                 <div style="padding:4px 8px;background:var(--bg-card);border:1px solid var(--border-main);display:flex;align-items:center;">
-                    ${_efficiencyBadge(_agreementEfficiency(ag.id))}
+                    ${_efficiencyBadge(_agreementEfficiency(ag.id, partnerId))}
                 </div>
             </div>`;
 
@@ -1920,7 +1925,7 @@ function renderTradeAgreements() {
                         <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">LOGISTICS & TRANSPORT</div>`;
                     html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                         <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Route Efficiency</span>
-                        ${_efficiencyBadge(_agreementEfficiency(ag.id))}
+                        ${_efficiencyBadge(_agreementEfficiency(ag.id, partnerId))}
                     </div>`;
                     for (const corp of shipInfo.corps) {
                         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
@@ -1956,7 +1961,7 @@ function renderTradeAgreements() {
                     } else {
                         html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                                 <span style="font-size:12px;font-weight:700;color:var(--orange);">No shipping corporation assigned</span>
-                                ${_efficiencyBadge(_agreementEfficiency(ag.id))}
+                                ${_efficiencyBadge(_agreementEfficiency(ag.id, partnerId))}
                             </div>
                             <div style="font-size:11px;color:var(--text-dim);">Each maritime route in this agreement operates at 85% base capacity. Each active shipping contract on a route adds +3% efficiency to that specific route (max 100%). Sector routes are independent — a ship on one sector does not boost another.</div>`;
                     }
