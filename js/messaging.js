@@ -11,6 +11,7 @@ let _msgNation = null;
 let _msgShard = null;
 let _msgPanelOpen = false;
 let _msgView = 'list';       // 'list' | 'thread' | 'new-dm' | 'new-group'
+let _msgListFilter = 'all';  // 'all' | 'global' | 'nation' | 'dm' — Phase 3 tab bar
 let _msgActiveChat = null;   // { type: 'dm'|'group', id, name, ... }
 let _realtimeChannel = null;
 let _groupRealtimeChannel = null;
@@ -46,15 +47,27 @@ function injectStyles() {
 /* ── Panel ── */
 .msg-panel {
     position: fixed; bottom: 20px; right: 20px; z-index: 9001;
-    /* Desktop default: 408x600 (20% larger than the original 340x500).
-       Mobile override at the bottom of this stylesheet takes the panel
-       full-width so this doesn't matter on narrow viewports. */
-    width: 408px; height: 600px; max-height: calc(100vh - 40px);
+    /* Desktop default: 420x640. installResize() restores the user's saved
+       size on mount (localStorage key 'msg-panel-size') and writes back on
+       drag-end. Mobile media query below 640px takes the panel fullscreen
+       so this width/height is ignored there. */
+    width: 420px; height: 640px; max-height: calc(100vh - 40px);
     background: var(--bg-panel, #1a1a17); border: 1px solid var(--border-main, rgba(0,0,0,0.08));
     box-shadow: 0 12px 48px rgba(0,0,0,0.6);
     display: none; flex-direction: column; overflow: hidden;
     border-radius: 8px;
 }
+/* Resize grab handle — top-left corner since the panel anchors to
+   bottom-right. Hidden on mobile via the 640px media query below. */
+.msg-resize-handle {
+    position: absolute; top: 0; left: 0;
+    width: 14px; height: 14px;
+    cursor: nwse-resize; z-index: 2;
+    background:
+        linear-gradient(135deg, transparent 55%, var(--border-mid, rgba(255,255,255,0.18)) 55% 65%, transparent 65% 75%, var(--border-mid, rgba(255,255,255,0.18)) 75% 85%, transparent 85%);
+    opacity: 0.5; transition: opacity 0.1s;
+}
+.msg-resize-handle:hover { opacity: 1; }
 .msg-panel.open { display: flex; }
 
 /* Panel header */
@@ -72,6 +85,40 @@ function injectStyles() {
     font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1;
 }
 .msg-panel__close:hover { color: var(--text-muted, #666); }
+
+/* Filter tab bar — sits above the actions, filters the list view.
+   An amber unread-count badge appears on a tab when that section has
+   messages the current faction hasn't read yet. */
+.msg-panel__tabs {
+    display: flex; flex-shrink: 0;
+    border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
+    background: var(--bg-card, #252525);
+}
+.msg-tab {
+    flex: 1; padding: 10px 0; text-align: center; cursor: pointer;
+    font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text-dim, #4a4940); position: relative;
+    border-bottom: 2px solid transparent;
+    transition: color 0.1s, border-color 0.1s;
+    user-select: none;
+}
+.msg-tab:hover { color: var(--text-muted, #666); }
+.msg-tab--active {
+    color: var(--text-bright, #f0efe6);
+    border-bottom-color: var(--teal, #5aafa5);
+}
+/* Per-tab unread count — amber pill floated at the top-right of the
+   tab. Rendered by updateTabBadges() only when count > 0. */
+.msg-tab__badge {
+    position: absolute; top: 4px;
+    margin-left: 4px;
+    min-width: 14px; height: 14px; padding: 0 4px;
+    border-radius: 7px;
+    background: var(--amber, #c8a64e); color: #000;
+    font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 700;
+    line-height: 14px; text-align: center;
+}
 
 /* Panel actions bar */
 .msg-panel__actions {
@@ -270,14 +317,27 @@ function injectStyles() {
     color: var(--text-dim, #4a4940); text-align: center; line-height: 1.8;
 }
 
-/* ── Mobile ── */
-@media (max-width: 480px) {
-    .msg-panel { width: calc(100vw - 20px); right: 10px; top: 60px; bottom: auto; height: 60vh; }
-    .msg-bubble { top: 62px; right: 12px; bottom: auto; width: 42px; height: 42px; font-size: 18px; }
-}
-@media (max-width: 768px) and (min-width: 481px) {
-    .msg-bubble { top: 62px; right: 16px; bottom: auto; }
-    .msg-panel { top: 60px; bottom: auto; }
+/* ── Mobile: below 640px, the panel takes the full viewport. The tab bar
+     sits directly under the header and gives players a single thumb-reach
+     target per section. Bubble still floats bottom-right for one-tap open.
+     !important on the size props so any desktop width/height restored from
+     localStorage by installResize() doesn't leak into the fullscreen layout. */
+@media (max-width: 640px) {
+    .msg-panel {
+        top: 0 !important; right: 0 !important; left: 0 !important; bottom: 0 !important;
+        width: 100vw !important; height: 100vh !important; max-height: 100vh !important;
+        border-radius: 0; border-width: 0;
+    }
+    .msg-bubble {
+        /* Keep bubble bottom-right so it doesn't collide with top status bars
+           or the nation header. Smaller so it's unobtrusive on small screens. */
+        top: auto; bottom: 20px; right: 16px;
+        width: 48px; height: 48px; font-size: 20px;
+    }
+    /* Tabs get a touch more vertical room on mobile. */
+    .msg-tab { padding: 12px 0; font-size: 10px; }
+    /* Resize handle makes no sense at fullscreen. */
+    .msg-resize-handle { display: none; }
 }
     `;
     document.head.appendChild(style);
@@ -304,6 +364,12 @@ function injectHTML() {
             <span class="msg-panel__title">Messages</span>
             <button class="msg-panel__close" id="msg-close">&times;</button>
         </div>
+        <div class="msg-panel__tabs" id="msg-tabs">
+            <div class="msg-tab msg-tab--active" data-filter="all">All</div>
+            <div class="msg-tab" data-filter="global">Global</div>
+            <div class="msg-tab" data-filter="nation">Nation</div>
+            <div class="msg-tab" data-filter="dm">DMs</div>
+        </div>
         <div class="msg-panel__actions" id="msg-actions">
             <button class="msg-action-btn" id="msg-new-dm">+ New Message</button>
             <button class="msg-action-btn" id="msg-new-group">+ Group Chat</button>
@@ -320,6 +386,116 @@ function injectHTML() {
     document.getElementById('msg-close').addEventListener('click', togglePanel);
     document.getElementById('msg-new-dm').addEventListener('click', () => openNewDM());
     document.getElementById('msg-new-group').addEventListener('click', () => openNewGroup());
+
+    // Tab bar: clicking a tab switches the list filter and re-renders.
+    // Delegated listener on the tab container so late-added tabs still work.
+    const tabsEl = document.getElementById('msg-tabs');
+    if (tabsEl) {
+        tabsEl.addEventListener('click', (ev) => {
+            const tab = ev.target.closest('.msg-tab');
+            if (!tab) return;
+            const filter = tab.dataset.filter;
+            if (!filter || filter === _msgListFilter) return;
+            _msgListFilter = filter;
+            // If we're in a thread or creation view, snap back to the list.
+            if (_msgView !== 'list') {
+                renderChatList();
+            } else {
+                renderChatList();
+            }
+        });
+    }
+
+    // Restore saved panel size (Phase 3 resize handle) — see installResize().
+    installResize(panel);
+}
+
+// ── Tab bar: update unread badges + active class ──────────────────────
+// Called from renderChatList after the per-type unread counts are tallied.
+// Each tab shows an amber count badge for its section; a count of 0 hides
+// the badge entirely. Counts over 99 show "99+" to keep the pill compact.
+// The active tab class is refreshed here too so any code path that flips
+// _msgListFilter keeps the header in sync.
+function updateTabBadges(counts) {
+    const tabs = document.querySelectorAll('.msg-tab');
+    tabs.forEach((tab) => {
+        const f = tab.dataset.filter;
+        const count = counts[f] || 0;
+        tab.classList.toggle('msg-tab--active', f === _msgListFilter);
+        const existing = tab.querySelector('.msg-tab__badge');
+        if (existing) existing.remove();
+        if (count > 0) {
+            const badge = document.createElement('span');
+            badge.className = 'msg-tab__badge';
+            badge.textContent = count > 99 ? '99+' : String(count);
+            badge.title = count + ' unread';
+            tab.appendChild(badge);
+        }
+    });
+}
+
+// ── Resize handle (Phase 3) ───────────────────────────────────────────
+// Desktop-only drag handle in the top-left corner (opposite the close
+// button). Panel is anchored bottom-right, so dragging the top-left
+// corner up/left grows it. Size persisted in localStorage under
+// 'msg-panel-size'. Skipped on mobile (fullscreen breakpoint).
+const MSG_PANEL_SIZE_KEY = 'msg-panel-size';
+function installResize(panel) {
+    if (!panel) return;
+    // Restore saved size (desktop only — media query overrides below 640px).
+    try {
+        const raw = localStorage.getItem(MSG_PANEL_SIZE_KEY);
+        if (raw) {
+            const s = JSON.parse(raw);
+            if (s && typeof s.width === 'number' && typeof s.height === 'number') {
+                panel.style.width = Math.max(320, Math.min(s.width, 900)) + 'px';
+                panel.style.height = Math.max(400, Math.min(s.height, 900)) + 'px';
+            }
+        }
+    } catch (_) { /* ignore corrupt JSON */ }
+
+    // Insert the grab handle into the panel header.
+    if (panel.querySelector('.msg-resize-handle')) return;
+    const handle = document.createElement('div');
+    handle.className = 'msg-resize-handle';
+    handle.title = 'Drag to resize';
+    panel.appendChild(handle);
+
+    let dragging = false;
+    let startX, startY, startW, startH;
+    handle.addEventListener('mousedown', (e) => {
+        // Skip resize on mobile fullscreen — media query prevents the handle
+        // from showing, but guard just in case.
+        if (window.innerWidth <= 640) return;
+        dragging = true;
+        startX = e.clientX; startY = e.clientY;
+        startW = panel.offsetWidth; startH = panel.offsetHeight;
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        // Panel is anchored bottom-right, so pulling top-left away increases
+        // both dimensions. Clamp to sane min/max so the panel can't vanish
+        // or overflow.
+        const dx = startX - e.clientX;
+        const dy = startY - e.clientY;
+        const newW = Math.max(320, Math.min(startW + dx, 900));
+        const newH = Math.max(400, Math.min(startH + dy, 900));
+        panel.style.width = newW + 'px';
+        panel.style.height = newH + 'px';
+    });
+    window.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.style.userSelect = '';
+        try {
+            localStorage.setItem(MSG_PANEL_SIZE_KEY, JSON.stringify({
+                width: panel.offsetWidth,
+                height: panel.offsetHeight,
+            }));
+        } catch (_) { /* ignore quota errors */ }
+    });
 }
 
 // ── Toggle panel ──
@@ -371,36 +547,53 @@ async function renderChatList() {
     const nationChats = _groupChats.filter(g => g.chat.chat_type === 'nation');
     const customChats = _groupChats.filter(g => g.chat.chat_type === 'custom');
 
+    // Per-tab unread totals — fed into the Phase 3 tab bar badges.
+    const sumUnread = (arr) => arr.reduce((s, g) => s + (g.unreadCount || 0), 0);
+    const unreadByTab = {
+        global: sumUnread(globalChats),
+        nation: sumUnread(nationChats),
+        dm: _dmConversations.reduce((s, d) => s + (d.unreadCount || 0), 0),
+    };
+    unreadByTab.all = unreadByTab.global + unreadByTab.nation + unreadByTab.dm
+        + sumUnread(ipoChats) + sumUnread(customChats);
+    updateTabBadges(unreadByTab);
+
+    const filter = _msgListFilter || 'all';
+    const showGlobal = filter === 'all' || filter === 'global';
+    const showNation = filter === 'all' || filter === 'nation';
+    const showGroups = filter === 'all';   // ipo + custom only on All
+    const showDMs    = filter === 'all' || filter === 'dm';
+
     // Global Chat sits at the top — every party/corp is a member and it's
     // the shard-wide conversation, so it should be the most discoverable.
-    if (globalChats.length > 0) {
+    if (showGlobal && globalChats.length > 0) {
         html += `<div class="msg-section-hdr">Global Chat</div>`;
         html += globalChats.map(g => renderChatItem(g, 'group')).join('');
     }
 
-    if (nationChats.length > 0) {
+    if (showNation && nationChats.length > 0) {
         html += `<div class="msg-section-hdr">Nation Chat</div>`;
         html += nationChats.map(g => renderChatItem(g, 'group')).join('');
     }
 
-    if (ipoChats.length > 0) {
+    if (showGroups && ipoChats.length > 0) {
         html += `<div class="msg-section-hdr">Organisation Chats</div>`;
         html += ipoChats.map(g => renderChatItem(g, 'group')).join('');
     }
 
-    if (customChats.length > 0) {
+    if (showGroups && customChats.length > 0) {
         html += `<div class="msg-section-hdr">Group Chats</div>`;
         html += customChats.map(g => renderChatItem(g, 'group')).join('');
     }
 
     // ── Direct Messages ──
-    if (_dmConversations.length > 0) {
+    if (showDMs && _dmConversations.length > 0) {
         html += `<div class="msg-section-hdr">Direct Messages</div>`;
         html += _dmConversations.map(dm => renderDMItem(dm)).join('');
     }
 
-    // ── Nation Parties (quick-start DM list) ──
-    if (_msgNation) {
+    // ── Nation Parties (quick-start DM list) ── only on All / DMs filter.
+    if ((filter === 'all' || filter === 'dm') && _msgNation) {
         try {
             const { data: parties } = await _supabase
                 .from('factions')
