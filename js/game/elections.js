@@ -1982,12 +1982,6 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
                 .is('dissolved_at', null);
 
             await supabase
-                .from('head_of_government')
-                .update({ active: false })
-                .eq('nation_id', nation.id)
-                .eq('active', true);
-
-            await supabase
                 .from('ministries')
                 .update({
                     minister_first_name: null,
@@ -1998,6 +1992,18 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
                 .eq('nation_id', nation.id)
                 .eq('is_active', true);
         }
+
+        // HoG deactivation runs UNCONDITIONALLY — even if no government_formations
+        // or active_coalitions row existed. Legacy nations whose PM was auto-
+        // appointed without a formation row must still have their HoG flipped
+        // to inactive when an election completes, otherwise the stale row
+        // suppresses the formation UI across every subsequent cycle (Melizea
+        // bug, pre-fix). One source of truth: "election completed" ⇒ "old PM out".
+        await supabase
+            .from('head_of_government')
+            .update({ active: false })
+            .eq('nation_id', nation.id)
+            .eq('active', true);
     }
 
     return {
@@ -2326,13 +2332,6 @@ export async function processElections(supabase, nation, currentTick) {
                     .eq('nation_id', nation.id)
                     .is('dissolved_at', null);
 
-                // Deactivate PM
-                await supabase
-                    .from('head_of_government')
-                    .update({ active: false })
-                    .eq('nation_id', nation.id)
-                    .eq('active', true);
-
                 // Vacate all ministries
                 await supabase
                     .from('ministries')
@@ -2345,6 +2344,16 @@ export async function processElections(supabase, nation, currentTick) {
                     .eq('nation_id', nation.id)
                     .eq('is_active', true);
             }
+
+            // HoG deactivation runs UNCONDITIONALLY — see matching comment in
+            // processManualElection. The existingGov guard wraps gov-row
+            // cleanup, but the PM invariant ("election completed ⇒ old PM
+            // out") is independent of whether a formation row existed.
+            await supabase
+                .from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', nation.id)
+                .eq('active', true);
         }
 
         results.push({

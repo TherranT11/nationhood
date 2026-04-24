@@ -15192,12 +15192,6 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
                 .is('dissolved_at', null);
 
             await supabase
-                .from('head_of_government')
-                .update({ active: false })
-                .eq('nation_id', nation.id)
-                .eq('active', true);
-
-            await supabase
                 .from('ministries')
                 .update({
                     minister_first_name: null,
@@ -15208,6 +15202,18 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
                 .eq('nation_id', nation.id)
                 .eq('is_active', true);
         }
+
+        // HoG deactivation runs UNCONDITIONALLY — even if no government_formations
+        // or active_coalitions row existed. Legacy nations whose PM was auto-
+        // appointed without a formation row must still have their HoG flipped
+        // to inactive when an election completes, otherwise the stale row
+        // suppresses the formation UI across every subsequent cycle (Melizea
+        // bug, pre-fix). One source of truth: "election completed" ⇒ "old PM out".
+        await supabase
+            .from('head_of_government')
+            .update({ active: false })
+            .eq('nation_id', nation.id)
+            .eq('active', true);
     }
 
     return {
@@ -15536,13 +15542,6 @@ async function processElections(supabase, nation, currentTick) {
                     .eq('nation_id', nation.id)
                     .is('dissolved_at', null);
 
-                // Deactivate PM
-                await supabase
-                    .from('head_of_government')
-                    .update({ active: false })
-                    .eq('nation_id', nation.id)
-                    .eq('active', true);
-
                 // Vacate all ministries
                 await supabase
                     .from('ministries')
@@ -15555,6 +15554,16 @@ async function processElections(supabase, nation, currentTick) {
                     .eq('nation_id', nation.id)
                     .eq('is_active', true);
             }
+
+            // HoG deactivation runs UNCONDITIONALLY — see matching comment in
+            // processManualElection. The existingGov guard wraps gov-row
+            // cleanup, but the PM invariant ("election completed ⇒ old PM
+            // out") is independent of whether a formation row existed.
+            await supabase
+                .from('head_of_government')
+                .update({ active: false })
+                .eq('nation_id', nation.id)
+                .eq('active', true);
         }
 
         results.push({
@@ -28002,15 +28011,17 @@ const DEBT_CONFIG = Object.freeze({
     BOND_OFFER_EXPIRY_TICKS: 3,
 });
 
-// Tiered bond ratio. First tier whose min_credit is satisfied wins.
-// Same SSoT shape used by the Deal Flow UI to display "what fraction
-// of a deficit can this nation expect to borrow vs. print."
+// Tiered bond ratio + letter grade. First tier whose min_credit is
+// satisfied wins. Same SSoT shape used by the Deal Flow UI to display
+// "what fraction of a deficit can this nation expect to borrow vs.
+// print" and by the Ministry of Finance budget overview to render the
+// sovereign credit rating card.
 const BOND_RATIO_TIERS = Object.freeze([
-    { min_credit: 70, ratio: 0.95 },
-    { min_credit: 40, ratio: 0.60 },
-    { min_credit: 20, ratio: 0.20 },
-    { min_credit:  5, ratio: 0.05 },
-    { min_credit:  0, ratio: 0.00 },
+    { min_credit: 70, ratio: 0.95, letter: 'AAA' },
+    { min_credit: 40, ratio: 0.60, letter: 'AA'  },
+    { min_credit: 20, ratio: 0.20, letter: 'BBB' },
+    { min_credit:  5, ratio: 0.05, letter: 'B'   },
+    { min_credit:  0, ratio: 0.00, letter: 'D'   },
 ]);
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -28023,6 +28034,19 @@ function getBondRatio(credit) {
         if (c >= tier.min_credit) return tier.ratio;
     }
     return 0;
+}
+
+// Rating helper for UI surfaces. Returns the letter grade + bond/print
+// split derived from the same tier table as getBondRatio — one source
+// of truth for both the debt processor and any display code.
+function getCreditRating(credit) {
+    const c = Number(credit) || 0;
+    for (const tier of BOND_RATIO_TIERS) {
+        if (c >= tier.min_credit) {
+            return { letter: tier.letter, bondRatio: tier.ratio, printRatio: 1 - tier.ratio };
+        }
+    }
+    return { letter: 'D', bondRatio: 0, printRatio: 1 };
 }
 
 // Per-tick coupon rate locked at issuance based on issuer's credit.

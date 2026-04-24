@@ -63,6 +63,7 @@ import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, deductA
 import { fileNoConfidenceMotion } from './js/game/no-confidence.js';
 import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialRepublic, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
+import { getCreditRating } from './js/game/debt.js';
 import { isMilitaryLoyaltyActive } from './js/game/military-loyalty.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
 import { formatStatName, autoAppointPartyLeaderAsPM, getNationNames, resignPM } from './js/game/political-actions.js';
@@ -2141,6 +2142,13 @@ function renderBudgetTab(container) {
     const balNeg = balanceYr < 0;
     const balSign = balanceYr >= 0 ? '+' : '-';
 
+    // Credit card values. getCreditRating is the SSoT — same tier table
+    // drives the debt processor's bond/print split and this display.
+    const creditScore = Math.round(Number(currentNation?.credit ?? 0));
+    const creditRating = getCreditRating(creditScore);
+    const bondPct = Math.round(creditRating.bondRatio * 100);
+    const printPct = 100 - bondPct;
+
     // GDP card values. nation.gdp_growth is a 0-100 stat that maps
     // linearly to ±1% per month at the extremes (stat 50 = 0%, stat
     // 100 = +1%/mo, stat 0 = −1%/mo) — same formula budget.js uses to
@@ -2196,6 +2204,18 @@ function renderBudgetTab(container) {
                         ? ''
                         : `<div class="gb-stat__secondary"><span class="gb-stat__secondary-hint">Accumulated Reserves</span></div>`
                     }
+                </div>
+                <div class="gb-stat is-credit">
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Credit</div>
+                    <div class="gb-stat__primary">${creditRating.letter}</div>
+                    <div class="gb-stat__secondary">
+                        <span class="gb-stat__secondary-k">Score</span>
+                        <span>${creditScore}/100</span>
+                    </div>
+                    <div class="gb-stat__secondary" style="border-top:none;padding-top:0;">
+                        <span class="gb-stat__secondary-k">Bond / Print</span>
+                        <span>${bondPct}% / ${printPct}%</span>
+                    </div>
                 </div>
             </div>
             <div class="gb-wrap">

@@ -86,7 +86,7 @@ export async function initCoalitionFormation(supabase, state) {
             .is('abandoned_at', null)
             .order('seats', { ascending: false }),
         supabase.from('head_of_government')
-            .select('id, appointed_tick')
+            .select('id')
             .eq('nation_id', nation.id)
             .eq('active', true)
             .limit(1)
@@ -119,20 +119,14 @@ export async function initCoalitionFormation(supabase, state) {
 
     const election = electionResult.data;
     const formedGov = activeCoalition || null;
-    // Cycle-anchor the HoG fallback the same way fetchActiveCoalition does:
-    // after a snap election / re-election / VoNC, the prior PM's HoG row can
-    // stay active=true until a replacement is appointed. Without this tick
-    // filter, that stale row suppresses the formation UI across every
-    // subsequent election cycle (the Melizea bug: Delgado's 2000-appointment
-    // suppressed formation for both 2001 and 2002 elections).
-    const hasActiveHoG = !!hogResult.data
-        && (!election || Number(hogResult.data.appointed_tick) >= Number(election.election_tick));
+    const hasActiveHoG = !!hogResult.data;
 
     // fetchActiveCoalition is cycle-anchored — it only returns formations tied
     // to the latest completed election. A government effectively exists if the
-    // SSoT returned a coalition, or an active head_of_government row exists
-    // post-election as a fallback for legacy nations that never wrote a
-    // formation row.
+    // SSoT returned a coalition, or an active head_of_government row exists as
+    // a fallback for legacy nations that never wrote a formation row. The HoG
+    // invariant "active=true ⇒ current sitting PM" is enforced at the write
+    // site (elections.js unconditionally deactivates on election completion).
     const hasFormedGov = !!formedGov || hasActiveHoG;
 
     // Presidential / semi-presidential systems don't use coalition formation —

@@ -61,7 +61,7 @@
 /* ── Stat cards ──────────────────────────────────────────── */
 .gb-stats {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 16px;
     margin-bottom: 32px;
 }
@@ -98,6 +98,7 @@
 .gb-stat.is-bal  { border: 2px solid #6f94b4; }
 .gb-stat.is-sur  { border: 2px solid #c79a5c; }
 .gb-stat.is-debt { border: 2px solid #c26b5e; }
+.gb-stat.is-credit { border: 2px solid #6fb4a4; }
 .gb-stat::before {
     content: "";
     position: absolute;
@@ -113,6 +114,7 @@
 .gb-stat.is-bal::before  { background: var(--blue); }
 .gb-stat.is-sur::before  { background: var(--amber); }
 .gb-stat.is-debt::before { background: var(--red); }
+.gb-stat.is-credit::before { background: #6fb4a4; }
 
 .gb-stat__label {
     display: flex;
@@ -136,6 +138,7 @@
 .gb-stat.is-bal  .gb-stat__dot { background: var(--blue);  box-shadow: 0 0 8px rgba(107,140,174,0.35); }
 .gb-stat.is-sur  .gb-stat__dot { background: var(--amber); box-shadow: 0 0 8px rgba(176,154,91,0.35); }
 .gb-stat.is-debt .gb-stat__dot { background: var(--red);   box-shadow: 0 0 8px rgba(166,93,93,0.35); }
+.gb-stat.is-credit .gb-stat__dot { background: #6fb4a4;    box-shadow: 0 0 8px rgba(111,180,164,0.35); }
 
 .gb-stat__primary {
     font-family: var(--font-mono);
@@ -153,6 +156,7 @@
 .gb-stat.is-bal.is-negative .gb-stat__primary { color: #d88d82; }
 .gb-stat.is-sur  .gb-stat__primary { color: #dcb884; }
 .gb-stat.is-debt .gb-stat__primary { color: #d88d82; }
+.gb-stat.is-credit .gb-stat__primary { color: #a0d4c4; }
 
 .gb-stat__per {
     font-family: var(--font-mono);
