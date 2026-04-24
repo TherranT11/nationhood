@@ -56,6 +56,15 @@ BEGIN
 
     -- Debit issuer budget + debt. GREATEST(0, ...) clamps so a nation
     -- running near-empty reserves doesn't go negative.
+    --
+    -- KNOWN v2 GAP: if reserves < principal, the nation effectively
+    -- prints the shortfall to honor the maturity — holder is credited
+    -- in full but no inflation consequence here. Same silent-print
+    -- pattern as the pre-Phase-2 coupon gap (now fixed in pay_bond_coupons).
+    -- The correct v2 fix is either (a) apply the inflation hit for
+    -- maturity shortfall too, or (b) trigger the sovereign-default
+    -- path when a scheduled maturity can't be covered. Not implemented
+    -- in v1 per the "default haircut is v2" line in the original spec.
     UPDATE nations
        SET budget_reserves = GREATEST(0, COALESCE(budget_reserves, 0) - v_h.principal),
            debt            = GREATEST(0, COALESCE(debt, 0) - v_h.principal)
@@ -153,8 +162,8 @@ BEGIN
     v_shortfall    := GREATEST(0, v_total_coupon - COALESCE(v_nation.budget_reserves, 0));
     v_new_reserves := GREATEST(0, COALESCE(v_nation.budget_reserves, 0) - v_total_coupon);
 
-    IF v_shortfall > 0 AND COALESCE(v_nation.gdp, v_nation."GDP", 0) > 0 THEN
-        v_print_ratio     := v_shortfall::NUMERIC / COALESCE(v_nation.gdp, v_nation."GDP")::NUMERIC;
+    IF v_shortfall > 0 AND COALESCE(v_nation.gdp, 0) > 0 THEN
+        v_print_ratio     := v_shortfall::NUMERIC / v_nation.gdp::NUMERIC;
         v_inflation_delta := v_print_ratio * v_inflation_mult;
         v_new_inflation   := LEAST(100, GREATEST(0, COALESCE(v_nation.inflation, 0) + v_inflation_delta));
         UPDATE nations
