@@ -588,9 +588,12 @@ function injectStyles() {
      !important on the size props so any desktop width/height restored from
      localStorage by installResize() doesn't leak into the fullscreen layout. */
 @media (max-width: 640px) {
+    /* 100dvh (not 100vh) so the panel shrinks when the on-screen keyboard
+       appears — otherwise the input bar gets pushed behind the keyboard and
+       the browser jumps/scrolls trying to reveal it on focus. */
     .msg-panel {
         top: 0 !important; right: 0 !important; left: 0 !important; bottom: 0 !important;
-        width: 100vw !important; height: 100vh !important; max-height: 100vh !important;
+        width: 100vw !important; height: 100dvh !important; max-height: 100dvh !important;
         border-radius: 0; border-width: 0;
     }
     .msg-bubble {
@@ -654,6 +657,8 @@ function injectHTML() {
 
     // Tab bar: clicking a tab switches the list filter and re-renders.
     // Delegated listener on the tab container so late-added tabs still work.
+    // The GLOBAL tab opens the Global Chat thread directly — that section
+    // only ever has one entry, so the intermediate list is pure friction.
     const tabsEl = document.getElementById('msg-tabs');
     if (tabsEl) {
         tabsEl.addEventListener('click', (ev) => {
@@ -662,12 +667,10 @@ function injectHTML() {
             const filter = tab.dataset.filter;
             if (!filter || filter === _msgListFilter) return;
             _msgListFilter = filter;
-            // If we're in a thread or creation view, snap back to the list.
-            if (_msgView !== 'list') {
-                renderChatList();
-            } else {
-                renderChatList();
-            }
+            document.querySelectorAll('.msg-tab').forEach(t =>
+                t.classList.toggle('msg-tab--active', t.dataset.filter === filter));
+            if (filter === 'global') openGlobalChatDirect();
+            else renderChatList();
         });
     }
 
@@ -864,6 +867,19 @@ function togglePanel() {
 // ── Load and render chat list ──
 let _dmConversations = [];  // [{ otherFaction, lastMessage, unreadCount }]
 let _groupChats = [];       // [{ chat, lastMessage, unreadCount }]
+
+// Opens the Global Chat thread directly when the GLOBAL tab is clicked.
+// If the group-chat membership hasn't loaded yet (first open of the panel),
+// fetch it once before resolving the chat id. Falls through to the list if
+// no global chat is available for this faction.
+async function openGlobalChatDirect() {
+    if (!_groupChats.length) {
+        try { await loadGroupChats(); } catch (_) {}
+    }
+    const global = _groupChats.find(g => g.chat.chat_type === 'global');
+    if (!global) { renderChatList(); return; }
+    openThread({ type: 'group', id: global.chat.id, name: global.chat.name, chatType: 'global' });
+}
 
 async function renderChatList() {
     const body = document.getElementById('msg-body');
