@@ -2006,18 +2006,30 @@ async function loadFactionNames(factionIds) {
     if (toLoad.length === 0) return;
 
     try {
-        // Single fetch covers every field Phase 4 render paths touch:
-        //   - faction_name + abbreviation: name vs avatar text
-        //   - party_color: nameplate colour
-        //   - faction_type: "Party" vs "Corporation" label in the popover
-        //   - corp_sector: sector badge on Nation-Chat corp senders
-        //   - nations(name): nation tag + flag lookup
-        const { data, error } = await _supabase
+        // Two-step lookup: first the factions themselves, then the
+        // nations they belong to. An earlier single-query implementation
+        // used the PostgREST embed `nations(id, name)` but that failed
+        // silently whenever RLS or FK metadata rejected the join — which
+        // meant Global Chat fell back to a "?" avatar + "..." nameplate
+        // for every sender. Two queries are strictly more robust.
+        const { data: factions, error: fErr } = await _supabase
             .from('factions')
-            .select('id, faction_name, abbreviation, party_color, faction_type, corp_sector, nation_id, nations(id, name)')
+            .select('id, faction_name, abbreviation, party_color, faction_type, corp_sector, nation_id')
             .in('id', toLoad);
-        if (error) throw error;
-        for (const f of (data || [])) {
+        if (fErr) throw fErr;
+
+        const nationIds = [...new Set((factions || []).map(f => f.nation_id).filter(Boolean))];
+        let nationMap = {};
+        if (nationIds.length > 0) {
+            const { data: nations, error: nErr } = await _supabase
+                .from('nations')
+                .select('id, name')
+                .in('id', nationIds);
+            if (nErr) throw nErr;
+            for (const n of (nations || [])) nationMap[n.id] = n.name;
+        }
+
+        for (const f of (factions || [])) {
             _threadFactionCache[f.id] = {
                 id: f.id,
                 faction_name: f.faction_name,
@@ -2026,11 +2038,12 @@ async function loadFactionNames(factionIds) {
                 faction_type: f.faction_type,
                 corp_sector: f.corp_sector,
                 nation_id: f.nation_id,
-                nation_name: f.nations?.name || null,
+                nation_name: f.nation_id ? (nationMap[f.nation_id] || null) : null,
             };
         }
     } catch (e) {
-        // Non-critical — sender names will show as '...'
+        // Visible in DevTools so diagnose-in-the-wild stays possible.
+        console.warn('[Messaging] loadFactionNames failed:', e);
     }
 }
 
