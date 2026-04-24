@@ -582,7 +582,15 @@ function renderActivityFeed(o) {
         const ticksAgo = currentTick - (a.tick_performed || 0);
         const agoLabel = ticksAgo === 0 ? '0t' : ticksAgo + 't';
         const result = a.result || {};
-        const momDelta = result.momentumDelta || result.momentum_delta
+        // Writers historically used different field names for the momentum
+        // change — rally wrote `momentum`, fundraise wrote `momCost` (the
+        // un-signed cost), press_conference wrote `momentumDelta`. New
+        // inserts always set `momentumDelta`; the rest of the chain covers
+        // legacy rows already on disk so they render correctly too.
+        const momDelta = result.momentumDelta
+            || result.momentum_delta
+            || result.momentum
+            || (result.momCost ? -result.momCost : 0)
             || (result.effects || []).reduce((s, e) => s + (e.stat === 'Momentum' ? e.value : 0), 0)
             || 0;
         const momSign = momDelta > 0 ? '+' : '';
@@ -592,7 +600,7 @@ function renderActivityFeed(o) {
         // Build description from result
         let desc = label;
         if (a.action_type === 'rally') {
-            desc = 'Rally: ' + (result.outcomeName || 'Unknown') + (momDelta ? ' (' + momSign + momDelta + ')' : '');
+            desc = 'Rally: ' + (result.outcomeName || result.label || 'Unknown') + (momDelta ? ' (' + momSign + momDelta + ')' : '');
         } else if (a.action_type === 'press_conference') {
             desc = 'Press Conference (' + momSign + momDelta + ')';
         } else if (a.action_type === 'attack') {
