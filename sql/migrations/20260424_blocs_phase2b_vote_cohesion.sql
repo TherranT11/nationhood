@@ -34,13 +34,14 @@ ALTER TABLE blocs
 -- Called from the bills dispatcher loop (resolveExpiredVotes) once per
 -- resolved bill. Increments dissent_count on any bloc whose members split
 -- YES-vs-NO on this bill, and dissolves any bloc that just hit 3. Returns
--- the count of blocs dissolved as a result of this call (for logging;
--- callers can ignore).
+-- the count of blocs dissolved (server log only).
 --
--- Tick-processor-only: no caller-ownership check inside. Service role key
--- bypasses RLS; the authenticated grant below matches accumulate_ap /
--- adjust_momentum conventions for internal-use RPCs invoked from the
--- client bills flow as well as the edge function.
+-- Tick-processor-only. resolveExpiredVotes runs exclusively in the
+-- advance-tick edge function (handler-template.ts), so the RPC is locked
+-- to service_role — no caller-ownership check inside, and granting it to
+-- authenticated would let any player call process_bloc_vote_cohesion on
+-- arbitrary bill ids and prematurely dissolve other nations' blocs that
+-- sit at dissent_count = 2.
 
 CREATE OR REPLACE FUNCTION process_bloc_vote_cohesion(
     p_bill_id UUID
@@ -63,30 +64,34 @@ BEGIN
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard';
 
-    -- One UPDATE picks out exactly the blocs with a YES/NO split and
-    -- bumps their counters atomically. RETURNING lets us inspect each
-    -- new counter value to decide whether to dissolve.
+    -- CTE wraps the UPDATE so the loop reads as "iterate the rows that
+    -- just got bumped." FOR var IN <UPDATE ... RETURNING> LOOP is valid
+    -- PL/pgSQL on PG 9.5+, but the CTE form is the conventional idiom in
+    -- the codebase and makes the RETURNING shape obvious at a glance.
     FOR v_row IN
-        UPDATE blocs b
-           SET dissent_count        = COALESCE(b.dissent_count, 0) + 1,
-               last_dissent_bill_id = p_bill_id
-         WHERE b.nation_id = v_nation_id
-           AND b.dissolved_at_tick IS NULL
-           AND EXISTS (
-               SELECT 1 FROM bill_support bs
-               JOIN factions f ON f.id = bs.faction_id
-               WHERE bs.bill_id = p_bill_id
-                 AND f.bloc_id = b.id
-                 AND bs.stance IN ('yes', 'accept')
-           )
-           AND EXISTS (
-               SELECT 1 FROM bill_support bs
-               JOIN factions f ON f.id = bs.faction_id
-               WHERE bs.bill_id = p_bill_id
-                 AND f.bloc_id = b.id
-                 AND bs.stance IN ('no', 'reject')
-           )
-        RETURNING b.id, b.dissent_count
+        WITH bumped AS (
+            UPDATE blocs b
+               SET dissent_count        = COALESCE(b.dissent_count, 0) + 1,
+                   last_dissent_bill_id = p_bill_id
+             WHERE b.nation_id = v_nation_id
+               AND b.dissolved_at_tick IS NULL
+               AND EXISTS (
+                   SELECT 1 FROM bill_support bs
+                   JOIN factions f ON f.id = bs.faction_id
+                   WHERE bs.bill_id = p_bill_id
+                     AND f.bloc_id = b.id
+                     AND bs.stance IN ('yes', 'accept')
+               )
+               AND EXISTS (
+                   SELECT 1 FROM bill_support bs
+                   JOIN factions f ON f.id = bs.faction_id
+                   WHERE bs.bill_id = p_bill_id
+                     AND f.bloc_id = b.id
+                     AND bs.stance IN ('no', 'reject')
+               )
+            RETURNING b.id, b.dissent_count
+        )
+        SELECT id, dissent_count FROM bumped
     LOOP
         IF v_row.dissent_count >= 3 THEN
             UPDATE factions SET bloc_id = NULL WHERE bloc_id = v_row.id;
@@ -105,7 +110,8 @@ BEGIN
 END;
 $fn$;
 
-GRANT EXECUTE ON FUNCTION process_bloc_vote_cohesion(UUID) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION process_bloc_vote_cohesion(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION process_bloc_vote_cohesion(UUID) TO service_role;
 
 -- ==================== VERIFY ====================
 SELECT 'blocs.dissent_count'        AS object, COUNT(*) AS present
