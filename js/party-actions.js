@@ -540,6 +540,20 @@ function renderBlocInvitationsPanel(partyColor) {
 }
 
 /**
+ * Sync the locally-cached faction stats that Phase 2a bloc RPCs mutate —
+ * bloc_id (create / accept / leave) and momentum (+2 on join, -7 on leave).
+ * Silent no-op on fetch failure: the RPC already succeeded server-side,
+ * a failed refresh just leaves the header stale until the next render.
+ */
+async function _refreshFactionAfterBlocAction(factionId) {
+    const { data } = await _supabase.from('factions')
+        .select('bloc_id, momentum').eq('id', factionId).single();
+    if (!data) return;
+    _state.faction.bloc_id = data.bloc_id || null;
+    if (data.momentum != null) _state.faction.momentum = data.momentum;
+}
+
+/**
  * Accept or decline a pending bloc invitation. Calls the corresponding RPC,
  * refreshes bloc state, and re-renders the panel.
  */
@@ -556,14 +570,7 @@ async function respondToBlocInvite(inviteId, decision, root) {
         if (error) throw error;
         if (data && data.success === false) throw new Error(data.error || 'Unknown error');
 
-        // Refresh faction.bloc_id + momentum so the banner/actions flip and
-        // the +2 bonus from accept_bloc_invite is visible immediately.
-        const { data: freshFaction } = await _supabase.from('factions')
-            .select('bloc_id, momentum').eq('id', factionId).single();
-        if (freshFaction) {
-            _state.faction.bloc_id = freshFaction.bloc_id || null;
-            if (freshFaction.momentum != null) _state.faction.momentum = freshFaction.momentum;
-        }
+        await _refreshFactionAfterBlocAction(factionId);
         await loadBlocState(factionId, _state.nation?.id);
         renderPage(root);
     } catch (err) {
@@ -597,11 +604,7 @@ async function triggerLeaveBloc(root) {
         if (error) throw error;
         if (data && data.success === false) throw new Error(data.error || 'Unknown error');
 
-        _state.faction.bloc_id = null;
-        // Phase 2a: refresh momentum so the -7 leave penalty shows immediately.
-        const { data: freshFaction } = await _supabase.from('factions')
-            .select('momentum').eq('id', _state.faction.id).single();
-        if (freshFaction?.momentum != null) _state.faction.momentum = freshFaction.momentum;
+        await _refreshFactionAfterBlocAction(_state.faction.id);
         await loadBlocState(_state.faction.id, _state.nation?.id);
         renderPage(root);
     } catch (err) {
@@ -792,12 +795,10 @@ async function openCreateBlocModal(root) {
             if (data && data.success === false) throw new Error(data.error || 'Unknown error');
 
             // Deduct $100k locally so the header re-renders immediately.
-            // Phase 2a: also refresh momentum for the leader's +2 founding bonus.
+            // Momentum (+2 leader founding bonus) and bloc_id come from the
+            // post-RPC refresh helper.
             _state.faction.party_funds = Math.max(0, (_state.faction.party_funds || 0) - 100000);
-            _state.faction.bloc_id = data?.bloc_id || null;
-            const { data: freshFaction } = await _supabase.from('factions')
-                .select('momentum').eq('id', faction.id).single();
-            if (freshFaction?.momentum != null) _state.faction.momentum = freshFaction.momentum;
+            await _refreshFactionAfterBlocAction(faction.id);
             close();
             await loadBlocState(faction.id, _state.nation?.id);
             renderPage(root);
