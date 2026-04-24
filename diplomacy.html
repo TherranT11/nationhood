@@ -1185,7 +1185,7 @@ function _shippingBidCloseTicks(apps) {
     return Math.max(0, (earliest + 3) - currentTick);
 }
 
-let _shippingBidModal = null; // { routeId, route, apps, mot: {first, last} } | null
+let _shippingBidModal = null; // { routeId, route, apps, mot, sort, activeCorps, incumbentCorps, efficiencyUplift } | null
 
 window.openShippingBidModal = async function(routeId) {
     const route = (_allShippingRoutes || []).find(r => r.id === routeId);
@@ -1245,7 +1245,13 @@ window.openShippingBidModal = async function(routeId) {
             const newEff = Math.min(100, curEff + 3);
             const cur = calculateNationalBudget(sellingNation);
             const bumped = calculateNationalBudget({ ...sellingNation, efficiency: newEff });
-            efficiencyUplift = { delta: Math.max(0, bumped.grossRevenue - cur.grossRevenue), newEfficiency: newEff };
+            const delta = bumped.grossRevenue - cur.grossRevenue;
+            // Only surface the projection when it rounds to at least $1 —
+            // nations already at efficiency 100, or with zero GDP, produce
+            // a $0 uplift that would misleadingly display alongside "+3
+            // efficiency". Below threshold, leave efficiencyUplift null so
+            // the footer block hides cleanly.
+            if (delta >= 1) efficiencyUplift = { delta, newEfficiency: newEff };
         }
     } catch (e) {
         console.warn('[ShippingBidModal] efficiency uplift calc threw:', e?.message || e);
