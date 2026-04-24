@@ -239,6 +239,11 @@
         .btn-submit:disabled { background:var(--bg-card); color:var(--text-muted); cursor:not-allowed; }
         .btn-add { padding:8px 16px; background:var(--green); border:none; border-radius:3px; color:#fff; font-weight:700; cursor:pointer; font-family:var(--font-mono); }
 
+        /* Income Tax Article direction selector buttons */
+        .income-tax-dir-btn { flex:1; padding:10px 14px; border:1px solid var(--border-mid); border-radius:4px; background:transparent; color:var(--text-secondary); font-size:0.8rem; font-weight:600; cursor:pointer; transition:all 0.15s; font-family:var(--font-mono); }
+        .income-tax-dir-btn:hover { border-color:var(--amber); color:var(--text-primary); }
+        .income-tax-dir-btn.active { border-color:var(--amber); background:var(--amber-faint); color:var(--amber); }
+
         /* Passed Laws Archive */
         .passed-laws-btn { background:var(--purple); border:none; border-radius:3px; padding:12px 24px; color:#fff; font-family:var(--font-mono); font-weight:700; font-size:0.8rem; cursor:pointer; text-transform:uppercase; letter-spacing:0.06em; transition:opacity 0.2s; }
         .passed-laws-btn:hover { opacity:0.85; }
