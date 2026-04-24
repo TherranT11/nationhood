@@ -74,12 +74,15 @@ export function creditToCouponRate(credit) {
 // ════════════════════════════════════════════════════════════════════════════
 
 // (1) Maturities: pay back principal in full on holdings reaching matures_at_tick.
-// Issuer pays principal out of budget_reserves; holder receives it as cash.
-// nations.debt is decremented atomically to stay in sync with active holdings.
+// Routed through the mature_bond_holding RPC (Phase 2 atomicity fix) so the
+// pay + mark operations run in one DB transaction — no more double-payback
+// risk if the mark-matured UPDATE fails after principal was already paid.
+// Local nation.budget_reserves / nation.debt are mirrored after each RPC so
+// subsequent iterations (and subsequent per-tick processors) see fresh values.
 export async function processBondMaturitiesTick(supabase, nation, currentTick) {
     const { data: due, error } = await supabase
         .from('bond_holdings')
-        .select('id, holder_faction_id, principal')
+        .select('id, principal')
         .eq('issuer_nation_id', nation.id)
         .eq('matured', false)
         .lte('matures_at_tick', currentTick);
@@ -94,104 +97,53 @@ export async function processBondMaturitiesTick(supabase, nation, currentTick) {
         const principal = Number(h.principal) || 0;
         if (principal <= 0) continue;
 
-        const { error: nErr } = await supabase.from('nations').update({
-            budget_reserves: Math.max(0, Number(nation.budget_reserves || 0) - principal),
-            debt:            Math.max(0, Number(nation.debt || 0) - principal),
-        }).eq('id', nation.id);
-        if (nErr) {
-            console.warn(`[Debt] nation cash debit on maturity failed for ${nation.name}:`, nErr.message);
+        const { data: result, error: rpcErr } = await supabase.rpc('mature_bond_holding', {
+            p_holding_id:   h.id,
+            p_current_tick: currentTick,
+        });
+        if (rpcErr) {
+            console.error(`[Debt] mature_bond_holding RPC failed for holding ${h.id}:`, rpcErr.message);
             continue;
         }
-        // Mirror locally so subsequent iterations in this tick see fresh values.
+        if (result && result.already_matured) continue;
+
+        // Atomic success: mirror locally so subsequent iterations in this tick
+        // see fresh budget_reserves / debt values.
         nation.budget_reserves = Math.max(0, Number(nation.budget_reserves || 0) - principal);
         nation.debt            = Math.max(0, Number(nation.debt || 0) - principal);
-
-        const { data: holderRow } = await supabase.from('factions')
-            .select('corp_cash_reserves').eq('id', h.holder_faction_id).maybeSingle();
-        const newHolderCash = Math.max(0, Number(holderRow?.corp_cash_reserves || 0) + principal);
-        const { error: hErr } = await supabase.from('factions')
-            .update({ corp_cash_reserves: newHolderCash })
-            .eq('id', h.holder_faction_id);
-        if (hErr) {
-            console.warn(`[Debt] holder credit on maturity failed:`, hErr.message);
-            continue;
-        }
-
-        await supabase.from('bond_holdings').update({
-            matured: true, matured_at_tick: currentTick,
-        }).eq('id', h.id).then(({ error: mErr }) => {
-            // Loud on failure: if this UPDATE fails after the principal was
-            // paid, the row still has matured=false and matures_at_tick<=now,
-            // so next tick's query re-matches and double-pays the holder.
-            // No automatic unwind — log and surface for manual intervention.
-            if (mErr) {
-                console.error(
-                    `[Debt] CRITICAL: bond_holdings mark-matured FAILED for holding ${h.id} ` +
-                    `after paying $${principal} principal — next tick will re-pay. ` +
-                    `Manually update this row. Err: ${mErr.message}`
-                );
-            }
-        });
-
         totalPrincipal += principal;
     }
     return { paid: due.length, totalPrincipal };
 }
 
 // (2) Coupons: pay per-tick interest on every active holding.
-// One UPDATE per holder per tick (coalesced to handler-level batch logging).
+// Routed through the pay_bond_coupons RPC (Phase 2) so the nation debit,
+// holder credits, and coupon-shortfall inflation hit all run atomically.
+// If the nation can't cover the total coupon, the RPC prints the
+// shortfall AND applies the inflation cost — holders still get paid in
+// full, but inflation reflects the cost of covering the gap.
 export async function processBondCouponsTick(supabase, nation, currentTick) {
-    const { data: holdings, error } = await supabase
-        .from('bond_holdings')
-        .select('holder_faction_id, principal, coupon_rate')
-        .eq('issuer_nation_id', nation.id)
-        .eq('matured', false);
-    if (error) {
-        console.error(`[Debt] coupon fetch failed for ${nation.name}:`, error.message);
-        return { totalCoupon: 0 };
+    const { data: result, error: rpcErr } = await supabase.rpc('pay_bond_coupons', {
+        p_nation_id:    nation.id,
+        p_current_tick: currentTick,
+    });
+    if (rpcErr) {
+        console.error(`[Debt] pay_bond_coupons RPC failed for ${nation.name}:`, rpcErr.message);
+        return { totalCoupon: 0, shortfall: 0 };
     }
-    if (!holdings || holdings.length === 0) return { totalCoupon: 0 };
+    const totalCoupon = Number(result?.total_coupon || 0);
+    const shortfall   = Number(result?.shortfall    || 0);
+    if (totalCoupon === 0) return { totalCoupon: 0, shortfall: 0 };
 
-    // Aggregate per-holder so a corp with N holdings receives one credit.
-    const perHolder = new Map();
-    let totalCoupon = 0;
-    for (const h of holdings) {
-        const coupon = Math.round((Number(h.principal) || 0) * (Number(h.coupon_rate) || 0));
-        if (coupon <= 0) continue;
-        perHolder.set(h.holder_faction_id, (perHolder.get(h.holder_faction_id) || 0) + coupon);
-        totalCoupon += coupon;
+    // Mirror the DB state locally so downstream per-tick processors see
+    // the post-coupon values of budget_reserves and inflation.
+    nation.budget_reserves = Math.max(0, Number(nation.budget_reserves || 0) - (totalCoupon - shortfall));
+    if (shortfall > 0 && Number(result?.inflation_delta)) {
+        nation.inflation = Math.min(100, Math.max(0,
+            Number(nation.inflation || 0) + Number(result.inflation_delta)
+        ));
     }
-    if (totalCoupon === 0) return { totalCoupon: 0 };
-
-    // Debit issuer once for the aggregate.
-    //
-    // v2 GAP (documented, not fixed): when budget_reserves < totalCoupon
-    // the Math.max floors at 0 while holders still get paid in full. The
-    // nation effectively prints money to cover the shortfall without the
-    // inflation hit. Correct treatment is either (a) print the shortfall
-    // AND apply the corresponding inflation, or (b) trigger the sovereign-
-    // default path. Both are v2 — v1 flags fiscal pressure only via the
-    // deficit loop and credit deterioration, not via coupon default.
-    const newReserves = Math.max(0, Number(nation.budget_reserves || 0) - totalCoupon);
-    const { error: nErr } = await supabase.from('nations')
-        .update({ budget_reserves: newReserves }).eq('id', nation.id);
-    if (nErr) {
-        console.warn(`[Debt] coupon debit on issuer failed for ${nation.name}:`, nErr.message);
-        return { totalCoupon: 0 };
-    }
-    nation.budget_reserves = newReserves;
-
-    // Credit each holder.
-    for (const [holderId, coupon] of perHolder.entries()) {
-        const { data: holderRow } = await supabase.from('factions')
-            .select('corp_cash_reserves').eq('id', holderId).maybeSingle();
-        const newCash = Number(holderRow?.corp_cash_reserves || 0) + coupon;
-        const { error: hErr } = await supabase.from('factions')
-            .update({ corp_cash_reserves: newCash }).eq('id', holderId);
-        if (hErr) console.warn(`[Debt] coupon credit failed for holder ${holderId}:`, hErr.message);
-    }
-
-    return { totalCoupon };
+    return { totalCoupon, shortfall };
 }
 
 // (3) Offer expiry: any open bond request past its expires_tick has its
