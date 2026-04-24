@@ -162,11 +162,30 @@ export async function fetchActiveCoalition(supabase, nationId) {
     // that hasn't been finalized. Returning proposals here causes the UI to
     // render them as the actual government (e.g. "Majority Coalition Government"
     // for an unfinalized proposal).
-    const { data: newGov } = await supabase
+    //
+    // Cycle-anchored: a formation is only current if tied to the latest
+    // completed election. Without this filter, a stale formation from a prior
+    // cycle would continue to read as "active" after a newer election
+    // completed with no government formed — blocking processGovernmentVacancy
+    // (which bails when a formation is present) and indefinitely deferring
+    // the snap-election / emergency-minority escalation.
+    const { data: latestElection } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('status', 'completed')
+        .not('results', 'is', null)
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    let formationQuery = supabase
         .from('government_formations')
         .select('*')
         .eq('nation_id', nationId)
-        .in('status', ['formed', 'caretaker'])
+        .in('status', ['formed', 'caretaker']);
+    if (latestElection) formationQuery = formationQuery.eq('election_id', latestElection.id);
+    const { data: newGov } = await formationQuery
         .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
