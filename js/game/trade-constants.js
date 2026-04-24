@@ -1732,11 +1732,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT, ES, Embargo) ──
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT, ES, Embargo, Goods Trade) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
-        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff', 'export_subsidy', 'impose_embargo']);
+        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff', 'export_subsidy', 'impose_embargo', 'goods_trade']);
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
@@ -1748,12 +1748,47 @@ async function processTradeFlows(supabase, nationList, currentTick) {
     var exportSubsidyMap = {};
     var embargoMap = {};
     var activeRSCs = [];
+    // Goods Trade agreements (type='goods_trade') collected here for the
+    // Step 4d trade_flow pre-allocation pass below. Article-level overrides
+    // (market_access → tariff reduction) are applied inline in the
+    // agreement-type switch.
+    var activeGoodsTrades = [];
 
     // Helper: expand a sector key to account for food sub-sectors.
     // If an agreement references 'food_agriculture', it applies to all 4 sub-sectors.
     function expandSectorKey(sectorKey) {
         if (sectorKey === 'food_agriculture') return FOOD_SUBSECTOR_KEYS;
         return [sectorKey];
+    }
+
+    // Shared handler for 'tariff_reduction' articles. Used by both PTA
+    // (agreement_type='pta') and Goods Trade (agreement_type='goods_trade')
+    // since the article shape + semantics are identical. One place to keep
+    // the direction/author/partner logic correct.
+    //   d.direction: 'mutual' | 'your_exports' | 'their_exports'
+    //     your_exports   → partner (importer) reduces tariffs on author's exports
+    //     their_exports  → author (importer) reduces tariffs on partner's exports
+    //     mutual         → both
+    function applyTariffReductionArticle(ta, d) {
+        if (!d || !d.sector) return; // skip malformed articles rather than polluting tariffModMap[key][undefined]
+        var reduction = (d.reduction_pct || 0) / 100;
+        var direction = d.direction || 'mutual';
+        var authorId = d.author_nation_id || ta.nation_a_id;
+        var partnerId = (authorId === ta.nation_a_id) ? ta.nation_b_id : ta.nation_a_id;
+        var secs = expandSectorKey(d.sector);
+        for (var i = 0; i < secs.length; i++) {
+            var sec = secs[i];
+            if (direction === 'mutual' || direction === 'your_exports') {
+                var k = partnerId + '|' + authorId;
+                if (!tariffModMap[k]) tariffModMap[k] = {};
+                tariffModMap[k][sec] = Math.max(tariffModMap[k][sec] || 0, reduction);
+            }
+            if (direction === 'mutual' || direction === 'their_exports') {
+                var k2 = authorId + '|' + partnerId;
+                if (!tariffModMap[k2]) tariffModMap[k2] = {};
+                tariffModMap[k2][sec] = Math.max(tariffModMap[k2][sec] || 0, reduction);
+            }
+        }
     }
 
     if (activeTradeAgreements) {
@@ -1787,36 +1822,12 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             } else if (ta.agreement_type === 'pta') {
                 flagsMap[k1].has_pta = true;
                 flagsMap[k2].has_pta = true;
-
-                // PTA: per-sector tariff reductions from tariff_reduction articles
+                // PTA: per-sector tariff reductions from tariff_reduction articles.
+                // Shares applyTariffReductionArticle with goods_trade.
                 var arts = ta.articles || [];
                 for (var ai = 0; ai < arts.length; ai++) {
                     if (arts[ai].type !== 'tariff_reduction') continue;
-                    var d = arts[ai].data;
-                    var reduction = (d.reduction_pct || 0) / 100;
-                    var direction = d.direction || 'mutual';
-
-                    // Resolve direction: "your_exports" / "their_exports" relative to author
-                    var authorId = d.author_nation_id || ta.nation_a_id;
-                    var partnerId = (authorId === ta.nation_a_id) ? ta.nation_b_id : ta.nation_a_id;
-
-                    // your_exports: partner (importer) reduces tariffs on author's (exporter's) goods
-                    // their_exports: author (importer) reduces tariffs on partner's (exporter's) goods
-                    // Expand food_agriculture to all sub-sectors
-                    var ptaSectors = expandSectorKey(d.sector);
-                    for (var psi = 0; psi < ptaSectors.length; psi++) {
-                        var ptaSec = ptaSectors[psi];
-                        if (direction === 'mutual' || direction === 'your_exports') {
-                            var impExpKey = partnerId + '|' + authorId;
-                            if (!tariffModMap[impExpKey]) tariffModMap[impExpKey] = {};
-                            tariffModMap[impExpKey][ptaSec] = Math.max(tariffModMap[impExpKey][ptaSec] || 0, reduction);
-                        }
-                        if (direction === 'mutual' || direction === 'their_exports') {
-                            var impExpKey2 = authorId + '|' + partnerId;
-                            if (!tariffModMap[impExpKey2]) tariffModMap[impExpKey2] = {};
-                            tariffModMap[impExpKey2][ptaSec] = Math.max(tariffModMap[impExpKey2][ptaSec] || 0, reduction);
-                        }
-                    }
+                    applyTariffReductionArticle(ta, arts[ai].data || {});
                 }
             } else if (ta.agreement_type === 'resource_supply') {
                 flagsMap[k1].has_rsc = true;
@@ -1875,6 +1886,43 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                         embargoMap[ek1][embSectors[embi]] = true;
                         embargoMap[ek2][embSectors[embi]] = true;
                     }
+                }
+            } else if (ta.agreement_type === 'goods_trade') {
+                // Goods & Services Trade Agreement (from diplomacy.html trade
+                // modal). Collect the row for Step 4d trade_flow pre-allocation,
+                // and apply inline market_access / tariff_reduction articles
+                // so tariffs reflect the deal this same tick.
+                // No has_goods_trade flag — nothing reads it and the affinity
+                // calc already weights FTA/PTA/RSC explicitly.
+                activeGoodsTrades.push(ta);
+
+                var arts = ta.articles || [];
+                for (var ai = 0; ai < arts.length; ai++) {
+                    var artType = arts[ai].article_type || arts[ai].type;
+                    var d = arts[ai].data || {};
+
+                    if (artType === 'tariff_reduction') {
+                        applyTariffReductionArticle(ta, d);
+                    } else if (artType === 'market_access') {
+                        // free_trade → 100% tariff reduction (same as FTA).
+                        // preferential → 50% reduction. restricted → no-op.
+                        var accessReduction = d.level === 'free_trade' ? 1.0
+                            : d.level === 'preferential' ? 0.5
+                            : 0;
+                        if (accessReduction <= 0) continue;
+                        var maSectors = d.scope === 'all_goods'
+                            ? sectors.map(function (s) { return s.key; })
+                            : expandSectorKey(d.scope_sector);
+                        if (!tariffModMap[k1]) tariffModMap[k1] = {};
+                        if (!tariffModMap[k2]) tariffModMap[k2] = {};
+                        for (var maj = 0; maj < maSectors.length; maj++) {
+                            var maSec = maSectors[maj];
+                            tariffModMap[k1][maSec] = Math.max(tariffModMap[k1][maSec] || 0, accessReduction);
+                            tariffModMap[k2][maSec] = Math.max(tariffModMap[k2][maSec] || 0, accessReduction);
+                        }
+                    }
+                    // trade_flow handled in Step 4d below; transfer / exit_terms
+                    // / text_article have no tick-level side effect.
                 }
             }
         }
@@ -1963,6 +2011,74 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                     volume: adjustedVolume,
                     agreementId: rsc.id
                 });
+            }
+        }
+    }
+
+    // ── Step 4d: Pre-allocate goods_trade trade_flow volumes ──
+    // Each trade_flow article on a goods_trade agreement commits an absolute
+    // dollar volume per tick (the diplomacy wizard captures it as d.volume).
+    // Unlike RSC's percentage-of-capacity model, goods_trade is a literal
+    // "Nation A buys from Nation B N dollars per tick" deal.
+    //
+    // Capped by the seller's current export_capacity and buyer's current
+    // import_demand so a 10B/tick agreement doesn't magically produce 10B
+    // from a nation that only has 8B available this tick. Shipping
+    // efficiency (base 85% + 3% per active ship) is applied downstream in
+    // Step 6b to partnerRows, same treatment as RSC pre-allocations.
+    //
+    // Pushes into the same rscPreAllocations bucket so the existing Step 5
+    // distribution loop handles it without additional plumbing.
+    if (activeGoodsTrades && activeGoodsTrades.length > 0) {
+        for (var gi = 0; gi < activeGoodsTrades.length; gi++) {
+            var gt = activeGoodsTrades[gi];
+            var gArts = gt.articles || [];
+            for (var gai = 0; gai < gArts.length; gai++) {
+                var gArtType = gArts[gai].article_type || gArts[gai].type;
+                if (gArtType !== 'trade_flow') continue;
+                var gd = gArts[gai].data || {};
+                if (!gd.commodity || !gd.volume) continue;
+
+                // direction: 'a_buys_b' means nation_a buys FROM nation_b.
+                // Skip articles with an unrecognized direction rather than
+                // silently mis-attributing the flow.
+                var gBuyerId, gSellerId;
+                if (gd.direction === 'a_buys_b') {
+                    gBuyerId = gt.nation_a_id;
+                    gSellerId = gt.nation_b_id;
+                } else if (gd.direction === 'b_buys_a') {
+                    gBuyerId = gt.nation_b_id;
+                    gSellerId = gt.nation_a_id;
+                } else {
+                    continue;
+                }
+
+                var gSellerFlows = nationFlows[gSellerId];
+                var gBuyerFlows = nationFlows[gBuyerId];
+                if (!gSellerFlows || !gBuyerFlows) continue;
+
+                var gSectors = expandSectorKey(gd.commodity);
+                // For food_agriculture, split the agreed volume evenly across
+                // the 4 sub-sectors so the total flow matches the article.
+                var perSectorVolume = Math.round(Number(gd.volume) / gSectors.length);
+
+                for (var gsi = 0; gsi < gSectors.length; gsi++) {
+                    var gSec = gSectors[gsi];
+                    var gSellerExport = (gSellerFlows[gSec] && gSellerFlows[gSec].exportCapacity) || 0;
+                    var gBuyerDemand = (gBuyerFlows[gSec] && gBuyerFlows[gSec].importDemand) || 0;
+                    if (gSellerExport <= 0 || gBuyerDemand <= 0) continue;
+
+                    var allocVolume = Math.min(perSectorVolume, gSellerExport, gBuyerDemand);
+                    if (allocVolume <= 0) continue;
+
+                    rscPreAllocations.push({
+                        sellerNationId: gSellerId,
+                        buyerNationId: gBuyerId,
+                        sector: gSec,
+                        volume: allocVolume,
+                        agreementId: gt.id
+                    });
+                }
             }
         }
     }
