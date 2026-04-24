@@ -23,12 +23,16 @@ let _loadingOlder = false;             // prevents duplicate "load earlier" requ
 let _pinnedMessages = [];              // pinned messages for the active chat (Phase 5 pin strip)
 let _searchMode = false;               // true when the thread body is showing search results
 
-// Phase 5: client-facing edit window must match enforce_edit_window()
-// in sql/migrations/20260424_phase5_moderation.sql. Keep these in sync.
-const MSG_EDIT_WINDOW_SEC = 300;
 // Page size for history pagination. 50 is enough to fill the viewport
 // without making the initial load feel sluggish on cold cache.
 const MSG_PAGE_SIZE = 50;
+
+// Column lists for message reads. Single source of truth so the main
+// load, pagination, and search paths stay in sync — Phase 5 added
+// edited_at / deleted_at / pinned_at and each had to be added at three
+// sites before this refactor.
+const DM_MSG_COLS = 'id, sender_id, receiver_id, message_text, created_at, sent_at_tick, read_at, edited_at, deleted_at';
+const GROUP_MSG_COLS = 'id, sender_id, is_system, message_text, created_at, sent_at_tick, edited_at, deleted_at, pinned_at';
 
 // Nation name → flag asset. Duplicated inline in diplomacy.html,
 // corp-nation-select.html, select-nation.html; consolidating is out of
@@ -415,18 +419,18 @@ function injectStyles() {
 /* Phase 5: own-message hover menu (edit / delete / report). Anchored to
    the message bubble; opens a dropdown with the available actions. */
 .msg-msg { position: relative; }
+/* Always-visible at reduced opacity so touch devices (no :hover) can
+   still reach the menu; desktops get a full-opacity reveal on hover. */
 .msg-msg__menu-btn {
-    position: absolute; top: 4px;
+    position: absolute; top: 4px; right: 4px;
     width: 18px; height: 18px; padding: 0; line-height: 1;
     background: transparent; border: none;
     color: var(--text-dim, #4a4940); cursor: pointer;
-    font-size: 12px; opacity: 0; transition: opacity 0.1s, color 0.1s;
+    font-size: 12px; opacity: 0.35; transition: opacity 0.1s, color 0.1s;
 }
-.msg-msg--sent .msg-msg__menu-btn { right: 4px; }
-.msg-msg--received .msg-msg__menu-btn { right: 4px; }
 .msg-msg:hover .msg-msg__menu-btn,
-.msg-msg__menu-btn:focus-visible { opacity: 1; outline: none; }
-.msg-msg__menu-btn:hover { color: var(--text-bright, #f0efe6); }
+.msg-msg__menu-btn:hover,
+.msg-msg__menu-btn:focus-visible { opacity: 1; outline: none; color: var(--text-bright, #f0efe6); }
 
 .msg-msg__menu {
     position: absolute; top: 20px; right: 4px; z-index: 9050;
@@ -1266,6 +1270,10 @@ async function loadAndRenderMessages() {
 
     const chat = _msgActiveChat;
     let messages = [];
+    // Raw row count before block filter. The sentinel decision uses
+    // rawCount so a filtered-to-zero page (all senders blocked) still
+    // paginates back into older history.
+    let rawCount = 0;
 
     // Reset pagination cursor for a fresh load; loadOlderMessages() walks
     // backwards from this timestamp for infinite-scroll history.
@@ -1277,13 +1285,14 @@ async function loadAndRenderMessages() {
             // Pull the newest MSG_PAGE_SIZE, then reverse so oldest-at-top.
             const { data, error } = await _supabase
                 .from('direct_messages')
-                .select('id, sender_id, receiver_id, message_text, created_at, sent_at_tick, read_at, edited_at, deleted_at')
+                .select(DM_MSG_COLS)
                 .or(`and(sender_id.eq.${_msgFaction.id},receiver_id.eq.${chat.id}),and(sender_id.eq.${chat.id},receiver_id.eq.${_msgFaction.id})`)
                 .order('created_at', { ascending: false })
                 .limit(MSG_PAGE_SIZE);
 
             if (error) throw error;
             const rows = (data || []).slice().reverse();
+            rawCount = rows.length;
             messages = rows.map(m => dmMsgRowToMessage(m));
             if (rows.length > 0) _oldestLoadedTs = rows[0].created_at;
 
@@ -1301,13 +1310,14 @@ async function loadAndRenderMessages() {
         } else if (chat.type === 'group') {
             const { data, error } = await _supabase
                 .from('group_chat_messages')
-                .select('id, sender_id, is_system, message_text, created_at, sent_at_tick, edited_at, deleted_at, pinned_at')
+                .select(GROUP_MSG_COLS)
                 .eq('chat_id', chat.id)
                 .order('created_at', { ascending: false })
                 .limit(MSG_PAGE_SIZE);
 
             if (error) throw error;
             const rows = (data || []).slice().reverse();
+            rawCount = rows.length;
 
             const senderIds = [...new Set(rows.map(m => m.sender_id).filter(Boolean))];
             await loadFactionNames(senderIds);
@@ -1335,15 +1345,15 @@ async function loadAndRenderMessages() {
     // Drop messages from blocked factions before rendering.
     messages = filterBlocked(messages);
 
-    if (messages.length === 0 && _pinnedMessages.length === 0) {
+    // Sentinel is gated on rawCount, not filtered messages.length — a
+    // full page that got filtered to zero (every sender blocked) still
+    // has older history on the server that's worth paginating to.
+    const sentinel = rawCount >= MSG_PAGE_SIZE
+        ? `<button class="msg-load-earlier" id="msg-load-earlier">Load earlier messages</button>`
+        : '';
+    if (messages.length === 0 && _pinnedMessages.length === 0 && !sentinel) {
         container.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">No messages yet.<br>Send the first message!</div></div>`;
     } else {
-        // Sentinel at the top means "load the batch before this one". We
-        // only render it if we actually got a full page back — otherwise
-        // we know there's no older history to fetch.
-        const sentinel = messages.length >= MSG_PAGE_SIZE
-            ? `<button class="msg-load-earlier" id="msg-load-earlier">Load earlier messages</button>`
-            : '';
         container.innerHTML = sentinel + messages.map(m => renderMessage(m)).join('');
     }
 
@@ -1357,7 +1367,6 @@ function dmMsgRowToMessage(m) {
     return {
         id: m.id,
         senderId: m.sender_id,
-        receiverId: m.receiver_id,
         text: m.message_text,
         createdAt: m.created_at,
         tick: m.sent_at_tick,
@@ -1401,7 +1410,7 @@ async function loadOlderMessages() {
         if (chat.type === 'dm') {
             const { data, error } = await _supabase
                 .from('direct_messages')
-                .select('id, sender_id, receiver_id, message_text, created_at, sent_at_tick, read_at, edited_at, deleted_at')
+                .select(DM_MSG_COLS)
                 .or(`and(sender_id.eq.${_msgFaction.id},receiver_id.eq.${chat.id}),and(sender_id.eq.${chat.id},receiver_id.eq.${_msgFaction.id})`)
                 .lt('created_at', _oldestLoadedTs)
                 .order('created_at', { ascending: false })
@@ -1413,7 +1422,7 @@ async function loadOlderMessages() {
         } else if (chat.type === 'group') {
             const { data, error } = await _supabase
                 .from('group_chat_messages')
-                .select('id, sender_id, is_system, message_text, created_at, sent_at_tick, edited_at, deleted_at, pinned_at')
+                .select(GROUP_MSG_COLS)
                 .eq('chat_id', chat.id)
                 .lt('created_at', _oldestLoadedTs)
                 .order('created_at', { ascending: false })
@@ -1654,10 +1663,6 @@ function openMessageMenu(btnEl, msgId) {
     const msgEl = btnEl.closest('.msg-msg');
     if (!msgEl) return;
     const isMine = msgEl.classList.contains('msg-msg--sent');
-    // Derive age from the rendered time; fall back to createdAt on the
-    // row if the server passed the ISO string through data attrs later.
-    // For now, read a data attribute we'll stamp from renderMessage via
-    // the DOM — simpler: re-query the DB row age on edit attempt.
 
     const menu = document.createElement('div');
     menu.className = 'msg-msg__menu';
@@ -1668,7 +1673,6 @@ function openMessageMenu(btnEl, msgId) {
     } else {
         items.push(`<button class="msg-msg__menu-item" data-msg-action="report" data-msg-id="${escapeHtml(msgId)}">Report</button>`);
     }
-    if (items.length === 0) return;
     menu.innerHTML = items.join('');
     msgEl.appendChild(menu);
     _messageMenuEl = menu;
@@ -1952,14 +1956,17 @@ function closeSearchBar() {
 async function performSearch(query) {
     const container = document.getElementById('msg-messages');
     if (!container || !_msgActiveChat) return;
-    if (!query) { container.innerHTML = ''; return; }
+    if (!query) {
+        container.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">Type to search this channel.<br>Close to return to the thread.</div></div>`;
+        return;
+    }
 
     try {
         let rows = [];
         if (_msgActiveChat.type === 'group') {
             const { data, error } = await _supabase
                 .from('group_chat_messages')
-                .select('id, sender_id, is_system, message_text, created_at, sent_at_tick, edited_at, deleted_at, pinned_at')
+                .select(GROUP_MSG_COLS)
                 .eq('chat_id', _msgActiveChat.id)
                 .is('deleted_at', null)
                 .ilike('message_text', `%${query}%`)
@@ -1972,7 +1979,7 @@ async function performSearch(query) {
         } else {
             const { data, error } = await _supabase
                 .from('direct_messages')
-                .select('id, sender_id, receiver_id, message_text, created_at, sent_at_tick, read_at, edited_at, deleted_at')
+                .select(DM_MSG_COLS)
                 .or(`and(sender_id.eq.${_msgFaction.id},receiver_id.eq.${_msgActiveChat.id}),and(sender_id.eq.${_msgActiveChat.id},receiver_id.eq.${_msgFaction.id})`)
                 .is('deleted_at', null)
                 .ilike('message_text', `%${query}%`)
@@ -2061,43 +2068,52 @@ async function sendMessage() {
     try {
         const tick = _msgShard?.current_tick || null;
 
+        // .select().single() round-trips so the optimistic render uses
+        // the real row id. Without this, Phase 5 Edit/Delete on a just-
+        // sent message targets a 'temp-...' id that no row has.
+        let row = null;
         if (chat.type === 'dm') {
-            const { error } = await _supabase.from('direct_messages').insert({
-                sender_id: _msgFaction.id,
-                receiver_id: chat.id,
-                message_text: text,
-                sent_at_tick: tick,
-            });
+            const { data, error } = await _supabase.from('direct_messages')
+                .insert({
+                    sender_id: _msgFaction.id,
+                    receiver_id: chat.id,
+                    message_text: text,
+                    sent_at_tick: tick,
+                })
+                .select('id, created_at')
+                .single();
             if (error) throw error;
-
+            row = data;
         } else if (chat.type === 'group') {
-            const { error } = await _supabase.from('group_chat_messages').insert({
-                chat_id: chat.id,
-                sender_id: _msgFaction.id,
-                is_system: false,
-                message_text: text,
-                sent_at_tick: tick,
-            });
+            const { data, error } = await _supabase.from('group_chat_messages')
+                .insert({
+                    chat_id: chat.id,
+                    sender_id: _msgFaction.id,
+                    is_system: false,
+                    message_text: text,
+                    sent_at_tick: tick,
+                })
+                .select('id, created_at')
+                .single();
             if (error) throw error;
+            row = data;
         }
 
-        // Optimistic render: append the message immediately
+        // Append the real row.
         const container = document.getElementById('msg-messages');
-        if (container) {
-            // Clear "no messages" empty state if present
+        if (container && row) {
             const empty = container.querySelector('.msg-empty');
             if (empty) empty.remove();
 
-            const msgHtml = renderMessage({
-                id: 'temp-' + Date.now(),
+            container.insertAdjacentHTML('beforeend', renderMessage({
+                id: row.id,
                 senderId: _msgFaction.id,
                 text,
-                createdAt: new Date().toISOString(),
+                createdAt: row.created_at,
                 tick,
                 isMine: true,
                 isSystem: false,
-            });
-            container.insertAdjacentHTML('beforeend', msgHtml);
+            }));
             container.scrollTop = container.scrollHeight;
         }
 

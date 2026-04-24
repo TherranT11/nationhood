@@ -40,7 +40,7 @@
 /* OLD TEMPLATE CONTENT REMOVED — now loaded from admin-panel.html */
 
 import { _supabase } from './js/supabase-client.js';
-import { fmtBudgetCurrency } from './js/utils.js';
+import { fmtBudgetCurrency, escapeHtml, escapeAttr } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS } from './js/game/config.js';
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isGovernmentPresidential } from './js/game/government-types.js';
 import { RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
@@ -4586,28 +4586,28 @@ async function renderModReports() {
             const m = msgMap[r.message_id];
             const reporter = factionMap[r.reporter_faction_id];
             const reporterName = reporter?.faction_name || '(unknown)';
-            const msgText = m ? (m.deleted_at ? '<em>[already deleted]</em>' : escapeAdminHtml(m.message_text || '').slice(0, 500)) : '<em>[message not found]</em>';
+            const msgText = m ? (m.deleted_at ? '<em>[already deleted]</em>' : escapeHtml(m.message_text || '').slice(0, 500)) : '<em>[message not found]</em>';
             const senderId = m?.sender_id || '';
             const chatId = m?.chat_id || r.chat_id || '';
             const deleteBtn = m && !m.deleted_at
-                ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;" onclick="modWipeMessage('${escapeAdminAttr(r.message_kind)}','${escapeAdminAttr(r.message_id)}','${escapeAdminAttr(r.id)}')">Wipe</button>`
+                ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;" onclick="modWipeMessage('${escapeAttr(r.message_kind)}','${escapeAttr(r.message_id)}','${escapeAttr(r.id)}')">Wipe</button>`
                 : '';
             const muteCtrl = (r.message_kind === 'group' && senderId && chatId)
-                ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;margin-left:6px;" onclick="modMute('${escapeAdminAttr(chatId)}','${escapeAdminAttr(senderId)}', 60)">Mute 1h</button>
-                   <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;margin-left:6px;" onclick="modBan('${escapeAdminAttr(chatId)}','${escapeAdminAttr(senderId)}')">Ban</button>`
+                ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;margin-left:6px;" onclick="modMute('${escapeAttr(chatId)}','${escapeAttr(senderId)}', 60)">Mute 1h</button>
+                   <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;margin-left:6px;" onclick="modBan('${escapeAttr(chatId)}','${escapeAttr(senderId)}')">Ban</button>`
                 : '';
             return `<div style="background:#1f1f1c;border:1px solid #333;border-radius:4px;padding:12px;margin-bottom:10px;">
                 <div style="font-size:0.75rem;color:#888;margin-bottom:4px;">
                     ${new Date(r.created_at).toLocaleString()} &middot;
-                    reported by <strong>${escapeAdminHtml(reporterName)}</strong> &middot;
-                    ${escapeAdminHtml(r.message_kind)} ${senderId ? 'from sender ' + senderId.slice(0,8) : ''}
+                    reported by <strong>${escapeHtml(reporterName)}</strong> &middot;
+                    ${escapeHtml(r.message_kind)} ${senderId ? 'from sender ' + senderId.slice(0,8) : ''}
                 </div>
                 <div style="color:#e0dbc8;margin-bottom:6px;">${msgText}</div>
-                <div style="color:#c8a64e;font-size:0.8rem;font-style:italic;margin-bottom:8px;">Reason: ${escapeAdminHtml(r.reason || '')}</div>
+                <div style="color:#c8a64e;font-size:0.8rem;font-style:italic;margin-bottom:8px;">Reason: ${escapeHtml(r.reason || '')}</div>
                 <div>
                     ${deleteBtn}
                     ${muteCtrl}
-                    <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;margin-left:6px;" onclick="modDismissReport('${escapeAdminAttr(r.id)}')">Dismiss</button>
+                    <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;margin-left:6px;" onclick="modDismissReport('${escapeAttr(r.id)}')">Dismiss</button>
                 </div>
             </div>`;
         }).join('');
@@ -4618,12 +4618,19 @@ async function renderModReports() {
     }
 }
 
+// Supabase update returns success with 0 rows affected when no row
+// matches — without a .select() round-trip the admin thinks the action
+// worked. All mod mutations below verify the affected row set.
 async function modWipeMessage(kind, messageId, reportId) {
     if (!confirm('Wipe this message? It will be replaced with a tombstone for all viewers.')) return;
     const table = kind === 'dm' ? 'direct_messages' : 'group_chat_messages';
     try {
-        const { error } = await _supabase.from(table).update({ deleted_at: new Date().toISOString() }).eq('id', messageId);
+        const { data, error } = await _supabase.from(table)
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', messageId)
+            .select('id');
         if (error) throw error;
+        if (!data || data.length === 0) { alert('Wipe failed: message not found.'); return; }
         if (reportId) await modDismissReport(reportId, true);
         else renderModReports();
     } catch (err) {
@@ -4637,10 +4644,12 @@ async function modMute(chatId, factionId, minutes) {
     if (!mins || mins < 1) { alert('Invalid mute duration.'); return; }
     const until = new Date(Date.now() + mins * 60 * 1000).toISOString();
     try {
-        const { error } = await _supabase.from('group_chat_members')
+        const { data, error } = await _supabase.from('group_chat_members')
             .update({ muted_until: until })
-            .eq('chat_id', chatId).eq('faction_id', factionId);
+            .eq('chat_id', chatId).eq('faction_id', factionId)
+            .select('chat_id');
         if (error) throw error;
+        if (!data || data.length === 0) { alert('Mute failed: no matching membership row.'); return; }
         alert(`Muted until ${new Date(until).toLocaleString()}.`);
     } catch (err) {
         alert('Mute failed: ' + (err.message || err));
@@ -4651,10 +4660,12 @@ window.modMute = modMute;
 async function modBan(chatId, factionId) {
     if (!confirm('Permanently ban this faction from this channel? Reversible via the Active Mutes / Bans tab.')) return;
     try {
-        const { error } = await _supabase.from('group_chat_members')
+        const { data, error } = await _supabase.from('group_chat_members')
             .update({ banned_at: new Date().toISOString() })
-            .eq('chat_id', chatId).eq('faction_id', factionId);
+            .eq('chat_id', chatId).eq('faction_id', factionId)
+            .select('chat_id');
         if (error) throw error;
+        if (!data || data.length === 0) { alert('Ban failed: no matching membership row.'); return; }
         alert('Ban applied.');
     } catch (err) {
         alert('Ban failed: ' + (err.message || err));
@@ -4664,10 +4675,12 @@ window.modBan = modBan;
 
 async function modUnmute(chatId, factionId) {
     try {
-        const { error } = await _supabase.from('group_chat_members')
+        const { data, error } = await _supabase.from('group_chat_members')
             .update({ muted_until: null, banned_at: null, banned_by: null })
-            .eq('chat_id', chatId).eq('faction_id', factionId);
+            .eq('chat_id', chatId).eq('faction_id', factionId)
+            .select('chat_id');
         if (error) throw error;
+        if (!data || data.length === 0) { alert('Clear failed: no matching row.'); return; }
         renderModMutedBanned();
     } catch (err) { alert('Unmute failed: ' + (err.message || err)); }
 }
@@ -4715,12 +4728,12 @@ async function renderModMutedBanned() {
             const where = r.group_chats?.name || r.chat_id.slice(0, 8);
             return `<div style="background:#1f1f1c;border:1px solid #333;border-radius:4px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
                 <div>
-                    <strong style="color:#e0dbc8;">${escapeAdminHtml(who)}</strong>
+                    <strong style="color:#e0dbc8;">${escapeHtml(who)}</strong>
                     <span style="color:#888;"> in </span>
-                    <strong style="color:#c8a64e;">${escapeAdminHtml(where)}</strong>
+                    <strong style="color:#c8a64e;">${escapeHtml(where)}</strong>
                     <div style="color:#888;font-size:0.75rem;margin-top:2px;">${state}</div>
                 </div>
-                <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;" onclick="modUnmute('${escapeAdminAttr(r.chat_id)}','${escapeAdminAttr(r.faction_id)}')">Clear</button>
+                <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;" onclick="modUnmute('${escapeAttr(r.chat_id)}','${escapeAttr(r.faction_id)}')">Clear</button>
             </div>`;
         }).join('');
         if (status) status.textContent = `${active.length} active restriction${active.length === 1 ? '' : 's'}.`;
@@ -4763,10 +4776,16 @@ async function modPinMessage(pinOn) {
     const msgId = idEl?.value?.trim();
     if (!msgId) { resultEl.textContent = 'Enter a message id.'; return; }
     try {
-        const { error } = await _supabase.from('group_chat_messages')
+        const { data, error } = await _supabase.from('group_chat_messages')
             .update({ pinned_at: pinOn ? new Date().toISOString() : null })
-            .eq('id', msgId);
+            .eq('id', msgId)
+            .select('id');
         if (error) throw error;
+        if (!data || data.length === 0) {
+            resultEl.style.color = '#d9534f';
+            resultEl.textContent = 'No message with that id in group_chat_messages.';
+            return;
+        }
         resultEl.style.color = '#8fd48f';
         resultEl.textContent = pinOn ? 'Pinned.' : 'Unpinned.';
     } catch (err) {
@@ -4791,8 +4810,8 @@ async function modFactionLookup() {
         resultsEl.innerHTML = data.map(f => `
             <div style="padding:6px 8px;border-bottom:1px solid #2a2a27;display:flex;gap:8px;align-items:center;justify-content:space-between;">
                 <div>
-                    <strong>${escapeAdminHtml(f.faction_name || '?')}</strong>
-                    <span style="color:#888;font-size:0.75rem;"> ${escapeAdminHtml(f.abbreviation || '')} &middot; ${escapeAdminHtml(f.faction_type || '')} &middot; ${escapeAdminHtml(f.nations?.name || '—')}</span>
+                    <strong>${escapeHtml(f.faction_name || '?')}</strong>
+                    <span style="color:#888;font-size:0.75rem;"> ${escapeHtml(f.abbreviation || '')} &middot; ${escapeHtml(f.faction_type || '')} &middot; ${escapeHtml(f.nations?.name || '—')}</span>
                 </div>
                 <code style="font-size:0.75rem;color:#c8a64e;">${f.id}</code>
             </div>
@@ -4803,16 +4822,6 @@ async function modFactionLookup() {
     }
 }
 window.modFactionLookup = modFactionLookup;
-
-// HTML-escape helpers scoped to the moderation tab. admin.html doesn't
-// already import one, and inline template strings here need both the
-// text-safe and attribute-safe variants.
-function escapeAdminHtml(s) {
-    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-function escapeAdminAttr(s) {
-    return escapeAdminHtml(s).replace(/\\/g, '\\\\');
-}
 
 // Auto-load reports whenever the Moderation tab is opened.
 var _prevShowTabMod = showTab;

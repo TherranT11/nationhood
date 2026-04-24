@@ -159,9 +159,30 @@ CREATE POLICY "GC members updatable by self or admin"
         OR EXISTS (SELECT 1 FROM factions WHERE id = faction_id AND linked_user_id = auth.uid())
     );
 
--- ── 6a. Trigger: enforce edit window on UPDATE of message_text ─────────────
--- Only applies to non-admin callers. Window is 5 minutes from created_at.
--- Also enforces: you cannot resurrect a deleted message by editing.
+-- Admin read access so the moderation UI can .update().select() round-trip
+-- verify its writes. Existing "GC members visible to co-members" policy
+-- gated on faction ownership, which an admin-only account doesn't satisfy.
+DROP POLICY IF EXISTS "GC members readable by admin" ON group_chat_members;
+CREATE POLICY "GC members readable by admin"
+    ON group_chat_members FOR SELECT TO authenticated
+    USING (is_admin());
+
+-- Same concern on direct_messages: the existing SELECT is participant-only.
+-- Admins need to read DM rows to verify a wipe landed.
+DROP POLICY IF EXISTS "DM readable by admin" ON direct_messages;
+CREATE POLICY "DM readable by admin"
+    ON direct_messages FOR SELECT TO authenticated
+    USING (is_admin());
+
+-- ── 6a. Trigger: enforce edit window + protect admin-only columns ──────────
+-- The RLS policy broadly permits the sender to UPDATE their own row, so we
+-- need column-level enforcement here. Rules:
+--   1. message_text changes -> must be within EDIT_WINDOW_SEC, row not
+--      already deleted. edited_at is stamped.
+--   2. deleted_at can only be CLEARED by an admin. Owners can SET it
+--      (their own soft-delete) but cannot undo an admin wipe.
+--   3. deleted_by / pinned_by / pinned_at are admin-only writes (the
+--      pin cap trigger handles pinned_at; we gate the rest here).
 CREATE OR REPLACE FUNCTION enforce_edit_window()
 RETURNS TRIGGER
 SECURITY DEFINER
@@ -174,8 +195,7 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- If the caller is flipping read_at / last_read_at or marking as
-    -- deleted via the soft-delete column, we don't gate on window.
+    -- message_text edit rules.
     IF OLD.message_text IS DISTINCT FROM NEW.message_text THEN
         IF OLD.deleted_at IS NOT NULL THEN
             RAISE EXCEPTION 'Cannot edit a deleted message' USING ERRCODE = 'P0001';
@@ -184,6 +204,24 @@ BEGIN
             RAISE EXCEPTION 'Edit window has closed (% seconds)', v_edit_window_sec USING ERRCODE = 'P0001';
         END IF;
         NEW.edited_at := now();
+    END IF;
+
+    -- Only admins may clear deleted_at. Setting it (self-delete) is fine.
+    IF OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL THEN
+        RAISE EXCEPTION 'Only admins can restore a deleted message' USING ERRCODE = 'P0001';
+    END IF;
+
+    -- deleted_by is an admin/owner stamp; block mutation after the fact
+    -- unless the deletion itself just happened in the same statement.
+    IF TG_TABLE_NAME = 'group_chat_messages' THEN
+        IF OLD.deleted_by IS DISTINCT FROM NEW.deleted_by
+           AND NOT (OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL) THEN
+            RAISE EXCEPTION 'deleted_by is set at deletion time only' USING ERRCODE = 'P0001';
+        END IF;
+        -- pinned_by: non-admin cannot change. Pin cap trigger handles pinned_at.
+        IF OLD.pinned_by IS DISTINCT FROM NEW.pinned_by THEN
+            RAISE EXCEPTION 'Only admins can change pinned_by' USING ERRCODE = 'P0001';
+        END IF;
     END IF;
 
     RETURN NEW;
@@ -199,6 +237,38 @@ DROP TRIGGER IF EXISTS trg_dm_edit_window ON direct_messages;
 CREATE TRIGGER trg_dm_edit_window
     BEFORE UPDATE ON direct_messages
     FOR EACH ROW EXECUTE FUNCTION enforce_edit_window();
+
+-- ── 6a2. Trigger: protect moderation columns on group_chat_members ────────
+-- The UPDATE RLS policy grants self-row access so owners can flip
+-- last_read_at. Without column-level guards that would also let a muted
+-- member clear muted_until / banned_at on themselves and bypass admin
+-- action. Admins bypass; everyone else is frozen out of the mod columns.
+CREATE OR REPLACE FUNCTION enforce_gc_member_mod_cols()
+RETURNS TRIGGER
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    IF is_admin() THEN RETURN NEW; END IF;
+
+    IF OLD.muted_until IS DISTINCT FROM NEW.muted_until THEN
+        RAISE EXCEPTION 'Only admins can change mute state' USING ERRCODE = 'P0001';
+    END IF;
+    IF OLD.banned_at IS DISTINCT FROM NEW.banned_at THEN
+        RAISE EXCEPTION 'Only admins can change ban state' USING ERRCODE = 'P0001';
+    END IF;
+    IF OLD.banned_by IS DISTINCT FROM NEW.banned_by THEN
+        RAISE EXCEPTION 'Only admins can change ban attribution' USING ERRCODE = 'P0001';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_gc_member_mod_cols ON group_chat_members;
+CREATE TRIGGER trg_gc_member_mod_cols
+    BEFORE UPDATE ON group_chat_members
+    FOR EACH ROW EXECUTE FUNCTION enforce_gc_member_mod_cols();
 
 -- ── 6b. Trigger: rate limit on group_chat_messages INSERT ──────────────────
 -- Channel-type caps. Global is the loudest channel so it gets the
