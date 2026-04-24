@@ -17,6 +17,31 @@ let _realtimeChannel = null;
 let _groupRealtimeChannel = null;
 let _totalUnread = 0;
 
+// Nation name → flag asset. Duplicated inline in diplomacy.html,
+// corp-nation-select.html, select-nation.html; consolidating is out of
+// scope for Phase 4 but should land as a shared module later.
+const NATION_FLAG_URLS = {
+    'Melizea':     'assets/flags/Melizea.png',
+    'Avelia':      'assets/flags/Avelia.png',
+    'Sangreza':    'assets/flags/sangreza.png',
+    'Montequilla': 'assets/flags/Montequilla.png',
+    'San Estrella':'assets/flags/sanestrella.png',
+    'Palvera':     'assets/flags/Palvera.png',
+    'Calveth':     'assets/flags/Calveth.png',
+    'Flandis':     'assets/flags/Flandis.png',
+    'Vostia':      'assets/flags/Vostia.png',
+    'Sierramar':   'assets/flags/Sierramar.png',
+    'Dravka':      'assets/flags/Dravka.png',
+    'Hajjara':     'assets/flags/Hajjara.png',
+};
+
+// nation-info.html accepts ?name=<slug>. Slugs are lowercase with spaces
+// stripped (see SLUG_TO_NAME in nation-info.html). Keep in sync.
+function nationNameToSlug(name) {
+    if (!name) return '';
+    return String(name).toLowerCase().replace(/\s+/g, '');
+}
+
 // ── Inject CSS ──
 function injectStyles() {
     if (document.getElementById('msg-styles')) return;
@@ -275,20 +300,89 @@ function injectStyles() {
     font-family: var(--font-mono, monospace); font-size: 9px;
     color: var(--text-dim, #4a4940); padding: 4px 8px;
 }
-.msg-msg__sender {
-    font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 700;
-    margin-bottom: 2px;
+/* Phase 4 identity row: avatar + nameplate sit above the message body. */
+.msg-msg__header {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 3px;
 }
-/* Nation tag appended to the sender line in Global Chat. Dim so it
-   reads as secondary context next to the party/corp name. */
+.msg-msg__avatar {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 1px solid; background: var(--bg-panel, #1a1a17);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono, monospace); font-size: 8px; font-weight: 700;
+    flex-shrink: 0; letter-spacing: 0.5px;
+}
+.msg-msg__nameplate {
+    display: inline-flex; align-items: center; gap: 5px;
+    cursor: pointer; padding: 2px 4px; border-radius: 3px;
+    transition: background 0.1s;
+    min-width: 0;
+}
+.msg-msg__nameplate:hover,
+.msg-msg__nameplate:focus-visible {
+    background: var(--bg-hover, rgba(255,255,255,0.04)); outline: none;
+}
+.msg-msg__name {
+    font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 200px;
+}
+.msg-msg__flag {
+    width: 16px; height: 11px; object-fit: cover;
+    border: 1px solid var(--border-mid, rgba(255,255,255,0.12));
+    border-radius: 1px; flex-shrink: 0;
+}
+/* Sector pill for corp senders in Nation Chat. */
+.msg-msg__sector {
+    font-family: var(--font-mono, monospace); font-size: 8px; font-weight: 700;
+    padding: 1px 5px; border-radius: 2px; text-transform: uppercase;
+    background: var(--amber-faint, rgba(200,166,78,0.12));
+    color: var(--amber, #c8a64e);
+    letter-spacing: 0.4px; flex-shrink: 0;
+}
+/* Fallback nation tag when no flag asset is available. */
 .msg-msg__nation {
-    font-weight: 500; margin-left: 4px;
-    color: var(--text-dim, #8a8778); opacity: 0.8;
+    font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 500;
+    color: var(--text-dim, #8a8778); opacity: 0.85;
 }
 .msg-msg__time {
     font-family: var(--font-mono, monospace); font-size: 8px;
     color: var(--text-dim, #4a4940); margin-top: 2px; text-align: right;
 }
+
+/* Phase 4 identity popover — opens when a nameplate is clicked.
+   Positioned absolutely relative to the panel via inline top/left set by
+   openIdentityPopover(). Dismissed on outside click or Escape. */
+.msg-identity-popover {
+    position: absolute; z-index: 9100;
+    min-width: 180px; max-width: 240px;
+    background: var(--bg-card, #252525);
+    border: 1px solid var(--border-mid, rgba(255,255,255,0.12));
+    border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    padding: 10px 12px;
+    font-family: var(--font-ui, sans-serif); font-size: 11px;
+    color: var(--text-primary, #c4c2b8);
+}
+.msg-identity-popover__name {
+    font-family: var(--font-mono, monospace); font-size: 11px; font-weight: 700;
+    margin-bottom: 6px; word-break: break-word;
+}
+.msg-identity-popover__row {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 4px; font-size: 10px;
+    color: var(--text-dim, #8a8778);
+}
+.msg-identity-popover__row img {
+    width: 18px; height: 12px; object-fit: cover;
+    border: 1px solid var(--border-mid, rgba(255,255,255,0.12));
+    border-radius: 1px;
+}
+.msg-identity-popover__link {
+    display: inline-block; margin-top: 6px;
+    font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.5px; text-transform: uppercase;
+    color: var(--teal, #5aafa5); text-decoration: none;
+}
+.msg-identity-popover__link:hover { color: #6bc0b6; }
 
 /* Input bar */
 .msg-input-bar {
@@ -414,6 +508,49 @@ function injectHTML() {
 
     // Restore saved panel size (Phase 3 resize handle) — see installResize().
     installResize(panel);
+
+    // Identity popover delegation (Phase 4). Nameplates are re-rendered
+    // on every message load and appended by the realtime subscription,
+    // so delegate once on the panel body rather than per-message.
+    panel.addEventListener('click', (ev) => {
+        const nameplate = ev.target.closest('[data-msg-action="open-profile"]');
+        if (nameplate) {
+            ev.stopPropagation();
+            const fid = nameplate.dataset.factionId;
+            // If the popover is already open for this nameplate, toggle off.
+            if (_identityPopoverEl && _identityPopoverEl.dataset.factionId === fid) {
+                closeIdentityPopover();
+            } else {
+                openIdentityPopover(nameplate, fid);
+                if (_identityPopoverEl) _identityPopoverEl.dataset.factionId = fid;
+            }
+            return;
+        }
+        // Clicks inside the popover shouldn't close it; everything else does.
+        if (_identityPopoverEl && !ev.target.closest('.msg-identity-popover')) {
+            closeIdentityPopover();
+        }
+    });
+    // Keyboard: Enter/Space on focused nameplate, Escape closes popover.
+    panel.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape' && _identityPopoverEl) {
+            closeIdentityPopover();
+            return;
+        }
+        if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches('[data-msg-action="open-profile"]')) {
+            ev.preventDefault();
+            openIdentityPopover(ev.target, ev.target.dataset.factionId);
+            if (_identityPopoverEl) _identityPopoverEl.dataset.factionId = ev.target.dataset.factionId;
+        }
+    });
+    // Close popover when the panel closes or the view switches.
+    document.addEventListener('click', (ev) => {
+        if (!_identityPopoverEl) return;
+        if (!panel.contains(ev.target)) closeIdentityPopover();
+    });
+    // Scrolling the message list moves the anchor but not the popover, so
+    // detach on scroll rather than chase the anchor every frame.
+    panel.addEventListener('scroll', () => { if (_identityPopoverEl) closeIdentityPopover(); }, true);
 }
 
 // ── Tab bar: update unread badges + active class ──────────────────────
@@ -806,7 +943,7 @@ function renderDMItem(dm) {
 
 // ── Open thread view ──
 let _msgSending = false;
-let _threadFactionCache = {}; // { factionId: { id, faction_name, abbreviation, party_color, nation_id, nation_name } }
+let _threadFactionCache = {}; // { factionId: { id, faction_name, abbreviation, party_color, faction_type, corp_sector, nation_id, nation_name } }
 
 async function openThread(chatInfo) {
     _msgActiveChat = chatInfo;
@@ -990,27 +1127,44 @@ function renderMessage(msg) {
     const cls = msg.isMine ? 'msg-msg msg-msg--sent' : 'msg-msg msg-msg--received';
     const timeStr = formatMsgTime(msg.createdAt);
 
-    // Global Chat spans the whole shard, so each incoming message needs
-    // both the full faction name and a "[Nation]" tag for context. Other
-    // group chats (nation, ipo, custom) stay on the short abbreviation.
-    let senderHtml = '';
-    if (!msg.isMine && _msgActiveChat?.type === 'group') {
+    // Received-message identity row (Phase 4): avatar + nameplate with
+    // full faction_name. The nameplate is clickable and opens a popover
+    // with nation + faction type + nation profile link.
+    //   - Global Chat adds a nation flag next to the name.
+    //   - Nation Chat adds a sector badge to corporation senders so you
+    //     can tell a party from a corp at a glance.
+    //   - Other group chats (ipo, custom) show the name, no extra badge.
+    let headerHtml = '';
+    if (!msg.isMine && _msgActiveChat?.type === 'group' && msg.senderId) {
         const cached = _threadFactionCache[msg.senderId];
         const color = cached?.party_color || '#888';
-        const isGlobal = _msgActiveChat?.chatType === 'global';
-        const displayName = isGlobal
-            ? (cached?.faction_name || cached?.abbreviation || '...')
-            : (cached?.abbreviation || cached?.faction_name || '...');
-        const nationTag = (isGlobal && cached?.nation_name)
-            ? `<span class="msg-msg__nation">[${escapeHtml(cached.nation_name)}]</span>`
-            : '';
-        if (displayName) {
-            senderHtml = `<div class="msg-msg__sender" style="color:${escapeHtml(color)}">${escapeHtml(displayName)}${nationTag}</div>`;
+        const name = cached?.faction_name || cached?.abbreviation || '...';
+        const abbr = (cached?.abbreviation || cached?.faction_name || '?').slice(0, 3).toUpperCase();
+        const chatType = _msgActiveChat?.chatType;
+
+        let extraHtml = '';
+        if (chatType === 'global' && cached?.nation_name) {
+            const flagUrl = NATION_FLAG_URLS[cached.nation_name];
+            if (flagUrl) {
+                extraHtml = `<img class="msg-msg__flag" src="${escapeHtml(flagUrl)}" alt="${escapeHtml(cached.nation_name)}" title="${escapeHtml(cached.nation_name)}" />`;
+            } else {
+                extraHtml = `<span class="msg-msg__nation">[${escapeHtml(cached.nation_name)}]</span>`;
+            }
+        } else if (chatType === 'nation' && cached?.faction_type === 'corporation' && cached?.corp_sector) {
+            extraHtml = `<span class="msg-msg__sector" title="Sector">${escapeHtml(cached.corp_sector)}</span>`;
         }
+
+        headerHtml = `<div class="msg-msg__header">
+            <div class="msg-msg__avatar" style="color:${escapeHtml(color)};border-color:${escapeHtml(color)};">${escapeHtml(abbr)}</div>
+            <div class="msg-msg__nameplate" data-msg-action="open-profile" data-faction-id="${escapeHtml(msg.senderId)}" role="button" tabindex="0" title="View profile">
+                <span class="msg-msg__name" style="color:${escapeHtml(color)};">${escapeHtml(name)}</span>
+                ${extraHtml}
+            </div>
+        </div>`;
     }
 
     return `<div class="${cls}">
-        ${senderHtml}
+        ${headerHtml}
         <div>${escapeHtml(msg.text)}</div>
         <div class="msg-msg__time">${timeStr}</div>
     </div>`;
@@ -1023,17 +1177,89 @@ function getSenderName(factionId) {
     return '...';
 }
 
+// ── Identity popover (Phase 4) ────────────────────────────────────────
+// Opens on nameplate click. Shows nation + faction type + a link to the
+// nation profile page. Single popover at a time; dismissed on outside
+// click or Escape. Listener is installed once in injectHTML().
+let _identityPopoverEl = null;
+function closeIdentityPopover() {
+    if (_identityPopoverEl && _identityPopoverEl.parentNode) {
+        _identityPopoverEl.parentNode.removeChild(_identityPopoverEl);
+    }
+    _identityPopoverEl = null;
+}
+function openIdentityPopover(anchorEl, factionId) {
+    closeIdentityPopover();
+    const cached = _threadFactionCache[factionId];
+    if (!cached) return;
+    const panel = document.getElementById('msg-panel');
+    if (!panel) return;
+
+    const color = cached.party_color || '#888';
+    const typeLabel = cached.faction_type === 'corporation' ? 'Corporation'
+        : cached.faction_type === 'party' ? 'Political Party'
+        : (cached.faction_type || 'Faction');
+    const nationName = cached.nation_name || '';
+    const flagUrl = nationName ? NATION_FLAG_URLS[nationName] : '';
+    const slug = nationNameToSlug(nationName);
+
+    const pop = document.createElement('div');
+    pop.className = 'msg-identity-popover';
+    pop.setAttribute('role', 'dialog');
+    pop.innerHTML = `
+        <div class="msg-identity-popover__name" style="color:${escapeHtml(color)};">${escapeHtml(cached.faction_name || cached.abbreviation || '?')}</div>
+        <div class="msg-identity-popover__row">
+            ${flagUrl ? `<img src="${escapeHtml(flagUrl)}" alt="${escapeHtml(nationName)}" />` : ''}
+            <span>${nationName ? escapeHtml(nationName) : 'No nation'}</span>
+        </div>
+        <div class="msg-identity-popover__row">
+            <span>${escapeHtml(typeLabel)}${cached.corp_sector ? ' — ' + escapeHtml(cached.corp_sector) : ''}</span>
+        </div>
+        ${slug ? `<a class="msg-identity-popover__link" href="nation-info.html?name=${encodeURIComponent(slug)}" target="_blank" rel="noopener">View Nation &rarr;</a>` : ''}
+    `;
+    panel.appendChild(pop);
+
+    // Position the popover near the anchor. Panel is position:fixed, the
+    // popover is position:absolute so coords are relative to the panel.
+    // Clamp inside the panel on both axes; if there isn't room below the
+    // anchor, flip above so the popover stays fully visible.
+    const panelRect = panel.getBoundingClientRect();
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const popWidth = pop.offsetWidth;
+    const popHeight = pop.offsetHeight;
+
+    let left = anchorRect.left - panelRect.left;
+    const maxLeft = panel.clientWidth - popWidth - 8;
+    if (left > maxLeft) left = maxLeft;
+    if (left < 8) left = 8;
+
+    let top = anchorRect.bottom - panelRect.top + 4;
+    if (top + popHeight > panel.clientHeight - 8) {
+        // Not enough room below — flip above the anchor.
+        top = anchorRect.top - panelRect.top - popHeight - 4;
+    }
+    if (top < 8) top = 8;
+
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+
+    _identityPopoverEl = pop;
+}
+
 async function loadFactionNames(factionIds) {
     const toLoad = factionIds.filter(id => !_threadFactionCache[id]);
     if (toLoad.length === 0) return;
 
     try {
-        // Embedded nations(name) so Global Chat sender lines can render the
-        // "[Nation]" tag without a second round-trip. nation_id may be NULL
-        // for non-party/corp factions; the nation relation is then null.
+        // Single fetch covers every field Phase 4 render paths touch:
+        //   - faction_name + abbreviation: name vs avatar text
+        //   - party_color: nameplate colour
+        //   - faction_type: "Party" vs "Corporation" label in the popover
+        //   - corp_sector: sector badge on Nation-Chat corp senders
+        //   - nations(name): nation tag + flag lookup
         const { data, error } = await _supabase
             .from('factions')
-            .select('id, faction_name, abbreviation, party_color, nation_id, nations(id, name)')
+            .select('id, faction_name, abbreviation, party_color, faction_type, corp_sector, nation_id, nations(id, name)')
             .in('id', toLoad);
         if (error) throw error;
         for (const f of (data || [])) {
@@ -1042,6 +1268,8 @@ async function loadFactionNames(factionIds) {
                 faction_name: f.faction_name,
                 abbreviation: f.abbreviation,
                 party_color: f.party_color,
+                faction_type: f.faction_type,
+                corp_sector: f.corp_sector,
                 nation_id: f.nation_id,
                 nation_name: f.nations?.name || null,
             };
