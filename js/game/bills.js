@@ -13,6 +13,7 @@ import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
+import { computeTaxArticleEffects, validateTaxArticlePayload, TAX_RATE_MIN, TAX_RATE_MAX } from './tax-articles.js';
 import { MILITARY_LOYALTY_POLICY_KEY, onMilitaryLoyaltyEnacted } from './military-loyalty.js';
 import { getNationNames, isFemaleName, installHOG } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
@@ -3332,6 +3333,40 @@ export async function enactBill(supabase, bill, currentTick) {
             const newRate = Math.max(0, Math.min(50, Number(effect.new_rate)));
             taxUpdates[effect.tax_key] = newRate;
             console.log(`[enactBill] Tax rate change: ${effect.tax_key} ${effect.old_rate}% → ${newRate}%`);
+        } else if (effect.type === 'INCOME_TAX_CHANGE') {
+            // Stepped Tax Article (v1: income_tax only). Rate change + per-step
+            // side effects on gov_approval / credit / gdp_growth / inflation.
+            // Effects scaled linearly by step count; payload validated at draft
+            // time and re-validated here for safety (rate clamped defensively).
+            const val = validateTaxArticlePayload('income_tax', effect.old_rate, effect.new_rate);
+            if (!val.valid) {
+                console.warn(`[enactBill] INCOME_TAX_CHANGE rejected: ${val.reason}`);
+            } else {
+                const newRate = Math.max(TAX_RATE_MIN, Math.min(TAX_RATE_MAX, Number(effect.new_rate)));
+                taxUpdates.income_tax = newRate;
+                const fx = computeTaxArticleEffects('income_tax', val.direction, val.steps);
+                // Read current stats once; apply all deltas in one UPDATE below
+                // after the rate-updates consolidation (same pattern as taxUpdates).
+                const { data: nRow, error: nErr } = await supabase.from('nations')
+                    .select('credit, gdp_growth, inflation').eq('id', bill.nation_id).single();
+                if (nErr) {
+                    console.error('[enactBill] INCOME_TAX_CHANGE read failed:', nErr.message);
+                } else {
+                    const newCredit    = Math.max(0, Math.min(100, Number(nRow.credit    ?? 50) + fx.credit));
+                    const newGdpGrowth = Math.max(0, Math.min(100, Number(nRow.gdp_growth ?? 50) + fx.gdp_growth));
+                    const newInflation = Math.max(0, Math.min(100, Number(nRow.inflation  ?? 50) + fx.inflation));
+                    const { error: upErr } = await supabase.from('nations').update({
+                        credit:     newCredit,
+                        gdp_growth: newGdpGrowth,
+                        inflation:  newInflation,
+                    }).eq('id', bill.nation_id);
+                    if (upErr) console.error('[enactBill] INCOME_TAX_CHANGE stat update failed:', upErr.message);
+                    if (fx.gov_approval !== 0) {
+                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, fx.gov_approval, 'income_tax_article');
+                    }
+                    console.log(`[enactBill] INCOME_TAX_CHANGE ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, approval ${fx.gov_approval >= 0 ? '+' : ''}${fx.gov_approval}, credit ${fx.credit >= 0 ? '+' : ''}${fx.credit}, gdp_growth ${fx.gdp_growth >= 0 ? '+' : ''}${fx.gdp_growth}, inflation ${fx.inflation >= 0 ? '+' : ''}${fx.inflation}`);
+                }
+            }
         } else if (effect.type === 'TARIFF_RATE_CHANGE' && effect.sector) {
             // Per-sector tariff: merge into nation's sector_tariffs jsonb
             const tariffRate = Math.max(0, Math.min(100, Number(effect.new_rate)));
