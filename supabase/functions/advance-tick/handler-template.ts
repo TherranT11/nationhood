@@ -2527,6 +2527,45 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Tariff relations penalty failed for ${nation.name} (non-fatal):`, tariffErr);
         }
 
+        // Debt & Deficit System (v1-MANUAL).
+        // Order is exact: maturities → coupons → expiries → new deficit.
+        // Maturities recycle cash before coupons commit it; expiries
+        // resolve yesterday's unfilled bonds before today's deficit posts
+        // a new offer.
+        //
+        // Expenditures here mirror processSurplusConnectors's heuristic
+        // (gdp × 0.12 × efficiency factor) so both systems agree on what
+        // a deficit looks like. Real ministry-budget expenditures will
+        // replace this when wired in v2 — at that point pass the actual
+        // sum here AND set opts.actualDebtService on calculateNationalBudget
+        // for the SUM(holdings × coupon_rate) figure.
+        try {
+            const debtGdp = Number(nation.gdp ?? nation.GDP ?? 0);
+            const debtEff = Number(nation.efficiency ?? 50);
+            const debtExp = debtGdp * 0.12 * (1 + (100 - debtEff) / 200);
+            const debtBudget = calculateNationalBudget(nation);
+
+            await processBondMaturitiesTick(supabase, nation, currentTick);
+            await processBondCouponsTick(supabase, nation, currentTick);
+            await processBondOfferExpiryTick(supabase, nation, currentTick);
+            const debtResult = await processDebtTick(
+                supabase, nation, debtExp, debtBudget.grossRevenue, currentTick
+            );
+            console.log(
+                `[Debt] ${nation.name}: mode=${debtResult?.mode || 'n/a'}` +
+                (debtResult?.mode === 'deficit'
+                    ? ` deficit=${Math.round(debtResult.deficit)}` +
+                      ` bond=${Math.round(debtResult.bondPortion)}` +
+                      ` print=${Math.round(debtResult.printPortion)}` +
+                      ` credit_drop=${debtResult.creditDeterioration?.toFixed(2)}`
+                    : debtResult?.mode === 'surplus'
+                        ? ` surplus=${Math.round(debtResult.surplus)}`
+                        : '')
+            );
+        } catch (debtErr) {
+            console.error(`[advanceTick] Debt system failed for ${nation.name} (non-fatal):`, debtErr);
+        }
+
         // Military Loyalty Act: force-sync defense minister to the sitting
         // Head of Government each tick while MLA is active. No-op when not.
         try {
