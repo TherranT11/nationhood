@@ -876,40 +876,40 @@ function togglePanel() {
 let _dmConversations = [];  // [{ otherFaction, lastMessage, unreadCount }]
 let _groupChats = [];       // [{ chat, lastMessage, unreadCount }]
 
-// Opens the Global Chat thread directly when the GLOBAL tab is clicked.
-// If the group-chat membership hasn't loaded yet (first open of the panel),
-// fetch it once before resolving the chat id. Falls through to the list if
-// no global chat is available for this faction. The post-await filter
-// re-check catches the race where the user switches tabs while we're
-// still loading — we don't want to yank them into the global thread after
-// they've already picked Nation or DMs.
-async function openGlobalChatDirect() {
+// Single-item sections (GLOBAL, NATION) bypass the list and drop the player
+// straight into the thread. Loads group-chat membership if this is the first
+// panel open, then re-checks the filter post-await so a mid-load tab switch
+// doesn't yank the user into the wrong thread. Falls through to the list if
+// no matching chat exists for this faction.
+async function openGroupChatDirect(filter, predicate, threadName) {
     if (!_groupChats.length) {
         try { await loadGroupChats(); }
         catch (e) { console.warn('[Messaging] Failed to load group chats:', e); }
     }
-    if (_msgListFilter !== 'global') return;
-    const global = _groupChats.find(g => g.chat.chat_type === 'global');
-    if (!global) { renderChatList(); return; }
-    openThread({ type: 'group', id: global.chat.id, name: global.chat.name, chatType: 'global' });
+    if (_msgListFilter !== filter) return;
+    const match = _groupChats.find(predicate);
+    if (!match) { renderChatList(); return; }
+    openThread({
+        type: 'group',
+        id: match.chat.id,
+        name: threadName || match.chat.name,
+        chatType: match.chat.chat_type,
+    });
 }
 
-// Opens the player's own Nation Chat directly when the NATION tab is clicked.
-// Same single-item justification as GLOBAL — each player has exactly one
-// nation chat that matters. Scoped to _msgNation.id so a stale cross-nation
-// membership row (observed in the wild) can't accidentally surface another
-// nation's chat here.
-async function openNationChatDirect() {
+function openGlobalChatDirect() {
+    return openGroupChatDirect('global', g => g.chat.chat_type === 'global');
+}
+
+// Scoped to _msgNation.id so a stale cross-nation membership row (observed
+// in the wild) can't surface another nation's chat here.
+function openNationChatDirect() {
     if (!_msgNation?.id) { renderChatList(); return; }
-    if (!_groupChats.length) {
-        try { await loadGroupChats(); }
-        catch (e) { console.warn('[Messaging] Failed to load group chats:', e); }
-    }
-    if (_msgListFilter !== 'nation') return;
-    const nation = _groupChats.find(g =>
-        g.chat.chat_type === 'nation' && g.chat.nation_id === _msgNation.id);
-    if (!nation) { renderChatList(); return; }
-    openThread({ type: 'group', id: nation.chat.id, name: 'Nation', chatType: 'nation' });
+    return openGroupChatDirect(
+        'nation',
+        g => g.chat.chat_type === 'nation' && g.chat.nation_id === _msgNation.id,
+        'Nation',
+    );
 }
 
 async function renderChatList() {
@@ -1213,9 +1213,11 @@ async function openThread(chatInfo) {
     if (headerTitle) headerTitle.textContent = chatInfo.name || 'Chat';
 
     // Nation chat gets a small flag of the player's own nation beside the
-    // name — reinforces "this is YOUR nation's channel" at a glance.
+    // name — reinforces "this is YOUR nation's channel" at a glance. Uses
+    // the same flag_url + assets/flags/{name}.png fallback pattern as the
+    // rest of the codebase (coalition-formation.js, ledger.js).
     const nationFlag = (chatInfo.type === 'group' && chatInfo.chatType === 'nation' && _msgNation)
-        ? `<img src="${escapeHtml(_msgNation.flag_url || NATION_FLAG_URLS[_msgNation.name] || '')}" alt="" style="height:14px;vertical-align:middle;margin-left:6px;" onerror="this.style.display='none'">`
+        ? `<img src="${escapeHtml(_msgNation.flag_url || `assets/flags/${_msgNation.name}.png`)}" alt="" style="height:14px;vertical-align:middle;margin-left:6px;" onerror="this.style.display='none'">`
         : '';
 
     body.innerHTML = `
