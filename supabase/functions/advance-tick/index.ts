@@ -28011,15 +28011,17 @@ const DEBT_CONFIG = Object.freeze({
     BOND_OFFER_EXPIRY_TICKS: 3,
 });
 
-// Tiered bond ratio. First tier whose min_credit is satisfied wins.
-// Same SSoT shape used by the Deal Flow UI to display "what fraction
-// of a deficit can this nation expect to borrow vs. print."
+// Tiered bond ratio + letter grade. First tier whose min_credit is
+// satisfied wins. Same SSoT shape used by the Deal Flow UI to display
+// "what fraction of a deficit can this nation expect to borrow vs.
+// print" and by the Ministry of Finance budget overview to render the
+// sovereign credit rating card.
 const BOND_RATIO_TIERS = Object.freeze([
-    { min_credit: 70, ratio: 0.95 },
-    { min_credit: 40, ratio: 0.60 },
-    { min_credit: 20, ratio: 0.20 },
-    { min_credit:  5, ratio: 0.05 },
-    { min_credit:  0, ratio: 0.00 },
+    { min_credit: 70, ratio: 0.95, letter: 'AAA' },
+    { min_credit: 40, ratio: 0.60, letter: 'AA'  },
+    { min_credit: 20, ratio: 0.20, letter: 'BBB' },
+    { min_credit:  5, ratio: 0.05, letter: 'B'   },
+    { min_credit:  0, ratio: 0.00, letter: 'D'   },
 ]);
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -28032,6 +28034,19 @@ function getBondRatio(credit) {
         if (c >= tier.min_credit) return tier.ratio;
     }
     return 0;
+}
+
+// Rating helper for UI surfaces. Returns the letter grade + bond/print
+// split derived from the same tier table as getBondRatio — one source
+// of truth for both the debt processor and any display code.
+function getCreditRating(credit) {
+    const c = Number(credit) || 0;
+    for (const tier of BOND_RATIO_TIERS) {
+        if (c >= tier.min_credit) {
+            return { letter: tier.letter, bondRatio: tier.ratio, printRatio: 1 - tier.ratio };
+        }
+    }
+    return { letter: 'D', bondRatio: 0, printRatio: 1 };
 }
 
 // Per-tick coupon rate locked at issuance based on issuer's credit.
