@@ -590,10 +590,14 @@ function injectStyles() {
 @media (max-width: 640px) {
     /* 100dvh (not 100vh) so the panel shrinks when the on-screen keyboard
        appears — otherwise the input bar gets pushed behind the keyboard and
-       the browser jumps/scrolls trying to reveal it on focus. */
+       the browser jumps/scrolls trying to reveal it on focus. The 100vh
+       pair above is a fallback for browsers that predate dvh support (pre-
+       2022); the cascade picks 100dvh when available. */
     .msg-panel {
         top: 0 !important; right: 0 !important; left: 0 !important; bottom: 0 !important;
-        width: 100vw !important; height: 100dvh !important; max-height: 100dvh !important;
+        width: 100vw !important;
+        height: 100vh !important; height: 100dvh !important;
+        max-height: 100vh !important; max-height: 100dvh !important;
         border-radius: 0; border-width: 0;
     }
     .msg-bubble {
@@ -667,8 +671,7 @@ function injectHTML() {
             const filter = tab.dataset.filter;
             if (!filter || filter === _msgListFilter) return;
             _msgListFilter = filter;
-            document.querySelectorAll('.msg-tab').forEach(t =>
-                t.classList.toggle('msg-tab--active', t.dataset.filter === filter));
+            setActiveTab(filter);
             if (filter === 'global') openGlobalChatDirect();
             else renderChatList();
         });
@@ -758,18 +761,22 @@ function injectHTML() {
     panel.addEventListener('scroll', () => { if (_identityPopoverEl) closeIdentityPopover(); }, true);
 }
 
-// ── Tab bar: update unread badges + active class ──────────────────────
+// Single writer for the active-tab class so the handler that bypasses
+// renderChatList (GLOBAL tab auto-open) and renderChatList's own badge
+// update stay in lockstep.
+function setActiveTab(filter) {
+    document.querySelectorAll('.msg-tab').forEach(t =>
+        t.classList.toggle('msg-tab--active', t.dataset.filter === filter));
+}
+
+// ── Tab bar: update unread badges ─────────────────────────────────────
 // Called from renderChatList after the per-type unread counts are tallied.
 // Each tab shows an amber count badge for its section; a count of 0 hides
 // the badge entirely. Counts over 99 show "99+" to keep the pill compact.
-// The active tab class is refreshed here too so any code path that flips
-// _msgListFilter keeps the header in sync.
 function updateTabBadges(counts) {
-    const tabs = document.querySelectorAll('.msg-tab');
-    tabs.forEach((tab) => {
-        const f = tab.dataset.filter;
-        const count = counts[f] || 0;
-        tab.classList.toggle('msg-tab--active', f === _msgListFilter);
+    setActiveTab(_msgListFilter);
+    document.querySelectorAll('.msg-tab').forEach((tab) => {
+        const count = counts[tab.dataset.filter] || 0;
         const existing = tab.querySelector('.msg-tab__badge');
         if (existing) existing.remove();
         if (count > 0) {
@@ -871,11 +878,16 @@ let _groupChats = [];       // [{ chat, lastMessage, unreadCount }]
 // Opens the Global Chat thread directly when the GLOBAL tab is clicked.
 // If the group-chat membership hasn't loaded yet (first open of the panel),
 // fetch it once before resolving the chat id. Falls through to the list if
-// no global chat is available for this faction.
+// no global chat is available for this faction. The post-await filter
+// re-check catches the race where the user switches tabs while we're
+// still loading — we don't want to yank them into the global thread after
+// they've already picked Nation or DMs.
 async function openGlobalChatDirect() {
     if (!_groupChats.length) {
-        try { await loadGroupChats(); } catch (_) {}
+        try { await loadGroupChats(); }
+        catch (e) { console.warn('[Messaging] Failed to load group chats:', e); }
     }
+    if (_msgListFilter !== 'global') return;
     const global = _groupChats.find(g => g.chat.chat_type === 'global');
     if (!global) { renderChatList(); return; }
     openThread({ type: 'group', id: global.chat.id, name: global.chat.name, chatType: 'global' });
