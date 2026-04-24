@@ -131,6 +131,7 @@ import { syncVoteTallies } from './js/game/bills.js';
 import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, SECTOR_DISPLAY_UNITS, shippingNeedFor } from './js/game/trade-constants.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
 import { clampServiceRate, computeServiceRateCeiling, revenueTierMultiplier } from './js/game/shipping.js';
+import { calculateNationalBudget } from './js/game/budget.js';
 import { getNationNames } from './js/game/political-actions.js';
 /**
  * Diplomacy Page
@@ -1226,11 +1227,36 @@ window.openShippingBidModal = async function(routeId) {
         console.warn('[ShippingBidModal] badge fetch threw:', e?.message || e);
     }
 
+    // Projected tax uplift on the selling nation from the +3 efficiency boost
+    // that an awarded contract grants while active. We diff calculateNationalBudget
+    // (current eff vs eff+3) rather than re-derive the formula — keeps the
+    // tax-revenue calculation in one place. Silent on failure so the modal
+    // still renders if the nation lookup breaks.
+    let efficiencyUplift = null; // { delta: number, newEfficiency: number } | null
+    try {
+        const { data: sellingNation, error: nerr } = await _supabase
+            .from('nations')
+            .select('gdp, debt, income_tax, corporate_tax, sales_tax, tariffs, efficiency, corruption, oil_and_gas, credit')
+            .eq('id', route.origin_nation_id)
+            .maybeSingle();
+        if (nerr) console.warn('[ShippingBidModal] selling-nation lookup failed:', nerr.message);
+        if (sellingNation) {
+            const curEff = Number(sellingNation.efficiency ?? 50);
+            const newEff = Math.min(100, curEff + 3);
+            const cur = calculateNationalBudget(sellingNation);
+            const bumped = calculateNationalBudget({ ...sellingNation, efficiency: newEff });
+            efficiencyUplift = { delta: Math.max(0, bumped.grossRevenue - cur.grossRevenue), newEfficiency: newEff };
+        }
+    } catch (e) {
+        console.warn('[ShippingBidModal] efficiency uplift calc threw:', e?.message || e);
+    }
+
     _shippingBidModal = {
         routeId, route, apps, mot,
         sort: 'lowest_bid',
         activeCorps: activeCorpSet,
         incumbentCorps: incumbentCorpSet,
+        efficiencyUplift,
     };
     _renderShippingBidModalOverlay();
     document.body.style.overflow = 'hidden';
@@ -1660,11 +1686,12 @@ function _renderShippingBidModalOverlay() {
 
             <!-- Footer -->
             <div style="padding:14px 22px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
-                <div style="display:flex;gap:22px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">
+                <div style="display:flex;gap:22px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);flex-wrap:wrap;">
                     ${canAct
                         ? `<span><span style="color:var(--text-muted);letter-spacing:1px;">SELECTED</span> <span style="color:var(--text-bright);font-weight:600;">${selectedApp ? escapeHtml(selectedApp.factions?.faction_name || 'Corp') : 'NONE'}</span></span>
                            <span><span style="color:var(--text-muted);letter-spacing:1px;">CONTRACT VALUE</span> <span style="color:var(--text-bright);font-weight:600;">${selectedApp ? fmt(contractValue) : '—'}</span></span>
-                           <span><span style="color:var(--text-muted);letter-spacing:1px;">TERM</span> <span style="color:var(--text-bright);font-weight:600;">${contractTermTicks} TICKS</span></span>`
+                           <span><span style="color:var(--text-muted);letter-spacing:1px;">TERM</span> <span style="color:var(--text-bright);font-weight:600;">${contractTermTicks} TICKS</span></span>
+                           ${_shippingBidModal.efficiencyUplift ? `<span title="While this contract is active, the nation gains +3 Government Efficiency, raising the tax collection rate. Projection uses current GDP and tax rates."><span style="color:var(--text-muted);letter-spacing:1px;">ON AWARD</span> <span style="color:var(--green);font-weight:600;">GOV. EFFICIENCY +3</span> <span style="color:var(--text-muted);">→</span> <span style="color:var(--green);font-weight:600;">+${fmt(_shippingBidModal.efficiencyUplift.delta)}/mo tax</span></span>` : ''}`
                         : `<span style="color:var(--amber);">\u26A0 Read-only \u2014 only the Minister of Trade${motName && motName !== '\u2014' ? ' (' + escapeHtml(motName) + ')' : ''} can award or reject these bids.</span>`}
                 </div>
                 <div style="display:flex;gap:8px;">
