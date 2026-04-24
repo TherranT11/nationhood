@@ -673,6 +673,7 @@ function injectHTML() {
             _msgListFilter = filter;
             setActiveTab(filter);
             if (filter === 'global') openGlobalChatDirect();
+            else if (filter === 'nation') openNationChatDirect();
             else renderChatList();
         });
     }
@@ -893,11 +894,34 @@ async function openGlobalChatDirect() {
     openThread({ type: 'group', id: global.chat.id, name: global.chat.name, chatType: 'global' });
 }
 
+// Opens the player's own Nation Chat directly when the NATION tab is clicked.
+// Same single-item justification as GLOBAL — each player has exactly one
+// nation chat that matters. Scoped to _msgNation.id so a stale cross-nation
+// membership row (observed in the wild) can't accidentally surface another
+// nation's chat here.
+async function openNationChatDirect() {
+    if (!_msgNation?.id) { renderChatList(); return; }
+    if (!_groupChats.length) {
+        try { await loadGroupChats(); }
+        catch (e) { console.warn('[Messaging] Failed to load group chats:', e); }
+    }
+    if (_msgListFilter !== 'nation') return;
+    const nation = _groupChats.find(g =>
+        g.chat.chat_type === 'nation' && g.chat.nation_id === _msgNation.id);
+    if (!nation) { renderChatList(); return; }
+    openThread({ type: 'group', id: nation.chat.id, name: 'Nation', chatType: 'nation' });
+}
+
 async function renderChatList() {
     const body = document.getElementById('msg-body');
     const actions = document.getElementById('msg-actions');
     if (actions) actions.style.display = '';
     _msgView = 'list';
+
+    // Reset the panel header — switching tabs from an open thread would
+    // otherwise leave a stale "Global Chat" / chat name in the title bar.
+    const headerTitle = document.querySelector('.msg-panel__title');
+    if (headerTitle) headerTitle.textContent = 'Messages';
 
     if (!_msgFaction) {
         body.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">No faction selected.</div></div>`;
@@ -917,7 +941,10 @@ async function renderChatList() {
     // ── Group Chats (Global + IPO + Nation + Custom) ──
     const globalChats = _groupChats.filter(g => g.chat.chat_type === 'global');
     const ipoChats = _groupChats.filter(g => g.chat.chat_type === 'ipo');
-    const nationChats = _groupChats.filter(g => g.chat.chat_type === 'nation');
+    // Scope to the player's own nation — a stale membership row for a
+    // different nation's chat shouldn't surface in this list.
+    const nationChats = _groupChats.filter(g =>
+        g.chat.chat_type === 'nation' && g.chat.nation_id === _msgNation?.id);
     const customChats = _groupChats.filter(g => g.chat.chat_type === 'custom');
 
     // Per-tab unread totals — fed into the Phase 3 tab bar badges.
@@ -1185,10 +1212,16 @@ async function openThread(chatInfo) {
     const headerTitle = document.querySelector('.msg-panel__title');
     if (headerTitle) headerTitle.textContent = chatInfo.name || 'Chat';
 
+    // Nation chat gets a small flag of the player's own nation beside the
+    // name — reinforces "this is YOUR nation's channel" at a glance.
+    const nationFlag = (chatInfo.type === 'group' && chatInfo.chatType === 'nation' && _msgNation)
+        ? `<img src="${escapeHtml(_msgNation.flag_url || NATION_FLAG_URLS[_msgNation.name] || '')}" alt="" style="height:14px;vertical-align:middle;margin-left:6px;" onerror="this.style.display='none'">`
+        : '';
+
     body.innerHTML = `
         <div class="msg-thread-header">
             <button class="msg-thread-back" id="msg-back">&#8592;</button>
-            <span class="msg-thread-name">${escapeHtml(chatInfo.name || 'Chat')}</span>
+            <span class="msg-thread-name">${escapeHtml(chatInfo.name || 'Chat')}${nationFlag}</span>
             <button class="msg-thread-members-btn" id="msg-search-btn" title="Search in channel">&#128269;</button>
             ${chatInfo.type === 'group' ? '<button class="msg-thread-members-btn" id="msg-members-toggle" title="Show members">&#128101;</button>' : ''}
         </div>
