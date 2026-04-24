@@ -10,6 +10,7 @@
 
 import { getNationNames } from './political-actions.js';
 import { isAbsoluteMonarchy, hasElectedPresident } from './government-types.js';
+import { fetchActiveCoalition } from './government-structure.js';
 
 // ═══════════════════════════════════════════════════
 // AGITATOR BACKGROUNDS (flavor text)
@@ -172,24 +173,76 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
         });
     }
 
-    // Active administration — single source for coalition / PM / president.
-    var { data: admin, error } = await supabase
-        .from('administrations')
-        .select('id, coalition_parties, stats_at_start, started_at_tick, pm_party_id, president_party_id')
-        .eq('nation_id', nationId)
-        .is('ended_at_tick', null)
-        .order('started_at_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    // Dual fetch: fetchActiveCoalition is the cycle-anchored canonical source
+    // for "what is the current government" (reads government_formations /
+    // presidents / ministries per government type). The administrations row
+    // is a historical mirror that *should* agree with the coalition but in
+    // practice has diverged — Dravka's active admin row had NULL pm_party_id
+    // and empty coalition_parties while government_formations correctly
+    // recorded TAC as PM of a 5-party coalition. If we trust the admin row
+    // alone, the PM reads as opposition.
+    //
+    // Rather than duplicate the fetchActiveCoalition logic here or switch
+    // every downstream reader (_administration.pm_party_id is referenced in
+    // ~15 places), hydrate the admin row in-place from the coalition before
+    // the governing check runs. Every caller of getGoverningStatus (and
+    // every reader of its .administration) then sees a consistent view.
+    var [coalitionResult, adminResult] = await Promise.all([
+        fetchActiveCoalition(supabase, nationId).catch(function(e) {
+            console.warn('[Agitator] fetchActiveCoalition failed:', e?.message || e);
+            return null;
+        }),
+        supabase
+            .from('administrations')
+            .select('id, coalition_parties, stats_at_start, started_at_tick, pm_party_id, pm_party_name, president_party_id')
+            .eq('nation_id', nationId)
+            .is('ended_at_tick', null)
+            .order('started_at_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+    ]);
 
-    if (error) {
-        console.error('[Agitator] Failed to check governing status:', error.message);
+    if (adminResult.error) {
+        console.error('[Agitator] Failed to check governing status:', adminResult.error.message);
         return { isGoverning: false, isOpposition: true, label: 'OPPOSITION', administration: null };
+    }
+
+    var admin = adminResult.data;
+    var coalition = coalitionResult;
+    var presidential = hasElectedPresident(nation);
+
+    // Hydrate the lead-party field that matches this nation's government
+    // type — pm_party_id for parliamentary, president_party_id for
+    // presidential / semi-presidential. Setting the wrong one breaks the
+    // isPM / isPresident labels downstream (party-actions.js) even when
+    // the governing flag itself would still be correct via OR.
+    var leadPartyField = presidential ? 'president_party_id' : 'pm_party_id';
+    var coalitionPartyObjs = Array.isArray(coalition?.party_ids)
+        ? coalition.party_ids.map(function(id) { return { party_id: id }; })
+        : [];
+
+    if (admin && coalition) {
+        if (!admin[leadPartyField] && coalition.lead_party_id) {
+            admin[leadPartyField] = coalition.lead_party_id;
+        }
+        var adminCoalition = Array.isArray(admin.coalition_parties) ? admin.coalition_parties : [];
+        if (adminCoalition.length === 0 && coalitionPartyObjs.length > 0) {
+            admin.coalition_parties = coalitionPartyObjs;
+        }
+    } else if (!admin && coalition) {
+        // No admin row but a formed coalition exists — synthesize a minimal
+        // admin so the governing check below sees the coalition's truth.
+        admin = {
+            pm_party_id: null,
+            president_party_id: null,
+            coalition_parties: coalitionPartyObjs,
+        };
+        admin[leadPartyField] = coalition.lead_party_id || null;
     }
 
     // Presidential / Semi-Presidential also need a cabinet-held check.
     var ministryHolder = false;
-    if (hasElectedPresident(nation)) {
+    if (presidential) {
         var { count } = await supabase
             .from('ministries')
             .select('*', { count: 'exact', head: true })
