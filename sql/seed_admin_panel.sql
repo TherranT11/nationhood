@@ -1,3 +1,6 @@
+-- Re-runnable: ON CONFLICT upserts so the admin panel HTML can be
+-- re-seeded whenever the tab structure changes (e.g. Phase 5 added a
+-- Moderation tab — re-run this file to pick it up).
 INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
 <div class="admin-container">
         <button class="logout-btn" onclick="logout()">Logout</button>
@@ -507,4 +510,7 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
         </div>
 
     </div>
-$$);
+$$)
+ON CONFLICT (key) DO UPDATE
+SET value = EXCLUDED.value,
+    updated_at = now();
