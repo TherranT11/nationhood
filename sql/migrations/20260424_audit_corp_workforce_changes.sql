@@ -40,8 +40,17 @@ CREATE TABLE IF NOT EXISTS corp_workforce_audit (
 CREATE INDEX IF NOT EXISTS idx_workforce_audit_faction_time
     ON corp_workforce_audit (faction_id, changed_at DESC);
 
+-- SECURITY DEFINER so the INSERT into corp_workforce_audit runs as the
+-- function owner (postgres) regardless of who fired the UPDATE. Without this
+-- the trigger inherits the caller's role — when an authenticated player
+-- submits Hire/Fire, RLS on corp_workforce_audit rejects the insert and
+-- rolls back the entire UPDATE, silently blocking legitimate workforce
+-- changes.
 CREATE OR REPLACE FUNCTION log_workforce_change()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
     INSERT INTO corp_workforce_audit (
         faction_id,
@@ -57,7 +66,11 @@ BEGIN
         OLD.corp_general_workforce, NEW.corp_general_workforce,
         OLD.corp_skilled_workforce, NEW.corp_skilled_workforce,
         OLD.corp_innovative_workforce, NEW.corp_innovative_workforce,
-        current_query(),
+        format('client_addr=%s | role=%s | xact_user=%s | query=%s',
+               coalesce(inet_client_addr()::text, 'local-or-cron'),
+               current_setting('role', true),
+               session_user,
+               current_query()),
         current_setting('application_name', true),
         session_user
     );
