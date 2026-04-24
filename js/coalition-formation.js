@@ -115,31 +115,14 @@ export async function initCoalitionFormation(supabase, state) {
     }
 
     const election = electionResult.data;
-    // activeCoalition is either null or the canonical SSoT result from
-    // fetchActiveCoalition. For presidential systems it's virtualized from the
-    // presidents table (_source='presidential'); for parliamentary it's a
-    // real government_formations row. No stub rows anywhere.
     const formedGov = activeCoalition || null;
     const hasActiveHoG = !!hogResult.data;
 
-    // Cycle-anchored check: is this formation tied to the LATEST election?
-    // Virtualized presidential coalitions always count as current — the
-    // active president IS the government.
-    const hasCurrentCycleFormedGov = (() => {
-        if (!formedGov) return false;
-        if (formedGov._source === 'presidential') return true;
-        if (!election) return true;
-        if (formedGov.election_id && formedGov.election_id === election.id) return true;
-        return false;
-    })();
-
-    // A government effectively exists if either:
-    //   1. The SSoT returned a formed/caretaker coalition for the current cycle, OR
-    //   2. An active head_of_government row exists AND no formation row exists at
-    //      all (fallback for legacy nations that never wrote a formation row).
-    // The !formedGov guard prevents a stale active HoG row from a prior cycle
-    // from suppressing the formation UI when a new election has just concluded.
-    const hasFormedGov = hasCurrentCycleFormedGov || (hasActiveHoG && !formedGov);
+    // fetchActiveCoalition is cycle-anchored — it only returns formations tied
+    // to the latest completed election. A government effectively exists if the
+    // SSoT returned a coalition, or an active head_of_government row exists as
+    // a fallback for legacy nations that never wrote a formation row.
+    const hasFormedGov = !!formedGov || hasActiveHoG;
 
     // Presidential / semi-presidential systems don't use coalition formation —
     // the president governs (or nominates the PM). The Election tab renders a
@@ -716,31 +699,25 @@ async function handleFormGovernment(formation, root) {
             await createMinistriesFromAssignments(nationId);
         }
 
-        // RPC success alone is insufficient unless active-administration invariants are satisfied.
-        const { data: activeAdministration, error: activeAdminErr } = await _supabase.from('administrations')
-            .select('id')
-            .eq('nation_id', nationId)
-            .is('ended_at_tick', null)
-            .limit(1)
-            .maybeSingle();
-        if (activeAdminErr) {
-            console.warn('[Coalition] Failed to verify active administration:', activeAdminErr.message);
-        } else if (!activeAdministration) {
-            try {
-                const coalition = {
-                    id: formation.id,
-                    party_ids: formation.party_ids || [],
-                    lead_party_id: _ministryAssignments.prime_minister,
-                };
-                await rolloverAdministration(
-                    _supabase, nationId, _state.nation,
-                    'election', coalition, _allParties,
-                    _currentTick, _state.shard?.current_date || '',
-                    Number(_state.nation?.gov_approval ?? 50)
-                );
-            } catch (adminErr) {
-                console.warn('[Coalition] Post-finalization administration rollover failed (non-fatal):', adminErr.message);
-            }
+        // Always call rolloverAdministration — its internal continuity rule
+        // decides whether to update the open admin row in place (same PM) or
+        // close it and insert a new one (different PM). Skipping when an open
+        // admin exists left that row with stale coalition/pm_party data after
+        // a reshuffle.
+        try {
+            const coalition = {
+                id: formation.id,
+                party_ids: formation.party_ids || [],
+                lead_party_id: _ministryAssignments.prime_minister,
+            };
+            await rolloverAdministration(
+                _supabase, nationId, _state.nation,
+                'election', coalition, _allParties,
+                _currentTick, _state.shard?.current_date || '',
+                Number(_state.nation?.gov_approval ?? 50)
+            );
+        } catch (adminErr) {
+            console.warn('[Coalition] Post-finalization administration rollover failed (non-fatal):', adminErr.message);
         }
 
         // Auto-appoint PM's party leader (skip coalition check — we just formed it)
