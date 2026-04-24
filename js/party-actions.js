@@ -815,6 +815,107 @@ async function openCreateBlocModal(root) {
 
 // ════════════════════════ RENDER ════════════════════════
 
+/**
+ * Phase 2c: leader-only modal to invite an additional party to an existing
+ * bloc. Lighter than openCreateBlocModal — no name input, no $100k cost,
+ * no multi-select. Just a picker of eligible parties (server enforces full
+ * eligibility; client-side filter is best-effort to avoid showing parties
+ * we already know can't accept).
+ */
+async function openInviteToBlocModal(root) {
+    if (!_myBloc || !_myBlocIsLeader) return;
+    const overlay = document.getElementById('pa-bloc-modal');
+    if (!overlay) return;
+    const partyColor = _state.faction?.color || '#c8a832';
+
+    overlay.innerHTML = `
+        <div class="pa-modal" style="width:520px;max-height:75vh;overflow:hidden;display:flex;flex-direction:column;">
+            <div class="pa-modal-header">
+                <div class="pa-modal-header-left">
+                    <div class="pa-modal-dot" style="background:${partyColor};"></div>
+                    <span class="pa-modal-title">Invite to ${esc(_myBloc.name)}</span>
+                </div>
+                <button class="pa-modal-close" id="pa-blinv-close">&times;</button>
+            </div>
+            <div class="pa-modal-body" style="gap:10px;overflow-y:auto;">
+                <div style="font-size:10px;color:var(--text-dim);line-height:1.5;">
+                    Pick a party to invite. Parties already in a bloc, currently in government, or pending an invitation are filtered out.
+                </div>
+                <div id="pa-blinv-list" style="display:flex;flex-direction:column;gap:4px;">
+                    <div style="padding:10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Loading parties…</div>
+                </div>
+            </div>
+            <div class="pa-modal-footer">
+                <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-blinv-cancel">Close</button>
+            </div>
+        </div>`;
+    overlay.classList.add('active');
+
+    const close = () => overlay.classList.remove('active');
+    document.getElementById('pa-blinv-close')?.addEventListener('click', close);
+    document.getElementById('pa-blinv-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    const nationId = _state.nation?.id;
+    const listEl = document.getElementById('pa-blinv-list');
+    if (!listEl || !nationId) return;
+
+    try {
+        // bloc_id pre-filter trims the obvious ineligibles client-side; the
+        // RPC's _faction_in_active_government check is the authoritative gate.
+        const { data: parties, error } = await _supabase.from('factions')
+            .select('id, faction_name, seats, party_color, bloc_id')
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .is('abandoned_at', null)
+            .is('bloc_id', null);
+        if (error) {
+            listEl.innerHTML = `<div style="padding:10px;font-family:var(--font-mono);font-size:9px;color:var(--red);">Failed to load parties: ${esc(error.message)}</div>`;
+            return;
+        }
+        const eligible = (parties || []).filter(p => p.id !== _state.faction.id);
+        if (eligible.length === 0) {
+            listEl.innerHTML = `<div style="padding:10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">No eligible parties to invite.</div>`;
+            return;
+        }
+        listEl.innerHTML = eligible.map(p => {
+            const c = p.party_color || '#888';
+            return `<div class="pa-blinv-row" data-faction-id="${esc(p.id)}" style="padding:8px 10px;border:1px solid ${c}33;border-left:3px solid ${c};display:flex;justify-content:space-between;align-items:center;cursor:pointer;background:var(--bg-card);">
+                <div>
+                    <div style="font-size:11px;color:var(--text-bright);font-weight:600;">${esc(p.faction_name || 'Unknown')}</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${p.seats || 0} seats</div>
+                </div>
+                <button class="pa-modal-btn pa-modal-btn--submit pa-blinv-send" data-faction-id="${esc(p.id)}">Invite</button>
+            </div>`;
+        }).join('');
+
+        listEl.addEventListener('click', async (ev) => {
+            const btn = ev.target.closest('.pa-blinv-send');
+            if (!btn) return;
+            const inviteeId = btn.dataset.factionId;
+            if (!inviteeId) return;
+            btn.disabled = true; btn.textContent = 'Sending…';
+            try {
+                const { error: rpcErr } = await _supabase.rpc('invite_to_bloc', {
+                    p_bloc_id: _myBloc.id,
+                    p_invitee_faction_id: inviteeId,
+                });
+                if (rpcErr) throw rpcErr;
+                btn.textContent = 'Invited';
+                await loadBlocState(_state.faction.id, _state.nation?.id);
+                renderPage(root);
+            } catch (err) {
+                console.warn('[PartyActions] invite_to_bloc failed:', err);
+                alert(`Could not invite: ${err.message || err}`);
+                btn.disabled = false; btn.textContent = 'Invite';
+            }
+        });
+    } catch (e) {
+        console.warn('[PartyActions] openInviteToBlocModal threw:', e);
+        listEl.innerHTML = `<div style="padding:10px;font-family:var(--font-mono);font-size:9px;color:var(--red);">Unexpected error.</div>`;
+    }
+}
+
 function renderPage(root) {
     const faction = _state.faction;
     const nation = _state.nation;
@@ -961,6 +1062,8 @@ function renderPage(root) {
             openCreateBlocModal(root);
         } else if (actionId === 'leave_bloc') {
             triggerLeaveBloc(root);
+        } else if (actionId === 'invite_to_bloc') {
+            openInviteToBlocModal(root);
         }
     });
 
@@ -1381,6 +1484,16 @@ const DEPUTY_ACTIONS = [
         tags: ['ALLIANCE'],
         locked: false,
     },
+    {
+        id: 'invite_to_bloc',
+        name: 'Invite Party to Bloc',
+        desc: 'Send a bloc invitation to an additional party. Leader-only. Eligible parties are in your nation, not already in a bloc, and not currently in government.',
+        cost: '$0',
+        costColor: 'var(--text-dim)',
+        moneyCost: 0,
+        tags: ['ALLIANCE'],
+        locked: false,
+    },
 ];
 
 const RALLY_TIERS = [
@@ -1429,6 +1542,14 @@ function renderDeputyActionsPanel(role) {
                 lockReason = 'You are not in a bloc.';
             } else if (_myBlocIsLeader) {
                 lockReason = `Leaving dissolves ${_myBloc.name} — all members will be removed.`;
+            }
+        } else if (action.id === 'invite_to_bloc') {
+            if (!_myBloc) {
+                isDisabled = true;
+                lockReason = 'You are not in a bloc.';
+            } else if (!_myBlocIsLeader) {
+                isDisabled = true;
+                lockReason = 'Only the bloc leader can send invitations.';
             }
         }
 

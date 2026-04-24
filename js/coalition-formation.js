@@ -77,7 +77,10 @@ export async function initCoalitionFormation(supabase, state) {
         // required; no per-caller government_type branching needed here.
         fetchActiveCoalition(supabase, nation.id),
         supabase.from('factions')
-            .select('id, faction_name, abbreviation, party_color, seats')
+            // bloc_id is read by the proposal-checkbox handler so toggling
+            // any bloc member auto-toggles the others (Phase 2c: blocs are
+            // invited to coalitions in their entirety or not at all).
+            .select('id, faction_name, abbreviation, party_color, seats, bloc_id')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party')
             .is('abandoned_at', null)
@@ -888,19 +891,28 @@ function bindFormationEvents(root) {
     if (_formationEventsBound) return;
     _formationEventsBound = true;
     root.addEventListener('click', async (e) => {
-        // Party checkbox toggle
+        // Party checkbox toggle. Phase 2c: blocs are invited as a unit —
+        // toggling any member also toggles every other party in the same
+        // bloc, so the proposal can't end up with a partial bloc.
         const checkItem = e.target.closest('.cf-party-check:not(.disabled)');
         if (checkItem) {
             const pid = checkItem.dataset.partyId;
-            const idx = _proposalSelectedParties.indexOf(pid);
-            if (idx > -1) {
-                _proposalSelectedParties.splice(idx, 1);
-                checkItem.classList.remove('checked');
-                checkItem.querySelector('.cf-check-box').textContent = '';
-            } else {
-                _proposalSelectedParties.push(pid);
-                checkItem.classList.add('checked');
-                checkItem.querySelector('.cf-check-box').textContent = '✓';
+            const party = _allParties.find(p => p.id === pid);
+            const blocId = party?.bloc_id || null;
+            const turnOn = !_proposalSelectedParties.includes(pid);
+            const targetIds = blocId
+                ? _allParties.filter(p => p.bloc_id === blocId).map(p => p.id)
+                : [pid];
+
+            for (const tid of targetIds) {
+                const idx = _proposalSelectedParties.indexOf(tid);
+                if (turnOn && idx === -1) _proposalSelectedParties.push(tid);
+                if (!turnOn && idx > -1) _proposalSelectedParties.splice(idx, 1);
+                const row = root.querySelector(`.cf-party-check[data-party-id="${tid}"]`);
+                if (!row) continue;
+                row.classList.toggle('checked', turnOn);
+                const box = row.querySelector('.cf-check-box');
+                if (box) box.textContent = turnOn ? '✓' : '';
             }
             updateSeatPreview();
             return;
