@@ -3617,17 +3617,18 @@ async function processVesselOrderDeliveries(supabase, currentTick) {
     // cash deduct + shipyard credit + vessel insert + order mark-delivered
     // in one transaction. Failure of any step rolls back the others, so the
     // old pattern where a partial failure drained cash on every retry is
-    // gone. The client only needs to fetch due orders, call the RPC per
-    // order, and accrue P&L in memory when the RPC reports success.
+    // gone. The RPC returns 'delivered' | 'cancelled' | 'no_op' so the
+    // client can accrue in-memory P&L and log the outcome without a second
+    // round-trip.
     const { data: dueOrders, error: fetchErr } = await supabase.from('vessel_orders')
-        .select('id, faction_id, vessel_name, vessel_class, balance_due, status')
+        .select('id, faction_id, vessel_name, vessel_class, balance_due')
         .eq('status', 'building')
         .lte('delivery_tick', currentTick);
 
     if (fetchErr || !dueOrders || dueOrders.length === 0) return;
 
     for (const order of dueOrders) {
-        const { error: rpcErr } = await supabase.rpc('deliver_vessel_order', {
+        const { data: result, error: rpcErr } = await supabase.rpc('deliver_vessel_order', {
             p_order_id: order.id,
             p_current_tick: currentTick,
         });
@@ -3641,16 +3642,10 @@ async function processVesselOrderDeliveries(supabase, currentTick) {
             });
             continue;
         }
-
-        // RPC returns void on success; re-read status to distinguish delivered
-        // from cancelled-for-insufficient-funds so P&L only accrues for real
-        // deliveries.
-        const { data: post } = await supabase.from('vessel_orders')
-            .select('status').eq('id', order.id).maybeSingle();
-        if (post?.status === 'delivered') {
+        if (result === 'delivered') {
             accruePnl(order.faction_id, -Number(order.balance_due || 0));
             console.log('[Vessel Orders] Delivered ' + order.vessel_name + ' (' + order.vessel_class + ') to ' + order.faction_id);
-        } else if (post?.status === 'cancelled') {
+        } else if (result === 'cancelled') {
             console.log('[Vessel Orders] Order cancelled (insufficient funds) for ' + order.vessel_name);
         }
     }

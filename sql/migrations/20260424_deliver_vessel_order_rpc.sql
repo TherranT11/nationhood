@@ -16,7 +16,7 @@
 CREATE OR REPLACE FUNCTION deliver_vessel_order(
     p_order_id uuid,
     p_current_tick integer
-) RETURNS void
+) RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -31,7 +31,7 @@ BEGIN
     FOR UPDATE;
 
     IF NOT FOUND OR v_order.status <> 'building' THEN
-        RETURN; -- already handled; no-op
+        RETURN 'no_op'; -- already handled
     END IF;
 
     SELECT COALESCE(corp_cash_reserves, 0), nation_id
@@ -49,7 +49,7 @@ BEGIN
         UPDATE vessel_orders
         SET status = 'cancelled', cancelled_at_tick = p_current_tick
         WHERE id = p_order_id;
-        RETURN;
+        RETURN 'cancelled';
     END IF;
 
     UPDATE factions
@@ -75,7 +75,14 @@ BEGIN
     UPDATE vessel_orders
     SET status = 'delivered', delivered_at_tick = p_current_tick
     WHERE id = p_order_id;
+
+    RETURN 'delivered';
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION deliver_vessel_order(uuid, integer) TO authenticated, service_role;
+-- Tick-processor-only — the edge function (service_role) is the sole caller.
+-- Revoke the implicit PUBLIC grant so authenticated players can't call this
+-- directly and trigger another corp's cash deduction or force-deliver their
+-- own orders early. There is no caller-ownership check inside the function.
+REVOKE EXECUTE ON FUNCTION deliver_vessel_order(uuid, integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION deliver_vessel_order(uuid, integer) TO service_role;
