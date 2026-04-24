@@ -2763,6 +2763,19 @@ export async function resolveExpiredVotes(supabase, nationId) {
             throw persistCheckErr;
         }
 
+        // ── Bloc vote-cohesion check ──
+        // Route every resolved bill through the one RPC that knows how to
+        // detect within-bloc YES-vs-NO splits, bump dissent_count, and
+        // dissolve at 3. Abstains and no-votes don't count. Safe to fail —
+        // resolveExpiredVotes won't re-pick this bill (status moved off
+        // 'floor' in the resolver above), so a transient failure here
+        // misses ONE bill's cohesion check rather than double-counting it.
+        try {
+            await supabase.rpc('process_bloc_vote_cohesion', { p_bill_id: bill.id });
+        } catch (cohErr) {
+            console.warn(`[resolveExpiredVotes] Bloc vote-cohesion failed for bill ${bill.id}:`, cohErr?.message || cohErr);
+        }
+
         // ── No-vote penalty: punish factions that didn't cast any vote ──
         try {
             const penalized = await applyNoVotePenalty(supabase, bill, bill.nation_id, currentTick);
