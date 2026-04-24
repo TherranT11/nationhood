@@ -16,6 +16,19 @@ let _msgActiveChat = null;   // { type: 'dm'|'group', id, name, ... }
 let _realtimeChannel = null;
 let _groupRealtimeChannel = null;
 let _totalUnread = 0;
+// Phase 5: self-protection + pagination state.
+let _blockedFactionIds = new Set();    // faction ids this player has blocked
+let _oldestLoadedTs = null;            // ISO timestamp of oldest message rendered in current thread
+let _loadingOlder = false;             // prevents duplicate "load earlier" requests during scroll spam
+let _pinnedMessages = [];              // pinned messages for the active chat (Phase 5 pin strip)
+let _searchMode = false;               // true when the thread body is showing search results
+
+// Phase 5: client-facing edit window must match enforce_edit_window()
+// in sql/migrations/20260424_phase5_moderation.sql. Keep these in sync.
+const MSG_EDIT_WINDOW_SEC = 300;
+// Page size for history pagination. 50 is enough to fill the viewport
+// without making the initial load feel sluggish on cold cache.
+const MSG_PAGE_SIZE = 50;
 
 // Nation name → flag asset. Duplicated inline in diplomacy.html,
 // corp-nation-select.html, select-nation.html; consolidating is out of
@@ -387,6 +400,150 @@ function injectStyles() {
     color: var(--teal, #5aafa5); text-decoration: none;
 }
 .msg-identity-popover__link:hover { color: #6bc0b6; }
+.msg-identity-popover__btn {
+    display: block; width: 100%; margin-top: 6px; padding: 5px 8px;
+    font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.5px; text-transform: uppercase; text-align: left;
+    background: transparent; color: var(--text-muted, #8a8778);
+    border: 1px solid var(--border-main, rgba(255,255,255,0.08));
+    border-radius: 3px; cursor: pointer; transition: color 0.1s, border-color 0.1s;
+}
+.msg-identity-popover__btn:hover {
+    color: var(--amber, #c8a64e); border-color: var(--amber, #c8a64e);
+}
+
+/* Phase 5: own-message hover menu (edit / delete / report). Anchored to
+   the message bubble; opens a dropdown with the available actions. */
+.msg-msg { position: relative; }
+.msg-msg__menu-btn {
+    position: absolute; top: 4px;
+    width: 18px; height: 18px; padding: 0; line-height: 1;
+    background: transparent; border: none;
+    color: var(--text-dim, #4a4940); cursor: pointer;
+    font-size: 12px; opacity: 0; transition: opacity 0.1s, color 0.1s;
+}
+.msg-msg--sent .msg-msg__menu-btn { right: 4px; }
+.msg-msg--received .msg-msg__menu-btn { right: 4px; }
+.msg-msg:hover .msg-msg__menu-btn,
+.msg-msg__menu-btn:focus-visible { opacity: 1; outline: none; }
+.msg-msg__menu-btn:hover { color: var(--text-bright, #f0efe6); }
+
+.msg-msg__menu {
+    position: absolute; top: 20px; right: 4px; z-index: 9050;
+    min-width: 120px;
+    background: var(--bg-card, #252525);
+    border: 1px solid var(--border-mid, rgba(255,255,255,0.12));
+    border-radius: 4px; box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+    padding: 4px 0;
+}
+.msg-msg__menu-item {
+    display: block; width: 100%; padding: 6px 10px; text-align: left;
+    font-family: var(--font-mono, monospace); font-size: 10px;
+    background: transparent; border: none; color: var(--text-primary, #c4c2b8);
+    cursor: pointer;
+}
+.msg-msg__menu-item:hover { background: var(--bg-hover, rgba(255,255,255,0.04)); color: var(--text-bright, #f0efe6); }
+.msg-msg__menu-item--danger { color: #e36060; }
+.msg-msg__menu-item--danger:hover { color: #ff7878; }
+
+/* Edit mode: textarea + save/cancel row inside the bubble. */
+.msg-msg__edit {
+    display: flex; flex-direction: column; gap: 4px; margin-top: 2px;
+}
+.msg-msg__edit textarea {
+    width: 100%; min-height: 48px; max-height: 160px; resize: vertical;
+    padding: 4px 6px; border-radius: 3px;
+    background: var(--bg-input, var(--bg-panel, #24241f));
+    border: 1px solid var(--border-main, rgba(255,255,255,0.08));
+    color: var(--text-bright, #f0efe6); font-family: var(--font-ui, sans-serif);
+    font-size: 12px; outline: none;
+}
+.msg-msg__edit-row { display: flex; gap: 4px; justify-content: flex-end; }
+.msg-msg__edit-row button {
+    padding: 3px 8px; font-family: var(--font-mono, monospace);
+    font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+    border: 1px solid var(--border-mid, rgba(255,255,255,0.12));
+    border-radius: 3px; background: transparent;
+    color: var(--text-muted, #8a8778); cursor: pointer;
+}
+.msg-msg__edit-row button.primary {
+    background: var(--teal, #5aafa5); color: #000;
+    border-color: var(--teal, #5aafa5);
+}
+
+/* Deleted / edited markers. */
+.msg-msg--deleted { opacity: 0.6; font-style: italic; }
+.msg-msg__edited {
+    font-family: var(--font-mono, monospace); font-size: 8px;
+    color: var(--text-dim, #4a4940); margin-left: 6px;
+}
+.msg-msg__pinned {
+    display: inline-block; margin-right: 4px;
+    color: var(--amber, #c8a64e); font-size: 10px;
+}
+
+/* Pinned-strip at the top of the thread (Phase 5, admin-set, max 3). */
+.msg-pinned-strip {
+    border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
+    background: rgba(200,166,78,0.06);
+    padding: 6px 14px; flex-shrink: 0;
+}
+.msg-pinned-strip__hdr {
+    font-family: var(--font-mono, monospace); font-size: 8px; font-weight: 700;
+    color: var(--amber, #c8a64e); letter-spacing: 1px; text-transform: uppercase;
+    margin-bottom: 4px;
+}
+.msg-pinned-strip__item {
+    font-size: 11px; color: var(--text-primary, #c4c2b8);
+    padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* Load-earlier sentinel at the top of the messages list. */
+.msg-load-earlier {
+    display: block; width: 100%; padding: 8px 0; text-align: center;
+    font-family: var(--font-mono, monospace); font-size: 9px;
+    color: var(--text-dim, #8a8778); background: transparent;
+    border: none; cursor: pointer; letter-spacing: 0.5px;
+}
+.msg-load-earlier:hover { color: var(--text-bright, #f0efe6); }
+.msg-load-earlier[disabled] { cursor: default; opacity: 0.5; }
+
+/* Search bar + search-results list live inside #msg-body when active. */
+.msg-search-bar {
+    padding: 8px 14px; display: flex; gap: 6px;
+    border-bottom: 1px solid var(--border-main, rgba(0,0,0,0.08));
+    flex-shrink: 0;
+}
+.msg-search-bar input {
+    flex: 1; padding: 5px 8px; border-radius: 3px;
+    background: var(--bg-input, var(--bg-panel, #24241f));
+    border: 1px solid var(--border-main, rgba(0,0,0,0.08));
+    color: var(--text-bright, #f0efe6); font-family: var(--font-ui, sans-serif);
+    font-size: 11px; outline: none;
+}
+.msg-search-bar button {
+    padding: 5px 10px; font-family: var(--font-mono, monospace);
+    font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+    background: var(--bg-card, #252525); border: 1px solid var(--border-mid, rgba(255,255,255,0.12));
+    color: var(--text-muted, #8a8778); cursor: pointer; border-radius: 3px;
+}
+.msg-search-bar button:hover { color: var(--text-bright, #f0efe6); }
+
+/* Toast — ephemeral error/success banner anchored to the panel bottom.
+   Used for rate-limit, mute, and other send-time trigger errors. */
+.msg-toast {
+    position: absolute; left: 12px; right: 12px; bottom: 56px;
+    z-index: 9200;
+    padding: 8px 12px; border-radius: 4px;
+    font-family: var(--font-ui, sans-serif); font-size: 11px;
+    background: rgba(227,96,96,0.14); color: #ffd4d4;
+    border: 1px solid rgba(227,96,96,0.4);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    animation: msgToastIn 0.12s ease-out;
+}
+.msg-toast--success { background: rgba(90,175,165,0.14); color: #d4f0eb; border-color: rgba(90,175,165,0.4); }
+@keyframes msgToastIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
 /* Input bar */
 .msg-input-bar {
@@ -513,23 +670,62 @@ function injectHTML() {
     // Restore saved panel size (Phase 3 resize handle) — see installResize().
     installResize(panel);
 
-    // Identity popover delegation (Phase 4). Nameplates are re-rendered
-    // on every message load and appended by the realtime subscription,
-    // so delegate once on the panel body rather than per-message.
+    // Panel click delegation (Phases 4 + 5). One listener handles the
+    // identity popover, per-message menus, and all in-panel action
+    // buttons (block/unblock, edit, delete, report, load-earlier,
+    // search close). Delegated so renders and realtime appends pick
+    // them up for free.
     panel.addEventListener('click', (ev) => {
-        const nameplate = ev.target.closest('[data-msg-action="open-profile"]');
-        if (nameplate) {
+        const actionEl = ev.target.closest('[data-msg-action]');
+        const action = actionEl?.dataset?.msgAction;
+
+        if (action === 'open-profile') {
             ev.stopPropagation();
-            const fid = nameplate.dataset.factionId;
-            // Clicking the same nameplate toggles the popover closed.
+            const fid = actionEl.dataset.factionId;
             if (_identityPopoverEl && _identityPopoverEl.dataset.factionId === fid) {
                 closeIdentityPopover();
             } else {
-                openIdentityPopover(nameplate, fid);
+                openIdentityPopover(actionEl, fid);
             }
             return;
         }
-        // Clicks inside the popover shouldn't close it; everything else does.
+        if (action === 'block' || action === 'unblock') {
+            ev.stopPropagation();
+            const fid = actionEl.dataset.factionId;
+            if (action === 'block') blockFaction(fid);
+            else unblockFaction(fid);
+            return;
+        }
+        if (action === 'msg-menu') {
+            ev.stopPropagation();
+            const mid = actionEl.dataset.msgId;
+            // Toggle: second click on same button closes.
+            if (_messageMenuEl && _messageMenuEl.parentNode?.dataset?.msgId === mid) {
+                closeMessageMenu();
+            } else {
+                openMessageMenu(actionEl, mid);
+            }
+            return;
+        }
+        if (action === 'edit')        { ev.stopPropagation(); beginEditMessage(actionEl.dataset.msgId); return; }
+        if (action === 'edit-save')   { ev.stopPropagation(); saveEditMessage(actionEl.dataset.msgId); return; }
+        if (action === 'edit-cancel') {
+            ev.stopPropagation();
+            const msgEl = actionEl.closest('.msg-msg');
+            if (msgEl) cancelEditMessage(msgEl);
+            return;
+        }
+        if (action === 'delete')      { ev.stopPropagation(); deleteOwnMessage(actionEl.dataset.msgId); return; }
+        if (action === 'report')      { ev.stopPropagation(); reportMessage(actionEl.dataset.msgId); return; }
+
+        if (ev.target.id === 'msg-load-earlier') {
+            ev.stopPropagation(); loadOlderMessages(); return;
+        }
+
+        // Clicks outside menus/popovers close them.
+        if (_messageMenuEl && !ev.target.closest('.msg-msg__menu') && !ev.target.closest('.msg-msg__menu-btn')) {
+            closeMessageMenu();
+        }
         if (_identityPopoverEl && !ev.target.closest('.msg-identity-popover')) {
             closeIdentityPopover();
         }
@@ -961,6 +1157,7 @@ async function openThread(chatInfo) {
         <div class="msg-thread-header">
             <button class="msg-thread-back" id="msg-back">&#8592;</button>
             <span class="msg-thread-name">${escapeHtml(chatInfo.name || 'Chat')}</span>
+            <button class="msg-thread-members-btn" id="msg-search-btn" title="Search in channel">&#128269;</button>
             ${chatInfo.type === 'group' ? '<button class="msg-thread-members-btn" id="msg-members-toggle" title="Show members">&#128101;</button>' : ''}
         </div>
         ${chatInfo.type === 'group' ? '<div class="msg-members-bar" id="msg-members-bar" style="display:none;"></div>' : ''}
@@ -973,12 +1170,40 @@ async function openThread(chatInfo) {
         </div>
     `;
 
-    // Back button
+    // Back button: also closes any open popover/menu via the panel
+    // delegation once it re-renders the list.
     document.getElementById('msg-back').addEventListener('click', () => {
         if (headerTitle) headerTitle.textContent = 'Messages';
         _msgActiveChat = null;
+        _oldestLoadedTs = null;
+        _pinnedMessages = [];
+        _searchMode = false;
+        closeMessageMenu();
+        closeIdentityPopover();
         renderChatList();
     });
+
+    // Search button toggles the search bar in-place.
+    const searchBtn = document.getElementById('msg-search-btn');
+    if (searchBtn) {
+        searchBtn.addEventListener('click', () => {
+            if (_searchMode) closeSearchBar(); else openSearchBar();
+        });
+    }
+
+    // Infinite-scroll: when the list scrolls into the top ~40px, pull the
+    // next older page. Guard against duplicate fires with _loadingOlder.
+    // Event fires on the scroll container (#msg-messages), not the panel.
+    setTimeout(() => {
+        const scroller = document.getElementById('msg-messages');
+        if (scroller) {
+            scroller.addEventListener('scroll', () => {
+                if (scroller.scrollTop < 40 && _oldestLoadedTs && !_loadingOlder) {
+                    loadOlderMessages();
+                }
+            });
+        }
+    }, 0);
 
     // Members toggle for group chats
     if (chatInfo.type === 'group') {
@@ -1042,29 +1267,29 @@ async function loadAndRenderMessages() {
     const chat = _msgActiveChat;
     let messages = [];
 
+    // Reset pagination cursor for a fresh load; loadOlderMessages() walks
+    // backwards from this timestamp for infinite-scroll history.
+    _oldestLoadedTs = null;
+    _pinnedMessages = [];
+
     try {
         if (chat.type === 'dm') {
+            // Pull the newest MSG_PAGE_SIZE, then reverse so oldest-at-top.
             const { data, error } = await _supabase
                 .from('direct_messages')
-                .select('id, sender_id, receiver_id, message_text, created_at, sent_at_tick, read_at')
+                .select('id, sender_id, receiver_id, message_text, created_at, sent_at_tick, read_at, edited_at, deleted_at')
                 .or(`and(sender_id.eq.${_msgFaction.id},receiver_id.eq.${chat.id}),and(sender_id.eq.${chat.id},receiver_id.eq.${_msgFaction.id})`)
-                .order('created_at', { ascending: true })
-                .limit(100);
+                .order('created_at', { ascending: false })
+                .limit(MSG_PAGE_SIZE);
 
             if (error) throw error;
-            messages = (data || []).map(m => ({
-                id: m.id,
-                senderId: m.sender_id,
-                text: m.message_text,
-                createdAt: m.created_at,
-                tick: m.sent_at_tick,
-                isMine: m.sender_id === _msgFaction.id,
-                isSystem: false,
-            }));
+            const rows = (data || []).slice().reverse();
+            messages = rows.map(m => dmMsgRowToMessage(m));
+            if (rows.length > 0) _oldestLoadedTs = rows[0].created_at;
 
-            // Mark unread DMs as read
-            const unreadIds = (data || [])
-                .filter(m => m.receiver_id === _msgFaction.id && !m.read_at)
+            // Mark unread DMs as read — exclude tombstoned rows.
+            const unreadIds = rows
+                .filter(m => m.receiver_id === _msgFaction.id && !m.read_at && !m.deleted_at)
                 .map(m => m.id);
             if (unreadIds.length > 0) {
                 _supabase.from('direct_messages')
@@ -1076,26 +1301,23 @@ async function loadAndRenderMessages() {
         } else if (chat.type === 'group') {
             const { data, error } = await _supabase
                 .from('group_chat_messages')
-                .select('id, sender_id, is_system, message_text, created_at, sent_at_tick')
+                .select('id, sender_id, is_system, message_text, created_at, sent_at_tick, edited_at, deleted_at, pinned_at')
                 .eq('chat_id', chat.id)
-                .order('created_at', { ascending: true })
-                .limit(100);
+                .order('created_at', { ascending: false })
+                .limit(MSG_PAGE_SIZE);
 
             if (error) throw error;
+            const rows = (data || []).slice().reverse();
 
-            // Collect unique sender IDs for name lookup
-            const senderIds = [...new Set((data || []).map(m => m.sender_id).filter(Boolean))];
+            const senderIds = [...new Set(rows.map(m => m.sender_id).filter(Boolean))];
             await loadFactionNames(senderIds);
 
-            messages = (data || []).map(m => ({
-                id: m.id,
-                senderId: m.sender_id,
-                text: m.message_text,
-                createdAt: m.created_at,
-                tick: m.sent_at_tick,
-                isMine: m.sender_id === _msgFaction.id,
-                isSystem: m.is_system,
-            }));
+            messages = rows.map(m => groupMsgRowToMessage(m));
+            if (rows.length > 0) _oldestLoadedTs = rows[0].created_at;
+
+            // Load pinned messages for the strip. Separate query because they
+            // may be outside the current page window.
+            await loadPinnedMessages(chat.id);
 
             // Update last_read_at for this member
             _supabase.from('group_chat_members')
@@ -1110,15 +1332,133 @@ async function loadAndRenderMessages() {
         return;
     }
 
-    if (messages.length === 0) {
+    // Drop messages from blocked factions before rendering.
+    messages = filterBlocked(messages);
+
+    if (messages.length === 0 && _pinnedMessages.length === 0) {
         container.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">No messages yet.<br>Send the first message!</div></div>`;
-        return;
+    } else {
+        // Sentinel at the top means "load the batch before this one". We
+        // only render it if we actually got a full page back — otherwise
+        // we know there's no older history to fetch.
+        const sentinel = messages.length >= MSG_PAGE_SIZE
+            ? `<button class="msg-load-earlier" id="msg-load-earlier">Load earlier messages</button>`
+            : '';
+        container.innerHTML = sentinel + messages.map(m => renderMessage(m)).join('');
     }
 
-    container.innerHTML = messages.map(m => renderMessage(m)).join('');
+    renderPinnedStrip();
 
     // Scroll to bottom
     container.scrollTop = container.scrollHeight;
+}
+
+function dmMsgRowToMessage(m) {
+    return {
+        id: m.id,
+        senderId: m.sender_id,
+        receiverId: m.receiver_id,
+        text: m.message_text,
+        createdAt: m.created_at,
+        tick: m.sent_at_tick,
+        isMine: m.sender_id === _msgFaction.id,
+        isSystem: false,
+        editedAt: m.edited_at,
+        deletedAt: m.deleted_at,
+    };
+}
+
+function groupMsgRowToMessage(m) {
+    return {
+        id: m.id,
+        senderId: m.sender_id,
+        text: m.message_text,
+        createdAt: m.created_at,
+        tick: m.sent_at_tick,
+        isMine: m.sender_id === _msgFaction.id,
+        isSystem: m.is_system,
+        editedAt: m.edited_at,
+        deletedAt: m.deleted_at,
+        pinnedAt: m.pinned_at,
+    };
+}
+
+// ── Pagination: fetch and prepend the batch before _oldestLoadedTs ────
+async function loadOlderMessages() {
+    if (_loadingOlder || !_oldestLoadedTs || !_msgActiveChat) return;
+    _loadingOlder = true;
+    const sentinel = document.getElementById('msg-load-earlier');
+    if (sentinel) { sentinel.disabled = true; sentinel.textContent = 'Loading...'; }
+
+    const chat = _msgActiveChat;
+    const container = document.getElementById('msg-messages');
+    // Remember the scroll delta from the top so we can restore position
+    // after the prepend — otherwise the view jumps.
+    const prevScrollHeight = container ? container.scrollHeight : 0;
+
+    try {
+        let rows = [];
+        if (chat.type === 'dm') {
+            const { data, error } = await _supabase
+                .from('direct_messages')
+                .select('id, sender_id, receiver_id, message_text, created_at, sent_at_tick, read_at, edited_at, deleted_at')
+                .or(`and(sender_id.eq.${_msgFaction.id},receiver_id.eq.${chat.id}),and(sender_id.eq.${chat.id},receiver_id.eq.${_msgFaction.id})`)
+                .lt('created_at', _oldestLoadedTs)
+                .order('created_at', { ascending: false })
+                .limit(MSG_PAGE_SIZE);
+            if (error) throw error;
+            rows = (data || []).slice().reverse();
+            const older = filterBlocked(rows.map(dmMsgRowToMessage));
+            prependMessages(older, rows, container, prevScrollHeight);
+        } else if (chat.type === 'group') {
+            const { data, error } = await _supabase
+                .from('group_chat_messages')
+                .select('id, sender_id, is_system, message_text, created_at, sent_at_tick, edited_at, deleted_at, pinned_at')
+                .eq('chat_id', chat.id)
+                .lt('created_at', _oldestLoadedTs)
+                .order('created_at', { ascending: false })
+                .limit(MSG_PAGE_SIZE);
+            if (error) throw error;
+            rows = (data || []).slice().reverse();
+            const senderIds = [...new Set(rows.map(m => m.sender_id).filter(Boolean))];
+            await loadFactionNames(senderIds);
+            const older = filterBlocked(rows.map(groupMsgRowToMessage));
+            prependMessages(older, rows, container, prevScrollHeight);
+        }
+    } catch (e) {
+        console.warn('[Messaging] Failed to load older messages:', e);
+        if (sentinel) { sentinel.disabled = false; sentinel.textContent = 'Load earlier messages'; }
+    } finally {
+        _loadingOlder = false;
+    }
+}
+
+function prependMessages(msgs, rawRows, container, prevScrollHeight) {
+    const sentinel = document.getElementById('msg-load-earlier');
+    if (!container) return;
+
+    if (rawRows.length === 0) {
+        if (sentinel) sentinel.remove();
+        return;
+    }
+
+    _oldestLoadedTs = rawRows[0].created_at;
+    const html = msgs.map(m => renderMessage(m)).join('');
+    if (sentinel) {
+        sentinel.insertAdjacentHTML('afterend', html);
+        // Remove sentinel if this batch came back short — nothing older.
+        if (rawRows.length < MSG_PAGE_SIZE) sentinel.remove();
+        else { sentinel.disabled = false; sentinel.textContent = 'Load earlier messages'; }
+    } else {
+        container.insertAdjacentHTML('afterbegin', html);
+    }
+    // Preserve scroll position so the view doesn't jump when we prepend.
+    container.scrollTop = container.scrollHeight - prevScrollHeight;
+}
+
+function filterBlocked(messages) {
+    if (!_blockedFactionIds || _blockedFactionIds.size === 0) return messages;
+    return messages.filter(m => m.isMine || !m.senderId || !_blockedFactionIds.has(m.senderId));
 }
 
 function renderMessage(msg) {
@@ -1126,16 +1466,21 @@ function renderMessage(msg) {
         return `<div class="msg-msg msg-msg--system">${escapeHtml(msg.text)}</div>`;
     }
 
+    // Phase 5: tombstoned messages render as a placeholder with no body
+    // or actions — we keep the row for context but hide the content.
+    if (msg.deletedAt) {
+        return `<div class="msg-msg msg-msg--${msg.isMine ? 'sent' : 'received'} msg-msg--deleted" data-msg-id="${escapeHtml(msg.id)}">
+            <div>[message deleted]</div>
+            <div class="msg-msg__time">${formatMsgTime(msg.createdAt)}</div>
+        </div>`;
+    }
+
     const cls = msg.isMine ? 'msg-msg msg-msg--sent' : 'msg-msg msg-msg--received';
     const timeStr = formatMsgTime(msg.createdAt);
+    const editedTag = msg.editedAt ? `<span class="msg-msg__edited" title="Edited ${formatMsgTime(msg.editedAt)}">(edited)</span>` : '';
+    const pinnedTag = msg.pinnedAt ? `<span class="msg-msg__pinned" title="Pinned">📌</span>` : '';
 
-    // Received-message identity row (Phase 4): avatar + nameplate with
-    // full faction_name. The nameplate is clickable and opens a popover
-    // with nation + faction type + nation profile link.
-    //   - Global Chat adds a nation flag next to the name.
-    //   - Nation Chat adds a sector badge to corporation senders so you
-    //     can tell a party from a corp at a glance.
-    //   - Other group chats (ipo, custom) show the name, no extra badge.
+    // Phase 4 identity row (received-only, group-only).
     let headerHtml = '';
     if (!msg.isMine && _msgActiveChat?.type === 'group' && msg.senderId) {
         const cached = _threadFactionCache[msg.senderId];
@@ -1156,9 +1501,6 @@ function renderMessage(msg) {
             extraHtml = `<span class="msg-msg__sector" title="Sector">${escapeHtml(cached.corp_sector)}</span>`;
         }
 
-        // Only wire the nameplate as a button when we have cached data —
-        // otherwise the popover has nothing to render and a click is a
-        // no-op that still advertises a cursor:pointer affordance.
         const clickable = !!cached;
         const nameplateAttrs = clickable
             ? `data-msg-action="open-profile" data-faction-id="${escapeHtml(msg.senderId)}" role="button" tabindex="0" title="View profile"`
@@ -1172,9 +1514,18 @@ function renderMessage(msg) {
         </div>`;
     }
 
-    return `<div class="${cls}">
+    // Phase 5 menu: own messages get Edit/Delete; others get Report. The
+    // menu itself is built on demand in openMessageMenu() so the thread
+    // HTML stays compact.
+    const menuBtn = `<button class="msg-msg__menu-btn" data-msg-action="msg-menu" data-msg-id="${escapeHtml(msg.id)}" aria-label="Message actions" title="Actions">⋯</button>`;
+
+    // msg-msg__text is its own span so beginEditMessage() can pull the
+    // original text cleanly without dragging in the pin icon or edited
+    // tag that may be siblings inside __body.
+    return `<div class="${cls}" data-msg-id="${escapeHtml(msg.id)}">
         ${headerHtml}
-        <div>${escapeHtml(msg.text)}</div>
+        ${menuBtn}
+        <div class="msg-msg__body">${pinnedTag}<span class="msg-msg__text">${escapeHtml(msg.text)}</span>${editedTag}</div>
         <div class="msg-msg__time">${timeStr}</div>
     </div>`;
 }
@@ -1213,6 +1564,12 @@ function openIdentityPopover(anchorEl, factionId) {
     const pop = document.createElement('div');
     pop.className = 'msg-identity-popover';
     pop.setAttribute('role', 'dialog');
+    // Phase 5: Block/Unblock affordance on the popover — only meaningful
+    // for other factions (you can't block yourself).
+    const isSelf = _msgFaction && factionId === _msgFaction.id;
+    const isBlocked = _blockedFactionIds.has(factionId);
+    const blockBtn = isSelf ? '' : `<button class="msg-identity-popover__btn" data-msg-action="${isBlocked ? 'unblock' : 'block'}" data-faction-id="${escapeHtml(factionId)}">${isBlocked ? 'Unblock' : 'Block'} user</button>`;
+
     pop.innerHTML = `
         <div class="msg-identity-popover__name" style="color:${escapeHtml(color)};">${escapeHtml(cached.faction_name || cached.abbreviation || '?')}</div>
         <div class="msg-identity-popover__row">
@@ -1223,6 +1580,7 @@ function openIdentityPopover(anchorEl, factionId) {
             <span>${escapeHtml(typeLabel)}${cached.corp_sector ? ' — ' + escapeHtml(cached.corp_sector) : ''}</span>
         </div>
         ${slug ? `<a class="msg-identity-popover__link" href="nation-info.html?name=${encodeURIComponent(slug)}" target="_blank" rel="noopener">View Nation &rarr;</a>` : ''}
+        ${blockBtn}
     `;
     panel.appendChild(pop);
 
@@ -1254,6 +1612,386 @@ function openIdentityPopover(anchorEl, factionId) {
     pop.dataset.factionId = factionId;
 
     _identityPopoverEl = pop;
+}
+
+// ── Toast (Phase 5) ───────────────────────────────────────────────────
+// Ephemeral banner anchored to the active panel. Used for rate-limit,
+// mute, edit-window, and other trigger-thrown errors so users see a
+// clear reason rather than a generic "failed to send".
+function showToast(message, kind) {
+    const panel = document.getElementById('msg-panel');
+    if (!panel) return;
+    const existing = panel.querySelector('.msg-toast');
+    if (existing) existing.remove();
+    const t = document.createElement('div');
+    t.className = 'msg-toast' + (kind === 'success' ? ' msg-toast--success' : '');
+    t.textContent = message;
+    panel.appendChild(t);
+    setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 4500);
+}
+
+// Trigger-raised exceptions (SQLSTATE P0001) come back on the supabase
+// error object with a human-readable message. Extract it; fall back
+// to the raw error message. Used by sendMessage, editMessage etc.
+function extractTriggerMessage(err) {
+    const m = err?.message || '';
+    // Supabase wraps as: 'Rate limit: max 3 messages per 10 seconds ...'
+    return m.replace(/^[A-Z0-9]+:\s*/, '');
+}
+
+// ── Per-message actions menu (Phase 5) ────────────────────────────────
+// Opens below the ⋯ button on a message. Choices depend on who owns
+// the message and whether we're still inside the edit window.
+let _messageMenuEl = null;
+function closeMessageMenu() {
+    if (_messageMenuEl && _messageMenuEl.parentNode) {
+        _messageMenuEl.parentNode.removeChild(_messageMenuEl);
+    }
+    _messageMenuEl = null;
+}
+function openMessageMenu(btnEl, msgId) {
+    closeMessageMenu();
+    const msgEl = btnEl.closest('.msg-msg');
+    if (!msgEl) return;
+    const isMine = msgEl.classList.contains('msg-msg--sent');
+    // Derive age from the rendered time; fall back to createdAt on the
+    // row if the server passed the ISO string through data attrs later.
+    // For now, read a data attribute we'll stamp from renderMessage via
+    // the DOM — simpler: re-query the DB row age on edit attempt.
+
+    const menu = document.createElement('div');
+    menu.className = 'msg-msg__menu';
+    const items = [];
+    if (isMine) {
+        items.push(`<button class="msg-msg__menu-item" data-msg-action="edit" data-msg-id="${escapeHtml(msgId)}">Edit</button>`);
+        items.push(`<button class="msg-msg__menu-item msg-msg__menu-item--danger" data-msg-action="delete" data-msg-id="${escapeHtml(msgId)}">Delete</button>`);
+    } else {
+        items.push(`<button class="msg-msg__menu-item" data-msg-action="report" data-msg-id="${escapeHtml(msgId)}">Report</button>`);
+    }
+    if (items.length === 0) return;
+    menu.innerHTML = items.join('');
+    msgEl.appendChild(menu);
+    _messageMenuEl = menu;
+}
+
+// ── Edit message (Phase 5, own + within edit window) ──────────────────
+async function beginEditMessage(msgId) {
+    closeMessageMenu();
+    if (!_msgActiveChat) return;
+    const msgEl = document.querySelector(`.msg-msg[data-msg-id="${CSS.escape(msgId)}"]`);
+    if (!msgEl) return;
+    const bodyEl = msgEl.querySelector('.msg-msg__body');
+    const textEl = msgEl.querySelector('.msg-msg__text');
+    if (!bodyEl || !textEl) return;
+    const originalText = textEl.textContent;
+
+    const editUi = document.createElement('div');
+    editUi.className = 'msg-msg__edit';
+    editUi.innerHTML = `
+        <textarea maxlength="2000"></textarea>
+        <div class="msg-msg__edit-row">
+            <button data-msg-action="edit-cancel">Cancel</button>
+            <button class="primary" data-msg-action="edit-save" data-msg-id="${escapeHtml(msgId)}">Save</button>
+        </div>
+    `;
+    bodyEl.style.display = 'none';
+    msgEl.appendChild(editUi);
+    const ta = editUi.querySelector('textarea');
+    ta.value = originalText;
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    // Escape cancels the edit without saving.
+    ta.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') { ev.preventDefault(); cancelEditMessage(msgEl); }
+    });
+}
+
+function cancelEditMessage(msgEl) {
+    const editUi = msgEl.querySelector('.msg-msg__edit');
+    if (editUi) editUi.remove();
+    const bodyEl = msgEl.querySelector('.msg-msg__body');
+    if (bodyEl) bodyEl.style.display = '';
+}
+
+async function saveEditMessage(msgId) {
+    const msgEl = document.querySelector(`.msg-msg[data-msg-id="${CSS.escape(msgId)}"]`);
+    if (!msgEl) return;
+    const ta = msgEl.querySelector('.msg-msg__edit textarea');
+    if (!ta) return;
+    const newText = ta.value.trim();
+    if (!newText) { showToast('Message cannot be empty'); return; }
+    if (!_msgActiveChat) return;
+
+    const saveBtn = msgEl.querySelector('[data-msg-action="edit-save"]');
+    if (saveBtn) saveBtn.disabled = true;
+
+    const table = _msgActiveChat.type === 'dm' ? 'direct_messages' : 'group_chat_messages';
+    try {
+        const { error } = await _supabase
+            .from(table)
+            .update({ message_text: newText })
+            .eq('id', msgId);
+        if (error) throw error;
+
+        // Refresh the rendered body in place: swap the text span, ensure
+        // an (edited) tag is present. Pin icon (if any) stays untouched.
+        cancelEditMessage(msgEl);
+        const textEl = msgEl.querySelector('.msg-msg__text');
+        if (textEl) textEl.textContent = newText;
+        const bodyEl = msgEl.querySelector('.msg-msg__body');
+        if (bodyEl && !bodyEl.querySelector('.msg-msg__edited')) {
+            const tag = document.createElement('span');
+            tag.className = 'msg-msg__edited';
+            tag.textContent = '(edited)';
+            bodyEl.appendChild(tag);
+        }
+        showToast('Message updated', 'success');
+    } catch (err) {
+        console.warn('[Messaging] Edit failed:', err);
+        showToast('Edit failed: ' + extractTriggerMessage(err));
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+
+// ── Delete message (Phase 5, soft-delete via deleted_at) ──────────────
+async function deleteOwnMessage(msgId) {
+    closeMessageMenu();
+    if (!_msgActiveChat) return;
+    if (!confirm('Delete this message? This cannot be undone.')) return;
+
+    const table = _msgActiveChat.type === 'dm' ? 'direct_messages' : 'group_chat_messages';
+    try {
+        const patch = _msgActiveChat.type === 'dm'
+            ? { deleted_at: new Date().toISOString() }
+            : { deleted_at: new Date().toISOString(), deleted_by: _msgFaction.id };
+        const { error } = await _supabase.from(table).update(patch).eq('id', msgId);
+        if (error) throw error;
+
+        // Mutate the existing bubble into a tombstone so we keep the
+        // original time display and avoid a re-render that would break
+        // if the row was in the process of being edited.
+        const msgEl = document.querySelector(`.msg-msg[data-msg-id="${CSS.escape(msgId)}"]`);
+        if (msgEl) {
+            msgEl.classList.add('msg-msg--deleted');
+            const bodyEl = msgEl.querySelector('.msg-msg__body');
+            if (bodyEl) bodyEl.innerHTML = '[message deleted]';
+            const menuBtn = msgEl.querySelector('.msg-msg__menu-btn');
+            if (menuBtn) menuBtn.remove();
+            const header = msgEl.querySelector('.msg-msg__header');
+            if (header) header.remove();
+        }
+    } catch (err) {
+        console.warn('[Messaging] Delete failed:', err);
+        showToast('Delete failed: ' + extractTriggerMessage(err));
+    }
+}
+
+// ── Report message (Phase 5, any message; admin review queue) ─────────
+async function reportMessage(msgId) {
+    closeMessageMenu();
+    if (!_msgActiveChat || !_msgFaction) return;
+    const reason = prompt('Why are you reporting this message? (max 500 chars)');
+    if (reason == null) return;          // cancel
+    const trimmed = String(reason).trim().slice(0, 500);
+    if (!trimmed) { showToast('Report reason required'); return; }
+
+    try {
+        const payload = {
+            message_kind: _msgActiveChat.type === 'dm' ? 'dm' : 'group',
+            message_id: msgId,
+            chat_id: _msgActiveChat.type === 'group' ? _msgActiveChat.id : null,
+            reporter_faction_id: _msgFaction.id,
+            reason: trimmed,
+        };
+        const { error } = await _supabase.from('message_reports').insert(payload);
+        if (error) throw error;
+        showToast('Report submitted. Admins will review.', 'success');
+    } catch (err) {
+        console.warn('[Messaging] Report failed:', err);
+        showToast('Report failed: ' + extractTriggerMessage(err));
+    }
+}
+
+// ── Block / Unblock (Phase 5) ─────────────────────────────────────────
+async function loadBlockList() {
+    if (!_msgFaction) { _blockedFactionIds = new Set(); return; }
+    try {
+        const { data, error } = await _supabase
+            .from('user_blocks')
+            .select('blocked_faction_id')
+            .eq('blocker_faction_id', _msgFaction.id);
+        if (error) throw error;
+        _blockedFactionIds = new Set((data || []).map(r => r.blocked_faction_id));
+    } catch (e) {
+        console.warn('[Messaging] Failed to load block list:', e);
+        _blockedFactionIds = new Set();
+    }
+}
+
+async function blockFaction(factionId) {
+    closeIdentityPopover();
+    if (!_msgFaction || factionId === _msgFaction.id) return;
+    try {
+        const { error } = await _supabase.from('user_blocks').insert({
+            blocker_faction_id: _msgFaction.id,
+            blocked_faction_id: factionId,
+        });
+        if (error && error.code !== '23505') throw error;  // ignore unique-violation (already blocked)
+        _blockedFactionIds.add(factionId);
+        showToast('User blocked. Their messages are now hidden.', 'success');
+        // Re-render so existing messages drop out immediately.
+        if (_msgView === 'thread') loadAndRenderMessages();
+    } catch (err) {
+        console.warn('[Messaging] Block failed:', err);
+        showToast('Block failed: ' + extractTriggerMessage(err));
+    }
+}
+
+async function unblockFaction(factionId) {
+    closeIdentityPopover();
+    if (!_msgFaction) return;
+    try {
+        const { error } = await _supabase
+            .from('user_blocks')
+            .delete()
+            .eq('blocker_faction_id', _msgFaction.id)
+            .eq('blocked_faction_id', factionId);
+        if (error) throw error;
+        _blockedFactionIds.delete(factionId);
+        showToast('User unblocked.', 'success');
+        if (_msgView === 'thread') loadAndRenderMessages();
+    } catch (err) {
+        console.warn('[Messaging] Unblock failed:', err);
+        showToast('Unblock failed: ' + extractTriggerMessage(err));
+    }
+}
+
+// ── Pinned messages (Phase 5) ─────────────────────────────────────────
+// Populated by loadAndRenderMessages on open; rendered into a strip
+// above the messages scroll area. Max 3 (enforced server-side).
+async function loadPinnedMessages(chatId) {
+    try {
+        const { data, error } = await _supabase
+            .from('group_chat_messages')
+            .select('id, sender_id, message_text, created_at, pinned_at, deleted_at')
+            .eq('chat_id', chatId)
+            .not('pinned_at', 'is', null)
+            .is('deleted_at', null)
+            .order('pinned_at', { ascending: false })
+            .limit(3);
+        if (error) throw error;
+        _pinnedMessages = data || [];
+        const senderIds = [...new Set(_pinnedMessages.map(m => m.sender_id).filter(Boolean))];
+        if (senderIds.length > 0) await loadFactionNames(senderIds);
+    } catch (e) {
+        console.warn('[Messaging] Failed to load pinned messages:', e);
+        _pinnedMessages = [];
+    }
+}
+
+function renderPinnedStrip() {
+    const existing = document.getElementById('msg-pinned-strip');
+    if (existing) existing.remove();
+    if (!_pinnedMessages || _pinnedMessages.length === 0) return;
+    const container = document.getElementById('msg-messages');
+    if (!container || !container.parentNode) return;
+
+    const strip = document.createElement('div');
+    strip.id = 'msg-pinned-strip';
+    strip.className = 'msg-pinned-strip';
+    const items = _pinnedMessages.map(m => {
+        const cached = _threadFactionCache[m.sender_id];
+        const who = cached?.abbreviation || cached?.faction_name || '?';
+        const text = (m.message_text || '').slice(0, 120);
+        return `<div class="msg-pinned-strip__item">📌 <strong>${escapeHtml(who)}</strong>: ${escapeHtml(text)}</div>`;
+    }).join('');
+    strip.innerHTML = `<div class="msg-pinned-strip__hdr">Pinned · ${_pinnedMessages.length}/3</div>${items}`;
+    container.parentNode.insertBefore(strip, container);
+}
+
+// ── In-channel search (Phase 5, simple LIKE) ──────────────────────────
+// Triggered by the header magnifier. Replaces the messages list with a
+// filtered view; clearing the query restores the thread.
+async function openSearchBar() {
+    const body = document.getElementById('msg-body');
+    if (!body || !_msgActiveChat) return;
+    if (_searchMode) return;
+    _searchMode = true;
+
+    const bar = document.createElement('div');
+    bar.className = 'msg-search-bar';
+    bar.id = 'msg-search-bar';
+    bar.innerHTML = `
+        <input type="text" id="msg-search-input" placeholder="Search messages..." maxlength="120" />
+        <button id="msg-search-close">Close</button>
+    `;
+    // Insert above the messages container so the results render below it.
+    const messages = document.getElementById('msg-messages');
+    if (messages && messages.parentNode) messages.parentNode.insertBefore(bar, messages);
+
+    const input = document.getElementById('msg-search-input');
+    const close = document.getElementById('msg-search-close');
+    let searchTimer = null;
+    input.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        const q = input.value.trim();
+        searchTimer = setTimeout(() => performSearch(q), 200);
+    });
+    close.addEventListener('click', closeSearchBar);
+    input.focus();
+}
+
+function closeSearchBar() {
+    _searchMode = false;
+    const bar = document.getElementById('msg-search-bar');
+    if (bar) bar.remove();
+    // Reload the thread to restore the full view.
+    loadAndRenderMessages();
+}
+
+async function performSearch(query) {
+    const container = document.getElementById('msg-messages');
+    if (!container || !_msgActiveChat) return;
+    if (!query) { container.innerHTML = ''; return; }
+
+    try {
+        let rows = [];
+        if (_msgActiveChat.type === 'group') {
+            const { data, error } = await _supabase
+                .from('group_chat_messages')
+                .select('id, sender_id, is_system, message_text, created_at, sent_at_tick, edited_at, deleted_at, pinned_at')
+                .eq('chat_id', _msgActiveChat.id)
+                .is('deleted_at', null)
+                .ilike('message_text', `%${query}%`)
+                .order('created_at', { ascending: false })
+                .limit(MSG_PAGE_SIZE);
+            if (error) throw error;
+            rows = (data || []).reverse();
+            const senderIds = [...new Set(rows.map(m => m.sender_id).filter(Boolean))];
+            if (senderIds.length > 0) await loadFactionNames(senderIds);
+        } else {
+            const { data, error } = await _supabase
+                .from('direct_messages')
+                .select('id, sender_id, receiver_id, message_text, created_at, sent_at_tick, read_at, edited_at, deleted_at')
+                .or(`and(sender_id.eq.${_msgFaction.id},receiver_id.eq.${_msgActiveChat.id}),and(sender_id.eq.${_msgActiveChat.id},receiver_id.eq.${_msgFaction.id})`)
+                .is('deleted_at', null)
+                .ilike('message_text', `%${query}%`)
+                .order('created_at', { ascending: false })
+                .limit(MSG_PAGE_SIZE);
+            if (error) throw error;
+            rows = (data || []).reverse();
+        }
+
+        const messages = filterBlocked(rows.map(_msgActiveChat.type === 'dm' ? dmMsgRowToMessage : groupMsgRowToMessage));
+        if (messages.length === 0) {
+            container.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">No matches.</div></div>`;
+        } else {
+            container.innerHTML = messages.map(m => renderMessage(m)).join('');
+        }
+    } catch (e) {
+        console.warn('[Messaging] Search failed:', e);
+        container.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">Search failed.</div></div>`;
+    }
 }
 
 async function loadFactionNames(factionIds) {
@@ -1364,10 +2102,12 @@ async function sendMessage() {
         }
 
     } catch (err) {
-        console.error('[Messaging] Send failed:', err);
-        // Put the text back so the user doesn't lose it
+        console.warn('[Messaging] Send failed:', err);
+        // Restore the text so the user doesn't lose it. P0001 exceptions
+        // from the rate-limit / mute / ban triggers carry a readable
+        // reason — surface it via the toast instead of an alert().
         input.value = text;
-        alert('Failed to send message: ' + (err.message || 'Unknown error'));
+        showToast(extractTriggerMessage(err) || 'Failed to send message.');
     } finally {
         _msgSending = false;
         if (sendBtn) sendBtn.disabled = !input.value.trim();
@@ -1991,6 +2731,8 @@ function cleanupRealtime() {
 
 function onNewDM(msg) {
     if (!msg || msg.sender_id === _msgFaction.id) return;
+    // Phase 5: silently drop messages from blocked senders.
+    if (_blockedFactionIds.has(msg.sender_id)) return;
 
     // If we're in the thread with this sender, append and mark read
     if (_msgPanelOpen && _msgView === 'thread' && _msgActiveChat?.type === 'dm' && _msgActiveChat.id === msg.sender_id) {
@@ -2029,6 +2771,8 @@ function onNewDM(msg) {
 
 function onNewGroupMessage(msg) {
     if (!msg || msg.sender_id === _msgFaction.id) return;
+    // Phase 5: silently drop messages from blocked senders.
+    if (_blockedFactionIds.has(msg.sender_id)) return;
 
     // Check if this message is in a chat we're a member of
     const inOurChat = _groupChats.some(g => g.chat.id === msg.chat_id);
@@ -2130,6 +2874,10 @@ export function initMessaging(faction, nation, shard) {
 
     injectStyles();
     injectHTML();
+
+    // Phase 5: prime the block list before any thread renders so the
+    // first render already filters out blocked senders.
+    loadBlockList();
 
     // Sync auto-chats then calculate unread (non-blocking)
     syncAutoChats().then(() => {
