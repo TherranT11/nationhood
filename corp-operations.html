@@ -3280,15 +3280,19 @@ const PM_SEV_COLORS = {
 
 let pmState = null; // { project, bid, tab, expandedEvent, selectedResponse, events, permitRequirements }
 
-const PM_PERMIT_REQUIREMENTS_RPC = 'get_contract_permit_requirements';
-
-async function loadProjectPermitRequirements(projectId, factionId) {
-    if (!_supabase || !projectId || !factionId) return [];
+// RPC is defined in sql/migrations/20260415_project_permit_requirements_rpc.sql
+// as get_project_permit_requirements(p_contract_id, p_faction_id, p_nation_id).
+// This call site previously pointed at 'get_contract_permit_requirements' (wrong
+// name) and omitted p_nation_id, producing a spam of 404s + "could not find the
+// function in the schema cache" warnings on every project modal open.
+async function loadProjectPermitRequirements(projectId, factionId, nationId) {
+    if (!_supabase || !projectId || !factionId || !nationId) return [];
 
     try {
-        const { data, error } = await _supabase.rpc(PM_PERMIT_REQUIREMENTS_RPC, {
+        const { data, error } = await _supabase.rpc('get_project_permit_requirements', {
             p_contract_id: projectId,
             p_faction_id: factionId,
+            p_nation_id: nationId,
         });
         if (error) {
             console.warn('[pm permits] failed to load permit requirements:', error.message);
@@ -3405,7 +3409,7 @@ async function openProjectModal(projectId) {
     const corpSkilled = Number(faction?.corp_skilled_workforce ?? 0);
     const corpInnovative = Number(faction?.corp_innovative_workforce ?? 0);
 
-    const permitRequirements = await loadProjectPermitRequirements(project.id, faction?.id);
+    const permitRequirements = await loadProjectPermitRequirements(project.id, faction?.id, project.nation_id);
 
     pmState = {
         project,
@@ -9764,6 +9768,10 @@ window.closeBidReview = closeBidReview;
 window.reviewSelectBid = reviewSelectBid;
 window.acceptBid = acceptBid;
 window.declineAllBids = declineAllBids;
+// Delivery row expander — the onclick at corp-operations.html inlines
+// toggleDlExpand, so it needs to be exposed on window or the click throws
+// ReferenceError.
+window.toggleDlExpand = toggleDlExpand;
 
 
 init();
