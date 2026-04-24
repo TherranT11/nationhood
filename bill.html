@@ -2987,6 +2987,7 @@ async function respondToAmendment(reqId, response) {
     _billArticleLock = true;
     try {
         const req = amendmentRequests.find(r => r.id === reqId);
+        const isStrike = req?.request_type === 'strike';
         if (!req) {
             // Stale UI — reload to get fresh amendment data
             await loadBillData();
