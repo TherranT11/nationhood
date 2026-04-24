@@ -204,41 +204,6 @@
     </div>
 </div>
 
-<!-- Sponsor Add Income Tax Article Modal -->
-<div class="modal-overlay" id="sponsor-add-income-tax-modal">
-    <div class="modal-content" style="max-width:560px;">
-        <div class="modal-header">
-            <div class="modal-title">Add Income Tax Article</div>
-            <button class="modal-close" onclick="closeSponsorAddIncomeTaxModal()">&times;</button>
-        </div>
-        <div style="padding:10px 14px;background:var(--bg-secondary, rgba(255,255,255,0.03));border-radius:6px;margin-bottom:14px;">
-            <div style="font-size:0.75rem;color:var(--text-secondary, #888);letter-spacing:0.08em;text-transform:uppercase;">Current Income Tax</div>
-            <div id="sponsor-tax-current-rate" style="font-size:1.4rem;font-weight:700;color:var(--text-primary);">—</div>
-        </div>
-        <div class="form-group">
-            <label class="form-label">Direction</label>
-            <div style="display:flex;gap:8px;">
-                <button type="button" class="sponsor-tax-dir-btn" id="sponsor-tax-dir-cut" data-dir="cut" onclick="onSponsorTaxDirectionChange('cut')">Cut (−3pp / step)</button>
-                <button type="button" class="sponsor-tax-dir-btn" id="sponsor-tax-dir-hike" data-dir="hike" onclick="onSponsorTaxDirectionChange('hike')">Hike (+2pp / step)</button>
-            </div>
-        </div>
-        <div class="form-group">
-            <label class="form-label">New Rate</label>
-            <select class="form-select" id="sponsor-tax-new-rate" onchange="onSponsorTaxRateChange()" disabled>
-                <option value="">-- Choose direction first --</option>
-            </select>
-        </div>
-        <div id="sponsor-tax-effects-preview" style="display:none;padding:12px 14px;background:var(--bg-secondary, rgba(255,255,255,0.03));border-left:3px solid var(--blue);border-radius:4px;margin-bottom:14px;">
-            <div style="font-size:0.7rem;color:var(--text-secondary, #888);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;">Projected Effects on Passage</div>
-            <div id="sponsor-tax-effects-body" style="font-size:0.85rem;line-height:1.7;"></div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn-cancel" onclick="closeSponsorAddIncomeTaxModal()">Cancel</button>
-            <button class="btn-submit" id="sponsor-tax-add-btn" disabled onclick="submitSponsorAddIncomeTaxArticle()">Add Income Tax Article</button>
-        </div>
-    </div>
-</div>
-
 <!-- Sponsor Add Funding Article Modal -->
 <div class="modal-overlay" id="sponsor-add-funding-modal">
     <div class="modal-content" style="max-width:600px;">
@@ -283,7 +248,7 @@ import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, F
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
 import { executeWhipCaucus } from './js/game/caucus.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
-import { getValidNewRates, computeTaxArticleEffects, TAX_STEP_PP } from './js/game/tax-articles.js';
+import { computeTaxArticleEffects } from './js/game/tax-articles.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
     if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
@@ -993,7 +958,6 @@ function renderArticles() {
             <button class="sponsor-tool-btn" onclick="openSponsorAddModal()">+ Add Policy Article</button>
             <button class="sponsor-tool-btn" onclick="openSponsorAddTextModal()">+ Add Text Article</button>
             <button class="sponsor-tool-btn" onclick="openSponsorAddFundingModal()">+ Add Funding Article</button>
-            <button class="sponsor-tool-btn" onclick="openSponsorAddIncomeTaxModal()">+ Income Tax Article</button>
         `;
         const billArticlesEl = document.getElementById('bill-articles');
         billArticlesEl.parentNode.insertBefore(toolbar, billArticlesEl);
@@ -3529,115 +3493,6 @@ async function submitSponsorAddTextArticle() {
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
 }
 
-// ══════════════════════ Sponsor Add Income Tax Article ══════════════════════
-// Stepped rate change: cuts in −3pp increments, hikes in +2pp increments.
-// Effects preview + enactment both read the SSoT in js/game/tax-articles.js.
-let _sponsorTaxDirection = null;
-
-function openSponsorAddIncomeTaxModal() {
-    _sponsorTaxDirection = null;
-    const cur = Number(currentNation?.income_tax ?? 0);
-    document.getElementById('sponsor-tax-current-rate').textContent = cur.toFixed(1).replace(/\.0$/, '') + '%';
-    document.getElementById('sponsor-tax-dir-cut').classList.remove('active');
-    document.getElementById('sponsor-tax-dir-hike').classList.remove('active');
-    const sel = document.getElementById('sponsor-tax-new-rate');
-    sel.innerHTML = '<option value="">-- Choose direction first --</option>';
-    sel.disabled = true;
-    document.getElementById('sponsor-tax-effects-preview').style.display = 'none';
-    document.getElementById('sponsor-tax-add-btn').disabled = true;
-    document.getElementById('sponsor-add-income-tax-modal').classList.add('active');
-}
-function closeSponsorAddIncomeTaxModal() {
-    document.getElementById('sponsor-add-income-tax-modal').classList.remove('active');
-}
-function onSponsorTaxDirectionChange(dir) {
-    _sponsorTaxDirection = dir;
-    document.getElementById('sponsor-tax-dir-cut').classList.toggle('active', dir === 'cut');
-    document.getElementById('sponsor-tax-dir-hike').classList.toggle('active', dir === 'hike');
-    const cur = Number(currentNation?.income_tax ?? 0);
-    const rates = getValidNewRates(cur, dir);
-    const sel = document.getElementById('sponsor-tax-new-rate');
-    const stepPp = TAX_STEP_PP[dir];
-    if (rates.length === 0) {
-        sel.innerHTML = `<option value="">No valid ${dir === 'cut' ? 'cuts' : 'hikes'} available</option>`;
-        sel.disabled = true;
-    } else {
-        sel.innerHTML = '<option value="">-- Select new rate --</option>' +
-            rates.map(r => {
-                const deltaAbs = Math.abs(r - cur);
-                const steps = deltaAbs / stepPp;
-                const sign = dir === 'cut' ? '−' : '+';
-                return `<option value="${r}">${r}% &nbsp;&nbsp;(${sign}${deltaAbs}pp · ${steps} step${steps === 1 ? '' : 's'})</option>`;
-            }).join('');
-        sel.disabled = false;
-    }
-    document.getElementById('sponsor-tax-effects-preview').style.display = 'none';
-    document.getElementById('sponsor-tax-add-btn').disabled = true;
-}
-function onSponsorTaxRateChange() {
-    const sel = document.getElementById('sponsor-tax-new-rate');
-    const newRate = Number(sel.value);
-    if (!sel.value || !_sponsorTaxDirection) {
-        document.getElementById('sponsor-tax-effects-preview').style.display = 'none';
-        document.getElementById('sponsor-tax-add-btn').disabled = true;
-        return;
-    }
-    const cur = Number(currentNation?.income_tax ?? 0);
-    const steps = Math.abs(newRate - cur) / TAX_STEP_PP[_sponsorTaxDirection];
-    const fx = computeTaxArticleEffects('income_tax', _sponsorTaxDirection, steps);
-    const sign = v => v > 0 ? '+' + v : String(v);
-    const color = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-secondary)';
-    document.getElementById('sponsor-tax-effects-body').innerHTML =
-        `<div style="display:flex;justify-content:space-between;"><span>Rate Change</span><span>${cur}% → ${newRate}% <span style="color:${_sponsorTaxDirection === 'cut' ? 'var(--green)' : 'var(--red)'};">(${_sponsorTaxDirection === 'cut' ? '−' : '+'}${Math.abs(newRate - cur)}pp)</span></span></div>` +
-        `<div style="display:flex;justify-content:space-between;"><span>Gov Approval</span><span style="color:${color(fx.gov_approval)};">${sign(fx.gov_approval)}</span></div>` +
-        `<div style="display:flex;justify-content:space-between;"><span>Credit</span><span style="color:${color(fx.credit)};">${sign(fx.credit)}</span></div>` +
-        `<div style="display:flex;justify-content:space-between;"><span>GDP Growth</span><span style="color:${color(fx.gdp_growth)};">${sign(fx.gdp_growth)}</span></div>` +
-        `<div style="display:flex;justify-content:space-between;"><span>Inflation</span><span style="color:${color(fx.inflation)};">${sign(fx.inflation)}</span></div>`;
-    document.getElementById('sponsor-tax-effects-preview').style.display = 'block';
-    document.getElementById('sponsor-tax-add-btn').disabled = false;
-}
-async function submitSponsorAddIncomeTaxArticle() {
-    const sel = document.getElementById('sponsor-tax-new-rate');
-    const addBtn = document.getElementById('sponsor-tax-add-btn');
-    const newRate = Number(sel.value);
-    if (!sel.value || !_sponsorTaxDirection) { alert('Please select a direction and new rate.'); return; }
-    if (addBtn.disabled) return;  // Double-click guard: button already disabled = submit in flight.
-    addBtn.disabled = true;
-    const cur = Number(currentNation?.income_tax ?? 0);
-    const steps = Math.abs(newRate - cur) / TAX_STEP_PP[_sponsorTaxDirection];
-    try {
-        // Reject if this bill already has an income tax article — one per bill.
-        // Also fetch article numbers in the same query to avoid a second round-trip.
-        const { data: existingTax, error: fetchErr } = await _supabase.from('bill_articles')
-            .select('id, article_number, effect_data').eq('bill_id', billId);
-        if (fetchErr) throw fetchErr;
-        const hasIncomeTax = (existingTax || []).some(a => a.effect_data?.type === 'INCOME_TAX_CHANGE');
-        if (hasIncomeTax) { alert('This bill already contains an Income Tax Article. Only one per bill.'); addBtn.disabled = false; return; }
-
-        const nextNum = ((existingTax || []).reduce((m, a) => Math.max(m, Number(a.article_number || 0)), 0)) + 1;
-        const titleDir = _sponsorTaxDirection === 'cut' ? 'Cut' : 'Hike';
-        const { error: insErr } = await _supabase.from('bill_articles').insert({
-            bill_id: billId, policy_id: null, article_number: Math.max(nextNum, 2),
-            added_by: currentFaction.id,
-            article_title: `Income Tax ${titleDir}: ${cur}% → ${newRate}%`,
-            effect_data: {
-                type: 'INCOME_TAX_CHANGE',
-                old_rate: cur,
-                new_rate: newRate,
-                direction: _sponsorTaxDirection,
-                steps,
-            },
-        });
-        if (insErr) throw insErr;
-        closeSponsorAddIncomeTaxModal();
-        await loadBillData();
-    } catch (e) {
-        console.error(e);
-        alert('Error: ' + e.message);
-        addBtn.disabled = false;  // Re-enable on failure so the user can retry.
-    }
-}
-
 // Sponsor Add Funding Article
 const SPONSOR_FUNDING_MINISTRY_LABELS = { interior:'Interior', foreign:'Foreign Affairs', defense:'Defense', finance:'Finance', education:'Education', healthcare:'Healthcare', labor:'Labor', justice:'Justice', trade:'Trade', energy:'Energy', transportation:'Transport' };
 const SPONSOR_FUNDING_INSTITUTIONS = {
@@ -4112,11 +3967,6 @@ window.submitSponsorAddArticle = submitSponsorAddArticle;
 window.openSponsorAddTextModal = openSponsorAddTextModal;
 window.closeSponsorAddTextModal = closeSponsorAddTextModal;
 window.submitSponsorAddTextArticle = submitSponsorAddTextArticle;
-window.openSponsorAddIncomeTaxModal = openSponsorAddIncomeTaxModal;
-window.closeSponsorAddIncomeTaxModal = closeSponsorAddIncomeTaxModal;
-window.onSponsorTaxDirectionChange = onSponsorTaxDirectionChange;
-window.onSponsorTaxRateChange = onSponsorTaxRateChange;
-window.submitSponsorAddIncomeTaxArticle = submitSponsorAddIncomeTaxArticle;
 
 </script>
 </body>
