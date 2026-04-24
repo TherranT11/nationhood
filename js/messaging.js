@@ -588,9 +588,16 @@ function injectStyles() {
      !important on the size props so any desktop width/height restored from
      localStorage by installResize() doesn't leak into the fullscreen layout. */
 @media (max-width: 640px) {
+    /* 100dvh (not 100vh) so the panel shrinks when the on-screen keyboard
+       appears — otherwise the input bar gets pushed behind the keyboard and
+       the browser jumps/scrolls trying to reveal it on focus. The 100vh
+       pair above is a fallback for browsers that predate dvh support (pre-
+       2022); the cascade picks 100dvh when available. */
     .msg-panel {
         top: 0 !important; right: 0 !important; left: 0 !important; bottom: 0 !important;
-        width: 100vw !important; height: 100vh !important; max-height: 100vh !important;
+        width: 100vw !important;
+        height: 100vh !important; height: 100dvh !important;
+        max-height: 100vh !important; max-height: 100dvh !important;
         border-radius: 0; border-width: 0;
     }
     .msg-bubble {
@@ -654,6 +661,8 @@ function injectHTML() {
 
     // Tab bar: clicking a tab switches the list filter and re-renders.
     // Delegated listener on the tab container so late-added tabs still work.
+    // The GLOBAL tab opens the Global Chat thread directly — that section
+    // only ever has one entry, so the intermediate list is pure friction.
     const tabsEl = document.getElementById('msg-tabs');
     if (tabsEl) {
         tabsEl.addEventListener('click', (ev) => {
@@ -662,12 +671,10 @@ function injectHTML() {
             const filter = tab.dataset.filter;
             if (!filter || filter === _msgListFilter) return;
             _msgListFilter = filter;
-            // If we're in a thread or creation view, snap back to the list.
-            if (_msgView !== 'list') {
-                renderChatList();
-            } else {
-                renderChatList();
-            }
+            setActiveTab(filter);
+            if (filter === 'global') openGlobalChatDirect();
+            else if (filter === 'nation') openNationChatDirect();
+            else renderChatList();
         });
     }
 
@@ -755,18 +762,22 @@ function injectHTML() {
     panel.addEventListener('scroll', () => { if (_identityPopoverEl) closeIdentityPopover(); }, true);
 }
 
-// ── Tab bar: update unread badges + active class ──────────────────────
+// Single writer for the active-tab class so the handler that bypasses
+// renderChatList (GLOBAL tab auto-open) and renderChatList's own badge
+// update stay in lockstep.
+function setActiveTab(filter) {
+    document.querySelectorAll('.msg-tab').forEach(t =>
+        t.classList.toggle('msg-tab--active', t.dataset.filter === filter));
+}
+
+// ── Tab bar: update unread badges ─────────────────────────────────────
 // Called from renderChatList after the per-type unread counts are tallied.
 // Each tab shows an amber count badge for its section; a count of 0 hides
 // the badge entirely. Counts over 99 show "99+" to keep the pill compact.
-// The active tab class is refreshed here too so any code path that flips
-// _msgListFilter keeps the header in sync.
 function updateTabBadges(counts) {
-    const tabs = document.querySelectorAll('.msg-tab');
-    tabs.forEach((tab) => {
-        const f = tab.dataset.filter;
-        const count = counts[f] || 0;
-        tab.classList.toggle('msg-tab--active', f === _msgListFilter);
+    setActiveTab(_msgListFilter);
+    document.querySelectorAll('.msg-tab').forEach((tab) => {
+        const count = counts[tab.dataset.filter] || 0;
         const existing = tab.querySelector('.msg-tab__badge');
         if (existing) existing.remove();
         if (count > 0) {
@@ -865,11 +876,52 @@ function togglePanel() {
 let _dmConversations = [];  // [{ otherFaction, lastMessage, unreadCount }]
 let _groupChats = [];       // [{ chat, lastMessage, unreadCount }]
 
+// Single-item sections (GLOBAL, NATION) bypass the list and drop the player
+// straight into the thread. Loads group-chat membership if this is the first
+// panel open, then re-checks the filter post-await so a mid-load tab switch
+// doesn't yank the user into the wrong thread. Falls through to the list if
+// no matching chat exists for this faction.
+async function openGroupChatDirect(filter, predicate, threadName) {
+    if (!_groupChats.length) {
+        try { await loadGroupChats(); }
+        catch (e) { console.warn('[Messaging] Failed to load group chats:', e); }
+    }
+    if (_msgListFilter !== filter) return;
+    const match = _groupChats.find(predicate);
+    if (!match) { renderChatList(); return; }
+    openThread({
+        type: 'group',
+        id: match.chat.id,
+        name: threadName || match.chat.name,
+        chatType: match.chat.chat_type,
+    });
+}
+
+function openGlobalChatDirect() {
+    return openGroupChatDirect('global', g => g.chat.chat_type === 'global');
+}
+
+// Scoped to _msgNation.id so a stale cross-nation membership row (observed
+// in the wild) can't surface another nation's chat here.
+function openNationChatDirect() {
+    if (!_msgNation?.id) { renderChatList(); return; }
+    return openGroupChatDirect(
+        'nation',
+        g => g.chat.chat_type === 'nation' && g.chat.nation_id === _msgNation.id,
+        'Nation',
+    );
+}
+
 async function renderChatList() {
     const body = document.getElementById('msg-body');
     const actions = document.getElementById('msg-actions');
     if (actions) actions.style.display = '';
     _msgView = 'list';
+
+    // Reset the panel header — switching tabs from an open thread would
+    // otherwise leave a stale "Global Chat" / chat name in the title bar.
+    const headerTitle = document.querySelector('.msg-panel__title');
+    if (headerTitle) headerTitle.textContent = 'Messages';
 
     if (!_msgFaction) {
         body.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">No faction selected.</div></div>`;
@@ -889,7 +941,10 @@ async function renderChatList() {
     // ── Group Chats (Global + IPO + Nation + Custom) ──
     const globalChats = _groupChats.filter(g => g.chat.chat_type === 'global');
     const ipoChats = _groupChats.filter(g => g.chat.chat_type === 'ipo');
-    const nationChats = _groupChats.filter(g => g.chat.chat_type === 'nation');
+    // Scope to the player's own nation — a stale membership row for a
+    // different nation's chat shouldn't surface in this list.
+    const nationChats = _groupChats.filter(g =>
+        g.chat.chat_type === 'nation' && g.chat.nation_id === _msgNation?.id);
     const customChats = _groupChats.filter(g => g.chat.chat_type === 'custom');
 
     // Per-tab unread totals — fed into the Phase 3 tab bar badges.
@@ -1157,10 +1212,18 @@ async function openThread(chatInfo) {
     const headerTitle = document.querySelector('.msg-panel__title');
     if (headerTitle) headerTitle.textContent = chatInfo.name || 'Chat';
 
+    // Nation chat gets a small flag of the player's own nation beside the
+    // name — reinforces "this is YOUR nation's channel" at a glance. Uses
+    // the same flag_url + assets/flags/{name}.png fallback pattern as the
+    // rest of the codebase (coalition-formation.js, ledger.js).
+    const nationFlag = (chatInfo.type === 'group' && chatInfo.chatType === 'nation' && _msgNation)
+        ? `<img src="${escapeHtml(_msgNation.flag_url || `assets/flags/${_msgNation.name}.png`)}" alt="" style="height:14px;vertical-align:middle;margin-left:6px;" onerror="this.style.display='none'">`
+        : '';
+
     body.innerHTML = `
         <div class="msg-thread-header">
             <button class="msg-thread-back" id="msg-back">&#8592;</button>
-            <span class="msg-thread-name">${escapeHtml(chatInfo.name || 'Chat')}</span>
+            <span class="msg-thread-name">${escapeHtml(chatInfo.name || 'Chat')}${nationFlag}</span>
             <button class="msg-thread-members-btn" id="msg-search-btn" title="Search in channel">&#128269;</button>
             ${chatInfo.type === 'group' ? '<button class="msg-thread-members-btn" id="msg-members-toggle" title="Show members">&#128101;</button>' : ''}
         </div>

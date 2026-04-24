@@ -83,6 +83,30 @@ function accruePnl(corpId, delta) {
     _tickPnl.set(corpId, (_tickPnl.get(corpId) || 0) + delta);
 }
 
+// Stuck vessels / claims / orders come from state-transition writes failing
+// silently — the pre-transition state stays on disk, the next tick re-runs
+// with the same result, forever. Every state-transition write in this file
+// routes its error through here so the failure lands in event_log (player-
+// and operator-visible) and surfaces at error level in server logs. One
+// place, one format, one signal.
+async function logShippingWriteFailure(supabase, ctx) {
+    const { nationId, factionId, vesselName, operation, error, currentTick } = ctx || {};
+    const msg = error?.message || String(error);
+    console.error(`[advance-corp-tick] ${operation} failed for ${vesselName || '(unknown)'}:`, error);
+    try {
+        await supabase.from('event_log').insert({
+            nation_id: nationId || null,
+            faction_id: factionId || null,
+            event_name: `Shipping write failure: ${operation}`,
+            category: 'corporate',
+            description_chosen: `${operation} failed${vesselName ? ' for ' + vesselName : ''}: ${msg}`,
+            fired_at_tick: currentTick,
+        });
+    } catch (logErr) {
+        console.error('[advance-corp-tick] event_log insert for shipping failure threw:', logErr);
+    }
+}
+
 async function flushTickPnl(supabase, corpIds) {
     for (const corpId of corpIds) {
         if (!corpId) continue;
@@ -3589,80 +3613,41 @@ async function generateShipMarketListings(supabase, currentTick) {
 }
 
 async function processVesselOrderDeliveries(supabase, currentTick) {
-    // Find orders due for delivery
+    // Each delivery is atomic in the DB via the deliver_vessel_order RPC:
+    // cash deduct + shipyard credit + vessel insert + order mark-delivered
+    // in one transaction. Failure of any step rolls back the others, so the
+    // old pattern where a partial failure drained cash on every retry is
+    // gone. The RPC returns 'delivered' | 'cancelled' | 'no_op' so the
+    // client can accrue in-memory P&L and log the outcome without a second
+    // round-trip.
     const { data: dueOrders, error: fetchErr } = await supabase.from('vessel_orders')
-        .select('*')
+        .select('id, faction_id, vessel_name, vessel_class, balance_due')
         .eq('status', 'building')
         .lte('delivery_tick', currentTick);
 
     if (fetchErr || !dueOrders || dueOrders.length === 0) return;
 
-    for (var oi = 0; oi < dueOrders.length; oi++) {
-        var order = dueOrders[oi];
-
-        // Deduct balance from corp cash
-        const { data: corpData } = await supabase.from('factions')
-            .select('corp_cash_reserves, nation_id').eq('id', order.faction_id).single();
-        if (!corpData) { console.warn('[Vessel Orders] Corp not found for order:', order.id); continue; }
-
-        var corpCash = Number(corpData.corp_cash_reserves || 0);
-        var balance = Number(order.balance_due || 0);
-
-        if (corpCash < balance) {
-            // Can't afford balance — cancel order, forfeit deposit
-            var { error: cancelErr } = await supabase.from('vessel_orders').update({
-                status: 'cancelled', cancelled_at_tick: currentTick,
-            }).eq('id', order.id);
-            if (cancelErr) console.warn('[Vessel Orders] Cancel failed:', cancelErr.message);
-            console.log('[Vessel Orders] Order cancelled (insufficient funds) for ' + order.vessel_name);
+    for (const order of dueOrders) {
+        const { data: result, error: rpcErr } = await supabase.rpc('deliver_vessel_order', {
+            p_order_id: order.id,
+            p_current_tick: currentTick,
+        });
+        if (rpcErr) {
+            await logShippingWriteFailure(supabase, {
+                factionId: order.faction_id,
+                vesselName: order.vessel_name,
+                operation: 'deliver_vessel_order',
+                error: rpcErr,
+                currentTick,
+            });
             continue;
         }
-
-        // Deduct balance — vessel purchase is booked as a one-tick expense.
-        var { error: cashErr } = await supabase.from('factions').update({
-            corp_cash_reserves: corpCash - balance,
-        }).eq('id', order.faction_id);
-        if (cashErr) { console.warn('[Vessel Orders] Cash deduction failed:', cashErr.message); continue; }
-        accruePnl(order.faction_id, -balance);
-
-        // Credit balance to shipyard nation budget
-        const { data: shipyardNation } = await supabase.from('nations')
-            .select('budget_reserves').eq('id', order.shipyard_nation_id).single();
-        if (shipyardNation) {
-            var currentBudget = Number(shipyardNation.budget_reserves || 0);
-            var { error: budgetErr } = await supabase.from('nations').update({
-                budget_reserves: currentBudget + balance,
-            }).eq('id', order.shipyard_nation_id);
-            if (budgetErr) console.warn('[Vessel Orders] Budget credit failed:', budgetErr.message);
+        if (result === 'delivered') {
+            accruePnl(order.faction_id, -Number(order.balance_due || 0));
+            console.log('[Vessel Orders] Delivered ' + order.vessel_name + ' (' + order.vessel_class + ') to ' + order.faction_id);
+        } else if (result === 'cancelled') {
+            console.log('[Vessel Orders] Order cancelled (insufficient funds) for ' + order.vessel_name);
         }
-
-        // Create the vessel
-        var specs = VESSEL_SPECS[order.vessel_class] || VESSEL_SPECS.Coastal;
-        var { error: vesselErr } = await supabase.from('corp_vessels').insert({
-            faction_id: order.faction_id,
-            nation_id: corpData.nation_id,
-            vessel_name: order.vessel_name,
-            vessel_class: order.vessel_class,
-            condition: 100,
-            fuel: 100,
-            status: 'in_port',
-            capacity_dwt: order.capacity_dwt || specs.capacity_dwt,
-            capacity_unit: order.capacity_unit || specs.capacity_unit,
-            base_maintenance: order.base_maintenance || specs.base_maintenance,
-            fuel_capacity: order.fuel_capacity || specs.fuel_capacity,
-            purchase_price: Number(order.total_cost),
-            built_at_tick: currentTick,
-            current_port_nation_id: corpData.nation_id,
-        });
-        if (vesselErr) { console.warn('[Vessel Orders] Vessel creation failed:', vesselErr.message); continue; }
-
-        // Mark order as delivered
-        var { error: deliverErr } = await supabase.from('vessel_orders').update({
-            status: 'delivered', delivered_at_tick: currentTick,
-        }).eq('id', order.id);
-        if (deliverErr) console.warn('[Vessel Orders] Delivery status update failed:', deliverErr.message);
-
-        console.log('[Vessel Orders] Delivered ' + order.vessel_name + ' (' + order.vessel_class + ') to ' + order.faction_id);
     }
 }
 
@@ -4779,7 +4764,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             var { error: freeErr } = await supabase.from('corp_vessels').update({
                                 status: 'in_port', active_claim_id: null,
                             }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
-                            if (freeErr) console.warn('[advance-corp-tick] Failed to free vessel on route expiry:', freeErr.message);
+                            if (freeErr) await logShippingWriteFailure(supabase, {
+                                nationId: nation.id,
+                                factionId: claim.faction_id,
+                                operation: 'free_vessel_on_route_expiry',
+                                error: freeErr,
+                                currentTick,
+                            });
                             continue;
                         }
 
@@ -4803,7 +4794,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 transit_arrives_tick: currentTick + transitTicks,
                             }).eq('id', claim.id);
                             if (claimTransitErr) {
-                                console.warn(`[advance-corp-tick] Claim transit UPDATE failed for claim=${claim.id} corp=${claim.faction_id}: ${claimTransitErr.message}`);
+                                await logShippingWriteFailure(supabase, {
+                                    nationId: nation.id,
+                                    factionId: claim.faction_id,
+                                    operation: `claim_loading_to_in_transit (claim=${claim.id})`,
+                                    error: claimTransitErr,
+                                    currentTick,
+                                });
                                 continue; // don't flip the vessel if the claim didn't update
                             }
                             console.log(`[advance-corp-tick] Claim ${claim.id} transitioned loading→in_transit (corp=${claim.faction_id}, transitTicks=${transitTicks}, arrives=${currentTick + transitTicks})`);
@@ -4812,7 +4809,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             var { error: transitErr } = await supabase.from('corp_vessels').update({
                                 status: 'in_transit', current_port_nation_id: null,
                             }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
-                            if (transitErr) console.warn('[advance-corp-tick] Vessel transit update failed:', transitErr.message);
+                            if (transitErr) await logShippingWriteFailure(supabase, {
+                                nationId: nation.id,
+                                factionId: claim.faction_id,
+                                operation: 'vessel_transit_update',
+                                error: transitErr,
+                                currentTick,
+                            });
 
                         } else if (claim.vessel_status === 'in_transit' && currentTick >= (claim.transit_arrives_tick || 0)) {
                             // Transit complete — collect revenue and restart cycle
@@ -4917,7 +4920,13 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 status: 'in_port', current_port_nation_id: destNationId,
                                 fuel: 100, // refueled on arrival
                             }).eq('active_claim_id', claim.id).eq('faction_id', claim.faction_id);
-                            if (arriveErr) console.warn('[advance-corp-tick] Vessel arrival update failed:', arriveErr.message);
+                            if (arriveErr) await logShippingWriteFailure(supabase, {
+                                nationId: nation.id,
+                                factionId: claim.faction_id,
+                                operation: 'vessel_arrival_update',
+                                error: arriveErr,
+                                currentTick,
+                            });
 
                             transitsCompleted++;
                         }
@@ -5238,7 +5247,14 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                             released_at_tick: currentTick,
                                             revenue_per_transit: 0,
                                         }).eq('id', v.active_claim_id);
-                                        if (relErr) console.warn('[advance-corp-tick] Claim release on total-loss incident failed:', relErr.message);
+                                        if (relErr) await logShippingWriteFailure(supabase, {
+                                            nationId: nation.id,
+                                            factionId: corp.id,
+                                            vesselName: v.vessel_name,
+                                            operation: 'claim_release_total_loss',
+                                            error: relErr,
+                                            currentTick,
+                                        });
                                         const { data: fleetRow } = await supabase.from('factions')
                                             .select('shipping_fleet_deployed').eq('id', corp.id).single();
                                         const fleetNow = Math.max(0, Number(fleetRow?.shipping_fleet_deployed || 0) - 1);
@@ -5307,7 +5323,14 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                         released_at_tick: currentTick,
                                         revenue_per_transit: 0,
                                     }).eq('id', v.active_claim_id);
-                                    if (relErr) console.warn('[advance-corp-tick] Claim release on strand failed:', relErr.message);
+                                    if (relErr) await logShippingWriteFailure(supabase, {
+                                        nationId: nation.id,
+                                        factionId: corp.id,
+                                        vesselName: v.vessel_name,
+                                        operation: 'claim_release_strand',
+                                        error: relErr,
+                                        currentTick,
+                                    });
                                     // Re-read fleet_deployed before decrementing so multiple ship
                                     // losses in the same tick don't clobber each other's updates.
                                     const { data: fleetRow } = await supabase.from('factions')
@@ -5359,7 +5382,14 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         // Apply updates
                         if (Object.keys(updates).length > 0) {
                             const { error: vErr } = await supabase.from('corp_vessels').update(updates).eq('id', v.id);
-                            if (vErr) console.warn(`[advance-corp-tick] Vessel update failed for ${v.vessel_name}:`, vErr.message);
+                            if (vErr) await logShippingWriteFailure(supabase, {
+                                nationId: nation.id,
+                                factionId: corp.id,
+                                vesselName: v.vessel_name,
+                                operation: 'vessel_update_maintenance_loop',
+                                error: vErr,
+                                currentTick,
+                            });
                         }
                     }
 
