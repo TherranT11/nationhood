@@ -1006,10 +1006,11 @@ const guideContent = {
 </ul>
 
 <h3>Sending to the Floor</h3>
-<p>When you are ready to call a vote, click <strong>&ldquo;Send to Floor&rdquo;</strong>. To be eligible:</p>
+<p>When you are ready to call a vote, click <strong>&ldquo;Send to Floor&rdquo;</strong>. The sponsor can push a bill to the floor at any time, with or without a co-sponsor.</p>
 <ul>
-<li><strong>Standard bills</strong> &mdash; you need at least one co-sponsor (another faction that has accepted) <em>or</em> you must hold a simple majority of seats on your own.</li>
-<li><strong>Foundational bills</strong> &mdash; you <em>must</em> have at least one co-sponsor. A solo majority is not enough.</li>
+<li><strong>Solo send</strong> &mdash; if no other faction has accepted, sending to the floor costs the sponsoring party <strong>&minus;2 Momentum</strong>.</li>
+<li><strong>With a co-sponsor</strong> &mdash; no penalty. A co-sponsor is any other faction whose stance is &ldquo;accept&rdquo;.</li>
+<li><strong>Auto-floor bills</strong> (ratifications, motions of no confidence, impeachment motions, veto overrides, minister confirmations) never require a co-sponsor and never carry the solo penalty.</li>
 </ul>
 <p>Once on the floor, the bill enters the voting window and <strong>cannot be amended or retracted</strong>.</p>
 </div></details>

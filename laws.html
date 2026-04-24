@@ -4041,7 +4041,7 @@ async function submitToCommittee() {
         } catch (momErr) { console.warn('Momentum +2 for sponsorship failed:', momErr.message); }
 
         closeModal(); await loadLawsData(); renderLawsPage();
-        alert(`"${billName}" submitted to committee!${isFoundationalBill ? '\n\nYou need at least one co-sponsor to send it to the floor.' : ''}`);
+        alert(`"${billName}" submitted to committee!`);
     } catch (error) {
         console.error('Error submitting:', error);
         if (error?.isArticlesError) {

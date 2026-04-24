@@ -1407,7 +1407,13 @@ function adm2RenderCabinet() {
     // Per-row isMyMinistry is spread-in inside the .map() below.
     const isCaretaker = !!(coalition && coalition.status === 'caretaker');
     const pmMinistry = (ministries || []).find(mm => mm.ministry_key === 'prime_minister');
-    const pmFilled = !!(pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name);
+    // "PM filled" gates the APPOINT/DISMISS buttons. Absolute monarchies and a
+    // few other paths track the PM via head_of_government only — they never
+    // materialize a ministries.prime_minister row — so requiring pmMinistry
+    // here silently disabled appoint/dismiss for any AM nation whose PM is
+    // only in the hog table. Accept either source as proof of an active PM.
+    const pmFilled = !!hog
+        || !!(pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name);
     const pmFactionIdLocal = hog?.faction_id || pmMinistry?.party_id || null;
     const isPMPartyLocal = !!(currentFaction && pmFactionIdLocal && currentFaction.id === pmFactionIdLocal);
     let govType = 'parliamentary';
@@ -3055,12 +3061,26 @@ function renderBillCard(bill, stageColor) {
     const passing = support >= Math.round((majority / totalSeats) * 100);
     const articles = (bill.bill_articles || []).sort((a, b) => (a.article_number || 0) - (b.article_number || 0));
 
-    let html = `<div class="leg-bill-card" data-bill-id="${bill.id}" style="border-left:3px solid ${stageColor};">
+    // Committee bills that haven't been sent to the floor expire after
+    // COMMITTEE_EXPIRY_TICKS. On the final tick before expiry, dim the card
+    // and post a warning so the sponsor sees what's about to happen.
+    const committeeAge = bill.status === 'committee' && bill.proposed_tick != null
+        ? Math.max(0, currentTick - Number(bill.proposed_tick))
+        : 0;
+    const expiringNextTick = bill.status === 'committee'
+        && committeeAge >= GAME_CONFIG.COMMITTEE_EXPIRY_TICKS - 1;
+
+    const cardStyle = expiringNextTick
+        ? `border-left:3px solid var(--text-dim);opacity:0.55;`
+        : `border-left:3px solid ${stageColor};`;
+    let html = `<div class="leg-bill-card" data-bill-id="${bill.id}" style="${cardStyle}">
         <div class="leg-bill-header">
             <div>
                 <div style="display:flex;align-items:center;gap:6px;">
-                    <span class="leg-bill-title" style="color:${stageColor};">${escapeHtml(bill.bill_name || 'Untitled Bill')}</span>`;
-    if (bill.status === 'floor' || bill.status === 'voting') {
+                    <span class="leg-bill-title" style="color:${expiringNextTick ? 'var(--text-dim)' : stageColor};">${escapeHtml(bill.bill_name || 'Untitled Bill')}</span>`;
+    if (expiringNextTick) {
+        html += `<span class="ga-badge ga-badge--red">LOST SUPPORT · DISAPPEARS NEXT TICK</span>`;
+    } else if (bill.status === 'floor' || bill.status === 'voting') {
         html += passing
             ? `<span class="ga-badge ga-badge--green">LIKELY TO PASS</span>`
             : `<span class="ga-badge ga-badge--red">AT RISK</span>`;
