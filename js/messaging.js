@@ -46,7 +46,10 @@ function injectStyles() {
 /* ── Panel ── */
 .msg-panel {
     position: fixed; bottom: 20px; right: 20px; z-index: 9001;
-    width: 340px; height: 500px; max-height: calc(100vh - 40px);
+    /* Desktop default: 408x600 (20% larger than the original 340x500).
+       Mobile override at the bottom of this stylesheet takes the panel
+       full-width so this doesn't matter on narrow viewports. */
+    width: 408px; height: 600px; max-height: calc(100vh - 40px);
     background: var(--bg-panel, #1a1a17); border: 1px solid var(--border-main, rgba(0,0,0,0.08));
     box-shadow: 0 12px 48px rgba(0,0,0,0.6);
     display: none; flex-direction: column; overflow: hidden;
@@ -362,10 +365,18 @@ async function renderChatList() {
 
     let html = '';
 
-    // ── Group Chats (IPO + Nation + Custom) ──
+    // ── Group Chats (Global + IPO + Nation + Custom) ──
+    const globalChats = _groupChats.filter(g => g.chat.chat_type === 'global');
     const ipoChats = _groupChats.filter(g => g.chat.chat_type === 'ipo');
     const nationChats = _groupChats.filter(g => g.chat.chat_type === 'nation');
     const customChats = _groupChats.filter(g => g.chat.chat_type === 'custom');
+
+    // Global Chat sits at the top — every party/corp is a member and it's
+    // the shard-wide conversation, so it should be the most discoverable.
+    if (globalChats.length > 0) {
+        html += `<div class="msg-section-hdr">Global Chat</div>`;
+        html += globalChats.map(g => renderChatItem(g, 'group')).join('');
+    }
 
     if (nationChats.length > 0) {
         html += `<div class="msg-section-hdr">Nation Chat</div>`;
@@ -559,7 +570,10 @@ function renderChatItem(g, type) {
     const chat = g.chat;
     const preview = g.lastMessage ? g.lastMessage.message_text.slice(0, 50) : 'No messages yet';
     const abbr = chat.name.slice(0, 2).toUpperCase();
-    const typeLabel = chat.chat_type === 'ipo' ? 'Org' : chat.chat_type === 'nation' ? 'Nation' : 'Group';
+    const typeLabel = chat.chat_type === 'global' ? 'Global'
+        : chat.chat_type === 'ipo' ? 'Org'
+        : chat.chat_type === 'nation' ? 'Nation'
+        : 'Group';
     const badgeHtml = g.unreadCount > 0
         ? `<div class="msg-chat-item__badge">${g.unreadCount}</div>` : '';
 
