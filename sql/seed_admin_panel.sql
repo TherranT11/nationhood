@@ -25,6 +25,7 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
             <button class="tab" onclick="showTab('stataudit')">Stat Audit</button>
             <button class="tab" onclick="showTab('integrity')">Integrity</button>
             <button class="tab" onclick="showTab('issues')">Issues</button>
+            <button class="tab" onclick="showTab('moderation')">Moderation</button>
         </div>
 
         <!-- ==================== SHARD TAB ==================== -->
@@ -487,6 +488,23 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
             <div id="integrity-content" style="font-size:0.9rem;"></div>
         </div>
 
+        <!-- ==================== MODERATION TAB ==================== -->
+        <div class="tab-content" id="tab-moderation">
+            <h2>🛡️ Chat Moderation</h2>
+            <p style="color:#888; font-size:0.9rem; margin-bottom:15px;">
+                Review user reports, wipe offending messages, and mute or ban
+                chat members per channel. All actions take effect immediately.
+            </p>
+
+            <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+                <button class="btn btn-secondary mod-btn active" id="mod-btn-reports" style="padding:8px 16px; font-size:0.8rem;" onclick="showModView('reports')">Open Reports</button>
+                <button class="btn btn-secondary mod-btn" id="mod-btn-actions" style="padding:8px 16px; font-size:0.8rem;" onclick="showModView('actions')">Manual Actions</button>
+                <button class="btn btn-secondary mod-btn" id="mod-btn-muted" style="padding:8px 16px; font-size:0.8rem;" onclick="showModView('muted')">Active Mutes / Bans</button>
+            </div>
+
+            <div id="mod-status" style="color:#888; font-size:0.85rem; margin-bottom:12px;"></div>
+            <div id="mod-content" style="font-size:0.9rem;"></div>
+        </div>
 
     </div>
 $$);
