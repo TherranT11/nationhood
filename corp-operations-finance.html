@@ -691,6 +691,14 @@ async function loadDealFlow() {
             const gdp = Number(n?.gdp ?? 1);
             const debt = Number(n?.debt ?? 0);
             const debtToGdp = gdp > 0 ? Math.round((debt / gdp) * 100) : 0;
+            // principal_remaining drops as Investment Corps buy slices;
+            // amount stays the original total for reference. The card and
+            // the BUY-BOND handler both work off `amount` here, so we
+            // swap in the remaining value for the outward-facing view.
+            const totalPrincipal = Number(req.amount) || 0;
+            const remainingPrincipal = req.principal_remaining != null
+                ? Number(req.principal_remaining)
+                : totalPrincipal;
             return {
                 id: req.id,
                 type: 'BOND',
@@ -699,7 +707,8 @@ async function loadDealFlow() {
                 entity: 'GOV',
                 nation: n?.name || 'N/A',
                 nation_id: req.issuer_nation_id,
-                amount: req.amount || 0,
+                amount: remainingPrincipal,
+                principalTotal: totalPrincipal,
                 term: req.term_months,
                 couponRate: Number(req.coupon_rate || 5),
                 purpose: req.purpose || 'Government Bond',
@@ -1224,6 +1233,9 @@ function renderDealFlow() {
             if (canRev && selDeal.type === 'EQUITY') {
                 return `<div class="df-review-btn active" style="background:#c89a4a;color:#000;" onclick="dfBuyEquityStake(${dfSelected})" title="Purchase this equity stake">BUY STAKE</div>`;
             }
+            if (canRev && selDeal.type === 'BOND') {
+                return `<div class="df-review-btn active" style="background:#8a6aaa;color:#000;" onclick="dfBuyBondSlice(${dfSelected})" title="Buy a slice of this sovereign bond">BUY BOND</div>`;
+            }
             if (canRev && selDeal.type === 'SECONDARY') {
                 return `<div class="df-review-btn active" style="background:#5aaaaa;color:#000;" onclick="dfBuyListedStake(${dfSelected})" title="Buy this listed stake from its current holder">BUY LISTING</div>`;
             }
@@ -1325,6 +1337,83 @@ async function dfBuyEquityStake(dealIdx) {
         _submittingOffer = false;
     }
 }
+
+// Bond purchase: buy a slice of a sovereign bond. Partial fills allowed
+// — the server-side buy_bond RPC atomically decrements the offer's
+// principal_remaining, debits this corp, credits the issuer nation's
+// budget_reserves, and records a bond_holdings row with the offer's
+// locked coupon_rate. Called only when the selected deal is a BOND.
+async function dfBuyBondSlice(dealIdx) {
+    if (_submittingOffer) return;
+    const deal = dfDeals[dealIdx];
+    if (!deal || deal.type !== 'BOND' || !faction || !shard) return;
+
+    // Only Investment Corps can buy bonds. The server enforces this too,
+    // but gating on the client gives a cleaner message.
+    const sub = (faction.corp_subsector || '').toLowerCase();
+    const sec = (faction.corp_sector || '').toLowerCase();
+    if (sec !== 'finance' || sub !== 'investment') {
+        alert('Only Investment-subsector corps can buy sovereign bonds.');
+        return;
+    }
+
+    const cash = Number(faction.corp_cash_reserves || 0);
+    const remaining = Number(deal.amount || 0);
+    if (remaining <= 0) {
+        alert('This bond offer has no principal remaining.');
+        return;
+    }
+    if (cash <= 0) {
+        alert('Insufficient cash reserves.');
+        return;
+    }
+
+    const maxBuy = Math.min(cash, remaining);
+    const suggested = Math.min(cash, Math.max(1, Math.floor(remaining / 2)));
+    const raw = prompt(
+        'Buy how much of this bond? (Max: ' + fmtMoney(maxBuy) + ')\n\n'
+        + deal.applicant + ' — ' + fmtMoney(remaining) + ' open, ' +
+        'coupon ' + (Number(deal.couponRate) * 12 * 100).toFixed(2) + '% annual, ' +
+        'matures in ' + deal.term + ' ticks.',
+        String(suggested)
+    );
+    if (raw == null) return;
+    const amount = Math.floor(Number(raw));
+    if (!Number.isFinite(amount) || amount <= 0) {
+        alert('Enter a positive whole-dollar amount.');
+        return;
+    }
+    if (amount > maxBuy) {
+        alert('Amount exceeds your cash (' + fmtMoney(cash) + ') or the remaining offer (' + fmtMoney(remaining) + ').');
+        return;
+    }
+
+    if (!confirm('Buy ' + fmtMoney(amount) + ' of ' + deal.applicant + ' bond?')) return;
+
+    _submittingOffer = true;
+    try {
+        const { error } = await _supabase.rpc('buy_bond', {
+            p_request_id:       deal.requestId,
+            p_buyer_faction_id: faction.id,
+            p_amount:           amount,
+        });
+        if (error) throw new Error(error.message);
+
+        faction.corp_cash_reserves = cash - amount;
+        dfSelected = -1;
+
+        // Reload the deal flow so the offer's remaining principal / status
+        // updates (may flip to 'funded' if this slice finished it off).
+        await loadDealFlow();
+        renderDealFlow();
+    } catch (err) {
+        console.error('[DealFlow] Bond purchase failed:', err);
+        alert('Bond purchase failed: ' + (err.message || err));
+    } finally {
+        _submittingOffer = false;
+    }
+}
+window.dfBuyBondSlice = dfBuyBondSlice;
 
 // Secondary market: buy a listed equity stake from another investor.
 // Calls the buy_listed_equity_stake RPC which atomically moves cash

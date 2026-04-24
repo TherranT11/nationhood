@@ -14,7 +14,7 @@ import { fireBilateralEvent } from './event-helpers.js';
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
-export function calculateNationalBudget(nation) {
+export function calculateNationalBudget(nation, opts = {}) {
     // GDP and Debt are stored as raw dollars
     const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
     const debt = Number(nation.debt ?? 0);
@@ -47,9 +47,16 @@ export function calculateNationalBudget(nation) {
 
     const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + tariffRevenue + oilRevenue;
 
-    // Debt Service: Effective Interest = 15% - (Credit × 0.13%), clamped 2%-18%
+    // Debt Service. Prefer the actual sum of active bond coupon obligations
+    // (passed in by the tick processor as opts.actualDebtService — that's
+    // SUM(bond_holdings.principal × coupon_rate) for this nation, and the
+    // SSoT for what the nation owes its bondholders this tick). Falls back
+    // to the legacy credit-derived formula for callers that don't have
+    // holdings data on hand (UI displays, projections, simulation).
     const effectiveInterest = Math.min(0.18, Math.max(0.02, 0.15 - (creditRating * 0.0013)));
-    const debtService = debt * effectiveInterest;
+    const debtService = opts.actualDebtService != null
+        ? Number(opts.actualDebtService)
+        : debt * effectiveInterest;
 
     // Available Budget = Revenue - Debt Service
     const availableBudget = grossRevenue - debtService;
