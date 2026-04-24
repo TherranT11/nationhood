@@ -26,7 +26,8 @@
     "test:bills-dispatch": "node scripts/test-bills-dispatch.mjs",
     "test:foundational-reforms": "node scripts/test-foundational-reforms.mjs",
     "test:flat-interest-loans": "node scripts/test-flat-interest-loans.mjs",
-    "migrate:shipping": "node scripts/apply-shipping-migrations.js"
+    "migrate:shipping": "node scripts/apply-shipping-migrations.js",
+    "verify:convert-conditional-vote": "node scripts/verify-convert-conditional-vote.mjs"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.100.0",
