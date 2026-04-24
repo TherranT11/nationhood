@@ -7861,6 +7861,114 @@ function computeCorpValuation({ cash, loans, properties, propertyValue, vessels,
     return computeCorpValuationBreakdown({ cash, loans, properties, propertyValue, vessels, equipmentValue, financeReceivables, currentTick }).valuation;
 }
 
+// ────────── tax-articles ──────────
+
+// js/game/tax-articles.js — Tax Article constants + helpers (SSoT)
+//
+// One source for:
+//   * per-step side effects (approval, credit, gdp_growth, inflation)
+//   * step size (3pp cuts, 2pp hikes)
+//   * rate bounds (0–50%)
+//   * valid-new-rate enumeration used by the draft modal dropdown
+//   * step/effect computation used by the enactment handler
+//
+// Imported by bill.html (draft modal preview + article-card renderer)
+// and js/game/bills.js (enactment). Any tuning of numbers happens here.
+
+const TAX_RATE_MIN = 0;
+const TAX_RATE_MAX = 50;
+
+// Step sizes are asymmetric on purpose: cuts are popular but costly, hikes
+// are unpopular but revenue-positive. The asymmetry (3pp vs 2pp) makes the
+// cumulative revenue math work out more symmetrically per step.
+const TAX_STEP_PP = Object.freeze({
+    cut:  3,
+    hike: 2,
+});
+
+// Per-step effects by tax key + direction. When more tax types land
+// (corporate, sales, property) add their own entry here — the rest of
+// the pipeline is tax-key-agnostic.
+const TAX_ARTICLE_EFFECTS = Object.freeze({
+    income_tax: Object.freeze({
+        cut: Object.freeze({
+            gov_approval: +2,
+            credit:       -2,
+            gdp_growth:   +0.5,
+            inflation:    +0.3,
+        }),
+        hike: Object.freeze({
+            gov_approval: -3,
+            credit:       +1,
+            gdp_growth:   -0.5,
+            inflation:    -0.3,
+        }),
+    }),
+});
+
+const TAX_KEY_LABELS = Object.freeze({
+    income_tax:    'Income Tax',
+    corporate_tax: 'Corporate Tax',
+    sales_tax:     'Sales Tax',
+});
+
+// Enumerate the valid new rates a player can pick given their current rate
+// and chosen direction. Cuts step down in 3pp increments until hitting 0;
+// hikes step up in 2pp increments until hitting TAX_RATE_MAX.
+function getValidNewRates(currentRate, direction) {
+    const cur = Number(currentRate) || 0;
+    const step = TAX_STEP_PP[direction];
+    if (!step) return [];
+    const rates = [];
+    if (direction === 'cut') {
+        for (let r = cur - step; r >= TAX_RATE_MIN; r -= step) rates.push(r);
+    } else {
+        for (let r = cur + step; r <= TAX_RATE_MAX; r += step) rates.push(r);
+    }
+    return rates;
+}
+
+// Compute total side effects for a (taxKey, direction, steps) triple.
+// Used by the preview panel AND the enactment handler — one calculation,
+// two callers. Returns { gov_approval, credit, gdp_growth, inflation }.
+function computeTaxArticleEffects(taxKey, direction, steps) {
+    const perStep = TAX_ARTICLE_EFFECTS[taxKey]?.[direction];
+    const n = Number(steps) || 0;
+    if (!perStep || n <= 0) {
+        return { gov_approval: 0, credit: 0, gdp_growth: 0, inflation: 0 };
+    }
+    return {
+        gov_approval: perStep.gov_approval * n,
+        credit:       perStep.credit       * n,
+        gdp_growth:   perStep.gdp_growth   * n,
+        inflation:    perStep.inflation    * n,
+    };
+}
+
+// Validate an effect_data payload before insert / on enactment.
+// Returns { valid: boolean, reason?: string, direction?, steps? }.
+function validateTaxArticlePayload(taxKey, oldRate, newRate) {
+    if (!TAX_ARTICLE_EFFECTS[taxKey]) {
+        return { valid: false, reason: 'Unknown tax key: ' + taxKey };
+    }
+    const o = Number(oldRate), n = Number(newRate);
+    if (!Number.isFinite(o) || !Number.isFinite(n)) {
+        return { valid: false, reason: 'Rates must be numbers' };
+    }
+    if (n < TAX_RATE_MIN || n > TAX_RATE_MAX) {
+        return { valid: false, reason: 'New rate out of range' };
+    }
+    const delta = n - o;
+    if (delta === 0) return { valid: false, reason: 'No change' };
+    const direction = delta < 0 ? 'cut' : 'hike';
+    const step = TAX_STEP_PP[direction];
+    if (Math.abs(delta) % step !== 0) {
+        return { valid: false, reason: `Must be a multiple of ${step}pp` };
+    }
+    const steps = Math.abs(delta) / step;
+    return { valid: true, direction, steps };
+}
+
 // ────────── bills ──────────
 
 
@@ -11176,6 +11284,40 @@ async function enactBill(supabase, bill, currentTick) {
             const newRate = Math.max(0, Math.min(50, Number(effect.new_rate)));
             taxUpdates[effect.tax_key] = newRate;
             console.log(`[enactBill] Tax rate change: ${effect.tax_key} ${effect.old_rate}% → ${newRate}%`);
+        } else if (effect.type === 'INCOME_TAX_CHANGE') {
+            // Stepped Tax Article (v1: income_tax only). Rate change + per-step
+            // side effects on gov_approval / credit / gdp_growth / inflation.
+            // Effects scaled linearly by step count; payload validated at draft
+            // time and re-validated here for safety (rate clamped defensively).
+            const val = validateTaxArticlePayload('income_tax', effect.old_rate, effect.new_rate);
+            if (!val.valid) {
+                console.warn(`[enactBill] INCOME_TAX_CHANGE rejected: ${val.reason}`);
+            } else {
+                const newRate = Math.max(TAX_RATE_MIN, Math.min(TAX_RATE_MAX, Number(effect.new_rate)));
+                taxUpdates.income_tax = newRate;
+                const fx = computeTaxArticleEffects('income_tax', val.direction, val.steps);
+                // Read current stats once; apply all deltas in one UPDATE below
+                // after the rate-updates consolidation (same pattern as taxUpdates).
+                const { data: nRow, error: nErr } = await supabase.from('nations')
+                    .select('credit, gdp_growth, inflation').eq('id', bill.nation_id).single();
+                if (nErr) {
+                    console.error('[enactBill] INCOME_TAX_CHANGE read failed:', nErr.message);
+                } else {
+                    const newCredit    = Math.max(0, Math.min(100, Number(nRow.credit    ?? 50) + fx.credit));
+                    const newGdpGrowth = Math.max(0, Math.min(100, Number(nRow.gdp_growth ?? 50) + fx.gdp_growth));
+                    const newInflation = Math.max(0, Math.min(100, Number(nRow.inflation  ?? 50) + fx.inflation));
+                    const { error: upErr } = await supabase.from('nations').update({
+                        credit:     newCredit,
+                        gdp_growth: newGdpGrowth,
+                        inflation:  newInflation,
+                    }).eq('id', bill.nation_id);
+                    if (upErr) console.error('[enactBill] INCOME_TAX_CHANGE stat update failed:', upErr.message);
+                    if (fx.gov_approval !== 0) {
+                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, fx.gov_approval, 'income_tax_article');
+                    }
+                    console.log(`[enactBill] INCOME_TAX_CHANGE ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, approval ${fx.gov_approval >= 0 ? '+' : ''}${fx.gov_approval}, credit ${fx.credit >= 0 ? '+' : ''}${fx.credit}, gdp_growth ${fx.gdp_growth >= 0 ? '+' : ''}${fx.gdp_growth}, inflation ${fx.inflation >= 0 ? '+' : ''}${fx.inflation}`);
+                }
+            }
         } else if (effect.type === 'TARIFF_RATE_CHANGE' && effect.sector) {
             // Per-sector tariff: merge into nation's sector_tariffs jsonb
             const tariffRate = Math.max(0, Math.min(100, Number(effect.new_rate)));
