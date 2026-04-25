@@ -1513,11 +1513,9 @@ function renderArticles() {
                 const deltaAbs = Math.abs(Number(ed.new_rate) - Number(ed.old_rate));
                 const sign = v => v > 0 ? '+' + v : String(v);
                 const color = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-secondary, #888)';
-                // Projected ongoing budget impact (revenue gained/lost per
-                // month). SSoT helper computes via calculateNationalBudget.
-                // Returns raw dollars; formatCurrency expects $M, so /1e6.
-                const ongoingCostRaw = computeTaxArticleOngoingCost(taxKey, ed.new_rate, currentNation);
-                const ongoingCost = ongoingCostRaw / 1e6;
+                // Projected ongoing budget impact in $M/mo (helper returns
+                // $M directly — matches formatCurrency + bill-cost SSoT).
+                const ongoingCost = computeTaxArticleOngoingCost(taxKey, ed.new_rate, currentNation);
                 const ongoingLabel = ongoingCost > 0 ? 'Ongoing Cost' : ongoingCost < 0 ? 'Ongoing Relief' : 'Ongoing Impact';
                 const ongoingColor = ongoingCost > 0 ? 'var(--red)' : ongoingCost < 0 ? 'var(--green)' : 'var(--text-secondary, #888)';
                 const rowsHtml =

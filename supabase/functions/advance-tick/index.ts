@@ -7966,13 +7966,16 @@ function computeTaxArticleEffects(taxKey, direction, steps) {
 }
 
 // Compute the bill's ongoing budget impact from a tax rate change, in
-// dollars per month. Positive = ongoing cost (revenue lost from a cut);
-// negative = ongoing relief (revenue gained from a hike).
+// MILLIONS of dollars per month ($M/mo) — matching the convention used
+// by computeBillCostTotals and funding-article base_cost. Positive =
+// ongoing cost (revenue lost from a cut); negative = ongoing relief
+// (revenue gained from a hike).
 //
 // Implementation calls calculateNationalBudget twice — once with current
 // rates, once with the new rate substituted — so this helper stays in
 // sync with whatever multipliers / collection-rate logic budget.js uses.
-// SSoT: budget.js owns the formula; we just take the delta.
+// SSoT: budget.js owns the formula; we just take the delta and convert
+// raw dollars → $M in one place so every caller gets consistent units.
 //
 // Returns 0 if nation is missing (caller should treat as "not yet
 // computable" — e.g., during initial render before nation loads).
@@ -7980,10 +7983,11 @@ function computeTaxArticleOngoingCost(taxKey, newRate, nation) {
     if (!nation || !taxKey) return 0;
     const cur    = calculateNationalBudget(nation);
     const future = calculateNationalBudget({ ...nation, [taxKey]: Number(newRate) });
-    const monthlyRevenueDelta = (future.grossRevenue - cur.grossRevenue) / 12;
+    // grossRevenue is raw dollars/year. Divide by 12 for monthly, by 1e6 for $M.
+    const monthlyRevenueDeltaMillions = (future.grossRevenue - cur.grossRevenue) / 12 / 1e6;
     // Bill-cost convention: positive = budget gets worse. Revenue lost
     // (cut) makes the budget worse, so flip the sign of the revenue delta.
-    return -monthlyRevenueDelta;
+    return -monthlyRevenueDeltaMillions;
 }
 
 // Validate an effect_data payload before insert / on enactment.
