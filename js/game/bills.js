@@ -13,7 +13,7 @@ import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
-import { computeTaxArticleEffects, validateTaxArticlePayload, TAX_RATE_MIN, TAX_RATE_MAX } from './tax-articles.js';
+import { computeTaxArticleEffects, computeTaxArticleOngoingCost, validateTaxArticlePayload, TAX_RATE_MIN, TAX_RATE_MAX } from './tax-articles.js';
 import { MILITARY_LOYALTY_POLICY_KEY, onMilitaryLoyaltyEnacted } from './military-loyalty.js';
 import { getNationNames, isFemaleName, installHOG } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
@@ -102,6 +102,19 @@ export function computeBillCostTotals(bill, nation) {
                 if (fromPct === toPct) continue;
                 const baseCost = Number(inst.base_cost || 0);
                 ongoingMonthly += ((toPct - fromPct) / 100) * baseCost;
+            }
+            continue;
+        }
+
+        // (1b) Tax Article — projected revenue change. Cuts are an ongoing
+        // cost to the budget (revenue forgone); hikes are an ongoing relief.
+        // SSoT for the math is computeTaxArticleOngoingCost in tax-articles.js,
+        // which derives the delta from calculateNationalBudget.
+        const ed = art.effect_data;
+        if (ed && (ed.type === 'TAX_CHANGE' || ed.type === 'INCOME_TAX_CHANGE')) {
+            const taxKey = ed.tax_key || (ed.type === 'INCOME_TAX_CHANGE' ? 'income_tax' : null);
+            if (taxKey) {
+                ongoingMonthly += computeTaxArticleOngoingCost(taxKey, ed.new_rate, nation);
             }
             continue;
         }

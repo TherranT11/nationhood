@@ -365,7 +365,7 @@ import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidenti
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
-import { getValidNewRates, computeTaxArticleEffects, TAX_STEP_PP } from './js/game/tax-articles.js';
+import { getValidNewRates, computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_STEP_PP } from './js/game/tax-articles.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
@@ -3643,12 +3643,17 @@ function renderDraftArticles() {
             const color = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-secondary)';
             const tok = (label, v) => `${label} <span style="color:${color(v)};">${sign(v)}</span>`;
             const fxLine = `${tok('Approval', fx.gov_approval)} · ${tok('Credit', fx.credit)} · ${tok('GDP', fx.gdp_growth)} · ${tok('Inflation', fx.inflation)}`;
+            // Projected ongoing budget impact ($M/mo). SSoT helper.
+            const ongoingCostM = computeTaxArticleOngoingCost(taxKey, ed.new_rate, currentNation) / 1e6;
+            const _fmtC = (m) => Math.abs(m) >= 1000 ? '$' + (Math.abs(m) / 1000).toFixed(Math.abs(m) % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(Math.abs(m)) + 'M';
+            const ongoingLabel = ongoingCostM > 0 ? 'Ongoing Cost' : ongoingCostM < 0 ? 'Ongoing Relief' : 'Ongoing Impact';
+            const ongoingColor = ongoingCostM > 0 ? 'var(--red)' : ongoingCostM < 0 ? 'var(--green)' : 'var(--text-secondary)';
             return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
                 <div class="draft-article-info">
                     <div class="draft-article-num">Article ${art.articleNumber}</div>
                     <div class="draft-article-name">${escapeHtml(art.title)} <span class="article-ideology" style="background:${tagBg};color:${borderColor};border:1px solid ${tagBorder};">${tagLabel}</span></div>
                     <div class="draft-article-meta">Sets ${taxLabel} to ${ed.new_rate}% (${steps} step${steps === 1 ? '' : 's'} from ${ed.old_rate}%).</div>
-                    <div style="margin-top:4px;font-family:var(--font-mono);font-size:0.78rem;color:var(--text-secondary);">${fxLine}</div>
+                    <div style="margin-top:4px;font-family:var(--font-mono);font-size:0.78rem;"><span style="color:${ongoingColor};">${ongoingLabel}: ${_fmtC(ongoingCostM)}/mo</span> &nbsp;·&nbsp; <span style="color:var(--text-secondary);">${fxLine}</span></div>
                 </div>
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;

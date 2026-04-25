@@ -7871,9 +7871,11 @@ function computeCorpValuation({ cash, loans, properties, propertyValue, vessels,
 //   * rate bounds (0–50%)
 //   * valid-new-rate enumeration used by the draft modal dropdown
 //   * step/effect computation used by the enactment handler
+//   * projected ongoing budget impact (revenue gained/lost per month)
 //
-// Imported by bill.html (draft modal preview + article-card renderer)
-// and js/game/bills.js (enactment). Any tuning of numbers happens here.
+// Imported by bill.html (draft modal preview + article-card renderer),
+// laws.html (draft preview), and js/game/bills.js (enactment +
+// computeBillCostTotals). Any tuning of numbers happens here.
 
 const TAX_RATE_MIN = 0;
 const TAX_RATE_MAX = 50;
@@ -7961,6 +7963,27 @@ function computeTaxArticleEffects(taxKey, direction, steps) {
         gdp_growth:   perStep.gdp_growth   * n,
         inflation:    perStep.inflation    * n,
     };
+}
+
+// Compute the bill's ongoing budget impact from a tax rate change, in
+// dollars per month. Positive = ongoing cost (revenue lost from a cut);
+// negative = ongoing relief (revenue gained from a hike).
+//
+// Implementation calls calculateNationalBudget twice — once with current
+// rates, once with the new rate substituted — so this helper stays in
+// sync with whatever multipliers / collection-rate logic budget.js uses.
+// SSoT: budget.js owns the formula; we just take the delta.
+//
+// Returns 0 if nation is missing (caller should treat as "not yet
+// computable" — e.g., during initial render before nation loads).
+function computeTaxArticleOngoingCost(taxKey, newRate, nation) {
+    if (!nation || !taxKey) return 0;
+    const cur    = calculateNationalBudget(nation);
+    const future = calculateNationalBudget({ ...nation, [taxKey]: Number(newRate) });
+    const monthlyRevenueDelta = (future.grossRevenue - cur.grossRevenue) / 12;
+    // Bill-cost convention: positive = budget gets worse. Revenue lost
+    // (cut) makes the budget worse, so flip the sign of the revenue delta.
+    return -monthlyRevenueDelta;
 }
 
 // Validate an effect_data payload before insert / on enactment.
@@ -8071,6 +8094,19 @@ function computeBillCostTotals(bill, nation) {
                 if (fromPct === toPct) continue;
                 const baseCost = Number(inst.base_cost || 0);
                 ongoingMonthly += ((toPct - fromPct) / 100) * baseCost;
+            }
+            continue;
+        }
+
+        // (1b) Tax Article — projected revenue change. Cuts are an ongoing
+        // cost to the budget (revenue forgone); hikes are an ongoing relief.
+        // SSoT for the math is computeTaxArticleOngoingCost in tax-articles.js,
+        // which derives the delta from calculateNationalBudget.
+        const ed = art.effect_data;
+        if (ed && (ed.type === 'TAX_CHANGE' || ed.type === 'INCOME_TAX_CHANGE')) {
+            const taxKey = ed.tax_key || (ed.type === 'INCOME_TAX_CHANGE' ? 'income_tax' : null);
+            if (taxKey) {
+                ongoingMonthly += computeTaxArticleOngoingCost(taxKey, ed.new_rate, nation);
             }
             continue;
         }

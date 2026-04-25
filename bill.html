@@ -248,7 +248,7 @@ import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, F
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
 import { executeWhipCaucus } from './js/game/caucus.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
-import { computeTaxArticleEffects } from './js/game/tax-articles.js';
+import { computeTaxArticleEffects, computeTaxArticleOngoingCost } from './js/game/tax-articles.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
     if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
@@ -1513,8 +1513,16 @@ function renderArticles() {
                 const deltaAbs = Math.abs(Number(ed.new_rate) - Number(ed.old_rate));
                 const sign = v => v > 0 ? '+' + v : String(v);
                 const color = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-secondary, #888)';
+                // Projected ongoing budget impact (revenue gained/lost per
+                // month). SSoT helper computes via calculateNationalBudget.
+                // Returns raw dollars; formatCurrency expects $M, so /1e6.
+                const ongoingCostRaw = computeTaxArticleOngoingCost(taxKey, ed.new_rate, currentNation);
+                const ongoingCost = ongoingCostRaw / 1e6;
+                const ongoingLabel = ongoingCost > 0 ? 'Ongoing Cost' : ongoingCost < 0 ? 'Ongoing Relief' : 'Ongoing Impact';
+                const ongoingColor = ongoingCost > 0 ? 'var(--red)' : ongoingCost < 0 ? 'var(--green)' : 'var(--text-secondary, #888)';
                 const rowsHtml =
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Rate</span><span>${ed.old_rate}% → ${ed.new_rate}% <span style="color:${borderColor};">(${dir === 'cut' ? '−' : '+'}${deltaAbs}pp · ${steps} step${steps === 1 ? '' : 's'})</span></span></div>` +
+                    `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>${ongoingLabel}</span><span style="color:${ongoingColor};">${formatCurrency(ongoingCost)}/mo</span></div>` +
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Gov Approval</span><span style="color:${color(fx.gov_approval)};">${sign(fx.gov_approval)}</span></div>` +
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Credit</span><span style="color:${color(fx.credit)};">${sign(fx.credit)}</span></div>` +
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>GDP Growth</span><span style="color:${color(fx.gdp_growth)};">${sign(fx.gdp_growth)}</span></div>` +
