@@ -56,10 +56,20 @@
     cursor: grab; user-select: none;
 }
 .world-map-panel:active { cursor: grabbing; }
-.world-map-panel img {
+.world-map-panel img,
+.world-map-panel #world-map-img {
     display: block; transform-origin: 0 0;
     width: 100%; height: auto;
     pointer-events: none; will-change: transform;
+}
+/* SVG path children retain their default pointer-events independently
+   of the root SVG's value — without this, the wheel/drag events on
+   the panel only fire when the cursor is over ocean (sky-blue panel
+   background); over any country shape the SVG path swallows the
+   event. !important defeats any presentational pointer-events
+   attribute Inkscape may have left on individual paths. */
+.world-map-panel #world-map-img * {
+    pointer-events: none !important;
 }
 .world-map-controls {
     position: absolute; bottom: 12px; right: 12px;
