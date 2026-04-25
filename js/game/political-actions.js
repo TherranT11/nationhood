@@ -2836,13 +2836,16 @@ const FEMALE_NAMES = new Set([
     'Dragana', 'Svetlana', 'Jelena', 'Milica', 'Danica', 'Zora', 'Radmila',
     'Snežana', 'Vesna',
     // Dravka
-    'Afërdita', 'Bora', 'Era', 'Luljeta', 'Teuta',
-    // Danwei (Taiwanese given names — stored in the LAST_NAMES slot per
-    // the family-first convention; see DANWEI_LAST_NAMES below)
-    'Mei-ling', 'Hsiu-lien', 'Wen-chi', 'Yu-hua', 'Su-chen', 'Yi-fang', 'Hsin-yi',
-    'Yu-ling', 'Chia-ling', 'Pei-ling', 'Mei-feng', 'Hsiao-mei', 'Yu-chen',
-    'Wen-ling', 'Mei-yu', 'Chia-hsuan', 'Pei-yi', 'Hsin-mei', 'Chia-jung',
-    'Pei-chen', 'Hsiu-chen', 'Mei-chen', 'Yi-ling', 'Hsiu-mei'
+    'Afërdita', 'Bora', 'Era', 'Luljeta', 'Teuta'
+    // Danwei: intentionally NO entries. Family-first convention stores
+    // surnames (Chen, Lin, Han) in the FIRST_NAMES slot and given names
+    // (Mei-ling, Kuo-yu) in LAST_NAMES — but isFemaleName() tests the
+    // FIRST_NAMES slot only, so adding female given names here would
+    // never match. Gender-aware titles (Queen/King in bills.js:4480 and
+    // 4579) only fire for monarchies, which Danwei isn't, so the gap
+    // is currently inert. If a future change wants gendered titles for
+    // Danwei, the fix is to make isFemaleName nation-aware (check the
+    // last-name slot for family-first cultures), not to add entries here.
 ]);
 
 export function isFemaleName(firstName) {
