@@ -3333,24 +3333,27 @@ export async function enactBill(supabase, bill, currentTick) {
             const newRate = Math.max(0, Math.min(50, Number(effect.new_rate)));
             taxUpdates[effect.tax_key] = newRate;
             console.log(`[enactBill] Tax rate change: ${effect.tax_key} ${effect.old_rate}% → ${newRate}%`);
-        } else if (effect.type === 'INCOME_TAX_CHANGE') {
-            // Stepped Tax Article (v1: income_tax only). Rate change + per-step
-            // side effects on gov_approval / credit / gdp_growth / inflation.
-            // Effects scaled linearly by step count; payload validated at draft
-            // time and re-validated here for safety (rate clamped defensively).
-            const val = validateTaxArticlePayload('income_tax', effect.old_rate, effect.new_rate);
+        } else if (effect.type === 'TAX_CHANGE' || effect.type === 'INCOME_TAX_CHANGE') {
+            // Stepped Tax Article. Rate change + per-step side effects on
+            // gov_approval / credit / gdp_growth / inflation, all keyed by
+            // tax_key (income_tax / corporate_tax / ...). Effects scaled
+            // linearly by step count; payload validated at draft time and
+            // re-validated here for safety (rate clamped defensively).
+            //
+            // INCOME_TAX_CHANGE accepted for legacy bills drafted before the
+            // type was renamed to TAX_CHANGE; treated as tax_key='income_tax'.
+            const taxKey = effect.tax_key || (effect.type === 'INCOME_TAX_CHANGE' ? 'income_tax' : null);
+            const val = taxKey ? validateTaxArticlePayload(taxKey, effect.old_rate, effect.new_rate) : { valid: false, reason: 'missing tax_key' };
             if (!val.valid) {
-                console.warn(`[enactBill] INCOME_TAX_CHANGE rejected: ${val.reason}`);
+                console.warn(`[enactBill] TAX_CHANGE rejected: ${val.reason}`);
             } else {
                 const newRate = Math.max(TAX_RATE_MIN, Math.min(TAX_RATE_MAX, Number(effect.new_rate)));
-                taxUpdates.income_tax = newRate;
-                const fx = computeTaxArticleEffects('income_tax', val.direction, val.steps);
-                // Read current stats once; apply all deltas in one UPDATE below
-                // after the rate-updates consolidation (same pattern as taxUpdates).
+                taxUpdates[taxKey] = newRate;
+                const fx = computeTaxArticleEffects(taxKey, val.direction, val.steps);
                 const { data: nRow, error: nErr } = await supabase.from('nations')
                     .select('credit, gdp_growth, inflation').eq('id', bill.nation_id).single();
                 if (nErr) {
-                    console.error('[enactBill] INCOME_TAX_CHANGE read failed:', nErr.message);
+                    console.error(`[enactBill] TAX_CHANGE (${taxKey}) read failed:`, nErr.message);
                 } else {
                     const newCredit    = Math.max(0, Math.min(100, Number(nRow.credit    ?? 50) + fx.credit));
                     const newGdpGrowth = Math.max(0, Math.min(100, Number(nRow.gdp_growth ?? 50) + fx.gdp_growth));
@@ -3360,11 +3363,11 @@ export async function enactBill(supabase, bill, currentTick) {
                         gdp_growth: newGdpGrowth,
                         inflation:  newInflation,
                     }).eq('id', bill.nation_id);
-                    if (upErr) console.error('[enactBill] INCOME_TAX_CHANGE stat update failed:', upErr.message);
+                    if (upErr) console.error(`[enactBill] TAX_CHANGE (${taxKey}) stat update failed:`, upErr.message);
                     if (fx.gov_approval !== 0) {
-                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, fx.gov_approval, 'income_tax_article');
+                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, fx.gov_approval, `${taxKey}_article`);
                     }
-                    console.log(`[enactBill] INCOME_TAX_CHANGE ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, approval ${fx.gov_approval >= 0 ? '+' : ''}${fx.gov_approval}, credit ${fx.credit >= 0 ? '+' : ''}${fx.credit}, gdp_growth ${fx.gdp_growth >= 0 ? '+' : ''}${fx.gdp_growth}, inflation ${fx.inflation >= 0 ? '+' : ''}${fx.inflation}`);
+                    console.log(`[enactBill] TAX_CHANGE ${taxKey} ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, approval ${fx.gov_approval >= 0 ? '+' : ''}${fx.gov_approval}, credit ${fx.credit >= 0 ? '+' : ''}${fx.credit}, gdp_growth ${fx.gdp_growth >= 0 ? '+' : ''}${fx.gdp_growth}, inflation ${fx.inflation >= 0 ? '+' : ''}${fx.inflation}`);
                 }
             }
         } else if (effect.type === 'TARIFF_RATE_CHANGE' && effect.sector) {

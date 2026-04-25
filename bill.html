@@ -1499,12 +1499,15 @@ function renderArticles() {
                 '</div>';
             }
 
-            // Income Tax Article — stepped rate change with side effects.
-            if (art.effect_data?.type === 'INCOME_TAX_CHANGE') {
+            // Tax Article — stepped rate change with side effects. TAX_CHANGE
+            // is the current type; INCOME_TAX_CHANGE is accepted for legacy
+            // bills drafted before the rename (treated as tax_key='income_tax').
+            if (art.effect_data?.type === 'TAX_CHANGE' || art.effect_data?.type === 'INCOME_TAX_CHANGE') {
                 const ed = art.effect_data;
+                const taxKey = ed.tax_key || (ed.type === 'INCOME_TAX_CHANGE' ? 'income_tax' : 'income_tax');
                 const dir = ed.direction;
                 const steps = Number(ed.steps) || 0;
-                const fx = computeTaxArticleEffects('income_tax', dir, steps);
+                const fx = computeTaxArticleEffects(taxKey, dir, steps);
                 const borderColor = dir === 'cut' ? 'var(--green)' : 'var(--red)';
                 const tagLabel = dir === 'cut' ? 'TAX CUT' : 'TAX HIKE';
                 const deltaAbs = Math.abs(Number(ed.new_rate) - Number(ed.old_rate));
@@ -1518,7 +1521,7 @@ function renderArticles() {
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Inflation</span><span style="color:${color(fx.inflation)};">${sign(fx.inflation)}</span></div>`;
                 return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
-                    '<div class="article-title">' + escapeHtml(art.article_title || 'Income Tax Change') + '</div>' +
+                    '<div class="article-title">' + escapeHtml(art.article_title || 'Tax Change') + '</div>' +
                     '<div class="article-description">' + rowsHtml + '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                     articleActionsDiv(art) +

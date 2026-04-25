@@ -22,8 +22,8 @@ export const TAX_STEP_PP = Object.freeze({
 });
 
 // Per-step effects by tax key + direction. When more tax types land
-// (corporate, sales, property) add their own entry here — the rest of
-// the pipeline is tax-key-agnostic.
+// (sales, property) add their own entry here — the rest of the pipeline
+// is tax-key-agnostic.
 export const TAX_ARTICLE_EFFECTS = Object.freeze({
     income_tax: Object.freeze({
         cut: Object.freeze({
@@ -39,7 +39,25 @@ export const TAX_ARTICLE_EFFECTS = Object.freeze({
             inflation:    -0.3,
         }),
     }),
+    corporate_tax: Object.freeze({
+        cut: Object.freeze({
+            gov_approval: +1,
+            credit:       -2,
+            gdp_growth:   +1.0,
+            inflation:    0,
+        }),
+        hike: Object.freeze({
+            gov_approval: -1,
+            credit:       +1,
+            gdp_growth:   -1.0,
+            inflation:    0,
+        }),
+    }),
 });
+
+// Tax keys that have effects defined — feeds the draft modal's tax-type
+// selector. Sales / Property will appear here when their effects land.
+export const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax']);
 
 export const TAX_KEY_LABELS = Object.freeze({
     income_tax:    'Income Tax',
