@@ -2595,27 +2595,34 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
                 for (var gsi = 0; gsi < gSectors.length; gsi++) {
                     var gSec = gSectors[gsi];
-                    // Inflate the buyer's importDemand by the contracted
-                    // volume BEFORE the cap check. A trade_flow article is
-                    // a commitment to buy regardless of organic need — a
-                    // net-exporter who contracts to import a commodity
-                    // (e.g., Calveth importing fuel from Hajjara despite
-                    // being a fuel net-exporter with organic
-                    // importDemand=0) should be able to receive the
-                    // contracted volume. Without this, the article is
-                    // silently dropped at the <=0 check below.
+                    // Inflate BOTH the buyer's importDemand and the
+                    // seller's exportCapacity by the contracted volume
+                    // BEFORE the cap check. A trade_flow article is a
+                    // mutual commitment — both parties have to fulfill
+                    // their side regardless of organic supply/demand:
                     //
-                    // Seller side stays organic-only: a nation that
-                    // organically produces 0 of a commodity has nothing
-                    // to sell, so no inflation there. Step 5 distribution
-                    // reads importDemand and subtracts actualImports
-                    // (which includes our agreement pre-allocation), so
-                    // the inflated value flows through correctly:
-                    // remaining gap = organic + contract − contractAlloc
-                    // = organic, and Step 5 fills only the organic
-                    // remainder via the market.
+                    //   * Buyer-side: a net-exporter (e.g., Calveth
+                    //     fuel) can contractually buy a commodity even
+                    //     with zero organic importDemand.
+                    //   * Seller-side: a non-producer (e.g., a trade
+                    //     hub committing to forward-sell something
+                    //     they don't make) can contractually sell.
+                    //     The game treats this as the seller drawing
+                    //     from reserves / re-exporting / off-the-books
+                    //     supply — economically a "trade hub" model.
+                    //
+                    // Step 5 distribution reads the inflated importDemand
+                    // / exportCapacity and subtracts actualImports /
+                    // actualExports (which include our agreement
+                    // pre-allocation). The math nets out to organic
+                    // remainder via the market: the agreement portion
+                    // is captured by the pre-allocation, so Step 5
+                    // doesn't double-count it.
                     if (gBuyerFlows[gSec]) {
                         gBuyerFlows[gSec].importDemand = (Number(gBuyerFlows[gSec].importDemand) || 0) + perSectorVolume;
+                    }
+                    if (gSellerFlows[gSec]) {
+                        gSellerFlows[gSec].exportCapacity = (Number(gSellerFlows[gSec].exportCapacity) || 0) + perSectorVolume;
                     }
                     var gSellerExport = (gSellerFlows[gSec] && gSellerFlows[gSec].exportCapacity) || 0;
                     var gBuyerDemand = (gBuyerFlows[gSec] && gBuyerFlows[gSec].importDemand) || 0;

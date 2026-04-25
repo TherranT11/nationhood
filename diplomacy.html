@@ -19261,21 +19261,21 @@ function negStructuredTradeFlowForm() {
         <div style="display:flex;flex-direction:column;gap:8px;">
             <div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">COMMODITY</div>
-                <select id="neg-flow-commodity" onchange="negFlowUpdatePrice()" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                <select id="neg-flow-commodity" onchange="negFlowUpdatePrice();negFlowEvaluateWarnings()" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
                     ${sectorOpts}
                 </select>
                 <div id="neg-flow-global-price" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:3px;"></div>
             </div>
             <div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">DIRECTION</div>
-                <select id="neg-flow-direction" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
+                <select id="neg-flow-direction" onchange="negFlowEvaluateWarnings()" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;">
                     <option value="a_buys_b">${escapeHtml(nameA)} buys from ${escapeHtml(nameB)}</option>
                     <option value="b_buys_a">${escapeHtml(nameB)} buys from ${escapeHtml(nameA)}</option>
                 </select>
             </div>
             <div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">VOLUME ($ PER TICK)</div>
-                <input id="neg-flow-volume" type="number" min="1" placeholder="e.g. 500000000" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
+                <input id="neg-flow-volume" type="number" min="1" placeholder="e.g. 500000000" oninput="negFlowEvaluateWarnings()" style="width:100%;padding:6px 8px;background:var(--bg-1);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;box-sizing:border-box;">
             </div>
             <div>
                 <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">PRICE (% vs MARKET)</div>
@@ -19296,6 +19296,7 @@ function negStructuredTradeFlowForm() {
                     <option value="48">48 ticks</option>
                 </select>
             </div>
+            <div id="neg-flow-warnings" style="display:none;font-family:var(--font-mono);font-size:9px;line-height:1.5;padding:6px 8px;background:rgba(200,150,50,0.08);border-left:2px solid var(--amber,#b8860b);color:var(--text-secondary);"></div>
         </div>
         <div class="trade-neg-add-form__actions">
             <button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>
@@ -19305,7 +19306,93 @@ function negStructuredTradeFlowForm() {
 
     // Initialize the price display for the default commodity
     setTimeout(() => negFlowUpdatePrice(), 0);
+    // Fetch both nations' organic flows once per negotiation, cached on
+    // _activeNegModal so subsequent article-form openings reuse it. Then
+    // evaluate warnings against the form's initial state.
+    negFlowFetchFlowsOnce().then(() => negFlowEvaluateWarnings());
 }
+
+// Fetch organic per-sector flows for the user and the partner. Cached on
+// _activeNegModal._capacityFlows so the network round-trip happens at
+// most once per open negotiation. Returns a promise resolving when the
+// cache is populated (or the fetch silently fails — we degrade to no
+// warnings rather than blocking the form).
+async function negFlowFetchFlowsOnce() {
+    if (!_activeNegModal) return;
+    if (_activeNegModal._capacityFlows) return;
+    const myId      = _activeNegModal.myNationId;
+    const partnerId = _activeNegModal.partnerNationId;
+    if (!myId || !partnerId) return;
+    try {
+        const { data, error } = await _supabase.from('trade_flows')
+            .select('nation_id, sector, export_capacity, import_demand, tick')
+            .in('nation_id', [myId, partnerId])
+            .order('tick', { ascending: false })
+            .limit(200); // 2 nations × ~20 sectors × few recent ticks
+        if (error || !data) return;
+        // Keep only the most-recent row per (nation, sector). Rows are
+        // already ordered tick-desc, so first hit per key wins.
+        const map = { [myId]: {}, [partnerId]: {} };
+        for (const row of data) {
+            if (!map[row.nation_id]) map[row.nation_id] = {};
+            if (map[row.nation_id][row.sector]) continue;
+            map[row.nation_id][row.sector] = {
+                export_capacity: Number(row.export_capacity) || 0,
+                import_demand:   Number(row.import_demand)   || 0,
+            };
+        }
+        _activeNegModal._capacityFlows = map;
+    } catch (_) { /* silent — warnings just won't render */ }
+}
+
+// Evaluate buyer/seller capacity vs the user's contracted volume and
+// render an inline warning. Reads form state directly so it can be
+// wired to onchange/oninput on the inputs.
+function negFlowEvaluateWarnings() {
+    const wrap = document.getElementById('neg-flow-warnings');
+    if (!wrap) return;
+    const flowsMap = _activeNegModal?._capacityFlows;
+    if (!flowsMap) { wrap.style.display = 'none'; return; }
+
+    const commodity = document.getElementById('neg-flow-commodity')?.value || '';
+    const direction = document.getElementById('neg-flow-direction')?.value || 'a_buys_b';
+    const volume    = Number(document.getElementById('neg-flow-volume')?.value) || 0;
+    if (!commodity || volume <= 0) { wrap.style.display = 'none'; return; }
+
+    const myId      = _activeNegModal.myNationId;
+    const partnerId = _activeNegModal.partnerNationId;
+    // Direction is relative to the AUTHOR (= me). a_buys_b: I'm the buyer.
+    const buyerId   = direction === 'a_buys_b' ? myId : partnerId;
+    const sellerId  = direction === 'a_buys_b' ? partnerId : myId;
+    const buyerName = (buyerId === myId  ? _activeNegModal.myNationName : _activeNegModal.partnerNationName) || 'Buyer';
+    const sellerName= (sellerId === myId ? _activeNegModal.myNationName : _activeNegModal.partnerNationName) || 'Seller';
+
+    const buyerFlow  = flowsMap[buyerId]?.[commodity];
+    const sellerFlow = flowsMap[sellerId]?.[commodity];
+
+    const fmtMoney = (n) => n >= 1e9 ? '$' + (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + (n / 1e6).toFixed(0) + 'M' : '$' + Math.round(n).toLocaleString();
+    const messages = [];
+    if (sellerFlow) {
+        const cap = sellerFlow.export_capacity;
+        if (volume > cap) {
+            const shortfall = volume - cap;
+            messages.push(`<strong>${escapeHtml(sellerName)}</strong> has ${fmtMoney(cap)}/tick organic export capacity for this commodity — short by ${fmtMoney(shortfall)}/tick. The contract will still fire (the engine treats the gap as off-the-books supply / re-export), but expect lower fulfillment if the seller's capacity drops further.`);
+        }
+    }
+    if (buyerFlow) {
+        const dem = buyerFlow.import_demand;
+        if (dem === 0 && volume > 0) {
+            messages.push(`<strong>${escapeHtml(buyerName)}</strong> has no organic demand for this commodity (already net-exporter or self-sufficient). The contract creates the demand — ${escapeHtml(buyerName)} will pay for ${fmtMoney(volume)}/tick they don't currently need.`);
+        } else if (volume > dem * 5 && dem > 0) {
+            messages.push(`<strong>${escapeHtml(buyerName)}</strong>'s organic demand for this commodity is only ${fmtMoney(dem)}/tick — your contract is ${(volume / dem).toFixed(1)}× that. The contract will fire but the buyer is committing to far more than their natural usage.`);
+        }
+    }
+    if (messages.length === 0) { wrap.style.display = 'none'; return; }
+    wrap.innerHTML = messages.map(m => '⚠ ' + m).join('<br><br>');
+    wrap.style.display = 'block';
+}
+
+window.negFlowEvaluateWarnings = negFlowEvaluateWarnings;
 
 function negFlowUpdatePrice() {
     const commodity = document.getElementById('neg-flow-commodity')?.value || 'fuel_energy';
