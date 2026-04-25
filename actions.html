@@ -1531,23 +1531,21 @@ async function openExecSearch(role) {
     _execSearchSelected = -1;
     document.getElementById('exec-search-overlay').style.display = 'flex';
 
-    // Auto-generate executive pool for this nation if none exists
+    // Auto-generate executive pool when no available executives remain.
+    // _execPool was loaded with status='available' filter at line 173, so an
+    // empty array means the pool is depleted — even if old hired/expired rows
+    // still sit in the table. Previous gate also checked status-agnostic
+    // existence which silently blocked regen after the first 18 were hired.
     if (_execPool.length === 0 && faction?.nation_id) {
-        // Check DB directly — pool may exist but loadExecutives returned empty
-        const { data: existingPool } = await _supabase.from('executive_pool')
-            .select('id').eq('nation_id', faction.nation_id).limit(1);
+        const nationName = faction.nation || '';
+        const poolRows = generateExecutivePool(faction.nation_id, nationName);
+        const { error: poolErr } = await _supabase.from('executive_pool').insert(poolRows);
+        if (poolErr) console.warn('Failed to generate executive pool:', poolErr.message);
 
-        if (!existingPool || existingPool.length === 0) {
-            const nationName = faction.nation || '';
-            const poolRows = generateExecutivePool(faction.nation_id, nationName);
-            const { error: poolErr } = await _supabase.from('executive_pool').insert(poolRows);
-            if (poolErr) console.warn('Failed to generate executive pool:', poolErr.message);
-        }
-
-        // Reload pool from DB
-        const { data: freshPool } = await _supabase.from('executive_pool')
+        const { data: freshPool, error: reloadErr } = await _supabase.from('executive_pool')
             .select('*').eq('nation_id', faction.nation_id).eq('status', 'available')
             .order('skill', { ascending: false });
+        if (reloadErr) console.warn('Failed to reload executive pool:', reloadErr.message);
         _execPool = freshPool || [];
     }
 
