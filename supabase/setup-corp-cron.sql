@@ -5,10 +5,23 @@
 -- Run this in the Supabase SQL Editor (Dashboard → SQL Editor).
 --
 -- Prerequisites:
---   1. Deploy the Edge Function:
+--   1. Apply production migrations BEFORE deploying advance-corp-tick:
+--        supabase db push
+--      (canonical migration directory: supabase/migrations)
+--
+--      Required migration in this rollout:
+--        supabase/migrations/20260425_add_corp_properties_role.sql
+--
+--   2. Validate corp_properties.role backfill distribution:
+--        SELECT role, type, COUNT(*) AS rows
+--        FROM corp_properties
+--        GROUP BY role, type
+--        ORDER BY role, type;
+--
+--   3. Deploy the Edge Function:
 --        supabase functions deploy advance-corp-tick
 --
---   2. Enable the required extensions (if not already enabled):
+--   4. Enable the required extensions (if not already enabled):
 --        Go to Dashboard → Database → Extensions
 --        Enable: pg_cron, pg_net
 --
@@ -51,6 +64,12 @@ SELECT cron.schedule(
 
 -- Verify the job is scheduled:
 -- SELECT * FROM cron.job WHERE jobname = 'advance-corp-tick';
+
+-- Verify role distribution post-rollout:
+-- SELECT role, type, COUNT(*) AS rows
+-- FROM corp_properties
+-- GROUP BY role, type
+-- ORDER BY role, type;
 
 -- To check recent job runs:
 -- SELECT * FROM cron.job_run_details WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname = 'advance-corp-tick') ORDER BY start_time DESC LIMIT 10;

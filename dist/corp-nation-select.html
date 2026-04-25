@@ -332,11 +332,16 @@ body {
 
 .error-msg {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: var(--red);
   text-align: center;
-  margin-top: 10px;
+  padding: 10px 16px;
+  margin: 12px 0;
+  background: rgba(217,83,79,0.08);
+  border: 1px solid rgba(217,83,79,0.25);
+  border-radius: 4px;
 }
+.error-msg:empty { display: none; }
 
 /* ── Company details phase ── */
 .details-panel {
@@ -388,19 +393,21 @@ body {
 @media (max-width: 640px) {
   .nations-grid { grid-template-columns: 1fr; }
 }
-</style>
-  <script type="module" crossorigin src="/assets/corp-nation-select-C_D4esHj.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
-  <link rel="modulepreload" crossorigin href="/assets/config-fKhFNVuq.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-types-BwzErBjP.js">
-  <link rel="modulepreload" crossorigin href="/assets/ideology-DpNSiogU.js">
-  <link rel="modulepreload" crossorigin href="/assets/stats-DqgGwtpW.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-structure-DYTqr3LI.js">
-  <link rel="modulepreload" crossorigin href="/assets/elections-t68ZJ56h.js">
+</style>
+  <script type="module" crossorigin src="/assets/corp-nation-select-wKLFcUYz.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
+  <link rel="modulepreload" crossorigin href="/assets/config-CKNXR-qR.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-DjsO9xG_.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-tIiBSaQA.js">
+  <link rel="modulepreload" crossorigin href="/assets/political-actions-DGca11uY.js">
   <link rel="modulepreload" crossorigin href="/assets/equipment-DsuDdEne.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-executives-Arzga-9x.js">
+  <link rel="modulepreload" crossorigin href="/assets/vessels-CjafVZ4G.js">
+  <link rel="stylesheet" crossorigin href="/assets/corp-light-theme-l9hU6ojy.css">
 </head>
 <body>
+<script src="js/corp-theme-init.js"></script>
 
 <div id="loading" class="loading-msg">LOADING NATIONS...</div>
 
@@ -426,6 +433,10 @@ body {
       <div class="continent-tab__name">Meridian</div>
       <div class="continent-tab__desc">The old world — diverse nations, ancient traditions, kingdoms and republics.</div>
     </div>
+    <div class="continent-tab" data-continent="Al-Makir" onclick="switchContinent('Al-Makir')">
+      <div class="continent-tab__name">Al-Makir</div>
+      <div class="continent-tab__desc">Desert kingdoms — oil wealth, ancient monarchies, and tribal alliances.</div>
+    </div>
   </div>
 
   <div class="nations-grid" id="nations-grid"></div>
@@ -433,13 +444,13 @@ body {
   <!-- Company details (shown after nation selected) -->
   <div class="details-panel" id="details-panel"></div>
 
+  <div class="error-msg" id="error-message"></div>
+
   <!-- Navigation -->
   <div class="action-bar">
     <button class="btn-next" onclick="goBack()">&#x25C0; Back</button>
     <button class="btn-next" id="btn-confirm" disabled onclick="confirmNation()">Confirm &#x25B6;</button>
   </div>
-
-  <div class="error-msg" id="error-message"></div>
 </div>
 
 </body>

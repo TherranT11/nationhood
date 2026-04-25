@@ -366,8 +366,10 @@ body {
   margin-top: 10px;
 }
 </style>
+<link rel="stylesheet" href="css/corp-light-theme.css">
 </head>
 <body>
+<script src="js/corp-theme-init.js"></script>
 
 <div id="loading" class="loading-msg">AUTHENTICATING...</div>
 
@@ -376,17 +378,6 @@ body {
     <h1 id="step-label">Step 1 of 3</h1>
     <div class="title" id="step-title">Select Your Sector</div>
     <div class="subtitle" id="step-subtitle">Choose the industry your corporation will operate in. This determines your contracts, revenue, and growth path.</div>
-  </div>
-
-  <!-- Alpha code gate — shown before the setup flow -->
-  <div id="alpha-gate" style="display:none;text-align:center;padding:48px 16px;">
-    <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px;">Corporation Alpha</div>
-    <div style="font-family:var(--font-ui);font-size:14px;font-weight:600;color:var(--text-bright);margin-bottom:4px;">Enter Alpha Access Code</div>
-    <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);margin-bottom:24px;">Corporation gameplay is in alpha testing. Enter your access code to continue.</div>
-    <input type="text" id="alpha-code-input" placeholder="Access code" maxlength="10" autocomplete="off" spellcheck="false"
-      style="width:100%;max-width:300px;padding:10px 12px;background:var(--bg-0);border:1px solid var(--border-1);color:var(--text-bright);font-family:var(--font-mono);font-size:13px;letter-spacing:0.08em;text-align:center;outline:none;margin-bottom:12px;">
-    <div id="alpha-code-error" style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-bottom:12px;display:none;"></div>
-    <div><button class="btn-next" onclick="validateAlphaCode()" style="min-width:180px;">Continue</button></div>
   </div>
 
   <!-- Step progress pips -->
@@ -458,22 +449,17 @@ const SECTORS = [
         available: true,
     },
     {
-        key: 'energy',
-        name: 'Energy',
-        desc: 'Power the nation through oil, gas, renewables, and nuclear. Control the energy grid and fuel economic growth.',
-        available: false,
+        key: 'shipping',
+        name: 'Shipping',
+        desc: 'Move goods across oceans and borders. Bulk carriers haul fuel and grain, container ships transport manufactured goods, and specialized vessels handle arms and hazardous cargo. Not available in landlocked nations.',
+        available: true,
+        coastalOnly: true,
     },
     {
         key: 'finance',
         name: 'Finance',
-        desc: 'Banks, investment firms, and insurance. Control the flow of capital and shape monetary policy.',
-        available: false,
-    },
-    {
-        key: 'defense',
-        name: 'Defense',
-        desc: 'Arms manufacturing, military technology, and security contracting. Profit from national defense.',
-        available: false,
+        desc: 'Banks, investment firms, and insurance companies. Control the flow of capital, manage risk, and shape the economic landscape through lending, underwriting, and strategic investment.',
+        available: true,
     },
 ];
 
@@ -491,6 +477,7 @@ function renderStep1() {
                          data-sector="${s.key}" data-name="${s.name}"
                          onclick="${s.available ? 'selectSector(this)' : ''}">
                         ${!s.available ? '<span class="option-card__badge option-card__badge--soon">Coming Soon</span>' : ''}
+                        ${s.coastalOnly ? '<span class="option-card__badge" style="background:#2a3a4a;color:#6aa3d9;font-size:0.55rem;">Coastal Nations Only</span>' : ''}
                         <div class="option-card__name">${s.name}</div>
                         <div class="option-card__desc">${s.desc}</div>
                     </div>
@@ -522,7 +509,7 @@ const SUBSECTORS = {
     construction: [
         {
             key: 'civil_construction',
-            name: 'Civil Construction',
+            name: 'Civil Engineering',
             desc: 'Civil engineering covers the design, construction, and maintenance of the physical and naturally built environment, including public works such as roads, bridges, canals, dams, tunnels, airports, water and sewerage systems, pipelines, and railways.',
         },
         {
@@ -534,6 +521,40 @@ const SUBSECTORS = {
             key: 'megaprojects',
             name: 'Megaprojects',
             desc: 'Nation-defining projects: international airports, hydroelectric dams, national rail networks. Very long timelines (20-40+ ticks), enormous capital requirements, massive payoff on success and devastating loss on failure.',
+        },
+    ],
+    shipping: [
+        {
+            key: 'bulk_cargo',
+            name: 'Bulk Cargo',
+            desc: 'Haul raw commodities in bulk carriers — fuel, minerals, grain, livestock feed, and cash crops. Highest volume, lowest margins. Revenue driven by commodity prices and trade agreement volumes. Your ships move the raw materials that keep economies running.',
+        },
+        {
+            key: 'container_freight',
+            name: 'Container Freight',
+            desc: 'Move manufactured goods, electronics, and perishables in standardized containers. The backbone of global trade — port efficiency, container turnaround, and cold chain logistics for perishables determine your competitive edge.',
+        },
+        {
+            key: 'specialized_transport',
+            name: 'Specialized Transport',
+            desc: 'Handle arms, military equipment, oversized cargo, and hazardous materials. Fewest routes but highest margins. Requires government security clearance and specialized insurance. Defense contracts are exclusive to this subsector.',
+        },
+    ],
+    finance: [
+        {
+            key: 'banking',
+            name: 'Banking',
+            desc: 'Commercial and retail banking — accept deposits, issue loans, manage credit lines, and facilitate payments. Your revenue comes from the spread between deposit interest and lending rates. Growth depends on trust, regulation, and the health of the economy you operate in.',
+        },
+        {
+            key: 'insurance',
+            name: 'Insurance',
+            desc: 'Underwrite risk for individuals, businesses, and governments. Collect premiums, pay claims, and invest the float. Profitability hinges on actuarial accuracy — price risk too low and a single disaster wipes you out; price it too high and clients go elsewhere.',
+        },
+        {
+            key: 'investment',
+            name: 'Investment',
+            desc: 'Asset management, securities trading, and venture capital. Raise funds from investors, deploy capital into markets, and earn returns through fees and performance. High risk, high reward — your reputation is your product.',
         },
     ],
 };
@@ -604,30 +625,10 @@ async function init() {
     const content = document.getElementById('page-content');
     content.style.display = 'flex';
 
-    // Show alpha code gate first
-    document.getElementById('alpha-gate').style.display = 'block';
-    document.getElementById('step-indicator').style.display = 'none';
-    document.getElementById('step-container').style.display = 'none';
-    document.querySelector('.selection-bar').style.display = 'none';
-    document.querySelector('.action-bar').style.display = 'none';
-}
-
-function validateAlphaCode() {
-    const input = document.getElementById('alpha-code-input');
-    const error = document.getElementById('alpha-code-error');
-    if (input.value.trim().toUpperCase() !== 'CORPO22') {
-        error.textContent = 'Invalid access code.';
-        error.style.display = 'block';
-        return;
-    }
-    // Code valid — hide gate, show setup flow
-    document.getElementById('alpha-gate').style.display = 'none';
-    document.getElementById('step-indicator').style.display = '';
-    document.getElementById('step-container').style.display = '';
-    document.querySelector('.selection-bar').style.display = '';
-    document.querySelector('.action-bar').style.display = '';
+    // Go straight to setup flow
     renderStep(1);
 }
+
 
 // ── Step navigation ──
 function renderStep(step) {
@@ -705,12 +706,12 @@ function goBack() {
     if (currentStep > 1) {
         renderStep(currentStep - 1);
     } else {
-        window.location.href = 'select-nation.html';
+        sessionStorage.removeItem('pending_faction_type');
+        window.location.href = 'faction-select.html';
     }
 }
 
 // ── Expose to global scope for onclick handlers ──
-window.validateAlphaCode = validateAlphaCode;
 window.goNext = goNext;
 window.goBack = goBack;
 window.selectSector = selectSector;

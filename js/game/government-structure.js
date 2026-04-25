@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { isPresidentialRepublic, hasElectedPresident } from './government-types.js';
+import { isAbsoluteMonarchy, isPresidentialRepublic, hasElectedPresident } from './government-types.js';
 import { IDEOLOGY_OPPOSITES } from './ideology.js';
 
 // ==================== SEAT LOADING ====================
@@ -60,6 +60,26 @@ export async function detectHeadFaction(supabase, nationId, allParties, allParty
 
 // ==================== COALITION FETCHING ====================
 
+// ==================== ACTIVE-GOVERNMENT GATE ====================
+//
+// Single source of truth for the question "does this nation have an active
+// government?" — one helper, one answer, regardless of system type.
+//
+// Delegates to fetchActiveCoalition which already routes per government_type:
+//   - Presidential:          `presidents.is_active = true`
+//   - Parliamentary / CM:    `government_formations.status = 'formed' or 'caretaker'`
+//   - Absolute monarchy:     ministries-derived (always governed in practice)
+//
+// Callers that previously counted `government_formations.status='formed'` rows
+// directly broke for presidential systems (no coalitions exist there) and
+// required a lazy-init stub row to paper over the schema mismatch. Route them
+// through hasActiveGovernment() instead.
+export async function hasActiveGovernment(supabase, nation) {
+    if (!nation) return false;
+    const coalition = await fetchActiveCoalition(supabase, nation.id);
+    return !!coalition && (coalition.status === 'formed' || coalition.status === 'caretaker');
+}
+
 export async function fetchActiveCoalition(supabase, nationId) {
     const cacheKey = 'coalition_' + nationId;
     if (typeof qCache === 'function') {
@@ -70,7 +90,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
     // === PRESIDENTIAL SYSTEMS: return virtual coalition from active president ===
     const { data: nationRow } = await supabase
         .from('nations')
-        .select('government_type')
+        .select('government_type, hos_election_method, monarch_faction_id, ruling_faction_id')
         .eq('id', nationId)
         .single();
 
@@ -142,11 +162,30 @@ export async function fetchActiveCoalition(supabase, nationId) {
     // that hasn't been finalized. Returning proposals here causes the UI to
     // render them as the actual government (e.g. "Majority Coalition Government"
     // for an unfinalized proposal).
-    const { data: newGov } = await supabase
+    //
+    // Cycle-anchored: a formation is only current if tied to the latest
+    // completed election. Without this filter, a stale formation from a prior
+    // cycle would continue to read as "active" after a newer election
+    // completed with no government formed — blocking processGovernmentVacancy
+    // (which bails when a formation is present) and indefinitely deferring
+    // the snap-election / emergency-minority escalation.
+    const { data: latestElection } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('status', 'completed')
+        .not('results', 'is', null)
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    let formationQuery = supabase
         .from('government_formations')
         .select('*')
         .eq('nation_id', nationId)
-        .in('status', ['formed', 'caretaker'])
+        .in('status', ['formed', 'caretaker']);
+    if (latestElection) formationQuery = formationQuery.eq('election_id', latestElection.id);
+    const { data: newGov } = await formationQuery
         .order('formed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -195,8 +234,46 @@ export async function fetchActiveCoalition(supabase, nationId) {
     if (data) {
         await inferCaretakerStatus(data);
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 15 * 1000);
+        return data;
     }
-    return data;
+
+    // === ABSOLUTE MONARCHY FALLBACK: synthesize virtual coalition for UI context ===
+    const isMonarchyNation = isAbsoluteMonarchy(nationRow) || nationRow?.hos_election_method === 'hereditary';
+    if (!isMonarchyNation) return data;
+
+    const { data: ministries } = await supabase
+        .from('ministries')
+        .select('ministry_key, party_id')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+
+    const ministryAllocations = {};
+    let pmPartyId = null;
+    const partyIds = new Set();
+    for (const m of (ministries || [])) {
+        if (!m.party_id) continue;
+        ministryAllocations[m.ministry_key] = m.party_id;
+        partyIds.add(m.party_id);
+        if (m.ministry_key === 'prime_minister') pmPartyId = m.party_id;
+    }
+
+    const fallbackLeadPartyId = pmPartyId || nationRow?.monarch_faction_id || nationRow?.ruling_faction_id || null;
+    if (!fallbackLeadPartyId) return null;
+
+    partyIds.add(fallbackLeadPartyId);
+    const monarchyFallback = {
+        id: `virtual-monarchy-${nationId}`,
+        nation_id: nationId,
+        party_ids: Array.from(partyIds),
+        lead_party_id: fallbackLeadPartyId,
+        ministry_allocations: ministryAllocations,
+        formed_at: null,
+        status: 'formed',
+        _source: 'absolute_monarchy_virtual'
+    };
+
+    if (typeof qCacheSet === 'function') qCacheSet(cacheKey, monarchyFallback, 15 * 1000);
+    return monarchyFallback;
 }
 
 

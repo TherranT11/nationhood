@@ -53,6 +53,7 @@ DECLARE
         'ideology_shift_actions',
 
         -- ══ Bills & legislation ══
+        'bill_articles',
         'bill_comments',
         'bill_amendment_requests',
         'bill_support',
@@ -65,14 +66,21 @@ DECLARE
         'shakeups',
         'presidents',
         'impeachment_proceedings',
+        'ministry_requests',
         'ministries',
         'ministry_action_log',
         'administrations',
+        'government_formation_chat',
+        'government_formation_support',
         'government_formations',
+        'nation_governments',
+        'nation_policies',
 
         -- ══ Coalitions ══
+        'coalition_votes',
         'coalition_messages',
         'coalition_proposals',
+        'active_coalitions',
         'faction_coalitions',
         'loyalty_demands',
 
@@ -106,6 +114,25 @@ DECLARE
         'diplomatic_action_log',
         'ambassadors',
 
+        -- ══ Bilateral Issues (children before parents) ══
+        'issue_card_plays',
+        'bilateral_issue_actions_taken',
+        'bilateral_issue_history',
+        'bilateral_issue_modifiers',
+        'bilateral_issues',
+        -- issue_card_definitions excluded — config/template data survives reset
+
+        -- ══ Incidents (children before parents) ══
+        'incident_cooldowns',
+        'incident_escalation_log',
+        'incident_chat_messages',
+        'incident_mediation',
+        'incident_actions_taken',
+        'incident_actions_available',
+        'incident_events',
+        'incidents',
+        -- incident_event_pool excluded — config/template data survives reset
+
         -- ══ Events & crises ══
         'active_crises',
         'crisis_effects',
@@ -124,7 +151,8 @@ DECLARE
         'op_eds',
         'valdorian_articles',
         'player_articles',
-        'wiki_pages',
+        -- 'wiki_pages' intentionally excluded — wiki survives reset
+        'nation_profiles',
 
         -- ══ Forum & chat ══
         'forum_replies',
@@ -139,12 +167,102 @@ DECLARE
         'direct_messages',
         'group_chat_messages',
         'group_chat_members',
-        'group_chats'
+        'group_chats',
+
+        -- ══ Radio broadcast system ══
+        'broadcast_good_listens',
+        'radio_broadcasts',
+        'radio_personalities',
+        'radio_stations',
+
+        -- ══ Article likes ══
+        'article_likes',
+
+        -- ══ Party platforms ══
+        'faction_platforms',
+
+        -- ══ Agitator & lawsuits ══
+        'lawsuit_events',
+        'lawsuits',
+        'faction_agitators',
+        'agitator_pool',
+
+        -- ══ Deputies ══
+        'faction_deputies',
+
+        -- ══ Subsidiary services ══
+        'subsidiary_auto_policies',
+        'subsidiary_auto_rates',
+        'subsidiary_bids',
+        'subsidiary_sales',
+
+        -- ══ Insurance (must come before corp_vessels and finance_active_loans) ══
+        'insurance_claims',
+
+        -- ══ Shipping (children before parents — claims/apps before routes) ══
+        'shipping_claims',
+        'shipping_applications',
+        'ship_market_listings',
+        'vessel_orders',
+        'shipping_routes',
+
+        -- ══ Construction (children before parents — deliveries/events before contracts) ══
+        'construction_deliveries',
+        'construction_events',
+        'project_material_allocations',
+        'mega_project_cooldowns',
+        'available_properties',
+        'corp_permits',
+
+        -- ══ Corp properties & executives ══
+        'corp_properties',
+        'corp_executives',
+        'executive_pool',
+        'corp_material_inventory',
+
+        -- ══ Corp vessels (after insurance_claims and shipping_claims) ══
+        'corp_vessels',
+
+        -- ══ Finance system (after insurance_claims) ══
+        'finance_active_loans',
+        'finance_loan_offers',
+        'finance_loan_requests',
+
+        -- ══ Construction contracts (after deliveries, events, material_allocations) ══
+        'contract_bids',
+        'construction_contracts',
+
+        -- ══ Electorate (extended) ══
+        'voter_bloc_demands',
+        'pander_history',
+
+        -- ══ AP tracking ══
+        'ap_ledger',
+
+        -- ══ Food system ══
+        'food_stockpiles',
+        'food_land_allocation',
+
+        -- ══ Party (extended) ══
+        'faction_deputies',
+        'faction_pillar_state',
+
+        -- ══ Government (extended) ══
+        'executive_orders',
+        'admin_timeline_events',
+
+        -- ══ Misc (extended) ══
+        'pending_actions'
     ];
 BEGIN
-    -- First: null out FKs on nations so factions can be deleted
+    -- First: null out FKs on nations and construction_contracts so dependent tables can be deleted
     UPDATE nations SET ruling_faction_id = NULL WHERE ruling_faction_id IS NOT NULL;
-    result := result || '{"nations.ruling_faction_id": "nulled"}'::JSONB;
+    UPDATE nations SET monarch_faction_id = NULL WHERE monarch_faction_id IS NOT NULL;
+    BEGIN
+        UPDATE construction_contracts SET bond_id = NULL WHERE bond_id IS NOT NULL;
+    EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;
+    END;
+    result := result || '{"nations.ruling_faction_id": "nulled", "nations.monarch_faction_id": "nulled", "construction_contracts.bond_id": "nulled"}'::JSONB;
 
     -- Null out diplomatic_relations FKs
     BEGIN

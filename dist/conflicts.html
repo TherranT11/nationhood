@@ -11,13 +11,15 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Shared Styles -->
-  <script type="module" crossorigin src="/assets/conflicts-D9dKrK81.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-BK1MnW6R.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
-  <link rel="modulepreload" crossorigin href="/assets/issues-EU10Jwmz.js">
-  <link rel="stylesheet" crossorigin href="/assets/conflicts-GLQ6L7KY.css">
-  <link rel="stylesheet" crossorigin href="/assets/dashboard-Bk9Ly0o-.css">
+  <script type="module" crossorigin src="/assets/conflicts-C7qlc_cS.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-DjsO9xG_.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-rMK78I65.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-CrPqfvZ8.js">
+  <link rel="stylesheet" crossorigin href="/assets/conflicts-D7SbM5zM.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
 </head>
 <body>
 
@@ -147,44 +149,35 @@
             <div class="empty-subtitle">Select an issue from the sidebar to view details.</div>
         </div>
 
-        <!-- Issue detail (hidden until selected) -->
+        <!-- Issue detail (hidden until selected) — Card System UI -->
         <div class="issues-detail" id="issues-detail" style="display:none;">
+            <div style="display:flex;height:100%;overflow:hidden;">
 
-            <!-- Scrollable top section -->
-            <div class="issues-scroll" id="issues-scroll">
+                <!-- LEFT: Header + Intel + Status + Deck + Card + Hand -->
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;">
 
-                <!-- Header -->
-                <div class="issues-header" id="issues-header"></div>
+                    <!-- Header -->
+                    <div id="issues-header" style="padding:10px 20px 8px;border-bottom:1px solid rgba(200,196,184,0.06);"></div>
 
-                <!-- Action notification banner (opponent took action / your diplomatic pending) -->
-                <div class="issues-action-notification" id="issues-action-notification" style="display:none;"></div>
+                    <!-- Bilateral Intel -->
+                    <div id="issues-intel" style="display:none;border-bottom:1px solid rgba(200,196,184,0.06);"></div>
 
-                <!-- Status bar: Tension / Favor / Status -->
-                <div class="issues-status-bar" id="issues-status-bar"></div>
+                    <!-- Status strip + Deck viz -->
+                    <div id="issues-status-bar" style="border-bottom:1px solid rgba(200,196,184,0.06);"></div>
+                    <div id="issues-deck-strip" style="border-bottom:1px solid rgba(200,196,184,0.06);"></div>
 
-                <!-- Active modifiers -->
-                <div class="issues-section" id="issues-modifiers-section">
-                    <div class="issues-section-label">Active Modifiers</div>
-                    <div id="issues-modifiers-list"></div>
+                    <!-- Active Card -->
+                    <div id="issues-card-col" style="flex:1;min-height:0;overflow-y:auto;padding:14px 20px;"></div>
+
+                    <!-- Hand strip (bottom) -->
+                    <div id="issues-hand-area" style="border-top:1px solid rgba(200,196,184,0.06);flex-shrink:0;"></div>
+
                 </div>
 
-                <!-- Current effects summary -->
-                <div class="issues-section" id="issues-effects-section">
-                    <div class="issues-section-label">Current Effects (per tick)</div>
-                    <div id="issues-effects-list"></div>
-                </div>
-
-                <!-- History -->
-                <div class="issues-section" id="issues-history-section">
-                    <div class="issues-section-label">History</div>
-                    <div id="issues-history-list"></div>
-                </div>
+                <!-- RIGHT: Timeline (full height, scrollable) -->
+                <div id="issues-timeline-col" style="width:400px;flex-shrink:0;overflow-y:auto;padding:14px 18px;background:var(--bg-elevated,#1a1a17);border-left:1px solid rgba(200,196,184,0.06);"></div>
 
             </div>
-
-            <!-- Actions panel (bottom, fixed) -->
-            <div class="issues-actions-panel" id="issues-actions-panel"></div>
-
         </div>
     </div>
 </div>

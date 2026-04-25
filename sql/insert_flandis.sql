@@ -86,7 +86,7 @@ UPDATE nations SET
     -- Energy & Resources
     energy_generation = 64,
     renewable_energy_percentage = 18,
-    arable_land = 52,
+    arable_land = 34,
     rare_minerals = 12,
     oil_and_gas = 34,
     fuel_prices = 72,
@@ -186,7 +186,7 @@ SET seed_stats = jsonb_build_object(
     'energy_generation', 64,
     'renewable_energy_percentage', 18
 ) || jsonb_build_object(
-    'arable_land', 52,
+    'arable_land', 34,
     'rare_minerals', 12,
     'oil_and_gas', 34,
     'fuel_prices', 72,

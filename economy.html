@@ -31,7 +31,7 @@ import { hasElectedPresident } from './js/game/government-types.js';
 import { fetchActiveCoalition } from './js/game/government-structure.js';
 import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TAX_CONFIG } from './js/game/budget.js';
 import { RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS } from './js/game/diplomacy-constants.js';
-import { TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, formatSectorVolume } from './js/game/trade-constants.js';
+import { TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, formatSectorVolume, FOOD_SUBSECTORS, FOOD_SUBSECTOR_KEYS, FOOD_SUBSECTOR_MAP, isFoodSubsector, getEffectiveArableLand, calculateSpoilageMultiplier, computeFoodSecurityStatus, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, calculateReserveMonths, calculateStockpileCapacity, calculateStockpileSpoilage, STOCKPILE_CONFIG } from './js/game/trade-constants.js';
 import { ISSUE_CATEGORY_STATS, buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { formatStatName } from './js/game/political-actions.js';
 import { getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG } from './js/game/sovereign-default.js';
@@ -48,6 +48,9 @@ var currentNation = null;
 var allNations = null;
 var activeTab = 'overview';
 var activeSector = 'fuel_energy';
+var activeFoodSubsector = 'grains_staples';
+var foodAllocation = null;
+var foodStockpiles = null;
 var tradeAgreements = null;
 
 // Single source of truth for capped tariff revenue (per tick, capped at 0.2% of GDP).
@@ -56,8 +59,9 @@ function getCappedTariffRevenue(nation) {
     if (!tradeData || !tradeData.summary) return 0;
     var raw = Number(tradeData.summary.tariff_revenue) || 0;
     if (raw <= 0) return 0;
+    // Cap at 5% of GDP — realistic range for high-tariff nations is 1-5% of GDP
     var gdp = Number(nation.gdp ?? nation.GDP ?? 0);
-    return (gdp > 0) ? Math.min(raw, gdp * 0.002) : raw;
+    return (gdp > 0) ? Math.min(raw, gdp * 0.05) : raw;
 }
 
 // Nation map colors for display
@@ -107,7 +111,8 @@ initPage('economy', async function(state) {
         loadTaxAdminFunding(nation),
         loadTaxPendingBills(nation.id),
         loadTaxHistory(nation.id),
-        fetchActiveCoalition(_supabase, nation.id).then(function(c) { activeCoalition = c; })
+        fetchActiveCoalition(_supabase, nation.id).then(function(c) { activeCoalition = c; }),
+        loadIndustriesData(nation.id)
     ]);
     var failures = results.filter(function(r) { return r.status === 'rejected'; });
     if (failures.length > 0) {
@@ -280,7 +285,7 @@ async function loadTradeData(nationId) {
     var summary = sumRes.data[0];
 
     var flowRes = await _supabase.from('trade_flows')
-        .select('sector, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
+        .select('sector, domestic_production, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
         .eq('nation_id', nationId)
         .eq('tick', summary.tick);
 
@@ -407,6 +412,30 @@ async function loadTradeData(nationId) {
 
     tradeData = { summary: summary, flows: flows, prevFlows: prevFlows, partners: partners, allAffinities: allAffinities, nationNames: nationNames };
     qCacheSet(cacheKey, tradeData, 2 * 60 * 1000);
+
+    // Fetch food land allocation for this nation
+    if (!foodAllocation) {
+        var allocRes = await _supabase.from('food_land_allocation')
+            .select('grains_pct, livestock_pct, perishables_pct, cash_crops_pct')
+            .eq('nation_id', nationId)
+            .limit(1);
+        if (allocRes.data && allocRes.data.length > 0) {
+            foodAllocation = allocRes.data[0];
+        } else {
+            foodAllocation = DEFAULT_FOOD_ALLOCATION;
+        }
+    }
+
+    // Fetch food stockpiles for this nation
+    var stockRes = await _supabase.from('food_stockpiles')
+        .select('sector, reserve_value, max_capacity, last_spoilage, last_inflow, last_outflow')
+        .eq('nation_id', nationId);
+    if (stockRes.data && stockRes.data.length > 0) {
+        foodStockpiles = {};
+        for (var si = 0; si < stockRes.data.length; si++) {
+            foodStockpiles[stockRes.data[si].sector] = stockRes.data[si];
+        }
+    }
 }
 
 // ==================== ALL NATIONS DATA (NEW) ====================
@@ -489,6 +518,7 @@ function renderTabBar() {
         { key: 'taxation', label: 'Taxation' },
         { key: 'trade', label: 'Trade' },
         { key: 'sectors', label: 'Sectors' },
+        { key: 'industries', label: 'Industries' },
         { key: 'tariffs', label: 'Tariffs' }
     ];
     var h = '<div class="econ-tab-bar">';
@@ -507,6 +537,7 @@ function renderTabContent(nation) {
         case 'taxation': return renderTaxationTab(nation);
         case 'trade': return renderTradeTab(nation);
         case 'sectors': return renderSectorsTab(nation);
+        case 'industries': return renderIndustriesTab(nation);
         case 'tariffs': return renderTariffsTab(nation);
         default: return '';
     }
@@ -532,6 +563,11 @@ function wireTabEvents(nation) {
         document.querySelectorAll('.sector-tab').forEach(function(tab) {
             tab.addEventListener('click', function() {
                 selectSector(tab.getAttribute('data-sector'), currentNation);
+            });
+        });
+        document.querySelectorAll('.food-subsector-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                selectFoodSubsector(tab.getAttribute('data-subsector'), currentNation);
             });
         });
     }
@@ -580,7 +616,7 @@ function wireTariffSimulator(nation) {
         // Update projections
         var projEl = document.getElementById('tsim-projections');
         if (projEl) {
-            var gdpCap = Number(nation.gdp ?? nation.GDP ?? 0) * 0.002;
+            var gdpCap = Number(nation.gdp ?? nation.GDP ?? 0) * 0.05;
             projEl.innerHTML = renderTariffProjections(currentRate, simRate, currentDampener, totalCurrentImports, sectorImports, collectionRate, currentTariffRev, gdpCap);
         }
     });
@@ -629,18 +665,13 @@ async function submitTaxBill(nation) {
     var changedKeys = Object.keys(taxRateChanges).filter(function(k) { return taxRateChanges[k] !== originalRates[k]; });
     if (changedKeys.length === 0) return;
 
-    var apCost = GAME_CONFIG.DRAFT_BILL_AP_COST || 2;
-    // Leader trait: policy_wonk → -1 AP for drafting bills
-    if (currentFaction && (currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost = Math.max(1, apCost - 1);
-    // Leader trait: micromanager → +1 AP for all actions
-    if (currentFaction && (currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
     var termBill = 'bill';
 
     // Build confirmation summary
     var gdp = Number(nation.gdp || 0);
     var eff = Number(nation.efficiency || 50);
     var corr = Number(nation.corruption || 50);
-    var collectionRate = (eff + (100 - corr)) / 200;
+    var collectionRate = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
     var summaryLines = [];
     for (var i = 0; i < changedKeys.length; i++) {
         var key = changedKeys[i];
@@ -660,15 +691,10 @@ async function submitTaxBill(nation) {
             impactLine
         );
     }
-    var confirmMsg = 'Submit Tax Reform Bill?\n\n' +
-        summaryLines.join('\n\n') + '\n\nCost: ' + apCost + ' AP';
+    var confirmMsg = 'Submit Tax Reform Bill?\n\n' + summaryLines.join('\n\n');
     if (!confirm(confirmMsg)) return;
 
     try {
-        // Deduct AP
-        var apResult = await deductAP(_supabase, currentFaction.id, apCost);
-        currentFaction.action_points = apResult.newAp;
-
         // Get current tick
         var { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         var tick = shard ? shard.current_tick : 0;
@@ -829,12 +855,12 @@ function renderOverviewTab(nation) {
     h += '<div class="econ-section">';
     h += '<div class="econ-section-header">FISCAL SNAPSHOT</div>';
     h += '<div class="econ-cards-row">';
-    h += renderOverviewCard('Revenue', formatBudgetCurrency(bs.budget.grossRevenue), 'neutral', null);
-    h += renderOverviewCard('Expenditures', formatBudgetCurrency(bs.totalExpenditure), 'neutral', null);
+    h += renderOverviewCard('Revenue', formatDualPeriod(bs.budget.grossRevenue), 'neutral', null);
+    h += renderOverviewCard('Expenditures', formatDualPeriod(bs.totalExpenditure), 'neutral', null);
     var balClass = bs.balance >= 0 ? 'surplus' : 'deficit';
     var balSign = bs.balance >= 0 ? '+' : '';
     var balLabel = bs.balance >= 0 ? 'Surplus' : 'Deficit';
-    h += renderOverviewCard(balLabel, balSign + formatBudgetCurrency(bs.balance), balClass, null);
+    h += renderOverviewCard(balLabel, formatDualPeriod(bs.balance, balSign), balClass, null);
     h += '</div>';
     h += '</div>';
 
@@ -849,11 +875,11 @@ function renderOverviewTab(nation) {
         var totalImports = Number(tradeData.summary.total_imports) || 0;
         var surplus = Number(tradeData.summary.trade_surplus) || 0;
         h += '<div class="econ-cards-row">';
-        h += renderOverviewCard('Exports', formatBudgetCurrency(totalExports), 'surplus', 'Per Tick');
-        h += renderOverviewCard('Imports', formatBudgetCurrency(totalImports), 'deficit', 'Per Tick');
+        h += renderOverviewCard('Exports', formatDualPeriod(totalExports), 'surplus', null);
+        h += renderOverviewCard('Imports', formatDualPeriod(totalImports), 'deficit', null);
         var tCls = surplus >= 0 ? 'surplus' : 'deficit';
         var tSign = surplus >= 0 ? '+' : '';
-        h += renderOverviewCard('Balance', tSign + formatBudgetCurrency(surplus), tCls, 'Per Tick');
+        h += renderOverviewCard('Balance', formatDualPeriod(surplus, tSign), tCls, null);
         h += '</div>';
     } else {
         h += '<div class="econ-placeholder">Trade data will appear after the next tick.</div>';
@@ -1266,7 +1292,7 @@ function computeSparklineRevenues(taxKey, gdpMultiplier) {
         var gdp = Number(snap.gdp || 0);
         var eff = Number(snap.efficiency || 50);
         var corr = Number(snap.corruption || 50);
-        var cr = (eff + (100 - corr)) / 200;
+        var cr = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
         revenues.push(gdp * (rate / 100) * gdpMultiplier * cr);
     }
     return revenues;
@@ -1310,7 +1336,7 @@ function renderTaxationTab(nation) {
     }
 
     var avgRate = (incomeTax + corpTax + salesTax) / 3;
-    var totalTaxRevenue = budget.incomeRevenue + budget.corpRevenue + budget.salesRevenue;
+    var totalTaxRevenue = budget.incomeRevenue + budget.corpRevenue + budget.salesRevenue + (budget.propertyRevenue || 0);
 
     var h = '<div class="econ-tab-body">';
 
@@ -1318,7 +1344,7 @@ function renderTaxationTab(nation) {
     h += '<div class="tax-summary-bar">';
     h += '<div class="tax-summary-stat">';
     h += '<span class="tax-summary-label">Tax Revenue</span>';
-    h += '<span class="tax-summary-value green">' + formatBudgetCurrency(totalTaxRevenue) + '/year</span>';
+    h += '<span class="tax-summary-value green">' + formatDualPeriod(totalTaxRevenue) + '</span>';
     h += '<span class="tax-summary-detail">' + (budget.grossRevenue > 0 ? Math.round(totalTaxRevenue / budget.grossRevenue * 100) : 0) + '% of total income</span>';
     h += '</div>';
 
@@ -1379,17 +1405,13 @@ function renderTaxationTab(nation) {
     var isInGovt = activeCoalition && currentFaction && (activeCoalition.party_ids || []).indexOf(currentFaction.id) !== -1;
     var hasAuthority = mySeats >= 1 || isInGovt;
     var canSubmit = hasAuthority && hasChanges;
-    var apCost = GAME_CONFIG.DRAFT_BILL_AP_COST || 2;
-    if (currentFaction && (currentFaction.leader_positive_traits || []).includes('policy_wonk')) apCost = Math.max(1, apCost - 1);
-    if (currentFaction && (currentFaction.leader_negative_traits || []).includes('micromanager')) apCost += 1;
-    var hasAp = currentFaction ? (currentFaction.action_points || 0) >= apCost : false;
-    var btnDisabled = !(canSubmit && hasAp);
+    var btnDisabled = !canSubmit;
     var termBill = 'Bill';
-    var btnTitle = !hasAuthority ? 'Your party holds no legislature seats' : !hasChanges ? 'Adjust at least one tax rate' : !hasAp ? 'Not enough AP (' + apCost + ' required)' : 'Submit tax reform ' + termBill.toLowerCase();
+    var btnTitle = !hasAuthority ? 'Your party holds no legislature seats' : !hasChanges ? 'Adjust at least one tax rate' : 'Submit tax reform ' + termBill.toLowerCase();
 
     h += '<div class="tax-summary-spacer"></div>';
     h += '<button class="tax-submit-btn" id="tax-submit-btn" ' + (btnDisabled ? 'disabled' : '') + ' title="' + escapeHtml(btnTitle) + '">';
-    h += 'Submit Tax ' + termBill + ' &mdash; ' + apCost + ' AP';
+    h += 'Submit Tax ' + termBill;
     h += '</button>';
 
     h += '</div>'; // .tax-summary-bar
@@ -1424,7 +1446,7 @@ function renderTaxCard(config, nation, budget) {
     var gdp = Number(nation.gdp || 0);
     var eff = Number(nation.efficiency || 50);
     var corr = Number(nation.corruption || 50);
-    var collectionRate = (eff + (100 - corr)) / 200;
+    var collectionRate = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
     var projectedRevenue = gdp * (currentRate / 100) * config.gdpMultiplier * collectionRate;
     var revenueDelta = projectedRevenue - revenue;
 
@@ -1458,12 +1480,12 @@ function renderTaxCard(config, nation, budget) {
     h += '<div class="tax-revenue-block">';
     h += '<span class="tax-revenue-label">Revenue</span>';
     if (isChanged) {
-        h += '<span class="tax-revenue-value">' + formatBudgetCurrency(projectedRevenue) + '/yr</span>';
+        h += '<span class="tax-revenue-value">' + formatDualPeriod(projectedRevenue) + '</span>';
         var deltaClass = revenueDelta >= 0 ? 'tax-delta-positive' : 'tax-delta-negative';
         var deltaSign = revenueDelta >= 0 ? '+' : '';
-        h += '<span class="tax-revenue-delta ' + deltaClass + '">' + deltaSign + formatBudgetCurrency(revenueDelta) + '/yr</span>';
+        h += '<span class="tax-revenue-delta ' + deltaClass + '">' + formatDualPeriod(revenueDelta, deltaSign) + '</span>';
     } else {
-        h += '<span class="tax-revenue-value">' + formatBudgetCurrency(revenue) + '/yr</span>';
+        h += '<span class="tax-revenue-value">' + formatDualPeriod(revenue) + '</span>';
     }
     h += '</div>';
     h += '</div>';
@@ -1634,15 +1656,15 @@ function renderBudgetTab(nation) {
     h += '<div class="bv2-summary-bar">';
     h += '<div class="bv2-card">';
     h += '<div class="bv2-card-label" style="color:var(--green);">REVENUE</div>';
-    h += '<div class="bv2-card-value">' + formatBudgetCurrency(budget.grossRevenue) + '</div>';
+    h += '<div class="bv2-card-value">' + formatDualPeriod(budget.grossRevenue) + '</div>';
     h += '</div>';
     h += '<div class="bv2-card">';
     h += '<div class="bv2-card-label" style="color:var(--red);">EXPENDITURES</div>';
-    h += '<div class="bv2-card-value">' + formatBudgetCurrency(totalExpenditure) + '</div>';
+    h += '<div class="bv2-card-value">' + formatDualPeriod(totalExpenditure) + '</div>';
     h += '</div>';
     h += '<div class="bv2-card">';
     h += '<div class="bv2-card-label" style="color:' + (isDeficit ? 'var(--red)' : 'var(--green)') + ';">' + (isDeficit ? 'DEFICIT' : 'SURPLUS') + '</div>';
-    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? 'var(--red)' : 'var(--green)') + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
+    h += '<div class="bv2-card-value" style="color:' + (isDeficit ? 'var(--red)' : 'var(--green)') + ';">' + formatDualPeriod(balance, balSign) + '</div>';
     h += '</div>';
     h += '</div>';
 
@@ -1657,12 +1679,13 @@ function renderBudgetTab(nation) {
     h += '<div class="bv2-col">';
     h += '<div class="bv2-col-header">';
     h += '<span class="bv2-col-title" style="color:var(--green);">REVENUES</span>';
-    h += '<span class="bv2-col-total" style="color:var(--green);">Total: ' + formatBudgetCurrency(budget.grossRevenue) + ' / yr</span>';
+    h += '<span class="bv2-col-total" style="color:var(--green);">Total: ' + formatDualPeriod(budget.grossRevenue) + '</span>';
     h += '</div>';
 
     h += bv2RevenueRow('INCOME TAX', Math.round(Number(nation.income_tax || 0)) + '% rate · Income bracket', budget.incomeRevenue);
     h += bv2RevenueRow('SALES TAX', Math.round(Number(nation.sales_tax || 0)) + '% rate · Consumption', budget.salesRevenue);
     h += bv2RevenueRow('CORPORATE TAX', Math.round(Number(nation.corporate_tax || 0)) + '% rate · Corporate profits', budget.corpRevenue);
+    h += bv2RevenueRow('PROPERTY TAX', Math.round(Number(nation.property_tax || 0)) + '% rate · Real estate value', budget.propertyRevenue || 0);
     h += bv2RevenueRow('TARIFF & TRADE', 'Import duties · Trade balance', budget.tariffRevenue);
     if (budget.oilRevenue > 0) {
         h += bv2RevenueRow('OIL & GAS', 'State resource revenue', budget.oilRevenue);
@@ -1673,7 +1696,7 @@ function renderBudgetTab(nation) {
 
     h += '<div class="bv2-total-row">';
     h += '<span class="bv2-total-label">TOTAL REVENUE</span>';
-    h += '<span class="bv2-total-value">' + formatBudgetCurrency(budget.grossRevenue) + '/yr</span>';
+    h += '<span class="bv2-total-value">' + formatDualPeriod(budget.grossRevenue) + '</span>';
     h += '</div>';
     h += '</div>';
 
@@ -1681,7 +1704,7 @@ function renderBudgetTab(nation) {
     h += '<div class="bv2-col">';
     h += '<div class="bv2-col-header">';
     h += '<span class="bv2-col-title" style="color:var(--red);">EXPENDITURES &mdash; MINISTRY COSTS</span>';
-    h += '<span class="bv2-col-total" style="color:var(--red);">Total: ' + formatBudgetCurrency(totalExpenditure) + ' / yr</span>';
+    h += '<span class="bv2-col-total" style="color:var(--red);">Total: ' + formatDualPeriod(totalExpenditure) + '</span>';
     h += '</div>';
 
     // Sort ministries by cost descending
@@ -1709,7 +1732,7 @@ function renderBudgetTab(nation) {
 
     h += '<div class="bv2-total-row">';
     h += '<span class="bv2-total-label">TOTAL EXPENDITURE</span>';
-    h += '<span class="bv2-total-value">' + formatBudgetCurrency(totalExpenditure) + '/yr</span>';
+    h += '<span class="bv2-total-value">' + formatDualPeriod(totalExpenditure) + '</span>';
     h += '</div>';
     h += '</div>';
 
@@ -1724,14 +1747,14 @@ function renderBudgetTab(nation) {
     h += '<span class="bv2-net-icon" style="color:' + netColor + ';">' + netIcon + '</span>';
     h += '<span class="bv2-net-label" style="color:' + netColor + ';">' + netLabel + '</span>';
     h += '</div>';
-    h += '<div class="bv2-net-amount" style="color:' + netColor + ';">' + balSign + formatBudgetCurrency(balance) + '</div>';
+    h += '<div class="bv2-net-amount" style="color:' + netColor + ';">' + formatDualPeriod(balance, balSign) + '</div>';
     if (isDeficit) {
         h += '<div class="bv2-net-subtext">SHORTFALL ATTRIBUTING TO NATIONAL DEBT THIS TICK</div>';
     }
     h += '<div class="bv2-net-breakdown">';
-    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">TOTAL REVENUE</div><div class="bv2-net-col-value">' + formatBudgetCurrency(budget.grossRevenue) + '</div></div>';
-    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">TOTAL EXPENDITURE</div><div class="bv2-net-col-value">' + formatBudgetCurrency(totalExpenditure) + '</div></div>';
-    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">NET</div><div class="bv2-net-col-value" style="color:' + netColor + ';">' + balSign + formatBudgetCurrency(balance) + '</div></div>';
+    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">TOTAL REVENUE</div><div class="bv2-net-col-value">' + formatDualPeriod(budget.grossRevenue) + '</div></div>';
+    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">TOTAL EXPENDITURE</div><div class="bv2-net-col-value">' + formatDualPeriod(totalExpenditure) + '</div></div>';
+    h += '<div class="bv2-net-col"><div class="bv2-net-col-label">NET</div><div class="bv2-net-col-value" style="color:' + netColor + ';">' + formatDualPeriod(balance, balSign) + '</div></div>';
     h += '</div>';
     h += '</div>';
 
@@ -1762,7 +1785,7 @@ function bv2RevenueRow(label, subtitle, value) {
     h += '<div class="bv2-row-label">' + escapeHtml(label) + '</div>';
     h += '<div class="bv2-row-subtitle">' + escapeHtml(subtitle) + '</div>';
     h += '</div>';
-    h += '<div class="bv2-row-value">' + formatBudgetCurrency(value) + '/yr</div>';
+    h += '<div class="bv2-row-value">' + formatDualPeriod(value) + '</div>';
     h += '</div>';
     return h;
 }
@@ -1777,7 +1800,7 @@ function bv2ExpenditureRow(label, subtitle, value, fundingPct) {
     if (fundingPct !== null) {
         h += '<span class="bv2-funding-badge">' + fundingPct + '%</span>';
     }
-    h += '<span class="bv2-row-value">' + formatBudgetCurrency(value) + '/yr</span>';
+    h += '<span class="bv2-row-value">' + formatDualPeriod(value) + '</span>';
     h += '</div>';
     h += '</div>';
     return h;
@@ -1803,15 +1826,14 @@ function renderTradeTab(nation) {
     // --- Trade Overview Cards ---
     h += '<div class="econ-section">';
     h += '<div class="econ-section-header">TRADE OVERVIEW</div>';
-    h += '<div class="econ-section-subtitle">All values per tick</div>';
     h += '<div class="econ-cards-row econ-cards-4">';
-    h += renderOverviewCard('Total Exports', formatBudgetCurrency(totalExports), 'surplus', null);
-    h += renderOverviewCard('Total Imports', formatBudgetCurrency(totalImports), 'deficit', null);
+    h += renderOverviewCard('Total Exports', formatDualPeriod(totalExports), 'surplus', null);
+    h += renderOverviewCard('Total Imports', formatDualPeriod(totalImports), 'deficit', null);
     var balCls = surplus >= 0 ? 'surplus' : 'deficit';
     var balSign = surplus >= 0 ? '+' : '';
-    h += renderOverviewCard('Trade Balance', balSign + formatBudgetCurrency(surplus), balCls, null);
+    h += renderOverviewCard('Trade Balance', formatDualPeriod(surplus, balSign), balCls, null);
     var cappedTariffRev = getCappedTariffRevenue(nation);
-    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(cappedTariffRev), cappedTariffRev > 0 ? 'surplus' : 'neutral', 'Per Tick');
+    h += renderOverviewCard('Tariff Revenue', formatDualPeriod(cappedTariffRev), cappedTariffRev > 0 ? 'surplus' : 'neutral', null);
     h += '</div>';
     h += '</div>';
 
@@ -2002,7 +2024,7 @@ function renderTradePartnersSection() {
 
     var h = '<div class="econ-section">';
     h += '<div class="econ-section-header">TRADING PARTNERS</div>';
-    h += '<div class="econ-section-subtitle">Bilateral trade volumes per tick, sorted by total volume.</div>';
+    h += '<div class="econ-section-subtitle">Bilateral trade volumes sorted by total volume.</div>';
     h += '<div class="trade-partners-grid">';
 
     for (var i = 0; i < partnerIds.length; i++) {
@@ -2043,11 +2065,11 @@ function renderTradePartnersSection() {
 
         // Stats row
         h += '<div class="partner-stats">';
-        h += '<div class="partner-stat"><span class="partner-stat-label">EXP</span><span class="partner-stat-value exports">' + formatBudgetCurrency(p.totalExports) + '</span></div>';
-        h += '<div class="partner-stat"><span class="partner-stat-label">IMP</span><span class="partner-stat-value imports">' + formatBudgetCurrency(p.totalImports) + '</span></div>';
+        h += '<div class="partner-stat"><span class="partner-stat-label">EXP</span><span class="partner-stat-value exports">' + formatDualPeriod(p.totalExports) + '</span></div>';
+        h += '<div class="partner-stat"><span class="partner-stat-label">IMP</span><span class="partner-stat-value imports">' + formatDualPeriod(p.totalImports) + '</span></div>';
         var balClass = balance >= 0 ? 'surplus' : 'deficit';
         var balSign = balance >= 0 ? '+' : '';
-        h += '<div class="partner-stat"><span class="partner-stat-label">NET</span><span class="partner-stat-value ' + balClass + '">' + balSign + formatBudgetCurrency(balance) + '</span></div>';
+        h += '<div class="partner-stat"><span class="partner-stat-label">NET</span><span class="partner-stat-value ' + balClass + '">' + formatDualPeriod(balance, balSign) + '</span></div>';
         h += '</div>';
 
         // Volume bar
@@ -2109,19 +2131,37 @@ function renderSectorsTab(nation) {
     h += '<div class="sector-tabs">';
     for (var i = 0; i < TRADE_SECTORS.length; i++) {
         var s = TRADE_SECTORS[i];
+        var isFood = s.key === 'food_agriculture';
         var score = getSectorScore(nation, s);
-        var isActive = s.key === activeSector;
+        var isActive = isFood ? (activeSector === 'food_agriculture' || isFoodSubsector(activeSector)) : s.key === activeSector;
         var borderColor = score >= 70 ? '#5cb85c' : score >= 40 ? '#888' : '#d9534f';
         h += '<button class="sector-tab' + (isActive ? ' active' : '') + '" data-sector="' + s.key + '" style="' + (isActive ? 'border-bottom-color:' + borderColor : '') + '">';
         h += escapeHtml(s.label);
         h += '</button>';
     }
     h += '</div>';
+
+    // Food sub-sector tabs (shown when Food & Agriculture is active)
+    if (activeSector === 'food_agriculture' || isFoodSubsector(activeSector)) {
+        h += '<div class="food-subsector-tabs">';
+        for (var fi = 0; fi < FOOD_SUBSECTORS.length; fi++) {
+            var fs = FOOD_SUBSECTORS[fi];
+            var fsActive = fs.key === activeFoodSubsector;
+            h += '<button class="food-subsector-tab' + (fsActive ? ' active' : '') + '" data-subsector="' + fs.key + '">';
+            h += escapeHtml(fs.label);
+            h += '</button>';
+        }
+        h += '</div>';
+    }
     h += '</div>';
 
     // Sector detail
     h += '<div id="sector-detail">';
-    h += renderSectorDetail(nation, activeSector);
+    if (activeSector === 'food_agriculture' || isFoodSubsector(activeSector)) {
+        h += renderFoodSubsectorDetail(nation, activeFoodSubsector);
+    } else {
+        h += renderSectorDetail(nation, activeSector);
+    }
     h += '</div>';
 
     h += '</div></div>';
@@ -2129,24 +2169,375 @@ function renderSectorsTab(nation) {
 }
 
 function selectSector(sectorKey, nation) {
-    activeSector = sectorKey;
-    // Update tab active states
+    if (sectorKey === 'food_agriculture') {
+        activeSector = 'food_agriculture';
+        // Keep current food subsector or default to grains
+        if (!isFoodSubsector(activeFoodSubsector)) activeFoodSubsector = 'grains_staples';
+    } else if (isFoodSubsector(sectorKey)) {
+        activeSector = 'food_agriculture';
+        activeFoodSubsector = sectorKey;
+    } else {
+        activeSector = sectorKey;
+    }
+
+    // Update main tab active states
     document.querySelectorAll('.sector-tab').forEach(function(t) {
         t.classList.remove('active');
         t.style.borderBottomColor = 'transparent';
     });
-    var target = document.querySelector('.sector-tab[data-sector="' + sectorKey + '"]');
+    var mainKey = isFoodSubsector(sectorKey) ? 'food_agriculture' : sectorKey;
+    var target = document.querySelector('.sector-tab[data-sector="' + mainKey + '"]');
     if (target) {
         target.classList.add('active');
-        var sector = TRADE_SECTOR_MAP[sectorKey];
+        var sector = TRADE_SECTOR_MAP[mainKey];
         if (sector && nation) {
             var score = getSectorScore(nation, sector);
             var borderColor = score >= 70 ? '#5cb85c' : score >= 40 ? '#888' : '#d9534f';
             target.style.borderBottomColor = borderColor;
         }
     }
+
+    // Re-render the full sectors tab to show/hide food sub-tabs
+    var tabContent = document.getElementById('econ-tab-content');
+    if (tabContent && nation) {
+        tabContent.innerHTML = renderSectorsTab(nation);
+        // Re-attach sector tab click handlers
+        tabContent.querySelectorAll('.sector-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                selectSector(tab.getAttribute('data-sector'), currentNation);
+            });
+        });
+        tabContent.querySelectorAll('.food-subsector-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                selectFoodSubsector(tab.getAttribute('data-subsector'), currentNation);
+            });
+        });
+    }
+}
+
+function selectFoodSubsector(subsectorKey, nation) {
+    activeFoodSubsector = subsectorKey;
+    // Update food sub-tab active states
+    document.querySelectorAll('.food-subsector-tab').forEach(function(t) {
+        t.classList.remove('active');
+    });
+    var target = document.querySelector('.food-subsector-tab[data-subsector="' + subsectorKey + '"]');
+    if (target) target.classList.add('active');
+    // Re-render detail only
     var el = document.getElementById('sector-detail');
-    if (el && nation) el.innerHTML = renderSectorDetail(nation, sectorKey);
+    if (el && nation) el.innerHTML = renderFoodSubsectorDetail(nation, subsectorKey);
+}
+
+// ==================== FOOD SUB-SECTOR DETAIL VIEW ====================
+function renderFoodSubsectorDetail(nation, subsectorKey) {
+    var sub = FOOD_SUBSECTOR_MAP[subsectorKey];
+    if (!sub) return '<div class="econ-section"><div style="padding:16px;color:var(--text-secondary);">Unknown food sub-sector.</div></div>';
+
+    var alloc = foodAllocation || DEFAULT_FOOD_ALLOCATION;
+    var effectiveLand = getEffectiveArableLand(nation, subsectorKey, alloc);
+    var allocPct = Number(alloc[sub.allocation_key]) || 0;
+
+    var flow = (tradeData && tradeData.flows) ? tradeData.flows[subsectorKey] : null;
+    // domProd = what this sub-sector actually produces each tick (gross).
+    // expCap = exportable surplus after domestic demand + modifiers. The
+    // Production card uses domProd; untraded-surplus math still uses expCap.
+    var domProd = flow ? Number(flow.domestic_production) || 0 : 0;
+    var expCap = flow ? Number(flow.export_capacity) || 0 : 0;
+    var expVol = flow ? Number(flow.export_volume) || 0 : 0;
+    var impDem = flow ? Number(flow.import_demand) || 0 : 0;
+    var impVol = flow ? Number(flow.import_volume) || 0 : 0;
+    var net = expVol - impVol;
+    var priceMod = flow ? Number(flow.price_modifier) || 1 : 1;
+
+    var h = '';
+
+    // ── Header: Sub-sector name + description ──
+    h += '<div class="econ-section">';
+    h += '<div class="econ-section-header" style="display:flex;align-items:center;gap:10px;">';
+    h += escapeHtml(sub.label).toUpperCase();
+    if (sub.stockpilable) h += '<span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:#2a3a2a;color:#5cb85c;font-weight:normal;letter-spacing:0.5px;">STOCKPILABLE</span>';
+    h += '</div>';
+    h += '<div class="econ-section-subtitle">' + escapeHtml(sub.description) + '</div>';
+
+    // ── Top cards: 2 rows × 3 columns (Cash Crops layout) ──
+    // Organic exports = current export volume (no trade deal needed)
+    // Trade deal exports = 0 for now (RSC pre-allocations tracked separately in future)
+    var organicExports = expVol;
+    var tradeDealExports = 0;
+    // Untraded surplus = production capacity beyond what's exported + consumed domestically
+    var untradedSurplus = Math.max(0, expCap - expVol);
+    var surplusAtCurrentPrice = Math.round(untradedSurplus * priceMod);
+    var surplusAtFullPrice = untradedSurplus;
+
+    var prodLabel = formatSectorVolume(domProd, subsectorKey);
+    var demLabel = formatSectorVolume(impDem, subsectorKey);
+    var orgExpLabel = formatSectorVolume(organicExports, subsectorKey);
+    var tdExpLabel = formatSectorVolume(tradeDealExports, subsectorKey);
+    var impLabel = formatSectorVolume(impVol, subsectorKey);
+    var surplusLabel = formatSectorVolume(untradedSurplus, subsectorKey);
+
+    h += '<div class="econ-cards-row econ-cards-3" style="margin-top:12px;">';
+    h += renderOverviewCard('Production', prodLabel || formatBudgetCurrency(domProd), 'neutral', 'gross output / year');
+    h += renderOverviewCard('Import Demand', demLabel || formatBudgetCurrency(impDem), impDem > domProd ? 'deficit' : 'neutral', 'imports wanted');
+    h += renderOverviewCard('Exports \u2014 Organic', orgExpLabel || formatBudgetCurrency(organicExports), organicExports > 0 ? 'surplus' : 'neutral', organicExports > 0 ? 'no trade deal required' : 'no organic exports');
+    h += '</div>';
+
+    h += '<div class="econ-cards-row econ-cards-3" style="margin-top:0;">';
+    h += renderOverviewCard('Exports \u2014 Trade Deals', tdExpLabel || formatBudgetCurrency(tradeDealExports), tradeDealExports > 0 ? 'surplus' : 'neutral', tradeDealExports > 0 ? 'active agreements' : 'no active deals');
+    h += renderOverviewCard('Imports', impLabel || formatBudgetCurrency(impVol), impVol > 0 ? 'deficit' : 'neutral', impVol > 0 ? 'specialty varieties' : 'no imports');
+    h += renderOverviewCard('Untraded Surplus \u2014 Seek Buyers', surplusLabel || formatBudgetCurrency(untradedSurplus), untradedSurplus > 0 ? 'deficit' : 'surplus', untradedSurplus > 0 ? 'sitting idle \u00b7 no buyer secured' : 'all production allocated');
+    h += '</div>';
+
+    // Surplus value calculation
+    if (untradedSurplus > 0) {
+        h += '<div style="padding:4px 16px;text-align:right;font-family:var(--font-mono);font-size:0.65rem;color:var(--text-dim);">';
+        h += 'At current ' + priceMod.toFixed(2) + 'x&nbsp;&nbsp;&nbsp;' + formatBudgetCurrency(surplusAtCurrentPrice) + ' / yr';
+        h += '<br>At full price 1.0x&nbsp;&nbsp;&nbsp;' + formatBudgetCurrency(surplusAtFullPrice) + ' / yr';
+        h += '</div>';
+    }
+
+    // ── Unmet Demand stat penalty warning ──
+    var totalSupply = expCap + impVol;
+    var unmetDemand = Math.max(0, impDem - totalSupply);
+    var unmetPct = impDem > 0 ? Math.round(unmetDemand / impDem * 100) : 0;
+    if (unmetPct >= 5 && sub.stat_effects && sub.stat_effects.shortage) {
+        var shortageStats = sub.stat_effects.shortage;
+        var penaltyTags = Object.keys(shortageStats).map(function(statKey) {
+            var weight = shortageStats[statKey];
+            var arrow = weight > 0 ? '\u2191' : '\u2193';
+            var label = statKey.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+            return '<span style="font-size:0.6rem;padding:2px 6px;border-radius:3px;background:rgba(217,83,79,0.08);color:#d9534f;border:1px solid rgba(217,83,79,0.2);white-space:nowrap;">' + escapeHtml(label) + ' ' + arrow + '</span>';
+        }).join(' ');
+
+        h += '<div style="padding:8px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
+        h += '<span style="font-size:0.6rem;text-transform:uppercase;color:#d9534f;letter-spacing:1px;font-weight:700;">SHORTAGE EFFECTS</span>';
+        h += penaltyTags;
+        h += '</div>';
+    }
+
+    // ── Food Security Status (for food-security sectors only) ──
+    if (sub.food_security_weight > 0) {
+        var securityStatus = computeFoodSecurityStatus(tradeData ? tradeData.flows : null);
+        var sectorSec = securityStatus.perSector[subsectorKey];
+        var sectorRatio = sectorSec ? sectorSec.ratio : 1.0;
+        var sectorLabel = sectorRatio >= 1.1 ? 'Surplus' : sectorRatio >= 0.9 ? 'Secure' : sectorRatio >= 0.75 ? 'Adequate' : sectorRatio >= 0.6 ? 'Strained' : sectorRatio >= 0.4 ? 'Shortage' : 'Crisis';
+        var sectorColor = sectorRatio >= 1.1 ? '#5cb85c' : sectorRatio >= 0.9 ? '#4a9a5b' : sectorRatio >= 0.75 ? '#8ab563' : sectorRatio >= 0.6 ? '#d48a3c' : sectorRatio >= 0.4 ? '#c0392b' : '#8b0000';
+
+        h += '<div style="display:flex;gap:16px;padding:8px 16px;align-items:center;flex-wrap:wrap;">';
+        // Security badge
+        h += '<div style="display:flex;align-items:center;gap:8px;">';
+        h += '<span style="font-size:0.65rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:1px;">Food Security</span>';
+        h += '<span style="font-size:0.85rem;font-weight:bold;color:' + sectorColor + ';padding:3px 10px;border:1px solid ' + sectorColor + ';border-radius:4px;background:' + sectorColor + '15;">' + sectorLabel + '</span>';
+        h += '</div>';
+        // Overall food security
+        h += '<div style="display:flex;align-items:center;gap:8px;">';
+        h += '<span style="font-size:0.65rem;text-transform:uppercase;color:var(--text-muted);letter-spacing:1px;">Overall</span>';
+        h += '<span style="font-size:0.8rem;font-weight:bold;color:' + securityStatus.color + ';padding:3px 10px;border:1px solid ' + securityStatus.color + ';border-radius:4px;background:' + securityStatus.color + '15;">' + escapeHtml(securityStatus.label) + '</span>';
+        h += '</div>';
+        h += '</div>';
+    }
+
+    // ── Global market info + unit price ──
+    var avgPrice = getGlobalAverageUnitPrice(subsectorKey, priceMod);
+    var priceColor = priceMod >= 1.3 ? '#d9534f' : priceMod <= 0.7 ? '#5cb85c' : 'var(--text-secondary)';
+    var priceLabel = priceMod >= 1.5 ? 'high' : priceMod >= 1.2 ? 'elevated' : priceMod >= 0.8 ? 'stable' : priceMod >= 0.6 ? 'low' : 'oversupply';
+    var sectorTradeBalance = expVol - impVol;
+    h += '<div style="display:flex;gap:20px;padding:8px 16px;flex-wrap:wrap;align-items:center;">';
+    h += '<div style="font-size:0.75rem;color:var(--text-muted);">Global Price <span style="color:' + priceColor + ';font-weight:bold;">' + priceMod.toFixed(2) + 'x</span> <span style="font-size:0.65rem;">(' + priceLabel + ')</span></div>';
+    h += '<div style="font-size:0.75rem;color:var(--text-muted);">Global Avg Unit Price <span style="color:' + priceColor + ';font-weight:bold;">' + formatPricePerTonne(avgPrice) + '</span></div>';
+    h += '<div style="margin-left:auto;font-size:0.75rem;">Net flow: <span style="font-weight:bold;color:' + (sectorTradeBalance >= 0 ? '#5cb85c' : '#d9534f') + ';">' + formatBudgetCurrency(sectorTradeBalance) + '</span> · ' + (sectorTradeBalance >= 0 ? 'net exporter' : 'net importer') + '</div>';
+    h += '</div>';
+
+    h += '</div>'; // end header section
+
+    // ── Stockpile display (stockpilable sectors only) ──
+    if (sub.stockpilable && STOCKPILE_CONFIG[subsectorKey]) {
+        var stockData = (foodStockpiles && foodStockpiles[subsectorKey]) ? foodStockpiles[subsectorKey] : null;
+        var reserveVal = stockData ? Number(stockData.reserve_value) || 0 : 0;
+        var maxCap = stockData ? Number(stockData.max_capacity) || 0 : calculateStockpileCapacity(subsectorKey, nation);
+        var lastSpoilage = stockData ? Number(stockData.last_spoilage) || 0 : 0;
+        var lastInflow = stockData ? Number(stockData.last_inflow) || 0 : 0;
+        var lastOutflow = stockData ? Number(stockData.last_outflow) || 0 : 0;
+        var fillPct = maxCap > 0 ? Math.min(100, Math.round((reserveVal / maxCap) * 100)) : 0;
+
+        // Calculate months of coverage
+        var domesticConsumption = expCap > 0 ? Math.max(0, expCap - (flow ? Number(flow.export_volume) || 0 : 0)) + impDem : impDem;
+        var monthsCoverage = calculateReserveMonths(reserveVal, domesticConsumption);
+
+        var reserveVolume = formatSectorVolume(reserveVal, subsectorKey);
+        var capVolume = formatSectorVolume(maxCap, subsectorKey);
+        var spoilRate = calculateStockpileSpoilage(subsectorKey, nation);
+
+        var fillColor = fillPct >= 60 ? '#5cb85c' : fillPct >= 30 ? '#d48a3c' : fillPct > 0 ? '#d9534f' : '#333';
+        var monthsColor = monthsCoverage >= 6 ? '#5cb85c' : monthsCoverage >= 3 ? '#d48a3c' : '#d9534f';
+
+        h += '<div class="econ-section">';
+        h += '<div class="econ-section-header">STRATEGIC RESERVES</div>';
+
+        // Reserve bar + stats
+        h += '<div style="padding:8px 16px;">';
+
+        // Top row: reserve level + months
+        h += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">';
+        h += '<div style="font-size:0.85rem;color:var(--text-primary);font-weight:bold;">' + (reserveVolume || formatBudgetCurrency(reserveVal)) + '</div>';
+        h += '<div style="font-size:0.75rem;color:' + monthsColor + ';font-weight:bold;">' + monthsCoverage + ' months coverage</div>';
+        h += '</div>';
+
+        // Capacity bar
+        h += '<div style="height:20px;background:var(--bg-card);border-radius:3px;border:1px solid var(--border-color);overflow:hidden;margin-bottom:8px;">';
+        h += '<div style="height:100%;width:' + fillPct + '%;background:' + fillColor + ';transition:width 0.3s;display:flex;align-items:center;justify-content:center;">';
+        if (fillPct >= 15) h += '<span style="font-size:0.6rem;color:rgba(0,0,0,0.7);font-weight:600;">' + fillPct + '%</span>';
+        h += '</div></div>';
+
+        // Details row
+        h += '<div style="display:flex;gap:16px;font-size:0.7rem;color:var(--text-muted);flex-wrap:wrap;">';
+        h += '<span>Capacity: ' + (capVolume || formatBudgetCurrency(maxCap)) + '</span>';
+        h += '<span>Spoilage: ' + spoilRate.toFixed(1) + '%/tick</span>';
+        if (lastInflow > 0) h += '<span style="color:#5cb85c;">Inflow: +' + formatBudgetCurrency(lastInflow) + '</span>';
+        if (lastOutflow > 0) h += '<span style="color:#d9534f;">Outflow: -' + formatBudgetCurrency(lastOutflow) + '</span>';
+        if (lastSpoilage > 0) h += '<span style="color:#d48a3c;">Spoiled: -' + formatBudgetCurrency(lastSpoilage) + '</span>';
+        h += '</div>';
+
+        h += '</div></div>';
+    }
+
+    // ── Spoilage warning for perishables ──
+    if (subsectorKey === 'fruits_vegetables') {
+        var spoilage = calculateSpoilageMultiplier(nation);
+        if (spoilage < 1.0) {
+            var spoilagePct = Math.round((1 - spoilage) * 100);
+            var spoilColor = spoilagePct >= 30 ? '#d9534f' : '#d48a3c';
+            h += '<div class="econ-section" style="margin-top:0;">';
+            h += '<div style="padding:10px 16px;border:1px solid ' + spoilColor + ';border-radius:4px;background:' + spoilColor + '15;margin:0 16px;">';
+            h += '<div style="font-size:0.75rem;font-weight:bold;color:' + spoilColor + ';margin-bottom:4px;">SPOILAGE WARNING: ' + spoilagePct + '% of production lost</div>';
+            h += '<div style="font-size:0.75rem;color:var(--text-secondary);">';
+            var rail = Number(nation.rail_network) || 0;
+            var infra = Number(nation.physical_infrastructure) || 0;
+            var energy = Number(nation.energy_generation) || 0;
+            var spoilReasons = [];
+            if (rail < 40) spoilReasons.push('Rail Network ' + Math.round(rail) + ' (need 40+)');
+            if (infra < 35) spoilReasons.push('Physical Infrastructure ' + Math.round(infra) + ' (need 35+)');
+            if (energy < 30) spoilReasons.push('Energy Generation ' + Math.round(energy) + ' (need 30+)');
+            h += 'Cold chain failure: ' + spoilReasons.join(' · ');
+            h += '</div></div></div>';
+        }
+    }
+
+    // ── Production Drivers ──
+    h += '<div class="econ-section">';
+    h += '<div class="econ-section-header">PRODUCTION DRIVERS</div>';
+    h += '<div class="sector-drivers">';
+
+    // Effective arable land (primary driver)
+    var landPct = Math.min(100, Math.max(0, Math.round(effectiveLand)));
+    var landColor = landPct >= 20 ? '#5cb85c' : landPct >= 10 ? '#888' : '#d9534f';
+    h += '<div class="sector-driver-row">';
+    h += '<div class="sector-driver-label">Arable Land (' + allocPct + '% of ' + Math.round(Number(nation.arable_land) || 0) + ')</div>';
+    h += '<div class="sector-driver-track"><div class="sector-driver-fill" style="width:' + landPct + '%;background:' + landColor + '"></div></div>';
+    h += '<div class="sector-driver-value" style="color:' + landColor + '">' + landPct.toFixed(1) + '</div>';
+    h += '<div class="sector-driver-trend"></div>';
+    h += '</div>';
+
+    // Secondary drivers
+    for (var di = 0; di < sub.drivers.length; di++) {
+        var d = sub.drivers[di];
+        if (d.stat === 'arable_land') continue;
+        var val = Number(nation[d.stat]) || 0;
+        var stPct = Math.min(100, Math.max(0, Math.round(val)));
+        var stColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#f0efe6' : '#d9534f';
+        var barColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#888' : '#d9534f';
+        var label = formatStatLabel(d.stat);
+        if (d.critical) label += ' (critical)';
+
+        h += '<div class="sector-driver-row">';
+        h += '<div class="sector-driver-label">' + escapeHtml(label) + '</div>';
+        h += '<div class="sector-driver-track"><div class="sector-driver-fill" style="width:' + stPct + '%;background:' + barColor + '"></div></div>';
+        h += '<div class="sector-driver-value" style="color:' + stColor + '">' + stPct + '</div>';
+        var trendHtml = getTrendArrow(d.stat, val, false);
+        h += '<div class="sector-driver-trend">' + trendHtml + '</div>';
+        h += '</div>';
+    }
+    h += '</div></div>';
+
+    // ── Demand Pressures ──
+    h += '<div class="econ-section">';
+    h += '<div class="econ-section-header">DEMAND PRESSURES</div>';
+    h += '<div class="sector-drivers">';
+    for (var ddi = 0; ddi < sub.demand_drivers.length; ddi++) {
+        var dd = sub.demand_drivers[ddi];
+        var ddVal, ddLabel;
+        if (dd.type === 'population') {
+            ddVal = Math.min(100, Math.round((Number(nation.population) || 0) / 250000));
+            ddLabel = 'Population (' + Math.round((Number(nation.population) || 0) / 1000000) + 'M)';
+        } else {
+            ddVal = Number(nation[dd.stat]) || 0;
+            ddLabel = formatStatLabel(dd.stat);
+        }
+        var ddPct = Math.min(100, Math.max(0, Math.round(ddVal)));
+        var ddColor = ddPct >= 70 ? '#d9534f' : ddPct >= 40 ? '#888' : '#5cb85c';
+        var ddBarColor = ddPct >= 70 ? '#d9534f' : ddPct >= 40 ? '#888' : '#5cb85c';
+
+        h += '<div class="sector-driver-row">';
+        h += '<div class="sector-driver-label">' + escapeHtml(ddLabel) + '</div>';
+        h += '<div class="sector-driver-track"><div class="sector-driver-fill" style="width:' + ddPct + '%;background:' + ddBarColor + '"></div></div>';
+        h += '<div class="sector-driver-value" style="color:' + ddColor + '">' + ddPct + '</div>';
+        h += '<div class="sector-driver-trend"></div>';
+        h += '</div>';
+    }
+    h += '</div></div>';
+
+    // ── Trade Partners (reuse existing renderSectorPartners) ──
+    h += renderSectorPartners(subsectorKey, sub);
+
+    // ── Arable Land Allocation Bar ──
+    h += renderArableLandAllocation(nation, alloc, subsectorKey);
+
+    return h;
+}
+
+function renderArableLandAllocation(nation, alloc, activeSubsector) {
+    var totalArable = Math.round(Number(nation.arable_land) || 0);
+    var h = '<div class="econ-section">';
+    h += '<div class="econ-section-header">ARABLE LAND ALLOCATION — ' + totalArable + ' TOTAL</div>';
+
+    var segments = [
+        { key: 'grains_pct', label: 'Grains', color: '#c9a54e' },
+        { key: 'livestock_pct', label: 'Livestock', color: '#6aa3d9' },
+        { key: 'perishables_pct', label: 'Perishables', color: '#5cb85c' },
+        { key: 'cash_crops_pct', label: 'Cash Crops', color: '#d48a3c' }
+    ];
+
+    // Allocation bar
+    h += '<div class="food-alloc-bar">';
+    for (var i = 0; i < segments.length; i++) {
+        var seg = segments[i];
+        var pct = Number(alloc[seg.key]) || 0;
+        var subKey = FOOD_SUBSECTORS[i].key;
+        var isActive = subKey === activeSubsector;
+        if (pct > 0) {
+            h += '<div class="food-alloc-segment' + (isActive ? ' active' : '') + '" style="width:' + pct + '%;background:' + seg.color + (isActive ? '' : '80') + ';" title="' + seg.label + ': ' + pct + '%">';
+            if (pct >= 12) h += '<span class="food-alloc-label">' + seg.label + ' ' + pct + '%</span>';
+            h += '</div>';
+        }
+    }
+    h += '</div>';
+
+    // Legend with effective land values
+    h += '<div class="food-alloc-legend">';
+    for (var i = 0; i < segments.length; i++) {
+        var seg = segments[i];
+        var pct = Number(alloc[seg.key]) || 0;
+        var effective = Math.round(totalArable * pct / 100 * 10) / 10;
+        h += '<div class="food-alloc-legend-item">';
+        h += '<span class="food-alloc-legend-swatch" style="background:' + seg.color + '"></span>';
+        h += '<span>' + seg.label + ' <strong>' + pct + '%</strong></span>';
+        h += '<span style="color:var(--text-muted);font-size:0.7rem;margin-left:4px;">(' + effective + ' effective)</span>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    h += '</div>';
+    return h;
 }
 
 function renderSectorDetail(nation, sectorKey) {
@@ -2207,95 +2598,78 @@ function renderSectorDetail(nation, sectorKey) {
     if (sector.export_only) h += ' <span class="sector-badge">EXPORT ONLY</span>';
     h += '</div>';
 
-    h += '<div class="sector-header-grid">';
-
-    // Left: score gauge
-    h += '<div class="sector-score-panel">';
-    h += '<div class="sector-score-label">EXPORT CAPACITY</div>';
-    h += '<div class="sector-score-big" style="color:' + scoreColor + '">' + pct + '</div>';
-    h += '<div class="sector-score-track">';
-    h += '<div class="sector-score-fill" style="width:' + pct + '%;background:' + borderColor + '"></div>';
-    h += '<div class="sector-score-threshold" style="left:' + sector.export_threshold + '%" title="Export threshold: ' + sector.export_threshold + '"></div>';
-    h += '</div>';
-    if (aboveThreshold) {
-        h += '<div class="sector-threshold-status sector-above">Above threshold (' + sector.export_threshold + ')</div>';
-    } else {
-        h += '<div class="sector-threshold-status sector-below">Below threshold (' + sector.export_threshold + ') — no exports</div>';
-    }
-    h += '</div>';
-
-    // Right: volume cards
-    h += '<div class="sector-volume-panel">';
+    // ── 2×3 card layout (matching food subsector design) ──
     if (flow) {
-        // Supply & Demand capacity row
-        var supplyVal = Number(flow.export_capacity) || 0;
+        // prodVal = what the nation actually produces each tick (gross).
+        // expCapVal = exportable surplus after domestic demand. The
+        // Production card uses prodVal; untraded-surplus math uses expCapVal.
+        var prodVal = Number(flow.domestic_production) || 0;
+        var expCapVal = Number(flow.export_capacity) || 0;
         var demandVal = Number(flow.import_demand) || 0;
-        h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">SUPPLY</span><span class="sector-vol-value" style="color:#6aa3d9">' + formatTradeVolume(supplyVal, sectorKey) + '</span></div>';
+
+        var organicExp = expVol;
+        var tradeDealExp = 0; // RSC pre-allocations tracked separately in future
+        var untradedSurplus = Math.max(0, expCapVal - expVol);
+        var surplusAtCurrentPrice = Math.round(untradedSurplus * priceMod);
+        var surplusAtFullPrice = untradedSurplus;
+
+        // Row 1: Production | Demand | Exports — Organic
+        h += '<div class="econ-cards-row econ-cards-3" style="margin-top:12px;">';
+        h += renderOverviewCard('Production', formatTradeVolume(prodVal, sectorKey), 'neutral', 'gross output / year');
         if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">DEMAND</span><span class="sector-vol-value" style="color:#c9a54e">' + formatTradeVolume(demandVal, sectorKey) + '</span></div>';
+            h += renderOverviewCard('Import Demand', formatTradeVolume(demandVal, sectorKey), demandVal > prodVal ? 'deficit' : 'neutral', 'imports wanted');
+        } else {
+            h += renderOverviewCard('Revenue', formatBudgetCurrency(expVol), 'surplus', 'export revenue');
+        }
+        h += renderOverviewCard('Exports \u2014 Organic', formatTradeVolume(organicExp, sectorKey), organicExp > 0 ? 'surplus' : 'neutral', organicExp > 0 ? 'no trade deal required' : 'no organic exports');
+        h += '</div>';
+
+        // Row 2
+        h += '<div class="econ-cards-row econ-cards-3" style="margin-top:0;">';
+        if (sector.export_only) {
+            h += renderOverviewCard('Agreements', formatTradeVolume(tradeDealExp, sectorKey), tradeDealExp > 0 ? 'surplus' : 'neutral', tradeDealExp > 0 ? 'active partnerships' : 'no active partnerships');
+            h += renderOverviewCard('Inbound Demand', formatTradeVolume(impVol, sectorKey), impVol > 0 ? 'neutral' : 'neutral', 'visitors \u00b7 clients \u00b7 contracts');
+            h += renderOverviewCard('Unrealized Capacity', formatTradeVolume(untradedSurplus, sectorKey), untradedSurplus > 0 ? 'deficit' : 'surplus', untradedSurplus > 0 ? 'capacity not generating revenue' : 'fully utilized');
+        } else {
+            h += renderOverviewCard('Exports \u2014 Trade Deals', formatTradeVolume(tradeDealExp, sectorKey), tradeDealExp > 0 ? 'surplus' : 'neutral', tradeDealExp > 0 ? 'active agreements' : 'no active deals');
+            h += renderOverviewCard('Imports', formatTradeVolume(impVol, sectorKey), impVol > 0 ? 'deficit' : 'neutral', impVol > 0 ? 'foreign supply' : 'no imports');
+            h += renderOverviewCard('Untraded Surplus \u2014 Seek Buyers', formatTradeVolume(untradedSurplus, sectorKey), untradedSurplus > 0 ? 'deficit' : 'surplus', untradedSurplus > 0 ? 'sitting idle \u00b7 no buyer secured' : 'all production allocated');
         }
         h += '</div>';
 
-        // Available capacity row — only shown when RSC agreements are locking some capacity.
-        // Without commitments the values are identical to SUPPLY/DEMAND above, so omit to avoid noise.
-        if (rscExportCommittedPct > 0 || rscImportCommittedPct > 0) {
-            var availableSupply = Math.max(0, supplyVal * (1 - rscExportCommittedPct / 100));
-            var availableDemand = Math.max(0, demandVal * (1 - rscImportCommittedPct / 100));
-            var availSupplyColor = rscExportCommittedPct > 75 ? '#d9534f' : rscExportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
-            var availDemandColor = rscImportCommittedPct > 75 ? '#d9534f' : rscImportCommittedPct > 40 ? '#f0ad4e' : '#5cb85c';
-            var supplyTitle = rscExportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscExportPartners.join(', ');
-            var demandTitle = rscImportCommittedPct.toFixed(0) + '% committed via RSC: ' + rscImportPartners.join(', ');
-            h += '<div class="sector-vol-row">';
-            h += '<div class="sector-vol-item" title="' + escapeHtml(supplyTitle) + '"><span class="sector-vol-label">AVAILABLE</span><span class="sector-vol-value" style="color:' + availSupplyColor + '">' + formatTradeVolume(availableSupply, sectorKey) + (rscExportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscExportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
-            if (!sector.export_only) {
-                h += '<div class="sector-vol-item" title="' + escapeHtml(demandTitle) + '"><span class="sector-vol-label">UNMET DEMAND</span><span class="sector-vol-value" style="color:' + availDemandColor + '">' + formatTradeVolume(availableDemand, sectorKey) + (rscImportCommittedPct > 0 ? ' <span style="font-size:10px;opacity:0.7;">(' + rscImportCommittedPct.toFixed(0) + '% RSC)</span>' : '') + '</span></div>';
-            }
+        // Surplus value calculation
+        if (untradedSurplus > 0) {
+            h += '<div style="padding:4px 16px;text-align:right;font-family:var(--font-mono);font-size:0.65rem;color:var(--text-dim);">';
+            h += 'At current ' + priceMod.toFixed(2) + 'x&nbsp;&nbsp;&nbsp;' + formatBudgetCurrency(surplusAtCurrentPrice) + ' / yr';
+            h += '<br>At full price 1.0x&nbsp;&nbsp;&nbsp;' + formatBudgetCurrency(surplusAtFullPrice) + ' / yr';
             h += '</div>';
         }
 
-        // Actual trade volumes row
-        h += '<div class="sector-vol-row">';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">EXPORTS</span><span class="sector-vol-value" style="color:#5cb85c">' + formatTradeVolume(expVol, sectorKey) + '</span></div>';
-        if (!sector.export_only) {
-            h += '<div class="sector-vol-item"><span class="sector-vol-label">IMPORTS</span><span class="sector-vol-value" style="color:#d9534f">' + formatTradeVolume(impVol, sectorKey) + '</span></div>';
-        }
-        var netColor = net > 0 ? '#5cb85c' : net < 0 ? '#d9534f' : '#888';
-        var netSign = net > 0 ? '+' : '';
-        h += '<div class="sector-vol-item"><span class="sector-vol-label">NET</span><span class="sector-vol-value" style="color:' + netColor + '">' + netSign + formatTradeVolume(net, sectorKey) + '</span></div>';
+        // Footer: Global Price + Net flow
+        var priceColor = priceMod >= 1.3 ? '#d9534f' : priceMod <= 0.7 ? '#5cb85c' : 'var(--text-secondary)';
+        var priceLabel = priceMod >= 1.5 ? 'high' : priceMod >= 1.2 ? 'elevated' : priceMod >= 0.8 ? 'stable' : priceMod >= 0.6 ? 'low' : 'oversupply';
+        h += '<div style="display:flex;gap:20px;padding:8px 16px;flex-wrap:wrap;align-items:center;">';
+        h += '<div style="font-size:0.75rem;color:var(--text-muted);">Global Price <span style="color:' + priceColor + ';font-weight:bold;">' + priceMod.toFixed(2) + 'x</span> <span style="font-size:0.65rem;">(' + priceLabel + ')</span></div>';
+        h += '<div style="margin-left:auto;font-size:0.75rem;">Net flow: <span style="font-weight:bold;color:' + (net >= 0 ? '#5cb85c' : '#d9534f') + ';">' + formatBudgetCurrency(net) + '</span> \u00b7 ' + (net >= 0 ? 'net exporter' : 'net importer') + '</div>';
         h += '</div>';
-
-        // Price modifier
-        var priceColor = priceMod >= 1.05 ? '#5cb85c' : priceMod <= 0.95 ? '#d9534f' : '#888';
-        h += '<div class="sector-price-mod">';
-        h += 'Price modifier: <strong style="color:' + priceColor + '">' + priceMod.toFixed(2) + 'x</strong>';
-        h += '</div>';
-
-        // Tick trend
-        var prevFlow = (tradeData && tradeData.prevFlows) ? tradeData.prevFlows[sectorKey] : null;
-        if (prevFlow) {
-            var prevExp = Number(prevFlow.export_volume) || 0;
-            var prevImp = Number(prevFlow.import_volume) || 0;
-            var prevNet = prevExp - prevImp;
-            h += '<div class="sector-trend-line">';
-            h += 'vs. prev tick: ' + tradeTrendHtml(net, prevNet, false);
-            h += '</div>';
-        }
     } else {
-        h += '<div class="sector-no-data">No trade flow data yet.</div>';
+        h += '<div style="padding:20px 16px;font-size:0.8rem;color:var(--text-dim);font-style:italic;">No trade flow data yet.</div>';
     }
-    h += '</div>';
 
-    h += '</div>'; // .sector-header-grid
-
-    // Net importer warning
-    if (isNetImporter && !sector.export_only) {
-        h += '<div class="sector-warning">';
-        h += 'NET IMPORTER — This nation imports more ' + escapeHtml(sector.label).toLowerCase() + ' than it exports.';
-        if (TRADE_IMPORT_HINTS[sectorKey]) {
-            h += ' ' + escapeHtml(TRADE_IMPORT_HINTS[sectorKey]) + '.';
+    // Unmet demand warning (non-export-only sectors)
+    if (flow && !sector.export_only) {
+        var demandVal2 = Number(flow.import_demand) || 0;
+        var supplyVal2 = Number(flow.export_capacity) || 0;
+        var totalSectorSupply = supplyVal2 + impVol;
+        var sectorUnmet = Math.max(0, demandVal2 - totalSectorSupply);
+        var sectorUnmetPct = demandVal2 > 0 ? Math.round(sectorUnmet / demandVal2 * 100) : 0;
+        if (sectorUnmetPct >= 5) {
+            var urgency = sectorUnmetPct >= 50 ? '#d9534f' : '#d48a3c';
+            var urgencyLabel = sectorUnmetPct >= 50 ? 'CRITICAL' : 'WARNING';
+            h += '<div style="margin:8px 16px;padding:10px 14px;border-radius:4px;border:1px solid ' + urgency + ';background:' + urgency + '15;">';
+            h += '<div style="font-size:0.75rem;font-weight:bold;color:' + urgency + ';margin-bottom:4px;">' + urgencyLabel + ': ' + sectorUnmetPct + '% of import demand unmet</div>';
+            h += '</div>';
         }
-        h += '</div>';
     }
 
     h += '</div>'; // .econ-section
@@ -2386,6 +2760,30 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
                 var arableLand = Number(nation.arable_land) || 0;
                 if (arableLand < 50) importReasons.push('Limited arable land ('+Math.round(arableLand)+') cannot feed the population');
                 else importReasons.push('Population outpaces domestic food production');
+            } else if (sectorKey === 'grains_staples') {
+                var arableLand = Number(nation.arable_land) || 0;
+                var pop = Number(nation.population) || 0;
+                if (arableLand < 40) importReasons.push('Limited arable land ('+Math.round(arableLand)+') insufficient for grain production');
+                if (pop > 8000000) importReasons.push('Large population ('+Math.round(pop/1000000)+'M) creates high staple demand');
+                if (importReasons.length === 0) importReasons.push('Population demand outpaces domestic grain production');
+            } else if (sectorKey === 'livestock_dairy') {
+                var sol = Number(nation.standard_of_living) || 0;
+                var arableLand = Number(nation.arable_land) || 0;
+                if (sol > 50) importReasons.push('High standard of living ('+Math.round(sol)+') drives meat and dairy demand');
+                if (arableLand < 40) importReasons.push('Limited pastureland constrains domestic livestock (Arable: '+Math.round(arableLand)+')');
+                if (importReasons.length === 0) importReasons.push('Domestic livestock cannot meet population demand');
+            } else if (sectorKey === 'fruits_vegetables') {
+                var rail = Number(nation.rail_network) || 0;
+                var infra = Number(nation.physical_infrastructure) || 0;
+                var urban = Number(nation.urbanization) || 0;
+                if (rail < 40) importReasons.push('Weak rail network ('+Math.round(rail)+') causes spoilage — cold chain failure');
+                if (infra < 35) importReasons.push('Poor infrastructure ('+Math.round(infra)+') disrupts perishable distribution');
+                if (urban > 60) importReasons.push('High urbanization ('+Math.round(urban)+') concentrates demand beyond local supply');
+                if (importReasons.length === 0) importReasons.push('Domestic produce insufficient for population needs');
+            } else if (sectorKey === 'cash_crops') {
+                var sol = Number(nation.standard_of_living) || 0;
+                if (sol > 50) importReasons.push('Wealthy population (Std. Living: '+Math.round(sol)+') imports premium goods (coffee, cocoa, tea)');
+                else importReasons.push('Modest domestic demand for imported cash crop products');
             } else if (sectorKey === 'minerals') {
                 var minerals = Number(nation.rare_minerals) || 0;
                 var manuf = Number(nation.manufacturing_output) || 0;
@@ -2450,6 +2848,10 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
             var penalties = [];
             if (sectorKey === 'fuel_energy') penalties = ['Energy Generation \u2193', 'Manufacturing Output \u2193', 'Inflation \u2191', 'Cost of Living \u2191'];
             else if (sectorKey === 'food_agriculture') penalties = ['Happiness \u2193', 'Civil Unrest \u2191', 'Healthcare Quality \u2193'];
+            else if (sectorKey === 'grains_staples') penalties = ['Stability \u2193', 'Legitimacy \u2193', 'Civil Unrest \u2191', 'Poverty Rate \u2191', 'Happiness \u2193'];
+            else if (sectorKey === 'livestock_dairy') penalties = ['Standard of Living \u2193', 'Happiness \u2193', 'Cost of Living \u2191'];
+            else if (sectorKey === 'fruits_vegetables') penalties = ['Healthcare Quality \u2193', 'Happiness \u2193', 'Cost of Living \u2191'];
+            else if (sectorKey === 'cash_crops') penalties = ['GDP Growth \u2193', 'Foreign Investment \u2193'];
             else if (sectorKey === 'minerals') penalties = ['Manufacturing Output \u2193', 'Infrastructure \u2193'];
             else if (sectorKey === 'manufactured_goods') penalties = ['Standard of Living \u2193', 'Cost of Living \u2191'];
             else if (sectorKey === 'technology') penalties = ['Digital Infrastructure \u2193', 'Innovation Index \u2193'];
@@ -2520,6 +2922,20 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
                 if (arable < 50) {
                     recs.push({icon: '\uD83C\uDF3E', text: 'Invest in agricultural development (Arable Land: ' + Math.round(arable) + ') to reduce food import dependency'});
                 }
+            } else if (sectorKey === 'grains_staples') {
+                var arable = Number(nation.arable_land) || 0;
+                if (arable < 50) recs.push({icon: '\uD83C\uDF3E', text: 'Increase arable land ('+Math.round(arable)+') to boost grain production'});
+                recs.push({icon: '\uD83D\uDCCA', text: 'Shift arable land allocation toward grains to improve food security'});
+            } else if (sectorKey === 'livestock_dairy') {
+                recs.push({icon: '\uD83D\uDCCA', text: 'Increase livestock land allocation or invest in pastoral infrastructure'});
+            } else if (sectorKey === 'fruits_vegetables') {
+                var rail = Number(nation.rail_network) || 0;
+                var infra = Number(nation.physical_infrastructure) || 0;
+                if (rail < 40) recs.push({icon: '\uD83D\uDE82', text: 'Rail network ('+Math.round(rail)+') below cold-chain threshold — spoilage is destroying supply'});
+                if (infra < 35) recs.push({icon: '\uD83C\uDFD7\uFE0F', text: 'Physical infrastructure ('+Math.round(infra)+') too weak for perishable distribution'});
+                recs.push({icon: '\uD83C\uDF3F', text: 'Improve logistics infrastructure to reduce spoilage before increasing production'});
+            } else if (sectorKey === 'cash_crops') {
+                recs.push({icon: '\u26A0\uFE0F', text: 'Cash crop imports have minimal food security value — consider reallocating land to staples'});
             } else if (sectorKey === 'minerals') {
                 recs.push({icon: '\u26CF\uFE0F', text: 'Develop domestic mining capacity to reduce mineral import needs'});
             } else if (sectorKey === 'manufactured_goods') {
@@ -2617,10 +3033,9 @@ var TRADE_IMPORT_DRIVERS = {
     fuel_energy: [
         { key: 'oil_and_gas', inverted: true },
         { key: 'energy_generation', inverted: true },
-        { key: 'manufacturing_output', inverted: false },
         { key: 'urbanization', inverted: false },
-        { key: 'cost_of_living', inverted: false },
-        { key: 'rail_network', inverted: true }
+        { key: 'manufacturing_output', inverted: false },
+        { key: 'standard_of_living', inverted: false }
     ],
     minerals: [
         { key: 'rare_minerals', inverted: true },
@@ -2629,9 +3044,31 @@ var TRADE_IMPORT_DRIVERS = {
     food_agriculture: [
         { key: 'arable_land', inverted: true }
     ],
-    manufactured_goods: [
+    grains_staples: [
+        { key: 'arable_land', inverted: true },
+        { key: 'physical_infrastructure', inverted: true },
+        { key: 'rail_network', inverted: true }
+    ],
+    livestock_dairy: [
+        { key: 'arable_land', inverted: true },
         { key: 'standard_of_living', inverted: false },
-        { key: 'manufacturing_output', inverted: true }
+        { key: 'physical_infrastructure', inverted: true }
+    ],
+    fruits_vegetables: [
+        { key: 'arable_land', inverted: true },
+        { key: 'rail_network', inverted: true },
+        { key: 'physical_infrastructure', inverted: true },
+        { key: 'energy_generation', inverted: true },
+        { key: 'urbanization', inverted: false }
+    ],
+    cash_crops: [
+        { key: 'standard_of_living', inverted: false }
+    ],
+    manufactured_goods: [
+        { key: 'manufacturing_output', inverted: true },
+        { key: 'urbanization', inverted: false },
+        { key: 'standard_of_living', inverted: false },
+        { key: 'higher_education', inverted: false }
     ],
     technology: [
         { key: 'digital_infrastructure', inverted: false },
@@ -2801,7 +3238,7 @@ function renderTariffsTab(nation) {
 
     h += '<div class="econ-cards-row econ-cards-4">';
     h += renderOverviewCard('Tariff Rate', tariffRate.toFixed(0) + '%', 'neutral', null);
-    h += renderOverviewCard('Tariff Revenue', formatBudgetCurrency(cappedTariffRevTariffs), cappedTariffRevTariffs > 0 ? 'surplus' : 'neutral', 'Per Tick');
+    h += renderOverviewCard('Tariff Revenue', formatDualPeriod(cappedTariffRevTariffs), cappedTariffRevTariffs > 0 ? 'surplus' : 'neutral', null);
     var dampener = (1 - tariffRate / 200) * 100;
     h += renderOverviewCard('Import Dampener', dampener.toFixed(0) + '%', 'neutral', 'of full demand');
     var agreementCount = tradeAgreements ? tradeAgreements.length : 0;
@@ -2844,7 +3281,7 @@ function gatherTariffSimData(nation) {
     var currentRate = Number(nation.tariffs) || 0;
     var eff = Number(nation.efficiency) || 50;
     var corr = Number(nation.corruption) || 50;
-    var collectionRate = (eff + (100 - corr)) / 200;
+    var collectionRate = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
     var currentDampener = 1 - (currentRate / 200);
 
     var sectorImports = [];
@@ -2904,7 +3341,7 @@ function renderTariffSimulator(nation) {
 
     // Projection cards
     h += '<div class="tsim-projections" id="tsim-projections">';
-    var gdpCap = Number(nation.gdp ?? nation.GDP ?? 0) * 0.002;
+    var gdpCap = Number(nation.gdp ?? nation.GDP ?? 0) * 0.05;
     h += renderTariffProjections(d.currentRate, d.currentRate, d.currentDampener, d.totalCurrentImports, d.sectorImports, d.collectionRate, d.currentTariffRev, gdpCap);
     h += '</div>';
 
@@ -2918,7 +3355,7 @@ function renderTariffProjections(currentRate, simRate, currentDampener, totalCur
 
     var projectedTotalImports = Math.round(totalCurrentImports * dampenerRatio);
     var projectedTariffRev = Math.round(projectedTotalImports * (simRate / 100) * collectionRate);
-    // Cap tariff revenue at 0.2% of GDP (matches budget)
+    // Cap at 5% of GDP — realistic range for high-tariff nations
     if (gdpCap > 0) {
         projectedTariffRev = Math.min(projectedTariffRev, Math.round(gdpCap));
         currentTariffRev = Math.min(currentTariffRev, Math.round(gdpCap));
@@ -2935,19 +3372,20 @@ function renderTariffProjections(currentRate, simRate, currentDampener, totalCur
 
     // Projected imports (neutral color — more/fewer imports isn't inherently good or bad)
     var impDeltaStr = importDelta !== 0 ? (importDelta > 0 ? '+' : '') + formatBudgetCurrency(importDelta) : '—';
-    h += renderOverviewCard('Projected Imports', formatBudgetCurrency(projectedTotalImports), 'neutral', isChanged ? impDeltaStr : 'No change');
+    h += renderOverviewCard('Projected Imports', formatDualPeriod(projectedTotalImports), 'neutral', isChanged ? impDeltaStr : 'No change');
 
     // Projected tariff revenue
     var revColor = revDelta > 0 ? 'surplus' : revDelta < 0 ? 'deficit' : 'neutral';
     var revDeltaStr = revDelta !== 0 ? (revDelta > 0 ? '+' : '') + formatBudgetCurrency(revDelta) : '—';
-    h += renderOverviewCard('Projected Revenue', formatBudgetCurrency(projectedTariffRev), revColor, isChanged ? revDeltaStr : 'No change');
+    h += renderOverviewCard('Projected Revenue', formatDualPeriod(projectedTariffRev), revColor, isChanged ? revDeltaStr : 'No change');
 
     // Import dampener
     h += renderOverviewCard('Import Dampener', (simDampener * 100).toFixed(0) + '%', 'neutral', 'of full demand');
 
     var netDirection = revDelta > 0 ? 'More revenue' : revDelta < 0 ? 'Less revenue' : 'No change';
     var tradeDirection = importDelta > 0 ? ', more imports' : importDelta < 0 ? ', fewer imports' : '';
-    h += renderOverviewCard('Net Effect', isChanged ? (revDelta >= 0 ? '+' : '') + formatBudgetCurrency(revDelta) + '/tick' : '—', revColor, isChanged ? netDirection + tradeDirection : 'Drag the slider');
+    var netSign = revDelta >= 0 ? '+' : '';
+    h += renderOverviewCard('Net Effect', isChanged ? formatDualPeriod(revDelta, netSign) : '—', revColor, isChanged ? netDirection + tradeDirection : 'Drag the slider');
 
     h += '</div>';
 
@@ -3024,7 +3462,7 @@ function renderTariffAgreementsSection(nation) {
         }
 
         // Border color by type
-        var borderColor = ag.agreement_type === 'fta' ? '#5cb85c' : ag.agreement_type === 'pta' ? '#5b9bd5' : '#888';
+        var borderColor = ag.agreement_type === 'fta' ? '#5cb85c' : ag.agreement_type === 'pta' ? '#5b9bd5' : ag.agreement_type === 'goods_trade' ? '#c88444' : '#888';
 
         h += '<div class="tariff-agreement-card" style="border-left-color:' + borderColor + '">';
         h += '<div class="ta-card-header">';
@@ -3134,12 +3572,12 @@ function renderFTAEffectsSection(nation) {
 
     var h = '<div class="econ-section">';
     h += '<div class="econ-section-header">TRADE AGREEMENT EFFECTS</div>';
-    h += '<div class="econ-section-subtitle">Ongoing per-tick effects of your active trade agreements.</div>';
+    h += '<div class="econ-section-subtitle">Ongoing effects of your active trade agreements.</div>';
     h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">';
 
     // Upsides
     h += '<div style="flex:1;min-width:200px;background:rgba(92,184,92,0.06);border:1px solid rgba(92,184,92,0.2);border-radius:3px;padding:10px;">';
-    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Benefits per tick</div>';
+    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:6px;">Benefits per month</div>';
     h += '<div style="font-size:0.78rem;color:var(--text-primary);line-height:1.6;">';
     if (ftaCount > 0) h += '↓ Cost of living <span style="color:var(--green);">-' + (0.2 * ftaCount).toFixed(1) + '</span> · ↑ GDP growth <span style="color:var(--green);">+' + (0.15 * ftaCount).toFixed(2) + '</span><br>';
     if (ptaCount > 0) h += '↓ Cost of living <span style="color:var(--green);">-' + (0.05 * ptaCount).toFixed(2) + '</span> · ↑ GDP growth <span style="color:var(--green);">+' + (0.05 * ptaCount).toFixed(2) + '</span> (PTA)<br>';
@@ -3149,7 +3587,7 @@ function renderFTAEffectsSection(nation) {
 
     // Downsides
     h += '<div style="flex:1;min-width:200px;background:rgba(217,83,79,0.06);border:1px solid rgba(217,83,79,0.2);border-radius:3px;padding:10px;">';
-    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:6px;">Costs per tick</div>';
+    h += '<div style="font-family:var(--font-mono);font-size:0.68rem;font-weight:700;color:var(--red);text-transform:uppercase;margin-bottom:6px;">Costs per month</div>';
     h += '<div style="font-size:0.78rem;color:var(--text-primary);line-height:1.6;">';
     if (ftaCount > 0) h += '↓ Manufacturing <span style="color:var(--red);">-' + (0.15 * ftaCount).toFixed(2) + '</span> · ↓ Union strength <span style="color:var(--red);">-' + (0.15 * ftaCount).toFixed(2) + '</span><br>';
     if (ptaCount > 0) h += '↓ Manufacturing <span style="color:var(--red);">-' + (0.05 * ptaCount).toFixed(2) + '</span> · ↓ Union strength <span style="color:var(--red);">-' + (0.05 * ptaCount).toFixed(2) + '</span> (PTA)<br>';
@@ -3381,17 +3819,25 @@ var TRADE_EXPORT_HINTS = {
     fuel_energy:        'Driven by: Oil & Gas + Energy Generation',
     minerals:           'Driven by: Rare Minerals',
     food_agriculture:   'Driven by: Arable Land',
-    manufactured_goods: 'Driven by: Manufacturing Output',
+    grains_staples:     'Driven by: Arable Land (Grains Allocation) + Infrastructure + Rail',
+    livestock_dairy:    'Driven by: Arable Land (Livestock Allocation) + Infrastructure',
+    fruits_vegetables:  'Driven by: Arable Land (Perishables Allocation) + Rail + Infrastructure + Energy',
+    cash_crops:         'Driven by: Arable Land (Cash Crops Allocation) + Foreign Investment + Currency',
+    manufactured_goods: 'Driven by: Population × Manufacturing Output, modified by Stability',
     technology:         'Driven by: Digital Infrastructure + Higher Education',
     arms:               'Driven by: Manufacturing + Defense Spending %',
     tourism:            'Driven by: Happiness + Stability + Physical Infrastructure',
     services_finance:   'Driven by: Service Output'
 };
 var TRADE_IMPORT_HINTS = {
-    fuel_energy:        'Driven by: Low Oil & Gas + Low Energy Generation + Manufacturing + Urbanization + Low Rail Network',
+    fuel_energy:        'Driven by: Population × (Urbanization + Manufacturing + Standard of Living), minus domestic Oil & Gas + Energy Generation',
     minerals:           'Driven by: Low Rare Minerals × Manufacturing Need',
     food_agriculture:   'Driven by: Population vs. Arable Land',
-    manufactured_goods: 'Driven by: Consumer Demand (Pop × Std. of Living) minus Manufacturing',
+    grains_staples:     'Driven by: Population × Growth Pressure vs. Grain Land Allocation',
+    livestock_dairy:    'Driven by: Standard of Living × Population vs. Livestock Land',
+    fruits_vegetables:  'Driven by: Urbanization × Population vs. Perishables Land (spoilage reduces effective supply)',
+    cash_crops:         'Driven by: Standard of Living (luxury imports — coffee, cocoa, tea)',
+    manufactured_goods: 'Driven by: Population × (Urbanization + Standard of Living + Higher Education), minus domestic Manufacturing Output',
     technology:         'Driven by: Digital Need (Pop × Digital Infra) minus Tech Capacity',
     arms:               'Driven by: Defense Budget minus Domestic Arms Capacity'
 };
@@ -3427,6 +3873,20 @@ function formatBudgetCurrency(val) {
     if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
     if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1) + 'K';
     return sign + '$' + Math.round(abs).toLocaleString();
+}
+
+/**
+ * Dual-period display: shows annual value (large) with monthly beneath (small).
+ * @param {number} annualValue - The yearly dollar amount.
+ * @param {string} [prefix] - Optional prefix like '+' for positive signed values.
+ */
+function formatDualPeriod(annualValue, prefix) {
+    prefix = prefix || '';
+    var monthly = annualValue / 12;
+    return '<span class="dual-period">' +
+        '<span class="dual-period-yr">' + prefix + formatBudgetCurrency(annualValue) + '<span class="dual-period-label"> /yr</span></span>' +
+        '<span class="dual-period-mo">' + prefix + formatBudgetCurrency(monthly) + '<span class="dual-period-label"> /mo</span></span>' +
+        '</span>';
 }
 
 function formatTradeVolume(val, sectorKey) {
@@ -3506,6 +3966,773 @@ function formatDelta(d) {
     var abs = Math.abs(d);
     if (abs >= 10) return Math.round(abs);
     return abs.toFixed(1);
+}
+
+// ==================== INDUSTRIES TAB ====================
+
+var _industriesCorps = [];
+var _industriesSubsidiaries = []; // corps HQ'd elsewhere with properties here
+var _industriesContracts = [];
+var _industriesMaterials = [];
+var _industriesEquipment = [];
+var _industriesDeliveries = [];
+var _industriesLoans = [];
+var _industriesInsurance = [];
+var _industriesShippingClaims = [];
+var _industriesShippingVessels = [];
+var _industriesShipMarket = [];
+var _industriesVesselOrders = [];
+var _industriesShippingRoutes = [];
+
+async function loadIndustriesData(nationId) {
+    var [corpsRes, contractsRes, materialsRes, equipmentRes, deliveriesRes, propsRes, loansRes] = await Promise.all([
+        _supabase.from('factions')
+            .select('id, faction_name, corp_ticker, corp_company_type, corp_sector, corp_subsector, party_funds, nation_id')
+            .eq('faction_type', 'corporation')
+            .is('abandoned_at', null),
+        _supabase.from('construction_contracts')
+            .select('id, budget_ceiling, status, awarded_to_faction, nation_id, template_key, sector')
+            .eq('nation_id', nationId)
+            .in('status', ['open', 'bidding', 'awarded', 'in_progress']),
+        _supabase.from('corp_warehouse')
+            .select('faction_id, material_key, quality_tier, quantity, total_value')
+            .eq('nation_id', nationId),
+        _supabase.from('corp_equipment')
+            .select('faction_id, equipment_key, tier, owned, deployed, condition, maintenance_per_tick')
+            .eq('nation_id', nationId),
+        _supabase.from('construction_deliveries')
+            .select('faction_id, contract_value, payment_received, total_cost, net_profit, delivered_tick')
+            .eq('nation_id', nationId)
+            .order('delivered_tick', { ascending: false })
+            .limit(50),
+        _supabase.from('corp_properties')
+            .select('faction_id, type, name, nation_id')
+            .eq('nation_id', nationId)
+            .eq('is_active', true),
+        _supabase.from('finance_active_loans')
+            .select('id, lender_faction_id, borrower_faction_id, principal, interest_rate, total_paid, total_interest_paid, status, monthly_payment, term_months, purpose')
+            .eq('nation_id', nationId)
+    ]);
+    // Load shipping data
+    var [shippingClaimsRes, shippingVesselsRes, shipMarketRes, vesselOrdersRes, shippingRoutesRes] = await Promise.all([
+        _supabase.from('shipping_claims').select('id, faction_id, revenue_per_transit, total_revenue, transits_completed, status').eq('nation_id', nationId),
+        _supabase.from('corp_vessels').select('id, faction_id, vessel_class, status, condition, base_maintenance').eq('nation_id', nationId),
+        _supabase.from('ship_market_listings').select('id, vessel_name, vessel_class, asking_price, condition, seller_type, seller_name, status, purchased_at_tick, listed_at_tick').eq('nation_id', nationId).order('listed_at_tick', { ascending: false }).limit(20),
+        _supabase.from('vessel_orders').select('id, faction_id, vessel_name, vessel_class, total_cost, deposit_paid, balance_due, shipyard_nation, delivery_tick, build_ticks, status, ordered_at_tick').eq('shipyard_nation_id', nationId).order('ordered_at_tick', { ascending: false }).limit(20),
+        _supabase.from('shipping_routes').select('id, origin_nation_id, destination_nation_id, origin_nation, destination_nation, trade_volume, estimated_revenue, shipping_subsector, transit_ticks, status, competition_count').or('origin_nation_id.eq.' + nationId + ',destination_nation_id.eq.' + nationId).eq('status', 'active'),
+    ]);
+    _industriesShippingClaims = shippingClaimsRes.data || [];
+    _industriesShippingVessels = shippingVesselsRes.data || [];
+    _industriesShipMarket = shipMarketRes.data || [];
+    _industriesVesselOrders = vesselOrdersRes.data || [];
+    _industriesShippingRoutes = shippingRoutesRes.data || [];
+
+    var allCorps = corpsRes.data || [];
+    _industriesCorps = allCorps.filter(function(c) { return c.nation_id === nationId; });
+    var propFactionIds = new Set((propsRes.data || []).map(function(p) { return p.faction_id; }));
+    _industriesSubsidiaries = allCorps.filter(function(c) {
+        return c.nation_id !== nationId && propFactionIds.has(c.id);
+    });
+    _industriesContracts = contractsRes.data || [];
+    _industriesMaterials = materialsRes.data || [];
+    _industriesEquipment = equipmentRes.data || [];
+    _industriesDeliveries = deliveriesRes.data || [];
+    _industriesLoans = loansRes.data || [];
+    _industriesInsurance = _industriesLoans.filter(function(l) { return l.purpose === 'Construction Insurance'; });
+}
+
+function fmtIndustryMoney(val) {
+    if (val == null || val === 0) return '$0';
+    val = Number(val);
+    var abs = Math.abs(val);
+    var sign = val < 0 ? '-' : '';
+    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1) + 'B';
+    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1) + 'M';
+    if (abs >= 1e3) return sign + '$' + (abs / 1e3).toFixed(0) + 'K';
+    return sign + '$' + Math.round(abs);
+}
+
+function renderIndustriesTab(nation) {
+    var gdp = Number(nation.gdp) || 1;
+
+    // ── CONSTRUCTION: sum of active contract budget_ceilings ──
+    var activeContracts = _industriesContracts.filter(function(c) { return c.status === 'in_progress' || c.status === 'awarded'; });
+    var constructionRevenue = _industriesContracts.reduce(function(s, c) { return s + (c.budget_ceiling || 0); }, 0);
+    var constructionPct = gdp > 0 ? ((constructionRevenue / gdp) * 100) : 0;
+
+    // Corp revenue ranking (from deliveries)
+    var corpRevMap = {};
+    _industriesDeliveries.forEach(function(d) {
+        corpRevMap[d.faction_id] = (corpRevMap[d.faction_id] || 0) + (d.payment_received || 0);
+    });
+
+    // Combine local corps + subsidiaries for display
+    var allLocalCorps = _industriesCorps.concat(_industriesSubsidiaries);
+
+    // Construction column: only Construction-sector corps
+    var constructionCorps = allLocalCorps.filter(function(c) { return (c.corp_sector || '').toLowerCase() === 'construction'; });
+    var constructionCorpsSorted = constructionCorps.slice().sort(function(a, b) {
+        return (corpRevMap[b.id] || 0) - (corpRevMap[a.id] || 0);
+    });
+
+    // Subsidiary lookup for parent display
+    var subsidiaryIds = new Set(_industriesSubsidiaries.map(function(s) { return s.id; }));
+
+    // ── MATERIALS: aggregate warehouse value ──
+    var materialTotals = {};
+    var materialsRevenue = 0;
+    _industriesMaterials.forEach(function(m) {
+        materialTotals[m.material_key] = (materialTotals[m.material_key] || 0) + (m.quantity || 0);
+        materialsRevenue += (m.total_value || 0);
+    });
+    var materialsPct = gdp > 0 ? ((materialsRevenue / gdp) * 100) : 0;
+    var materialKeys = Object.keys(materialTotals).sort(function(a, b) { return materialTotals[b] - materialTotals[a]; });
+
+    // Material purchasers (corps with most material value)
+    var matPurchaserMap = {};
+    _industriesMaterials.forEach(function(m) {
+        matPurchaserMap[m.faction_id] = (matPurchaserMap[m.faction_id] || 0) + (m.total_value || 0);
+    });
+    var matPurchasers = Object.entries(matPurchaserMap).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 3);
+
+    // ── VEHICLES/EQUIPMENT: aggregate by type ──
+    var equipTotals = {};
+    var equipRevenue = 0;
+    _industriesEquipment.forEach(function(e) {
+        equipTotals[e.equipment_key] = (equipTotals[e.equipment_key] || 0) + (e.owned || 0);
+        equipRevenue += (e.maintenance_per_tick || 0) * 12; // rough annual maintenance as proxy
+    });
+    var vehiclePct = gdp > 0 ? ((equipRevenue / gdp) * 100) : 0;
+    var equipKeys = Object.keys(equipTotals).sort(function(a, b) { return equipTotals[b] - equipTotals[a]; });
+
+    // Equipment purchasers
+    var eqPurchaserMap = {};
+    _industriesEquipment.forEach(function(e) {
+        eqPurchaserMap[e.faction_id] = (eqPurchaserMap[e.faction_id] || 0) + (e.owned || 0);
+    });
+    var eqPurchasers = Object.entries(eqPurchaserMap).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 3);
+
+    // ── FINANCE: loans, bonds, insurance ──
+    var financeCorps = allLocalCorps.filter(function(c) { return (c.corp_sector || '').toLowerCase() === 'finance'; });
+    var bankingCorps = financeCorps.filter(function(c) { return (c.corp_subsector || '').toLowerCase() === 'banking'; });
+    var investmentCorps = financeCorps.filter(function(c) { return (c.corp_subsector || '').toLowerCase() === 'investment'; });
+    var insuranceCorps = financeCorps.filter(function(c) { return (c.corp_subsector || '').toLowerCase() === 'insurance'; });
+
+    // Finance overall: total principal outstanding
+    var allLoansNonInsurance = _industriesLoans.filter(function(l) { return l.purpose !== 'Construction Insurance'; });
+    var financeOutstanding = allLoansNonInsurance.reduce(function(s, l) { return s + (Number(l.principal) || 0); }, 0);
+    var financeInterestEarned = allLoansNonInsurance.reduce(function(s, l) { return s + (Number(l.total_interest_paid) || 0); }, 0);
+    var financeActiveCount = allLoansNonInsurance.filter(function(l) { return l.status === 'current' || l.status === 'late'; }).length;
+    var financePct = gdp > 0 ? ((financeOutstanding / gdp) * 100) : 0;
+
+    // Investment: bonds and larger deals
+    var investmentLoans = allLoansNonInsurance.filter(function(l) { return (Number(l.principal) || 0) >= 50000000; });
+    var investmentOutstanding = investmentLoans.reduce(function(s, l) { return s + (Number(l.principal) || 0); }, 0);
+    var investmentYield = investmentLoans.reduce(function(s, l) { return s + (Number(l.total_interest_paid) || 0); }, 0);
+    var investmentPct = gdp > 0 ? ((investmentOutstanding / gdp) * 100) : 0;
+
+    // Insurance: insurance-purpose loans
+    var insuranceDeals = _industriesInsurance;
+    var insuranceOutstanding = insuranceDeals.reduce(function(s, l) { return s + (Number(l.principal) || 0); }, 0);
+    var insurancePaid = insuranceDeals.reduce(function(s, l) { return s + (Number(l.total_paid) || 0); }, 0);
+    var insurancePct = gdp > 0 ? ((insuranceOutstanding / gdp) * 100) : 0;
+
+    // Finance sector lender ranking
+    var finLenderMap = {};
+    _industriesLoans.forEach(function(l) {
+        finLenderMap[l.lender_faction_id] = (finLenderMap[l.lender_faction_id] || 0) + (Number(l.principal) || 0);
+    });
+
+    // Combined (all industries — investment is a subset of finance, don't double-count)
+    // ── SHIPPING: revenue from claims ──
+    var shippingRevenue = _industriesShippingClaims.reduce(function(s, cl) { return s + (Number(cl.total_revenue) || 0); }, 0);
+    var shippingPct = gdp > 0 ? ((shippingRevenue / gdp) * 100) : 0;
+
+    var combinedRevenue = constructionRevenue + materialsRevenue + equipRevenue + financeOutstanding + insuranceOutstanding + shippingRevenue;
+    var combinedPct = gdp > 0 ? ((combinedRevenue / gdp) * 100) : 0;
+
+    // ── Growth Drivers (hardcoded per industry) ──
+    var conDrivers = [
+        { key: 'gdp_growth', label: 'GDP Growth' },
+        { key: 'population', label: 'Population' },
+        { key: 'standard_of_living', label: 'Std. of Living' },
+        { key: 'urbanization', label: 'Urbanization' },
+        { key: 'physical_infrastructure', label: 'Phys. Infra' },
+        { key: 'housing_affordability', label: 'Housing' }
+    ];
+    var matDrivers = [
+        { key: 'manufacturing_output', label: 'Mfg. Output' },
+        { key: 'urbanization', label: 'Urbanization' },
+        { key: 'fuel_prices', label: 'Fuel Prices' },
+        { key: 'rare_minerals', label: 'Rare Minerals' },
+        { key: 'inflation', label: 'Inflation' },
+        { key: 'currency_strength', label: 'Currency Str.' }
+    ];
+    var vehDrivers = [
+        { key: 'manufacturing_output', label: 'Mfg. Output' },
+        { key: 'physical_infrastructure', label: 'Phys. Infra' },
+        { key: 'urbanization', label: 'Urbanization' },
+        { key: 'rare_minerals', label: 'Rare Minerals' },
+        { key: 'fuel_prices', label: 'Fuel Prices' },
+        { key: 'interest_rates', label: 'Interest Rates' }
+    ];
+    var finDrivers = [
+        { key: 'credit', label: 'Credit Rating' },
+        { key: 'interest_rates', label: 'Interest Rates' },
+        { key: 'gdp_growth', label: 'GDP Growth' },
+        { key: 'stability', label: 'Stability' },
+        { key: 'corruption', label: 'Corruption' },
+        { key: 'inflation', label: 'Inflation' }
+    ];
+    var invDrivers = [
+        { key: 'credit', label: 'Credit Rating' },
+        { key: 'foreign_investment', label: 'Foreign Invest.' },
+        { key: 'gdp_growth', label: 'GDP Growth' },
+        { key: 'debt', label: 'National Debt' },
+        { key: 'trade_balance', label: 'Trade Balance' },
+        { key: 'stability', label: 'Stability' }
+    ];
+    var insDrivers = [
+        { key: 'stability', label: 'Stability' },
+        { key: 'physical_infrastructure', label: 'Phys. Infra' },
+        { key: 'corruption', label: 'Corruption' },
+        { key: 'urbanization', label: 'Urbanization' },
+        { key: 'civil_unrest', label: 'Civil Unrest' },
+        { key: 'crime_rate', label: 'Crime Rate' }
+    ];
+
+    function renderDrivers(drivers, accentColor) {
+        var rows = '';
+        for (var i = 0; i < drivers.length; i += 2) {
+            var d1 = drivers[i];
+            var v1 = Math.round(Number(nation[d1.key]) || 0);
+            var c1 = v1 > 50 ? 'var(--dgreen)' : v1 > 30 ? 'var(--damber)' : 'var(--dred)';
+            var row = '<div class="industries-driver-row">';
+            row += '<div style="flex:1;display:flex;align-items:center;gap:6px;font-size:0.7rem;">';
+            row += '<span style="color:' + c1 + ';min-width:70px;">' + escapeHtml(d1.label) + '</span>';
+            row += '<div style="flex:1;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, v1) + '%;background:' + c1 + ';border-radius:3px;"></div></div>';
+            row += '<span style="color:' + c1 + ';font-weight:700;min-width:28px;text-align:right;font-size:0.75rem;">' + v1 + '</span></div>';
+            if (i + 1 < drivers.length) {
+                var d2 = drivers[i + 1];
+                var v2 = Math.round(Number(nation[d2.key]) || 0);
+                var c2 = v2 > 50 ? 'var(--dgreen)' : v2 > 30 ? 'var(--damber)' : 'var(--dred)';
+                row += '<div style="flex:1;display:flex;align-items:center;gap:6px;font-size:0.7rem;">';
+                row += '<span style="color:' + c2 + ';min-width:70px;">' + escapeHtml(d2.label) + '</span>';
+                row += '<div style="flex:1;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, v2) + '%;background:' + c2 + ';border-radius:3px;"></div></div>';
+                row += '<span style="color:' + c2 + ';font-weight:700;min-width:28px;text-align:right;font-size:0.75rem;">' + v2 + '</span></div>';
+            }
+            row += '</div>';
+            rows += row;
+        }
+        return rows;
+    }
+
+    function renderCorpList(corps, revenueMap, limit, barColor) {
+        if (corps.length === 0) return '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No corporations registered.</div>';
+        var maxRev = 0;
+        for (var j = 0; j < Math.min(limit, corps.length); j++) maxRev = Math.max(maxRev, revenueMap[corps[j].id] || 0);
+        var rows = '';
+        for (var i = 0; i < Math.min(limit, corps.length); i++) {
+            var c = corps[i];
+            var rev = revenueMap[c.id] || 0;
+            var barW = maxRev > 0 ? Math.max(2, (rev / maxRev) * 100) : 0;
+            var isSub = subsidiaryIds.has(c.id);
+            rows += '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+            rows += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+            rows += '<div>';
+            rows += '<div style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + (i + 1) + '. ' + escapeHtml(c.faction_name);
+            if (isSub) rows += ' <span style="font-size:0.55rem;padding:1px 5px;border-radius:3px;background:rgba(90,175,165,0.12);color:var(--teal);border:1px solid rgba(90,175,165,0.3);vertical-align:middle;">SUBSIDIARY</span>';
+            rows += '</div>';
+            rows += '<div style="font-size:0.65rem;color:var(--dtext-3);">' + escapeHtml(c.corp_ticker || '') + ' · ' + escapeHtml(c.corp_company_type || 'Private') + ' · ' + escapeHtml(c.corp_subsector || 'General');
+            if (isSub) rows += ' <span style="font-style:italic;">· HQ: foreign</span>';
+            rows += '</div></div>';
+            rows += '<div style="font-size:0.85rem;font-weight:700;color:var(--dgreen);">' + fmtIndustryMoney(rev) + '</div>';
+            rows += '</div>';
+            if (maxRev > 0) rows += '<div style="height:4px;background:rgba(255,255,255,0.04);border-radius:2px;margin-top:4px;overflow:hidden;"><div style="height:100%;width:' + barW + '%;background:' + barColor + ';border-radius:2px;opacity:0.7;"></div></div>';
+            rows += '</div>';
+        }
+        return rows;
+    }
+
+    function renderPurchaserList(purchasers, barColor) {
+        if (purchasers.length === 0) return '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No purchasers recorded.</div>';
+        var maxVal = purchasers.length > 0 ? purchasers[0][1] : 0;
+        var rows = '';
+        for (var i = 0; i < purchasers.length; i++) {
+            var fId = purchasers[i][0];
+            var val = purchasers[i][1];
+            var barW = maxVal > 0 ? Math.max(2, (val / maxVal) * 100) : 0;
+            var allCorps = _industriesCorps.concat(_industriesSubsidiaries);
+            var corp = allCorps.find(function(c) { return c.id === fId; });
+            var name = corp ? corp.faction_name : 'Unknown';
+            var detail = corp ? (corp.corp_subsector || corp.corp_company_type || '') : '';
+            rows += '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+            rows += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+            rows += '<div>';
+            rows += '<div style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + (i + 1) + '. ' + escapeHtml(name) + '</div>';
+            if (detail) rows += '<div style="font-size:0.6rem;color:var(--dtext-3);">' + escapeHtml(detail) + '</div>';
+            rows += '</div>';
+            rows += '<div style="font-size:0.85rem;font-weight:700;color:var(--dgreen);">' + fmtIndustryMoney(val) + '</div>';
+            rows += '</div>';
+            if (maxVal > 0) rows += '<div style="height:4px;background:rgba(255,255,255,0.04);border-radius:2px;margin-top:4px;overflow:hidden;"><div style="height:100%;width:' + barW + '%;background:' + barColor + ';border-radius:2px;opacity:0.7;"></div></div>';
+            rows += '</div>';
+        }
+        return rows;
+    }
+
+    // GDP composition bar widths
+    var conBarW = Math.max(0.5, constructionPct);
+    var matBarW = Math.max(0.5, materialsPct);
+    var vehBarW = Math.max(0.5, vehiclePct);
+    // Finance bar excludes investment subset to prevent overlap in the composition bar
+    var finBankingPct = Math.max(0, financePct - investmentPct);
+    var finBarW = Math.max(0.5, finBankingPct);
+    var invBarW = Math.max(0.5, investmentPct);
+    var insBarW = Math.max(0.5, insurancePct);
+    var shipBarW = Math.max(0.5, shippingPct);
+    var otherBarW = Math.max(0, 100 - conBarW - matBarW - vehBarW - finBarW - invBarW - insBarW - shipBarW);
+
+    // Industry badge
+    var badge = '<span style="font-size:0.55rem;padding:2px 8px;border-radius:3px;background:rgba(200,166,78,0.12);color:var(--damber);border:1px solid rgba(200,166,78,0.3);font-weight:700;letter-spacing:1px;vertical-align:middle;">INDUSTRY</span>';
+
+    var h = '<div class="econ-tab-body"><div class="econ-overview">';
+
+    // ── Header bar ──
+    h += '<div class="industries-header">';
+    h += '<div>';
+    h += '<div style="font-size:1rem;font-weight:bold;color:var(--dtext-1);letter-spacing:2px;text-transform:uppercase;">Industries</div>';
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);">Economy → Industries</div>';
+    h += '</div>';
+    h += '<div style="text-align:right;">';
+    h += '<div style="display:flex;gap:20px;">';
+    h += '<div style="text-align:right;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;">GDP Share</div><div style="font-size:1.1rem;font-weight:bold;color:var(--damber);">' + combinedPct.toFixed(1) + '%</div></div>';
+    h += '<div style="text-align:right;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;letter-spacing:1px;">Revenue</div><div style="font-size:1.1rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(combinedRevenue) + '</div></div>';
+    h += '</div>';
+    h += '</div></div>';
+
+    // ── GDP composition bar ──
+    h += '<div style="margin-bottom:20px;">';
+    h += '<div style="font-size:0.65rem;color:var(--dtext-3);margin-bottom:4px;">GDP COMPOSITION — ALL TRACKED INDUSTRIES (' + combinedPct.toFixed(1) + '% of ' + fmtIndustryMoney(gdp) + ')</div>';
+    h += '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--bg-card);">';
+    h += '<div style="width:' + conBarW + '%;background:var(--damber);" title="Construction ' + constructionPct.toFixed(1) + '%"></div>';
+    h += '<div style="width:' + matBarW + '%;background:var(--teal);" title="Materials ' + materialsPct.toFixed(1) + '%"></div>';
+    h += '<div style="width:' + vehBarW + '%;background:var(--dred);" title="Heavy Vehicles ' + vehiclePct.toFixed(1) + '%"></div>';
+    h += '<div style="width:' + finBarW + '%;background:#5a8aaa;" title="Banking ' + finBankingPct.toFixed(1) + '%"></div>';
+    h += '<div style="width:' + invBarW + '%;background:#8a6aaa;" title="Investment ' + investmentPct.toFixed(1) + '%"></div>';
+    h += '<div style="width:' + insBarW + '%;background:#aa7a5a;" title="Insurance ' + insurancePct.toFixed(1) + '%"></div>';
+    h += '<div style="width:' + shipBarW + '%;background:#5aafa5;" title="Shipping ' + shippingPct.toFixed(1) + '%"></div>';
+    h += '<div style="width:' + otherBarW + '%;background:var(--bg-elevated);"></div>';
+    h += '</div>';
+    h += '<div class="industries-legend">';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--damber);margin-right:3px;"></span>Construction ' + constructionPct.toFixed(1) + '%</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--teal);margin-right:3px;"></span>Materials ' + materialsPct.toFixed(1) + '%</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--dred);margin-right:3px;"></span>Heavy Vehicles ' + vehiclePct.toFixed(1) + '%</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#5a8aaa;margin-right:3px;"></span>Banking ' + finBankingPct.toFixed(1) + '%</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#8a6aaa;margin-right:3px;"></span>Investment ' + investmentPct.toFixed(1) + '%</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#aa7a5a;margin-right:3px;"></span>Insurance ' + insurancePct.toFixed(1) + '%</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#5aafa5;margin-right:3px;"></span>Shipping ' + shippingPct.toFixed(1) + '%</span>';
+    h += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--bg-elevated);margin-right:3px;"></span>Other ' + (100 - combinedPct).toFixed(1) + '%</span>';
+    h += '</div></div>';
+
+    // ── Three-column layout ──
+    h += '<div class="industries-grid">';
+
+    // Section header helper
+    function secHeader(text, color) {
+        return '<div style="font-size:0.65rem;color:' + color + ';text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;font-weight:700;">' + text + '</div>';
+    }
+
+    // ── COLUMN 1: CONSTRUCTION ──
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid var(--damber);border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--damber);"></div><span style="font-size:0.85rem;font-weight:bold;color:var(--damber);letter-spacing:1px;">CONSTRUCTION</span></div>';
+    h += badge;
+    h += '</div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:var(--damber);">' + constructionPct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Total Revenue</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(constructionRevenue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Active Projects</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + activeContracts.length + '</div></div>';
+    h += '</div>';
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Total value of all active construction projects, contracts awarded, and maintenance work this tick.</div>';
+    h += secHeader('Growth Drivers', 'var(--damber)');
+    h += renderDrivers(conDrivers, 'var(--damber)');
+    h += secHeader('Notable Corporations', 'var(--damber)');
+    h += renderCorpList(constructionCorpsSorted, corpRevMap, 3, 'var(--damber)');
+    var conCorpCount = constructionCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    var conSubCount = constructionCorps.filter(function(c) { return subsidiaryIds.has(c.id); }).length;
+    var subNote = conSubCount > 0 ? ' · ' + conSubCount + ' subsidiar' + (conSubCount !== 1 ? 'ies' : 'y') : '';
+    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + conCorpCount + ' local construction corp' + (conCorpCount !== 1 ? 's' : '') + subNote + '</div>';
+    h += '</div>';
+
+    // ── COLUMN 2: MATERIALS ──
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid var(--teal);border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--teal);"></div><span style="font-size:0.85rem;font-weight:bold;color:var(--teal);letter-spacing:1px;">MATERIALS</span></div>';
+    h += badge;
+    h += '</div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:var(--teal);">' + materialsPct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Total Value</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(materialsRevenue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Material Types</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + materialKeys.length + '</div></div>';
+    h += '</div>';
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Total value of construction materials in warehouses — concrete, steel, lumber, aggregate, and specialty components.</div>';
+    if (materialKeys.length > 0) {
+        h += secHeader('Inventory Breakdown', 'var(--teal)');
+        for (var mi = 0; mi < Math.min(6, materialKeys.length); mi++) {
+            var mk = materialKeys[mi];
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:4px 0;">';
+            h += '<span style="color:var(--teal);text-transform:capitalize;">' + escapeHtml(mk.replace(/_/g, ' ')) + '</span>';
+            h += '<span style="color:var(--dtext-1);font-weight:700;">' + materialTotals[mk].toLocaleString() + ' units</span>';
+            h += '</div>';
+        }
+    }
+    h += secHeader('Growth Drivers', 'var(--teal)');
+    h += renderDrivers(matDrivers, 'var(--teal)');
+    h += secHeader('Notable Purchasers', 'var(--teal)');
+    h += renderPurchaserList(matPurchasers, 'var(--teal)');
+    h += '</div>';
+
+    // ── COLUMN 3: HEAVY VEHICLES ──
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid var(--dred);border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--dred);"></div><span style="font-size:0.85rem;font-weight:bold;color:var(--dred);letter-spacing:1px;">HEAVY VEHICLES</span></div>';
+    h += badge;
+    h += '</div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dred);">' + vehiclePct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Maint. Cost</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(equipRevenue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Vehicle Types</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + equipKeys.length + '</div></div>';
+    h += '</div>';
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Total value of heavy equipment and vehicles sold domestically — excavators, cranes, haulers, and industrial machinery.</div>';
+    if (equipKeys.length > 0) {
+        h += secHeader('Fleet Breakdown', 'var(--dred)');
+        for (var ei = 0; ei < Math.min(6, equipKeys.length); ei++) {
+            var ek = equipKeys[ei];
+            h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:4px 0;">';
+            h += '<span style="color:var(--dred);text-transform:capitalize;">' + escapeHtml(ek.replace(/_/g, ' ')) + '</span>';
+            h += '<span style="color:var(--dtext-1);font-weight:700;">' + equipTotals[ek] + ' units</span>';
+            h += '</div>';
+        }
+    }
+    h += secHeader('Growth Drivers', 'var(--dred)');
+    h += renderDrivers(vehDrivers, 'var(--dred)');
+    h += secHeader('Notable Purchasers', 'var(--dred)');
+    h += renderPurchaserList(eqPurchasers, 'var(--dred)');
+    h += '</div>';
+
+    // ── COLUMN 4: FINANCE CORPORATIONS ──
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid #5a8aaa;border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:#5a8aaa;"></div><span style="font-size:0.85rem;font-weight:bold;color:#5a8aaa;letter-spacing:1px;">FINANCE</span></div>';
+    h += badge;
+    h += '</div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:#5a8aaa;">' + financePct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Outstanding</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(financeOutstanding) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Active Loans</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + financeActiveCount + '</div></div>';
+    h += '</div>';
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Total principal outstanding across all active loans — banking, corporate lending, and government facilities.</div>';
+    if (financeInterestEarned > 0) {
+        h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+        h += '<span style="color:#5a8aaa;">Interest Earned</span>';
+        h += '<span style="color:var(--dgreen);font-weight:700;">' + fmtIndustryMoney(financeInterestEarned) + '</span>';
+        h += '</div>';
+    }
+    var defaultedCount = allLoansNonInsurance.filter(function(l) { return l.status === 'defaulted'; }).length;
+    if (defaultedCount > 0) {
+        h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+        h += '<span style="color:var(--dred);">Defaulted Loans</span>';
+        h += '<span style="color:var(--dred);font-weight:700;">' + defaultedCount + '</span>';
+        h += '</div>';
+    }
+    h += secHeader('Growth Drivers', '#5a8aaa');
+    h += renderDrivers(finDrivers, '#5a8aaa');
+    h += secHeader('Notable Lenders', '#5a8aaa');
+    var finLenders = Object.entries(finLenderMap).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 3);
+    h += renderPurchaserList(finLenders, '#5a8aaa');
+    var finCorpCount = bankingCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + finCorpCount + ' local banking corp' + (finCorpCount !== 1 ? 's' : '') + '</div>';
+    h += '</div>';
+
+    // ── COLUMN 5: INVESTMENT SECTOR ──
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid #8a6aaa;border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:#8a6aaa;"></div><span style="font-size:0.85rem;font-weight:bold;color:#8a6aaa;letter-spacing:1px;">INVESTMENT</span></div>';
+    h += badge;
+    h += '</div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:#8a6aaa;">' + investmentPct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Portfolio</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(investmentOutstanding) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Positions</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + investmentLoans.length + '</div></div>';
+    h += '</div>';
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Government bonds, large-scale corporate lending, and structured investment positions above $50M.</div>';
+    if (investmentYield > 0) {
+        h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+        h += '<span style="color:#8a6aaa;">Yield Earned</span>';
+        h += '<span style="color:var(--dgreen);font-weight:700;">' + fmtIndustryMoney(investmentYield) + '</span>';
+        h += '</div>';
+    }
+    h += secHeader('Growth Drivers', '#8a6aaa');
+    h += renderDrivers(invDrivers, '#8a6aaa');
+    h += secHeader('Notable Firms', '#8a6aaa');
+    var invCorpsSorted = investmentCorps.slice().sort(function(a, b) { return (finLenderMap[b.id] || 0) - (finLenderMap[a.id] || 0); });
+    h += renderCorpList(invCorpsSorted, finLenderMap, 3, '#8a6aaa');
+    var invCorpCount = investmentCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + invCorpCount + ' local investment corp' + (invCorpCount !== 1 ? 's' : '') + '</div>';
+    h += '</div>';
+
+    // ── COLUMN 6: INSURANCE SECTOR ──
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid #aa7a5a;border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:#aa7a5a;"></div><span style="font-size:0.85rem;font-weight:bold;color:#aa7a5a;letter-spacing:1px;">INSURANCE</span></div>';
+    h += badge;
+    h += '</div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:#aa7a5a;">' + insurancePct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Coverage</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(insuranceOutstanding) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Active Policies</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + insuranceDeals.length + '</div></div>';
+    h += '</div>';
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Construction insurance, project liability coverage, and risk transfer instruments protecting domestic operations.</div>';
+    if (insurancePaid > 0) {
+        h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+        h += '<span style="color:#aa7a5a;">Premiums Collected</span>';
+        h += '<span style="color:var(--dgreen);font-weight:700;">' + fmtIndustryMoney(insurancePaid) + '</span>';
+        h += '</div>';
+    }
+    h += secHeader('Growth Drivers', '#aa7a5a');
+    h += renderDrivers(insDrivers, '#aa7a5a');
+    h += secHeader('Notable Insurers', '#aa7a5a');
+    var insLenderMap = {};
+    insuranceDeals.forEach(function(l) {
+        insLenderMap[l.lender_faction_id] = (insLenderMap[l.lender_faction_id] || 0) + (Number(l.principal) || 0);
+    });
+    var insLenders = Object.entries(insLenderMap).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 3);
+    h += renderPurchaserList(insLenders, '#aa7a5a');
+    var insCorpCount = insuranceCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + insCorpCount + ' local insurance corp' + (insCorpCount !== 1 ? 's' : '') + '</div>';
+    h += '</div>';
+
+    // ── ROW 3: SHIPPING ──
+
+    // Shipping corps
+    var shippingCorps = allLocalCorps.filter(function(c) { return (c.corp_sector || '').toLowerCase() === 'shipping'; });
+    var shippingCorpsSorted = shippingCorps.slice().sort(function(a, b) {
+        var revA = _industriesShippingClaims.filter(function(cl) { return cl.faction_id === a.id; }).reduce(function(s, cl) { return s + (Number(cl.total_revenue) || 0); }, 0);
+        var revB = _industriesShippingClaims.filter(function(cl) { return cl.faction_id === b.id; }).reduce(function(s, cl) { return s + (Number(cl.total_revenue) || 0); }, 0);
+        return revB - revA;
+    });
+
+    var activeRoutes = _industriesShippingClaims.filter(function(cl) { return cl.status === 'active'; }).length;
+    var totalVessels = _industriesShippingVessels.length;
+    var totalFleetMaint = _industriesShippingVessels.reduce(function(s, v) { return s + (v.base_maintenance || 0); }, 0);
+
+    // Revenue map for corp list
+    var shippingRevMap = {};
+    _industriesShippingClaims.forEach(function(cl) {
+        shippingRevMap[cl.faction_id] = (shippingRevMap[cl.faction_id] || 0) + (Number(cl.total_revenue) || 0);
+    });
+
+    var shipDrivers = [
+        { key: 'trade_balance', label: 'Trade Balance' },
+        { key: 'physical_infrastructure', label: 'Phys. Infra' },
+        { key: 'urbanization', label: 'Urbanization' },
+        { key: 'fuel_prices', label: 'Fuel Prices' },
+        { key: 'foreign_investment', label: 'Foreign Invest.' },
+        { key: 'currency_strength', label: 'Currency Str.' }
+    ];
+
+    var shippingColor = '#5aafa5';
+
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid ' + shippingColor + ';border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:' + shippingColor + ';"></div><span style="font-size:0.85rem;font-weight:bold;color:' + shippingColor + ';letter-spacing:1px;">SHIPPING</span></div>';
+    h += badge;
+    h += '</div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">% of GDP</div><div style="font-size:1.15rem;font-weight:bold;color:' + shippingColor + ';">' + shippingPct.toFixed(1) + '%</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Total Revenue</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(shippingRevenue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Active Routes</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + activeRoutes + '</div></div>';
+    h += '</div>';
+
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Vessels</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + totalVessels + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Fleet Maint.</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dred);">' + fmtIndustryMoney(totalFleetMaint) + '/tick</div></div>';
+    h += '<div style="flex:1;"></div>';
+    h += '</div>';
+
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Maritime shipping corporations operating routes through this nation. Revenue from freight transit, route claims, and cargo handling.</div>';
+
+    h += secHeader('Growth Drivers', shippingColor);
+    h += renderDrivers(shipDrivers, shippingColor);
+
+    h += secHeader('Notable Corporations', shippingColor);
+    h += renderCorpList(shippingCorpsSorted, shippingRevMap, 3, shippingColor);
+    var shipCorpCount = shippingCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + shipCorpCount + ' local shipping corp' + (shipCorpCount !== 1 ? 's' : '') + '</div>';
+    h += '</div>';
+
+    // ── SHIPS SOLD / BEING BUILT ──
+    var soldListings = _industriesShipMarket.filter(function(l) { return l.status === 'sold'; });
+    var availableListings = _industriesShipMarket.filter(function(l) { return l.status === 'available'; });
+    var activeOrders = _industriesVesselOrders.filter(function(o) { return o.status === 'building'; });
+    var completedOrders = _industriesVesselOrders.filter(function(o) { return o.status === 'delivered'; });
+    var totalSoldValue = soldListings.reduce(function(s, l) { return s + (Number(l.asking_price) || 0); }, 0);
+    var totalOrderValue = _industriesVesselOrders.reduce(function(s, o) { return s + (Number(o.total_cost) || 0); }, 0);
+    var shipyardRevenue = totalSoldValue + totalOrderValue;
+    var shipyardColor = '#8b9a6b';
+
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid ' + shipyardColor + ';border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:' + shipyardColor + ';"></div><span style="font-size:0.85rem;font-weight:bold;color:' + shipyardColor + ';letter-spacing:1px;">SHIPS SOLD / BUILDING</span></div>';
+    h += badge;
+    h += '</div>';
+
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Ships Sold</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + soldListings.length + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Being Built</div><div style="font-size:1.15rem;font-weight:bold;color:var(--damber);">' + activeOrders.length + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">On Market</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + availableListings.length + '</div></div>';
+    h += '</div>';
+
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Sales Revenue</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(totalSoldValue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Order Value</div><div style="font-size:1.15rem;font-weight:bold;color:var(--damber);">' + fmtIndustryMoney(totalOrderValue) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Delivered</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + completedOrders.length + '</div></div>';
+    h += '</div>';
+
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Shipyard activity in this nation — vessels sold on the market, new builds commissioned, and orders delivered.</div>';
+
+    // Recent activity
+    h += secHeader('Recent Sales', shipyardColor);
+    if (soldListings.length === 0) {
+        h += '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No ships sold recently.</div>';
+    } else {
+        for (var si = 0; si < Math.min(3, soldListings.length); si++) {
+            var sl = soldListings[si];
+            h += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;justify-content:space-between;align-items:center;">';
+            h += '<div><div style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + escapeHtml(sl.vessel_name) + '</div>';
+            h += '<div style="font-size:0.6rem;color:var(--dtext-3);">' + escapeHtml(sl.vessel_class) + ' · ' + sl.condition + '% condition · ' + escapeHtml(sl.seller_type) + '</div></div>';
+            h += '<div style="font-size:0.85rem;font-weight:700;color:var(--dgreen);">' + fmtIndustryMoney(sl.asking_price) + '</div>';
+            h += '</div>';
+        }
+    }
+
+    h += secHeader('Active Commissions', shipyardColor);
+    if (activeOrders.length === 0) {
+        h += '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No vessels under construction.</div>';
+    } else {
+        var currentTick = (tradeData && tradeData.flows) ? Object.values(tradeData.flows)[0]?.tick || 0 : 0;
+        for (var oi = 0; oi < Math.min(3, activeOrders.length); oi++) {
+            var ao = activeOrders[oi];
+            var ticksLeft = Math.max(0, (ao.delivery_tick || 0) - (nation.last_budget_tick || 0));
+            h += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;justify-content:space-between;align-items:center;">';
+            h += '<div><div style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + escapeHtml(ao.vessel_name) + '</div>';
+            h += '<div style="font-size:0.6rem;color:var(--dtext-3);">' + escapeHtml(ao.vessel_class) + ' · ' + ao.build_ticks + ' tick build · ' + ticksLeft + ' ticks left</div></div>';
+            h += '<div style="font-size:0.85rem;font-weight:700;color:var(--damber);">' + fmtIndustryMoney(ao.total_cost) + '</div>';
+            h += '</div>';
+        }
+    }
+
+    h += '</div>';
+
+    // ── FREIGHT MOVED ──
+    var routes = _industriesShippingRoutes;
+    var totalRoutes = routes.length;
+    var totalVolume = routes.reduce(function(s, r) { return s + (Number(r.trade_volume) || 0); }, 0);
+    var totalFreightRev = routes.reduce(function(s, r) { return s + (Number(r.estimated_revenue) || 0); }, 0);
+    var totalTransits = _industriesShippingClaims.reduce(function(s, cl) { return s + (cl.transits_completed || 0); }, 0);
+
+    // Breakdown by subsector
+    var subsectorMap = {};
+    routes.forEach(function(r) {
+        var key = r.shipping_subsector || 'unknown';
+        if (!subsectorMap[key]) subsectorMap[key] = { routes: 0, volume: 0, revenue: 0 };
+        subsectorMap[key].routes++;
+        subsectorMap[key].volume += Number(r.trade_volume) || 0;
+        subsectorMap[key].revenue += Number(r.estimated_revenue) || 0;
+    });
+
+    // Top trade partners (other nation on each route)
+    var partnerMap = {};
+    routes.forEach(function(r) {
+        var partner = r.origin_nation_id === nation.id ? (r.destination_nation || '?') : (r.origin_nation || '?');
+        if (!partnerMap[partner]) partnerMap[partner] = { routes: 0, volume: 0 };
+        partnerMap[partner].routes++;
+        partnerMap[partner].volume += Number(r.trade_volume) || 0;
+    });
+    var topPartners = Object.entries(partnerMap).sort(function(a, b) { return b[1].volume - a[1].volume; }).slice(0, 5);
+
+    var freightColor = '#c86a4a';
+    var subsectorLabels = { bulk_cargo: 'Bulk Cargo', container_freight: 'Container', specialized_transport: 'Specialized' };
+    var subsectorColors = { bulk_cargo: '#c8a832', container_freight: '#5a8aaa', specialized_transport: '#c86a4a' };
+
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border-main);border-top:3px solid ' + freightColor + ';border-radius:8px;padding:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;"><div style="width:6px;height:6px;border-radius:50%;background:' + freightColor + ';"></div><span style="font-size:0.85rem;font-weight:bold;color:' + freightColor + ';letter-spacing:1px;">FREIGHT MOVED</span></div>';
+    h += badge;
+    h += '</div>';
+
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Active Routes</div><div style="font-size:1.15rem;font-weight:bold;color:' + freightColor + ';">' + totalRoutes + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Trade Volume</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(totalVolume) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Transits Done</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + totalTransits + '</div></div>';
+    h += '</div>';
+
+    h += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Freight Revenue</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(totalFreightRev) + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Avg/Route</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + (totalRoutes > 0 ? fmtIndustryMoney(Math.round(totalFreightRev / totalRoutes)) : '$0') + '</div></div>';
+    h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Competition</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + routes.reduce(function(s, r) { return s + (r.competition_count || 0); }, 0) + ' claims</div></div>';
+    h += '</div>';
+
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Total cargo volume passing through this nation\'s ports — imports, exports, and transit freight by shipping subsector.</div>';
+
+    // Subsector breakdown
+    h += secHeader('By Subsector', freightColor);
+    var subsectorKeys = Object.keys(subsectorMap).sort(function(a, b) { return subsectorMap[b].volume - subsectorMap[a].volume; });
+    if (subsectorKeys.length === 0) {
+        h += '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No active shipping routes through this nation.</div>';
+    } else {
+        var maxSubVol = subsectorKeys.length > 0 ? subsectorMap[subsectorKeys[0]].volume : 1;
+        for (var ski = 0; ski < subsectorKeys.length; ski++) {
+            var sk = subsectorKeys[ski];
+            var sd = subsectorMap[sk];
+            var sLabel = subsectorLabels[sk] || sk;
+            var sColor = subsectorColors[sk] || freightColor;
+            var sBarW = maxSubVol > 0 ? Math.max(2, (sd.volume / maxSubVol) * 100) : 0;
+            h += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+            h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">';
+            h += '<span style="font-size:0.8rem;font-weight:700;color:' + sColor + ';">' + escapeHtml(sLabel) + '</span>';
+            h += '<span style="font-size:0.75rem;font-weight:700;color:var(--dgreen);">' + fmtIndustryMoney(sd.volume) + ' · ' + sd.routes + ' route' + (sd.routes !== 1 ? 's' : '') + '</span>';
+            h += '</div>';
+            h += '<div style="height:4px;background:rgba(255,255,255,0.04);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + sBarW + '%;background:' + sColor + ';border-radius:2px;opacity:0.7;"></div></div>';
+            h += '</div>';
+        }
+    }
+
+    // Top trade partners
+    h += secHeader('Top Trade Partners', freightColor);
+    if (topPartners.length === 0) {
+        h += '<div style="color:var(--dtext-3);font-size:0.7rem;padding:8px 0;font-style:italic;">No trade partners via shipping.</div>';
+    } else {
+        var maxPartnerVol = topPartners.length > 0 ? topPartners[0][1].volume : 1;
+        for (var pi = 0; pi < topPartners.length; pi++) {
+            var pName = topPartners[pi][0];
+            var pData = topPartners[pi][1];
+            var pBarW = maxPartnerVol > 0 ? Math.max(2, (pData.volume / maxPartnerVol) * 100) : 0;
+            h += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
+            h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">';
+            h += '<span style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + escapeHtml(pName) + '</span>';
+            h += '<span style="font-size:0.7rem;color:var(--dtext-3);">' + pData.routes + ' route' + (pData.routes !== 1 ? 's' : '') + ' · ' + fmtIndustryMoney(pData.volume) + '</span>';
+            h += '</div>';
+            h += '<div style="height:4px;background:rgba(255,255,255,0.04);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + pBarW + '%;background:' + freightColor + ';border-radius:2px;opacity:0.7;"></div></div>';
+            h += '</div>';
+        }
+    }
+
+    h += '</div>';
+
+    h += '</div>'; // close grid
+    h += '</div></div>'; // close econ-overview + econ-tab-body
+    return h;
 }
 
 // ==================== RATING ====================

@@ -159,10 +159,10 @@ body {
 /* Nation cards grid */
 .nations-grid {
   width: 100%;
-  max-width: 900px;
+  max-width: 1200px;
   padding: 0 16px 48px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
@@ -656,10 +656,13 @@ body {
   vertical-align: middle;
 }
 
+@media (max-width: 1100px) {
+  .nations-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px) {
+  .nations-grid { grid-template-columns: 1fr; }
+}
 @media (max-width: 480px) {
-  .nations-grid {
-    grid-template-columns: 1fr;
-  }
   .continent-tabs {
     flex-direction: column;
     gap: 4px;
@@ -672,9 +675,9 @@ body {
   .modal { width: 95%; padding: 16px; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/select-nation-gBI759TD.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
+  <script type="module" crossorigin src="/assets/select-nation-DiVNZnu0.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
 </head>
 <body>
 
@@ -700,6 +703,10 @@ body {
     <div class="continent-tab" data-continent="Meridian" onclick="switchContinent('Meridian')">
       <div class="continent-tab__name">Meridian</div>
       <div class="continent-tab__desc">The old world, home to diverse nations, cultures, and ancient traditions. Its kingdoms and republics shaped the modern political order.</div>
+    </div>
+    <div class="continent-tab" data-continent="Al-Makir" onclick="switchContinent('Al-Makir')">
+      <div class="continent-tab__name">Al-Makir</div>
+      <div class="continent-tab__desc">A vast desert continent of ancient kingdoms, oil wealth, and deep traditions. Its monarchies and tribal alliances shape a unique political landscape.</div>
     </div>
   </div>
 

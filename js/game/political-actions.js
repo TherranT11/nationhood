@@ -489,6 +489,11 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
         if (targetDelta === 0) targetDelta = sign; // preserve direction even at minimum
     }
 
+    // Crowd Pleaser: +2 bonus momentum from rallies
+    if ((faction.leader_positive_traits || []).includes('crowd_pleaser')) {
+        targetDelta += 2;
+    }
+
     // ── 7. Apply momentum from rally outcome ──
     const effects = [];
     const momSign = targetDelta >= 0 ? '+' : '';
@@ -502,7 +507,8 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     // ── 8. Deduct AP + track last_action_tick ──
     // KNOWN ISSUE: AP deducted after effects applied. Early check (step 1) prevents common case.
     // Atomic RPC prevents DB over-spending. Race condition is acceptable for alpha.
-    const apResult = await deductAP(supabase, factionId, effectiveRallyCost, { reason: 'rally', detail: 'Hold a Rally', tick: currentTick });
+    const rallyDetail = 'Hold a Rally' + (rallyApMod !== 0 ? ' (trait ' + (rallyApMod > 0 ? '+' : '') + rallyApMod + ')' : '');
+    const apResult = await deductAP(supabase, factionId, effectiveRallyCost, { reason: 'rally', detail: rallyDetail, tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Rally] last_action_tick update failed:', error.message); });
 
     // ── 9. Log ──
@@ -566,186 +572,9 @@ function _deriveBlocTags(bloc) {
 }
 
 
-// ==================== VOTER OUTREACH ====================
 
-export const OUTREACH_CONFIG = {
-    AP_COST: 4,
-    COOLDOWN_WINDOW: 4, // look back 4 ticks for diminishing returns
-};
+// Outreach system removed — voter_blocs table no longer exists.
 
-const OUTREACH_AXIS_KEYS = [
-    'liberty_equality', 'tradition_progress', 'security_freedom',
-    'globalism_nationalism', 'individualism_collectivism'
-];
-
-/**
- * Compute ideology alignment between a faction and a voter bloc (0-100).
- * Legacy stub — returns 50 (neutral) since bloc-targeting was removed.
- */
-export function computeOutreachAlignment(factionIdeology, bloc) {
-    return 50;
-}
-
-/**
- * Compute the base outreach effect and diminishing returns.
- * @returns {{ alignment, base, diminished, penalty }}
- */
-export function calcOutreachEffect(alignment, recentOutreachCount) {
-    // base: 3 at alignment 0, up to 5 at alignment 100
-    const base = Math.round(3 + (alignment / 100) * 2);
-    const diminished = Math.max(1, base - recentOutreachCount);
-    return { alignment, base, diminished, penalty: base - diminished };
-}
-
-/**
- * Compute friction — opposed blocs that lose approval when you outreach to a target bloc.
- * Two blocs are "opposed" if they sit on opposite sides (one <40, other >60) of any axis
- * where the target bloc holds a strong opinion (< 35 or > 65).
- */
-export function calcOutreachFriction(targetBloc, allBlocs, factionIdeology) {
-    const frictions = [];
-    const targetAxes = [];
-
-    // Find axes where target bloc has a strong leaning
-    for (const axisKey of OUTREACH_AXIS_KEYS) {
-        const val = targetBloc['axis_' + axisKey] ?? 50;
-        if (val < 35 || val > 65) targetAxes.push({ key: axisKey, val });
-    }
-
-    for (const other of allBlocs) {
-        if (other.id === targetBloc.id) continue;
-
-        // Check if this bloc is ideologically opposed on any of the target's strong axes
-        let isOpposed = false;
-        for (const { key, val: tVal } of targetAxes) {
-            const oVal = other['axis_' + key] ?? 50;
-            // Opposed: one is < 35 and the other is > 65 (opposite sides)
-            if ((tVal < 35 && oVal > 65) || (tVal > 65 && oVal < 35)) {
-                isOpposed = true;
-                break;
-            }
-        }
-
-        if (!isOpposed) continue;
-
-        // Friction penalty scales with how aligned YOUR party is with the opposed bloc
-        const yourAlignment = factionIdeology
-            ? computeOutreachAlignment(factionIdeology, other)
-            : 50;
-
-        // High alignment with opposed bloc = more friction
-        const penalty = yourAlignment > 60 ? -2 : yourAlignment > 40 ? -1 : 0;
-        if (penalty < 0) {
-            frictions.push({ blocId: other.id, blocName: other.bloc_name, penalty, alignment: yourAlignment });
-        }
-    }
-
-    return frictions;
-}
-
-/**
- * Execute voter outreach targeting a specific voter bloc.
- * Guaranteed result — no randomness, no polarization, no headline.
- * Returns { success, effects, newAp }
- */
-export async function executeOutreach(supabase, factionId, nationId, blocId, currentTick) {
-    // ── 1. Validate AP (with leader trait modifiers) ──
-    const { data: faction } = await supabase
-        .from('factions').select('action_points, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    const outreachApMod = getTraitAPModifier('outreach', faction, currentTick);
-    const effectiveOutreachCost = Math.max(1, OUTREACH_CONFIG.AP_COST + outreachApMod);
-    if ((faction.action_points || 0) < effectiveOutreachCost)
-        return { success: false, error: `Not enough AP. Need ${effectiveOutreachCost}.` };
-
-    // ── 2. Load recent outreach actions for diminishing returns ──
-    const { data: recentOutreach } = await supabase
-        .from('campaign_actions')
-        .select('tick_performed, result')
-        .eq('party_id', factionId)
-        .eq('action_type', 'outreach')
-        .gte('tick_performed', currentTick - OUTREACH_CONFIG.COOLDOWN_WINDOW)
-        .order('tick_performed', { ascending: false });
-
-    const outreachedThisTick = (recentOutreach || []).some(r => r.tick_performed === currentTick);
-    if (outreachedThisTick)
-        return { success: false, error: 'Already conducted outreach this tick.' };
-
-    const recentToBloc = (recentOutreach || []).filter(r => r.result?.blocId === blocId).length;
-
-    // ── 3. Load faction ideology ──
-    const { data: factionIdeo } = await supabase
-        .from('faction_ideology')
-        .select('liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .eq('faction_id', factionId)
-        .maybeSingle();
-
-    // ── 4. Load all blocs (voter_blocs table removed; default to empty) ──
-    const allBlocs = [];
-
-    const targetBloc = allBlocs.find(b => b.id === blocId);
-    if (!targetBloc) return { success: false, error: 'Voter bloc not found.' };
-
-    // ── 5. Compute alignment and effect ──
-    const alignment = factionIdeo ? computeOutreachAlignment(factionIdeo, targetBloc) : 50;
-    let { diminished } = calcOutreachEffect(alignment, recentToBloc);
-
-    // Apply leader trait multipliers: telegenic (+30%), divisive_figure (halved for non-BASE)
-    // Default to SWING disposition (electorate system handles approval now)
-    const blocDisp = 'SWING';
-    const effectiveDisp = getEffectiveBlocDisposition(blocDisp, faction);
-    let outreachMult = getTraitApprovalMultiplier(faction, 'outreach', effectiveDisp);
-    if (outreachMult !== 1.0) {
-        diminished = Math.max(1, Math.round(diminished * outreachMult));
-    }
-
-    // ── 6. Effects (legacy bloc-approval writes removed; electorate hook handles approval now) ──
-    const effects = [];
-
-    // ── 9. Deduct AP + track last_action_tick ──
-    const apResult = await deductAP(supabase, factionId, effectiveOutreachCost, { reason: 'outreach', detail: 'Community Outreach', tick: currentTick });
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Outreach] last_action_tick update failed:', error.message); });
-
-    // ── 10. Log ──
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId,
-        nation_id: nationId,
-        action_type: 'outreach',
-        ap_cost: effectiveOutreachCost,
-        money_cost: 0,
-        tick_performed: currentTick,
-        result: {
-            blocId, blocName: targetBloc.bloc_name,
-            alignment, diminished,
-            effects,
-            recentToBloc,
-            tags: _deriveBlocTags(targetBloc),
-        }
-    });
-
-    // Electorate engine: update visibility + approval + activity log
-    try { await onOutreach(supabase, factionId, nationId, alignment, diminished, currentTick); } catch (e) {
-        console.error('[Outreach] Electorate hook failed (non-fatal):', e.message);
-    }
-
-    return {
-        success: true,
-        effects,
-        alignment,
-        diminished,
-        newAp: apResult.newAp ?? ((faction.action_points || 0) - effectiveOutreachCost),
-    };
-}
-
-/**
- * Set or change a party endorsement preference.
- *
- * Rules:
- * - First endorsement preference for a faction is free.
- * - Changing to a different endorsed faction costs 1 AP (atomic deduct_ap RPC).
- * - Re-selecting the same endorsed faction is a no-op (no AP cost).
- * - Always writes a campaign_actions audit row with a reason string.
- */
 export async function executeEndorsementPreference(supabase, factionId, nationId, endorsedFactionId, currentTick, reason = 'endorsement_preference_update') {
     // faction_endorsements table has been removed; endorsements are not currently available.
     return { success: false, error: 'Endorsements are not available.' };
@@ -1111,7 +940,8 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
     }
 
     // ── 8. Deduct AP + track last_action_tick ──
-    const apResult = await deductAP(supabase, factionId, effectiveAttackCost, { reason: 'attack', detail: 'Campaign Attack', tick: currentTick });
+    const attackDetail = 'Campaign Attack' + (attackApMod !== 0 ? ' (trait ' + (attackApMod > 0 ? '+' : '') + attackApMod + ')' : '');
+    const apResult = await deductAP(supabase, factionId, effectiveAttackCost, { reason: 'attack', detail: attackDetail, tick: currentTick });
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Attack] last_action_tick update failed:', error.message); });
 
     // ── 9. Generate headline ──
@@ -1214,9 +1044,22 @@ export async function rebalanceVacantSeats(supabase, nation) {
 
     if (vacantSeats <= 0) return null; // No vacant seats
 
+    // If no election has ever been held, don't distribute seats — they should
+    // remain at 0 until the first election actually runs.
+    if (currentSum === 0) {
+        const { count: electionCount } = await supabase
+            .from('elections')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', nation.id)
+            .eq('status', 'completed');
+        if (!electionCount || electionCount === 0) {
+            return null;
+        }
+    }
+
     console.log(`[rebalanceVacantSeats] ${nation.name}: ${vacantSeats} vacant seat(s) detected (${currentSum}/${totalSeats}). Redistributing.`);
 
-    // All factions at 0 seats — distribute evenly
+    // All factions at 0 seats — distribute evenly (only reachable after an election has occurred)
     if (currentSum === 0) {
         const perParty = Math.floor(totalSeats / factions.length);
         let remainder = totalSeats - perParty * factions.length;
@@ -1844,8 +1687,10 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
             }
         }
 
+        // PM approval capped at 70 — broad stat ownership makes 100% too easy
+        const approvalCeiling = ministry.ministry_key === 'prime_minister' ? 70 : 100;
         // minister_approval is an integer column — round to whole number
-        newApproval = Math.round(Math.max(0, Math.min(100, newApproval)));
+        newApproval = Math.round(Math.max(0, Math.min(approvalCeiling, newApproval)));
 
         // Keep stat_baselines as the original appointment snapshot (never overwrite).
         // The UI uses baselines to show cumulative change since appointment.
@@ -1987,7 +1832,7 @@ export async function processGovernmentCollapseCheck(supabase, nation, currentTi
         // Close administration
         try {
             const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-            await closeAdministration(supabase, nation.id, nation, 'collapsed', currentTick, shard?.current_date || '', null);
+            await closeAdministration(supabase, nation.id, nation, 'collapsed', currentTick, shard?.current_date || _tickToDate(currentTick), null);
         } catch (e) { console.warn('[GovCollapse] closeAdministration failed:', e); }
 
         await dissolveCoalition(supabase, nation.id);
@@ -2795,8 +2640,8 @@ export async function processCrises(supabase, nation, currentTick) {
                     for (const pid of govFormation.party_ids) {
                         await supabase.rpc('adjust_momentum', {
                             p_faction_id: pid,
-                            p_delta: 8,
-                            p_label: `Crisis resolved: ${template.name} (+8)`,
+                            p_delta: 3,
+                            p_label: `Crisis resolved: ${template.name} (+3)`,
                             p_tick: currentTick
                         });
                     }
@@ -2989,12 +2834,102 @@ const FEMALE_NAMES = new Set([
     'Hanneke', 'Ilse', 'Jobke', 'Karlijn', 'Lieselotte', 'Maaike', 'Nienke', 'Roos',
     // Vostia
     'Dragana', 'Svetlana', 'Jelena', 'Milica', 'Danica', 'Zora', 'Radmila',
-    'Snežana', 'Vesna'
+    'Snežana', 'Vesna',
+    // Dravka
+    'Afërdita', 'Bora', 'Era', 'Luljeta', 'Teuta'
+    // Danwei: intentionally NO entries. Family-first convention stores
+    // surnames (Chen, Lin, Han) in the FIRST_NAMES slot and given names
+    // (Mei-ling, Kuo-yu) in LAST_NAMES — but isFemaleName() tests the
+    // FIRST_NAMES slot only, so adding female given names here would
+    // never match. Gender-aware titles (Queen/King in bills.js:4480 and
+    // 4579) only fire for monarchies, which Danwei isn't, so the gap
+    // is currently inert. If a future change wants gendered titles for
+    // Danwei, the fix is to make isFemaleName nation-aware (check the
+    // last-name slot for family-first cultures), not to add entries here.
 ]);
 
 export function isFemaleName(firstName) {
     return FEMALE_NAMES.has(firstName);
 }
+
+// Al-Makir (Arabic) name pools
+const ALMAKIR_NATIONS = ['Hajjara'];
+export const ALMAKIR_FIRST_NAMES = [
+    'Ahmad','Muhammad','Ali','Omar','Hassan','Hussein','Khalid','Abdullah','Ibrahim','Yusuf',
+    'Ismail','Hamza','Tariq','Zayd','Saeed','Faisal','Nasser','Salman','Rashid','Kareem',
+    'Mahmoud','Farid','Jamal','Samir','Hadi','Anwar','Imran','Bilal','Qasim','Majid',
+    'Walid','Fadi','Rami','Zahir','Adnan','Amin','Haris','Yasin','Tamer','Nabil',
+    'Bashir','Dawood','Zakaria','Munir','Latif','Jaber','Mazen','Kamil','Rauf','Shadi',
+];
+export const ALMAKIR_LAST_NAMES = [
+    'Al-Farouq','Al-Hakim','Al-Masri','Al-Sabah','Al-Najjar','Al-Haddad','Al-Saleh','Al-Sharif',
+    'Al-Khalifa','Al-Qahtani','Al-Harbi','Al-Otaibi','Al-Anzi','Al-Zahrani','Al-Ghamdi','Al-Dosari',
+    'Al-Rashidi','Al-Suwaidi','Al-Mansouri','Al-Mutairi','Al-Ahmadi','Al-Saeed','Al-Jabari','Al-Khatib',
+    'Al-Basri','Al-Tamimi','Al-Hashimi','Al-Kurdi','Al-Husseini','Al-Yamani','Al-Shammari','Al-Farsi',
+    'Al-Hamadi','Al-Siddiqi','Al-Qureshi','Al-Azmi','Al-Salem','Al-Din','Al-Rahman','Al-Majid',
+    'Al-Bakri','Al-Saadi','Al-Hilali','Al-Makki','Al-Madani','Al-Baghdadi','Al-Dimashqi','Al-Andalusi',
+    'Al-Maghribi','Al-Samarrai','Al-Tikriti','Al-Nasiri','Al-Fahd','Al-Karim','Al-Nouri','Al-Sayegh',
+    'Al-Rifai','Al-Qadri','Al-Ayoubi','Al-Barghouti','Al-Khatri','Al-Shihabi','Al-Awadi','Al-Sarraf',
+    'Al-Zubaidi','Al-Hussein','Al-Attar','Al-Safadi','Al-Hourani','Al-Kassab','Al-Taleb','Al-Hamdan',
+    'Al-Rantisi','Al-Banna','Al-Khatour',
+];
+
+// Danwei (Taiwanese) name pools.
+//
+// Convention: Danweian display order is family-first (e.g. "Han Kuo-yu"),
+// so DANWEI_FIRST_NAMES holds Taiwanese family/surnames and
+// DANWEI_LAST_NAMES holds given names. This way the existing
+// "first_name + ' ' + last_name" display logic produces the correct
+// Taiwanese-style ordering without rewriting display logic across the
+// codebase. See sql/insert_danwei.sql Phase 2 (caretaker Han Kuo-yu).
+const DANWEI_NATIONS = ['Danwei'];
+export const DANWEI_FIRST_NAMES = [
+    // Family / surnames (Wade-Giles transliteration; Taiwan-frequency order)
+    'Chen', 'Lin', 'Huang', 'Chang', 'Lee', 'Wang', 'Wu', 'Liu', 'Tsai', 'Yang',
+    'Hsu', 'Cheng', 'Chou', 'Hsieh', 'Kuo', 'Chiang', 'Tang', 'Lo', 'Pan', 'Chao',
+    'Ho', 'Chu', 'Tseng', 'Yeh', 'Hsiao', 'Lai', 'Su', 'Ma', 'Hung', 'Chiu',
+    'Shih', 'Chien', 'Liao', 'Han', 'Sun', 'Wei', 'Ku', 'Fang', 'Yu', 'Shen',
+    'Fu', 'Hsiang', 'Tsao', 'Hu', 'Sung', 'Shao', 'Kao', 'Pao', 'Po', 'Lung',
+];
+export const DANWEI_LAST_NAMES = [
+    // Given names (hyphenated 2-syllable Wade-Giles).
+    // Male
+    'Kuo-yu', 'Wei-ming', 'Ming-chen', 'Chih-yuan', 'Hsiao-ping', 'Wen-cheng',
+    'Yu-ren', 'Ying-jeou', 'Teng-hui', 'Cheng-yi', 'Chen-yi', 'Tien-hsing',
+    'Po-yu', 'Chih-hao', 'Yi-feng', 'Chih-hung', 'Wei-jen', 'Cheng-ming',
+    'Po-chen', 'Hsing-kuo', 'Wen-fan', 'Po-hsiung', 'Tsung-hsien', 'Chao-ming',
+    'Yi-chun', 'Chang-ting',
+    // Female (also added to FEMALE_NAMES set above)
+    'Mei-ling', 'Hsiu-lien', 'Wen-chi', 'Yu-hua', 'Su-chen', 'Yi-fang', 'Hsin-yi',
+    'Yu-ling', 'Chia-ling', 'Pei-ling', 'Mei-feng', 'Hsiao-mei', 'Yu-chen',
+    'Wen-ling', 'Mei-yu', 'Chia-hsuan', 'Pei-yi', 'Hsin-mei', 'Chia-jung',
+    'Pei-chen', 'Hsiu-chen', 'Mei-chen', 'Yi-ling', 'Hsiu-mei',
+];
+
+// Dravka (Albanian) name pools
+const DRAVKA_NATIONS = ['Dravka'];
+export const DRAVKA_FIRST_NAMES = [
+    // Male
+    'Agon','Altin','Arban','Ardian','Ardit','Arian','Arlind','Armend','Artan','Auron',
+    'Bardhyl','Besart','Besmir','Besnik','Bledar','Blerim','Burim','Dalmat','Dardan','Dasnor',
+    'Dëfrim','Dorian','Drilon','Dritan','Edon','Endrit','Enver','Erion','Ermal','Ervin',
+    'Fisnik','Flamur','Genti','Gezim','Ilir','Jetmir','Kastriot','Kreshnik','Luan','Mirlind',
+    'Pajtim','Saimir','Skerdilaid','Taulant','Vigan',
+    // Female
+    'Afërdita','Bora','Era','Luljeta','Teuta',
+];
+export const DRAVKA_LAST_NAMES = [
+    'Abazi','Ademi','Agolli','Ahmeti','Alia','Aliti','Asllani','Bajrami','Bakalli','Bala',
+    'Balaj','Bardhi','Beqiri','Berisha','Biba','Bisha','Brahimi','Buda','Bushaj','Bushati',
+    'Caka','Cami','Cani','Cela','Dajaku','Dauti','Deda','Dedaj','Demiri','Dervishi',
+    'Dobi','Doda','Dragusha','Duka','Elezi','Fejzu','Ferati','Frashëri','Gashi','Gega',
+    'Gjoni','Gjoka','Gurakuqi','Hadergjonaj','Hajdari','Halili','Hamiti','Haradinaj','Hasani','Hoti',
+    'Hoxha','Ismaili','Jahjaga','Jashari','Kadiu','Kastrati','Kelmendi','Kodra','Kola','Konica',
+    'Krasniqi','Kuqi','Kurti','Leka','Lekaj','Limaj','Luli','Lumi','Malo','Marku',
+    'Mazreku','Mehmeti','Meidani','Meksi','Meta','Morina','Muka','Murati','Musliu','Mustafa',
+    'Myftiu','Nano','Ndreu','Osmani','Pajaziti','Pasha','Prenga','Qosja','Rama','Rexhepi',
+    'Rugova','Sadiku','Sejdiu','Selimi','Shala','Shehu','Smajlaj','Spahiu','Tafa','Zaimi',
+];
 
 export function getNationNames(nationName) {
     if (AVELIA_NATIONS.includes(nationName)) {
@@ -3008,6 +2943,15 @@ export function getNationNames(nationName) {
     }
     if (VOSTIA_NATIONS.includes(nationName)) {
         return { firstNames: VOSTIA_FIRST_NAMES, lastNames: VOSTIA_LAST_NAMES };
+    }
+    if (ALMAKIR_NATIONS.includes(nationName)) {
+        return { firstNames: ALMAKIR_FIRST_NAMES, lastNames: ALMAKIR_LAST_NAMES };
+    }
+    if (DRAVKA_NATIONS.includes(nationName)) {
+        return { firstNames: DRAVKA_FIRST_NAMES, lastNames: DRAVKA_LAST_NAMES };
+    }
+    if (DANWEI_NATIONS.includes(nationName)) {
+        return { firstNames: DANWEI_FIRST_NAMES, lastNames: DANWEI_LAST_NAMES };
     }
     return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
 }
@@ -3067,14 +3011,117 @@ export function weightedRandomPick(weightedItems) {
 
 
 /**
+ * Single source of truth for installing a Head of Government row.
+ *
+ * Every PM-install path (parliamentary auto-appoint, presidential PM
+ * confirmation, monarchy royal appointment) routes through this helper so
+ * the upsert columns, ideology lookup, and unique(nation_id) handling stay
+ * identical across paths.
+ *
+ * @param {object} supabase
+ * @param {object} opts
+ * @param {string} opts.nationId
+ * @param {string} opts.factionId           party that the new PM belongs to
+ * @param {string} opts.firstName
+ * @param {string} opts.lastName
+ * @param {number} [opts.age]               defaults to 50 if unset
+ * @param {number} opts.currentTick
+ * @param {string} [opts.traitKey]          leader trait, optional
+ * @param {string} [opts.candidateId]       presidential candidate row id, optional
+ * @param {string} [opts.ideology]          uppercase tag; if omitted, loaded
+ *                                          from factions.leader_ideology with
+ *                                          a CENTRIST fallback
+ * @returns {Promise<{ ideologyTag: string }>}
+ */
+export async function installHOG(supabase, opts) {
+    if (!opts?.nationId || !opts?.factionId) {
+        throw new Error('installHOG: nationId and factionId are required');
+    }
+    const {
+        nationId, factionId, firstName, lastName, age,
+        currentTick, traitKey = null, candidateId = null,
+    } = opts;
+
+    let ideologyTag = opts.ideology;
+    if (!ideologyTag) {
+        try {
+            const { data: f } = await supabase
+                .from('factions')
+                .select('leader_ideology')
+                .eq('id', factionId)
+                .maybeSingle();
+            if (f?.leader_ideology) ideologyTag = String(f.leader_ideology).toUpperCase();
+        } catch (_) { /* fall through to CENTRIST */ }
+    }
+    if (!ideologyTag) ideologyTag = 'CENTRIST';
+
+    // head_of_government has UNIQUE(nation_id), so a stale inactive row from
+    // a previous PM would block a plain insert. Deactivate first, then upsert
+    // — the upsert overwrites the just-deactivated row in the same tx.
+    await supabase.from('head_of_government')
+        .update({ active: false })
+        .eq('nation_id', nationId)
+        .eq('active', true);
+
+    const { error: hogErr } = await supabase
+        .from('head_of_government')
+        .upsert({
+            nation_id: nationId,
+            faction_id: factionId,
+            candidate_id: candidateId,
+            first_name: firstName,
+            last_name: lastName,
+            age: age || 50,
+            ideology: ideologyTag,
+            trait_key: traitKey,
+            appointed_tick: currentTick,
+            active: true,
+        }, { onConflict: 'nation_id' });
+
+    if (hogErr) throw hogErr;
+    return { ideologyTag };
+}
+
+
+/**
  * Auto-appoint the party leader as Prime Minister without candidate selection.
  * Used for parliamentary systems — the party leader becomes PM immediately
  * when their party receives the PM role during coalition formation.
  */
-export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick) {
-    const coalition = await fetchActiveCoalition(supabase, nationId);
-    if (!coalition || (coalition.status !== 'formed' && coalition.status !== 'active' && coalition.status !== 'caretaker')) {
-        throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
+export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick, opts) {
+    // When called from coalition formation flow, skip the coalition check
+    // (the formation was JUST set to 'formed' and cache may be stale)
+    let _coalitionAtEntry = null;
+    if (!opts?.skipCoalitionCheck) {
+        _coalitionAtEntry = await fetchActiveCoalition(supabase, nationId);
+        if (!_coalitionAtEntry || (_coalitionAtEntry.status !== 'formed' && _coalitionAtEntry.status !== 'active' && _coalitionAtEntry.status !== 'caretaker')) {
+            throw new Error('Cannot appoint a Prime Minister until a coalition has been formed.');
+        }
+    }
+
+    // Detect whether this install is filling a vacant PM seat (which is the
+    // signal for resignation-succession: PM resigned, HOG was deactivated,
+    // coalition went to caretaker, and we're now installing the successor
+    // before the fallback snap election fires). If any HOG is still active
+    // at entry, this is NOT a succession install — it's a normal PM swap or
+    // a formation-time install — and we must NOT cancel the pending election
+    // (that would undo a Call-Early-Elections caretaker by accident).
+    let _isSuccessionInstall = false;
+    if (!opts?.skipCoalitionCheck && _coalitionAtEntry && _coalitionAtEntry.status === 'caretaker') {
+        const { data: existingActiveHog, error: hogLookupErr } = await supabase
+            .from('head_of_government')
+            .select('id')
+            .eq('nation_id', nationId)
+            .eq('active', true)
+            .maybeSingle();
+        // Bail to "not a succession" if the lookup itself failed — better to
+        // leave a pending fallback election in place than to cancel one we
+        // shouldn't have cancelled based on a transient DB error.
+        if (hogLookupErr) {
+            console.warn('[autoAppointPartyLeaderAsPM] HOG lookup failed during succession check (assuming non-succession):', hogLookupErr.message);
+        } else {
+            _isSuccessionInstall = !existingActiveHog;
+        }
     }
 
     // Load faction with leader data (including leader_ideology as single source of truth)
@@ -3112,27 +3159,17 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
 
     const leaderAge = faction.leader_age || (35 + Math.floor(Math.random() * 16));
 
-    // Deactivate any current HOG
-    await supabase.from('head_of_government')
-        .update({ active: false })
-        .eq('nation_id', nationId).eq('active', true);
-
-    // Create HOG record
-    const { error: hogErr } = await supabase
-        .from('head_of_government')
-        .upsert({
-            nation_id: nationId,
-            faction_id: factionId,
-            candidate_id: null,
-            first_name: faction.leader_first_name,
-            last_name: faction.leader_last_name,
-            age: leaderAge,
-            ideology: ideology.tag,
-            trait_key: traitKey,
-            appointed_tick: currentTick,
-            active: true
-        }, { onConflict: 'nation_id' });
-    if (hogErr) throw hogErr;
+    // Single source of truth — see installHOG above.
+    await installHOG(supabase, {
+        nationId,
+        factionId,
+        firstName: faction.leader_first_name,
+        lastName: faction.leader_last_name,
+        age: leaderAge,
+        currentTick,
+        traitKey,
+        ideology: ideology.tag,
+    });
 
     // Update administration record
     const pmFullName = `${faction.leader_first_name} ${faction.leader_last_name}`;
@@ -3202,6 +3239,43 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     } catch (e) { console.warn('PM appointed event fire failed (non-blocking):', e); }
 
     console.log(`Auto-appointed party leader as PM: ${pmFullName} (${traitKey}) for faction ${factionId}`);
+
+    // Succession-window cleanup: if this install filled the vacant PM seat
+    // left by a resignation (see resignPM), roll the coalition back to
+    // 'formed' and cancel the fallback snap election that resignPM
+    // scheduled. The _isSuccessionInstall check above guarantees we only
+    // run this when there was no active HOG at entry, so a Call-Early-
+    // Elections caretaker (HOG still active, going to voters) is safely
+    // excluded.
+    if (_isSuccessionInstall) {
+        try {
+            await supabase.from('active_coalitions')
+                .update({ status: 'formed' })
+                .eq('id', _coalitionAtEntry.id);
+            await supabase.from('government_formations')
+                .update({ status: 'formed' })
+                .eq('nation_id', nationId)
+                .eq('status', 'caretaker');
+            const { error: elDelErr } = await supabase.from('elections')
+                .delete()
+                .eq('nation_id', nationId)
+                .eq('status', 'scheduled')
+                .eq('election_type', 'parliamentary');
+            if (elDelErr) {
+                console.warn('[autoAppointPartyLeaderAsPM] succession-install: election delete failed (non-fatal):', elDelErr.message);
+            }
+            // NOTE: bills that were frozen by resignPM stay frozen. The
+            // original committee-vs-floor split is lost (both collapsed to
+            // 'frozen') so blanket-unfreezing would wrongly promote committee
+            // bills to the floor. Leaving them frozen is safe but means a
+            // small UX gap — bills in flight when the PM resigned need to be
+            // re-introduced by the successor. Intentional, not a landmine.
+            console.log(`[autoAppointPartyLeaderAsPM] succession complete: coalition -> formed, fallback election cancelled.`);
+        } catch (cancelErr) {
+            console.warn('[autoAppointPartyLeaderAsPM] succession-window cleanup failed (non-fatal):', cancelErr);
+        }
+    }
+
     return { first_name: faction.leader_first_name, last_name: faction.leader_last_name, age: leaderAge, ideology: ideology.tag, trait_key: traitKey };
 }
 
@@ -3371,39 +3445,53 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
         .update({ pm_cooldown_until: currentTick + 12 })
         .eq('id', factionId);
 
-    // 4. Always dissolve the coalition — PM resignation triggers immediate elections
-    console.log('PM resignation — dissolving coalition and scheduling immediate election');
-    try {
-        const { data: fullNation } = await supabase.from('nations').select('*').eq('id', nationId).single();
-        const { data: shard } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-        if (fullNation) {
-            await closeAdministration(supabase, nationId, fullNation, 'pm_resignation', currentTick, shard?.current_date || '', null);
-        }
-    } catch (adminErr) { console.warn('Could not close administration on PM resignation:', adminErr); }
-    await dissolveCoalition(supabase, nationId);
+    // 4. Put the coalition into caretaker status and keep it intact for the
+    //    succession window. The existing appoint-PM / nominate flow lets a
+    //    coalition partner install a new PM during this window; if they do
+    //    the snap election scheduled below can be cancelled at that point.
+    //    Otherwise the snap election fires after FORMATION_DEADLINE_TICKS.
+    //    (Previously this dissolved the coalition + scheduled an immediate
+    //    election, which made Resign functionally indistinguishable from
+    //    a more punitive Call-Early-Elections — the succession path is what
+    //    gives the two actions distinct use-cases.)
+    await supabase
+        .from('active_coalitions')
+        .update({ status: 'caretaker' })
+        .eq('nation_id', nationId)
+        .is('dissolved_at', null);
+    await supabase
+        .from('government_formations')
+        .update({ status: 'caretaker' })
+        .eq('nation_id', nationId)
+        .in('status', ['formed', 'active']);
 
-    // 5. Freeze all active bills
+    // 5. Freeze all active bills (same as early elections / no-confidence)
     await supabase
         .from('bills')
         .update({ status: 'frozen' })
         .eq('nation_id', nationId)
         .in('status', ['committee', 'floor']);
 
-    // 6. Cancel any existing scheduled elections and schedule immediate one
+    // 6. Schedule a fallback snap election one formation-window out. If the
+    //    coalition installs a new PM before this tick, downstream logic can
+    //    cancel the election and restore coalition status to 'formed'. If
+    //    the window expires, the scheduled row fires normally.
     await supabase
         .from('elections')
         .delete()
         .eq('nation_id', nationId)
-        .eq('status', 'scheduled');
+        .eq('status', 'scheduled')
+        .eq('election_type', 'parliamentary');
 
+    const fallbackTick = currentTick + FORMATION_DEADLINE_TICKS;
     await supabase.from('elections').insert({
         nation_id: nationId,
-        election_tick: currentTick,
+        election_tick: fallbackTick,
         status: 'scheduled',
         election_type: 'parliamentary'
     });
 
-    console.log(`  Scheduled immediate election for tick ${currentTick}`);
+    console.log(`PM resignation: coalition \u2192 caretaker, succession window until tick ${fallbackTick}`);
 
     // Fire timeline event
     try {
@@ -3415,19 +3503,25 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
         });
     } catch (e) { /* non-blocking */ }
 
-    return { result: 'election_called', reason: hog.trait_key === 'iron_will' ? 'iron_will' : 'pm_resignation' };
+    return { result: 'succession_window', reason: hog.trait_key === 'iron_will' ? 'iron_will' : 'pm_resignation', fallbackTick };
 }
 
 
 // ==================== DISBAND PARTY ====================
 
 export async function disbandParty(supabase, nationId, factionId, currentTick) {
-    // 1. Cooldown check
+    // Guard: never disband corporations
     const { data: faction } = await supabase
         .from('factions')
-        .select('disband_cooldown_until_tick, faction_name')
+        .select('disband_cooldown_until_tick, faction_name, faction_type')
         .eq('id', factionId)
         .single();
+
+    if (faction?.faction_type === 'corporation') {
+        throw new Error('Corporations cannot be disbanded.');
+    }
+
+    // 1. Cooldown check
 
     if (faction?.disband_cooldown_until_tick && faction.disband_cooldown_until_tick > currentTick) {
         const remaining = faction.disband_cooldown_until_tick - currentTick;
@@ -3549,12 +3643,12 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     }
 
     // 6b. Nullify FK references that would block future hard-deletes of the faction
+    // Tables removed: election_candidates, presidential_candidates don't exist.
+    // protests → protest_log (renamed in migration).
     const fkResults = await Promise.allSettled([
         supabase.from('active_laws').update({ proposed_by: null }).eq('proposed_by', factionId),
         supabase.from('administrations').update({ pm_party_id: null }).eq('pm_party_id', factionId),
-        supabase.from('election_candidates').delete().eq('faction_id', factionId),
-        supabase.from('presidential_candidates').delete().eq('faction_id', factionId),
-        supabase.from('protests').update({ faction_id: null }).eq('faction_id', factionId),
+        supabase.from('protest_log').update({ faction_id: null }).eq('faction_id', factionId),
     ]);
     for (const r of fkResults) {
         if (r.status === 'rejected') console.warn('disbandParty: FK cleanup error:', r.reason);
@@ -3601,6 +3695,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
             party_id: factionId,
             nation_id: nationId,
             action_type: 'party_disbanded',
+            ap_cost: 0,
             tick_performed: currentTick,
             result: { faction_name: faction?.faction_name || 'Unknown' }
         });

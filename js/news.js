@@ -1,6 +1,7 @@
 // js/news.js — The Cruceran & The Continental newspaper pages
 
 import { tickToDate } from './utils.js';
+import { fetchActiveCoalition } from './game/government-structure.js';
 
 // Module-level references set during init
 let _supabase = null;
@@ -12,7 +13,7 @@ let _articleReaderHandler = null; // stored ref to prevent listener accumulation
 let _archiveBackContext = null; // navigation context for article reader back button
 let _editingArticleId = null; // null = create mode, UUID string = edit mode
 let _removeExistingImage = false; // flag: user wants to drop the current image on edit
-let _publication = 'cruceran'; // 'cruceran' or 'continental'
+let _publication = 'cruceran'; // 'cruceran', 'continental', or 'alsahwa'
 let _publicationSetByUser = false; // true when user manually switched via dropdown
 
 // Nation-to-publication mapping (data-driven for future expansion)
@@ -21,15 +22,23 @@ const PUBLICATION_CONFIG = {
         key: 'cruceran',
         name: 'The Cruceran',
         tagline: 'Truth in the service of the people',
-        nations: ['Avelia', 'Palvera', 'San Estrella', 'Montequilla', 'Melizea', 'Sangreza'],
+        nations: ['Avelia', 'Palvera', 'San Estrella', 'Montequilla', 'Melizea', 'Sangreza', 'Sierramar'],
         style: 'cruceran' // CSS class prefix
     },
     continental: {
         key: 'continental',
         name: 'The Continental',
         tagline: 'Where Ideas Converge',
-        nations: ['Calveth', 'Flandis', 'Vostia'],
+        nations: ['Calveth', 'Flandis', 'Vostia', 'Dravka'],
         style: 'continental'
+    },
+    alsahwa: {
+        key: 'alsahwa',
+        name: 'Al-Sahwa',
+        tagline: 'Independent Voice of Al-Makir',
+        nations: ['Hajjara'],
+        continent: 'Al-Makir',
+        style: 'alsahwa'
     }
 };
 
@@ -43,8 +52,17 @@ function getPublicationForNation(nationName) {
 function canWriteToPublication(pubKey, nationName) {
     const cfg = PUBLICATION_CONFIG[pubKey];
     if (!cfg) return false;
-    return cfg.nations.some(n => n.toLowerCase() === (nationName || '').toLowerCase());
+    // Check home nation
+    if (cfg.nations.some(n => n.toLowerCase() === (nationName || '').toLowerCase())) return true;
+    // Check corporate presence nations (subsidiaries/regional HQs)
+    if (_corpPresenceNations && _corpPresenceNations.length > 0) {
+        return cfg.nations.some(n => _corpPresenceNations.includes(n.toLowerCase()));
+    }
+    return false;
 }
+
+// Corporate presence nations — loaded during init for corps with subsidiaries
+let _corpPresenceNations = [];
 
 // Season key for quarterly issue grouping
 // Spring: Feb(1), Mar(2), Apr(3)  Summer: May(4), Jun(5), Jul(6)
@@ -68,6 +86,20 @@ export async function initNewspaper(supabase, state) {
     const root = document.getElementById('newspaper-root');
     if (!root) return;
 
+    // Load corporate presence nations (for corps with subsidiaries)
+    _corpPresenceNations = [];
+    if (state.faction?.faction_type === 'corporation') {
+        try {
+            const { data: props } = await supabase.from('corp_properties')
+                .select('nation_id, nations:nation_id(name)')
+                .eq('faction_id', state.faction.id)
+                .eq('is_active', true);
+            if (props) {
+                _corpPresenceNations = props.map(p => (p.nations?.name || '').toLowerCase()).filter(Boolean);
+            }
+        } catch (_) { /* non-blocking */ }
+    }
+
     // Set default publication on first load only — on re-init from the
     // publication switcher, _publication is already set to the user's choice.
     if (!_publicationSetByUser) {
@@ -77,7 +109,7 @@ export async function initNewspaper(supabase, state) {
     const gameDate = state.shard?.current_date || '[Month], [Year]';
     const canWrite = canWriteToPublication(_publication, state.nation?.name);
     const isHomePub = canWrite;
-    const writeLabel = isHomePub ? 'Write Article' : 'Write Article (1 AP)';
+    const writeLabel = 'Write Article';
 
     // Publication switcher options
     const pubSwitcher = Object.entries(PUBLICATION_CONFIG).map(([key, cfg]) =>
@@ -87,15 +119,65 @@ export async function initNewspaper(supabase, state) {
     root.innerHTML = `<div class="newspaper-container nws-pub-${_publication}">
 
         <!-- TOP RIBBON -->
-        <div class="nws-top-ribbon${_publication === 'continental' ? ' nws-top-ribbon--continental' : ''}">
+        <div class="nws-top-ribbon${_publication === 'continental' ? ' nws-top-ribbon--continental' : _publication === 'alsahwa' ? ' nws-top-ribbon--alsahwa' : ''}">
             <div class="nws-top-ribbon-inner">
                 <span>${gameDate}</span>
                 <select class="nws-pub-switcher" id="nws-pub-switcher">${pubSwitcher}</select>
-                <span><button class="nws-write-btn" id="nws-write-article-btn">${writeLabel}</button></span>
+                ${canWrite ? `<span><button class="nws-write-btn" id="nws-write-article-btn">${writeLabel}</button></span>` : ''}
             </div>
         </div>
 
-        ${_publication === 'continental' ? `
+        ${_publication === 'alsahwa' ? `
+        <!-- AL-SAHWA GEOMETRIC BORDER -->
+        <div class="nws-alsahwa-geo-border"></div>
+
+        <!-- AL-SAHWA MASTHEAD -->
+        <div class="nws-alsahwa-masthead">
+            <div class="nws-alsahwa-masthead-inner">
+                <div class="nws-alsahwa-brand">
+                    <div class="nws-alsahwa-mark">
+                        <div class="nws-alsahwa-mark-outer"></div>
+                        <div class="nws-alsahwa-mark-inner"></div>
+                        <div class="nws-alsahwa-mark-dot"></div>
+                    </div>
+                    <div class="nws-alsahwa-titles">
+                        <div class="nws-alsahwa-arabic">\u0627\u0644\u0635\u062D\u0648\u0629</div>
+                        <div class="nws-alsahwa-english">Al-Sahwa</div>
+                        <div class="nws-alsahwa-subtitle">Independent Voice of Al-Makir</div>
+                    </div>
+                </div>
+                <div class="nws-alsahwa-right">
+                    <div class="nws-alsahwa-date">${gameDate}</div>
+                    ${canWrite ? `<button class="nws-alsahwa-watch" id="nws-write-article-btn-alsahwa">${writeLabel}</button>` : ''}
+                </div>
+            </div>
+        </div>
+
+        <!-- AL-SAHWA NAV -->
+        <nav class="nws-alsahwa-nav">
+            <div class="nws-alsahwa-nav-inner">
+                <a class="nws-alsahwa-nav-item nws-alsahwa-nav-item--active" data-cat="all">Front Page</a>
+                <a class="nws-alsahwa-nav-item" data-cat="politics">Governance</a>
+                <a class="nws-alsahwa-nav-item" data-cat="economy">Economy</a>
+                <a class="nws-alsahwa-nav-item" data-cat="business">Energy</a>
+                <a class="nws-alsahwa-nav-item" data-cat="social">Society</a>
+                <a class="nws-alsahwa-nav-item" data-cat="international">World</a>
+                <a class="nws-alsahwa-nav-item" data-cat="opinion">Opinion</a>
+                <a class="nws-alsahwa-nav-item" data-cat="entertainment">Culture</a>
+                <a class="nws-alsahwa-nav-item" data-cat="sports">Sport</a>
+            </div>
+        </nav>
+
+        <!-- AL-SAHWA ENERGY STRIP -->
+        <div class="nws-alsahwa-energy">
+            <div class="nws-alsahwa-energy-inner">
+                <span class="nws-alsahwa-energy-label">Energy</span>
+                <span class="nws-alsahwa-energy-item"><span class="nws-alsahwa-energy-name">Brent</span> <span class="nws-alsahwa-energy-val">$72.40</span> <span class="nws-alsahwa-energy-up">\u25B2 2.1%</span></span>
+                <span class="nws-alsahwa-energy-item"><span class="nws-alsahwa-energy-name">WTI</span> <span class="nws-alsahwa-energy-val">$68.20</span> <span class="nws-alsahwa-energy-up">\u25B2 1.8%</span></span>
+                <span class="nws-alsahwa-energy-item"><span class="nws-alsahwa-energy-name">LNG</span> <span class="nws-alsahwa-energy-val">$14.80</span> <span class="nws-alsahwa-energy-up">\u25B2 8.2%</span></span>
+                <span class="nws-alsahwa-energy-item"><span class="nws-alsahwa-energy-name">Gold</span> <span class="nws-alsahwa-energy-val">$1,412</span> <span class="nws-alsahwa-energy-up">\u25B2 3.4%</span></span>
+            </div>
+        </div>` : _publication === 'continental' ? `
         <!-- CONTINENTAL MASTHEAD -->
         <div class="nws-continental-masthead">
             <div class="nws-continental-masthead-top">
@@ -327,10 +409,13 @@ export async function initNewspaper(supabase, state) {
             <div class="nws-modal">
                 <div class="nws-modal-header">
                     <h3>Write Article</h3>
-                    <span class="nws-ap-badge" id="nws-reward-badge">+3 Momentum (1st) / +1 subsequent</span>
+                    <span class="nws-ap-badge" id="nws-reward-badge" style="margin-right:24px;"></span>
                 </div>
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
+                    <div class="nws-writer-notice" role="note">
+                        <strong>Note:</strong> Mentions of real-world events, people, or entities will cause your party to lose all Momentum and Governance. Further violations will cause action.
+                    </div>
                     <div class="nws-form-error" id="nws-form-error"></div>
                     <div class="nws-form-success" id="nws-form-success"></div>
 
@@ -373,7 +458,7 @@ export async function initNewspaper(supabase, state) {
 
                     <div class="nws-form-group">
                         <label for="nws-article-body">Article Body</label>
-                        <textarea id="nws-article-body" placeholder="Write your article (max 12000 characters). Use blank lines for paragraph breaks. Formatting: *italic*, **bold**, __underline__" maxlength="12000"></textarea>
+                        <textarea id="nws-article-body" placeholder="Write your article (minimum 4,000 characters, max 12,000). Use blank lines for paragraph breaks. Formatting: *italic*, **bold**, __underline__" maxlength="12000"></textarea>
                         <div class="nws-char-count" id="nws-char-count">0 / 12000</div>
                     </div>
 
@@ -411,14 +496,18 @@ export async function initNewspaper(supabase, state) {
         });
     }
 
-    // Update reward badge text
+    // Update reward badge text based on faction type
     const rewardBadge = document.getElementById('nws-reward-badge');
     if (rewardBadge) {
-        rewardBadge.textContent = '+3 Momentum (1st) / +1 subsequent';
+        const isCorp = state.faction?.faction_type === 'corporation';
+        rewardBadge.textContent = isCorp ? '+1 Reputation (1st Article)' : '+2 Momentum (1st Article)';
     }
 
     // === LOAD & DISPLAY ARTICLES ===
     await loadAndDisplayArticles();
+
+    // === POPULATE BREAKING TICKER WITH CORPORATE EVENTS ===
+    loadTickerEvents();
 
     // === VOLBAL LIGUE NATIONALE ===
     loadAndRenderVLN();
@@ -471,7 +560,9 @@ function bindModalEvents() {
     if (bodyInput && charCount) {
         bodyInput.addEventListener('input', () => {
             const len = bodyInput.value.length;
-            charCount.textContent = `${len} / 12000`;
+            const belowMin = len < 4000;
+            charCount.textContent = belowMin ? `${len.toLocaleString()} / 4,000 min` : `${len.toLocaleString()} / 12,000`;
+            charCount.style.color = belowMin ? 'var(--dred, #c55)' : '';
             charCount.classList.toggle('nws-near-limit', len >= 11500);
         });
     }
@@ -544,7 +635,8 @@ function bindSubmitHandler() {
         if (!author) return showFormError('Please enter a writer name.');
         if (!category) return showFormError('Please select a category.');
         if (!body) return showFormError('Please write an article body.');
-        if (body.length > 12000) return showFormError('Article body must be 12000 characters or fewer.');
+        if (body.length < 4000) return showFormError('Article must be at least 4,000 characters. Currently: ' + body.length.toLocaleString() + '.');
+        if (body.length > 12000) return showFormError('Article body must be 12,000 characters or fewer.');
 
         const isEdit = !!_editingArticleId;
         submitBtn.disabled = true;
@@ -615,10 +707,12 @@ function bindSubmitHandler() {
 
                 if (error) throw error;
 
-                // Momentum: +3 for 1st article this tick, +1 for subsequent articles
+                // Momentum: +2 for 1st article this tick, 0 for subsequent.
+                // Exception (Internet Sovereignty Act): if ISA is an active law
+                // in this nation AND the author is in the sitting government
+                // coalition, subsequent posts yield +1 instead of 0.
                 const currentTick = shard?.current_tick || 0;
-                let momDelta = 1; // default: subsequent article
-                // Check how many articles this faction already published this tick
+                let momDelta = 0;
                 const { data: tickArticles, error: tickCountErr } = await _supabase
                     .from('player_articles')
                     .select('id')
@@ -627,29 +721,53 @@ function bindSubmitHandler() {
                 if (tickCountErr) {
                     console.error('[News] Failed to count articles this tick:', tickCountErr);
                 }
-                // Count includes the article we just inserted, so 1 means this is the first
-                if (!tickCountErr && (!tickArticles || tickArticles.length <= 1)) {
-                    momDelta = 3;
+                const isFirstPostThisTick = !tickCountErr && (!tickArticles || tickArticles.length <= 1);
+                if (isFirstPostThisTick) {
+                    momDelta = 2;
+                } else {
+                    // Subsequent post — check ISA-active + coalition-member exception.
+                    try {
+                        const { data: isaLaw } = await _supabase
+                            .from('active_laws')
+                            .select('id, policies!inner(policy_key)')
+                            .eq('nation_id', nation.id)
+                            .eq('is_reversal', false)
+                            .eq('policies.policy_key', 'internet_sovereignty')
+                            .limit(1)
+                            .maybeSingle();
+                        if (isaLaw) {
+                            const coalition = await fetchActiveCoalition(_supabase, nation.id);
+                            // fetchActiveCoalition returns { party_ids, lead_party_id, ... }
+                            // with party_ids covering the full sitting government coalition
+                            // (PM + partners in parliamentary; president + cabinet in
+                            // presidential; monarch's sponsor in monarchy).
+                            const coalitionIds = new Set(coalition?.party_ids || []);
+                            if (coalition?.lead_party_id) coalitionIds.add(coalition.lead_party_id);
+                            if (coalitionIds.has(faction.id)) momDelta = 1;
+                        }
+                    } catch (e) {
+                        console.warn('[News] ISA coalition-bonus check failed:', e?.message || e);
+                    }
                 }
                 const momLabel = `News article published (+${momDelta})`;
 
                 let successMsg = 'Article published!';
-                try {
-                    const { error: momErr } = await _supabase.rpc('adjust_momentum', {
-                        p_faction_id: faction.id,
-                        p_delta: momDelta,
-                        p_label: momLabel,
-                        p_tick: currentTick
-                    });
-                    if (momErr) {
-                        console.error('[News] Momentum reward failed:', momErr);
-                        successMsg = 'Article published! (Momentum reward failed)';
-                    } else {
-                        successMsg = `Article published! +${momDelta} Momentum.`;
+                if (momDelta > 0) {
+                    try {
+                        const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                            p_faction_id: faction.id,
+                            p_delta: momDelta,
+                            p_label: momLabel,
+                            p_tick: currentTick
+                        });
+                        if (momErr) {
+                            console.error('[News] Momentum reward failed:', momErr);
+                        } else {
+                            successMsg = `Article published! +${momDelta} Momentum.`;
+                        }
+                    } catch (momCatchErr) {
+                        console.error('[News] Momentum reward error:', momCatchErr);
                     }
-                } catch (momCatchErr) {
-                    console.error('[News] Momentum reward error:', momCatchErr);
-                    successMsg = 'Article published! (Momentum reward failed)';
                 }
                 sessionStorage.removeItem('nationhood_state');
                 showFormSuccess(successMsg);
@@ -873,6 +991,9 @@ function renderArticleView(root, article) {
         <!-- READER CONTENT -->
         <div class="nws-main-content">
             <div class="nws-reader">
+                <div class="nws-reader-notice" role="note">
+                    <strong>Note:</strong> Mentions of real-world events, people, or entities will cause your party to lose all Momentum and Governance. Further violations will cause action.
+                </div>
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(article.category))} &mdash; ${escapeHtml(articleDate)}</span>
                 <h1 class="nws-reader-headline">${escapeHtml(article.headline)}</h1>
                 <div class="nws-byline">
@@ -886,6 +1007,12 @@ function renderArticleView(root, article) {
                     ${bodyHtml}
                 </div>
                 <hr class="nws-reader-rule">
+                <div class="nws-like-bar" id="nws-like-bar">
+                    <button class="nws-like-btn" id="nws-like-btn" data-article-id="${article.id}">
+                        <span class="nws-like-icon" id="nws-like-icon">&#9825;</span> Like
+                    </button>
+                    <span class="nws-like-count" id="nws-like-count">${article.like_count || 0}</span>
+                </div>
                 <button class="nws-back-link" id="nws-back-btn-bottom">${backLabel}</button>
             </div>
         </div>
@@ -905,8 +1032,73 @@ function renderArticleView(root, article) {
     document.getElementById('nws-back-btn')?.addEventListener('click', goBack);
     document.getElementById('nws-back-btn-bottom')?.addEventListener('click', goBack);
 
+    // Like button
+    initLikeButton(article);
+
     // Scroll to top
     root.scrollTop = 0;
+}
+
+// === ARTICLE LIKE SYSTEM ===
+
+async function initLikeButton(article) {
+    const btn = document.getElementById('nws-like-btn');
+    const icon = document.getElementById('nws-like-icon');
+    const countEl = document.getElementById('nws-like-count');
+    if (!btn || !_supabase || !_state?.faction?.id) return;
+
+    const factionId = _state.faction.id;
+    let isLiking = false;
+
+    // Check if current user already liked this article
+    const { data: existing } = await _supabase
+        .from('article_likes')
+        .select('id')
+        .eq('article_id', article.id)
+        .eq('faction_id', factionId)
+        .maybeSingle();
+
+    if (existing) {
+        btn.classList.add('nws-like-btn--liked');
+        icon.innerHTML = '&#9829;';
+    }
+
+    btn.addEventListener('click', async () => {
+        if (isLiking) return;
+        isLiking = true;
+        btn.disabled = true;
+
+        try {
+            const tick = _state.shard?.current_tick || 0;
+            const { data, error } = await _supabase.rpc('toggle_article_like', {
+                p_article_id: article.id,
+                p_faction_id: factionId,
+                p_tick: tick
+            });
+
+            if (error) {
+                console.error('[News] Like failed:', error.message);
+                return;
+            }
+
+            if (data.liked) {
+                btn.classList.add('nws-like-btn--liked');
+                icon.innerHTML = '&#9829;';
+            } else {
+                btn.classList.remove('nws-like-btn--liked');
+                icon.innerHTML = '&#9825;';
+            }
+            countEl.textContent = data.like_count;
+
+            // Update cached article
+            article.like_count = data.like_count;
+        } catch (err) {
+            console.error('[News] Like error:', err);
+        } finally {
+            isLiking = false;
+            btn.disabled = false;
+        }
+    });
 }
 
 // === LOAD & DISPLAY ARTICLES ===
@@ -1013,7 +1205,16 @@ async function loadAndDisplayArticles() {
     if (!_supabase || !_state) return;
 
     try {
-        const nationIds = await getShardNationIds();
+        let nationIds = await getShardNationIds();
+
+        // Al-Sahwa: filter to only Al-Makir continent nations
+        if (_publication === 'alsahwa') {
+            const { data: alMakirNations } = await _supabase
+                .from('nations').select('id').eq('continent', 'Al-Makir');
+            if (alMakirNations && alMakirNations.length > 0) {
+                nationIds = alMakirNations.map(n => n.id);
+            }
+        }
 
         // Filter by publication — articles without the column default to 'cruceran'
         let query = _supabase
@@ -1023,7 +1224,9 @@ async function loadAndDisplayArticles() {
             .eq('status', 'published')
             .order('created_at', { ascending: false });
         // Filter by publication — international articles show on all sites
-        if (_publication !== 'cruceran') {
+        if (_publication === 'alsahwa') {
+            query = query.or('publication.eq.alsahwa,publication.eq.international');
+        } else if (_publication !== 'cruceran') {
             query = query.or(`publication.eq.${_publication},publication.eq.international`);
         } else {
             // Include articles with no publication set (legacy), explicitly 'cruceran', or international
@@ -1105,8 +1308,9 @@ async function loadAndDisplayArticles() {
             return;
         }
 
-        // Separate news articles (opinions are handled separately via opinionArticles above)
-        const newsArticles = filtered.filter(a => a.category !== 'opinion');
+        // Separate news articles from opinions (unless filtering for opinion specifically)
+        const showingOpinion = _categoryFilter === 'opinion';
+        const newsArticles = showingOpinion ? filtered : filtered.filter(a => a.category !== 'opinion');
 
         // Sort news by published_tick DESC — most recent gets A1
         const sorted = [...newsArticles].sort((a, b) =>
@@ -1131,8 +1335,9 @@ async function loadAndDisplayArticles() {
             if (lead) populateLeadSection(lead, sidebar);
             // Populate secondary grid
             populateSecondaryGrid(secondary);
-            // Populate opinion strip (up to 4 opinion articles)
-            populateOpinionStrip(opinionArticles.slice(0, 4));
+            // Populate opinion strip (unless opinion is the active filter — already showing in main grid)
+            if (!showingOpinion) populateOpinionStrip(opinionArticles.slice(0, 4));
+            else populateOpinionStrip([]);
             // Populate briefs
             populateBriefs(briefs);
         }
@@ -1152,7 +1357,7 @@ function populateLeadSection(lead, sidebar) {
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sidebar-headline">${escapeHtml(a.headline)}</h3>
                 <p class="nws-sidebar-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 120))}${(a.body || '').length > 120 ? '...' : ''}</p>
-                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${_state?.shard?.current_date || '—'}</span></div>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${a.published_tick != null ? tickToDate(a.published_tick) : (_state?.shard?.current_date || '—')}</span></div>
             </div>
         `).join('')
         : `<div class="nws-sidebar-story"><p class="nws-placeholder">[More stories will appear as articles are published.]</p></div>`;
@@ -1176,7 +1381,7 @@ function populateLeadSection(lead, sidebar) {
             <div class="nws-byline">
                 <span class="nws-author">${escapeHtml(lead.author_name)}</span>
                 <span class="nws-dot">&middot;</span>
-                <span>${_state?.shard?.current_date || '—'}</span>
+                <span>${lead.published_tick != null ? tickToDate(lead.published_tick) : (_state?.shard?.current_date || '—')}</span>
             </div>
             <div class="nws-lead-body">
                 ${formatLeadPreview(leadBody)}
@@ -1214,7 +1419,7 @@ function populateSecondaryGrid(articles) {
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(a.category))}</span>
                 <h3 class="nws-sec-headline">${escapeHtml(a.headline)}</h3>
                 <p class="nws-sec-deck">${escapeHtml((a.body || '').replace(/\n+/g, ' ').substring(0, 150))}${(a.body || '').length > 150 ? '...' : ''}</p>
-                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${_state?.shard?.current_date || '—'}</span></div>
+                <div class="nws-byline"><span class="nws-author">${escapeHtml(a.author_name)}</span><span class="nws-dot">&middot;</span><span>${a.published_tick != null ? tickToDate(a.published_tick) : (_state?.shard?.current_date || '—')}</span></div>
             </div>`;
         } else {
             const label = placeholderLabels[i] || 'News';
@@ -1310,7 +1515,8 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
     const deck = (a) => esc((a.body || '').replace(/\n+/g, ' ').substring(0, 200)) + ((a.body || '').length > 200 ? '...' : '');
     const shortDeck = (a) => esc((a.body || '').replace(/\n+/g, ' ').substring(0, 120)) + ((a.body || '').length > 120 ? '...' : '');
     const cat = (a) => esc(categoryLabel(a.category));
-    const date = _state?.shard?.current_date || '—';
+    // Use article's published_tick for date, fallback to current game date
+    const date = (a) => a?.published_tick != null ? tickToDate(a.published_tick) : (_state?.shard?.current_date || '—');
     const imgCls = { politics: '--politics', economy: '--economy', social: '--social', international: '--intl', entertainment: '--culture', science: '--science' };
 
     let h = '';
@@ -1340,7 +1546,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
                 <div class="ct-hero__meta">
                     <span class="ct-hero__author">${esc(lead.author_name)}</span>
                     <span>&middot;</span>
-                    <span>${date}</span>
+                    <span>${date(lead)}</span>
                 </div>
             </div>
         </div>`;
@@ -1369,7 +1575,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
                     <div class="ct-card__meta">
                         <span class="ct-card__author">${esc(a.author_name)}</span>
                         <span>&middot;</span>
-                        <span>${date}</span>
+                        <span>${date(a)}</span>
                     </div>
                 </div>
             </div>`;
@@ -1390,7 +1596,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
                 <div class="ct-analysis-story__section">${cat(a)}</div>
                 <h2 class="ct-analysis-story__headline">${esc(a.headline)}</h2>
                 <p class="ct-analysis-story__summary">${shortDeck(a)}</p>
-                <div class="ct-analysis-story__meta"><strong>${esc(a.author_name)}</strong> &middot; ${date}</div>
+                <div class="ct-analysis-story__meta"><strong>${esc(a.author_name)}</strong> &middot; ${date(a)}</div>
             </div>`;
         }
         h += `</div></div></div><div class="nws-main-content">`;
@@ -1414,7 +1620,7 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
                     <div class="ct-analysis-item__section">${cat(a)}</div>
                     <h3 class="ct-analysis-item__headline">${esc(a.headline)}</h3>
                     <p class="ct-analysis-item__summary">${shortDeck(a)}</p>
-                    <div class="ct-analysis-item__meta"><strong>${esc(a.author_name)}</strong> &middot; ${date}</div>
+                    <div class="ct-analysis-item__meta"><strong>${esc(a.author_name)}</strong> &middot; ${date(a)}</div>
                 </div>
             </div>`;
         }
@@ -1469,14 +1675,23 @@ function renderContinentalLayout(lead, cards, secondary, opinions, briefs) {
 // === CATEGORY NAV ===
 
 function bindCategoryNav(root) {
+    // Standard Cruceran/Continental nav
     const navItems = root.querySelectorAll('.nws-nav-item[data-category]');
     navItems.forEach(item => {
         item.addEventListener('click', () => {
-            // Update active state
             navItems.forEach(n => n.classList.remove('active'));
             item.classList.add('active');
-            // Set filter and reload
             _categoryFilter = item.dataset.category;
+            loadAndDisplayArticles();
+        });
+    });
+    // Al-Sahwa nav (uses data-cat instead of data-category)
+    const alsahwaItems = root.querySelectorAll('.nws-alsahwa-nav-item[data-cat]');
+    alsahwaItems.forEach(item => {
+        item.addEventListener('click', () => {
+            alsahwaItems.forEach(n => n.classList.remove('nws-alsahwa-nav-item--active'));
+            item.classList.add('nws-alsahwa-nav-item--active');
+            _categoryFilter = item.dataset.cat;
             loadAndDisplayArticles();
         });
     });
@@ -1891,5 +2106,39 @@ async function loadAndRenderVLN() {
         widget.innerHTML = bodyHtml;
     } catch (e) {
         console.error('[VLN] Widget render failed:', e);
+    }
+}
+
+// ==================== BREAKING TICKER — CORPORATE EVENTS ====================
+
+async function loadTickerEvents() {
+    if (!_supabase || !_state) return;
+    try {
+        const nationIds = await getShardNationIds();
+        const currentTick = _state.shard?.current_tick || 0;
+
+        // Fetch recent corporate events (last 12 ticks)
+        const { data: events } = await _supabase
+            .from('event_log')
+            .select('description_chosen, fired_at_tick')
+            .in('nation_id', nationIds)
+            .eq('category', 'corporate')
+            .gte('fired_at_tick', Math.max(0, currentTick - 12))
+            .order('fired_at_tick', { ascending: false })
+            .limit(20);
+
+        const tickerEl = document.querySelector('.nws-ticker-scroll');
+        if (!tickerEl) return;
+
+        const sep = ' \u00a0<span class="nws-ticker-sep">\u25C6</span>\u00a0 ';
+
+        if (events && events.length > 0) {
+            const headlines = events.map(e => e.description_chosen);
+            // Duplicate for seamless scroll loop
+            tickerEl.innerHTML = headlines.join(sep) + sep + headlines.join(sep);
+        }
+        // If no corporate events, leave the static placeholder ticker as-is
+    } catch (err) {
+        console.error('[Ticker] Failed to load corporate events:', err);
     }
 }

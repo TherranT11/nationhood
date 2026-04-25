@@ -241,19 +241,33 @@ import { GAME_CONFIG, initGameConfigForNation, deductAP } from './js/game/config
 import { isGovernmentPresidential, hasElectedPresident } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { loadFactionIdeology, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, getIdeologyChipClass, calculateBillDynamicPenalty } from './js/game/ideology.js';
-import { calculateBillSupport, syncVoteTallies, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote } from './js/game/bills.js';
-import { POLICY_STANCES, MAJOR_SECTORS, RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES } from './js/game/diplomacy-constants.js';
+import { calculateBillSupport, syncVoteTallies, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, computeBillCostTotals } from './js/game/bills.js';
+import { POLICY_STANCES, MAJOR_SECTORS, RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, INITIATIVE_ARTICLE_TYPES, MAJOR_INITIATIVE_ARTICLE_TYPES } from './js/game/diplomacy-constants.js';
 import { signPresidentialBill, vetoPresidentialBill, rejectOwnNomination } from './js/game/presidential.js';
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost } from './js/game/budget.js';
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
 import { executeWhipCaucus } from './js/game/caucus.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
+import { computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_EFFECT_LABELS } from './js/game/tax-articles.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
     if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
     const statVal = Number(nation[scalingStat]) || 1;
     const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
     return baseCost * (statVal / divisor);
+}
+
+// Bill types that bypass the committee co-sponsor expectation. Procedural /
+// ratification motions are inherently party-neutral and never carry the
+// -2 Momentum solo-send penalty.
+const AUTO_FLOOR_BILL_TYPES = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'];
+
+// Does this bill have at least one co-sponsor? A co-sponsor is any faction
+// other than the proposer whose stance is 'accept'. Shared between the
+// button-gate display and the sendToFloor() penalty check so the two paths
+// can't drift.
+function billHasCosponsor(bill) {
+    return (bill?.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
 }
 
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
@@ -275,22 +289,7 @@ let sponsorSelectedPolicy = null;
 let selectedRepealLaw = null; // Active law selected for repeal article
 // Repeal bills can have additional articles added in committee, so 'repeal' is NOT in this list
 const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'impeachment_motion', 'impeachment_conviction'];
-const FREE_ARTICLE_LIMIT = GAME_CONFIG.FREE_BILL_ARTICLES || 4;
-
-/** Count non-text articles in a bill. Text articles have no policy_id, no funding_data, no effect_data. */
-function countNonTextArticles(articles) {
-    return (articles || []).filter(a => a.policy_id || a.funding_data || a.effect_data).length;
-}
-
 let _billArticleLock = false; // Prevents double-fire on async article operations
-
-/** Refund 1 AP to a faction (used when removing paid articles). */
-async function refundArticleAP_bill(factionId) {
-    try {
-        const { error } = await _supabase.rpc('accumulate_ap', { p_faction_id: factionId, p_gain: 1, p_max_ap: GAME_CONFIG.MAX_AP || 20 });
-        if (error) console.error('AP refund RPC error:', error);
-    } catch (e) { console.error('AP refund error:', e); }
-}
 
 const urlParams = new URLSearchParams(window.location.search);
 const billId = urlParams.get('id');
@@ -324,6 +323,12 @@ initPage('laws', async (state) => {
     if (nation) {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isNoGovernment = !coalition;
+        // Absolute monarchy: legislature is open if a PM is appointed (no coalition needed)
+        if (isNoGovernment && (nation.government_type || '').toLowerCase().includes('absolute')) {
+            const { data: activeHog } = await _supabase.from('head_of_government')
+                .select('id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+            if (activeHog) isNoGovernment = false;
+        }
         coalitionPartyIds = coalition?.party_ids || [];
         coalitionLeadPartyId = coalition?.lead_party_id || null;
     }
@@ -829,27 +834,27 @@ function renderBill() {
         if (canActOnBill) {
     el.style.display = 'flex';
 
-    const sponsorSeats = allPartySeats[bill.proposed_by] || 0;
-    const hasMajority = sponsorSeats >= GAME_CONFIG.MAJORITY_SEATS;
-    const hasCosponsor = (bill.bill_support || []).some(s => s.faction_id !== bill.proposed_by && s.stance === 'accept');
     const isFoundational = bill.bill_type === 'foundational';
-    // Ratification and procedural bills can always be sent to floor by the sponsor
-    const isAutoFloor = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'].includes(bill.bill_type);
-    let canSendToFloor = !isNoGovernment && (isAutoFloor ? true : isFoundational ? hasCosponsor : (hasMajority || hasCosponsor));
+    const isAutoFloor = AUTO_FLOOR_BILL_TYPES.includes(bill.bill_type);
+    // Sponsor can always push to floor (unless the legislature is suspended).
+    // Going without a co-sponsor is allowed but costs -2 Momentum when it's a
+    // bill type where a co-sponsor would normally be expected.
+    const canSendToFloor = !isNoGovernment;
+    const needsSoloPenalty = !isAutoFloor && !billHasCosponsor(bill);
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
     const reason = isNoGovernment
-        ? '<div style="color:var(--blue);font-size:0.78rem;margin-top:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
-        : (canSendToFloor ? '' : isFoundational
-        ? '<div style="color:var(--red);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ Foundational laws require at least one co-sponsor to advance.</div>'
-        : '<div style="color:var(--red);font-size:0.78rem;margin-top:10px;text-align:center;">⚠ You need a co-sponsor or a simple majority of seats to send this to the floor.</div>');
+        ? '<div style="color:var(--blue);font-size:0.78rem;margin-bottom:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
+        : (needsSoloPenalty ? '<div style="color:var(--amber);font-size:0.78rem;margin-bottom:10px;text-align:center;">⚠ No co-sponsor — sending to floor will cost your party −2 Momentum.</div>' : '');
 
     const retractBtn = '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
     let referendumNote = '';
     if (isFoundational) {
         referendumNote = '<div style="color:var(--purple);font-size:0.78rem;margin-top:10px;text-align:center;">🗳 If passed, this bill will go to a <strong>Constitutional Referendum</strong> — the electorate must approve it.</div>';
     }
-    el.innerHTML = `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">${isFoundational ? 'Send to Floor → Referendum' : 'Send to Floor'}</button>${retractBtn}` + reason + referendumNote;
+    // Layout: [reason/warning] → [Send to Floor] [Retract] → [referendum note]
+    // Per design spec the penalty warning sits above the action buttons.
+    el.innerHTML = reason + `<button class="sponsor-btn send-floor" ${disabledAttr} onclick="sendToFloor()">${isFoundational ? 'Send to Floor → Referendum' : 'Send to Floor'}</button>${retractBtn}` + referendumNote;
 }
     }
 
@@ -857,7 +862,7 @@ function renderBill() {
     const isHeadOfGovParty = isPresidential
         ? isPresidentParty
         : (coalitionLeadPartyId && currentFaction?.id === coalitionLeadPartyId);
-    const hasEmergencyPower = isPresidential || currentNation?.emergency_powers_act;
+    const hasEmergencyPower = isPresidential;
     if (isHeadOfGovParty && hasEmergencyPower && (isCommittee || isFloor)) {
         renderEmergencyAdvanceButton(bill);
     }
@@ -1121,7 +1126,7 @@ function renderArticles() {
             const methodLabel = methodLabels[bill.proposed_hos_election_method] || bill.proposed_hos_election_method;
             let effectsHTML = '';
             if (bill.proposed_hos_election_method === 'hereditary') {
-                effectsHTML = 'Establishes constitutional monarchy. Stability +5, legitimacy -5.<br>' +
+                effectsHTML = 'Establishes absolute monarchy. Stability +5, legitimacy -5.<br>' +
                     'Head of State becomes permanent and non-partisan.<br>' +
                     (bill.proposed_dynasty_name ? 'Dynasty: <strong>' + escapeHtml(bill.proposed_dynasty_name) + '</strong><br>' : '');
             } else if (bill.proposed_hos_election_method === 'direct_vote') {
@@ -1158,57 +1163,6 @@ function renderArticles() {
                     '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
                         'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
                         '240 tick cooldown between changes.' +
-                    '</div>' +
-                '</div>';
-        } else if (bill.proposed_abolish_term_limits) {
-            // Abolish Term Limits subtype (authoritarian)
-            foundationalHTML =
-                '<div class="article preamble" style="border-left-color:var(--red);">' +
-                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
-                    '<div class="article-title">Abolish Term Limits</div>' +
-                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to abolish all presidential term limits.') + '</div>' +
-                '</div>' +
-                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
-                    '<div class="repeal-notice-icon">⛓</div>' +
-                    '<div class="repeal-notice-text" style="color:var(--red);">All term limits abolished — indefinite rule permitted</div>' +
-                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
-                        'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
-                        'If passed: legitimacy −5, stability +2, presidential term limit removed.<br>' +
-                        'Press freedom will erode over time once enacted.' +
-                    '</div>' +
-                '</div>';
-        } else if (bill.proposed_state_media_control) {
-            // State Media Control Act subtype (authoritarian)
-            foundationalHTML =
-                '<div class="article preamble" style="border-left-color:var(--red);">' +
-                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
-                    '<div class="article-title">State Media Control Act</div>' +
-                    '<div class="article-description">' + (bill.preamble || 'This bill proposes to place national media under government control.') + '</div>' +
-                '</div>' +
-                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
-                    '<div class="repeal-notice-icon">📺</div>' +
-                    '<div class="repeal-notice-text" style="color:var(--red);">Government assumes control of all national media</div>' +
-                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
-                        'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
-                        'If passed: press freedom permanently capped at 40, legitimacy −3.<br>' +
-                        '+10 Government Approval. +2 Momentum all Parties in Government / tick for 10 ticks.' +
-                    '</div>' +
-                '</div>';
-        } else if (bill.proposed_emergency_powers_act) {
-            // Emergency Powers Act subtype (authoritarian)
-            foundationalHTML =
-                '<div class="article preamble" style="border-left-color:var(--red);">' +
-                    '<div class="article-number" style="color:var(--red);">FOUNDATIONAL LAW — AUTHORITARIAN</div>' +
-                    '<div class="article-title">Emergency Powers Act</div>' +
-                    '<div class="article-description">' + (bill.preamble || 'This bill grants the head of government emergency powers to bypass the legislature.') + '</div>' +
-                '</div>' +
-                '<div class="repeal-notice" style="border-color:var(--red);background:rgba(239,68,68,0.05);">' +
-                    '<div class="repeal-notice-icon">🚨</div>' +
-                    '<div class="repeal-notice-text" style="color:var(--red);">Emergency powers granted to the executive</div>' +
-                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
-                        'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
-                        'If passed: stability −2, freedom index −3.<br>' +
-                        'Head of government may declare national emergencies and bypass legislative votes.' +
                     '</div>' +
                 '</div>';
         } else if (bill.proposed_judicial_appointment_politicization) {
@@ -1472,7 +1426,12 @@ function renderArticles() {
         seenArticleKeys.add(dedupeKey);
         return true;
     }).sort((a,b) => a.article_number - b.article_number);
-    let totalUpfront = 0, totalOngoing = 0;
+    // Totals come from the shared helper so bill.html's detail view and
+    // government.html's parliament overview can't drift. ongoingMonthly is
+    // per-tick; detail display below multiplies by 12 for the yearly figure.
+    const _costTotals = computeBillCostTotals({ bill_articles: articles }, currentNation);
+    const totalUpfront = _costTotals.upfront;
+    const totalOngoing = _costTotals.ongoingMonthly;
     const html = `
         <div class="article preamble">
             <div class="article-number">Article I</div>
@@ -1493,8 +1452,6 @@ function renderArticles() {
                 const fundingActions = articleActionsDiv(art);
                 const ongoingCost = calculateFundingOngoingCost(fd);
                 const upfrontCost = calculateFundingUpfrontCost(fd);
-                totalOngoing += ongoingCost;
-                totalUpfront += upfrontCost;
                 let instHTML = changes.map(function(i) {
                     const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
                     const c = i.proposed_pct > i.current_pct ? 'var(--green)' : 'var(--red)';
@@ -1542,6 +1499,47 @@ function renderArticles() {
                 '</div>';
             }
 
+            // Tax Article — stepped rate change with side effects. TAX_CHANGE
+            // is the current type; INCOME_TAX_CHANGE is accepted for legacy
+            // bills drafted before the rename (treated as tax_key='income_tax').
+            if (art.effect_data?.type === 'TAX_CHANGE' || art.effect_data?.type === 'INCOME_TAX_CHANGE') {
+                const ed = art.effect_data;
+                const taxKey = ed.tax_key || (ed.type === 'INCOME_TAX_CHANGE' ? 'income_tax' : 'income_tax');
+                const dir = ed.direction;
+                const steps = Number(ed.steps) || 0;
+                const fx = computeTaxArticleEffects(taxKey, dir, steps);
+                const borderColor = dir === 'cut' ? 'var(--green)' : 'var(--red)';
+                const tagLabel = dir === 'cut' ? 'TAX CUT' : 'TAX HIKE';
+                const deltaAbs = Math.abs(Number(ed.new_rate) - Number(ed.old_rate));
+                const sign = v => v > 0 ? '+' + v : String(v);
+                const color = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-secondary, #888)';
+                // Projected ongoing budget impact in $M/mo (helper returns
+                // $M directly — matches formatCurrency + bill-cost SSoT).
+                const ongoingCost = computeTaxArticleOngoingCost(taxKey, ed.new_rate, currentNation);
+                const ongoingLabel = ongoingCost > 0 ? 'Ongoing Cost' : ongoingCost < 0 ? 'Ongoing Relief' : 'Ongoing Impact';
+                const ongoingColor = ongoingCost > 0 ? 'var(--red)' : ongoingCost < 0 ? 'var(--green)' : 'var(--text-secondary, #888)';
+                // Build effect rows generically from fx — every effect key
+                // the tax defines gets a row, in TAX_EFFECT_LABELS order
+                // (so display ordering stays stable as new dimensions land).
+                const effectRow = (label, val) =>
+                    `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>${label}</span><span style="color:${color(val)};">${sign(val)}</span></div>`;
+                const fxRowsHtml = Object.keys(TAX_EFFECT_LABELS)
+                    .filter(k => Number.isFinite(fx[k]))
+                    .map(k => effectRow(TAX_EFFECT_LABELS[k], fx[k]))
+                    .join('');
+                const rowsHtml =
+                    `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Rate</span><span>${ed.old_rate}% → ${ed.new_rate}% <span style="color:${borderColor};">(${dir === 'cut' ? '−' : '+'}${deltaAbs}pp · ${steps} step${steps === 1 ? '' : 's'})</span></span></div>` +
+                    `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>${ongoingLabel}</span><span style="color:${ongoingColor};">${formatCurrency(ongoingCost)}/mo</span></div>` +
+                    fxRowsHtml;
+                return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
+                    '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
+                    '<div class="article-title">' + escapeHtml(art.article_title || 'Tax Change') + '</div>' +
+                    '<div class="article-description">' + rowsHtml + '</div>' +
+                    '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
+                    articleActionsDiv(art) +
+                '</div>';
+            }
+
             if (!p) {
                 // Text-only article
                 const hasEffectData = !!art.effect_data;
@@ -1566,10 +1564,11 @@ function renderArticles() {
             const isRepealArticle = !!art.repeal_active_law_id;
 
             if (isRepealArticle) {
-                // Repeal article — show reversed effects and cost savings
+                // Repeal article — show reversed effects and cost savings.
+                // onCost feeds the per-article savings pill below; the totals
+                // block at the bottom is already computed via the shared
+                // helper so no accumulation is needed here.
                 const onCost = scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
-                // Repealing saves the ongoing cost (negate it)
-                totalOngoing -= onCost;
 
                 const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
                 const ideoHTML = ideos.map(i => {
@@ -1611,8 +1610,9 @@ function renderArticles() {
                 '</div>';
             }
 
-            totalUpfront += scalePolicyCost(p.upfront_cost || 0, p.upfront_scaling_stat, currentNation);
-            totalOngoing += scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
+            // Totals accumulation lives in computeBillCostTotals (see top of
+            // this function). Per-article upfront/ongoing chips below still
+            // compute their own scaled numbers for display.
 
             // Ideology tags — support new ideologies array and legacy single ideology
             const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
@@ -1698,14 +1698,30 @@ function renderTradeArticleDescription(art, rd) {
     const nationAName = rd.nationA?.name || 'Nation A';
     const nationBName = rd.nationB?.name || 'Nation B';
 
-    // Direction fields (we_buy/we_sell, your_exports/their_exports) are stored from
-    // the drafter's perspective. Resolve to absolute nation names using the drafter identity.
-    const author = d.author_nation_id || rd.authorNationId;
+    // Modern trade-neg modal stores the category on `article_type`; the legacy
+    // trade-draft page stored it on `type`. Accept either so a ratification bill
+    // renders both vocabularies.
+    const artType = art.article_type || art.type || 'unknown';
+
+    // Direction fields (we_buy/we_sell, your_exports/their_exports, a_buys_b)
+    // are stored from the drafter's perspective. Resolve to absolute nation names
+    // using the drafter identity. For the modern modal A = drafter by convention.
+    const author = art.author_nation_id || d.author_nation_id || rd.authorNationId;
     const drafterIsA = author ? (author === rd.nationA?.id) : rd.isNationA;
     const drafterName = drafterIsA ? nationAName : nationBName;
     const counterpartyName = drafterIsA ? nationBName : nationAName;
 
-    switch (art.type) {
+    // Short helper used by the modern-modal cases — same formatting used in the
+    // live negotiation summary so the two surfaces read identically.
+    const fmtMoney = (v) => {
+        const n = Number(v) || 0;
+        if (n >= 1e9) return '$' + (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+        if (n >= 1e6) return '$' + (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+        if (n >= 1e3) return '$' + Math.round(n / 1e3) + 'k';
+        return '$' + n.toLocaleString();
+    };
+
+    switch (artType) {
         case 'duration': {
             const isPerm = d.duration_type === 'permanent';
             const ticks = d.duration_ticks || 0;
@@ -1768,8 +1784,55 @@ function renderTradeArticleDescription(art, rd) {
         }
         case 'text_article':
             return (d.title ? '<strong>' + escapeHtml(d.title) + ':</strong> ' : '') + escapeHtml(d.body || '');
+
+        // ── Modern trade-neg modal vocabulary ──
+        case 'trade_flow': {
+            // direction: 'a_buys_b' (drafter buys from counterparty) | 'b_buys_a' (counterparty buys from drafter)
+            const buyer = d.direction === 'a_buys_b' ? drafterName : counterpartyName;
+            const seller = d.direction === 'a_buys_b' ? counterpartyName : drafterName;
+            const commodity = escapeHtml(sectorLabel(d.commodity));
+            const vol = fmtMoney(d.volume) + '/tick';
+            const price = d.price_modifier == null || d.price_modifier === 0
+                ? 'market rate'
+                : (d.price_modifier > 0 ? 'market +' + d.price_modifier + '%' : 'market ' + d.price_modifier + '%');
+            const dur = !d.duration || d.duration === 0 ? 'continuously' : 'for <strong>' + d.duration + ' month(s)</strong>';
+            return '<strong>' + buyer + '</strong> purchases <strong>' + commodity + '</strong> from <strong>' + seller +
+                   '</strong> at a rate of <strong>' + vol + '</strong> priced at ' + price + ', ' + dur + '.';
+        }
+        case 'transfer': {
+            // direction: 'a_to_b' (drafter → counterparty) | 'b_to_a' (counterparty → drafter)
+            const from = d.direction === 'a_to_b' ? drafterName : counterpartyName;
+            const to   = d.direction === 'a_to_b' ? counterpartyName : drafterName;
+            const kind = d.transfer_type === 'recurring' ? 'shall transfer' : 'shall make a one-time transfer of';
+            const cadence = d.transfer_type === 'recurring' ? ' each tick' : '';
+            return '<strong>' + from + '</strong> ' + kind + ' <strong>' + fmtMoney(d.amount) + '</strong>' + cadence + ' to <strong>' + to + '</strong>.';
+        }
+        case 'market_access': {
+            const scope = d.scope === 'all_goods' ? 'all goods' : escapeHtml(sectorLabel(d.scope_sector));
+            const levels = {
+                restricted:  '<strong>restricted</strong> market access',
+                preferential: '<strong>preferential</strong> market access (reduced tariffs)',
+                free_trade:  '<strong>free trade</strong> (0% tariffs)'
+            };
+            const extras = [];
+            if (d.volume_priority) extras.push('volume priority');
+            if (d.price_priority)  extras.push('price priority');
+            const extrasText = extras.length ? ' Includes ' + extras.join(' and ') + '.' : '';
+            return 'Both nations grant ' + (levels[d.level] || escapeHtml(d.level || 'unspecified access')) +
+                   ' for <strong>' + scope + '</strong>.' + extrasText;
+        }
+        case 'exit_terms': {
+            const parts = [];
+            if (d.min_duration) parts.push('minimum duration of <strong>' + d.min_duration + ' month(s)</strong>');
+            if (d.exit_notice)  parts.push('<strong>' + d.exit_notice + ' month(s)</strong> notice required to withdraw');
+            if (d.penalty_type === 'fixed' && d.penalty_amount)      parts.push('fixed withdrawal penalty of <strong>' + fmtMoney(d.penalty_amount) + '</strong>');
+            else if (d.penalty_type === 'percentage' && d.penalty_pct) parts.push('<strong>' + d.penalty_pct + '%</strong> of remaining value as withdrawal penalty');
+            else                                                      parts.push('no withdrawal penalty');
+            return 'Exit terms: ' + parts.join(', ') + '.';
+        }
+
         default:
-            return 'Agreement provision (' + escapeHtml(art.type || 'unknown') + ').';
+            return 'Agreement provision (' + escapeHtml(artType) + ').';
     }
 }
 
@@ -1809,11 +1872,45 @@ function renderRatificationBill() {
                 const isStruck = struck.has(i);
                 const numeral = ROMAN[i] || (i + 1);
                 const isStructuredTradeArticle = !!(art && art.type && art.data && typeof art.data === 'object');
-                const artTypeInfo = isStructuredTradeArticle ? (TRADE_ARTICLE_TYPES[art.type] || {}) : {};
-                const typeLabel = artTypeInfo.label || (isStructuredTradeArticle ? (art.type || 'Provision') : '');
-                const descriptionHtml = isStructuredTradeArticle
-                    ? renderTradeArticleDescription(art, rd)
-                    : escapeHtml(art.text || '');
+                const isInitiativeArticle = !!(art && art.type && (INITIATIVE_ARTICLE_TYPES?.[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES?.[art.type]));
+                const artTypeInfo = isStructuredTradeArticle ? (TRADE_ARTICLE_TYPES[art.type] || {})
+                    : isInitiativeArticle ? (INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type] || {}) : {};
+                const typeLabel = artTypeInfo.label || (isStructuredTradeArticle || isInitiativeArticle ? (art.type || 'Provision') : '');
+
+                let descriptionHtml;
+                if (isStructuredTradeArticle) {
+                    descriptionHtml = renderTradeArticleDescription(art, rd);
+                } else if (isInitiativeArticle) {
+                    // Render initiative article with description + config summary + effects
+                    let initHtml = '';
+                    if (artTypeInfo.description && !isStruck) {
+                        initHtml += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">' + escapeHtml(artTypeInfo.description) + '</div>';
+                    }
+                    if (art.config && !isStruck) {
+                        const cfgParts = [];
+                        for (const [k, v] of Object.entries(art.config)) {
+                            if (v != null && v !== '' && v !== false) {
+                                const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                cfgParts.push('<strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(String(v)));
+                            }
+                        }
+                        if (cfgParts.length > 0) initHtml += '<div style="font-size:11px;color:var(--text-muted);line-height:1.5;">' + cfgParts.join(' &middot; ') + '</div>';
+                    }
+                    if (art.effects && !isStruck) {
+                        const effectParts = [];
+                        for (const [k, v] of Object.entries(art.effects)) {
+                            if (v && v !== 0) {
+                                const sign = typeof v === 'number' && v > 0 ? '+' : '';
+                                const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                effectParts.push('<span style="font-family:var(--font-mono);font-size:10px;font-weight:600;padding:1px 5px;background:rgba(90,175,165,0.08);border:1px solid rgba(90,175,165,0.2);color:var(--teal);border-radius:2px;">' + sign + v + ' ' + escapeHtml(label) + '</span>');
+                            }
+                        }
+                        if (effectParts.length > 0) initHtml += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">' + effectParts.join('') + '</div>';
+                    }
+                    descriptionHtml = initHtml || escapeHtml(art.text || 'Initiative provision.');
+                } else {
+                    descriptionHtml = escapeHtml(art.text || '');
+                }
                 html += '<div class="article' + (isStruck ? ' struck-article' : '') + '">' +
                     '<div class="article-number">Article ' + numeral +
                         (typeLabel ? ' <span style="color:var(--blue);font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span>' : '') +
@@ -1867,28 +1964,69 @@ function renderRatificationBill() {
         const ourName = rd.isNationA ? nationAName : nationBName;
         const theirName = rd.isNationA ? nationBName : nationAName;
 
-        // Extract duration from articles
-        const durationArt = articles.find(a => a.type === 'duration');
+        // Extract duration from articles — check both legacy `type` and modern `article_type`.
+        // Modern trade-neg modal doesn't emit a 'duration' article; fall through to trade_flow's
+        // per-article duration where relevant.
+        const getArtType = (a) => a.article_type || a.type;
+        const durationArt = articles.find(a => getArtType(a) === 'duration');
         const durData = durationArt?.data || {};
         const isPerm = durData.duration_type === 'permanent';
         const durTicks = durData.duration_ticks || 0;
-        const durLabel = isPerm ? 'Permanent' : (durTicks >= 12 ? (durTicks / 12).toFixed(1).replace(/\.0$/, '') + ' year(s)' : durTicks + ' month(s)');
+
+        // When there is no top-level duration article, fall back to per-article
+        // durations from trade_flow / tariff_reduction / etc. Use the max so the
+        // preamble reflects how long the agreement actually runs.
+        // Modern trade_flow articles store per-article duration in months under
+        // `data.duration` (bill.html render at line ~1752 reads the same field).
+        const perArticleDurations = articles
+            .map(a => Number(a?.data?.duration) || 0)
+            .filter(v => v > 0);
+        const maxArticleDur = perArticleDurations.length ? Math.max(...perArticleDurations) : 0;
+
+        let durLabel;
+        if (isPerm) {
+            durLabel = 'Permanent';
+        } else if (durTicks > 0) {
+            durLabel = durTicks >= 12
+                ? (durTicks / 12).toFixed(1).replace(/\.0$/, '') + ' year(s)'
+                : durTicks + ' month(s)';
+        } else if (maxArticleDur > 0) {
+            durLabel = 'Up to ' + (maxArticleDur >= 12
+                ? (maxArticleDur / 12).toFixed(1).replace(/\.0$/, '') + ' year(s)'
+                : maxArticleDur + ' month(s)') + ' (per-article)';
+        } else if (articles.length > 0) {
+            durLabel = 'Per-article (see provisions)';
+        } else {
+            durLabel = 'Unspecified';
+        }
+
+        const typeLabel = typeInfo.label || neg.agreement_type || 'Trade Agreement';
+        const typeShort = typeInfo.shortLabel || '';
+        const typeDescription = typeInfo.description || '';
 
         // Section 1: Preamble
         html += '<div class="article preamble" style="border-left-color:var(--blue);">' +
             '<div class="article-number" style="color:var(--blue);">TRADE RATIFICATION</div>' +
             '<div class="article-title">' + escapeHtml(neg.agreement_name || bill.bill_name || 'Trade Agreement') + '</div>' +
             '<div class="article-description">' +
-                '<strong>Type:</strong> ' + escapeHtml(typeInfo.label || neg.agreement_type || 'Trade Agreement') +
-                    (typeInfo.shortLabel ? ' (' + typeInfo.shortLabel + ')' : '') + '<br>' +
+                '<strong>Type:</strong> ' + escapeHtml(typeLabel) +
+                    (typeShort ? ' (' + typeShort + ')' : '') + '<br>' +
                 '<strong>Parties:</strong> ' + escapeHtml(nationAName) + ' and ' + escapeHtml(nationBName) + '<br>' +
                 '<strong>Duration:</strong> ' + durLabel + '<br>' +
-                '<strong>Description:</strong> ' + escapeHtml(typeInfo.description || '') +
+                '<strong>Description:</strong> ' + escapeHtml(typeDescription) +
             '</div>' +
         '</div>';
 
         // Section 2: Terms & Provisions
-        const nonDurationArticles = articles.filter(a => a.type !== 'duration');
+        const nonDurationArticles = articles.filter(a => getArtType(a) !== 'duration');
+        // Human labels for the modern trade-neg modal types that aren't in TRADE_ARTICLE_TYPES.
+        const MODERN_LABELS = {
+            trade_flow: 'Trade Flow',
+            transfer: 'Transfer',
+            market_access: 'Market Access',
+            exit_terms: 'Exit Terms',
+            tariff_reduction: 'Tariff Reduction'
+        };
         if (nonDurationArticles.length > 0 || articles.length > 0) {
             html += '<div class="ratification-section">' +
                 '<div class="ratification-section-header">Terms &amp; Provisions</div>';
@@ -1902,11 +2040,12 @@ function renderRatificationBill() {
             // Render remaining articles
             nonDurationArticles.forEach((art, i) => {
                 const numeral = ROMAN[(durationArt ? 1 : 0) + i] || ((durationArt ? 2 : 1) + i);
-                const artTypeInfo = TRADE_ARTICLE_TYPES[art.type] || {};
-                const typeLabel = artTypeInfo.label || art.type || 'Provision';
-                const borderColor = art.type === 'text_article' ? 'var(--blue)' :
-                    art.type === 'breach_penalty' ? 'var(--red)' :
-                    art.type === 'sector_exemption' ? 'var(--orange)' : 'var(--blue)';
+                const artType = getArtType(art) || '';
+                const artTypeInfo = TRADE_ARTICLE_TYPES[artType] || {};
+                const typeLabel = artTypeInfo.label || MODERN_LABELS[artType] || artType || 'Provision';
+                const borderColor = artType === 'text_article' ? 'var(--blue)' :
+                    artType === 'breach_penalty' ? 'var(--red)' :
+                    artType === 'sector_exemption' ? 'var(--orange)' : 'var(--blue)';
                 html += '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + numeral + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span></div>' +
                     '<div class="article-description">' + renderTradeArticleDescription(art, rd) + '</div>' +
@@ -2690,6 +2829,24 @@ async function sendToFloor() {
         const { error } = await _supabase.from('bills').update(updateFields).eq('id', billId);
         if (error) throw error;
 
+        // Solo-send penalty. Sponsor can always send without a co-sponsor, but
+        // pays -2 Momentum for bills where a co-sponsor would normally be
+        // expected (anything that isn't auto-floor like ratifications or
+        // no-confidence motions). Runs after the status update succeeds so a
+        // failed DB write doesn't result in an unrefunded momentum hit.
+        // Shares AUTO_FLOOR_BILL_TYPES + billHasCosponsor with the button gate
+        // above so the "warning shown" and "penalty applied" paths can't drift.
+        const isAutoFloor = AUTO_FLOOR_BILL_TYPES.includes(currentBill.bill_type);
+        if (!isAutoFloor && !billHasCosponsor(currentBill)) {
+            const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                p_faction_id: currentBill.proposed_by,
+                p_delta: -2,
+                p_label: 'Sent to floor without co-sponsor (-2)',
+                p_tick: currentTick
+            });
+            if (momErr) console.warn('[sendToFloor] Solo-send momentum penalty failed (non-fatal):', momErr.message);
+        }
+
         // Calculate caucus dispositions via server-side RPC (RLS blocks client writes)
         try {
             const { error: caucusErr } = await _supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
@@ -2872,6 +3029,7 @@ async function respondToAmendment(reqId, response) {
     _billArticleLock = true;
     try {
         const req = amendmentRequests.find(r => r.id === reqId);
+        const isStrike = req?.request_type === 'strike';
         if (!req) {
             // Stale UI — reload to get fresh amendment data
             await loadBillData();
@@ -2879,20 +3037,6 @@ async function respondToAmendment(reqId, response) {
             return;
         }
         if (response === 'accepted') {
-            // Pre-check: charge sponsor 1 AP if adding a non-text article beyond the free limit
-            const isStrike = req.request_type === 'strike' && req.target_article_id;
-            if (!isStrike) {
-                const nonTextCount = countNonTextArticles(currentBill.bill_articles);
-                const isTextAmendment = !req.policy_id;
-                if (!isTextAmendment && nonTextCount >= FREE_ARTICLE_LIMIT) {
-                    const apResult = await deductAP(_supabase, currentFaction.id, 1);
-                    if (!apResult.success) {
-                        alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
-                        return;
-                    }
-                    currentFaction.action_points = apResult.newAp;
-                }
-            }
 
             // AP secured — now commit the acceptance
             await _supabase.from('bill_amendment_requests').update({ status: 'accepted' }).eq('id', reqId);
@@ -3127,17 +3271,6 @@ async function rescindArticle(articleId) {
         await renumberArticles(billId);
         await cleanupOrphanedConditionalSupport();
 
-        // Refund 1 AP if this was a non-text article and the bill had more than FREE_ARTICLE_LIMIT non-text articles
-        const isTextArticle = !targetArt.policy_id && !targetArt.funding_data && !targetArt.effect_data;
-        if (!isTextArticle) {
-            const nonTextCountBefore = countNonTextArticles(currentBill.bill_articles);
-            if (nonTextCountBefore > FREE_ARTICLE_LIMIT) {
-                // Refund to whoever paid: sponsor's own articles → sponsor, conditional support → the requester
-                const refundTo = targetArt.added_by || currentFaction.id;
-                await refundArticleAP_bill(refundTo);
-            }
-        }
-
         await loadBillData();
     } catch (e) { console.error(e); alert('Error: ' + e.message); }
     finally { _billArticleLock = false; }
@@ -3314,20 +3447,7 @@ async function submitSponsorAddArticle() {
         }
     }
     _billArticleLock = true;
-    let paidArticleAP = false;
     try {
-        // Check if this article would exceed the free limit
-        const nonTextCount = countNonTextArticles(currentBill.bill_articles);
-        if (nonTextCount >= FREE_ARTICLE_LIMIT) {
-            const apResult = await deductAP(_supabase, currentFaction.id, 1);
-            if (!apResult.success) {
-                alert('Not enough AP. Articles beyond ' + FREE_ARTICLE_LIMIT + ' cost 1 AP each. You have ' + (apResult.currentAp ?? '?') + ' AP.');
-                return;
-            }
-            currentFaction.action_points = apResult.newAp;
-            paidArticleAP = true;
-        }
-
         const { data: existingArticles } = await _supabase.from('bill_articles')
             .select('article_number').eq('bill_id', billId)
             .order('article_number', { ascending: false }).limit(1);
@@ -3351,8 +3471,6 @@ async function submitSponsorAddArticle() {
             insertErr = error;
         }
         if (insertErr) {
-            // Refund AP if the insert failed after deduction
-            if (paidArticleAP) await refundArticleAP_bill(currentFaction.id);
             throw insertErr;
         }
         closeSponsorAddModal();

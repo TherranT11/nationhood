@@ -66,7 +66,7 @@ initPage('politics', async (state) => {
     }
 
     // Load current leaders from faction data
-    loadCurrentLeaders();
+    await loadCurrentLeaders();
 
     // Load persisted candidates (or generate if first visit)
     await generateAllCandidates();
@@ -75,7 +75,7 @@ initPage('politics', async (state) => {
     render();
 });
 
-function loadCurrentLeaders() {
+async function loadCurrentLeaders() {
     // Current party leader is stored on the faction
     if (currentFaction.leader_first_name && currentFaction.leader_last_name) {
         currentLeaders.leader = {
@@ -87,6 +87,24 @@ function loadCurrentLeaders() {
             positiveTraits: currentFaction.leader_positive_traits || [],
             negativeTraits: currentFaction.leader_negative_traits || [],
         };
+
+        // Auto-backfill: if leader exists but has no traits in DB, generate and persist them
+        if ((!currentFaction.leader_positive_traits || currentFaction.leader_positive_traits.length === 0)
+            && (!currentFaction.leader_negative_traits || currentFaction.leader_negative_traits.length === 0)) {
+            const backfillCandidates = generateLeadershipCandidates(currentNation?.name || '', getNationNames, 1, 'leader');
+            if (backfillCandidates.length > 0) {
+                const genTraits = backfillCandidates[0];
+                currentLeaders.leader.positiveTraits = genTraits.positiveTraits || [];
+                currentLeaders.leader.negativeTraits = genTraits.negativeTraits || [];
+                await _supabase.from('factions').update({
+                    leader_positive_traits: currentLeaders.leader.positiveTraits,
+                    leader_negative_traits: currentLeaders.leader.negativeTraits,
+                }).eq('id', currentFaction.id);
+                currentFaction.leader_positive_traits = currentLeaders.leader.positiveTraits;
+                currentFaction.leader_negative_traits = currentLeaders.leader.negativeTraits;
+                console.log('[PartyLeadership] Auto-backfilled traits for current leader:', currentLeaders.leader.positiveTraits, currentLeaders.leader.negativeTraits);
+            }
+        }
     }
 
 }
@@ -462,11 +480,33 @@ window._selectCandidate = function(index) {
 window._appointLeader = async function() {
     if (isAppointing) return;
 
+    // Block leadership changes for the monarch faction — the King cannot be replaced via party leadership
+    if (currentNation?.government_type === 'Absolute Monarchy' && currentNation?.monarch_faction_id === currentFaction?.id) {
+        alert('The monarch cannot be replaced through party leadership. The King rules until death or abdication.');
+        return;
+    }
+
     const sel = selectedIndex.leader;
     if (sel === null) return;
 
     const candidate = candidatesByRole.leader[sel];
-    if (!candidate || candidate.isCurrent) return;
+    if (!candidate) return;
+
+    // Current leader: sync traits to DB if they're missing (backfill fix)
+    if (candidate.isCurrent) {
+        const hasTraits = currentFaction.leader_positive_traits && currentFaction.leader_positive_traits.length > 0;
+        if (!hasTraits && candidate.positiveTraits && candidate.positiveTraits.length > 0) {
+            // Traits shown on UI but not in DB — sync them
+            await _supabase.from('factions').update({
+                leader_positive_traits: candidate.positiveTraits || [],
+                leader_negative_traits: candidate.negativeTraits || [],
+            }).eq('id', currentFaction.id);
+            currentFaction.leader_positive_traits = candidate.positiveTraits;
+            currentFaction.leader_negative_traits = candidate.negativeTraits;
+            alert('Leader traits synced. They will now apply to campaign actions.');
+        }
+        return;
+    }
 
     const confirmLines = [
         `Appoint ${candidate.firstName} ${candidate.lastName} as Party Leader?\n`,

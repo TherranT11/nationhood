@@ -111,7 +111,9 @@ import { formatInflationRate, getInflationLabel, inflationColorClass, STAT_DECAY
 import { fetchPreviousNationTick, assertRawEconomicValue } from './js/common.js';
 
 // Resolve nation name from query parameter: nation-info.html?name=sangreza
-const NATION_SLUG = new URLSearchParams(window.location.search).get('name');
+const _QS = new URLSearchParams(window.location.search);
+const NATION_SLUG = _QS.get('name');
+const IS_EMBEDDED = _QS.get('embedded') === '1';
 if (!NATION_SLUG) { window.location.href = 'dashboard.html'; }
 
 // Map slugs to proper nation names (handles spaces and casing)
@@ -123,9 +125,61 @@ const SLUG_TO_NAME = {
     'sanestrella': 'San Estrella',
     'palvera': 'Palvera',
     'calveth': 'Calveth',
-    'flandis': 'Flandis'
+    'flandis': 'Flandis',
+    'dravka': 'Dravka',
+    'vostia': 'Vostia',
+    'sierramar': 'Sierramar',
+    'hajjara': 'Hajjara'
 };
 const NATION_NAME = SLUG_TO_NAME[NATION_SLUG.toLowerCase()] || NATION_SLUG.charAt(0).toUpperCase() + NATION_SLUG.slice(1);
+
+// When embedded inside nation.html's iframe, hide the "← Home" back link
+// so the inner frame doesn't try to navigate itself to dashboard.html.
+// Also re-skin the page to the dashboard design tokens — body bg, font
+// stack, and amber accent — so the subtab reads as part of the app
+// rather than the standalone encyclopedia theme.
+if (IS_EMBEDDED) {
+    const css = document.createElement('style');
+    css.textContent = `
+        .toc-back { display: none !important; }
+        body {
+            background: #141412 !important;
+            color: #c8c4b8 !important;
+            font-family: 'IBM Plex Sans', -apple-system, sans-serif !important;
+        }
+        .toc-column { background: #1a1a17 !important; border-right-color: rgba(200,196,184,0.06) !important; }
+        .toc-title,
+        .toc-link,
+        .nation-subtitle,
+        .section-heading,
+        .edit-toggle,
+        .sidebar-title { font-family: 'JetBrains Mono', monospace !important; }
+        .toc-link { color: #8a8778 !important; }
+        .toc-link:hover,
+        .toc-link.active {
+            color: #b09a5b !important;
+            border-left-color: #b09a5b !important;
+            background: rgba(176,154,91,0.08) !important;
+        }
+        .nation-title {
+            font-family: 'IBM Plex Serif', serif !important;
+            color: #b09a5b !important;
+        }
+        .section-heading {
+            color: #b09a5b !important;
+            border-bottom-color: rgba(200,196,184,0.06) !important;
+        }
+        .sidebar-column { background: #1a1a17 !important; border-left-color: rgba(200,196,184,0.06) !important; }
+        .sidebar-title { color: #b09a5b !important; }
+        .edit-toggle { color: #b09a5b !important; border-color: #b09a5b !important; }
+        .edit-toggle:hover { background: rgba(176,154,91,0.1) !important; }
+        .edit-toggle.active { background: #b09a5b !important; color: #141412 !important; }
+        .party-card-seats { color: #b09a5b !important; }
+        .party-card-tag { background: #b09a5b !important; color: #141412 !important; }
+        .loading-spinner { border-top-color: #b09a5b !important; }
+    `;
+    document.head.appendChild(css);
+}
 
 let nation = null;
 let profile = null;
@@ -619,7 +673,7 @@ function renderSidebar() {
         ['GDP', fmtCur(scaleGDP(nation.gdp))],
         ['Nat. Debt', fmtCur(scaleGDP(nation.debt))],
         ['Approval', (nation.gov_approval ?? 40) + '%'],
-        ['Stability', nation.stability || 'N/A'],
+        ['Stability', nation.stability != null ? Number(nation.stability).toFixed(1) : 'N/A'],
         ['Freedom', nation.freedom_index || 'N/A']
     ];
     var lh = '';

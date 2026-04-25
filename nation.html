@@ -20,10 +20,6 @@
 
 <!-- ===== CONTENT AREA ===== -->
 <div id="content-area">
-    <div class="loading-container">
-        <div class="loading-spinner"></div>
-        <div>Loading nation data...</div>
-    </div>
 </div>
 
 <!-- Shared Scripts -->
@@ -406,7 +402,7 @@ async function loadStatEffectSources(nationId, nation) {
             .eq('item_type', 'institution')
             .order('created_at', { ascending: true }),
         _supabase.from('ministry_institution_config')
-            .select('id, institution_name, primary_stat, secondary_stat, growth_stat, growth_ceiling')
+            .select('*')
     ]);
     } catch (e) {
         console.warn('[loadStatEffectSources] Failed to fetch effect sources:', e.message);
@@ -793,7 +789,8 @@ function parseDecayEffects(nation, map) {
         if (currentVal === config.target) continue;
         var dir = currentVal > config.target ? 'down' : 'up';
         var label = config.type === 'erosion' ? 'Natural Erosion' : 'Natural Decay';
-        addEffectToMap(map, statKey, label, dir, 'Decay');
+        // Pass config.speed as the rate so the UI shows the numeric decay value
+        addEffectToMap(map, statKey, label, dir, 'Decay', config.speed);
     }
 }
 
@@ -1567,7 +1564,7 @@ function renderFeaturedCategory(cat, nation) {
 
 // ===== TAB SWITCHING =====
 
-var _activeNationTab = 'statistics';
+var _activeNationTab = 'profile';
 
 function switchNationTab(tab) {
     if (tab === _activeNationTab) return;
@@ -1681,13 +1678,24 @@ function getLatestMigrationTick() {
 }
 
 async function loadMigrationFlows(nationId) {
-    // Fetch ALL migration flows (not just this nation) for the matrix view
-    var { data } = await _supabase
+    // Get the latest tick that has migration data
+    var { data: tickRow } = await _supabase
         .from('migration_flows')
-        .select('*, origin:origin_nation_id(id, name), dest:dest_nation_id(id, name)')
+        .select('tick')
         .order('tick', { ascending: false })
-        .limit(500);
-    migrationFlowData = data || [];
+        .limit(1);
+    var latestFlowTick = tickRow?.[0]?.tick;
+
+    if (latestFlowTick != null) {
+        // Fetch all flows for the latest tick only (all nations)
+        var { data } = await _supabase
+            .from('migration_flows')
+            .select('*, origin:origin_nation_id(id, name), dest:dest_nation_id(id, name)')
+            .eq('tick', latestFlowTick);
+        migrationFlowData = data || [];
+    } else {
+        migrationFlowData = [];
+    }
 }
 
 function renderMigrationSourcesPanel(nation) {
@@ -2254,6 +2262,7 @@ async function renderNationPage(nation) {
 
     // ---- Tab bar ----
     h += '<div class="nation-tab-bar">';
+    h += '<button class="nation-tab' + (_activeNationTab === 'profile' ? ' active' : '') + '" data-tab="profile" onclick="switchNationTab(\'profile\')">Nation</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'statistics' ? ' active' : '') + '" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'immigration' ? ' active' : '') + '" data-tab="immigration" onclick="switchNationTab(\'immigration\')">Immigration</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'illegal' ? ' active' : '') + '" data-tab="illegal" onclick="switchNationTab(\'illegal\')">Illegal Immigration</button>';
@@ -2271,6 +2280,20 @@ async function renderNationPage(nation) {
     }
 
     h += '</div>'; // end statistics tab
+
+    // ---- Nation Profile tab (embedded nation-info.html) ----
+    // Note: on tick-advanced this subtree is rebuilt along with every other
+    // tab (see listener above), so the iframe reloads. Consistent with how
+    // Immigration / Illegal Immigration refresh. Users on the profile tab
+    // during a tick boundary will see it reload.
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-profile"' + (_activeNationTab === 'profile' ? '' : ' style="display:none;"') + '>';
+    var _profileSlug = String(nation.name || '').toLowerCase().replace(/\s+/g, '');
+    if (_profileSlug) {
+        h += '<iframe id="nation-profile-frame" src="nation-info.html?name=' + encodeURIComponent(_profileSlug) + '&embedded=1" style="width:100%;min-height:85vh;border:0;background:var(--n-bg);display:block;"></iframe>';
+    } else {
+        h += '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Nation name unavailable — profile cannot be loaded.</div>';
+    }
+    h += '</div>'; // end profile tab
 
     // ---- Immigration tab ----
     h += '<div class="nation-body nation-tab-content" id="nation-tab-immigration"' + (_activeNationTab === 'immigration' ? '' : ' style="display:none;"') + '>';

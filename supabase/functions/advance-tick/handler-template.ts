@@ -7,7 +7,8 @@
  * acquires a database lock, and processes the full game tick.
  *
  * AUTO-GENERATED — do not edit index.ts directly.
- * Source: js/game-common.js + supabase/functions/advance-tick/handler-template.ts
+ * Game-logic source of truth lives in js/game/*.js (especially political-actions.js).
+ * Source: js/game/*.js + supabase/functions/advance-tick/handler-template.ts
  * Regenerate with: node scripts/sync-edge-function.js
  */
 
@@ -53,14 +54,14 @@ async function ensureApRpcAvailability(supabase) {
     return rpcPreflightCheckPromise;
 }
 
-// ===== GAME LOGIC (from js/game-common.js) =====
+// ===== GAME LOGIC (from js/game/*.js modules) =====
 
 // __GAME_COMMON_JS__
 
 // ===== END GAME LOGIC =====
 
 
-// ===== TICK-ONLY HELPERS (edge-function-only — not in game-common.js) =====
+// ===== TICK-ONLY HELPERS (edge-function-only — not in js/game/*.js modules) =====
 
 // ==================== FACTION MOMENTUM HELPER ====================
 // Thin wrapper around adjust_momentum RPC for use in tick-only code.
@@ -97,7 +98,7 @@ async function processSurplusConnectors(supabase: any, nation: any) {
     let surplusRatio = 0;
     try {
         const budget = calculateNationalBudget(nation);
-        const baseExpenditure = gdp * 0.08 * (1 + (100 - efficiency) / 200);
+        const baseExpenditure = gdp * 0.12 * (1 + (100 - efficiency) / 200);
         const surplus = budget.grossRevenue - baseExpenditure;
         surplusRatio = (surplus / gdp) * 100;
     } catch (_) {
@@ -113,12 +114,13 @@ async function processSurplusConnectors(supabase: any, nation: any) {
         updates.inflation = clamp(inflation + delta);
         changed = true;
     }
-    // Deficit spending is also inflationary
-    if (surplusRatio < -5) {
-        const delta = capDelta((-surplusRatio - 5) * 0.05);
-        updates.inflation = clamp((updates.inflation ?? inflation) + delta);
-        changed = true;
-    }
+    // Deficit → inflation was previously handled here with a heuristic
+    // (-5% deficit started a small additive hit). The Debt & Deficit
+    // System (js/game/debt.js) now owns this signal — printing the
+    // unbonded portion of the deficit is the canonical inflation driver,
+    // and the forced-print path on expired bond offers carries any
+    // unfilled-market cost. Removed to avoid double-counting; the debt
+    // system's INFLATION_PER_PRINT_PCT is the single tunable knob.
 
     // ── Surplus → Currency Strength ──
     if (surplusRatio > 3) {
@@ -126,12 +128,11 @@ async function processSurplusConnectors(supabase: any, nation: any) {
         updates.currency_strength = clamp(currencyStrength + delta);
         changed = true;
     }
-    // Large deficit weakens currency
-    if (surplusRatio < -5) {
-        const delta = capDelta((-surplusRatio - 5) * 0.1);
-        updates.currency_strength = clamp(currencyStrength - delta);
-        changed = true;
-    }
+    // Deficit → currency was previously a direct hit here. Removed for
+    // the same SSoT reason — currency_strength now cascades from
+    // inflation via the trade subsystem (fuel cost → import cost → trade
+    // balance → currency nudge) plus the stat_connections_negative_feedback
+    // cascade at currency<25. One causal chain, not two parallel writers.
 
     if (changed) {
         const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
@@ -267,7 +268,8 @@ async function processIncumbentCampaignBonuses(supabase, nation, currentTick) {
     const ticksToElection = upcomingElection.election_tick - currentTick;
     console.log(`Campaign bonuses for incumbent ${president.first_name} ${president.last_name} in ${nation.name} (${ticksToElection} ticks to election)`);
 
-    await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent', tick: currentTick });
+    // Incumbent bias removed — incumbents already benefit from executive powers.
+    // Previously: await adjustFactionMomentum(supabase, president.faction_id, nation.id, 1, { source: 'campaign:incumbent', tick: currentTick });
 
     const { data: nationStats } = await supabase
         .from('nations')
@@ -1332,6 +1334,266 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Trade processing failed (non-fatal):', tradeErr);
     }
 
+    // 3.5b Trade imbalance auto-spawn — detect sustained bilateral imbalances → create issues
+    // Runs every 5 ticks to reduce CPU — needs 5 ticks of sustained data anyway
+    if (newTick % 5 === 0) try {
+        const tradeIssuesSpawned = await checkTradeImbalanceAutoSpawn(supabase, nationList, newTick);
+        if (tradeIssuesSpawned.length > 0) {
+            summary.tradeIssuesSpawned = tradeIssuesSpawned.length;
+            console.log(`[advanceTick] Trade imbalance: spawned ${tradeIssuesSpawned.length} new issue(s)`);
+        }
+    } catch (tiErr) {
+        console.error('[advanceTick] Trade imbalance auto-spawn failed (non-fatal):', tiErr);
+    }
+
+    // Fetch food sub-sector trade flows once — used by steps 3.5c and 3.5d
+    let foodFlowRows: any[] = [];
+    try {
+        const { data } = await supabase
+            .from('trade_flows')
+            .select('nation_id, sector, export_capacity, export_volume, import_demand, import_volume')
+            .eq('tick', newTick)
+            .in('sector', FOOD_SUBSECTOR_KEYS);
+        if (data) foodFlowRows = data;
+    } catch (fetchErr) {
+        console.error('[advanceTick] Food flow fetch failed (non-fatal):', fetchErr);
+    }
+
+    // 3.5c Food sub-sector stat effects — apply ongoing supply/shortage/environmental nudges
+    // Runs after trade engine so trade_flows reflect current tick data.
+    // Effects: supplied sectors give positive nudges, shortage penalizes stats,
+    // livestock/cash crops generate environmental + structural effects.
+    try {
+        if (foodFlowRows && foodFlowRows.length > 0) {
+            // Group by nation
+            const nationFoodFlows: Record<string, Record<string, any>> = {};
+            for (const row of foodFlowRows) {
+                if (!nationFoodFlows[row.nation_id]) nationFoodFlows[row.nation_id] = {};
+                nationFoodFlows[row.nation_id][row.sector] = row;
+            }
+
+            let foodEffectCount = 0;
+            for (const nationId in nationFoodFlows) {
+                const effects = computeFoodStatEffects(nationFoodFlows[nationId]);
+                if (!effects || Object.keys(effects).length === 0) continue;
+
+                // Filter out imperceptible effects (< 0.05 rounds to 0 change)
+                const affectedKeys = Object.keys(effects).filter(k => Math.abs(effects[k]) >= 0.05);
+                if (affectedKeys.length === 0) continue;
+
+                // Fetch current nation stats for the affected keys
+                const { data: nationRow } = await supabase
+                    .from('nations')
+                    .select(affectedKeys.join(', '))
+                    .eq('id', nationId)
+                    .single();
+
+                if (!nationRow) continue;
+
+                const updates: Record<string, number> = {};
+                for (const statKey of affectedKeys) {
+                    const currentVal = Number(nationRow[statKey] ?? 50);
+                    const delta = effects[statKey];
+                    const newVal = Math.round(Math.max(0, Math.min(100, currentVal + delta)) * 10) / 10;
+                    if (newVal !== currentVal) updates[statKey] = newVal;
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    await supabase.from('nations').update(updates).eq('id', nationId);
+                    foodEffectCount++;
+                }
+            }
+
+            if (foodEffectCount > 0) {
+                console.log(`[advanceTick] Food stat effects applied to ${foodEffectCount} nation(s)`);
+            }
+        }
+    } catch (foodEffErr) {
+        console.error('[advanceTick] Food stat effects failed (non-fatal):', foodEffErr);
+    }
+
+    // 3.5d Stockpile processing — accumulate surplus, apply spoilage, draw down on shortage
+    // Runs for stockpilable sectors (grains_staples, cash_crops) after trade flows are computed.
+    try {
+        const stockpileSectors = ['grains_staples', 'cash_crops'];
+        const { data: stockpileRows } = await supabase
+            .from('food_stockpiles')
+            .select('nation_id, sector, reserve_value, max_capacity');
+
+        if (stockpileRows && stockpileRows.length > 0) {
+            // Group by nation
+            const stockByNation: Record<string, Record<string, any>> = {};
+            for (const row of stockpileRows) {
+                if (!stockByNation[row.nation_id]) stockByNation[row.nation_id] = {};
+                stockByNation[row.nation_id][row.sector] = row;
+            }
+
+            let stockUpdates = 0;
+            for (let ni = 0; ni < nationList.length; ni++) {
+                const n = nationList[ni];
+                const nationStocks = stockByNation[n.id];
+                if (!nationStocks) continue;
+
+                for (let si = 0; si < stockpileSectors.length; si++) {
+                    const sKey = stockpileSectors[si];
+                    const stock = nationStocks[sKey];
+                    if (!stock) continue;
+
+                    // Get trade flow data for this sector
+                    const flow = (foodFlowRows || []).find(
+                        (f: any) => f.nation_id === n.id && f.sector === sKey
+                    );
+
+                    const expCap = flow ? Number(flow.export_capacity) || 0 : 0;
+                    const expVol = flow ? Number(flow.export_volume) || 0 : 0;
+                    const impDem = flow ? Number(flow.import_demand) || 0 : 0;
+                    const impVol = flow ? Number(flow.import_volume) || 0 : 0;
+
+                    // Domestic retained = production - exports
+                    const domesticRetained = Math.max(0, expCap - expVol);
+                    // Domestic need = what we need + unmet import demand
+                    const domesticNeed = domesticRetained + impDem;
+                    // Total supply this tick = domestic retained + actual imports
+                    const totalSupply = domesticRetained + impVol;
+                    // Surplus = supply exceeds need
+                    const surplus = totalSupply - domesticNeed;
+
+                    // Calculate max capacity
+                    const maxCap = calculateStockpileCapacity(sKey, n);
+
+                    // Calculate spoilage
+                    const spoilagePct = calculateStockpileSpoilage(sKey, n);
+                    const currentReserve = Number(stock.reserve_value) || 0;
+                    const spoilageLoss = Math.round(currentReserve * (spoilagePct / 100));
+
+                    // Apply: spoilage first, then surplus/deficit
+                    let newReserve = currentReserve - spoilageLoss;
+                    let inflow = 0;
+                    let outflow = spoilageLoss;
+
+                    if (surplus > 0) {
+                        // Surplus flows into reserves (capped at capacity)
+                        inflow = Math.min(surplus, Math.max(0, maxCap - newReserve));
+                        newReserve += inflow;
+                    } else if (surplus < 0) {
+                        // Shortage draws from reserves
+                        const drawdown = Math.min(Math.abs(surplus), newReserve);
+                        outflow += drawdown;
+                        newReserve -= drawdown;
+                    }
+
+                    newReserve = Math.max(0, Math.round(newReserve));
+
+                    await supabase.from('food_stockpiles')
+                        .update({
+                            reserve_value: newReserve,
+                            max_capacity: maxCap,
+                            last_spoilage: spoilageLoss,
+                            last_inflow: inflow,
+                            last_outflow: outflow,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('nation_id', n.id)
+                        .eq('sector', sKey);
+
+                    stockUpdates++;
+                }
+            }
+
+            if (stockUpdates > 0) {
+                console.log(`[advanceTick] Stockpiles updated: ${stockUpdates} entries`);
+            }
+        }
+    } catch (stockErr) {
+        console.error('[advanceTick] Stockpile processing failed (non-fatal):', stockErr);
+    }
+
+    // 3.5e Stockpile purchase execution — process active stockpile_purchase agreements
+    // These are one-time transfers: on enactment, seller's reserves decrease,
+    // buyer's reserves increase. Mark as completed after execution.
+    try {
+        const { data: pendingPurchases } = await supabase
+            .from('trade_agreements')
+            .select('id, nation_a_id, nation_b_id, articles')
+            .eq('agreement_type', 'stockpile_purchase')
+            .eq('status', 'active');
+
+        if (pendingPurchases && pendingPurchases.length > 0) {
+            for (const sp of pendingPurchases) {
+                const arts = sp.articles || [];
+                const transferArt = arts.find((a: any) => a.type === 'stockpile_transfer');
+                if (!transferArt || !transferArt.data) continue;
+
+                const d = transferArt.data;
+                const sector = d.sector;
+                const quantityValue = Number(d.quantity_value) || 0;
+                if (!sector || quantityValue <= 0) continue;
+
+                // Resolve buyer/seller
+                const authorId = d.author_nation_id || sp.nation_a_id;
+                const partnerId = (authorId === sp.nation_a_id) ? sp.nation_b_id : sp.nation_a_id;
+                const buyerId = d.direction === 'we_buy' ? authorId : partnerId;
+                const sellerId = d.direction === 'we_buy' ? partnerId : authorId;
+
+                // Fetch seller's stockpile
+                const { data: sellerStock } = await supabase
+                    .from('food_stockpiles')
+                    .select('reserve_value')
+                    .eq('nation_id', sellerId)
+                    .eq('sector', sector)
+                    .single();
+
+                if (!sellerStock) {
+                    console.log(`[advanceTick] Stockpile purchase ${sp.id}: seller has no stockpile for ${sector}`);
+                    await supabase.from('trade_agreements').update({ status: 'failed' }).eq('id', sp.id);
+                    continue;
+                }
+
+                const sellerReserve = Number(sellerStock.reserve_value) || 0;
+                // Transfer only what the seller actually has
+                const actualTransfer = Math.min(quantityValue, sellerReserve);
+                if (actualTransfer <= 0) {
+                    console.log(`[advanceTick] Stockpile purchase ${sp.id}: seller reserves empty`);
+                    await supabase.from('trade_agreements').update({ status: 'failed' }).eq('id', sp.id);
+                    continue;
+                }
+
+                // Deduct from seller
+                await supabase.from('food_stockpiles')
+                    .update({ reserve_value: Math.max(0, sellerReserve - actualTransfer) })
+                    .eq('nation_id', sellerId)
+                    .eq('sector', sector);
+
+                // Add to buyer (fetch current + add, capped at capacity)
+                const { data: buyerStock } = await supabase
+                    .from('food_stockpiles')
+                    .select('reserve_value, max_capacity')
+                    .eq('nation_id', buyerId)
+                    .eq('sector', sector)
+                    .single();
+
+                const buyerReserve = buyerStock ? Number(buyerStock.reserve_value) || 0 : 0;
+                const buyerCap = buyerStock ? Number(buyerStock.max_capacity) || 0 : 0;
+                // Cap at capacity (if capacity is set), otherwise allow the transfer
+                const newBuyerReserve = buyerCap > 0 ? Math.min(buyerReserve + actualTransfer, buyerCap) : buyerReserve + actualTransfer;
+
+                await supabase.from('food_stockpiles')
+                    .update({ reserve_value: newBuyerReserve })
+                    .eq('nation_id', buyerId)
+                    .eq('sector', sector);
+
+                // Mark agreement as completed (one-time transfer)
+                await supabase.from('trade_agreements')
+                    .update({ status: 'completed' })
+                    .eq('id', sp.id);
+
+                console.log(`[advanceTick] Stockpile purchase ${sp.id}: transferred $${Math.round(actualTransfer).toLocaleString()} of ${sector} from seller to buyer`);
+            }
+        }
+    } catch (spErr) {
+        console.error('[advanceTick] Stockpile purchase execution failed (non-fatal):', spErr);
+    }
+
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
     try {
         const expiredAgreements = await processExpiredTradeAgreements(supabase, newTick);
@@ -1341,6 +1603,53 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (expErr) {
         console.error('[advanceTick] Agreement expiration check failed (non-fatal):', expErr);
+    }
+
+    // 3.6b Safety net: catch economic aid agreements missing their aid_agreement_state row
+    // Runs every 5 ticks to reduce CPU load — orphaned rows are rare, no urgency
+    if (newTick % 5 === 0) try {
+        const { data: orphanedAid } = await supabase
+            .from('trade_agreements')
+            .select('id, nation_a_id, nation_b_id, articles, enacted_at_tick')
+            .eq('agreement_type', 'economic_aid')
+            .eq('status', 'active');
+
+        if (orphanedAid && orphanedAid.length > 0) {
+            for (const ta of orphanedAid) {
+                // Check if aid_agreement_state exists for this agreement
+                const { data: existing } = await supabase
+                    .from('aid_agreement_state')
+                    .select('agreement_id')
+                    .eq('agreement_id', ta.id)
+                    .maybeSingle();
+
+                if (!existing) {
+                    // Missing — reconstruct from articles
+                    const aidArt = (ta.articles || []).find((a: any) => a.type === 'aid_terms');
+                    if (aidArt?.data?.donor_nation_id && aidArt?.data?.annual_amount) {
+                        const donorId = aidArt.data.donor_nation_id;
+                        const recipientId = donorId === ta.nation_a_id ? ta.nation_b_id : ta.nation_a_id;
+                        const annualAmount = Number(aidArt.data.annual_amount);
+                        const { error: fixErr } = await supabase.from('aid_agreement_state').insert({
+                            agreement_id: ta.id,
+                            donor_nation_id: donorId,
+                            recipient_nation_id: recipientId,
+                            current_annual_amount: annualAmount,
+                            original_annual_amount: annualAmount,
+                            next_review_tick: newTick + 12,
+                            condition_failures: {}
+                        });
+                        if (fixErr) {
+                            console.error(`[advanceTick] Failed to create orphaned aid_agreement_state for ${ta.id}:`, fixErr.message);
+                        } else {
+                            console.log(`[advanceTick] Safety net: created missing aid_agreement_state for agreement ${ta.id} (donor=${donorId}, $${(annualAmount/1e9).toFixed(1)}B/yr)`);
+                        }
+                    }
+                }
+            }
+        }
+    } catch (aidFixErr) {
+        console.error('[advanceTick] Aid agreement safety net failed (non-fatal):', aidFixErr);
     }
 
     // 3.7 Expire pending state visit proposals past their accept window
@@ -1546,6 +1855,82 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] PM trait effects failed for ${nation.name} (non-fatal):`, pmTraitErr);
         }
 
+        // Base momentum decay — 8% per tick, applied to all party factions.
+        // Parties with a custom_logo_url receive a +1/tick bonus (advertised in
+        // the Set Party Logo modal as "Current logo active — +1 Momentum/tick").
+        // Net per tick = -(8% of current) + (1 if logo else 0), then floored at 1
+        // and capped at 100.
+        //
+        // Single direct update per faction (no RPC overhead, no momentum_log append).
+        // Decay entries would flood the 50-entry log — players see 'base_decay' in
+        // the tooltip anyway. This saves N RPC calls (each RPC = 2 queries internally).
+        try {
+            const { data: decayFactions } = await supabase
+                .from('factions')
+                .select('id, momentum, custom_logo_url')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party')
+                .gt('momentum', 0);
+
+            for (const f of (decayFactions || [])) {
+                const oldMom = Number(f.momentum) || 0;
+                const decay = Math.max(0.5, Math.round(oldMom * 0.08 * 100) / 100);
+                const logoBonus = f.custom_logo_url ? 1 : 0;
+                const newMom = Math.min(100, Math.max(1, Math.round((oldMom - decay + logoBonus) * 100) / 100));
+                await supabase.from('factions')
+                    .update({ momentum: newMom })
+                    .eq('id', f.id);
+            }
+        } catch (momDecayErr) {
+            console.error(`[advanceTick] Momentum decay failed for ${nation.name} (non-fatal):`, momDecayErr);
+        }
+
+        // Passive income: $1k per seat per tick for all parties
+        try {
+            const { data: incomeFactions } = await supabase
+                .from('factions')
+                .select('id, seats, party_funds')
+                .eq('nation_id', nation.id)
+                .eq('faction_type', 'party')
+                .gt('seats', 0);
+
+            for (const f of (incomeFactions || [])) {
+                const seats = Number(f.seats) || 0;
+                const income = seats * 1000; // $1k per seat
+                const newFunds = (Number(f.party_funds) || 0) + income;
+                await supabase.from('factions')
+                    .update({ party_funds: newFunds })
+                    .eq('id', f.id);
+            }
+        } catch (incomeErr) {
+            console.error(`[advanceTick] Passive income failed for ${nation.name} (non-fatal):`, incomeErr);
+        }
+
+        // Absolute Monarchy: legitimacy decay/growth based on seat concentration
+        if ((nation.government_type || '').toLowerCase().includes('monarchy') && nation.monarch_faction_id) {
+            try {
+                const { data: monarchFaction } = await supabase.from('factions').select('seats').eq('id', nation.monarch_faction_id).single();
+                const monarchSeats = monarchFaction?.seats || 0;
+                const totalNationSeats = nation.total_seats || 100;
+                const seatPct = totalNationSeats > 0 ? monarchSeats / totalNationSeats : 1;
+                const currentLeg = Number(nation.legitimacy) || 50;
+                let legChange = 0;
+
+                if (seatPct > 0.7) {
+                    legChange = -1; // Tyranny decay
+                } else if (seatPct < 0.5) {
+                    legChange = 0.5; // Balanced governance bonus
+                }
+
+                if (legChange !== 0) {
+                    const newLeg = Math.max(0, Math.min(100, currentLeg + legChange));
+                    await supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
+                }
+            } catch (legErr) {
+                console.error(`[advanceTick] Monarchy legitimacy check failed for ${nation.name} (non-fatal):`, legErr);
+            }
+        }
+
         // Timed momentum effects (e.g. State Media Control +2 momentum/tick for governing parties)
         try {
             const effects = Array.isArray(nation.timed_momentum_effects) ? nation.timed_momentum_effects : [];
@@ -1631,6 +2016,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         .eq('nation_id', nation.id).eq('active', true).maybeSingle();
                     if (hog) {
                         const { data: shardDate } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
+                        // Snapshot current nation stats so governance score has a baseline
+                        // (previously missing — caused stats_at_start to be null/empty, making
+                        // governance deltas calculate against 0 instead of actual starting values)
+                        const safetyNetStats = snapshotNationStats(nation);
                         await supabase.from('administrations').insert({
                             nation_id: nation.id,
                             admin_name: (hog.last_name || 'Interim') + ' Administration',
@@ -1639,7 +2028,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             started_at_tick: hog.appointed_tick || newTick,
                             started_at_date: shardDate?.current_date || '',
                             approval_at_start: Number(nation.gov_approval ?? 50),
-                            pm_party_id: hog.faction_id
+                            pm_party_id: hog.faction_id,
+                            stats_at_start: safetyNetStats
                         });
                         console.log(`[advanceTick] Safety net: created missing administration for ${nation.name} (${hog.last_name} Administration)`);
                     }
@@ -1651,9 +2041,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Caucus system: activate/deactivate internal factions based on seat share
         try {
             await evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS);
-            await decayCaucusRelationships(supabase, nation.id, newTick);
+            await decayCaucusRelationships(supabase, nation.id);
+            await processCaucusDefections(supabase, nation.id, newTick);
         } catch (caucusErr) {
             console.error(`[advanceTick] Caucus processing failed for ${nation.name} (non-fatal):`, caucusErr);
+        }
+
+        // Fail committee bills that have sat without being sent to the floor
+        // for COMMITTEE_EXPIRY_TICKS (6) ticks. The function was defined but
+        // never called, leaving bills stuck in committee indefinitely.
+        try {
+            const expiredResults = await expireCommitteeBills(supabase, nation.id, newTick);
+            if (expiredResults.length > 0) {
+                summary.expiredCommittee = summary.expiredCommittee || [];
+                summary.expiredCommittee.push({ nation: nation.name, bills: expiredResults });
+            }
+        } catch (expireErr) {
+            console.error(`[advanceTick] expireCommitteeBills failed for ${nation.name} (non-fatal):`, expireErr);
         }
 
         // Check for early majority on active floor bills (lock outcome + set grace tick)
@@ -1674,6 +2078,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             if (resolutions.length > 0) summary.resolutions.push({ nation: nation.name, bills: resolutions });
         } catch (resolveErr) {
             console.error(`[advanceTick] resolveExpiredVotes failed for ${nation.name} (non-fatal):`, resolveErr);
+        }
+
+        // Resolve constitutional referendums (1+ tick after referendum_start_tick)
+        try {
+            const referendumResults = await resolveReferendums(supabase, nation, newTick);
+            if (referendumResults.length > 0) {
+                summary.referendums = summary.referendums || [];
+                summary.referendums.push({ nation: nation.name, results: referendumResults });
+            }
+        } catch (refErr) {
+            console.error(`[advanceTick] resolveReferendums failed for ${nation.name} (non-fatal):`, refErr);
         }
 
         // Safety net: catch any floor bills that resolveExpiredVotes missed
@@ -1890,10 +2305,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
         }
 
-        // Presidential pre-election candidate generation, term end safety net, + selection timeout
+        // Presidential pre-election candidate generation + term end safety net.
+        // (processParliamentaryPMTimeout removed — PM is never auto-installed.)
         await triggerPresidentialCandidateSelection(supabase, nation, newTick);
         await processPresidentialTermEnd(supabase, nation, newTick);
-        await processParliamentaryPMTimeout(supabase, nation, newTick);
 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
         await processIncumbentCampaignBonuses(supabase, nation, newTick);
@@ -1935,12 +2350,66 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const ticksInactive = newTick - ref;
 
                 if (ticksInactive >= 18) {
+                    // Absolute Monarchy: if this is the monarch's faction, trigger succession instead of disband
+                    const isMonarchFaction = nation.monarch_faction_id === party.id
+                        && (nation.government_type || '').toLowerCase().includes('monarchy');
+
+                    if (isMonarchFaction) {
+                        try {
+                            // The monarch has died / been deposed due to inactivity
+                            const monarchName = nation.monarch_name || 'The Monarch';
+                            const heirName = nation.heir_name || 'The Heir';
+                            const dynastyName = nation.dynasty_name || 'Unknown';
+                            const monarchTitle = nation.monarch_title || 'King';
+
+                            // Generate a new heir name
+                            const { getNationNames } = await import('../../js/game/political-actions.js');
+                            const names = getNationNames(nation.name);
+                            const newHeirFirst = (names.firstNames || ['Alexander'])[Math.floor(Math.random() * (names.firstNames || ['Alexander']).length)];
+                            const newHeirAge = 14 + Math.floor(Math.random() * 8); // 14-21
+
+                            // Update nation: heir becomes monarch, generate new heir
+                            await supabase.from('nations').update({
+                                monarch_name: heirName,
+                                heir_name: newHeirFirst + ' ' + dynastyName,
+                                heir_age: newHeirAge,
+                                monarch_crowned_tick: newTick,
+                                legitimacy: Math.max(20, (Number(nation.legitimacy) || 50) - 10), // succession costs -10 legitimacy
+                            }).eq('id', nation.id);
+
+                            // Fire succession event
+                            await supabase.from('event_log').insert({
+                                nation_id: nation.id,
+                                event_name: `${monarchTitle} ${monarchName} has died`,
+                                category: 'government',
+                                description_chosen: `${monarchTitle} ${monarchName} of the ${dynastyName} dynasty has died after a period of inactivity. ${heirName} ascends to the throne as the new ${monarchTitle}. Long live the ${monarchTitle}!`,
+                                fired_at_tick: newTick,
+                            });
+
+                            // Add to admin timeline
+                            await supabase.from('admin_timeline_events').insert({
+                                nation_id: nation.id,
+                                tick: newTick,
+                                type: 'formation',
+                                title: `${monarchTitle} ${monarchName} Has Died`,
+                                description: `${heirName} of House ${dynastyName} ascends to the throne. Legitimacy falls to ${Math.max(20, (Number(nation.legitimacy) || 50) - 10)}%.`,
+                            });
+
+                            // Reset the faction's last_seen_tick so it doesn't immediately disband again
+                            await supabase.from('factions').update({ last_seen_tick: newTick }).eq('id', party.id);
+
+                            console.log(`[Succession] ${monarchTitle} ${monarchName} died in ${nation.name}. ${heirName} takes the throne.`);
+                        } catch (succErr) {
+                            console.error(`[Succession] Failed for ${nation.name}: ${succErr.message}`);
+                        }
+                    } else {
                     // Auto-disband: full cleanup via existing disbandParty()
                     try {
                         await disbandParty(supabase, nation.id, party.id, newTick);
                         console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive)`);
                     } catch (disbandErr) {
                         console.error(`[Inactivity] Auto-disband failed for ${party.faction_name}: ${disbandErr.message}`);
+                    }
                     }
                 } else if (ticksInactive >= 12 && (party.seats || 0) > 0) {
                     // Seat drain: lose 20% of seats per tick (minimum 1)
@@ -2058,6 +2527,53 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Tariff relations penalty failed for ${nation.name} (non-fatal):`, tariffErr);
         }
 
+        // Debt & Deficit System (v1-MANUAL).
+        // Order is exact: maturities → coupons → expiries → new deficit.
+        // Maturities recycle cash before coupons commit it; expiries
+        // resolve yesterday's unfilled bonds before today's deficit posts
+        // a new offer.
+        //
+        // Expenditures here mirror processSurplusConnectors's heuristic
+        // (gdp × 0.12 × efficiency factor) so both systems agree on what
+        // a deficit looks like. Real ministry-budget expenditures will
+        // replace this when wired in v2 — at that point pass the actual
+        // sum here AND set opts.actualDebtService on calculateNationalBudget
+        // for the SUM(holdings × coupon_rate) figure.
+        try {
+            const debtGdp = Number(nation.gdp ?? nation.GDP ?? 0);
+            const debtEff = Number(nation.efficiency ?? 50);
+            const debtExp = debtGdp * 0.12 * (1 + (100 - debtEff) / 200);
+            const debtBudget = calculateNationalBudget(nation);
+
+            await processBondMaturitiesTick(supabase, nation, currentTick);
+            await processBondCouponsTick(supabase, nation, currentTick);
+            await processBondOfferExpiryTick(supabase, nation, currentTick);
+            const debtResult = await processDebtTick(
+                supabase, nation, debtExp, debtBudget.grossRevenue, currentTick
+            );
+            console.log(
+                `[Debt] ${nation.name}: mode=${debtResult?.mode || 'n/a'}` +
+                (debtResult?.mode === 'deficit'
+                    ? ` deficit=${Math.round(debtResult.deficit)}` +
+                      ` bond=${Math.round(debtResult.bondPortion)}` +
+                      ` print=${Math.round(debtResult.printPortion)}` +
+                      ` credit_drop=${debtResult.creditDeterioration?.toFixed(2)}`
+                    : debtResult?.mode === 'surplus'
+                        ? ` surplus=${Math.round(debtResult.surplus)}`
+                        : '')
+            );
+        } catch (debtErr) {
+            console.error(`[advanceTick] Debt system failed for ${nation.name} (non-fatal):`, debtErr);
+        }
+
+        // Military Loyalty Act: force-sync defense minister to the sitting
+        // Head of Government each tick while MLA is active. No-op when not.
+        try {
+            await syncMilitaryLoyaltyDefenseMinister(supabase, nation, currentTick);
+        } catch (mlaErr) {
+            console.error(`[advanceTick] MLA sync failed for ${nation.name} (non-fatal):`, mlaErr);
+        }
+
         // Credit lockout auto-clear: if credit has recovered above threshold, unlock
         if (nation.credit_locked_out && Number(nation.credit ?? 0) > 5) {
             await supabase.from('nations').update({ credit_locked_out: false }).eq('id', nation.id);
@@ -2071,7 +2587,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Electoral standing calculator: 3-pillar (Governance + Momentum + Ideology)
         // Runs every 3rd tick to reduce compute load — standings don't need per-tick precision
         // Also runs if standings are stale (last_updated_tick is more than 3 ticks old)
-        if (newTick % 3 === 0 || newTick <= 185) {
+        // Electorate: runs every 3rd tick to save CPU, but always runs for nations
+        // that don't have an electorate_profile yet (genesis must not be delayed)
+        const { data: hasProfile } = await supabase.from('electorate_profile')
+            .select('id').eq('nation_id', nation.id).maybeSingle();
+        if (newTick % 3 === 0 || !hasProfile) {
             try {
                 await tickElectorate(supabase, nation, newTick);
             } catch (electorateErr) {
@@ -2119,6 +2639,58 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (retireErr) {
             console.error(`[advanceTick] Ambassador retirements failed for ${nation.name} (non-fatal):`, retireErr);
+        }
+
+        // ── Monarch succession by natural death ──
+        // Fires when the current tick hits the secret reign-end roll set at
+        // coronation. Rolls a new monarch from the nation's name pool and a
+        // fresh 1d25-year reign. Hidden from UI — the only surface is the
+        // event_log entry on transition.
+        try {
+            const reignEndsTick = Number(nation.monarch_reign_ends_tick);
+            const hasDynasty = !!nation.dynasty_name;
+            if (hasDynasty && Number.isFinite(reignEndsTick) && newTick >= reignEndsTick) {
+                const { firstNames: fPool, lastNames: lPool } = getNationNames(nation.name);
+                const newFirst = fPool[Math.floor(Math.random() * fPool.length)];
+                const newLast = lPool[Math.floor(Math.random() * lPool.length)];
+                const newAge = 25 + Math.floor(Math.random() * 26); // 25–50
+                const newTitle = isFemaleName(newFirst) ? 'Queen' : 'King';
+                const reignYears = 1 + Math.floor(Math.random() * 25); // 1d25
+                const newReignEndsTick = newTick + (reignYears * 12);
+
+                const oldTitle = nation.head_of_state_title || 'King';
+                const oldName = `${nation.head_of_state_first_name || ''} ${nation.head_of_state_last_name || ''}`.trim() || 'The Monarch';
+                const newName = `${newFirst} ${newLast}`;
+                const dynasty = nation.dynasty_name;
+
+                await supabase.from('nations').update({
+                    head_of_state_first_name: newFirst,
+                    head_of_state_last_name: newLast,
+                    head_of_state_age: newAge,
+                    head_of_state_title: newTitle,
+                    monarch_crowned_tick: newTick,
+                    monarch_reign_ends_tick: newReignEndsTick,
+                }).eq('id', nation.id);
+
+                nation.head_of_state_first_name = newFirst;
+                nation.head_of_state_last_name = newLast;
+                nation.head_of_state_age = newAge;
+                nation.head_of_state_title = newTitle;
+                nation.monarch_crowned_tick = newTick;
+                nation.monarch_reign_ends_tick = newReignEndsTick;
+
+                await supabase.from('event_log').insert({
+                    nation_id: nation.id,
+                    event_name: `${oldTitle} ${oldName} has died`,
+                    category: 'government',
+                    description_chosen: `${oldTitle} ${oldName} of ${dynasty} has passed away. ${newTitle} ${newName} of ${dynasty} ascends the throne. Long live the ${newTitle}.`,
+                    fired_at_tick: newTick,
+                });
+
+                console.log(`[Succession] ${oldTitle} ${oldName} of ${nation.name} has died. ${newTitle} ${newName} takes the throne.`);
+            }
+        } catch (succErr) {
+            console.error(`[advanceTick] Monarch succession failed for ${nation.name} (non-fatal):`, succErr);
         }
 
         // ── Succession helper: updates HOS, syncs nation object, logs action ──

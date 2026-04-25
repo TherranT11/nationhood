@@ -332,11 +332,16 @@ body {
 
 .error-msg {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   color: var(--red);
   text-align: center;
-  margin-top: 10px;
+  padding: 10px 16px;
+  margin: 12px 0;
+  background: rgba(217,83,79,0.08);
+  border: 1px solid rgba(217,83,79,0.25);
+  border-radius: 4px;
 }
+.error-msg:empty { display: none; }
 
 /* ── Company details phase ── */
 .details-panel {
@@ -389,8 +394,10 @@ body {
   .nations-grid { grid-template-columns: 1fr; }
 }
 </style>
+<link rel="stylesheet" href="css/corp-light-theme.css">
 </head>
 <body>
+<script src="js/corp-theme-init.js"></script>
 
 <div id="loading" class="loading-msg">LOADING NATIONS...</div>
 
@@ -416,6 +423,10 @@ body {
       <div class="continent-tab__name">Meridian</div>
       <div class="continent-tab__desc">The old world — diverse nations, ancient traditions, kingdoms and republics.</div>
     </div>
+    <div class="continent-tab" data-continent="Al-Makir" onclick="switchContinent('Al-Makir')">
+      <div class="continent-tab__name">Al-Makir</div>
+      <div class="continent-tab__desc">Desert kingdoms — oil wealth, ancient monarchies, and tribal alliances.</div>
+    </div>
   </div>
 
   <div class="nations-grid" id="nations-grid"></div>
@@ -423,13 +434,13 @@ body {
   <!-- Company details (shown after nation selected) -->
   <div class="details-panel" id="details-panel"></div>
 
+  <div class="error-msg" id="error-message"></div>
+
   <!-- Navigation -->
   <div class="action-bar">
     <button class="btn-next" onclick="goBack()">&#x25C0; Back</button>
     <button class="btn-next" id="btn-confirm" disabled onclick="confirmNation()">Confirm &#x25B6;</button>
   </div>
-
-  <div class="error-msg" id="error-message"></div>
 </div>
 
 <script type="module">
@@ -438,6 +449,8 @@ import { escapeHtml } from './js/utils.js';
 import { getNationNames } from './js/game/political-actions.js';
 import { getStartingEquipment } from './js/game/equipment.js';
 import { hasElectedPresident } from './js/game/government-types.js';
+import { generateExecutivePool, createCEORecord } from './js/game/corp-executives.js';
+import { VESSEL_SPECS } from './js/game/vessels.js';
 
 const FLAG_URLS = {
     'Melizea': 'assets/flags/Melizea.png',
@@ -448,7 +461,10 @@ const FLAG_URLS = {
     'Palvera': 'assets/flags/Palvera.png',
     'Calveth': 'assets/flags/Calveth.png',
     'Flandis': 'assets/flags/Flandis.png',
-    'Vostia': 'assets/flags/Vostia.png'
+    'Vostia': 'assets/flags/Vostia.png',
+    'Sierramar': 'assets/flags/Sierramar.png',
+    'Dravka': 'assets/flags/Dravka.png',
+    'Danwei': 'assets/flags/Danwei.png'
 };
 
 const NATION_CULTURE = {
@@ -460,6 +476,11 @@ const NATION_CULTURE = {
     'Avelia': 'A nation inspired by a hybrid of Spanish and Italian culture and language.',
     'Calveth': 'A nation inspired by Danish culture and language.',
     'Flandis': 'A nation inspired by Dutch culture and language.',
+    'Vostia': 'A nation inspired by Serbian/Montenegrin culture and language.',
+    'Sierramar': 'A small Caribbean island democracy with a young, religious population and a service-driven economy. This nation is analogous to Puerto Rico with a Spanish theme.',
+    'Hajjara': 'A vast desert monarchy rich in oil and gas, governed by an absolute king. Inspired by Arabic culture, with deep traditions and a young, growing population.',
+    'Dravka': 'Dravka is analogous culturally to Albania.',
+    'Danwei': 'A high-tech island republic on the new continent of Faresia, with a globalist, export-driven economy. Inspired by Taiwanese culture and language, Danweian society blends Zulindao folk tradition with cosmopolitan urbanism.',
 };
 
 let currentUser = null;
@@ -469,7 +490,7 @@ let corpsByNation = {};  // nation_id → array of corp factions in this subsect
 let selectedNationId = null;
 let activeContinent = 'Crucera';
 // Company details state (filled after nation selection)
-let companyType = null;
+let companyType = 'Private'; // Public corps not yet implemented
 let corpName = '';
 let ticker = '';
 
@@ -543,6 +564,9 @@ function getGovLabel(nation) {
 }
 
 // ── Render ──
+// Landlocked nations cannot host Shipping corporations
+const LANDLOCKED_NATIONS = ['Montequilla', 'Vostia'];
+
 function renderNations() {
     const grid = document.getElementById('nations-grid');
     const filtered = allNations.filter(n => (n.continent || 'Crucera') === activeContinent);
@@ -555,19 +579,23 @@ function renderNations() {
     grid.innerHTML = filtered.map(nation => {
         const np = nation.nation_profiles;
         const profileFlag = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
-        const flagUrl = profileFlag || nation.flag_url || FLAG_URLS[nation.name] || '';
+        const flagUrl = FLAG_URLS[nation.name] || (profileFlag || '').trim() || (nation.flag_url || '').trim() || '';
         const govClass = getGovClass(nation);
         const govLabel = getGovLabel(nation);
         const demand = getDemand(nation.id);
         const corpCount = (corpsByNation[nation.id] || []).length;
         const isSelected = selectedNationId === nation.id;
+        const isLandlocked = LANDLOCKED_NATIONS.includes(nation.name);
+        const isShippingBlocked = corpSetup && corpSetup.sector === 'Shipping' && isLandlocked;
 
         const pop = nation.population ? nation.population.toLocaleString() : '—';
         const gdp = nation.gdp ? '$' + (nation.gdp / 1e9).toFixed(1) + 'B' : '—';
         const stab = nation.stability != null ? Math.round(nation.stability) : '—';
+        const corpTax = nation.corporate_tax != null ? Math.round(nation.corporate_tax) + '%' : '—';
 
         return `
-            <div class="nation-card${isSelected ? ' selected' : ''}" data-id="${nation.id}" onclick="selectNation('${nation.id}')">
+            <div class="nation-card${isSelected ? ' selected' : ''}${isShippingBlocked ? ' disabled' : ''}" data-id="${nation.id}" onclick="${isShippingBlocked ? '' : "selectNation(\'" + nation.id + "\')"}">
+                ${isShippingBlocked ? '<span class="option-card__badge option-card__badge--soon" style="background:#d9534f;">Landlocked</span>' : ''}
                 <div class="nation-card__header">
                     ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}" onerror="this.style.display='none'">` : ''}
                     <span class="nation-card__name">${escapeHtml(nation.name)}</span>
@@ -586,6 +614,10 @@ function renderNations() {
                     <div class="stat-row">
                         <span class="stat-row__label">Stability</span>
                         <span class="stat-row__value">${stab}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-row__label">Corporate Tax</span>
+                        <span class="stat-row__value">${corpTax}</span>
                     </div>
                     <div class="stat-row">
                         <span class="stat-row__label">${escapeHtml(corpSetup.subsector)}</span>
@@ -616,12 +648,11 @@ function showCompanyDetails() {
                 <span class="section-label">Company Type</span>
             </div>
             <div class="section-body" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:stretch;">
-                <div class="option-card${companyType === 'Public' ? ' selected' : ''}"
-                     data-type="Public" onclick="selectCompanyType(this)" style="margin-bottom:0;display:flex;flex-direction:column;">
-                    <div class="option-card__name">Public</div>
+                <div class="option-card" style="margin-bottom:0;display:flex;flex-direction:column;opacity:0.35;cursor:not-allowed;pointer-events:none;">
+                    <div class="option-card__name">Public <span style="font-size:0.6rem;color:var(--text-dim);font-weight:400;">COMING SOON</span></div>
                     <div class="option-card__desc" style="flex:1;">Your stock is listed on the market. Shareholders influence decisions, but IPO capital fuels rapid growth. Transparent financials required.</div>
                 </div>
-                <div class="option-card${companyType === 'Private' ? ' selected' : ''}"
+                <div class="option-card selected"
                      data-type="Private" onclick="selectCompanyType(this)" style="margin-bottom:0;display:flex;flex-direction:column;">
                     <div class="option-card__name">Private</div>
                     <div class="option-card__desc" style="flex:1;">Full control, no shareholders. Slower growth but total autonomy over strategy. Financials stay behind closed doors.</div>
@@ -722,17 +753,35 @@ async function confirmNation() {
     try {
         const nation = allNations.find(n => n.id === selectedNationId);
 
-        // Block if player's political party is in the same nation
-        const { data: partyInSameNation } = await _supabase
+        // Check ticker uniqueness across all corporations globally
+        const { data: existingTicker } = await _supabase
             .from('factions')
             .select('id, faction_name')
-            .eq('id', currentUser.id)
-            .eq('faction_type', 'party')
+            .eq('faction_type', 'corporation')
+            .eq('corp_ticker', ticker)
+            .is('abandoned_at', null)
+            .limit(1);
+        if (existingTicker && existingTicker.length > 0) {
+            errEl.textContent = `Ticker "${ticker}" is already in use by ${existingTicker[0].faction_name}. Choose a different abbreviation.`;
+            btn.disabled = false;
+            btn.textContent = 'Confirm \u25B6';
+            return;
+        }
+
+        // One faction per user per nation. Catches a party (primary or
+        // linked) or an existing corp in this nation — same user cannot
+        // stack factions in a single nation. DB-side backstop is the
+        // idx_factions_one_per_user_per_nation partial unique index.
+        const { data: existingInNation } = await _supabase
+            .from('factions')
+            .select('id, faction_type, faction_name')
+            .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
             .eq('nation_id', selectedNationId)
             .is('abandoned_at', null)
             .maybeSingle();
-        if (partyInSameNation) {
-            errEl.textContent = `Your political party "${partyInSameNation.faction_name}" is in ${nation.name}. Corporations cannot operate in the same nation as your party.`;
+        if (existingInNation) {
+            const what = existingInNation.faction_type === 'party' ? 'political party' : 'corporation';
+            errEl.textContent = `You already have a ${what} ("${existingInNation.faction_name}") in ${nation.name}. One faction per nation.`;
             btn.disabled = false;
             btn.textContent = 'Confirm ▶';
             return;
@@ -749,44 +798,108 @@ async function confirmNation() {
         const ceoLast = lastNames[Math.floor(Math.random() * lastNames.length)];
         const ceoAge = 40 + Math.floor(Math.random() * 36);
 
-        // Starting financials: $36M cash, $8M loans, scaled by currency strength
+        // Starting financials, scaled by currency strength + inflation for Finance corps
         const currencyMult = (Number(nation.currency_strength) || 50) / 50;
-        const startingCash = Math.round(36_000_000 * currencyMult);
+        const inflationMult = corpSetup.sector === 'Finance'
+            ? Math.max(0.5, 1 - (Number(nation.inflation) || 0) / 200) // high inflation reduces starting capital
+            : 1;
+        const baseCash = corpSetup.sector === 'Finance' ? 225_000_000 : corpSetup.sector === 'Shipping' ? 80_000_000 : 36_000_000;
+        const startingCash = Math.round(baseCash * currencyMult * inflationMult);
         const startingLoans = Math.round(8_000_000 * currencyMult);
 
-        // Upsert corporation faction record
-        const { error: upsertError } = await _supabase
+        // Check if user already has a faction (party) — if so, create corp as linked faction
+        const { data: existingFaction } = await _supabase
             .from('factions')
-            .upsert({
-                id: currentUser.id,
-                faction_type: 'corporation',
-                faction_name: corpName,
-                nation_id: nation.id,
-                nation: nation.name,
-                abbreviation: ticker,
-                seats: 0,
-                needs_rebuild: false,
-                party_color: '#5aafa5',
-                party_logo: null,
-                party_description: null,
-                leader_first_name: ceoFirst,
-                leader_last_name: ceoLast,
-                leader_age: ceoAge,
-                founded_tick: currentTick,
-                action_points: 5,
-                corp_sector: corpSetup.sector,
-                corp_subsector: corpSetup.subsector,
-                corp_company_type: companyType,
-                corp_ticker: ticker,
-                corp_cash_reserves: startingCash,
-                corp_loans: startingLoans,
-                corp_general_workforce: 375,
-                corp_skilled_workforce: 100,
-                corp_innovative_workforce: 25,
-                abandoned_at: null,
-            });
+            .select('id, faction_type')
+            .eq('id', currentUser.id)
+            .is('abandoned_at', null)
+            .maybeSingle();
 
-        if (upsertError) throw upsertError;
+        const isLinkedCorp = existingFaction && existingFaction.faction_type === 'party';
+        const corpId = isLinkedCorp ? crypto.randomUUID() : currentUser.id;
+
+        // Insert (new linked corp) or upsert (first faction for this user)
+        const corpRow = {
+            id: corpId,
+            faction_type: 'corporation',
+            faction_name: corpName,
+            nation_id: nation.id,
+            nation: nation.name,
+            abbreviation: ticker,
+            seats: 0,
+            needs_rebuild: false,
+            party_color: '#5aafa5',
+            party_logo: null,
+            party_description: null,
+            leader_first_name: ceoFirst,
+            leader_last_name: ceoLast,
+            leader_age: ceoAge,
+            founded_tick: currentTick,
+            action_points: 0,
+            corp_sector: corpSetup.sector,
+            corp_subsector: corpSetup.subsector,
+            corp_company_type: companyType,
+            corp_ticker: ticker,
+            corp_cash_reserves: startingCash,
+            corp_loans: startingLoans,
+            corp_general_workforce: 375,
+            corp_skilled_workforce: 100,
+            corp_innovative_workforce: 25,
+            corp_reputation: corpSetup.subsector === 'Megaprojects' ? 85
+                : corpSetup.subsector === 'Industrial Construction' ? 50
+                : 65,
+            abandoned_at: null,
+        };
+
+        if (isLinkedCorp) {
+            corpRow.linked_user_id = currentUser.id;
+            const { error: insertError } = await _supabase.from('factions').insert(corpRow);
+            if (insertError) throw insertError;
+        } else {
+            const { error: upsertError } = await _supabase.from('factions').upsert(corpRow);
+            if (upsertError) throw upsertError;
+        }
+
+        // Set fleet capacity for shipping corps + seed starting vessels
+        if (corpSetup.sector === 'Shipping') {
+            const fleetCapacity = corpSetup.subsector === 'Bulk Cargo' ? 3 : 2;
+            await _supabase.from('factions').update({
+                shipping_fleet_capacity: fleetCapacity,
+                shipping_fleet_deployed: 0,
+            }).eq('id', isLinkedCorp ? currentUser.id : corpRow.id);
+
+            // Seed starting vessels based on subsector. Specs come from
+            // js/game/vessels.js (shared with market-buy and shipyard-order
+            // paths) so capacity and maintenance can't drift per entry point.
+            const STARTING_FLEET = {
+                'Bulk Cargo':             [{ cls: 'Coastal', idx: 1 }, { cls: 'Coastal', idx: 2 }, { cls: 'Reefer', idx: 3 }],
+                'Container Freight':      [{ cls: 'Coastal', idx: 1 }, { cls: 'Container', idx: 2 }],
+                'Specialized Transport':  [{ cls: 'Tanker', idx: 1 }, { cls: 'Bulk', idx: 2 }],
+            };
+
+            const startingShips = STARTING_FLEET[corpSetup.subsector] || STARTING_FLEET['Bulk Cargo'];
+            const vesselRows = startingShips.map(ship => {
+                const specs = VESSEL_SPECS[ship.cls];
+                return {
+                    faction_id: corpId,
+                    nation_id: nation.id,
+                    vessel_name: ticker + '-' + corpName.split(' ')[0] + ' ' + ship.idx,
+                    vessel_class: ship.cls,
+                    condition: 85 + Math.floor(Math.random() * 16), // 85-100
+                    fuel: 70 + Math.floor(Math.random() * 31),      // 70-100
+                    status: 'in_port',
+                    capacity_dwt: specs.capacity_dwt,
+                    capacity_unit: specs.capacity_unit,
+                    base_maintenance: specs.base_maintenance,
+                    fuel_capacity: specs.fuel_capacity,
+                    purchase_price: specs.purchase_price,
+                    built_at_tick: currentTick,
+                    current_port_nation_id: nation.id,
+                };
+            });
+            const { error: vesselSeedErr } = await _supabase.from('corp_vessels').insert(vesselRows);
+            if (vesselSeedErr) console.warn('Failed to seed starting fleet:', vesselSeedErr.message);
+        }
 
         // Seed starting equipment + warehouse for construction corps
         if (corpSetup.sector === 'Construction') {
@@ -811,6 +924,7 @@ async function confirmNation() {
                 nation_id: nation.id,
                 name: 'Starting Warehouse — ' + nation.name,
                 type: 'warehouse',
+                role: 'warehouse',
                 style: 'Basic',
                 capacity: 100,
                 purchase_price: 15000000,
@@ -820,6 +934,22 @@ async function confirmNation() {
                 purchased_at_tick: currentTick,
                 is_active: true,
             });
+        }
+
+        // Seed CEO executive record from faction leader data
+        const corpFactionId = isLinkedCorp ? corpId : currentUser.id;
+        const ceoRecord = createCEORecord(corpFactionId, ceoFirst, ceoLast, ceoAge, nation.name, currentTick);
+        await _supabase.from('corp_executives').insert(ceoRecord);
+
+        // Generate executive pool for this nation if not already seeded
+        const { data: existingPool } = await _supabase
+            .from('executive_pool')
+            .select('id')
+            .eq('nation_id', nation.id)
+            .limit(1);
+        if (!existingPool || existingPool.length === 0) {
+            const pool = generateExecutivePool(nation.id, nation.name);
+            await _supabase.from('executive_pool').insert(pool);
         }
 
         sessionStorage.removeItem('pending_faction_type');

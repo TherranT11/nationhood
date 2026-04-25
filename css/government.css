@@ -271,7 +271,7 @@ body {
         }
         .ministry-card__title {
             font-family: var(--font-mono);
-            font-size: 0.7rem;
+            font-size: 0.9rem;
             font-weight: 500;
             letter-spacing: 0.08em;
             text-transform: uppercase;
@@ -298,16 +298,16 @@ body {
         }
         .ministry-card__minister-name {
             font-family: 'IBM Plex Sans', sans-serif;
-            font-size: 14px;
+            font-size: 18px;
             font-weight: 700;
             color: var(--text-bright);
             line-height: 1.2;
         }
         .ministry-card__minister-meta {
             font-family: var(--font-mono);
-            font-size: 9px;
+            font-size: 12px;
             color: var(--text-muted);
-            margin-top: 3px;
+            margin-top: 4px;
         }
         .ministry-card__minister-meta .party { color: var(--blue); }
         .ministry-card__minister-meta .approval-good { color: var(--green); }
@@ -393,10 +393,10 @@ body {
         /* Vacant card */
         .ministry-card__vacant-label {
             font-family: var(--font-mono);
-            font-size: 11px;
+            font-size: 14px;
             font-weight: 500;
             color: var(--text-faint);
-            padding: 14px 20px;
+            padding: 16px 22px;
         }
 
         /* Pending nomination */
@@ -423,12 +423,12 @@ body {
         /* Actions section label */
         .ministry-card__actions-label {
             font-family: var(--font-mono);
-            font-size: 7.5px;
+            font-size: 10px;
             font-weight: 500;
             letter-spacing: 0.15em;
             text-transform: uppercase;
             color: var(--text-secondary);
-            padding: 10px 20px 4px;
+            padding: 12px 22px 6px;
             background: var(--bg-panel);
             flex-shrink: 0;
         }
@@ -484,7 +484,7 @@ body {
         }
         .ministry-action__name {
             font-family: var(--font-mono);
-            font-size: 9px;
+            font-size: 12px;
             font-weight: 700;
             letter-spacing: 0.07em;
             text-transform: uppercase;
@@ -492,7 +492,7 @@ body {
         }
         .ministry-action__ap-cost {
             font-family: var(--font-mono);
-            font-size: 8px;
+            font-size: 10px;
             color: var(--blue);
             white-space: nowrap;
             margin-left: 8px;
@@ -501,10 +501,10 @@ body {
         /* Description */
         .ministry-action__desc {
             font-family: 'IBM Plex Sans', sans-serif;
-            font-size: 10.5px;
+            font-size: 13px;
             color: var(--text-muted);
-            line-height: 1.4;
-            margin-bottom: 6px;
+            line-height: 1.5;
+            margin-bottom: 8px;
         }
 
         /* Bottom row: tags + button */
@@ -641,6 +641,7 @@ body {
             display: flex; align-items: center; justify-content: space-between;
             padding: 2px 0; font-size: 0.62rem; gap: 4px;
         }
+        .ministry-stat-row { font-size: 12px; }
         .ministry-stat-row .stat-name {
             flex: 1; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
@@ -650,7 +651,7 @@ body {
         .ministry-stat-row .stat-delta.good { color: var(--green); }
         .ministry-stat-row .stat-delta.bad { color: var(--red); }
         .ministry-stat-row .stat-delta.flat { color: var(--text-muted); }
-        .ministry-stat-row .stat-effect { min-width: 36px; text-align: right; font-weight: bold; font-size: 0.58rem; }
+        .ministry-stat-row .stat-effect { min-width: 36px; text-align: right; font-weight: bold; font-size: 0.75rem; }
         .ministry-stat-row .stat-effect.good { color: var(--green); }
         .ministry-stat-row .stat-effect.bad { color: var(--red); }
         .ministry-stat-row .stat-effect.flat { color: var(--text-muted); }
@@ -1011,32 +1012,39 @@ body {
         }
 
         /* ===== PAST ADMINISTRATIONS ===== */
-        .past-admins-toggle {
-            background: var(--bg-panel);
-            border: 1px solid var(--border-0);
-            border-radius: 3px;
-            padding: 14px 20px;
+        .past-admin-selector {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-top: 24px;
-            user-select: none;
+            gap: 10px;
+            padding: 12px 16px;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-main);
         }
-        .past-admins-toggle:hover { border-color: var(--text-dim); background: var(--bg-card); }
-        .past-admins-toggle-text { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
-        .past-admins-toggle .chevron { color: var(--text-muted); font-size: 1.2rem; transition: transform 0.3s; }
-        .past-admins-toggle.open .chevron { transform: rotate(180deg); }
+        .past-admin-flag {
+            width: 24px;
+            height: auto;
+            flex-shrink: 0;
+            display: block;
+        }
+        .past-admin-select {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--bg-panel);
+            color: var(--text-bright);
+            border: 1px solid var(--border-main);
+            padding: 6px 10px;
+            cursor: pointer;
+            letter-spacing: 0.04em;
+        }
+        .past-admin-select:hover { border-color: var(--text-dim); }
 
         .past-admins-list {
-            display: none;
-            margin-top: 12px;
             display: flex;
             flex-direction: column;
             gap: 10px;
+            margin-top: 12px;
         }
-        .past-admins-list.hidden { display: none; }
 
         .past-admin-card {
             background: var(--bg-panel);
@@ -2154,4 +2162,146 @@ body {
     .doctrine-panel__tabs { gap: 1px; padding: 6px 10px; }
     .doctrine-tab { padding: 5px 8px; }
     .doctrine-panel__cards { padding: 10px; }
+}
+
+/* ── Mobile: 768px — Formation, chat, proposals, modals ── */
+@media (max-width: 768px) {
+    .modal-content { width: 95%; padding: 18px; }
+    .chat-panel { height: 360px; }
+    .proposals-grid { grid-template-columns: 1fr; }
+    .party-checkbox-grid { grid-template-columns: 1fr; }
+    .ministry-select-wrap { min-width: 0; width: 100%; }
+    .ministry-item { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .gov-approval-tooltip { width: 240px; }
+    .eo-card-right { min-width: 0; }
+    .past-admin-detail-grid { grid-template-columns: 1fr; }
+    .past-admin-summary { flex-direction: column; align-items: flex-start; gap: 8px; }
+}
+
+/* ── Mobile: 480px — Tighter spacing, single columns, smaller text ── */
+@media (max-width: 480px) {
+    .modal-content { width: 96%; padding: 14px; }
+    .chat-panel { height: 300px; }
+    .chat-input-row { padding: 8px; gap: 6px; }
+    .chat-send-btn { padding: 8px 12px; }
+    .formation-header { padding: 14px 12px 10px; }
+    .formation-body { padding: 12px; }
+    .proposals-grid { gap: 8px; }
+    .proposal-card { padding: 14px; }
+    .proposal-card-title { font-size: 0.9rem; }
+    .party-checkbox-item { padding: 8px 10px; }
+    .gov-approval-tooltip { width: 220px; left: 0; right: auto; }
+    .gov-tip-label { width: auto; min-width: 60px; }
+    .past-admin-approval { min-width: 0; }
+    .eo-card { padding: 10px 12px; }
+    .eo-card-right { min-width: 0; flex-direction: row; gap: 8px; }
+    .create-proposal-section { padding: 14px; }
+    .form-gov-btn { padding: 12px 32px; }
+}
+
+/* ── Government subtabs — matching Actions page style ── */
+.gov-subtabs {
+    display: flex;
+    gap: 0;
+    padding: 0 22px;
+    background: var(--bg-body);
+    border-bottom: 1px solid rgba(200,196,184,0.06);
+}
+.gov-subtab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 9px 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #5c5a50;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+.gov-subtab:hover { color: #8a8778; }
+.gov-subtab.active {
+    color: #c8a64e;
+    border-bottom-color: #c8a64e;
+}
+@media (max-width: 768px) {
+    .gov-subtabs { padding: 0 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .gov-subtab { padding: 8px 12px; font-size: 9px; white-space: nowrap; flex-shrink: 0; }
+}
+
+/* ════════════════════════ GOVERNMENT PAGE SIZE-UP (~30%) + COLOR ════════════════════════ */
+
+/* Ministry cards — larger, more colorful */
+/* ── Ministry cards scaled up ~30% ── */
+.ministry-card { width: 520px; }
+.ministry-card__header { padding: 14px 22px; }
+.ministry-card__dot { width: 9px; height: 9px; box-shadow: 0 0 5px var(--teal); }
+.ministry-card__title { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.1em; color: var(--text-bright); }
+.ministry-card__badge { font-size: 0.85rem; padding: 4px 12px; }
+.ministry-card__minister { padding: 16px 22px; }
+.ministry-card__minister-name { font-size: 1.25rem; }
+.ministry-card__minister-meta { font-size: 0.95rem; }
+.ministry-card__mgmt { padding: 12px 22px; }
+.ministry-card__mgmt-btn { font-size: 0.85rem; padding: 8px 18px; }
+.ministry-grid { gap: 14px; }
+
+/* Admin header area */
+#gov-page { padding: 16px 20px; }
+
+/* Timeline events — larger text */
+.tl-event-title { font-size: 14px !important; }
+.tl-event-body { font-size: 13px !important; }
+.tl-event-date { font-size: 12px !important; }
+.tl-tick-label { font-size: 11px !important; }
+
+/* Cabinet header */
+.section-header {
+    font-size: 14px !important;
+    letter-spacing: 0.12em !important;
+    padding: 10px 0 !important;
+}
+
+/* PM and coalition boxes — add accent borders */
+.pm-box {
+    border-left: 3px solid var(--accent) !important;
+}
+.coalition-box {
+    border-left: 3px solid var(--teal) !important;
+}
+
+/* Approval display — bigger, colored */
+.approval-display {
+    font-size: 2.4rem !important;
+}
+
+/* Executive order cards */
+.eo-card { padding: 14px 18px !important; }
+.eo-card-title { font-size: 14px !important; }
+.eo-card-desc { font-size: 12px !important; }
+.eo-card-cost { font-size: 12px !important; }
+
+/* Law cards */
+.law-card { padding: 12px 16px !important; }
+.law-card-name { font-size: 14px !important; }
+.law-card-meta { font-size: 11px !important; }
+
+/* Formation cards */
+.proposal-card { padding: 14px 18px !important; }
+.proposal-card-title { font-size: 14px !important; }
+.proposal-card-meta { font-size: 12px !important; }
+
+/* General text scaling for gov page */
+#gov-page .section-header,
+#gov-content .section-header {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-main);
+    padding-bottom: 8px;
+    margin-bottom: 12px;
 }

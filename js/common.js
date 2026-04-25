@@ -9,6 +9,9 @@
 
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
+import { hasActiveGovernment } from './game/government-structure.js';
+import { SECTOR_OPS_PAGE } from './corp-topbar.js';
+import { escapeHtml } from './utils.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -233,6 +236,15 @@ export async function loadGameState(requireFaction = true) {
                         .from('factions').select('*')
                         .or(`id.eq.${userId},linked_user_id.eq.${userId}`);
                     _userFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
+                    // Shard reset guard: cached faction no longer exists in DB
+                    if (_userFactions.length === 0) {
+                        console.log('Cached faction deleted (shard reset?) — clearing cache');
+                        sessionStorage.removeItem(STATE_KEY);
+                        if (requireFaction) {
+                            window.location.href = 'faction-select.html';
+                            return null;
+                        }
+                    }
                 }
             } catch (_) { /* dropdown will just show current faction */ }
         }
@@ -412,15 +424,15 @@ export function renderTopBar(activeTab) {
                     </div>
                 </div>
             </div>
-            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;opacity:0.6;">Alpha 2.0.0.6</div>
+            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.3.2.0</div>
             <div class="top-bar-right">
                 <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
                 ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
+                <span class="topbar-ap" id="topbar-ap"></span>
                 <div class="faction-switcher" id="faction-switcher">
                     <span class="party-badge" id="party-badge" onclick="toggleFactionDropdown()" style="cursor:pointer;">--</span>
                     <div class="faction-dropdown" id="faction-dropdown"></div>
                 </div>
-                <span class="topbar-ap" id="topbar-ap"></span>
                 <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle" title="Toggle light/dark mode">Light</button>
                 <button class="logout-btn" onclick="handleLogout()">Logout</button>
             </div>
@@ -431,6 +443,32 @@ export function renderTopBar(activeTab) {
         </nav>
     `;
     document.getElementById('top-bar').innerHTML = topBarHTML;
+
+    // Mobile bottom nav bar
+    if (!document.getElementById('mobile-bottom-nav')) {
+        const overrideNationId = getAdminNationOverride();
+        const overrideFactionId = getAdminFactionOverride();
+        const qs = [];
+        if (overrideNationId) qs.push('nation_id=' + overrideNationId);
+        if (overrideFactionId) qs.push('faction_id=' + overrideFactionId);
+        const suffix = qs.length ? '?' + qs.join('&') : '';
+
+        const mobileNav = document.createElement('nav');
+        mobileNav.id = 'mobile-bottom-nav';
+        mobileNav.className = 'mobile-bottom-nav';
+        mobileNav.innerHTML = [
+            { id: 'dashboard', label: 'Home',  icon: '\uD83C\uDFE0', href: 'dashboard.html' },
+            { id: 'politics',  label: 'Actions', icon: '\u2694\uFE0F', href: 'politics.html' },
+            { id: 'government',label: 'Gov',   icon: '\u2696\uFE0F',  href: 'government.html' },
+            { id: 'nation',    label: 'Nation', icon: '\uD83C\uDF0D', href: 'nation.html' },
+            { id: 'diplomacy', label: 'World', icon: '\uD83C\uDF10', href: 'diplomacy.html' },
+            { id: 'ledger',    label: 'Ledger', icon: '\uD83D\uDCCA', href: 'ledger.html' },
+        ].map(tab => `<a href="${tab.href}${suffix}" class="mobile-bottom-nav__item ${tab.id === activeTab ? 'active' : ''}" data-tab="${tab.id}">
+            <span class="mobile-bottom-nav__icon">${tab.icon}</span>
+            <span class="mobile-bottom-nav__label">${tab.label}</span>
+        </a>`).join('');
+        document.body.appendChild(mobileNav);
+    }
 
     // Work environment banner and Dev Toolbar
     if (IS_WORK_ENV) {
@@ -449,15 +487,11 @@ export function renderTopBar(activeTab) {
 export function renderNavTabs(activeTab) {
     const tabs = [
         { id: 'dashboard', label: 'Home', href: 'dashboard.html' },
-        { id: 'nation', label: 'Nation', href: 'nation.html' },
+        { id: 'politics', label: 'Actions', href: 'politics.html' },
         { id: 'government', label: 'Government', href: 'government.html' },
-        { id: 'politics', label: 'Politics', href: 'politics.html' },
-        { id: 'laws', label: 'Bills', href: 'laws.html' },
-        { id: 'diplomacy', label: 'Diplomacy', href: 'diplomacy.html' },
-        { id: 'news', label: 'News', href: 'news.html' },
-        { id: 'conflicts', label: 'Conflicts', href: 'conflicts.html' },
-        { id: 'economy', label: 'Economy', href: 'economy.html' },
-        { id: 'wiki', label: 'Wiki', href: 'wiki.html' }
+        { id: 'nation', label: 'Nation', href: 'nation.html' },
+        { id: 'diplomacy', label: 'World', href: 'diplomacy.html' },
+        { id: 'ledger', label: 'Ledger', href: 'ledger.html' }
     ];
 
     // Preserve admin overrides in nav links so clicking tabs
@@ -472,14 +506,11 @@ export function renderNavTabs(activeTab) {
         if (overrideFactionId) params.push('faction_id=' + overrideFactionId);
         if (params.length) href += '?' + params.join('&');
         let badgeHtml = '';
-        if (tab.id === 'laws') {
-            badgeHtml = '<span class="nav-badge" id="bills-badge" style="display:none;"></span>';
-        }
         if (tab.id === 'diplomacy') {
             badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
         }
-        if (tab.id === 'conflicts') {
-            badgeHtml = '<span class="nav-badge nav-badge--amber" id="conflicts-badge" style="display:none;"></span>';
+        if (tab.id === 'politics') {
+            badgeHtml = '<span class="nav-badge nav-badge--amber" id="politics-badge" style="display:none;min-width:8px;height:8px;line-height:8px;border-radius:50%;padding:0;top:4px;right:4px;animation:coalition-pulse 1.5s ease-in-out infinite;"></span>';
         }
         return `
             <a href="${href}"
@@ -645,11 +676,38 @@ async function updateDiplomacyBadge(faction, nation, roles) {
             }
         }
 
+        // 4. Pending shipping applications — Minister of Trade only.
+        // Amber-pulse the whole badge when these contribute; flags the MoT
+        // that a corporation is waiting on their ministerial decision.
+        let shippingAppsCount = 0;
+        if (roles.isMoT) {
+            const { data: apps } = await _supabase
+                .from('shipping_applications')
+                .select('id, shipping_routes!inner(origin_nation_id, destination_nation_id)')
+                .eq('status', 'pending');
+            for (const a of (apps || [])) {
+                const r = a.shipping_routes;
+                if (r && (r.origin_nation_id === nation.id || r.destination_nation_id === nation.id)) {
+                    shippingAppsCount++;
+                }
+            }
+            count += shippingAppsCount;
+        }
+
         if (count > 0) {
             badge.textContent = count;
             badge.style.display = '';
+            if (shippingAppsCount > 0) {
+                badge.classList.add('nav-badge--amber');
+                badge.style.animation = 'coalition-pulse 1.5s ease-in-out infinite';
+            } else {
+                badge.classList.remove('nav-badge--amber');
+                badge.style.animation = '';
+            }
         } else {
             badge.style.display = 'none';
+            badge.classList.remove('nav-badge--amber');
+            badge.style.animation = '';
         }
     } catch (e) {
         console.error('Error updating diplomacy badge:', e);
@@ -738,6 +796,31 @@ async function updateConflictsBadge(faction, nation) {
 }
 
 
+// ===== COALITION FORMATION BADGE (no government formed after election) =====
+
+async function checkCoalitionFormationBadge(nation) {
+    const badge = document.getElementById('politics-badge');
+    if (!badge || !nation) return;
+    try {
+        // Show the badge when a completed election exists but no government is
+        // sitting. hasActiveGovernment is the canonical gate — it routes to the
+        // right source per system type (presidents for presidential, formations
+        // for parliamentary, ministries for monarchy).
+        const [electionResult, activeGov] = await Promise.all([
+            _supabase.from('elections')
+                .select('id', { count: 'exact', head: true })
+                .eq('nation_id', nation.id)
+                .eq('status', 'completed'),
+            hasActiveGovernment(_supabase, nation),
+        ]);
+
+        const hasElection = (electionResult.count || 0) > 0;
+        badge.style.display = (hasElection && !activeGov) ? '' : 'none';
+    } catch (e) {
+        // Non-critical — don't break the page
+    }
+}
+
 // ===== IPO INVITE BADGE (pending org invitations) =====
 
 async function updateIPOInviteBadge(faction, roles) {
@@ -813,7 +896,8 @@ export function updateTopBarInfo(faction, shard, nation) {
     const badge = document.getElementById('party-badge');
     if (badge) {
         if (faction && faction.nation_id) {
-            badge.textContent = (faction.abbreviation || faction.faction_name) + ' ▾';
+            const abbr = faction.abbreviation || faction.faction_name || '--';
+            badge.textContent = '[' + abbr + '] ▾';
         } else {
             badge.textContent = '[No Faction] ▾';
         }
@@ -854,8 +938,13 @@ export function updateTopBarInfo(faction, shard, nation) {
 
     const apEl = document.getElementById('topbar-ap');
     if (apEl && faction) {
-        const ap = faction.action_points ?? 0;
-        renderApDisplay(apEl, ap);
+        // Unified cash display for both parties and corporations
+        const isCorp = faction.faction_type === 'corporation';
+        const funds = isCorp ? (faction.corp_cash_reserves ?? 0) : (faction.party_funds ?? 0);
+        const fundsStr = funds >= 1000000 ? '$' + (funds / 1000000).toFixed(1) + 'M'
+            : funds >= 1000 ? '$' + Math.round(funds / 1000) + 'k'
+            : '$' + funds;
+        apEl.innerHTML = '<span class="topbar-ap__label">CASH:</span><span class="topbar-ap__count" style="font-size:13px;color:var(--accent);margin-left:4px;">' + fundsStr + '</span>';
     }
     
     const nationFlag = document.getElementById('nation-flag');
@@ -880,23 +969,24 @@ export function updateTopBarInfo(faction, shard, nation) {
         const navEl = document.querySelector('.nav-tabs');
         if (navEl) {
             const currentTab = window.__currentTab || '';
+            const sector = faction.corp_sector || 'Construction';
+            const opsHref = SECTOR_OPS_PAGE[sector] || 'corp-operations.html';
             const corpTabs = [
                 { id: 'home', label: 'Home', href: 'corp-dashboard.html' },
-                { id: 'operations', label: 'Operations' },
-                { id: 'workforce', label: 'Workforce' },
-                { id: 'expansion', label: 'Expansion' },
-                { id: 'industries', label: 'Industries' },
-                { id: 'innovation', label: 'Innovation' },
-                { id: 'lobbying', label: 'Lobbying' },
+                { id: 'operations', label: 'Operations', href: opsHref },
+                { id: 'expansion', label: 'Expansion', href: 'corp-operations.html?tab=expansion' },
+                { id: 'actions', label: 'Actions', href: 'corp-operations.html?tab=actions' },
+                { id: 'innovation', label: 'Innovation', disabled: true },
+                { id: 'nations', label: 'Nations', href: 'corp-nations.html' },
                 { id: 'news', label: 'News', href: 'news.html' },
                 { id: 'wiki', label: 'Wiki', href: 'wiki.html' },
             ];
             navEl.innerHTML = corpTabs.map(t => {
                 const isActive = t.id === currentTab;
-                if (t.href) {
-                    return `<a href="${t.href}" class="nav-tab ${isActive ? 'active' : ''}" data-tab="${t.id}">${t.label}</a>`;
+                if (t.disabled) {
+                    return `<a href="#" class="nav-tab" data-tab="${t.id}" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">${t.label}</a>`;
                 }
-                return `<a href="#" class="nav-tab" data-tab="${t.id}" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">${t.label}</a>`;
+                return `<a href="${t.href}" class="nav-tab ${isActive ? 'active' : ''}" data-tab="${t.id}">${t.label}</a>`;
             }).join('');
         }
         // Update nation badge to show corp name instead
@@ -939,30 +1029,38 @@ export async function refreshAP(factionId) {
     try {
         const { data, error } = await _supabase
             .from('factions')
-            .select('action_points')
+            .select('action_points, party_funds, corp_cash_reserves, faction_type')
             .eq('id', factionId)
             .single();
         if (error || !data) return;
-        const ap = data.action_points ?? 0;
 
-        // Update topbar — preserve the AP ledger dropdown
+        // Update topbar with cash (party_funds or corp_cash_reserves)
         const apEl = document.getElementById('topbar-ap');
-        if (apEl) renderApDisplay(apEl, ap);
+        if (apEl) {
+            const isCorp = data.faction_type === 'corporation';
+            const funds = isCorp ? (data.corp_cash_reserves ?? 0) : (data.party_funds ?? 0);
+            const fundsStr = funds >= 1000000 ? '$' + (funds / 1000000).toFixed(1) + 'M'
+                : funds >= 1000 ? '$' + Math.round(funds / 1000) + 'k'
+                : '$' + funds;
+            apEl.innerHTML = '<span class="topbar-ap__label">CASH:</span><span class="topbar-ap__count" style="font-size:13px;color:var(--accent);margin-left:4px;">' + fundsStr + '</span>';
+        }
 
-        // Sync session cache so page navigations show correct AP
+        // Sync session cache
         try {
             const cached = sessionStorage.getItem(STATE_KEY);
             if (cached) {
                 const state = JSON.parse(cached);
                 if (state.faction) {
-                    state.faction.action_points = ap;
+                    state.faction.action_points = data.action_points ?? 0;
+                    state.faction.party_funds = data.party_funds ?? 0;
+                    if (data.corp_cash_reserves != null) state.faction.corp_cash_reserves = data.corp_cash_reserves;
                     state.timestamp = Date.now();
                     sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
                 }
             }
         } catch (e) { /* non-blocking */ }
 
-        return ap;
+        return data.action_points ?? 0;
     } catch (e) { console.warn('[refreshAP] Failed:', e); }
 }
 
@@ -1325,10 +1423,14 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (!state) return;
 
     // Corporation faction on a party page — redirect to corp dashboard
-    // (except shared pages like news and wiki which both factions can use)
+    // (except shared pages like news and wiki which both factions can use).
+    // Preserve window.location.search so admin-inspector overrides
+    // (?nation_id= and ?faction_id=) survive the redirect — otherwise
+    // corp-dashboard.html falls back to the admin's own corp instead
+    // of the inspected one.
     const SHARED_TABS = ['news', 'wiki'];
     if (state.faction?.faction_type === 'corporation' && !SHARED_TABS.includes(activeTab)) {
-        window.location.href = 'corp-dashboard.html';
+        window.location.href = 'corp-dashboard.html' + window.location.search;
         return;
     }
 
@@ -1356,6 +1458,9 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     if (activeTab !== 'conflicts') {
         updateConflictsBadge(state.faction, state.nation);
     }
+
+    // Check if coalition formation is needed (amber badge on Actions tab)
+    checkCoalitionFormationBadge(state.nation);
 
     // Lazy-load messaging bubble (deferred — not needed for initial render)
     const _msgState = state;
@@ -1397,3 +1502,36 @@ window.handleLogout = handleLogout;
 window.toggleTheme = toggleTheme;
 window.toggleFactionDropdown = toggleFactionDropdown;
 window.handleFactionSwitch = handleFactionSwitch;
+
+// ===== BLOCS =====
+// Shared helpers for the Form Bloc system. A bloc is a named alliance of
+// parties within a nation; factions.bloc_id points at blocs.id while the
+// bloc is live (dissolved_at_tick IS NULL). Every page that shows a party
+// name should surface the bloc the same way — pull the map via
+// loadBlocMap(nationId) and render chips with blocTagHtml().
+
+export async function loadBlocMap(nationId) {
+    const map = {};
+    if (!nationId) return map;
+    try {
+        const { data, error } = await _supabase
+            .from('blocs')
+            .select('id, name')
+            .eq('nation_id', nationId)
+            .is('dissolved_at_tick', null);
+        if (error) {
+            console.warn('[Blocs] loadBlocMap failed:', error.message);
+            return map;
+        }
+        for (const b of (data || [])) map[b.id] = b.name;
+    } catch (err) {
+        console.warn('[Blocs] loadBlocMap threw:', err?.message || err);
+    }
+    return map;
+}
+
+export function blocTagHtml(blocId, blocMap) {
+    const name = blocId && blocMap ? blocMap[blocId] : null;
+    if (!name) return '';
+    return `<span style="display:inline-block;font-family:var(--font-mono);font-size:8px;font-weight:700;padding:2px 6px;color:var(--amber);background:rgba(176,154,91,0.08);border:1px solid rgba(176,154,91,0.3);white-space:nowrap;">BLOC · ${escapeHtml(name)}</span>`;
+}

@@ -163,6 +163,12 @@ body {
     flex-direction: column;
     overflow: hidden;
 }
+/* All direct children after the top bar should be scrollable by default */
+body > *:not(#top-bar):not(.home-subtabs):not(.pa-subtabs):not(.gov-subtabs):not(.diplo-subtabs):not(script):not(link):not(style) {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
 
 /* ===== SCROLLBARS ===== */
 ::-webkit-scrollbar       { width: 6px; height: 6px; }
@@ -573,6 +579,7 @@ body.light-mode .guide-btn:hover { background: rgba(184,150,10,0.18); }
 }
 .nav-badge--crimson { background: #a65d5d; }
 .nav-badge--amber { background: #b09a5b; }
+@keyframes coalition-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 /* ===== MAIN CONTENT AREA ===== */
 #content-area { flex: 1; overflow-y: auto; overflow-x: hidden; }
 
@@ -1197,7 +1204,7 @@ body.light-mode .coalition-party-card.locked { background: var(--orange-faint); 
         border-left: 2px solid #f0efe6;
     }
 
-    #content-area { overflow-y: visible; }
+    #content-area { overflow-y: auto; }
 
     .gov-two-col,
     .cabinet-grid,
@@ -1213,6 +1220,116 @@ body.light-mode .coalition-party-card.locked { background: var(--orange-faint); 
     }
 
     .loading-container { height: auto; min-height: 60vh; }
+}
+
+@media (max-width: 480px) {
+    /* Top bar — tighter spacing */
+    .top-bar-row1 { padding: 4px 8px; }
+    .tick-info { gap: 8px; }
+    .tick-label { font-size: 8px; }
+    .tick-value, .tick-countdown { font-size: 11px; }
+    .nation-flag { width: 28px; height: 28px; font-size: 10px; }
+    .nation-name { font-size: 12px; white-space: normal; }
+    .party-badge { font-size: 10px; padding: 2px 6px; letter-spacing: 0.03em; }
+    .topbar-ap { padding: 2px 6px; }
+    .topbar-ap__count { font-size: 10px; min-width: 14px; }
+    .topbar-ap__pip { width: 7px; height: 14px; }
+    .hamburger-btn { font-size: 1rem; padding: 3px 8px; }
+
+    /* Nav dropdown tighter */
+    .nav-tabs.nav-open .nav-tab { padding: 8px 12px; font-size: 9px; }
+
+    /* Content & panels */
+    .panel-padding { padding: 16px; }
+    .nation-hero { padding: 20px 16px 16px; }
+    .nation-hero h2 { font-size: 1.5rem; }
+
+    /* Grids — single column */
+    .stat-grid { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+    .parties-display-grid,
+    .coalition-grid { grid-template-columns: 1fr; }
+    .party-layout { padding: 16px; gap: 14px; }
+
+    /* Modals & overlays */
+    .modal-content { width: 96%; padding: 16px; }
+    .guide-panel { padding: 16px; }
+    .guide-panel-title { font-size: 0.7rem; }
+    .guide-panel h2 { font-size: 0.7rem; }
+
+    /* Loading */
+    .loading-container { min-height: 50vh; }
+}
+
+/* ===== MOBILE BOTTOM NAV BAR ===== */
+.mobile-bottom-nav {
+    display: none; /* hidden on desktop */
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 500;
+    background: var(--bg-body);
+    border-top: 1px solid var(--border-strong);
+    padding: 4px 0 env(safe-area-inset-bottom, 0);
+    justify-content: space-around;
+    align-items: center;
+}
+.mobile-bottom-nav__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 6px 0;
+    text-decoration: none;
+    flex: 1;
+    min-width: 0;
+    transition: color 0.15s;
+}
+.mobile-bottom-nav__icon {
+    font-size: 1.15rem;
+    line-height: 1;
+    filter: grayscale(100%) brightness(0.6);
+    transition: filter 0.15s;
+}
+.mobile-bottom-nav__label {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    transition: color 0.15s;
+}
+.mobile-bottom-nav__item.active .mobile-bottom-nav__icon {
+    filter: none;
+}
+.mobile-bottom-nav__item.active .mobile-bottom-nav__label {
+    color: var(--accent);
+}
+
+@media (max-width: 768px) {
+    .mobile-bottom-nav {
+        display: flex;
+    }
+    /* Add bottom padding to body so content isn't hidden behind the nav */
+    body {
+        padding-bottom: 56px;
+    }
+    /* Hide the hamburger menu + top nav tabs on mobile — bottom nav replaces them */
+    .hamburger-btn { display: none !important; }
+    .nav-tabs { display: none !important; }
+}
+
+@media (max-width: 480px) {
+    .mobile-bottom-nav__icon { font-size: 1rem; }
+    .mobile-bottom-nav__label { font-size: 7px; }
+    .mobile-bottom-nav__item { padding: 5px 0; }
+}
+
+/* Light mode */
+body.light-mode .mobile-bottom-nav {
+    background: var(--bg-panel);
+    border-top-color: var(--border-main);
 }
 
 @media (max-width: 1200px) {

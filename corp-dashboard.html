@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Corporation HQ | Nationhood Alpha</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/corp-topbar.css">
+<link rel="stylesheet" href="css/corp-light-theme.css">
 <style>
 :root {
   --bg-0: #0e0e0c;
@@ -62,7 +64,7 @@ body {
 }
 .top-bar-left { display: flex; align-items: center; gap: 0; }
 .top-bar-sep {
-  width: 1px; height: 31px; background: rgba(255,255,255,0.08);
+  width: 1px; height: 31px; background: var(--border-1);
   margin: 0 16px; flex-shrink: 0;
 }
 .corp-badge {
@@ -119,22 +121,6 @@ body {
   font-family: var(--font-mono);
   font-size: 12px; font-weight: 800; color: var(--amber);
   min-width: 18px; text-align: right;
-}
-.theme-toggle-btn {
-  font-family: var(--font-mono);
-  font-size: 9px; font-weight: 500;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  background: var(--bg-3);
-  border: 1px solid var(--border-0);
-  color: var(--text-dim);
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: all 0.1s;
-}
-.theme-toggle-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-muted);
-  border-color: var(--border-1);
 }
 .logout-btn {
   font-family: var(--font-mono);
@@ -201,9 +187,9 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
   align-items: flex-start;
   flex-wrap: wrap;
 }
-/* ── Subsidiaries card — fixed 380×450 ── */
+/* ── Events card — wide 760×450 ── */
 .subs-card {
-  width: 380px; height: 450px;
+  width: 760px; height: 450px;
   background: var(--bg-2); border: 1px solid var(--border-0);
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -241,7 +227,7 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
   border-color: var(--text-primary);
 }
 .corp-events-tab:hover:not(.active) {
-  background: rgba(255,255,255,0.05);
+  background: var(--border-hair);
 }
 .corp-events-scroll {
   overflow-y: auto;
@@ -627,7 +613,7 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
   background: var(--bg-2); border: 1px solid var(--border-0);
   display: flex; flex-direction: column; overflow: hidden;
 }
-.prop-card__content { flex: 1; display: flex; flex-direction: column; }
+.prop-card__content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
 .prop-asset {
   padding: 12px 14px; border-bottom: 1px solid var(--border-0);
 }
@@ -684,6 +670,21 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
 .prop-action-btn--refurbish:hover { background: rgba(176,154,91,0.12); border-color: rgba(176,154,91,0.4); }
 .prop-action-btn--refurbish:active { transform: scale(0.97); }
 .prop-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Construction Projects ── */
+.cp-section { border-top: 1px solid var(--border-0); margin-top: 8px; }
+.cp-section__header { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px 4px; }
+.cp-section__title { font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: var(--amber); text-transform: uppercase; }
+.cp-section__count { font-family: var(--font-mono); font-size: 8px; color: var(--text-dim); }
+.cp-item { padding: 8px 14px; border-bottom: 1px solid var(--border-hair); }
+.cp-item__top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+.cp-item__name { font-family: var(--font-ui); font-size: 11px; font-weight: 600; color: var(--text-bright); }
+.cp-item__sub { font-size: 8px; color: var(--text-dim); margin-top: 1px; font-family: var(--font-mono); }
+.cp-badge { font-family: var(--font-mono); font-size: 7px; font-weight: 700; padding: 1px 5px; letter-spacing: 0.5px; border: 1px solid; white-space: nowrap; }
+.cp-progress { width: 100%; height: 3px; background: var(--bg-2); margin-top: 4px; }
+.cp-progress__bar { height: 100%; transition: width 0.3s; }
+.cp-bid { display: flex; align-items: center; gap: 6px; padding: 4px 8px; margin-top: 4px; background: var(--bg-3); border: 1px solid var(--border-hair); }
+.cp-bid__btn { font-family: var(--font-mono); font-size: 7px; font-weight: 700; letter-spacing: 0.5px; padding: 2px 8px; cursor: pointer; border: 1px solid; }
 
 /* ── Property Modal ── */
 .prop-modal-btn {
@@ -760,39 +761,6 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
   padding: 80px 20px;
 }
 
-/* ═══════ LIGHT MODE ═══════ */
-body.light-mode {
-  --bg-0: #f4f3ef;
-  --bg-1: #eae9e4;
-  --bg-2: #ffffff;
-  --bg-3: #f0efeb;
-  --bg-4: #e8e7e2;
-  --bg-5: #dddcd7;
-  --bg-hover: #e8e7e2;
-  --text-bright: #1a1a17;
-  --text-primary: #333;
-  --text-secondary: #666;
-  --text-muted: #888;
-  --text-dim: #aaa;
-  --text-ghost: #ccc;
-  --border-hair: rgba(0,0,0,0.04);
-  --border-0: rgba(0,0,0,0.08);
-  --border-1: rgba(0,0,0,0.12);
-  --border-2: rgba(0,0,0,0.16);
-  --green: #2d8a2d;
-  --green-faint: rgba(45,138,45,0.08);
-  --green-border: rgba(45,138,45,0.2);
-  --red: #c0392b;
-  --amber: #b8860b;
-  --amber-faint: rgba(184,134,11,0.08);
-  --amber-border: rgba(184,134,11,0.2);
-  --blue: #2874a6;
-  --blue-faint: rgba(40,116,166,0.08);
-  --blue-border: rgba(40,116,166,0.2);
-  --teal: #1a8a7d;
-  --teal-faint: rgba(26,138,125,0.08);
-  --teal-border: rgba(26,138,125,0.2);
-}
 body.light-mode .top-bar-row1 { background: #fff; border-bottom-color: rgba(0,0,0,0.1); }
 body.light-mode .top-bar-sep { background: rgba(0,0,0,0.1); }
 body.light-mode .corp-logo { background: var(--bg-3); border-color: rgba(0,0,0,0.1); color: #999; }
@@ -802,8 +770,7 @@ body.light-mode .tick-value { color: #1a1a17; }
 body.light-mode .corp-name-badge { background: rgba(26,138,125,0.08); border-color: rgba(26,138,125,0.2); color: #1a8a7d; }
 body.light-mode .topbar-ap { background: rgba(184,134,11,0.08); border-color: rgba(184,134,11,0.2); }
 body.light-mode .topbar-ap__count { color: #b8860b; }
-body.light-mode .theme-toggle-btn { background: #f0efeb; border-color: rgba(0,0,0,0.1); color: #666; }
-body.light-mode .logout-btn { background: rgba(192,57,43,0.06); border-color: rgba(192,57,43,0.2); color: #c0392b; }
+body.light-mode body.light-mode .logout-btn { background: rgba(192,57,43,0.06); border-color: rgba(192,57,43,0.2); color: #c0392b; }
 body.light-mode .corp-faction-dropdown { background: #fff; border-color: rgba(0,0,0,0.1); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
 body.light-mode .corp-dd-item:hover { background: #f5f5f0; }
 body.light-mode .corp-dd-item.active { background: rgba(26,138,125,0.08); border-left-color: #1a8a7d; }
@@ -854,58 +821,13 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
 </style>
 </head>
 <body>
+<script src="js/corp-theme-init.js"></script>
 
 <div id="loading" class="loading-msg">LOADING CORPORATION...</div>
 
 <div id="page-content" style="display:none;">
-  <!-- Top bar (matches party dashboard layout) -->
-  <div class="top-bar-row1">
-    <div class="top-bar-left">
-      <div class="corp-badge">
-        <div class="corp-logo" id="corp-logo"></div>
-        <span class="corp-name-bar" id="corp-name-bar">Loading...</span>
-      </div>
-      <div class="top-bar-sep"></div>
-      <div class="tick-info">
-        <div class="tick-item">
-          <div class="tick-label">Game Date</div>
-          <div class="tick-value" id="game-date">--</div>
-        </div>
-        <div class="tick-item">
-          <div class="tick-label">Tick</div>
-          <div class="tick-value" id="tick-number">--</div>
-        </div>
-        <div class="tick-item">
-          <div class="tick-label">Next Tick</div>
-          <div class="tick-value" id="tick-countdown">--</div>
-        </div>
-      </div>
-    </div>
-    <div class="top-bar-version" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;opacity:0.6;">Alpha 1.9.8</div>
-    <div class="top-bar-right">
-      <span class="topbar-cash" id="topbar-cash" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;color:var(--gold);padding:3px 8px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.2);">CASH: --</span>
-      <div class="faction-switcher" id="faction-switcher" style="position:relative;">
-        <span class="corp-name-badge" id="corp-name-badge" onclick="toggleCorpDropdown()" style="cursor:pointer;">--</span>
-        <div class="corp-faction-dropdown" id="corp-faction-dropdown"></div>
-      </div>
-      <span class="topbar-ap" id="topbar-ap"></span>
-      <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle">Light</button>
-      <button class="logout-btn" onclick="doLogout()">Logout</button>
-    </div>
-  </div>
-
-  <!-- Nav tabs -->
-  <button class="corp-hamburger" onclick="document.querySelector('.corp-nav').classList.toggle('nav-open')">&#9776;</button>
-  <nav class="corp-nav" id="corp-nav">
-    <a href="corp-dashboard.html" class="corp-nav__tab active" data-tab="home">Home</a>
-    <a href="corp-operations.html" class="corp-nav__tab" data-tab="operations">Operations</a>
-    <a href="corp-operations.html?tab=expansion" class="corp-nav__tab" data-tab="expansion">Expansion</a>
-    <a href="#" class="corp-nav__tab" data-tab="industries" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Industries</a>
-    <a href="#" class="corp-nav__tab" data-tab="innovation" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Innovation</a>
-    <a href="#" class="corp-nav__tab" data-tab="lobbying" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">Lobbying</a>
-    <a href="news.html" class="corp-nav__tab" data-tab="news">News</a>
-    <a href="wiki.html" class="corp-nav__tab" data-tab="wiki">Wiki</a>
-  </nav>
+  <!-- Shared top bar + nav (rendered by corp-topbar.js) -->
+  <div id="corp-topbar-container"></div>
 
   <div class="content">
     <div class="id-card">
@@ -924,6 +846,7 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
         <div class="id-card__slogan" id="id-slogan">"--"</div>
         <div class="id-card__divider"></div>
         <div class="id-card__rows" id="id-rows"></div>
+        <div id="corp-logo-upload"></div>
         <div id="slogan-editor"></div>
       </div>
     </div>
@@ -967,20 +890,6 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
       <div class="prop-card__content" id="prop-body"></div>
     </div>
 
-    <!-- Subsidiaries card -->
-    <div class="subs-card">
-      <div class="fin-card__header">
-        <div class="fin-card__header-left">
-          <span style="font-size:8px;color:var(--blue);">●</span>
-          <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted);text-transform:uppercase;">Subsidiaries</span>
-        </div>
-        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">0 ACTIVE</span>
-      </div>
-      <div class="subs-card__body">
-        <div class="subs-card__empty">No subsidiaries established.<br>Expand into new markets to create subsidiaries.</div>
-      </div>
-    </div>
-
     <!-- Events card -->
     <div class="subs-card" id="events-card" style="display:flex;flex-direction:column;">
       <div class="fin-card__header">
@@ -988,11 +897,15 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
           <span style="font-size:8px;color:var(--amber);">●</span>
           <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted);text-transform:uppercase;">Events</span>
         </div>
-        <div class="corp-events-tab-bar">
-          <button class="corp-events-tab active" data-tab="corporate" onclick="switchCorpEventsTab('corporate')">Corporate</button>
-          <button class="corp-events-tab" data-tab="political" onclick="switchCorpEventsTab('political')">Political</button>
-          <button class="corp-events-tab" data-tab="nation" onclick="switchCorpEventsTab('nation')">Nation</button>
-          <button class="corp-events-tab" data-tab="world" onclick="switchCorpEventsTab('world')">World</button>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <div class="corp-events-tab-bar" id="corp-events-cat-bar">
+            <button class="corp-events-tab active" data-cat="nation" onclick="switchCorpEventsCat('nation')">Nation</button>
+            <button class="corp-events-tab" data-cat="corporate" onclick="switchCorpEventsCat('corporate')">Corporate</button>
+          </div>
+          <div class="corp-events-tab-bar" id="corp-events-scope-bar">
+            <button class="corp-events-tab active" data-scope="local" onclick="switchCorpEventsScope('local')">Local</button>
+            <button class="corp-events-tab" data-scope="world" onclick="switchCorpEventsScope('world')">World</button>
+          </div>
         </div>
       </div>
       <div class="corp-events-scroll" id="corp-events-list">
@@ -1025,16 +938,6 @@ body.light-mode .corp-dd-name { color: #1a1a17; }
     </div>
   </div>
 
-  <!-- Dissolve Corporation -->
-  <div style="display:flex;justify-content:center;padding:40px 14px 60px;">
-    <div id="dissolve-box" style="border:1px solid #3a2020;background:rgba(204,85,85,0.03);padding:20px 32px;text-align:center;max-width:400px;width:100%;">
-      <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:2px;color:#a44;margin-bottom:8px;text-transform:uppercase;">Irreversible Action</div>
-      <button id="dissolve-btn" onclick="dissolveCorporation()" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#c55;background:transparent;border:1px solid #c55;padding:8px 28px;cursor:pointer;transition:all 0.15s;">Dissolve Corporation</button>
-      <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:8px;line-height:1.5;">
-        Permanently removes this corporation, all properties,<br>equipment, and inventory. Debts and active projects remain.
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- Property Sell/Refurbish Modal Overlay -->
@@ -1047,8 +950,13 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
+import { computeEquipmentValue, computeFinanceReceivableValue, computeCorpValuationBreakdown } from './js/game/corp-valuation.js';
+import { monthlyInterest, principalPortion } from './js/game/loan-math.js';
+import { computeRefurbishCost, startRefurbish } from './js/corp-refurbish.js';
 
 let allUserFactions = [];
+let faction = null;
+let shard = null;
 
 // Shared utility: format currency values
 function fmtMoney(n) {
@@ -1066,34 +974,48 @@ async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    // Load ALL factions owned by this user
-    const { data: allFactions } = await _supabase
-        .from('factions')
-        .select('*')
-        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
-
-    allUserFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
-
-    // Pick active faction — prefer sessionStorage, then first corp, then first
-    const activeFactionId = sessionStorage.getItem('active_faction_id');
-    let faction = allUserFactions.find(f => f.id === activeFactionId)
-        || allUserFactions.find(f => f.faction_type === 'corporation')
-        || allUserFactions[0];
-
-    if (!faction) {
-        // No active factions — redirect to faction select (don't sign out)
-        sessionStorage.removeItem('active_faction_id');
-        window.location.href = 'faction-select.html';
-        return;
+    // Inspector mode: admin panel impersonation via ?faction_id= URL
+    // param. Fetch the target faction directly (factions has anon
+    // SELECT — see sql/migrations/20260313_wiki_public_read.sql), and
+    // skip sessionStorage writes + faction-type redirects so the
+    // admin's real session isn't disturbed.
+    const urlFactionId = new URLSearchParams(location.search).get('faction_id');
+    if (urlFactionId) {
+        const { data: inspected, error: inspectErr } = await _supabase.from('factions').select('*').eq('id', urlFactionId).single();
+        if (inspectErr) console.warn('[Inspector] faction fetch failed:', inspectErr.message);
+        else if (inspected?.faction_type === 'corporation') faction = inspected;
     }
 
-    // Persist the active faction so dissolve and other actions can find it
-    sessionStorage.setItem('active_faction_id', faction.id);
+    if (!faction) {
+        // Load ALL factions owned by this user
+        const { data: allFactions } = await _supabase
+            .from('factions')
+            .select('*')
+            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
-    // If active faction isn't a corporation, redirect to party dashboard
-    if (faction.faction_type !== 'corporation') {
-        window.location.href = 'dashboard.html';
-        return;
+        allUserFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
+
+        // Pick active faction — prefer sessionStorage, then first corp, then first
+        const activeFactionId = sessionStorage.getItem('active_faction_id');
+        faction = allUserFactions.find(f => f.id === activeFactionId)
+            || allUserFactions.find(f => f.faction_type === 'corporation')
+            || allUserFactions[0];
+
+        if (!faction) {
+            // No active factions — redirect to faction select (don't sign out)
+            sessionStorage.removeItem('active_faction_id');
+            window.location.href = 'faction-select.html';
+            return;
+        }
+
+        // Persist the active faction so bankruptcy and other actions can find it
+        sessionStorage.setItem('active_faction_id', faction.id);
+
+        // If active faction isn't a corporation, redirect to party dashboard
+        if (faction.faction_type !== 'corporation') {
+            window.location.href = 'dashboard.html';
+            return;
+        }
     }
 
     // Load nation + shard data
@@ -1108,78 +1030,43 @@ async function init() {
     if (nationRes.error) console.warn('Nation load failed:', nationRes.error.message);
     if (nationRes.data) { nationName = nationRes.data.name; nationStats = nationRes.data; }
     if (shardRes.error) console.warn('Shard load failed:', shardRes.error.message);
-    const shard = shardRes.data;
+    shard = shardRes.data;
 
-    // Populate top bar — left side
-    const ticker = faction.corp_ticker || faction.abbreviation || '';
-    document.getElementById('corp-logo').textContent = ticker.slice(0, 2) || '—';
-    document.getElementById('corp-name-bar').textContent = faction.faction_name || 'Unnamed Corp';
-
-    // Tick info — corp tick fires at midpoint of political tick interval
-    if (shard) {
-        document.getElementById('game-date').textContent = shard.current_date || '—';
-        document.getElementById('tick-number').textContent = shard.current_tick || '—';
-        if (shard.next_tick_at) {
-            const intervalMs = (Number(shard.tick_interval_hours) || 8) * 3600000;
-            const politicalTickAt = new Date(shard.next_tick_at).getTime();
-            const lastAdvanceAt = politicalTickAt - intervalMs;
-            const corpDueAt = lastAdvanceAt + (intervalMs / 2);
-            nextTickAt = new Date(corpDueAt > Date.now() ? corpDueAt : politicalTickAt + (intervalMs / 2));
-            startTickCountdown();
+    // Check for pending bids on commissioned construction projects
+    let pendingBidCount = 0;
+    if (faction?.id) {
+        const { data: myContracts } = await _supabase
+            .from('construction_contracts')
+            .select('id, contract_bids!inner(id)')
+            .eq('issuer_faction_id', faction.id)
+            .in('status', ['open', 'bidding']);
+        if (myContracts) {
+            for (const c of myContracts) pendingBidCount += (c.contract_bids || []).length;
         }
-        // Update label
-        const tickLabel = document.querySelector('#tick-countdown')?.closest('.tick-item')?.querySelector('.tick-label');
-        if (tickLabel) tickLabel.textContent = 'Next Corp Tick';
     }
 
-    // Top bar — right side (badge + dropdown)
-    document.getElementById('corp-name-badge').textContent =
-        (ticker ? '[' + ticker + ']' : (faction.faction_name || 'Corp')) + ' ▾';
-    // Cash display next to abbreviation
-    const cashEl = document.getElementById('topbar-cash');
-    if (cashEl) {
-        const cash = Number(faction.corp_cash_reserves ?? 0);
-        const cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(1) + 'B' : cash >= 1e6 ? '$' + (cash / 1e6).toFixed(1) + 'M' : '$' + Math.round(cash / 1000) + 'k';
-        cashEl.textContent = 'CASH: ' + cashStr;
-    }
-    const ap = faction.action_points ?? 0;
-    document.getElementById('topbar-ap').innerHTML =
-        '<span class="topbar-ap__count">' + ap + ' AP</span>';
-
-    // Populate faction dropdown
-    const dd = document.getElementById('corp-faction-dropdown');
-    if (dd) {
-        let ddHtml = '';
-        for (const f of allUserFactions) {
-            const isActive = f.id === faction.id;
-            const typeLabel = f.faction_type === 'corporation' ? 'CORP' : 'PARTY';
-            const typeColor = f.faction_type === 'corporation' ? 'var(--teal)' : 'var(--amber)';
-            ddHtml += `<div class="corp-dd-item${isActive ? ' active' : ''}" onclick="switchToFaction('${f.id}', '${f.faction_type}')">
-                <span class="corp-dd-type" style="color:${typeColor}">${typeLabel}</span>
-                <span class="corp-dd-name">${escapeHtml(f.faction_name || 'Unnamed')}</span>
-                <span class="corp-dd-abbr">[${escapeHtml(f.abbreviation || '—')}]</span>
-            </div>`;
+    // Render shared top bar
+    const topBarContainer = document.getElementById('corp-topbar-container');
+    if (topBarContainer) {
+        const { renderCorpTopBar } = await import('./js/corp-topbar.js');
+        const badges = {};
+        if (pendingBidCount > 0) {
+            badges.home = { color: '#c8a832', title: pendingBidCount + ' pending bid' + (pendingBidCount !== 1 ? 's' : '') + ' on your projects' };
         }
-        const hasCorp = allUserFactions.some(f => f.faction_type === 'corporation');
-        if (!hasCorp) {
-            ddHtml += `<div class="corp-dd-item corp-dd-item--create" onclick="window.location.href='corp-setup.html'">
-                <span class="corp-dd-type" style="color:var(--teal)">+</span>
-                <span class="corp-dd-name">Found a Corporation</span>
-            </div>`;
-        }
-        const hasParty = allUserFactions.some(f => f.faction_type === 'party');
-        if (!hasParty) {
-            ddHtml += `<div class="corp-dd-item corp-dd-item--create" onclick="sessionStorage.setItem('pending_faction_type','party'); window.location.href='select-nation.html'">
-                <span class="corp-dd-type" style="color:var(--amber)">+</span>
-                <span class="corp-dd-name">Found a Political Party</span>
-            </div>`;
-        }
-        dd.innerHTML = ddHtml;
+        renderCorpTopBar(topBarContainer, {
+            faction, shard, activeTab: 'home', allUserFactions, badges,
+        });
     }
 
     // ── Populate identity card ──
     document.getElementById('id-type-badge').textContent = faction.corp_company_type || '—';
-    document.getElementById('id-logo').textContent = ticker.slice(0, 3) || '—';
+    const idLogoEl = document.getElementById('id-logo');
+    const ticker = (faction.corp_ticker || faction.abbreviation || '').toUpperCase();
+    if (faction.custom_logo_url) {
+        idLogoEl.innerHTML = `<img src="${escapeHtml(faction.custom_logo_url)}" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:4px;">`;
+    } else {
+        idLogoEl.textContent = ticker.slice(0, 3) || '—';
+    }
     document.getElementById('id-corp-name').textContent = faction.faction_name || 'Unnamed Corp';
     const currentSlogan = faction.party_description || '';
     document.getElementById('id-slogan').textContent = currentSlogan ? '"' + currentSlogan + '"' : '"--"';
@@ -1240,6 +1127,19 @@ async function init() {
         <div class="slogan-hint" id="slogan-hint">${canEditSlogan ? '60 characters max. 120 tick cooldown after change.' : ticksRemaining + ' ticks until you can change slogan.'}</div>
     `;
 
+    // ── Logo upload (rendered as a standard id-row for visual consistency) ──
+    const logoUploadEl = document.getElementById('corp-logo-upload');
+    logoUploadEl.innerHTML = `
+        <div class="id-row">
+            <span class="id-row__label">Logo</span>
+            <label class="id-row__value" style="cursor:pointer;text-decoration:underline;" id="corp-logo-label">
+                ${faction.custom_logo_url ? 'Change Logo' : 'Upload Logo'}
+                <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" id="corp-logo-file" style="display:none;">
+            </label>
+        </div>
+    `;
+    document.getElementById('corp-logo-file')?.addEventListener('change', handleCorpLogoUpload);
+
     // Store for save handler
     window._corpFactionId = faction.id;
     window._currentTick = currentTick;
@@ -1261,15 +1161,39 @@ async function init() {
         if (!eqErr) equipMaint = calculateTotalMaintenance(eqRows || []);
     }
 
-    renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint);
-    renderValuation(nationStats, nationName, faction, wfData, propData);
+    // Load executive salaries
+    let execCompensation = 0;
+    if (faction?.id) {
+        const { data: execRows } = await _supabase
+            .from('corp_executives')
+            .select('salary_per_year')
+            .eq('faction_id', faction.id)
+            .eq('status', 'active');
+        execCompensation = (execRows || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
+    }
+
+    // Load fleet maintenance + equipment value (shipping corps)
+    let fleetMaint = 0;
+    let equipmentValue = 0;
+    if (faction?.id && faction.corp_sector === 'Shipping') {
+        const { data: vessels } = await _supabase
+            .from('corp_vessels')
+            .select('base_maintenance, purchase_price, condition, built_at_tick, status')
+            .eq('faction_id', faction.id)
+            .neq('status', 'for_sale');
+        fleetMaint = (vessels || []).reduce((sum, v) => sum + (Number(v.base_maintenance) || 0), 0);
+        equipmentValue = computeEquipmentValue(vessels, currentTick);
+    }
+
+    await renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation, propData, fleetMaint);
+    await renderValuation(nationStats, nationName, faction, wfData, propData, equipmentValue);
 
     // Messaging bubble
     initMessaging(faction, nationStats, shard);
 
     // Events feed
     _corpEventsCtx = { nationId: faction.nation_id };
-    loadCorpEvents();
+    loadNationEvents();
 
     // Show page
     document.getElementById('loading').style.display = 'none';
@@ -1410,12 +1334,12 @@ function renderWorkforce(nation, nationName, factionData) {
     return { totalWages, generalTotal, skilledTotal, innovativeTotal, monthlyWages: Math.round(totalWages / 12) };
 }
 
-function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint) {
+async function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint, execCompensation, propData, fleetMaint) {
     const currentTick = shard?.current_tick || 0;
     document.getElementById('fin-tick').textContent = 'TICK ' + currentTick;
 
     // Market revenue calculation (annual)
-    const BASE_RATE = 50_000_000;
+    const BASE_RATE = 87_000_000;
     const s = (key) => getNationStat(nation, key);
 
     const gdpFactor     = 1 + (s('gdp_growth') - 50) / 100 * 0.4;
@@ -1428,16 +1352,173 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
 
     const multiplier = gdpFactor * urbanFactor * popFactor * solFactor * infraFactor * inflFactor * intFactor;
     const annualMarketRev = Math.round(BASE_RATE * multiplier);
-    const marketRev = Math.round(annualMarketRev / 12); // per-tick (monthly)
 
-    const govContracts = 0;
-    const pvtContracts = 0;
-    const totalRevenue = govContracts + pvtContracts + marketRev;
+    // Scale revenue by workforce utilization — property capacity determines target (matches tick processor)
+    const totalEmployees = (faction.corp_general_workforce || 0) + (faction.corp_skilled_workforce || 0) + (faction.corp_innovative_workforce || 0);
+    const workforceTarget = Math.max(500, propData?.totalCapacity || 500);
+    const workforceUtil = Math.min(1, totalEmployees / workforceTarget);
+    const propertyRevBonus = propData?.propertyRevBonus || 0;
+    const marketRev = Math.round(Math.round(annualMarketRev / 12) * workforceUtil) + propertyRevBonus;
+
+    // Private Contracts: sector-specific revenue from active deals
+    let govContracts = 0;
+    let pvtContracts = 0;
+    let financeLoanInterestRevenue = 0;
+    let financeLoanPrincipalRepaid = 0;
+    let financeLoanScheduledPaymentsTick = 0;
+    let financeLoanCashCollected = 0;
+    let financeLoanLifetimeInterest = 0;
+    let financeInsurancePremiumRevenue = 0;
+    // Construction corps only: per-tick build cost the server deducts for
+    // each in-progress contract. Mirrors advance-corp-tick/index.ts:1714
+    // (perTickCost = bid.estimated_cost / timeline_ticks). Without this line,
+    // Net Profit over-reported by the full estimated_cost spread across
+    // ticks — contracts looked profitable while cash was actually draining.
+    let projectCosts = 0;
+    if (faction?.id) {
+        const sector = faction.corp_sector || '';
+        if (sector === 'Finance') {
+            // Finance: interest + premiums earned from active loans/policies
+            const { data: finLoans } = await _supabase.from('finance_active_loans')
+                .select('monthly_payment, payments_made, total_paid, total_interest_paid, interest_rate, remaining_principal, finance_loan_requests(request_type)')
+                .eq('lender_faction_id', faction.id)
+                .in('status', ['current', 'late', 'delinquent']);
+            for (const loan of (finLoans || [])) {
+                const reqType = loan.finance_loan_requests?.request_type || 'loan';
+                if (reqType === 'insurance') {
+                    const premiumRevenue = Number(loan.monthly_payment || 0);
+                    pvtContracts += premiumRevenue;
+                    financeInsurancePremiumRevenue += premiumRevenue;
+                } else if (reqType === 'loan') {
+                    const monthlyPayment = Number(loan.monthly_payment || 0);
+                    financeLoanScheduledPaymentsTick += monthlyPayment;
+                    const remaining = Math.max(0, Number(loan.remaining_principal || 0));
+                    const interestPart = Math.min(monthlyPayment, monthlyInterest(remaining, loan.interest_rate));
+                    const monthlyPrincipal = principalPortion(monthlyPayment, interestPart);
+                    pvtContracts += interestPart;
+                    financeLoanInterestRevenue += interestPart;
+                    financeLoanPrincipalRepaid += monthlyPrincipal;
+
+                    const paymentsMade = Number(loan.payments_made || 0);
+                    const bookedCashCollected = Number(loan.total_paid || 0);
+                    const fallbackCashCollected = monthlyPayment * paymentsMade;
+                    const loanCashCollected = Math.max(0, bookedCashCollected || fallbackCashCollected);
+                    const loanInterestCollected = Math.max(0, Math.min(loanCashCollected, Number(loan.total_interest_paid || 0)));
+                    financeLoanCashCollected += loanCashCollected;
+                    financeLoanLifetimeInterest += loanInterestCollected;
+                } else if (reqType === 'bond') {
+                    pvtContracts += Number(loan.monthly_payment || 0);
+                }
+            }
+        } else if (sector === 'Construction') {
+            // Construction: revenue from in-progress contracts this corp is building
+            const { data: activeContracts } = await _supabase.from('construction_contracts')
+                .select('id, budget_ceiling, timeline_ticks')
+                .eq('awarded_to_faction', faction.id)
+                .eq('status', 'in_progress');
+            const contractIdList = [];
+            for (const c of (activeContracts || [])) {
+                pvtContracts += Math.round((c.budget_ceiling || 0) / (c.timeline_ticks || 1));
+                if (c.id) contractIdList.push(c.id);
+            }
+            // Fetch winning bids to get estimated_cost, then compute per-tick
+            // build cost to mirror the server's deduction.
+            if (contractIdList.length > 0) {
+                const { data: wonBids } = await _supabase.from('contract_bids')
+                    .select('contract_id, estimated_cost')
+                    .in('contract_id', contractIdList)
+                    .eq('status', 'won');
+                const bidCostByContract = {};
+                for (const b of (wonBids || [])) bidCostByContract[b.contract_id] = Number(b.estimated_cost || 0);
+                for (const c of (activeContracts || [])) {
+                    const estCost = bidCostByContract[c.id] || 0;
+                    projectCosts += Math.round(estCost / Math.max(1, c.timeline_ticks || 1));
+                }
+            }
+        } else if (sector === 'Shipping') {
+            // Shipping: revenue from active shipping claims
+            const { data: activeClaims } = await _supabase.from('shipping_claims')
+                .select('revenue_per_transit')
+                .eq('faction_id', faction.id)
+                .eq('status', 'active');
+            for (const c of (activeClaims || [])) {
+                pvtContracts += Number(c.revenue_per_transit || 0);
+            }
+        }
+    }
+
+    // Fuel-depot revenue — $7,500 per refuel from visiting corps that don't
+    // own a depot in the same nation. Estimated from active shipping_claims
+    // routed to our depot nations; one refuel per transit completion.
+    // Shown per-depot so the corp sees which locations are earning.
+    let depotRevenueRows = []; // { nation, revenue, visitors }
+    let depotRevenueTotal = 0;
+    try {
+        const { data: myDepots } = await _supabase.from('corp_properties')
+            .select('id, nation_id, nations!nation_id(name)')
+            .eq('faction_id', faction.id)
+            .eq('type', 'fuel_depot')
+            .eq('is_active', true);
+
+        if (myDepots && myDepots.length > 0) {
+            const depotNationIds = myDepots.map(d => d.nation_id).filter(Boolean);
+            if (depotNationIds.length > 0) {
+                const { data: visitingClaims } = await _supabase.from('shipping_claims')
+                    .select('faction_id, shipping_routes!inner(destination_nation_id, status)')
+                    .eq('status', 'active')
+                    .in('shipping_routes.destination_nation_id', depotNationIds);
+
+                // Which visiting corps also own their own depot in the destination?
+                // Those ships refuel at their own depot, we don't collect the markup.
+                const visitorIds = [...new Set((visitingClaims || [])
+                    .map(c => c.faction_id)
+                    .filter(f => f && f !== faction.id))];
+                const otherDepotPairs = new Set();
+                if (visitorIds.length > 0) {
+                    const { data: ownedElsewhere } = await _supabase.from('corp_properties')
+                        .select('faction_id, nation_id')
+                        .in('faction_id', visitorIds)
+                        .in('nation_id', depotNationIds)
+                        .eq('type', 'fuel_depot')
+                        .eq('is_active', true);
+                    for (const d of (ownedElsewhere || [])) {
+                        otherDepotPairs.add(d.faction_id + '|' + d.nation_id);
+                    }
+                }
+
+                const visitorCountByNation = {};
+                for (const c of (visitingClaims || [])) {
+                    const destId = c.shipping_routes?.destination_nation_id;
+                    if (!destId) continue;
+                    if (c.faction_id === faction.id) continue;          // our own ships use our depot at base cost — no markup
+                    if (otherDepotPairs.has(c.faction_id + '|' + destId)) continue; // visitor owns a depot here, uses own
+                    visitorCountByNation[destId] = (visitorCountByNation[destId] || 0) + 1;
+                }
+
+                const DEPOT_MARKUP_PER_TRIP = 7500;
+                for (const d of myDepots) {
+                    const visitors = visitorCountByNation[d.nation_id] || 0;
+                    const revenue  = visitors * DEPOT_MARKUP_PER_TRIP;
+                    depotRevenueRows.push({
+                        nation:  d.nations?.name || 'Unknown',
+                        revenue,
+                        visitors,
+                    });
+                    depotRevenueTotal += revenue;
+                }
+                depotRevenueRows.sort((a, b) => b.revenue - a.revenue);
+            }
+        }
+    } catch (depotRevErr) {
+        console.warn('Fuel depot revenue estimate failed (non-fatal):', depotRevErr?.message || depotRevErr);
+    }
+
+    const totalRevenue = govContracts + pvtContracts + marketRev + depotRevenueTotal;
 
     // Expenses — workforce wages from wfData, divided by 12 (monthly)
     const annualWages = wfData?.totalWages || 0;
     const wages = Math.round(annualWages / 12);
-    const materials = 0, taxes = 0;
+    const materials = 0;
     const properties = propertyMaint || 0;
     const equipment = equipmentMaint || 0;
     // Debt service: monthly payment on outstanding loans (5% annual rate, 10-year amortization)
@@ -1447,10 +1528,142 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
     const debtService = outstandingDebt > 0
         ? Math.round((outstandingDebt * (LOAN_ANNUAL_RATE / 12)) / (1 - Math.pow(1 + LOAN_ANNUAL_RATE / 12, -LOAN_TERM_MONTHS)))
         : 0;
-    const totalExpenses = wages + materials + properties + equipment + debtService + taxes;
-    const netProfit = totalRevenue - totalExpenses;
+
+    // Borrower-side obligations on finance_active_loans. The server
+    // (advance-corp-tick:2881-3005) iterates these rows every tick and
+    // deducts either the full monthly loan payment OR the insurance
+    // premium from the borrower/policyholder's cash — completely separate
+    // from the `corp_loans` debt service above. Without these two lines
+    // the Net Profit card was missing a significant monthly outflow for
+    // any corp that had taken a corp-to-corp loan or held insurance
+    // policies, which is why Montequilla Contructions saw +$1.2M/tick
+    // profit while cash actually grew only ~$300-400k/tick.
+    let corpLoanService = 0;
+    let insurancePremiums = 0;
+    let equityDividends = 0;
+    let capTable = [];
+    if (faction?.id) {
+        try {
+            const { data: borrowerLiabilities } = await _supabase.from('finance_active_loans')
+                .select('monthly_payment, equity_pct, series, total_paid, finance_loan_requests(request_type), lender:factions!lender_faction_id(faction_name)')
+                .eq('borrower_faction_id', faction.id)
+                .in('status', ['current', 'late', 'delinquent']);
+            // Equity dividends are computed from last tick's monthly_profit ×
+            // equity_pct — the same formula the tick processor uses. Matches
+            // what actually got paid; lags projections by one tick for the
+            // current-tick estimate, which is honest given the card is an
+            // approximation.
+            const lastTickProfit = Math.max(0, Number(faction?.monthly_profit || 0));
+            for (const row of (borrowerLiabilities || [])) {
+                const reqType = row.finance_loan_requests?.request_type || 'loan';
+                if (reqType === 'equity') {
+                    const stake = Number(row.equity_pct || 0);
+                    const dividend = Math.floor(lastTickProfit * stake / 100);
+                    equityDividends += dividend;
+                    capTable.push({
+                        investor: row.lender?.faction_name || 'Unknown',
+                        stakePct: stake,
+                        series: row.series || '?',
+                        paidToDate: Number(row.total_paid || 0),
+                        nextDividend: dividend,
+                    });
+                    continue;
+                }
+                const pmt = Number(row.monthly_payment || 0);
+                if (pmt <= 0) continue;
+                if (reqType === 'insurance') {
+                    insurancePremiums += pmt;
+                } else if (reqType === 'bond') {
+                    // Bonds: the nation treasury pays the coupon, not the
+                    // corp (advance-corp-tick:2923-2981 credits the bondholder
+                    // without deducting from the borrower). So a corp listed
+                    // as borrower on a bond row has no cash impact from the
+                    // payment — skip it to avoid over-reporting expenses.
+                    continue;
+                } else {
+                    corpLoanService += pmt; // standard loans
+                }
+            }
+            capTable.sort((a, b) => b.stakePct - a.stakePct);
+        } catch (err) {
+            console.warn('[Finances] borrower finance_active_loans lookup failed:', err);
+        }
+    }
+
+    const execSalaries = Math.round((execCompensation || 0) / 12);
+    const fleet = fleetMaint || 0;
+    const FIXED_OVERHEAD = 75000; // minimum operating costs (matches tick processor)
+    // Corporate tax: applied to positive income (matches tick processor formula)
+    const corpTaxRate = Math.max(0, Math.min(1, (Number(nation?.corporate_tax ?? 0) / 100) || 0));
+    const preExpenses = wages + execSalaries + materials + properties + equipment + fleet + debtService + corpLoanService + insurancePremiums + equityDividends + projectCosts + FIXED_OVERHEAD;
+    const taxableIncome = Math.max(0, totalRevenue - preExpenses);
+    const taxes = Math.round(taxableIncome * corpTaxRate);
+
+    // Load tax rates for all nations where corp has presence (for breakdown)
+    let taxBreakdownHtml = '';
+    try {
+        const presenceIds = new Set([faction.nation_id]);
+        const { data: props } = await _supabase.from('corp_properties').select('nation_id').eq('faction_id', faction.id).eq('is_active', true);
+        (props || []).forEach(p => { if (p.nation_id) presenceIds.add(p.nation_id); });
+        if (presenceIds.size > 0) {
+            const { data: taxNations } = await _supabase.from('nations').select('id, name, corporate_tax').in('id', [...presenceIds]);
+            if (taxNations && taxNations.length > 0) {
+                taxBreakdownHtml = taxNations.sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(n => {
+                    const rate = Math.round(Number(n.corporate_tax ?? 0));
+                    const nationTax = Math.round(taxableIncome * (rate / 100) / taxNations.length); // simplified per-nation estimate
+                    const rateColor = rate > 25 ? '#c55' : rate > 15 ? '#ca5' : '#5c5';
+                    return `<div style="display:flex;justify-content:space-between;padding:1px 0;font-family:var(--font-mono);font-size:8px;">
+                        <span style="color:var(--text-dim);">${n.name} (<span style="color:${rateColor}">${rate}%</span>)</span>
+                        <span style="color:#a44;">${fmtMoney(nationTax)}</span>
+                    </div>`;
+                }).join('');
+            }
+        }
+    } catch (_) { /* non-blocking */ }
+    const totalExpenses = preExpenses + taxes;
+    // ONE SOURCE OF TRUTH: net profit is what the tick processor actually
+    // booked last tick (advance-corp-tick/index.ts writes faction.monthly_profit
+    // post-tax, post-debt). The Revenue/Expenses breakdowns above are a
+    // current-state composition view and may disagree by rounding or by
+    // contracts that completed mid-tick — the authoritative figure is the DB.
+    const netProfit = Number(faction?.monthly_profit || 0);
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const debt = outstandingDebt;
+    let previousTickCash = null;
+    let cashDelta = null;
+    let nonPnlCashMovements = null;
+    let cashBridgeDisclaimer = 'Does not include all capital/financing cash transfers.';
+    if (faction?.id) {
+        try {
+            const { data: cashHistoryRows } = await _supabase.from('corp_cash_history')
+                .select('tick, cash_start, cash_end, cash_delta, non_pnl_cash_movements')
+                .eq('faction_id', faction.id)
+                .lte('tick', currentTick)
+                .order('tick', { ascending: false })
+                .limit(2);
+            const currentRow = (cashHistoryRows || []).find(r => Number(r.tick) === Number(currentTick)) || (cashHistoryRows || [])[0] || null;
+            const priorRow = (cashHistoryRows || []).find(r => Number(r.tick) < Number(currentRow?.tick ?? currentTick)) || null;
+            if (currentRow) {
+                previousTickCash = currentRow.cash_start != null
+                    ? Number(currentRow.cash_start)
+                    : (priorRow?.cash_end != null ? Number(priorRow.cash_end) : null);
+                cashDelta = currentRow.cash_delta != null
+                    ? Number(currentRow.cash_delta)
+                    : (previousTickCash != null ? cash - previousTickCash : null);
+                nonPnlCashMovements = currentRow.non_pnl_cash_movements != null
+                    ? Number(currentRow.non_pnl_cash_movements)
+                    : (cashDelta != null ? cashDelta - netProfit : null);
+            } else {
+                cashBridgeDisclaimer = 'Does not include all capital/financing cash transfers. Cash history snapshot not yet available.';
+            }
+        } catch (cashHistErr) {
+            console.warn('[Finances] corp_cash_history lookup failed:', cashHistErr);
+            cashBridgeDisclaimer = 'Does not include all capital/financing cash transfers. Cash history snapshot unavailable.';
+        }
+    }
+    const financeLoanPaymentReconciliationDelta = financeLoanScheduledPaymentsTick - (financeLoanInterestRevenue + financeLoanPrincipalRepaid);
+    const FINANCE_LOAN_RECON_TOLERANCE = 0.01;
+    const isFinanceLoanReconciliationOff = Math.abs(financeLoanPaymentReconciliationDelta) > FINANCE_LOAN_RECON_TOLERANCE;
 
     // Driver data for display
     const drivers = [
@@ -1471,13 +1684,16 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
 
     const revTotal = totalRevenue || 1;
     const govPct = (govContracts / revTotal * 100).toFixed(1);
-    const pvtPct = (pvtContracts / revTotal * 100).toFixed(1);
+    // Depot revenue rolls into the Private segment on the segmented bar — it's
+    // revenue collected from other corporations, semantically private, and the
+    // three segments need to sum to 100% of totalRevenue.
+    const pvtPct = ((pvtContracts + depotRevenueTotal) / revTotal * 100).toFixed(1);
     const mktPct = (marketRev / revTotal * 100).toFixed(1);
 
     document.getElementById('fin-body').innerHTML = `
         <!-- Revenue -->
         <div class="fin-section">
-            <div class="fin-section__title" style="color:var(--green);">Revenue</div>
+            <div class="fin-section__title" style="color:var(--green);">Revenue <span title="Accounting rule: loan interest and insurance premiums count as revenue. Loan principal repayments increase cash but are not revenue or profit." style="font-size:8px;color:var(--text-dim);font-family:var(--font-mono);text-transform:none;letter-spacing:0;">[?]</span></div>
             <div class="seg-bar">
                 <div class="seg-bar__seg" style="width:${govPct}%;background:var(--teal);"></div>
                 <div class="seg-bar__seg" style="width:${pvtPct}%;background:var(--amber);"></div>
@@ -1489,8 +1705,21 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
                 <div class="seg-legend__item"><div class="seg-legend__dot" style="background:var(--text-dim)"></div><span class="seg-legend__label">Market</span></div>
             </div>
             <div class="fin-row"><span class="fin-row__label">Government Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(govContracts)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Private Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(marketRev)}</span></div>
+            <div class="fin-row"><span class="fin-row__label" title="Private operating revenue includes contracts plus loan interest and insurance premiums only; principal repayments are excluded.">Private Operating Revenue (contracts + loan interest/premiums only)</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">P&L revenue</div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Interest portion of this tick's loan payments recognized as operating revenue in P&L.">Loan Interest Revenue (this tick) <span class="fin-row__badge">REVENUE</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeLoanInterestRevenue)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' && financeInsurancePremiumRevenue > 0 ? `<div class="fin-row"><span class="fin-row__label" title="Insurance premiums collected this tick are recognized as operating revenue in P&L.">Insurance Premium Revenue (this tick) <span class="fin-row__badge">REVENUE</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeInsurancePremiumRevenue)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">Non-revenue cash movements</div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Principal repayment increases cash and reduces the loan receivable. It is not revenue or profit.">Loan Principal Repaid (this tick) <span class="fin-row__badge">ASSET→CASH</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanPrincipalRepaid)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Loan cash collected this tick equals interest plus principal.">Loan Cash Collected (this tick) <span class="fin-row__badge">CASH</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanInterestRevenue + financeLoanPrincipalRepaid)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Checks this tick's scheduled loan payments against computed split. Portfolio Scheduled Loan Payments = Interest Revenue + Principal Repaid.">Loan Payment Reconciliation (this tick) <span class="fin-row__badge">CHECK</span></span><span class="fin-row__value" style="color:${isFinanceLoanReconciliationOff ? 'var(--red)' : 'var(--text-bright)'}">${fmtMoney(financeLoanScheduledPaymentsTick)} = ${fmtMoney(financeLoanInterestRevenue)} + ${fmtMoney(financeLoanPrincipalRepaid)} (Δ ${financeLoanPaymentReconciliationDelta >= 0 ? '+' : '-'}${fmtMoney(Math.abs(financeLoanPaymentReconciliationDelta))})</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:5px 12px 2px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.4px;text-transform:uppercase;">Lifetime portfolio totals</div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Portfolio cumulative cash from loans. Loan cash collected = interest + principal.">Loan Cash Collected (to date) <span class="fin-row__badge">PORTFOLIO</span></span><span class="fin-row__value" style="color:var(--text-bright)">${fmtMoney(financeLoanCashCollected)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div class="fin-row"><span class="fin-row__label" title="Portfolio cumulative interest portion collected from loans.">Loan Interest (to date) <span class="fin-row__badge">PORTFOLIO</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(financeLoanLifetimeInterest)}</span></div>` : ''}
+            ${faction?.corp_sector === 'Finance' ? `<div style="padding:2px 12px 4px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.2px;">Principal repayment increases cash but does not increase profit.</div>` : ''}
+            <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(marketRev - propertyRevBonus)}</span></div>
+            ${propertyRevBonus > 0 ? `<div class="fin-row"><span class="fin-row__label">Property Revenue<span class="fin-row__badge">BUILDINGS</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(propertyRevBonus)}</span></div>` : ''}
+            ${depotRevenueRows.map(d => `<div class="fin-row"><span class="fin-row__label">Fuel Depot (${d.nation})<span class="fin-row__badge">${d.visitors} visitor${d.visitors !== 1 ? 's' : ''}</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(d.revenue)}</span></div>`).join('')}
             <div class="fin-total">
                 <span class="fin-total__label">Total Revenue</span>
                 <span class="fin-total__value" style="color:var(--green)">${fmtMoney(totalRevenue)}</span>
@@ -1500,20 +1729,43 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
         <div class="fin-section">
             <div class="fin-section__title" style="color:var(--red);">Expenses</div>
             <div class="fin-row"><span class="fin-row__label">Workforce Wages</span><span class="fin-row__value" style="color:#a44">${fmtMoney(wages)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">Executive Compensation</span><span class="fin-row__value" style="color:#a44">${fmtMoney(execSalaries)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Materials & Supplies</span><span class="fin-row__value" style="color:#a44">${fmtMoney(materials)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Properties</span><span class="fin-row__value" style="color:#a44">${fmtMoney(properties)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Equipment</span><span class="fin-row__value" style="color:#a44">${fmtMoney(equipment)}</span></div>
+            ${fleet > 0 ? `<div class="fin-row"><span class="fin-row__label">Fleet Maintenance</span><span class="fin-row__value" style="color:#a44">${fmtMoney(fleet)}</span></div>` : ''}
+            ${projectCosts > 0 ? `<div class="fin-row"><span class="fin-row__label">Project Build Costs</span><span class="fin-row__value" style="color:#a44">${fmtMoney(projectCosts)}</span></div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Debt Service</span><span class="fin-row__value" style="color:#a44">${fmtMoney(debtService)}</span></div>
+            ${corpLoanService > 0 ? `<div class="fin-row"><span class="fin-row__label">Loan Repayments</span><span class="fin-row__value" style="color:#a44">${fmtMoney(corpLoanService)}</span></div>` : ''}
+            ${insurancePremiums > 0 ? `<div class="fin-row"><span class="fin-row__label">Insurance Premiums</span><span class="fin-row__value" style="color:#a44">${fmtMoney(insurancePremiums)}</span></div>` : ''}
+            ${equityDividends > 0 ? `<div class="fin-row"><span class="fin-row__label" title="Dividends to equity holders. Each tick: equity_pct × last tick's monthly profit. $0 on loss ticks.">Equity Dividends</span><span class="fin-row__value" style="color:#a44">${fmtMoney(equityDividends)}</span></div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Taxes</span><span class="fin-row__value" style="color:#a44">${fmtMoney(taxes)}</span></div>
+            ${taxBreakdownHtml ? `<div style="padding:2px 12px 6px 20px;border-bottom:1px solid var(--border-hair);">${taxBreakdownHtml}</div>` : ''}
             <div class="fin-total">
                 <span class="fin-total__label">Total Expenses</span>
                 <span class="fin-total__value" style="color:var(--red)">${fmtMoney(totalExpenses)}</span>
             </div>
         </div>
-        <!-- Net Profit -->
-        <div class="fin-net" style="background:${netProfit >= 0 ? 'rgba(92,204,92,0.02)' : 'rgba(204,85,85,0.02)'}">
-            <span class="fin-net__label">Net Profit</span>
-            <span class="fin-net__value" style="color:${netProfit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtMoney(netProfit)}</span>
+        <!-- Last Tick Cash Change — primary bottom-line signal. Uses cashDelta
+             (cash_end - cash_start from corp_cash_history) so the top-line
+             figure captures everything: operating P&L *plus* non-P&L cash
+             movements like loan principal, capex, dividends, tax credits.
+             Shows '—' when no prior-tick snapshot exists. -->
+        <div class="fin-net" style="background:${cashDelta == null ? 'transparent' : (cashDelta >= 0 ? 'rgba(92,204,92,0.02)' : 'rgba(204,85,85,0.02)')};">
+            <span class="fin-net__label">Last Tick Cash Change <span title="The actual change in the corporation's cash reserves between this tick and the previous tick. Includes operating profit/loss plus non-P&L cash movements (loan principal, capex, dividends, tax credits). Computed from the corp_cash_history snapshots written at tick-exit." style="font-size:8px;color:var(--text-dim);font-family:var(--font-mono);text-transform:none;letter-spacing:0;">[?]</span></span>
+            <span class="fin-net__value" style="color:${cashDelta == null ? 'var(--text-dim)' : (cashDelta >= 0 ? 'var(--green)' : 'var(--red)')};">${cashDelta == null ? '—' : fmtMoney(cashDelta)}</span>
+        </div>
+        <div style="padding:2px 14px 8px 14px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.2px;">${cashBridgeDisclaimer}</div>
+        <!-- Cash Reconciliation -->
+        <div class="fin-section">
+            <div class="fin-section__title" style="color:var(--text-bright);">Cash Change This Tick</div>
+            <div class="fin-row"><span class="fin-row__label">Last Tick Net Profit</span><span class="fin-row__value" style="color:${netProfit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtMoney(netProfit)}</span></div>
+            <div class="fin-row"><span class="fin-row__label">+/- Non-P&amp;L cash movements</span><span class="fin-row__value" style="color:var(--text-bright)">${nonPnlCashMovements == null ? '—' : fmtMoney(nonPnlCashMovements)}</span></div>
+            <div class="fin-total">
+                <span class="fin-total__label">= Actual Cash Change</span>
+                <span class="fin-total__value" style="color:${(cashDelta || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${cashDelta == null ? '—' : fmtMoney(cashDelta)}</span>
+            </div>
+            <div style="padding:2px 12px 4px 12px;font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.2px;">Computed from cash snapshots: current cash (${fmtMoney(cash)}) ${previousTickCash == null ? 'with no prior snapshot' : '- previous tick cash (' + fmtMoney(previousTickCash) + ')' }.</div>
         </div>
         <!-- Cash & Debt -->
         <div class="fin-cash-debt">
@@ -1526,6 +1778,57 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
                 <div class="fin-cash-debt__value" style="color:var(--amber)">${fmtMoney(debt)}</div>
             </div>
         </div>
+        <!-- Purchasing Power -->
+        ${(() => {
+            const currStr = Number(nation?.currency_strength ?? 50);
+            const infl = Number(nation?.inflation ?? 0);
+            const currMult = currStr / 50;
+            const inflMult = Math.max(0.5, 1 - infl / 200);
+            const realValue = Math.round(cash * currMult * inflMult);
+            const ppColor = realValue >= cash ? 'var(--green)' : realValue >= cash * 0.8 ? 'var(--amber)' : 'var(--red)';
+            const pctOfNominal = cash > 0 ? Math.round((realValue / cash) * 100) : 100;
+            return `<div style="padding:4px 14px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border-hair);">
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase;">Purchasing Power</div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${ppColor};">${fmtMoney(realValue)}</span>
+                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${pctOfNominal}% · CUR ${currStr} · INF ${Math.round(infl)}</span>
+                </div>
+            </div>`;
+        })()}
+        <!-- Loans Section -->
+        <div style="padding:8px 14px;border-top:1px solid var(--border-0);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-dim);text-transform:uppercase;">Loans</span>
+                <a href="corp-operations.html?tab=actions" style="padding:3px 10px;cursor:pointer;font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.5px;color:#5a8aaa;border:1px solid rgba(90,138,170,0.25);text-decoration:none;">CFO &rarr; ACTIONS</a>
+            </div>
+            <div id="fin-loans-list" style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">No active loans.</div>
+        </div>
+        ${capTable.length > 0 ? (() => {
+            const totalStake = capTable.reduce((s, h) => s + (h.stakePct || 0), 0);
+            const totalPaid = capTable.reduce((s, h) => s + (h.paidToDate || 0), 0);
+            return `<div style="padding:8px 14px;border-top:1px solid var(--border-0);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-dim);text-transform:uppercase;">Private Investment</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#c89a4a;">${totalStake.toFixed(2)}% STAKED &middot; ${fmtMoney(totalPaid)} PAID TO DATE</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 50px 40px 1fr 1fr;gap:4px;font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;padding:0 2px 3px;border-bottom:1px solid var(--border-hair);">
+                    <span>INVESTOR</span>
+                    <span style="text-align:right;">STAKE</span>
+                    <span style="text-align:center;">SERIES</span>
+                    <span style="text-align:right;">PAID TO DATE</span>
+                    <span style="text-align:right;" title="Projected next dividend = stake × last tick's profit.">NEXT DIVIDEND</span>
+                </div>
+                ${capTable.map(h => `
+                    <div style="display:grid;grid-template-columns:1fr 50px 40px 1fr 1fr;gap:4px;font-family:var(--font-mono);font-size:8px;padding:2px;border-bottom:1px solid var(--border-hair);">
+                        <span style="color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(h.investor)}">${escapeHtml(h.investor)}</span>
+                        <span style="color:#c89a4a;text-align:right;">${h.stakePct.toFixed(2)}%</span>
+                        <span style="color:#c89a4a;text-align:center;">${escapeHtml(h.series)}</span>
+                        <span style="color:var(--green);text-align:right;">${fmtMoney(h.paidToDate)}</span>
+                        <span style="color:${h.nextDividend > 0 ? 'var(--green)' : 'var(--text-dim)'};text-align:right;">${fmtMoney(h.nextDividend)}</span>
+                    </div>
+                `).join('')}
+            </div>`;
+        })() : ''}
         <!-- Market Revenue Drivers -->
         <div style="padding:8px 14px;">
             <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px;">Market Revenue Drivers</div>
@@ -1544,7 +1847,205 @@ function renderFinances(nation, shard, wfData, faction, propertyMaint, equipment
             </div>
         </div>
     `;
+
+    // Load and render active loans + pending requests
+    loadLoansSection();
 }
+
+// Loan request logic moved to corp-operations.html Actions tab (CFO action)
+let _acceptingOffer = false;
+async function acceptOffer(offerId, requestId) {
+    if (!faction || _acceptingOffer) return;
+    _acceptingOffer = true;
+
+    try {
+        const { data: offer, error: offerErr } = await _supabase
+            .from('finance_loan_offers').select('*').eq('id', offerId).single();
+        if (offerErr || !offer) return;
+
+        const { data: request, error: reqErr } = await _supabase
+            .from('finance_loan_requests').select('*').eq('id', requestId).single();
+        if (reqErr || !request) return;
+
+        if (request.status !== 'open') return;
+
+        // Flat-interest schedule — matches the server's per-tick math
+        // (advance-corp-tick/index.ts:interestPortion = originalPrincipal
+        // × monthlyRate) and the canonical regression in
+        // scripts/test-flat-interest-loans.mjs. Previously this used
+        // declining-balance amortization, so the stored monthly_payment
+        // was too low to fully amortize under the server's flat model
+        // and loans got stuck past maturity with a positive balance.
+        const n = request.term_months;
+        const interestPart = monthlyInterest(request.amount, offer.interest_rate);
+        const monthlyPrincipal = Math.round(request.amount / n);
+        const monthlyPayment = interestPart + monthlyPrincipal;
+
+        const currentTick = shard?.current_tick || 0;
+
+        const { error: reqUpErr } = await _supabase.from('finance_loan_requests').update({
+            status: 'funded',
+            accepted_offer_id: offerId,
+            funded_tick: currentTick,
+        }).eq('id', requestId);
+        if (reqUpErr) return;
+
+        await _supabase.from('finance_loan_offers').update({ status: 'accepted' }).eq('id', offerId);
+        await _supabase.from('finance_loan_offers').update({ status: 'declined' })
+            .eq('request_id', requestId).neq('id', offerId).eq('status', 'pending');
+
+        await _supabase.from('finance_active_loans').insert({
+            request_id: requestId,
+            offer_id: offerId,
+            borrower_faction_id: request.requesting_faction_id,
+            lender_faction_id: offer.offering_faction_id,
+            nation_id: request.nation_id,
+            principal: request.amount,
+            interest_rate: offer.interest_rate,
+            term_months: request.term_months,
+            collateral_type: offer.collateral_type,
+            purpose: request.purpose,
+            monthly_payment: monthlyPayment,
+            started_tick: currentTick,
+        });
+
+        const { data: lender } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', offer.offering_faction_id).single();
+        if (lender) {
+            await _supabase.from('factions').update({
+                corp_cash_reserves: Math.max(0, (Number(lender.corp_cash_reserves) || 0) - request.amount)
+            }).eq('id', offer.offering_faction_id);
+        }
+
+        const { data: borrower } = await _supabase.from('factions').select('corp_cash_reserves, corp_debt').eq('id', request.requesting_faction_id).single();
+        if (borrower) {
+            const { error: borrowErr } = await _supabase.from('factions').update({
+                corp_cash_reserves: (Number(borrower.corp_cash_reserves) || 0) + request.amount,
+                corp_debt: (Number(borrower.corp_debt) || 0) + request.amount,
+            }).eq('id', request.requesting_faction_id);
+            if (borrowErr) console.error('[Loans] Failed to credit borrower + track debt:', borrowErr.message);
+        }
+    } finally {
+        _acceptingOffer = false;
+    }
+
+    loadLoansSection();
+}
+
+async function cancelRequest(requestId) {
+    await _supabase.from('finance_loan_requests').update({ status: 'cancelled' }).eq('id', requestId);
+    loadLoansSection();
+}
+
+async function loadLoansSection() {
+    if (!faction) return;
+    const container = document.getElementById('fin-loans-list');
+    if (!container) return;
+
+    try {
+    // Equity requests + accepted equity positions live in the same tables
+    // as loans (finance_loan_requests + finance_active_loans) but are
+    // rendered in the Cap Table / Private Investment section, not here.
+    // Filter them out so the LOANS panel shows actual debt only.
+    const { data: requests, error: reqErr } = await _supabase
+        .from('finance_loan_requests')
+        .select('*, finance_loan_offers!request_id(*)')
+        .eq('requesting_faction_id', faction.id)
+        .in('status', ['open', 'funded'])
+        .neq('request_type', 'equity')
+        .order('created_tick', { ascending: false });
+    if (reqErr) console.error('[Loans] Request query error:', reqErr.message);
+
+    const { data: activeLoans, error: loanErr } = await _supabase
+        .from('finance_active_loans')
+        .select('*, lender:factions!lender_faction_id(faction_name, abbreviation)')
+        .eq('borrower_faction_id', faction.id)
+        .in('status', ['current', 'late', 'delinquent'])
+        .is('equity_pct', null)
+        .order('started_tick', { ascending: false });
+    if (loanErr) console.error('[Loans] Active loans query error:', loanErr.message);
+
+    let html = '';
+
+    if (requests && requests.length > 0) {
+        for (const req of requests) {
+            if (req.status === 'open') {
+                const offers = (req.finance_loan_offers || []).filter(o => o.status === 'pending');
+                html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <span style="color:#5a8aaa;font-weight:700;">OPEN</span>
+                            <span style="color:var(--text-primary);margin-left:4px;">${fmtMoney(req.amount)}</span>
+                            <span style="color:var(--text-dim);margin-left:4px;">${req.term_months}mo</span>
+                        </div>
+                        <span style="color:var(--text-dim);cursor:pointer;" onclick="cancelRequest('${req.id}')">&#10005;</span>
+                    </div>
+                    <div style="font-size:7px;color:var(--text-dim);margin-top:2px;">${escapeHtml(req.purpose || '')}</div>`;
+
+                if (offers.length > 0) {
+                    html += `<div style="margin-top:4px;font-size:7px;color:#5a8aaa;font-weight:700;">${offers.length} OFFER${offers.length > 1 ? 'S' : ''}</div>`;
+                    for (const o of offers.sort((a, b) => a.interest_rate - b.interest_rate)) {
+                        html += `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-top:1px solid var(--border-hair);">
+                            <span style="color:var(--text-primary);font-weight:700;">${o.interest_rate}%</span>
+                            <span style="color:var(--text-dim);">${o.collateral_type}</span>
+                            <span style="flex:1;"></span>
+                            <span style="padding:2px 8px;cursor:pointer;color:#000;background:#5a8aaa;font-weight:700;font-size:7px;" onclick="acceptOffer('${o.id}','${req.id}')">ACCEPT</span>
+                        </div>`;
+                    }
+                } else {
+                    html += '<div style="margin-top:2px;font-size:7px;color:var(--text-dim);">Awaiting offers from finance corporations...</div>';
+                }
+                html += '</div>';
+            }
+        }
+    }
+
+    if (activeLoans && activeLoans.length > 0) {
+        for (const loan of activeLoans) {
+            const statusColor = loan.status === 'current' ? 'var(--green)' : loan.status === 'late' ? '#c84' : '#c55';
+            const pctPaid = loan.term_months > 0 ? Math.round((loan.payments_made / loan.term_months) * 100) : 0;
+            const monthlyPayment = Number(loan.monthly_payment || 0);
+            const remainingPrincipal = Math.max(0, Number(loan.remaining_principal || 0));
+            const monthlyInterestPortion = Math.max(0, Math.min(monthlyPayment, monthlyInterest(remainingPrincipal, loan.interest_rate)));
+            const monthlyPrincipalPortion = principalPortion(monthlyPayment, monthlyInterestPortion);
+            const lenderName = loan.lender?.faction_name || 'Unknown bank';
+            const issuedDate = tickToDate(loan.started_tick);
+            html += `<div style="padding:6px 0;border-bottom:1px solid var(--border-hair);">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <span style="color:${statusColor};font-weight:700;">${loan.status.toUpperCase()}</span>
+                        <span style="color:var(--text-primary);margin-left:4px;">${fmtMoney(loan.principal)}</span>
+                        <span style="color:var(--text-dim);margin-left:4px;">@ ${loan.interest_rate}%</span>
+                    </div>
+                    <span style="color:var(--text-dim);">${pctPaid}% repaid</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:7px;color:var(--text-dim);">
+                    <span>Bank: <span style="color:var(--text-primary);">${escapeHtml(lenderName)}</span></span>
+                    <span>Issued: <span style="color:var(--text-primary);">${escapeHtml(issuedDate)}</span></span>
+                </div>
+                <div style="height:2px;background:var(--border-0);margin-top:3px;">
+                    <div style="height:100%;width:${pctPaid}%;background:${statusColor};"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:2px;font-size:7px;color:var(--text-dim);">
+                    <span>Total Monthly Payment (cash collected): ${fmtMoney(monthlyPayment)}/mo</span>
+                    <span>${loan.payments_made}/${loan.term_months} payments</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:1px;font-size:7px;color:var(--text-dim);">
+                    <span>Interest Portion (P&L revenue): ${fmtMoney(monthlyInterestPortion)}</span>
+                    <span>Principal Portion (asset repayment): ${fmtMoney(monthlyPrincipalPortion)}</span>
+                </div>
+            </div>`;
+        }
+    }
+
+    if (!html) html = '<div style="color:var(--text-dim);">No active loans.</div>';
+    container.innerHTML = html;
+    } catch (e) {
+        console.error('[Loans] loadLoansSection error:', e);
+    }
+}
+
+window.acceptOffer = acceptOffer;
+window.cancelRequest = cancelRequest;
 
 function renderStats(nationName, faction) {
     const nation = (nationName || '').toUpperCase();
@@ -1596,12 +2097,12 @@ function renderStats(nationName, faction) {
                             ${s.decay ? '<span class="stat-item__decay">DECAYS</span>' : ''}
                         </div>
                         <div class="stats-hero__right">
-                            <span class="stats-hero__val">${s.value}</span>
+                            <span class="stats-hero__val">${Math.round(s.value)}</span>
                             <span class="stats-hero__max">/100</span>
                             ${changeHtml(s.change)}
                         </div>
                     </div>
-                    <div class="stats-hero__bar"><div class="stats-hero__bar-fill" style="width:${s.value}%"></div></div>
+                    <div class="stats-hero__bar"><div class="stats-hero__bar-fill" style="width:${Math.min(100, s.value)}%"></div></div>
                 </div>`;
             continue;
         }
@@ -1621,7 +2122,7 @@ function renderStats(nationName, faction) {
                     ${s.nation ? '<span class="stat-item__nation">' + escapeHtml(s.nation) + '</span>' : ''}
                 </div>
                 <div class="stat-item__right">
-                    <span class="stat-item__val" style="color:${hasMax ? valColor(s.value, s.max) : 'var(--text-primary)'}">${typeof s.value === 'number' ? s.value.toLocaleString() : s.value}</span>
+                    <span class="stat-item__val" style="color:${hasMax ? valColor(s.value, s.max) : 'var(--text-primary)'}">${typeof s.value === 'number' ? (hasMax ? Math.round(s.value) : s.value.toLocaleString()) : s.value}</span>
                     ${hasMax ? '<span class="stat-item__max">/100</span>' : ''}
                     ${changeHtml(s.change)}
                 </div>
@@ -1660,8 +2161,19 @@ async function renderProperty(nation, nationName, factionData, shard) {
                    + Number(factionData?.corp_skilled_workforce ?? 0)
                    + Number(factionData?.corp_innovative_workforce ?? 0);
     const hqCapacity = 500;
-    const totalCapacity = hqCapacity + ownedProps.reduce((sum, p) => sum + Number(p.capacity || 0), 0);
-    const hqAllocated = totalCapacity > 0 ? Math.round(totalWf * (hqCapacity / totalCapacity)) : totalWf;
+    // Per-building workforce allocation must use EFFECTIVE (condition-scaled)
+    // capacity, not raw. Otherwise a refurb at 74% condition still shows up
+    // as "500 capacity" in the denominator, and its reduced workforce cap
+    // gets spread evenly across every building — making the HQ look
+    // undersupplied when it's actually full and the refurb is the real
+    // bottleneck. Matches hfGetCapacity() in corp-operations.html:9487.
+    const propEffectiveCaps = ownedProps.map(p => {
+        const cap = Number(p.capacity || 0);
+        const cond = Number(p.condition || 0) / 100;
+        return Math.floor(cap * cond);
+    });
+    const totalCapacity = hqCapacity + propEffectiveCaps.reduce((sum, c) => sum + c, 0);
+    const hqAllocated = totalCapacity > 0 ? Math.min(totalWf, Math.round(totalWf * (hqCapacity / totalCapacity))) : totalWf;
 
     // National HQ always present — value scales with nation stats
     const hqBaseCost = 50000000; // $50M base for a 500 capacity HQ
@@ -1702,13 +2214,18 @@ async function renderProperty(nation, nationName, factionData, shard) {
     </div>`;
 
     let allocatedSoFar = hqAllocated;
-    for (const prop of ownedProps) {
+    for (let i = 0; i < ownedProps.length; i++) {
+        const prop = ownedProps[i];
         const sm = NP_STYLE_META[prop.style] || NP_STYLE_META.Basic;
         totalValue += Number(prop.purchase_price || 0);
         totalMaint += Number(prop.monthly_maintenance || 0);
         const condColor = prop.condition >= 75 ? 'var(--green)' : prop.condition >= 50 ? 'var(--amber)' : 'var(--orange)';
         const propCap = Number(prop.capacity || 0);
-        const propAllocated = totalCapacity > 0 ? Math.min(totalWf - allocatedSoFar, Math.round(totalWf * (propCap / totalCapacity))) : 0;
+        // Allocation uses EFFECTIVE (condition-scaled) capacity so a refurb
+        // at 74% shows a reduced workforce share and the HQ gets its full
+        // slice. See the effective-cap comment above on totalCapacity.
+        const propEffective = propEffectiveCaps[i] || 0;
+        const propAllocated = totalCapacity > 0 ? Math.min(totalWf - allocatedSoFar, Math.round(totalWf * (propEffective / totalCapacity))) : 0;
         allocatedSoFar += propAllocated;
 
         propsHtml += `
@@ -1718,7 +2235,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
                     <div class="prop-asset__name">${escapeHtml(prop.name)}</div>
                     <div style="font-size:9px;color:var(--text-dim);margin-top:1px;">${escapeHtml(prop.city || natUp)} · ${(prop.type || '').replace(/_/g, ' ')} · <span style="color:${sm.color}">${(prop.style || 'Basic').toUpperCase()}</span></div>
                 </div>
-                <span class="prop-asset__badge">OWNED</span>
+                <span class="prop-asset__badge" ${['branch_office','trading_floor','claims_office'].includes(prop.type) ? 'style="background:rgba(138,106,170,0.12);color:#8a6aaa;border-color:rgba(138,106,170,0.3);"' : ''}>${['branch_office','trading_floor','claims_office'].includes(prop.type) ? prop.type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) : 'OWNED'}</span>
             </div>
             <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-hair);margin:4px 0;">
                 <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
@@ -1747,16 +2264,235 @@ async function renderProperty(nation, nationName, factionData, shard) {
                 ? `<div style="margin-top:4px;padding:3px 6px;background:var(--amber-faint, rgba(176,154,91,0.08));border:1px solid var(--amber-border, rgba(176,154,91,0.2));font-size:8px;font-family:var(--font-mono);color:var(--amber, #b09a5b);text-align:center;">REFURBISHING — ${prop.refurbish_until_tick - (shard?.current_tick || 0)} tick${prop.refurbish_until_tick - (shard?.current_tick || 0) !== 1 ? 's' : ''} remaining</div>`
                 : `<div style="display:flex;gap:4px;margin-top:4px;">
                 <button class="prop-action-btn prop-action-btn--sell" onclick="showSellModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.purchase_price || 0},${prop.condition})">SELL</button>
-                <button class="prop-action-btn prop-action-btn--refurbish" onclick="showRefurbishModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.condition},${propCap})">REFURBISH</button>
+                <button class="prop-action-btn prop-action-btn--refurbish" onclick="showRefurbishModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.condition},${prop.purchase_price || 0},${prop.refurbish_count || 0})">REFURBISH</button>
+                ${factionData?.corp_sector === 'Finance' && (prop.type === 'office' || prop.type === 'regional_hq') && !['branch_office','trading_floor','claims_office'].includes(prop.type)
+                    ? `<button class="prop-action-btn" style="background:rgba(138,106,170,0.08);border-color:rgba(138,106,170,0.2);color:#8a6aaa;" onclick="showConvertModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.purchase_price || 0})">CONVERT</button>`
+                    : ''}
             </div>`}
         </div>`;
     }
 
+    // ── Construction Projects (commissioned by this corp) ──
+    let cpHtml = '';
+    let commissionedProjects = [];
+    if (factionData?.id) {
+        const { data: cpData } = await _supabase
+            .from('construction_contracts')
+            .select('*, contract_bids(id, faction_id, bid_price, estimated_quality, estimated_cost, labor_count, markup_pct, material_grades, submitted_at_tick, status, factions!faction_id(faction_name, abbreviation, corp_reputation))')
+            .eq('issuer_faction_id', factionData.id)
+            .in('status', ['open', 'bidding', 'awarded', 'in_progress'])
+            .order('generated_at_tick', { ascending: false });
+        commissionedProjects = cpData || [];
+
+        // Also load active events for in_progress projects
+        let eventMap = {};
+        const ipIds = commissionedProjects.filter(c => c.status === 'in_progress').map(c => c.id);
+        if (ipIds.length > 0) {
+            const { data: events } = await _supabase
+                .from('construction_events')
+                .select('contract_id, status, severity, title')
+                .in('contract_id', ipIds)
+                .eq('status', 'ACTIVE');
+            for (const ev of (events || [])) {
+                if (!eventMap[ev.contract_id]) eventMap[ev.contract_id] = [];
+                eventMap[ev.contract_id].push(ev);
+            }
+        }
+
+        if (commissionedProjects.length > 0) {
+            const CP_STATUS = {
+                open:        { label: 'OPEN',        color: '#5a8aaa' },
+                bidding:     { label: 'BIDDING',     color: '#c8a832' },
+                awarded:     { label: 'AWARDED',     color: '#8b9a6b' },
+                in_progress: { label: 'IN PROGRESS', color: '#5aaa8b' },
+            };
+            const SEV_COLOR = { LOW: '#ca5', MODERATE: '#c84', HIGH: '#c55', CRITICAL: '#f44' };
+
+            cpHtml = `<div class="cp-section">
+                <div class="cp-section__header">
+                    <span class="cp-section__title">Construction Projects</span>
+                    <span class="cp-section__count">${commissionedProjects.length} ACTIVE</span>
+                </div>`;
+
+            for (const cp of commissionedProjects) {
+                const st = CP_STATUS[cp.status] || CP_STATUS.open;
+                const bids = (cp.contract_bids || []).filter(b => b.status === 'pending');
+                const wonBid = (cp.contract_bids || []).find(b => b.status === 'won');
+                const currentTick = shard?.current_tick || 0;
+                const events = eventMap[cp.id] || [];
+                const nationName_ = cp.nation_id === factionData.nation_id ? natUp : '';
+
+                cpHtml += `<div class="cp-item">
+                    <div class="cp-item__top">
+                        <div>
+                            <div class="cp-item__name">${escapeHtml(cp.name)}</div>
+                            <div class="cp-item__sub">${escapeHtml(cp.project_code || '')} · ${escapeHtml(cp.sector || '')}${nationName_ ? ' · ' + escapeHtml(nationName_) : ''}</div>
+                        </div>
+                        <span class="cp-badge" style="color:${st.color};border-color:${st.color}40;background:${st.color}08;">${st.label}</span>
+                    </div>
+                    <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-hair);margin:2px 0;">
+                        <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
+                            <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">BUDGET</div>
+                            <div style="font-size:10px;font-weight:700;color:var(--gold);font-family:var(--font-mono);">${fmtMoney(cp.budget_ceiling || 0)}</div>
+                        </div>
+                        <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-hair);">
+                            <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">TIMELINE</div>
+                            <div style="font-size:10px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">${cp.timeline_ticks || '?'} ticks</div>
+                        </div>
+                        <div style="flex:1;padding:3px 6px;">
+                            <div style="font-size:7px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">BIDS</div>
+                            <div style="font-size:10px;font-weight:700;color:${bids.length > 0 ? 'var(--amber)' : 'var(--text-dim)'};font-family:var(--font-mono);">${(cp.contract_bids || []).length}</div>
+                        </div>
+                    </div>`;
+
+                // Builder info + progress for awarded / in_progress
+                if ((cp.status === 'awarded' || cp.status === 'in_progress') && wonBid) {
+                    const builderRep = Number(wonBid.factions?.corp_reputation ?? 50);
+                    const repColor = builderRep >= 70 ? '#5c5' : builderRep >= 40 ? '#ca5' : '#c55';
+                    const qColor = wonBid.estimated_quality >= 75 ? '#5c5' : wonBid.estimated_quality >= 50 ? '#ca5' : '#c55';
+
+                    cpHtml += `<div style="margin-top:6px;padding:6px 8px;background:var(--bg-3);border:1px solid var(--border-hair);">
+                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.8px;margin-bottom:3px;">CONTRACTOR</div>
+                        <div style="font-size:10px;font-weight:600;color:var(--text-bright);margin-bottom:4px;">${escapeHtml(wonBid.factions?.faction_name || 'Unknown')}</div>
+                        <div style="display:flex;gap:0;">
+                            <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">BID</div>
+                                <div style="font-size:9px;font-weight:700;color:var(--gold);font-family:var(--font-mono);">${fmtMoney(wonBid.bid_price)}</div>
+                            </div>
+                            <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">QUALITY</div>
+                                <div style="font-size:9px;font-weight:700;color:${qColor};font-family:var(--font-mono);">${wonBid.estimated_quality}/100</div>
+                            </div>
+                            <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">WORKERS</div>
+                                <div style="font-size:9px;font-weight:700;color:var(--blue);font-family:var(--font-mono);">${wonBid.labor_count}</div>
+                            </div>
+                            <div style="flex:1;padding:2px 4px;">
+                                <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">REPUTATION</div>
+                                <div style="font-size:9px;font-weight:700;color:${repColor};font-family:var(--font-mono);">${builderRep}/100</div>
+                            </div>
+                        </div>`;
+
+                    if (cp.status === 'in_progress' && cp.awarded_at_tick != null) {
+                        const elapsed = currentTick - cp.awarded_at_tick;
+                        const total = cp.timeline_ticks || 1;
+                        const stalled = cp.stalled_ticks || 0;
+                        const pct = Math.min(100, Math.round((elapsed / (total + stalled)) * 100));
+                        const pctColor = pct >= 75 ? '#5c5' : pct >= 40 ? '#ca5' : '#5aaa8b';
+                        const ticksRemaining = Math.max(0, (total + stalled) - elapsed);
+                        cpHtml += `<div style="display:flex;justify-content:space-between;font-size:8px;font-family:var(--font-mono);margin-top:6px;">
+                            <span style="color:var(--text-dim);">PROGRESS</span>
+                            <span style="color:${pctColor};">${pct}%${stalled > 0 ? ' · ' + stalled + ' stalled' : ''} · ${ticksRemaining} tick${ticksRemaining !== 1 ? 's' : ''} left</span>
+                        </div>
+                        <div class="cp-progress"><div class="cp-progress__bar" style="width:${pct}%;background:${pctColor};"></div></div>`;
+                    } else {
+                        cpHtml += `<div style="font-size:8px;font-family:var(--font-mono);color:var(--amber);margin-top:6px;text-align:center;">Awarded — construction begins next tick</div>`;
+                    }
+
+                    cpHtml += '</div>';
+                }
+
+                // Events / alerts
+                if (events.length > 0) {
+                    for (const ev of events) {
+                        const sc = SEV_COLOR[ev.severity] || '#ca5';
+                        cpHtml += `<div style="display:flex;align-items:center;gap:5px;margin-top:4px;padding:3px 6px;background:${sc}08;border:1px solid ${sc}20;">
+                            <span class="cp-badge" style="color:${sc};border-color:${sc}40;background:${sc}12;">${ev.severity}</span>
+                            <span style="font-size:8px;font-family:var(--font-mono);color:${sc};">${escapeHtml(ev.title)}</span>
+                        </div>`;
+                    }
+                }
+
+                // Pending bids — clickable with expandable detail
+                if ((cp.status === 'open' || cp.status === 'bidding') && bids.length > 0) {
+                    for (let bi = 0; bi < bids.length; bi++) {
+                        const bid = bids[bi];
+                        const bidUid = cp.id.slice(0,8) + '-' + bi;
+                        const rep = Number(bid.factions?.corp_reputation ?? 50);
+                        const repColor = rep >= 70 ? '#5c5' : rep >= 40 ? '#ca5' : '#c55';
+                        const qColor = bid.estimated_quality >= 75 ? '#5c5' : bid.estimated_quality >= 50 ? '#ca5' : '#c55';
+                        const markupColor = bid.markup_pct <= 10 ? '#5c5' : bid.markup_pct <= 20 ? '#ca5' : '#c55';
+                        const matGrades = bid.material_grades || {};
+                        const gradeEntries = Object.entries(matGrades);
+                        const fmtGradeKey = (k) => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                        const gradeColor = (g) => g === 'HIGH' ? '#5c5' : g === 'LOW' ? '#c55' : 'var(--text-muted)';
+
+                        cpHtml += `<div class="cp-bid" style="flex-direction:column;gap:0;padding:0;cursor:pointer;" onclick="cpToggleBid('${bidUid}')">
+                            <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;">
+                                <span style="flex:1;font-size:8px;font-family:var(--font-mono);color:var(--text-muted);">
+                                    ${escapeHtml(bid.factions?.faction_name || 'Unknown')}
+                                    · <span style="color:var(--gold);">${fmtMoney(bid.bid_price)}</span>
+                                    · Q: <span style="color:${qColor};">${bid.estimated_quality}</span>
+                                </span>
+                                <span class="cp-bid__btn" style="color:#5c5;border-color:#5c540;background:#5c508;" onclick="event.stopPropagation();cpAcceptBid('${cp.id}','${bid.id}','${escapeHtml((bid.factions?.faction_name || '').replace(/'/g, ''))}',${bid.bid_price},${bid.estimated_quality},${bid.labor_count},'${bid.faction_id}')">ACCEPT</span>
+                            </div>
+                            <div id="cp-bid-${bidUid}" style="display:none;padding:4px 8px 6px;border-top:1px solid var(--border-hair);background: var(--border-hair);">
+                                <div style="display:flex;gap:0;margin-bottom:4px;">
+                                    <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">BID PRICE</div>
+                                        <div style="font-size:9px;font-weight:700;color:var(--gold);font-family:var(--font-mono);">${fmtMoney(bid.bid_price)}</div>
+                                    </div>
+                                    <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">EST. COST</div>
+                                        <div style="font-size:9px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">${fmtMoney(bid.estimated_cost || 0)}</div>
+                                    </div>
+                                    <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">MARKUP</div>
+                                        <div style="font-size:9px;font-weight:700;color:${markupColor};font-family:var(--font-mono);">${bid.markup_pct}%</div>
+                                    </div>
+                                    <div style="flex:1;padding:2px 4px;">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">QUALITY</div>
+                                        <div style="font-size:9px;font-weight:700;color:${qColor};font-family:var(--font-mono);">${bid.estimated_quality}/100</div>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:0;margin-bottom:4px;">
+                                    <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">WORKERS</div>
+                                        <div style="font-size:9px;font-weight:700;color:var(--blue);font-family:var(--font-mono);">${bid.labor_count}</div>
+                                    </div>
+                                    <div style="flex:1;padding:2px 4px;border-right:1px solid var(--border-hair);">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">REPUTATION</div>
+                                        <div style="font-size:9px;font-weight:700;color:${repColor};font-family:var(--font-mono);">${rep}/100</div>
+                                    </div>
+                                    <div style="flex:2;padding:2px 4px;">
+                                        <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;">BIDDER</div>
+                                        <div style="font-size:9px;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">${escapeHtml(bid.factions?.faction_name || 'Unknown')}</div>
+                                    </div>
+                                </div>
+                                ${gradeEntries.length > 0 ? `<div style="padding:2px 4px;">
+                                    <div style="font-size:6px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.5px;margin-bottom:2px;">MATERIAL GRADES</div>
+                                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                        ${gradeEntries.map(([k, g]) => `<span style="font-size:7px;font-family:var(--font-mono);color:${gradeColor(g)};">${fmtGradeKey(k)}: ${g}</span>`).join('')}
+                                    </div>
+                                </div>` : ''}
+                            </div>
+                        </div>`;
+                    }
+                }
+
+                // No bids yet
+                if ((cp.status === 'open' || cp.status === 'bidding') && bids.length === 0) {
+                    const ticksLeft = (cp.bidding_ends_tick || 0) - (shard?.current_tick || 0);
+                    cpHtml += `<div style="font-size:8px;font-family:var(--font-mono);color:var(--text-dim);margin-top:4px;text-align:center;">
+                        Awaiting bids${ticksLeft > 0 ? ' · ' + ticksLeft + ' tick' + (ticksLeft !== 1 ? 's' : '') + ' remaining' : ''}
+                    </div>`;
+                }
+
+                cpHtml += '</div>';
+            }
+            cpHtml += '</div>';
+        }
+    }
+
     const propCountEl = document.getElementById('prop-count');
-    if (propCountEl) propCountEl.textContent = (ownedProps.length + 1) + ' ASSET' + (ownedProps.length + 1 !== 1 ? 'S' : '');
+    const assetCount = ownedProps.length + 1;
+    const projectCount = commissionedProjects.length;
+    const countLabel = assetCount + ' ASSET' + (assetCount !== 1 ? 'S' : '') + (projectCount > 0 ? ' · ' + projectCount + ' PROJECT' + (projectCount !== 1 ? 'S' : '') : '');
+    if (propCountEl) propCountEl.textContent = countLabel;
 
     document.getElementById('prop-body').innerHTML = `
         ${propsHtml}
+        ${cpHtml}
         <div style="flex:1;"></div>
         <div class="prop-total">
             <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
@@ -1770,10 +2506,21 @@ async function renderProperty(nation, nationName, factionData, shard) {
         </div>
     `;
 
-    return { propertyValue: totalValue, propertyMaintenance: totalMaint };
+    // Calculate property revenue bonus: $50/seat/month at good condition
+    let propertyRevBonus = 0;
+    // HQ contributes at full condition
+    propertyRevBonus += Math.round(hqCapacity * 50);
+    for (const p of ownedProps) {
+        if (p.refurbish_until_tick && (shard?.current_tick || 0) < p.refurbish_until_tick) continue;
+        const cond = Number(p.condition || 0) / 100;
+        if (cond >= 0.6) {
+            propertyRevBonus += Math.round(Number(p.capacity || 0) * cond * 50);
+        }
+    }
+    return { propertyValue: totalValue, propertyMaintenance: totalMaint, totalCapacity, propertyRevBonus };
 }
 
-function renderValuation(nation, nationName, faction, wfData, propData) {
+async function renderValuation(nation, nationName, faction, wfData, propData, equipmentValue = 0) {
     const s = (key) => getNationStat(nation, key);
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
     const companyType = faction.corp_company_type || 'Private';
@@ -1781,8 +2528,21 @@ function renderValuation(nation, nationName, faction, wfData, propData) {
     // Assets — read from DB columns (set at corp creation, scaled by currency strength)
     const cashReserves = Number(faction.corp_cash_reserves) || 0;
     const propertyValue = propData?.propertyValue || 0;
-    const equipmentValue = 0;
-    const activeContracts = 0;
+    // Active Contracts / Finance Receivables: principal value of lender-side
+    // positions that remain collectible.
+    let receivableBreakdown = { loans: 0, bonds: 0, insurance: 0, total: 0 };
+    if (faction?.id && faction.corp_sector === 'Finance') {
+        try {
+            const { data: finLoans } = await _supabase.from('finance_active_loans')
+                .select('principal, remaining_principal, finance_loan_requests!inner(request_type)')
+                .eq('lender_faction_id', faction.id)
+                .in('status', ['current', 'late', 'delinquent']);
+            receivableBreakdown = computeFinanceReceivableValue(finLoans || []);
+        } catch (err) {
+            console.warn('[Valuation] finance_active_loans lookup failed:', err);
+        }
+    }
+    const activeContracts = receivableBreakdown.total;
     const totalAssets = cashReserves + propertyValue + equipmentValue + activeContracts;
 
     // Liabilities
@@ -1792,14 +2552,17 @@ function renderValuation(nation, nationName, faction, wfData, propData) {
     const pendingProjectCosts = 0;
     const totalLiabilities = outstandingLoans + accountsPayable + pendingProjectCosts;
 
-    // Net Worth
-    const netWorth = totalAssets - totalLiabilities;
-
-    // Market Valuation — based on net worth + demand modifier
-    // Demand: count corps in this subsector in this nation
-    const demandBonus = 0.30; // HIGH demand (0-1 corps) — will be dynamic later
-    const valuation = Math.round(netWorth * (1 + demandBonus));
-    const valuationDelta = valuation - netWorth;
+    // Net Worth + Market Valuation from shared valuation module.
+    const basis = computeCorpValuationBreakdown({
+        cash: cashReserves,
+        propertyValue,
+        equipmentValue,
+        loans: totalLiabilities,
+        financeReceivables: activeContracts,
+    });
+    const netWorth = basis.valuationBasis;
+    const valuation = basis.valuation;
+    const valuationDelta = valuation - basis.valuationBasis;
     const valuationAbove = valuationDelta > 0;
 
     document.getElementById('val-type-badge').textContent = companyType.toUpperCase();
@@ -1817,7 +2580,8 @@ function renderValuation(nation, nationName, faction, wfData, propData) {
         ${line('Cash & Reserves', cashReserves, { indent: true })}
         ${line('Property', propertyValue, { indent: true })}
         ${line('Equipment', equipmentValue, { indent: true })}
-        ${line('Active Contracts', activeContracts, { indent: true })}
+        ${line('Finance Receivables (Loans + Bonds)', activeContracts, { indent: true })}
+        ${line('Insurance Coverage (excluded)', receivableBreakdown.insurance, { indent: true, color: 'var(--text-dim)' })}
         ${line('Total Assets', totalAssets, { bold: true, color: 'var(--green)' })}
 
         <div class="val-section-hdr"><span class="val-section-hdr__label" style="color:var(--red);">Liabilities</span></div>
@@ -1825,6 +2589,9 @@ function renderValuation(nation, nationName, faction, wfData, propData) {
         ${line('Accounts Payable', accountsPayable, { indent: true })}
         ${line('Pending Project Costs', pendingProjectCosts, { indent: true })}
         ${line('Total Liabilities', totalLiabilities, { bold: true, color: 'var(--red)' })}
+
+        <div class="val-section-hdr"><span class="val-section-hdr__label">Reconciliation</span></div>
+        ${line('Cash + Property + Equipment + Receivables - Liabilities', basis.valuationBasis, { indent: true })}
 
         <div class="val-net">
             <span class="val-net__label">Net Worth</span>
@@ -1868,19 +2635,6 @@ function updateCountdown() {
     el.textContent = h + 'h ' + m + 'm ' + s + 's';
 }
 
-// ── Theme toggle ──
-function toggleTheme() {
-    document.body.classList.toggle('light-mode');
-    const btn = document.getElementById('theme-toggle');
-    btn.textContent = document.body.classList.contains('light-mode') ? 'Dark' : 'Light';
-    localStorage.setItem('nationhood_theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
-}
-// Restore theme on load
-if (localStorage.getItem('nationhood_theme') === 'light') {
-    document.body.classList.add('light-mode');
-    const btn = document.getElementById('theme-toggle');
-    if (btn) btn.textContent = 'Dark';
-}
 
 async function saveSlogan() {
     const input = document.getElementById('slogan-input');
@@ -1946,132 +2700,47 @@ document.addEventListener('click', (e) => {
 });
 
 window.doLogout = doLogout;
-window.toggleTheme = toggleTheme;
-window.saveSlogan = saveSlogan;
-window.toggleCorpDropdown = toggleCorpDropdown;
-window.switchToFaction = switchToFaction;
+async function handleCorpLogoUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 128 * 1024) { alert('Logo must be under 128KB.'); return; }
 
-// ==================== DISSOLVE CORPORATION ====================
+    const factionId = window._corpFactionId;
+    if (!factionId) return;
 
-let _dissolving = false;
-
-async function dissolveCorporation() {
-    if (_dissolving) { console.warn('Dissolve already in progress'); return; }
-    const { data: { user } } = await _supabase.auth.getUser();
-    if (!user) { alert('Not logged in.'); return; }
-
-    const factionId = sessionStorage.getItem('active_faction_id');
-    if (!factionId) { alert('No active faction selected.'); return; }
-
-    // Find the active corp faction — fetch fresh from DB to avoid stale cache
-    const { data: freshCorp, error: corpErr } = await _supabase
-        .from('factions')
-        .select('*')
-        .eq('id', factionId)
-        .eq('faction_type', 'corporation')
-        .is('abandoned_at', null)
-        .single();
-
-    if (corpErr || !freshCorp) {
-        alert('No active corporation found. It may have already been dissolved.');
-        console.error('Dissolve lookup failed:', corpErr?.message, 'factionId:', factionId);
-        return;
-    }
-    const corp = freshCorp;
-
-    const corpName = corp.faction_name || 'this corporation';
-
-    // Two-step confirmation
-    if (!confirm(
-        'DISSOLVE ' + corpName.toUpperCase() + '?\n\n' +
-        'This will permanently:\n' +
-        '• Remove the corporation from the game\n' +
-        '• Delete all properties, equipment, and inventory\n' +
-        '• Remove all cash reserves\n' +
-        '• Outstanding debts and active projects will remain\n\n' +
-        'This action CANNOT be undone.'
-    )) return;
-
-    const typed = prompt('Type "DISSOLVE" to confirm permanent dissolution of ' + corpName + ':');
-    if (typed !== 'DISSOLVE') { alert('Dissolution cancelled.'); return; }
-
-    _dissolving = true;
-    const btn = document.getElementById('dissolve-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'DISSOLVING...'; btn.style.opacity = '0.5'; }
+    const label = document.getElementById('corp-logo-label');
+    if (label) label.textContent = 'Uploading...';
 
     try {
-        // Helper: run a Supabase mutation and throw on error
-        async function run(op) {
-            const { error } = await op;
-            if (error) throw error;
-        }
+        const ext = file.name.split('.').pop() || 'png';
+        const filePath = `party-logos/${factionId}/${Date.now()}.${ext}`;
+        const { error: uploadErr } = await _supabase.storage
+            .from('public-assets')
+            .upload(filePath, file, { contentType: file.type, upsert: true });
+        if (uploadErr) throw uploadErr;
 
-        // 1. Delete all bids this corp has submitted
-        await run(_supabase.from('contract_bids').delete().eq('faction_id', factionId));
+        const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
+        const logoUrl = urlData?.publicUrl || null;
 
-        // 2. Expire any open contracts this corp issued (not in-progress — those stay)
-        await run(_supabase.from('construction_contracts')
-            .update({ status: 'expired' })
-            .eq('issuer_faction_id', factionId)
-            .in('status', ['open', 'bidding']));
+        await _supabase.from('factions').update({ custom_logo_url: logoUrl }).eq('id', factionId);
 
-        // 3. Delete equipment and deliveries
-        await run(_supabase.from('corp_equipment_deliveries').delete().eq('faction_id', factionId));
-        await run(_supabase.from('corp_equipment').delete().eq('faction_id', factionId));
-
-        // 4. Delete properties
-        await run(_supabase.from('corp_properties').delete().eq('faction_id', factionId));
-
-        // 5. Delete warehouse / material inventory (tables may not exist yet)
-        await _supabase.from('corp_material_inventory').delete().eq('faction_id', factionId);
-        await _supabase.from('corp_warehouse').delete().eq('faction_id', factionId);
-
-        // 6. Mark as dissolved — zero out cash/employees but keep debts + active projects
-        await run(_supabase.from('factions').update({
-            abandoned_at: new Date().toISOString(),
-            corp_cash_reserves: 0,
-            corp_general_workforce: 0,
-            corp_skilled_workforce: 0,
-            corp_innovative_workforce: 0,
-            action_points: 0,
-        }).eq('id', factionId));
-
-        // 7. Clear session and redirect
-        sessionStorage.removeItem('active_faction_id');
-        sessionStorage.removeItem('nationhood_state');
-
-        // Check if user still has other active factions
-        const { data: remaining, error: remainErr } = await _supabase
-            .from('factions')
-            .select('id, faction_type')
-            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
-            .is('abandoned_at', null);
-        if (remainErr) console.warn('Failed to check remaining factions:', remainErr.message);
-
-        const party = (remaining || []).find(f => f.faction_type === 'party');
-        const otherCorp = (remaining || []).find(f => f.faction_type === 'corporation');
-
-        if (party) {
-            sessionStorage.setItem('active_faction_id', party.id);
-            alert(corpName + ' has been dissolved.\n\nRedirecting to your political party.');
-            window.location.href = 'dashboard.html';
-        } else if (otherCorp) {
-            sessionStorage.setItem('active_faction_id', otherCorp.id);
-            alert(corpName + ' has been dissolved.\n\nRedirecting to your other corporation.');
-            window.location.href = 'corp-dashboard.html';
-        } else {
-            alert(corpName + ' has been dissolved.\n\nYou have no remaining factions.');
-            window.location.href = 'faction-select.html';
-        }
+        // Update display immediately
+        const logoEl = document.getElementById('id-logo');
+        if (logoEl) logoEl.innerHTML = `<img src="${logoUrl}" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:4px;">`;
+        // Update top bar logo too
+        const topLogo = document.getElementById('corp-logo');
+        if (topLogo) topLogo.innerHTML = `<img src="${logoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:5px;">`;
+        if (label) label.textContent = 'Change Logo';
     } catch (err) {
-        alert('Dissolution failed: ' + (err.message || err) + '\n\nPlease try again or contact support.');
-        if (btn) { btn.disabled = false; btn.textContent = 'Dissolve Corporation'; btn.style.opacity = '1'; }
-    } finally {
-        _dissolving = false;
+        console.error('Logo upload failed:', err);
+        alert('Upload failed: ' + (err.message || 'Unknown error'));
+        if (label) label.textContent = 'Upload Logo';
     }
 }
 
-window.dissolveCorporation = dissolveCorporation;
+window.saveSlogan = saveSlogan;
+window.toggleCorpDropdown = toggleCorpDropdown;
+window.switchToFaction = switchToFaction;
 
 // ==================== SELL PROPERTY ====================
 
@@ -2167,70 +2836,53 @@ async function confirmSellProperty(propId, salePrice) {
 
 let _refurbInProgress = false;
 
-function showRefurbishModal(propId, propName, condition, capacity) {
+function showRefurbishModal(propId, propName, condition, purchasePrice, refurbishCount) {
     if (_refurbInProgress) return;
     const nation = window._nationStats;
     const faction = window._factionData;
     const inflation = getNationStat(nation, 'inflation');
-
-    // Cost: $2M base per 1000 capacity × inflation modifier
     const inflationMod = 1 + (inflation - 50) / 100 * 0.3;
-    const baseCost = Math.round(2_000_000 * (capacity / 1000));
-    const refurbishCost = Math.round(baseCost * inflationMod);
+    const refurbishCost = computeRefurbishCost({ purchase_price: purchasePrice, refurbish_count: refurbishCount }, inflationMod);
 
-    // Workforce required: 10% of property capacity (general workers)
-    const workforceNeeded = Math.max(50, Math.round(capacity * 0.10));
-    const availableGeneral = Number(faction?.corp_general_workforce ?? 0);
-    const hasWorkforce = availableGeneral >= workforceNeeded;
-
-    // Cash check
     const cashReserves = Number(faction?.corp_cash_reserves ?? 0);
     const hasCash = cashReserves >= refurbishCost;
 
-    // Duration: 1d6 ticks (shown as range since roll happens on confirm)
-    // Outcome: condition restored to 94-100% (1d6: roll of 1 = 94%, roll of 6 = 100%)
-
     const overlay = document.getElementById('prop-modal-overlay');
     const content = document.getElementById('prop-modal-content');
-    const canRefurbish = hasWorkforce && hasCash && condition < 100;
+    const canRefurbish = hasCash && condition < 95;
 
     let warningHtml = '';
-    if (condition >= 100) warningHtml = '<div style="color:var(--green);font-size:9px;margin-bottom:8px;">Property is already at 100% condition.</div>';
+    if (condition >= 95) warningHtml = '<div style="color:var(--green);font-size:9px;margin-bottom:8px;">Property already at excellent condition (' + condition + '%).</div>';
     else if (!hasCash) warningHtml = '<div style="color:var(--red);font-size:9px;margin-bottom:8px;">Insufficient cash reserves.</div>';
-    else if (!hasWorkforce) warningHtml = '<div style="color:var(--red);font-size:9px;margin-bottom:8px;">Insufficient general workforce (need ' + workforceNeeded.toLocaleString() + ', have ' + availableGeneral.toLocaleString() + ').</div>';
 
     content.innerHTML = `
         <div style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary);">Refurbish Property</div>
-        <div style="font-size:10px;color:var(--text-dim);margin-bottom:12px;">${escapeHtml(propName)} — Current Condition: ${condition}%</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:12px;">${escapeHtml(propName)} — Refurbishment #${refurbishCount + 1} — Current Condition: ${condition}%</div>
         ${warningHtml}
         <div style="background:var(--bg-3);border:1px solid var(--border-hair);padding:8px;margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
-                <span style="color:var(--text-dim);">Cost</span>
+                <span style="color:var(--text-dim);">Cost${refurbishCount > 0 ? ` (1.25<sup>${refurbishCount}</sup> ×)` : ''}</span>
                 <span style="color:${hasCash ? 'var(--gold, #c8a832)' : 'var(--red)'};">${fmtMoney(refurbishCost)}</span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
-                <span style="color:var(--text-dim);">Workforce Required</span>
-                <span style="color:${hasWorkforce ? 'var(--blue)' : 'var(--red)'};">${workforceNeeded.toLocaleString()} General</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
                 <span style="color:var(--text-dim);">Duration</span>
-                <span style="color:var(--amber, #b09a5b);">1–6 ticks</span>
+                <span style="color:var(--amber, #b09a5b);">4–9 ticks</span>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);">
                 <span style="color:var(--text-dim);">Outcome</span>
-                <span style="color:var(--green);">Condition → 94–100%</span>
+                <span style="color:var(--green);">Condition → 95–98%</span>
             </div>
         </div>
         <div style="display:flex;gap:6px;">
             <button class="prop-modal-btn prop-modal-btn--cancel" onclick="closePropModal()">Cancel</button>
-            <button class="prop-modal-btn prop-modal-btn--confirm" id="prop-refurb-confirm" onclick="confirmRefurbish('${propId}', ${refurbishCost}, ${workforceNeeded})" ${canRefurbish ? '' : 'disabled'}>Begin Refurbishment</button>
+            <button class="prop-modal-btn prop-modal-btn--confirm" id="prop-refurb-confirm" onclick="confirmRefurbish('${propId}', ${purchasePrice}, ${refurbishCount}, ${condition})" ${canRefurbish ? '' : 'disabled'}>Begin Refurbishment</button>
         </div>
     `;
 
     overlay.style.display = 'flex';
 }
 
-async function confirmRefurbish(propId, cost, workforceNeeded) {
+async function confirmRefurbish(propId, purchasePrice, refurbishCount, condition) {
     if (_refurbInProgress) return;
     _refurbInProgress = true;
     const btn = document.getElementById('prop-refurb-confirm');
@@ -2239,42 +2891,20 @@ async function confirmRefurbish(propId, cost, workforceNeeded) {
     try {
         const factionId = window._corpFactionId;
         const currentTick = window._currentTick;
+        const faction = window._factionData;
+        const nation = window._nationStats;
         if (!factionId) throw new Error('No faction');
 
-        // Roll 1d6 for duration and condition outcome
-        const durationRoll = Math.floor(Math.random() * 6) + 1; // 1-6
-        const conditionRoll = Math.floor(Math.random() * 6) + 1; // 1-6
-        const newCondition = 94 + conditionRoll; // 95-100 (1→95, 6→100)... wait, 94 + 1 = 95, 94 + 6 = 100
-        const untilTick = currentTick + durationRoll;
+        const inflation = getNationStat(nation, 'inflation');
+        const inflationMod = 1 + (inflation - 50) / 100 * 0.3;
+        const prop = { id: propId, purchase_price: purchasePrice, refurbish_count: refurbishCount, condition: condition };
+        const result = await startRefurbish(_supabase, factionId, prop, currentTick, inflationMod);
 
-        // Deduct cash
-        const { data: fData } = await _supabase
-            .from('factions')
-            .select('corp_cash_reserves')
-            .eq('id', factionId)
-            .single();
-        const currentCash = Number(fData?.corp_cash_reserves ?? 0);
-        if (currentCash < cost) throw new Error('Insufficient cash');
-
-        const { error: cashErr } = await _supabase
-            .from('factions')
-            .update({ corp_cash_reserves: currentCash - cost })
-            .eq('id', factionId);
-        if (cashErr) throw new Error('Failed to deduct cost: ' + cashErr.message);
-
-        // Set refurbish fields on property
-        const { error: propErr } = await _supabase
-            .from('corp_properties')
-            .update({
-                refurbish_until_tick: untilTick,
-                refurbish_condition: newCondition,
-            })
-            .eq('id', propId)
-            .eq('faction_id', factionId);
-        if (propErr) throw new Error('Failed to start refurbishment: ' + propErr.message);
+        if (!result.ok) throw new Error(result.error || 'Refurbishment failed.');
+        if (faction) faction.corp_cash_reserves = result.newCash;
 
         closePropModal();
-        alert('Refurbishment started! Duration: ' + durationRoll + ' tick' + (durationRoll !== 1 ? 's' : '') + '. Condition will be restored to ' + Math.min(100, newCondition) + '% when complete.');
+        alert(`Refurbishment started! Duration: ${result.duration} ticks. Target condition: ${result.targetCondition}%. Cost: ${fmtMoney(result.cost)}.`);
         location.reload();
     } catch (err) {
         alert('Refurbishment failed: ' + err.message);
@@ -2294,6 +2924,132 @@ window.confirmSellProperty = confirmSellProperty;
 window.showRefurbishModal = showRefurbishModal;
 window.confirmRefurbish = confirmRefurbish;
 window.closePropModal = closePropModal;
+window.showConvertModal = showConvertModal;
+window.confirmConvertProperty = confirmConvertProperty;
+
+// ── Construction Project Bid Accept ──
+let _cpAccepting = false;
+async function cpAcceptBid(contractId, bidId, corpName, bidPrice, quality, laborCount, bidFactionId) {
+    if (_cpAccepting) return;
+    if (!confirm(
+        'Accept bid from ' + corpName + '?\n\n' +
+        'Bid Price: ' + fmtMoney(bidPrice) + '\n' +
+        'Quality: ' + quality + '/100\n' +
+        'Workers: ' + laborCount + '\n\n' +
+        'This will award the contract. The project begins immediately.'
+    )) return;
+
+    _cpAccepting = true;
+    try {
+        const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardData?.current_tick || 0;
+
+        // Mark winning bid
+        const { error: e1 } = await _supabase.from('contract_bids').update({ status: 'won' }).eq('id', bidId);
+        if (e1) throw e1;
+
+        // Mark losing bids
+        const { error: e2 } = await _supabase.from('contract_bids')
+            .update({ status: 'lost' })
+            .eq('contract_id', contractId)
+            .neq('id', bidId);
+        if (e2) throw e2;
+
+        // Award contract
+        const { error: e3 } = await _supabase.from('construction_contracts').update({
+            status: 'awarded',
+            awarded_to_faction: bidFactionId,
+            awarded_at_tick: currentTick,
+        }).eq('id', contractId);
+        if (e3) throw e3;
+
+        alert('Contract awarded to ' + corpName + '!\n\nBid: ' + fmtMoney(bidPrice) + '\nProject begins immediately.');
+
+        // Refresh property card
+        if (window._nationStats && window._factionData && shard) {
+            await renderProperty(window._nationStats, window._nationStats?.name || '', window._factionData, shard);
+        }
+    } catch (err) {
+        alert('Failed to accept bid: ' + (err.message || err));
+    } finally {
+        _cpAccepting = false;
+    }
+}
+window.cpAcceptBid = cpAcceptBid;
+
+function cpToggleBid(bidUid) {
+    const el = document.getElementById('cp-bid-' + bidUid);
+    if (!el) return;
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+window.cpToggleBid = cpToggleBid;
+
+let _convertTargetType = 'branch_office';
+
+function showConvertModal(propId, propName, purchasePrice) {
+    const subsector = (faction?.corp_subsector || '').toLowerCase();
+    const options = subsector === 'banking' ? [['branch_office', 'Branch Office']]
+        : subsector === 'investment' ? [['trading_floor', 'Trading Floor']]
+        : subsector === 'insurance' ? [['claims_office', 'Claims Office'], ['insurance_office', 'Insurance Office']]
+        : [];
+    if (options.length === 0) return;
+    _convertTargetType = options[0][0];
+
+    const conversionCost = Math.round(purchasePrice * 0.15);
+    const conversionTicks = Math.floor(Math.random() * 6) + 4; // 1d6+3 = 4-9 ticks
+
+    const overlay = document.getElementById('prop-modal-overlay');
+    const content = document.getElementById('prop-modal-content');
+    content.innerHTML = `
+        <div style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary);">Convert Property</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;">${escapeHtml(propName)}</div>
+        <div style="display:flex;gap:4px;margin-bottom:10px;">
+            ${options.map(([key, label]) => `<span onclick="_convertTargetType='${key}';document.querySelectorAll('.conv-opt').forEach(e=>e.style.background='transparent');this.style.background='rgba(138,106,170,0.15)'" class="conv-opt" style="flex:1;text-align:center;padding:6px;font-family:var(--font-mono);font-size:9px;font-weight:700;cursor:pointer;border:1px solid rgba(138,106,170,0.3);color:#8a6aaa;${key === _convertTargetType ? 'background:rgba(138,106,170,0.15)' : ''}">${label}</span>`).join('')}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
+            <span style="color:var(--text-dim);">Conversion Cost</span>
+            <span style="color:var(--gold);">${fmtMoney(conversionCost)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--font-mono);margin-bottom:4px;">
+            <span style="color:var(--text-dim);">Conversion Time</span>
+            <span style="color:var(--text-bright);">${conversionTicks} ticks</span>
+        </div>
+        <div style="font-size:8px;color:var(--text-dim);margin:8px 0;font-family:var(--font-mono);line-height:1.5;">Property will be offline during conversion. No revenue or workforce allocation until complete.</div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;">
+            <button class="prop-action-btn prop-action-btn--sell" onclick="closePropModal()">Cancel</button>
+            <button class="prop-action-btn" style="background:rgba(138,106,170,0.12);border-color:rgba(138,106,170,0.3);color:#8a6aaa;" onclick="confirmConvertProperty('${propId}',${conversionCost},${conversionTicks})">Convert</button>
+        </div>
+    `;
+    overlay.style.display = 'flex';
+}
+
+async function confirmConvertProperty(propId, cost, ticks) {
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (cash < cost) { alert('Insufficient cash. Need ' + fmtMoney(cost) + '.'); return; }
+
+    const currentTick = shard?.current_tick || 0;
+
+    try {
+        // Deduct cost
+        await _supabase.from('factions').update({
+            corp_cash_reserves: Math.max(0, cash - cost)
+        }).eq('id', faction.id);
+        faction.corp_cash_reserves = Math.max(0, cash - cost);
+
+        // Set property to converting state
+        await _supabase.from('corp_properties').update({
+            type: _convertTargetType,
+            refurbish_until_tick: currentTick + ticks,
+            condition: 100,
+        }).eq('id', propId);
+
+        closePropModal();
+        const nation = window._nationStats;
+        await renderProperty(nation, nation?.name || faction?.nation, faction, shard);
+    } catch (err) {
+        alert('Conversion failed: ' + err.message);
+    }
+}
 
 // ══════════════════════════════════════
 // ── Events Feed ──
@@ -2317,7 +3073,8 @@ const CORP_EVENT_DEFAULT = { icon: '\u2022', color: '#888', bg: 'rgba(136,136,13
 
 const PROTEST_TIER_LABELS = { 1:'Embarrassing Backfire', 2:'Protests Don\'t Materialise', 3:'Modest Turnout', 4:'Respectable Protest', 5:'Strong Demonstration', 6:'Nationwide Protests', 7:'The Big One' };
 
-let _activeCorpEventsTab = 'corporate';
+let _corpEventsCat = 'nation';
+let _corpEventsScope = 'local';
 let _corpEventsCtx = null;
 
 function formatEventName(raw) {
@@ -2451,13 +3208,135 @@ function renderWorldEventRows(merged) {
     }).join('');
 }
 
-// ── Corporate Events (placeholder for now — no corp_events table yet) ──
+// ── Corporate Events Local (corps in your nation) ──
 async function loadCorpEvents() {
     const container = document.getElementById('corp-events-list');
-    if (!container) return;
-    // Corporate events will come from a future corp_events table.
-    // For now show a placeholder.
-    container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events yet.<br>Events will appear here as your company grows.</div>';
+    if (!container || !_corpEventsCtx) return;
+    const { nationId } = _corpEventsCtx;
+    if (!nationId) { container.innerHTML = '<div class="subs-card__empty">No nation linked.</div>'; return; }
+    container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.7rem;text-align:center;">Loading\u2026</div>';
+    try {
+        const [corpsRes, evRes] = await Promise.all([
+            _supabase.from('factions')
+                .select('faction_name, abbreviation, corp_sector, corp_subsector, corp_ticker, leader_first_name, leader_last_name, nation_id, nation, created_at, founded_tick')
+                .eq('faction_type', 'corporation').eq('nation_id', nationId).is('abandoned_at', null)
+                .order('created_at', { ascending: false }).limit(30),
+            _supabase.from('event_log').select('*')
+                .eq('nation_id', nationId)
+                .eq('category', 'corporate')
+                .order('fired_at_tick', { ascending: false }).limit(30),
+        ]);
+        const corps = corpsRes.data || [];
+        const corpEvents = evRes.data || [];
+
+        // Convert founded corps to event format for unified rendering
+        const foundedEvents = corps.map(c => ({
+            event_name: 'Corporation Founded',
+            category: 'corporate',
+            description_chosen: `${c.faction_name} [${c.corp_ticker || c.abbreviation || '??'}] was founded with a specialty in ${c.corp_subsector || c.corp_sector || 'General'}. Led by CEO ${[c.leader_first_name, c.leader_last_name].filter(Boolean).join(' ') || 'Unknown'}.`,
+            fired_at_tick: c.founded_tick || 0,
+        }));
+
+        const merged = [...corpEvents, ...foundedEvents]
+            .sort((a, b) => (b.fired_at_tick || 0) - (a.fired_at_tick || 0))
+            .slice(0, 40);
+
+        if (merged.length === 0) {
+            container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events in this nation yet.</div>';
+            return;
+        }
+        container.innerHTML = renderCorpEventRows(merged);
+    } catch (e) {
+        console.error('Corp local events error:', e);
+        container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
+    }
+}
+
+// ── Corporate Events World (corps in other nations) ──
+async function loadCorpEventsWorld() {
+    const container = document.getElementById('corp-events-list');
+    if (!container || !_corpEventsCtx) return;
+    const { nationId } = _corpEventsCtx;
+    if (!nationId) { container.innerHTML = '<div class="subs-card__empty">No nation linked.</div>'; return; }
+    container.innerHTML = '<div style="color:var(--text-secondary);padding:16px;font-size:0.7rem;text-align:center;">Loading\u2026</div>';
+    try {
+        const [corpsRes, evRes] = await Promise.all([
+            _supabase.from('factions')
+                .select('faction_name, abbreviation, corp_sector, corp_subsector, corp_ticker, leader_first_name, leader_last_name, nation_id, nation, created_at, founded_tick')
+                .eq('faction_type', 'corporation').neq('nation_id', nationId).is('abandoned_at', null)
+                .order('created_at', { ascending: false }).limit(30),
+            _supabase.from('event_log').select('*, nations(name, nation_profiles(flag_url))')
+                .neq('nation_id', nationId)
+                .eq('category', 'corporate')
+                .order('fired_at_tick', { ascending: false }).limit(30),
+        ]);
+        const corps = corpsRes.data || [];
+        const corpEvents = evRes.data || [];
+
+        // Convert founded corps to world-event format
+        const foundedEvents = corps.map(c => ({
+            event_name: 'Corporation Founded',
+            category: 'corporate',
+            description_chosen: `${c.faction_name} [${c.corp_ticker || c.abbreviation || '??'}] was founded in ${c.nation || 'Unknown'} with a specialty in ${c.corp_subsector || c.corp_sector || 'General'}. Led by CEO ${[c.leader_first_name, c.leader_last_name].filter(Boolean).join(' ') || 'Unknown'}.`,
+            fired_at_tick: c.founded_tick || 0,
+            nations: { name: c.nation || 'Unknown' },
+        }));
+
+        const merged = [...corpEvents, ...foundedEvents]
+            .sort((a, b) => (b.fired_at_tick || 0) - (a.fired_at_tick || 0))
+            .slice(0, 40);
+
+        if (merged.length === 0) {
+            container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events from other nations yet.</div>';
+            return;
+        }
+        container.innerHTML = renderWorldEventRows(merged);
+        return;
+    } catch (e) {
+        console.error('Corp world events error:', e);
+        container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
+        return;
+    }
+    // Legacy fallback (unreachable — kept for safety)
+    try {
+        const { data: corps, error } = await _supabase.from('factions')
+            .select('faction_name, abbreviation, corp_sector, corp_subsector, corp_ticker, leader_first_name, leader_last_name, nation_id, nation, created_at, founded_tick')
+            .eq('faction_type', 'corporation').neq('nation_id', nationId).is('abandoned_at', null)
+            .order('created_at', { ascending: false }).limit(30);
+        if (error) throw error;
+        if (!corps || corps.length === 0) {
+            container.innerHTML = '<div class="subs-card__empty" style="padding:40px 0;">No corporate events from other nations yet.</div>';
+            return;
+        }
+        container.innerHTML = _renderCorpFoundedList(corps, true);
+    } catch (e) {
+        console.error('Corp world events error:', e);
+        container.innerHTML = '<div class="subs-card__empty">Failed to load events.</div>';
+    }
+}
+
+function _renderCorpFoundedList(corps, showNationTag) {
+    return corps.map(c => {
+        const ceoName = [c.leader_first_name, c.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+        const nationName = c.nation || 'Unknown';
+        const subsector = c.corp_subsector || c.corp_sector || 'General';
+        const ticker = c.corp_ticker || c.abbreviation || '';
+        const tickDate = c.founded_tick ? tickToDate(c.founded_tick) : '';
+        let html = '<div class="corp-event-row">';
+        if (showNationTag) {
+            html += '<div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--teal);background:rgba(90,175,165,0.08);border:1px solid rgba(90,175,165,0.15);padding:1px 5px;display:inline-block;margin-bottom:2px;">' + escapeHtml(nationName.toUpperCase()) + '</div>';
+        }
+        html += '<div style="font-size:11px;color:var(--text-primary);line-height:1.5;">';
+        html += '<span style="font-weight:600;">' + escapeHtml(c.faction_name) + '</span>';
+        if (ticker) html += ' <span style="font-family:var(--font-mono);font-size:0.65rem;color:var(--text-dim);">[' + escapeHtml(ticker) + ']</span>';
+        html += ' was founded in <span style="font-weight:500;">' + escapeHtml(nationName) + '</span>';
+        html += ' with a specialty in <span style="color:var(--teal);font-weight:500;">' + escapeHtml(subsector) + '</span>.';
+        html += ' Led by CEO <span style="font-weight:500;">' + escapeHtml(ceoName) + '</span>.';
+        html += '</div>';
+        if (tickDate) html += '<div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:1px;">' + escapeHtml(tickDate) + '</div>';
+        html += '</div>';
+        return html;
+    }).join('');
 }
 
 // ── Political Events (nation-scoped: event_log + bills + factions + protests) ──
@@ -2472,7 +3351,7 @@ async function loadPoliticalEvents() {
         const [evRes, billRes, facRes, proRes] = await Promise.all([
             _supabase.from('event_log').select('*')
                 .eq('nation_id', nationId)
-                .in('category', ['political', 'bill', 'new_party', 'protest'])
+                .in('category', ['political', 'bill', 'new_party', 'protest', 'corporate'])
                 .order('fired_at_tick', { ascending: false }).limit(40),
             _supabase.from('bills')
                 .select('bill_name, proposed_tick, proposed_by, bill_type, proposer_name, proposer_color, factions!proposed_by(faction_name, party_color, nation_id)')
@@ -2606,20 +3485,159 @@ async function loadCorpWorldEvents() {
     }
 }
 
-function switchCorpEventsTab(tab) {
-    if (tab === _activeCorpEventsTab) return;
-    _activeCorpEventsTab = tab;
-    document.querySelectorAll('.corp-events-tab').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tab === tab);
-    });
-    if (tab === 'corporate') loadCorpEvents();
-    else if (tab === 'political') loadPoliticalEvents();
-    else if (tab === 'nation') loadNationEvents();
-    else if (tab === 'world') loadCorpWorldEvents();
+window.switchCorpEventsCat = function(cat) {
+    if (cat === _corpEventsCat) return;
+    _corpEventsCat = cat;
+    document.querySelectorAll('#corp-events-cat-bar .corp-events-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.cat === cat));
+    _refreshCorpEvents();
+};
+window.switchCorpEventsScope = function(scope) {
+    if (scope === _corpEventsScope) return;
+    _corpEventsScope = scope;
+    document.querySelectorAll('#corp-events-scope-bar .corp-events-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.scope === scope));
+    _refreshCorpEvents();
+};
+function _refreshCorpEvents() {
+    if (_corpEventsCat === 'nation' && _corpEventsScope === 'local') {
+        loadNationEvents();
+    } else if (_corpEventsCat === 'nation' && _corpEventsScope === 'world') {
+        loadCorpWorldEvents();
+    } else if (_corpEventsCat === 'corporate' && _corpEventsScope === 'local') {
+        loadCorpEvents();
+    } else {
+        loadCorpEventsWorld();
+    }
 }
-window.switchCorpEventsTab = switchCorpEventsTab;
 
 init();
 </script>
+
+<!-- HOW TO GUIDE OVERLAY -->
+<div id="corp-howto-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;justify-content:center;align-items:flex-start;overflow-y:auto;padding:40px 20px;">
+<div style="max-width:700px;width:100%;background:var(--bg-2);border:1px solid var(--border-0);padding:24px;position:relative;">
+    <span onclick="document.getElementById('corp-howto-overlay').style.display='none'" style="position:absolute;top:12px;right:16px;font-size:18px;color:var(--text-dim);cursor:pointer;font-family:var(--font-mono);">×</span>
+    <div style="text-align:center;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border-0);">
+        <div style="font-family:var(--font-mono);font-size:1.2rem;font-weight:800;color:var(--teal);letter-spacing:0.08em;text-transform:uppercase;">Corporate Guide</div>
+        <div style="font-family:var(--font-ui);font-size:0.85rem;color:var(--text-muted);margin-top:6px;">How to run a corporation in Nationhood</div>
+    </div>
+
+    <style>
+    .cg-section { margin-bottom:16px; }
+    .cg-section summary { font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-bright);letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;padding:8px 0;border-bottom:1px solid var(--border-hair);list-style:none; }
+    .cg-section summary::before { content:'▸ '; color:var(--teal); }
+    .cg-section[open] summary::before { content:'▾ '; }
+    .cg-section div { padding:10px 0;font-family:var(--font-ui);font-size:12px;color:var(--text-muted);line-height:1.7; }
+    .cg-section strong { color:var(--text-primary); }
+    .cg-section table { width:100%;border-collapse:collapse;margin:8px 0;font-size:11px; }
+    .cg-section th { text-align:left;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase;padding:4px 8px;border-bottom:1px solid var(--border-0); }
+    .cg-section td { padding:4px 8px;border-bottom:1px solid var(--border-hair);color:var(--text-muted); }
+    .cg-section ul, .cg-section ol { padding-left:18px;margin:6px 0; }
+    .cg-section li { margin-bottom:4px; }
+    </style>
+
+    <details class="cg-section" open><summary>Getting Started</summary><div>
+    <p>You run a <strong>corporation</strong> — a business entity that operates within a nation's economy. Unlike political parties, corporations make money through contracts, properties, and financial operations.</p>
+    <ol>
+    <li><strong>Check your Dashboard</strong> — the Home tab shows your identity card, finances, properties, workforce, and market stats.</li>
+    <li><strong>Visit Operations</strong> — bid on construction contracts, manage projects, buy equipment, and handle materials.</li>
+    <li><strong>Buy Property</strong> — purchase office buildings or regional HQs from the property marketplace to house your workforce.</li>
+    <li><strong>Bid on Contracts</strong> — government and private construction contracts appear in the Open Contracts pool. Submit competitive bids to win work.</li>
+    </ol>
+    <p><em>Tip: Your corporation earns market revenue each tick based on your nation's economic health. Keep an eye on GDP growth, urbanization, and inflation.</em></p>
+    </div></details>
+
+    <details class="cg-section"><summary>How Corp Ticks Work</summary><div>
+    <p>The <strong>corp tick</strong> runs at the midpoint of each game tick. During a corp tick:</p>
+    <ul>
+    <li>Contract bidding windows close and winners are awarded</li>
+    <li>Active projects progress (if properly staffed and supplied)</li>
+    <li>Market revenue is calculated and credited</li>
+    <li>Expenses are deducted (wages, materials, maintenance, debt service)</li>
+    <li>Construction events may fire on in-progress projects</li>
+    <li>Loan payments are processed (both as borrower and lender)</li>
+    <li>Insurance premiums are collected</li>
+    <li>Property condition degrades slightly each tick</li>
+    </ul>
+    </div></details>
+
+    <details class="cg-section"><summary>Your Corporation</summary><div>
+    <table>
+    <tr><th>Attribute</th><th>What It Means</th></tr>
+    <tr><td><strong>Cash Reserves</strong></td><td>Your liquid capital. Used for bids, purchases, wages, and operations.</td></tr>
+    <tr><td><strong>Debt</strong></td><td>Outstanding loans. Monthly payments deducted automatically.</td></tr>
+    <tr><td><strong>Reputation</strong></td><td>0-100 score. Higher reputation wins better contracts and attracts clients.</td></tr>
+    <tr><td><strong>Market Share</strong></td><td>Your share of the national market. Grows with workforce and property.</td></tr>
+    <tr><td><strong>Workforce</strong></td><td>General, Skilled, and Innovative workers. Must be housed in properties.</td></tr>
+    <tr><td><strong>Operational Efficiency</strong></td><td>How well your company runs. Affects costs and project quality.</td></tr>
+    </table>
+    </div></details>
+
+    <details class="cg-section"><summary>Construction Contracts</summary><div>
+    <p>The core gameplay loop for <strong>Construction</strong> corporations:</p>
+    <ol>
+    <li><strong>Browse Open Contracts</strong> — government and private projects appear in the contracts pool</li>
+    <li><strong>Submit a Bid</strong> — set your price, choose material quality, and allocate labor</li>
+    <li><strong>Win the Contract</strong> — lowest qualified bidder wins (reputation matters for ties)</li>
+    <li><strong>Supply Materials</strong> — allocate concrete, steel, glass, and other materials from your warehouse</li>
+    <li><strong>Staff the Project</strong> — assign workers. Understaffed projects stall.</li>
+    <li><strong>Complete &amp; Get Paid</strong> — payment is the bid price minus penalties for late delivery or low quality</li>
+    </ol>
+    <p><strong>Construction Events:</strong> In-progress projects may encounter disruptions (labor strikes, equipment failures, weather damage). These cost money and delay the project. Insurance can cover these costs.</p>
+    </div></details>
+
+    <details class="cg-section"><summary>Properties &amp; Buildings</summary><div>
+    <p>Properties house your workforce and generate passive revenue:</p>
+    <ul>
+    <li><strong>Buy from Marketplace</strong> — existing buildings at market prices. Lower condition but immediate revenue. +1 market share per 100 employees.</li>
+    <li><strong>Build Custom</strong> — commission a new building via Construction Project. Higher quality, better reputation (+2 per 200 employees), but takes time and costs more.</li>
+    <li><strong>Refurbish</strong> — restore condition on aging properties to maintain value.</li>
+    <li><strong>Sell</strong> — liquidate properties you no longer need.</li>
+    </ul>
+    <p><strong>Specialty Buildings (Finance sector):</strong></p>
+    <table>
+    <tr><th>Building</th><th>Subsector</th><th>Benefit</th></tr>
+    <tr><td>Branch Office</td><td>Banking</td><td>Increases lending capacity, enables cross-nation lending</td></tr>
+    <tr><td>Trading Floor</td><td>Investment</td><td>Enables secondary bond market, portfolio management</td></tr>
+    <tr><td>Claims Office</td><td>Insurance</td><td>Faster claim processing, local presence reduces premiums</td></tr>
+    <tr><td>Insurance Office</td><td>Insurance</td><td>Required to sell Health Insurance in the nation. Needs skilled workforce to staff (~60% of capacity).</td></tr>
+    </table>
+    <p>Convert existing offices to specialty buildings via the <strong>CONVERT</strong> button (15% cost + 4-9 ticks).</p>
+    </div></details>
+
+    <details class="cg-section"><summary>Finance Corporations</summary><div>
+    <p>Finance corps operate in three subsectors:</p>
+    <h4 style="font-family:var(--font-mono);font-size:10px;color:var(--teal);margin:10px 0 4px;">Banking (Loans)</h4>
+    <p>Lend money to other corporations. Borrowers request loans → you review in <strong>Deal Flow</strong> → set an interest rate → click <strong>Offer Loan</strong>. Borrower accepts or rejects. Monthly payments come in automatically. Default risk if borrower can't pay.</p>
+    <h4 style="font-family:var(--font-mono);font-size:10px;color:#8a6aaa;margin:10px 0 4px;">Investment (Bonds)</h4>
+    <p>Buy government bonds issued by the Minister of Finance. Browse bond offerings in <strong>Deal Flow</strong> → choose how much to buy → collect monthly coupon payments from the national treasury. Higher coupon = riskier nation. Sovereign default = you lose your principal.</p>
+    <h4 style="font-family:var(--font-mono);font-size:10px;color:#aa7a5a;margin:10px 0 4px;">Insurance</h4>
+    <p>Insure construction projects against disruption events. Construction corps click <strong>INSURE</strong> on their projects → you review in <strong>Deal Flow</strong> → set premium rate, coverage, and deductible → click <strong>Write Policy</strong>. Collect premiums monthly. Pay out when disruption events fire.</p>
+    </div></details>
+
+    <details class="cg-section"><summary>Purchasing Power</summary><div>
+    <p>Your cash is worth more or less depending on your nation's economy:</p>
+    <ul>
+    <li><strong>Currency Strength</strong> — higher = your money buys more. Baseline is 50.</li>
+    <li><strong>Inflation</strong> — higher = your money buys less. Erodes purchasing power over time.</li>
+    </ul>
+    <p>The <strong>Purchasing Power</strong> indicator below your Cash/Debt display shows the real value of your reserves. A weak currency with high inflation means your $200M might only be worth $120M in real terms.</p>
+    </div></details>
+
+    <details class="cg-section"><summary>Tips for New Players</summary><div>
+    <ul>
+    <li><strong>Buy property first</strong> — you need buildings to house workers. No workers = no projects.</li>
+    <li><strong>Start with small contracts</strong> — civil engineering contracts are cheaper and less risky than mega projects.</li>
+    <li><strong>Watch your cash flow</strong> — wages and maintenance are deducted every tick. Don't overextend.</li>
+    <li><strong>Refurbish aging properties</strong> — condition degrades. Below 50% your property loses value fast.</li>
+    <li><strong>Insure big projects</strong> — disruption events can cost millions. Insurance is cheaper than eating the loss.</li>
+    <li><strong>Finance corps: diversify</strong> — don't put all your capital into one nation's bonds or one borrower's loans.</li>
+    <li><strong>Check the News tab</strong> — see what's happening across the world. Political instability = opportunity for some, risk for others.</li>
+    </ul>
+    </div></details>
+
+</div>
+</div>
+<!-- END HOW TO GUIDE -->
+
 </body>
 </html>

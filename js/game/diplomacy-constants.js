@@ -162,6 +162,19 @@ export const AID_CONDITION_STATS = [
  *   RT   — Retaliatory Tariff: unilateral surcharge on specific nation/sectors
  */
 export const TRADE_AGREEMENT_TYPES = {
+    goods_trade: {
+        key: 'goods_trade',
+        label: 'Goods & Services Trade Agreement',
+        shortLabel: 'GTA',
+        description: 'Product-specific trade contracts between two nations. Each article defines its own commodity flow, volume, price terms, and duration. Does not grant blanket tariff elimination — only the terms written into each article apply.',
+        bilateral: true,
+        // No top-level required_articles — this type is defined by the structured
+        // article modal (trade_flow / transfer / market_access / tariff_reduction
+        // / exit_terms). The article modal enforces its own validity.
+        required_articles: [],
+        optional_articles: ['trade_flow', 'transfer', 'market_access', 'tariff_reduction', 'exit_terms', 'text_article'],
+        icon: 'truck'
+    },
     fta: {
         key: 'fta',
         label: 'Free Trade Agreement',
@@ -213,6 +226,16 @@ export const TRADE_AGREEMENT_TYPES = {
         icon: 'aid',
         requires_mot: false  // FM/PM/Ambassador negotiate — no Minister of Trade needed
     },
+    stockpile_purchase: {
+        key: 'stockpile_purchase',
+        label: 'Stockpile Purchase',
+        shortLabel: 'SP',
+        description: 'One-time bulk purchase or sale of stockpiled goods (grains, cash crops) from strategic reserves. Transfers happen immediately on enactment.',
+        bilateral: true,
+        required_articles: ['stockpile_transfer'],
+        optional_articles: ['text_article'],
+        icon: 'truck'
+    },
     retaliatory_tariff: {
         key: 'retaliatory_tariff',
         label: 'Retaliatory Tariff',
@@ -234,7 +257,10 @@ export const TRADE_AGREEMENT_TYPES = {
 export const TRADEABLE_SECTORS = [
     { key: 'fuel_energy',        label: 'Fuel & Energy',            raw_resource: true  },
     { key: 'minerals',           label: 'Minerals & Raw Materials', raw_resource: true  },
-    { key: 'food_agriculture',   label: 'Food & Agriculture',       raw_resource: true  },
+    { key: 'grains_staples',     label: 'Grains & Staples',          raw_resource: true  },
+    { key: 'livestock_dairy',    label: 'Livestock & Dairy',         raw_resource: true  },
+    { key: 'fruits_vegetables',  label: 'Fruits & Vegetables',       raw_resource: true  },
+    { key: 'cash_crops',         label: 'Cash Crops & Plantation',   raw_resource: true  },
     { key: 'manufactured_goods', label: 'Manufactured Goods',       raw_resource: false },
     { key: 'technology',         label: 'Technology & Electronics', raw_resource: false },
     { key: 'arms',               label: 'Arms & Military Equipment', raw_resource: false }
@@ -245,6 +271,8 @@ export var TRADEABLE_SECTOR_MAP = {};
 for (var _tasi = 0; _tasi < TRADEABLE_SECTORS.length; _tasi++) {
     TRADEABLE_SECTOR_MAP[TRADEABLE_SECTORS[_tasi].key] = TRADEABLE_SECTORS[_tasi];
 }
+// Backward compatibility: old trade agreements may reference 'food_agriculture'
+TRADEABLE_SECTOR_MAP['food_agriculture'] = { key: 'food_agriculture', label: 'Food & Agriculture', raw_resource: true };
 
 /**
  * Article type definitions for trade agreements.
@@ -401,13 +429,28 @@ export const TRADE_ARTICLE_TYPES = {
         }
     },
 
+    // ── Stockpile Transfer (Stockpile Purchase, required) ──
+    stockpile_transfer: {
+        key: 'stockpile_transfer',
+        label: 'Stockpile Transfer',
+        description: 'One-time bulk purchase/sale of stockpiled goods from strategic reserves.',
+        repeatable: false,
+        applies_to: ['stockpile_purchase'],
+        schema: {
+            sector: 'string',                   // grains_staples or cash_crops only
+            direction: 'we_buy|we_sell',        // who is buyer vs seller
+            quantity_value: 'number',           // dollar value of goods to transfer
+            price_per_tonne: 'number'           // agreed price per tonne
+        }
+    },
+
     // ── Text Article (optional for all types) ──
     text_article: {
         key: 'text_article',
         label: 'Text Article',
         description: 'Free-text article for flavor/RP. No mechanical effect.',
         repeatable: true,
-        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff'],
+        applies_to: ['fta', 'pta', 'resource_supply', 'export_subsidy', 'economic_aid', 'retaliatory_tariff', 'stockpile_purchase'],
         schema: {
             title: 'string',
             body: 'string'
@@ -533,7 +576,8 @@ export const MAJOR_SECTORS = [
     { key: 'GOVERNANCE',    label: 'Governance',          icon: '🏛️' },
     { key: 'IMMIGRATION',   label: 'Immigration',         icon: '🌍' },
     { key: 'INTERNATIONAL', label: 'International',       icon: '🌐' },
-    { key: 'TRADE',         label: 'Trade',               icon: '📦' }
+    { key: 'TRADE',         label: 'Trade',               icon: '📦' },
+    { key: 'PERMITS',       label: 'Construction Permits', icon: '🔨' }
 ];
 
 // Policy Platform stances — each sector has 4 stances, each leaning toward 2 ideology poles.

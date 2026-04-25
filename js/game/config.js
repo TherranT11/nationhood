@@ -11,16 +11,14 @@ export const GAME_CONFIG = {
     VOTING_WINDOW_TICKS: 6,
     QUORUM_THRESHOLD: 0.5,           // 50% of seats must participate (yes+no+abstain) for quorum
     COMMITTEE_EXPIRY_TICKS: 6,
-    DRAFT_BILL_AP_COST: 2,
-    FREE_BILL_ARTICLES: 4,         // First 4 non-text articles are free; article 5+ costs 1 AP each
     VETO_APPROVAL_COST: 3,
-    NO_CONFIDENCE_AP_COST: 5,
+    NO_CONFIDENCE_AP_COST: 0,                 // free to file (was 5; party-action redesign)
     NO_CONFIDENCE_VOTING_TICKS: 6,
-    NO_CONFIDENCE_COOLDOWN_TICKS: 6,
+    NO_CONFIDENCE_COOLDOWN_TICKS: 12,         // 12-tick cooldown per TARGETED PM party (was 6 on caller)
     FOUNDATIONAL_AP_COST: 3,
     FOUNDATIONAL_VOTING_TICKS: 6,
     SUPERMAJORITY_THRESHOLD: 2/3,
-    EARLY_ELECTION_TICKS: 2,
+    EARLY_ELECTION_TICKS: 1,
     EARLY_ELECTION_PM_APPROVAL_COST: 5,
     EARLY_ELECTION_COALITION_APPROVAL_COST: 3,
     // Presidential Democracy
@@ -140,8 +138,7 @@ export function initGameConfigForNation(nation) {
     GAME_CONFIG.MAJORITY_SEATS = Math.floor(seats / 2) + 1;
 }
 
-export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window before snap election
-export const POST_SNAP_DEADLINE_TICKS = 2; // ticks after snap election before emergency minority government
+export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window — applied both pre- and post-snap
 export const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general snap cycle guard (overridden by formation escalation)
 
 /**

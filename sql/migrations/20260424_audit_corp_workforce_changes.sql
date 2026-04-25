@@ -1,0 +1,107 @@
+-- ════════════════════════════════════════════════════════════════════════════════
+-- Audit trigger for corp workforce changes — PERMANENT CANARY
+--
+-- Originally shipped as a diagnostic to trace silent workforce reductions
+-- across multiple corps (Yakovic Concern @ Calveth tick 19, Montequilla
+-- Constructions @ tick 15). Root cause turned out to be production drift:
+-- the deployed advance-corp-tick Edge Function bundle still ran an auto-
+-- layoff block that had been removed from local source but never re-
+-- deployed. A redeploy fixed the source of writes; this trigger caught the
+-- drift in one tick.
+--
+-- Kept on permanently as a canary. If any future regression — drift, new
+-- code, or a hand-rolled SQL function — starts writing to a workforce
+-- column outside the documented player paths (Restructure / Hire / Fire /
+-- Subsidiary Merge), the audit row will name the offender within one tick.
+--
+-- Cost is negligible. The trigger only fires when general / skilled /
+-- innovative workforce ACTUALLY changes (the WHEN clause short-circuits
+-- no-op updates). Inserting one audit row per real change is cheap.
+--
+-- Do NOT drop this trigger. See README.md → Contributor notes.
+--
+-- Idempotent: DROP TRIGGER IF EXISTS + CREATE OR REPLACE FUNCTION. Safe to
+-- re-run.
+-- ════════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS corp_workforce_audit (
+    id                BIGSERIAL PRIMARY KEY,
+    faction_id        UUID NOT NULL,
+    changed_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    old_general       INT,
+    new_general       INT,
+    old_skilled       INT,
+    new_skilled       INT,
+    old_innovative    INT,
+    new_innovative    INT,
+    statement_text    TEXT,
+    application_name  TEXT,
+    session_user_name TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_workforce_audit_faction_time
+    ON corp_workforce_audit (faction_id, changed_at DESC);
+
+-- SECURITY DEFINER so the INSERT into corp_workforce_audit runs as the
+-- function owner (postgres) regardless of who fired the UPDATE. Without this
+-- the trigger inherits the caller's role — when an authenticated player
+-- submits Hire/Fire, RLS on corp_workforce_audit rejects the insert and
+-- rolls back the entire UPDATE, silently blocking legitimate workforce
+-- changes.
+CREATE OR REPLACE FUNCTION log_workforce_change()
+RETURNS TRIGGER
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    INSERT INTO corp_workforce_audit (
+        faction_id,
+        old_general, new_general,
+        old_skilled, new_skilled,
+        old_innovative, new_innovative,
+        statement_text,
+        application_name,
+        session_user_name
+    )
+    VALUES (
+        NEW.id,
+        OLD.corp_general_workforce, NEW.corp_general_workforce,
+        OLD.corp_skilled_workforce, NEW.corp_skilled_workforce,
+        OLD.corp_innovative_workforce, NEW.corp_innovative_workforce,
+        format('client_addr=%s | role=%s | xact_user=%s | query=%s',
+               coalesce(inet_client_addr()::text, 'local-or-cron'),
+               current_setting('role', true),
+               session_user,
+               current_query()),
+        current_setting('application_name', true),
+        session_user
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_log_workforce_change ON factions;
+CREATE TRIGGER trg_log_workforce_change
+    AFTER UPDATE ON factions
+    FOR EACH ROW
+    WHEN (
+        OLD.corp_general_workforce    IS DISTINCT FROM NEW.corp_general_workforce
+     OR OLD.corp_skilled_workforce    IS DISTINCT FROM NEW.corp_skilled_workforce
+     OR OLD.corp_innovative_workforce IS DISTINCT FROM NEW.corp_innovative_workforce
+    )
+    EXECUTE FUNCTION log_workforce_change();
+
+-- ── READ QUERY (copy separately into SQL Editor after the next drop occurs) ──
+--
+-- SELECT
+--     f.faction_name,
+--     a.changed_at,
+--     a.old_general, a.new_general, a.new_general - a.old_general AS delta_gen,
+--     a.old_skilled, a.new_skilled, a.new_skilled - a.old_skilled AS delta_skl,
+--     a.old_innovative, a.new_innovative, a.new_innovative - a.old_innovative AS delta_inn,
+--     a.application_name,
+--     substring(a.statement_text, 1, 400) AS query
+-- FROM corp_workforce_audit a
+-- JOIN factions f ON f.id = a.faction_id
+-- ORDER BY a.changed_at DESC
+-- LIMIT 50;

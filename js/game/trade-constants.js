@@ -28,8 +28,8 @@ export var TRADE_SECTORS = [
         key: 'fuel_energy',
         label: 'Fuel & Energy',
         export_only: false,
-        export_stats: ['oil_and_gas', 'energy_generation'],
-        export_threshold: 15
+        export_stat: 'oil_and_gas',            // reserves — what's in the ground
+        export_bonus_stats: ['energy_generation'] // extraction — what you can pull out
     },
     {
         key: 'minerals',
@@ -49,8 +49,7 @@ export var TRADE_SECTORS = [
         key: 'manufactured_goods',
         label: 'Manufactured Goods',
         export_only: false,
-        export_stat: 'manufacturing_output',
-        export_threshold: 25
+        export_stat: 'manufacturing_output'
     },
     {
         key: 'technology',
@@ -98,8 +97,12 @@ for (var _tsi = 0; _tsi < TRADE_SECTORS.length; _tsi++) {
 //   fuel_energy $2.5B → 1 million barrels a day  (Saudi Arabia ≈ 10 Mbbl/d)
 //   others      $100M → 1 unit                   (mid-tier exporter ≈ 50 units)
 export var SECTOR_DISPLAY_UNITS = {
-    fuel_energy:        { baseUnit: 'barrels per day',    scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 2500000000 },
-    food_agriculture:   { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
+    fuel_energy:        { baseUnit: 'barrels per day',    scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 5000000000 },
+    food_agriculture:   { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
+    grains_staples:     { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
+    livestock_dairy:    { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
+    fruits_vegetables:  { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
+    cash_crops:         { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 4000000000 },
     minerals:           { baseUnit: 'tonnes/year',        scaleLabel: 'million',  scaleFactor: 1e6,  factor: 1 / 100000000  },
     manufactured_goods: { baseUnit: 'TEU/year',           scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
     arms:               { baseUnit: 'units/year',         scaleLabel: 'thousand', scaleFactor: 1e3,  factor: 1 / 100000000  },
@@ -131,7 +134,790 @@ export function formatSectorVolume(val, sectorKey) {
     return sign + raw.toLocaleString() + '\u00a0' + def.baseUnit;
 }
 
-// ==================== TRADE CALCULATION FUNCTIONS (STUBS) ====================
+// ==================== FOOD & AGRICULTURE — 4-SECTOR SPLIT ====================
+//
+// The single "food_agriculture" trade sector is split into four sub-sectors,
+// each competing for a nation's arable land allocation:
+//
+//   grains_staples      — survival sector, stockpilable, famine events
+//   livestock_dairy     — middle class diet, demand scales with wealth
+//   fruits_vegetables   — infrastructure-dependent, spoilage mechanic
+//   cash_crops          — export revenue vs food security tension
+//
+// Arable land allocation: grains% + livestock% + perishables% + cash_crops% = 100%
+// Stored in food_land_allocation table; effective land = nation.arable_land × (allocation% / 100)
+
+/**
+ * Food sub-sector definitions.
+ *
+ * Each sub-sector has:
+ *   key               – unique identifier (used in trade_flows.sector column)
+ *   label             – display name
+ *   parent_sector     – parent trade sector key (always 'food_agriculture')
+ *   allocation_key    – column name in food_land_allocation table
+ *   export_threshold  – minimum effective arable land to generate exports (0-100 scale)
+ *   export_multiplier – capacity reduction factor (domestic consumption priority)
+ *   drivers           – nation stats that boost production capacity
+ *   demand_drivers    – nation stats that drive import demand
+ *   stat_effects      – stats affected by supply/shortage of this sub-sector
+ */
+export var FOOD_SUBSECTORS = [
+    {
+        key: 'grains_staples',
+        label: 'Grains & Staples',
+        description: 'Wheat, rice, corn, soybeans, legumes, cooking oils, sugar',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'grains_pct',
+        export_threshold: 5,
+        export_multiplier: 0.07,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'physical_infrastructure', weight: 0.3 },
+            { stat: 'rail_network', weight: 0.2 }
+        ],
+        demand_drivers: [
+            { stat: 'population', weight: 1.0, type: 'population' },
+            { stat: 'population_growth', weight: 0.3, type: 'pressure' }
+        ],
+        stat_effects: {
+            supplied: {
+                poverty_rate: -0.15,
+                cost_of_living: -0.10,
+                inflation: -0.05,
+                stability: 0.10,
+                legitimacy: 0.10,
+                happiness: 0.05,
+                lifespan: 0.05
+            },
+            shortage: {
+                poverty_rate: 0.30,
+                cost_of_living: 0.20,
+                inflation: 0.15,
+                stability: -0.20,
+                legitimacy: -0.20,
+                civil_unrest: 0.25,
+                political_violence: 0.15,
+                emigration: 0.10,
+                happiness: -0.15
+            }
+        },
+        food_security_weight: 0.50,
+        stockpilable: true
+    },
+    {
+        key: 'livestock_dairy',
+        label: 'Livestock & Dairy',
+        description: 'Cattle, poultry, pigs, sheep, eggs, milk, cheese',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'livestock_pct',
+        export_threshold: 3,
+        export_multiplier: 0.06,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'physical_infrastructure', weight: 0.25 },
+            { stat: 'unemployment', weight: 0.15, inverted: true }
+        ],
+        demand_drivers: [
+            { stat: 'standard_of_living', weight: 0.8, type: 'wealth' },
+            { stat: 'population', weight: 0.5, type: 'population' }
+        ],
+        stat_effects: {
+            supplied: {
+                standard_of_living: 0.10,
+                happiness: 0.10,
+                healthcare_quality: 0.05,
+                lifespan: 0.05,
+                unemployment: -0.08,
+                labor_force_participation: 0.05
+            },
+            shortage: {
+                cost_of_living: 0.15,
+                inflation: 0.10,
+                standard_of_living: -0.10,
+                happiness: -0.10
+            }
+        },
+        environmental_effects: {
+            carbon_emissions: 0.10,
+            pollution: 0.08
+        },
+        food_security_weight: 0.20,
+        stockpilable: false
+    },
+    {
+        key: 'fruits_vegetables',
+        label: 'Fruits, Vegetables & Perishables',
+        description: 'Fresh produce, market gardens, fishing, aquaculture',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'perishables_pct',
+        export_threshold: 3,
+        export_multiplier: 0.05,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'physical_infrastructure', weight: 0.5, critical: true },
+            { stat: 'rail_network', weight: 0.5, critical: true },
+            { stat: 'energy_generation', weight: 0.3 }
+        ],
+        demand_drivers: [
+            { stat: 'urbanization', weight: 0.6, type: 'demand' },
+            { stat: 'population', weight: 0.5, type: 'population' },
+            { stat: 'standard_of_living', weight: 0.3, type: 'wealth' }
+        ],
+        stat_effects: {
+            supplied: {
+                happiness: 0.12,
+                healthcare_quality: 0.10,
+                lifespan: 0.08,
+                standard_of_living: 0.08
+            },
+            shortage: {
+                cost_of_living: 0.15,
+                inflation: 0.10,
+                happiness: -0.10,
+                healthcare_quality: -0.05
+            }
+        },
+        environmental_effects: {
+            pollution: 0.05
+        },
+        // UNIQUE MECHANIC: Spoilage multiplier
+        // When rail_network or physical_infrastructure fall below threshold,
+        // effective supply is reduced regardless of production levels.
+        spoilage: {
+            rail_threshold: 40,
+            infra_threshold: 35,
+            energy_threshold: 30,
+            max_spoilage_pct: 60
+        },
+        food_security_weight: 0.15,
+        stockpilable: false
+    },
+    {
+        key: 'cash_crops',
+        label: 'Cash Crops & Plantation Agriculture',
+        description: 'Coffee, tea, cocoa, tobacco, cotton, rubber, spices, palm oil',
+        parent_sector: 'food_agriculture',
+        allocation_key: 'cash_crops_pct',
+        export_threshold: 4,
+        export_multiplier: 0.14,
+        drivers: [
+            { stat: 'arable_land', weight: 1.0 },
+            { stat: 'foreign_investment', weight: 0.4 },
+            { stat: 'currency_strength', weight: 0.3, inverted: true },
+            { stat: 'corruption', weight: 0.2 }
+        ],
+        demand_drivers: [
+            // Cash crops are primarily EXPORT-driven; import demand is low
+            { stat: 'standard_of_living', weight: 0.3, type: 'wealth' },
+            { stat: 'population', weight: 0.2, type: 'population' }
+        ],
+        stat_effects: {
+            supplied: {
+                gdp_growth: 0.10,
+                foreign_investment: 0.08,
+                unemployment: -0.08,
+                labor_force_participation: 0.06,
+                currency_strength: 0.05
+            },
+            shortage: {
+                // Cash crop shortage doesn't cause food insecurity
+                // but hurts export revenue
+                gdp_growth: -0.05,
+                foreign_investment: -0.05
+            }
+        },
+        // Negative externalities of plantation agriculture
+        structural_effects: {
+            income_inequality: 0.08,
+            poverty_rate: 0.05,
+            social_mobility: -0.05,
+            corruption: 0.05,
+            union_strength: 0.03
+        },
+        environmental_effects: {
+            pollution: 0.08,
+            carbon_emissions: 0.06
+        },
+        food_security_weight: 0.00,
+        stockpilable: true
+    }
+];
+
+// Lookup maps for food sub-sectors
+export var FOOD_SUBSECTOR_KEYS = [];
+export var FOOD_SUBSECTOR_MAP = {};
+for (var _fsi = 0; _fsi < FOOD_SUBSECTORS.length; _fsi++) {
+    FOOD_SUBSECTOR_KEYS.push(FOOD_SUBSECTORS[_fsi].key);
+    FOOD_SUBSECTOR_MAP[FOOD_SUBSECTORS[_fsi].key] = FOOD_SUBSECTORS[_fsi];
+}
+
+/**
+ * Check if a sector key is a food sub-sector.
+ */
+export function isFoodSubsector(sectorKey) {
+    return FOOD_SUBSECTOR_MAP.hasOwnProperty(sectorKey);
+}
+
+/**
+ * Get the effective arable land for a specific food sub-sector.
+ *
+ * effectiveLand = nation.arable_land × (allocation_pct / 100)
+ *
+ * @param {Object} nation      – nation row with arable_land stat (0-100)
+ * @param {string} subsectorKey – food sub-sector key
+ * @param {Object} allocation  – food_land_allocation row { grains_pct, livestock_pct, perishables_pct, cash_crops_pct }
+ * @returns {number} effective arable land (0-100 scale)
+ */
+export function getEffectiveArableLand(nation, subsectorKey, allocation) {
+    var subsector = FOOD_SUBSECTOR_MAP[subsectorKey];
+    if (!subsector || !allocation) return 0;
+    var totalArable = Number(nation.arable_land) || 0;
+    var allocPct = Number(allocation[subsector.allocation_key]) || 0;
+    return totalArable * (allocPct / 100);
+}
+
+/**
+ * Calculate the spoilage multiplier for perishables.
+ *
+ * When rail_network and/or physical_infrastructure fall below thresholds,
+ * effective supply is reduced — the nation can produce abundantly and still
+ * face shortage due to logistics failure.
+ *
+ * @param {Object} nation – nation row with infrastructure stats
+ * @returns {number} multiplier 0.4–1.0 (1.0 = no spoilage, 0.4 = maximum spoilage)
+ */
+export function calculateSpoilageMultiplier(nation) {
+    var cfg = FOOD_SUBSECTOR_MAP.fruits_vegetables.spoilage;
+    var rail = Number(nation.rail_network) || 0;
+    var infra = Number(nation.physical_infrastructure) || 0;
+    var energy = Number(nation.energy_generation) || 0;
+
+    var spoilagePct = 0;
+
+    // Rail below threshold: major spoilage (cannot move perishables fast enough)
+    if (rail < cfg.rail_threshold) {
+        spoilagePct += ((cfg.rail_threshold - rail) / cfg.rail_threshold) * 30;
+    }
+
+    // Infrastructure below threshold: cold chain failure
+    if (infra < cfg.infra_threshold) {
+        spoilagePct += ((cfg.infra_threshold - infra) / cfg.infra_threshold) * 20;
+    }
+
+    // Energy below threshold: refrigeration failure
+    if (energy < cfg.energy_threshold) {
+        spoilagePct += ((cfg.energy_threshold - energy) / cfg.energy_threshold) * 10;
+    }
+
+    // Cap at maximum spoilage
+    spoilagePct = Math.min(spoilagePct, cfg.max_spoilage_pct);
+
+    return 1 - (spoilagePct / 100);
+}
+
+/**
+ * Default arable land allocation if no food_land_allocation row exists.
+ * Mirrors the schema defaults in the food_land_allocation table.
+ */
+export var DEFAULT_FOOD_ALLOCATION = {
+    grains_pct: 40,
+    livestock_pct: 20,
+    perishables_pct: 20,
+    cash_crops_pct: 20
+};
+
+// ==================== GLOBAL AVERAGE UNIT PRICE ====================
+
+/**
+ * Base price per physical unit (tonnes) for food sub-sectors.
+ * Derived from SECTOR_DISPLAY_UNITS: factor = 1/4000000000 means $4B = 1M tonnes,
+ * so 1 tonne = $4,000 game-scale at price_modifier 1.0.
+ * This absorbs the BASE_TRADE_MULTIPLIER inflation to produce realistic tonnage.
+ */
+export var FOOD_BASE_PRICE_PER_TONNE = 4000;
+
+/**
+ * Get the global average price per tonne for a food sub-sector.
+ *
+ * @param {string} sectorKey  – food sub-sector key
+ * @param {number} priceMod   – current price_modifier from trade_flows (0.5–2.0)
+ * @returns {number} price per tonne in dollars
+ */
+export function getGlobalAverageUnitPrice(sectorKey, priceMod) {
+    var mod = Number(priceMod) || 1.0;
+    return Math.round(FOOD_BASE_PRICE_PER_TONNE * mod * 100) / 100;
+}
+
+/**
+ * Format a price per tonne for display.
+ * @param {number} pricePerTonne – dollars per tonne
+ * @returns {string} e.g. "$92/tonne"
+ */
+export function formatPricePerTonne(pricePerTonne) {
+    var p = Number(pricePerTonne) || 0;
+    if (p >= 1000) return '$' + (p / 1000).toFixed(1) + 'K/tonne';
+    return '$' + Math.round(p) + '/tonne';
+}
+
+// ==================== STOCKPILE MECHANICS ====================
+
+/**
+ * Stockpile configuration for sectors where stockpilable = true.
+ *
+ * Spoilage: percentage of reserves lost per tick to degradation.
+ * Scales with infrastructure — good warehousing halves spoilage.
+ *
+ * Capacity: max reserve = GDP × capacityFactor × (physical_infrastructure / 50).
+ * Converted to tonnes via display unit factor.
+ */
+export var STOCKPILE_CONFIG = {
+    grains_staples: {
+        baseSpoilagePct: 2.0,       // 2% per tick (grain stores well)
+        infraThreshold: 60,          // infra above this halves spoilage
+        capacityFactor: 0.005,       // 0.5% of GDP as max reserve value
+        securityMonths: 6            // months of reserves for "food secure" bonus
+    },
+    cash_crops: {
+        baseSpoilagePct: 4.0,       // 4% per tick (cocoa, coffee degrade faster)
+        infraThreshold: 60,
+        capacityFactor: 0.003,       // 0.3% of GDP (less strategic need)
+        securityMonths: 3
+    }
+};
+
+/**
+ * Calculate spoilage rate for a nation's stockpile.
+ *
+ * @param {string} sectorKey – stockpilable sector key
+ * @param {Object} nation    – nation row with physical_infrastructure
+ * @returns {number} spoilage percentage per tick (0–100)
+ */
+export function calculateStockpileSpoilage(sectorKey, nation) {
+    var cfg = STOCKPILE_CONFIG[sectorKey];
+    if (!cfg) return 0;
+    var basePct = cfg.baseSpoilagePct;
+    var infra = Number(nation.physical_infrastructure) || 0;
+    if (infra >= cfg.infraThreshold) {
+        basePct *= 0.5; // Good warehousing halves spoilage
+    } else if (infra < 30) {
+        basePct *= 2.0; // Poor infrastructure doubles spoilage
+    }
+    return Math.round(basePct * 100) / 100;
+}
+
+/**
+ * Calculate maximum stockpile capacity in dollar value.
+ *
+ * @param {string} sectorKey – stockpilable sector key
+ * @param {Object} nation    – nation row with gdp, physical_infrastructure
+ * @returns {number} max capacity in dollars
+ */
+export function calculateStockpileCapacity(sectorKey, nation) {
+    var cfg = STOCKPILE_CONFIG[sectorKey];
+    if (!cfg) return 0;
+    var gdp = Number(nation.gdp) || 0;
+    var infra = Number(nation.physical_infrastructure) || 50;
+    return Math.round(gdp * cfg.capacityFactor * (infra / 50));
+}
+
+/**
+ * Calculate months of reserves coverage.
+ *
+ * @param {number} reserveValue     – current stockpile in dollars
+ * @param {number} monthlyConsumption – domestic consumption per tick (dollars)
+ * @returns {number} months of coverage
+ */
+export function calculateReserveMonths(reserveValue, monthlyConsumption) {
+    if (!monthlyConsumption || monthlyConsumption <= 0) return 99;
+    return Math.round((reserveValue / monthlyConsumption) * 10) / 10;
+}
+
+// ==================== FOOD SECURITY STATUS ====================
+
+/**
+ * Food security status labels and thresholds.
+ *
+ * Computed from the ratio of effective food supply (production + imports)
+ * to food demand across the 3 food-security sectors (grains, livestock,
+ * perishables). Cash crops are excluded — they don't feed people.
+ */
+export var FOOD_SECURITY_LEVELS = [
+    { key: 'surplus',     label: 'Surplus',          min: 1.10, color: '#5cb85c', description: 'Production exceeds demand. Food exports generate revenue.' },
+    { key: 'secure',      label: 'Secure',           min: 0.90, color: '#4a9a5b', description: 'Adequate supply. Minor shortfalls covered by imports.' },
+    { key: 'adequate',    label: 'Adequate',          min: 0.75, color: '#8ab563', description: 'Sufficient but fragile. Disruptions could trigger shortage.' },
+    { key: 'strained',    label: 'Strained',          min: 0.60, color: '#d48a3c', description: 'Import-dependent. Trade disruption risks food shortage.' },
+    { key: 'shortage',    label: 'Shortage',          min: 0.40, color: '#c0392b', description: 'Significant food deficit. Rationing likely.' },
+    { key: 'crisis',      label: 'Crisis',            min: 0.20, color: '#8b0000', description: 'Severe food insecurity. Famine conditions emerging.' },
+    { key: 'famine',      label: 'Famine',            min: 0.00, color: '#4a0000', description: 'Catastrophic food failure. Mass starvation imminent.' }
+];
+
+/**
+ * Compute food security status for a nation based on trade_flows data.
+ *
+ * Uses the 3 food-security sectors (grains, livestock, perishables) weighted
+ * by their food_security_weight values. Cash crops are excluded.
+ *
+ * Supply = domestic production (export_capacity) + actual imports (import_volume)
+ * Demand = import_demand + domestic consumption (approximated from export_capacity)
+ *
+ * For simplicity, the ratio is computed as:
+ *   (total supply that reached the population) / (total demand the population has)
+ *
+ * @param {Object} flows – { [sectorKey]: { export_capacity, export_volume, import_demand, import_volume } }
+ * @returns {Object} { ratio, level, label, color, description, perSector }
+ */
+export function computeFoodSecurityStatus(flows) {
+    if (!flows) return { ratio: 1.0, level: 'secure', label: 'Secure', color: '#4a9a5b', description: 'No data available.', perSector: {} };
+
+    var totalWeightedSupply = 0;
+    var totalWeightedDemand = 0;
+    var perSector = {};
+
+    for (var i = 0; i < FOOD_SUBSECTORS.length; i++) {
+        var sub = FOOD_SUBSECTORS[i];
+        if (sub.food_security_weight <= 0) continue; // Skip cash crops
+
+        var flow = flows[sub.key];
+        if (!flow) continue;
+
+        var expCap = Number(flow.export_capacity) || 0;
+        var expVol = Number(flow.export_volume) || 0;
+        var impVol = Number(flow.import_volume) || 0;
+        var impDem = Number(flow.import_demand) || 0;
+
+        // Domestic supply = what we produced minus what we exported + what we imported
+        var domesticProduction = expCap; // Total production capacity
+        var domesticRetained = Math.max(0, domesticProduction - expVol); // Kept for domestic use
+        var totalSupply = domesticRetained + impVol;
+
+        // Total demand = domestic need + desired imports (import_demand represents the gap)
+        // Domestic need ≈ production capacity (we produce to meet demand)
+        // But actual total demand = domestic consumption + the unmet portion
+        var totalDemand = domesticRetained + impDem;
+        if (totalDemand <= 0) totalDemand = 1; // Prevent division by zero
+
+        var sectorRatio = totalSupply / totalDemand;
+        var weight = sub.food_security_weight;
+
+        totalWeightedSupply += sectorRatio * weight;
+        totalWeightedDemand += weight;
+
+        perSector[sub.key] = {
+            supply: totalSupply,
+            demand: totalDemand,
+            ratio: Math.round(sectorRatio * 100) / 100,
+            label: sub.label
+        };
+    }
+
+    var ratio = totalWeightedDemand > 0 ? totalWeightedSupply / totalWeightedDemand : 1.0;
+    ratio = Math.round(ratio * 100) / 100;
+
+    // Find matching security level
+    var level = FOOD_SECURITY_LEVELS[FOOD_SECURITY_LEVELS.length - 1];
+    for (var j = 0; j < FOOD_SECURITY_LEVELS.length; j++) {
+        if (ratio >= FOOD_SECURITY_LEVELS[j].min) {
+            level = FOOD_SECURITY_LEVELS[j];
+            break;
+        }
+    }
+
+    return {
+        ratio: ratio,
+        level: level.key,
+        label: level.label,
+        color: level.color,
+        description: level.description,
+        perSector: perSector
+    };
+}
+
+/**
+ * Compute stat effects from food sub-sector supply/shortage conditions.
+ *
+ * Called per-tick to apply ongoing stat nudges based on whether each
+ * food sub-sector is well-supplied or in shortage. Effects are defined
+ * in the FOOD_SUBSECTORS[].stat_effects config.
+ *
+ * @param {Object} flows – trade_flows for this nation { [sectorKey]: { ... } }
+ * @returns {Object} accumulated stat deltas { statKey: delta, ... }
+ */
+export function computeFoodStatEffects(flows) {
+    var effects = {};
+    if (!flows) return effects;
+
+    for (var i = 0; i < FOOD_SUBSECTORS.length; i++) {
+        var sub = FOOD_SUBSECTORS[i];
+        var flow = flows[sub.key];
+        if (!flow) continue;
+
+        var impDem = Number(flow.import_demand) || 0;
+        var impVol = Number(flow.import_volume) || 0;
+        var expCap = Number(flow.export_capacity) || 0;
+
+        // Determine supply status
+        var unmetRatio = impDem > 0 ? Math.max(0, (impDem - impVol) / impDem) : 0;
+        var isShortage = unmetRatio >= 0.10;
+        var isWellSupplied = unmetRatio < 0.05 && expCap > 0;
+
+        var effectSet;
+        var intensity;
+        if (isShortage) {
+            effectSet = sub.stat_effects.shortage;
+            intensity = Math.min(1.0, unmetRatio); // Scale with severity
+        } else if (isWellSupplied) {
+            effectSet = sub.stat_effects.supplied;
+            intensity = 1.0;
+        } else {
+            continue; // Neutral zone — no effects
+        }
+
+        if (!effectSet) continue;
+
+        for (var statKey in effectSet) {
+            var delta = effectSet[statKey] * intensity;
+            if (!effects[statKey]) effects[statKey] = 0;
+            effects[statKey] += delta;
+        }
+
+        // Environmental effects (always active when producing)
+        if (sub.environmental_effects && expCap > 0) {
+            var envIntensity = Math.min(1.0, expCap / 500000000); // Scale with production volume
+            for (var envKey in sub.environmental_effects) {
+                var envDelta = sub.environmental_effects[envKey] * envIntensity;
+                if (!effects[envKey]) effects[envKey] = 0;
+                effects[envKey] += envDelta;
+            }
+        }
+
+        // Structural effects for cash crops (always active when producing)
+        if (sub.structural_effects && expCap > 0) {
+            var structIntensity = Math.min(1.0, expCap / 500000000);
+            for (var structKey in sub.structural_effects) {
+                var structDelta = sub.structural_effects[structKey] * structIntensity;
+                if (!effects[structKey]) effects[structKey] = 0;
+                effects[structKey] += structDelta;
+            }
+        }
+    }
+
+    return effects;
+}
+
+/**
+ * Build the effective sector list for trade processing.
+ * Replaces 'food_agriculture' with the 4 food sub-sectors.
+ * Non-food sectors pass through unchanged.
+ *
+ * @returns {Array} sector objects for trade engine iteration
+ */
+export function buildEffectiveSectorList() {
+    var result = [];
+    for (var i = 0; i < TRADE_SECTORS.length; i++) {
+        if (TRADE_SECTORS[i].key === 'food_agriculture') {
+            // Replace with 4 sub-sectors
+            for (var j = 0; j < FOOD_SUBSECTORS.length; j++) {
+                result.push(FOOD_SUBSECTORS[j]);
+            }
+        } else {
+            result.push(TRADE_SECTORS[i]);
+        }
+    }
+    return result;
+}
+
+// ==================== FOOD SUB-SECTOR CALCULATION FUNCTIONS ====================
+
+// Gross food-sub-sector output per tick: land × econ × drivers, then
+// spoilage (perishables) and stability. Pairs with calculateFoodExport-
+// Capacity which handles the domestic-need + export-market side.
+export function calculateFoodDomesticProduction(nation, subsector, allocation) {
+    var cfg = TRADE_CONFIG;
+
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    if (gdpModifier <= 0) return 0;
+
+    // Food production is LAND-driven, not GDP-driven.
+    // Use sqrt(gdpModifier) so economy matters but land dominates.
+    var econScale = Math.sqrt(gdpModifier);
+
+    var effectiveLand = getEffectiveArableLand(nation, subsector.key, allocation);
+    if (effectiveLand <= (subsector.export_threshold || 0)) return 0;
+
+    var normalizedScore = effectiveLand / 5;
+
+    // Apply stat driver bonuses (secondary drivers boost capacity by up to ~30%)
+    var driverBonus = 1.0;
+    var drivers = subsector.drivers;
+    for (var i = 0; i < drivers.length; i++) {
+        var d = drivers[i];
+        if (d.stat === 'arable_land') continue;
+        var val = Number(nation[d.stat]) || 0;
+        if (d.inverted) val = 100 - val;
+        var bonus = ((val - 50) / 50) * d.weight * 0.3;
+        driverBonus += bonus;
+    }
+    driverBonus = Math.max(0.5, Math.min(1.5, driverBonus));
+
+    var totalProduction = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * econScale * driverBonus;
+
+    // Spoilage for perishables reduces actual farm output
+    if (subsector.key === 'fruits_vegetables') {
+        totalProduction *= calculateSpoilageMultiplier(nation);
+    }
+
+    // Stability (political disruption reduces real farm output)
+    var stability = Number(nation.stability ?? 50);
+    var stabilityMod = Math.min(1.0, stability / 40);
+    totalProduction *= stabilityMod;
+
+    return Math.round(totalProduction);
+}
+
+// Pairs with calculateFoodDomesticProduction: subtract domestic need,
+// apply sub-sector export fraction, currency modifier, floor.
+export function calculateFoodExportCapacity(nation, subsector, allocation) {
+    var cfg = TRADE_CONFIG;
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    if (gdpModifier <= 0) return 0;
+    var econScale = Math.sqrt(gdpModifier);
+
+    var totalProduction = calculateFoodDomesticProduction(nation, subsector, allocation);
+    if (totalProduction <= 0) return 0;
+
+    // ── Domestic demand cap: nations feed their own people first ──
+    // Subtract domestic need from production BEFORE the export fraction
+    // so the demand check operates at the right scale.
+    var popNorm = (Number(nation.population) || 1) / 5000000;
+    var domesticNeed = 0;
+
+    if (subsector.key === 'grains_staples') {
+        domesticNeed = popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.45;
+    } else if (subsector.key === 'livestock_dairy') {
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
+        domesticNeed = popNorm * (0.3 + sol * 0.7) * cfg.BASE_TRADE_MULTIPLIER * 0.25;
+    } else if (subsector.key === 'fruits_vegetables') {
+        var urban = (Number(nation.urbanization ?? 50)) / 100;
+        var solFV = (Number(nation.standard_of_living ?? 50)) / 100;
+        domesticNeed = popNorm * (0.4 + urban * 0.4 + solFV * 0.3) * cfg.BASE_TRADE_MULTIPLIER * 0.2;
+    } else if (subsector.key === 'cash_crops') {
+        domesticNeed = popNorm * cfg.BASE_TRADE_MULTIPLIER * 0.04;
+    }
+
+    var surplus = totalProduction;
+    if (domesticNeed > 0) {
+        surplus = Math.max(0, totalProduction - domesticNeed);
+    }
+
+    // Export fraction of the surplus (most food stays domestic)
+    var capacity = surplus * subsector.export_multiplier;
+
+    // Currency strength modifier on EXPORTS
+    var currencyStrength = Number(nation.currency_strength ?? 50);
+    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
+    capacity *= currencyModifier;
+
+    // Floor: minimal organic trade
+    var minCapacity = Math.round(0.002 * cfg.BASE_TRADE_MULTIPLIER * econScale);
+    return Math.max(minCapacity, Math.round(capacity));
+}
+
+/**
+ * Calculate import demand for a food sub-sector.
+ *
+ * Each sub-sector has distinct demand drivers:
+ *   grains_staples:    population-driven (everyone eats)
+ *   livestock_dairy:   wealth-driven (standard_of_living scales demand)
+ *   fruits_vegetables: urbanization + wealth driven
+ *   cash_crops:        low import demand (export-oriented sector)
+ *
+ * @param {Object} nation      – nation row
+ * @param {Object} subsector   – FOOD_SUBSECTORS entry
+ * @param {Object} allocation  – food_land_allocation row (or DEFAULT_FOOD_ALLOCATION)
+ * @returns {number} import demand in dollars
+ */
+export function calculateFoodImportDemand(nation, subsector, allocation) {
+    var cfg = TRADE_CONFIG;
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    var popNorm = (Number(nation.population) || 1) / 5000000;
+
+    var grossDemand = 0;
+    var domesticCoverage = 0;
+
+    // Effective arable land for this sub-sector
+    var effectiveLand = getEffectiveArableLand(nation, subsector.key, allocation);
+
+    if (subsector.key === 'grains_staples') {
+        // GRAINS: population-driven. Everyone needs staples.
+        // Population growth creates additional pressure.
+        var popGrowth = Number(nation.population_growth ?? 50);
+        var growthPressure = Math.max(0, (popGrowth - 40) / 60) * 0.3;
+        grossDemand = popNorm * (1.0 + growthPressure) * cfg.BASE_TRADE_MULTIPLIER * 0.45;
+
+        // Domestic coverage: effective land scaled by population pressure
+        // Large populations outstrip local farming even with good land
+        domesticCoverage = (effectiveLand / 100) / Math.max(0.3, popNorm * 0.5);
+    }
+
+    else if (subsector.key === 'livestock_dairy') {
+        // LIVESTOCK: wealth-driven. Demand scales with standard of living.
+        // Poor nations eat little meat; wealthy nations demand a lot.
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
+        grossDemand = popNorm * (0.3 + sol * 0.7) * cfg.BASE_TRADE_MULTIPLIER * 0.25;
+
+        // Domestic coverage: effective land, but less efficient (feed crops compete)
+        domesticCoverage = (effectiveLand / 100) / Math.max(0.2, popNorm * 0.4);
+    }
+
+    else if (subsector.key === 'fruits_vegetables') {
+        // PERISHABLES: urbanization + wealth driven.
+        // Urban populations need organized food supply chains.
+        var urban = (Number(nation.urbanization ?? 50)) / 100;
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
+        grossDemand = popNorm * (0.4 + urban * 0.4 + sol * 0.3) * cfg.BASE_TRADE_MULTIPLIER * 0.2;
+
+        // Domestic coverage reduced by spoilage — production means nothing
+        // without distribution infrastructure
+        var spoilage = calculateSpoilageMultiplier(nation);
+        domesticCoverage = ((effectiveLand / 100) / Math.max(0.2, popNorm * 0.5)) * spoilage;
+    }
+
+    else if (subsector.key === 'cash_crops') {
+        // CASH CROPS: low import demand. These are export commodities.
+        // Nations import coffee, tea, cocoa for domestic consumption but
+        // volumes are small compared to staples.
+        var sol = (Number(nation.standard_of_living ?? 50)) / 100;
+        grossDemand = popNorm * (0.15 + sol * 0.2) * cfg.BASE_TRADE_MULTIPLIER * 0.12;
+
+        // High domestic coverage if you grow them
+        domesticCoverage = (effectiveLand / 100) / Math.max(0.15, popNorm * 0.3);
+    }
+
+    // Apply domestic coverage
+    domesticCoverage = Math.min(1.0, Math.max(0, domesticCoverage));
+    var rawDemand = grossDemand * (1 - domesticCoverage);
+
+    if (rawDemand <= 0) return 0;
+
+    // Currency strength: weak currency = imports cost more = can afford less
+    var currencyStrength = Number(nation.currency_strength ?? 50);
+    var affordability = currencyStrength / 50;
+    rawDemand *= affordability;
+
+    // Tariff dampener
+    var tariffs = Number(nation.tariffs) || 0;
+    var tariffDampener = 1 - (tariffs / 200);
+    rawDemand *= tariffDampener;
+
+    // Floor
+    var minDemand = Math.round(0.005 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    return Math.max(minDemand, Math.round(rawDemand));
+}
+
+// ==================== TRADE CALCULATION FUNCTIONS ====================
 
 /**
  * Calculate a nation's export capacity for a given sector.
@@ -145,15 +931,60 @@ export function formatSectorVolume(val, sectorKey) {
  * @param {Object} [opts]    – optional: { defense_pct } for arms sector (0-100, % of budget)
  * @returns {number} export capacity in dollars (value side, after currency modifier)
  */
-export function calculateExportCapacity(nation, sector, opts) {
+// Resource sectors: production is a fixed endowment (no GDP scaling).
+// You have oil in the ground or you don't — GDP doesn't create more.
+var RESOURCE_SECTORS = new Set(['fuel_energy', 'minerals', 'food_agriculture',
+    'grains_staples', 'livestock_dairy', 'fruits_vegetables', 'cash_crops']);
+
+// Gross sector output per tick — score × base × gdpModifier, sector
+// multipliers, then stability. Written to trade_flows.domestic_production
+// and shown as "Prod" in the UI. Pairs with calculateExportCapacity
+// which handles the domestic-demand + export-market side.
+export function calculateDomesticProduction(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
 
-    // GDP modifier: bigger economies trade more in absolute terms
+    // ── FUEL & ENERGY ──
+    // oil_and_gas is the primary driver — a petro-state with a poor grid is
+    // still a major oil producer. energy_generation applies as a modifier
+    // around neutral (±25% at stat=0/100, 1.0x at gen=50) representing
+    // refining/transport quality. Stability drags below 40.
+    //   oil=100, gen=50, stab>=40 → $60B (max baseline)
+    //   oil=100, gen=100          → $75B (full grid bonus)
+    //   oil=100, gen=0            → $45B (still produces — stat matters but doesn't gate)
+    //   oil=0                     → 0    (no reserves = no production, regardless of grid)
+    //   Display basis $5B ≈ 1 Mbbl/d, so $75B ≈ 15 Mbbl/d (above Saudi-tier).
+    if (sector.key === 'fuel_energy') {
+        var oil = Number(nation.oil_and_gas) || 0;
+        var gen = Number(nation.energy_generation) || 0;
+        var stab = Number(nation.stability ?? 50);
+        var genModifier = 0.75 + (gen / 100) * 0.5;
+        return Math.round(
+            (oil / 100) * 60e9 * genModifier * Math.min(1.0, stab / 40)
+        );
+    }
+
+    // ── MANUFACTURED GOODS ──
+    // Population-scaled single-driver model. Manufacturing output IS the
+    // composite industrial capability — no secondary stat needed. Pop scales
+    // because more workers = more factory output. Stability degrades below 40.
+    // Max output (manuf=100, pop=100M, stab≥40) = $25B/tick.
+    // No threshold, no GDP modifier, no bonus stats.
+    if (sector.key === 'manufactured_goods') {
+        var manufStat = Number(nation.manufacturing_output) || 0;
+        var popMillions = (Number(nation.population) || 0) / 1_000_000;
+        var stabMg = Number(nation.stability ?? 50);
+        return Math.round(
+            (manufStat / 100) * popMillions * 250_000_000 * Math.min(1.0, stabMg / 40)
+        );
+    }
+
+    // Resource sectors (oil, minerals, food) are fixed endowments — no GDP scaling.
+    // Industrial/service sectors scale with economic size (sqrt for diminishing returns).
     var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
     if (gdpModifier <= 0) return 0;
 
-    // Calculate primary export score from sector stat(s) (0-100 scale)
+    // Primary score: must clear threshold on its own. Bonus stats can add but not gate.
     var score = 0;
     if (sector.export_stat) {
         score = Number(nation[sector.export_stat]) || 0;
@@ -165,59 +996,111 @@ export function calculateExportCapacity(nation, sector, opts) {
         score = sum / sector.export_stats.length;
     }
 
-    // Threshold check: stat must exceed sector threshold to generate any exports
     if (score <= (sector.export_threshold || 0)) return 0;
+
+    if (sector.export_bonus_stats) {
+        var bonusSum = 0;
+        for (var bi = 0; bi < sector.export_bonus_stats.length; bi++) {
+            bonusSum += Number(nation[sector.export_bonus_stats[bi]]) || 0;
+        }
+        var bonusAvg = bonusSum / sector.export_bonus_stats.length;
+        score += Math.min(score * 0.5, bonusAvg * 0.3); // bonus capped at 50% of primary, weighted at 30%
+    }
 
     // Normalize from 0-100 codebase scale to 0-20 spec scale
     var normalizedScore = score / 5;
+    var totalProduction = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
 
-    // Base capacity = normalizedScore × BASE_TRADE_MULTIPLIER × gdpModifier
-    var capacity = normalizedScore * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
-
-    // ── Sector-specific modifiers ──
-
-    // Food: tighter supply — farming feeds your people first, only surplus is exported.
-    // Reduces export capacity by ~83% (equivalent to normalizing by /30 instead of /5).
+    // ── Sector-specific production scaling ──
     if (sector.key === 'food_agriculture') {
-        capacity *= 0.167;
+        totalProduction *= 0.167;  // tighter supply (equivalent to /30 normalization)
     }
-
-    // Arms: requires meaningful defense spending to have an arms industry
     if (sector.key === 'arms') {
         var defensePct = (opts && opts.defense_pct) || 0;
         if (defensePct <= 8) return 0;
-        capacity *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
+        totalProduction *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
     }
-
-    // Tourism: smaller than goods trade + requires stability
     if (sector.key === 'tourism') {
-        capacity *= 0.5;
+        totalProduction *= 0.5;
         if ((Number(nation.stability) || 0) <= 25) return 0;
     }
-
-    // Services & Finance: smaller than goods trade
     if (sector.key === 'services_finance') {
-        capacity *= 0.7;
+        totalProduction *= 0.7;
     }
 
     // ── Stability modifier ──
     // Political instability disrupts production across all sectors.
-    // Below 40 stability, export capacity starts degrading.
-    // At stability 20, capacity is halved. At 0, no exports at all.
+    // Below 40 stability, output degrades. At 20, halved. At 0, zero.
     var stability = Number(nation.stability ?? 50);
     var stabilityMod = Math.min(1.0, stability / 40);
-    capacity *= stabilityMod;
+    totalProduction *= stabilityMod;
 
-    // ── Currency strength modifier ──
-    // Affects export VALUE (what appears on trade page).
-    // Weak currency = exports are cheaper = lower value per unit.
-    // currency_strength 50 = 1.0 (neutral), 25 = 0.5 (cheap), 75 = 1.5 (premium)
+    return Math.round(totalProduction);
+}
+
+// Pairs with calculateDomesticProduction: subtract domestic demand from
+// gross output, apply currency modifier, floor. Resource sectors are
+// endowment-pinned (gdpModifier = 1.0) so demand scales with the same
+// base as production.
+export function calculateExportCapacity(nation, sector, opts) {
+    var cfg = TRADE_CONFIG;
+    var gdp = Number(nation.gdp) || 0;
+    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
+    if (gdpModifier <= 0) return 0;
+
+    var totalProduction = calculateDomesticProduction(nation, sector, opts);
+    if (totalProduction <= 0) return 0;
+
+    // ── Domestic demand: feed your own people/industry first ──
+    // Mirrors grossDemand from calculateImportDemand so both sides of trade
+    // use consistent demand estimates. Only the surplus is available for export.
+    var popNorm = (Number(nation.population) || 1) / 5000000;
+    var SN = 5;
+    var domesticDemand = 0;
+
+    if (sector.key === 'fuel_energy') {
+        // Single source of truth for fuel demand. calculateImportDemand
+        // reads the same number, guaranteeing a nation can't be classified
+        // as both exporter and importer of the same commodity.
+        domesticDemand = computeFuelDemand(nation).gross;
+    }
+    else if (sector.key === 'minerals') {
+        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
+        var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
+        var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
+        domesticDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+    }
+    else if (sector.key === 'manufactured_goods') {
+        var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
+        domesticDemand = popNorm * (solNorm / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
+    }
+    else if (sector.key === 'technology') {
+        var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
+        var digiNorm = (Number(nation.digital_infrastructure) || 0) / SN;
+        domesticDemand = popNorm * ((solNorm + digiNorm) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
+    }
+
+    var capacity = totalProduction;
+    if (domesticDemand > 0) {
+        capacity = Math.max(0, totalProduction - domesticDemand);
+    }
+
+    // ── Currency strength modifier on EXPORTS ──
+    // Strong currency = exports expensive abroad = less competitive.
+    // currency_strength 50 = 1.0 (neutral), 75 = 0.67x, 25 = 2.0x
     var currencyStrength = Number(nation.currency_strength ?? 50);
-    var currencyModifier = currencyStrength / 50;
+    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
     capacity *= currencyModifier;
 
-    // Floor: even distressed nations maintain some organic trade (5% of GDP-scaled baseline)
-    var minCapacity = Math.round(0.05 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    // Fuel runs on the simplified model: import_demand and export_capacity
+    // are mutually exclusive. A nation that consumes more than it produces
+    // has zero export capacity — no phantom "organic trade" floor.
+    if (sector.key === 'fuel_energy') {
+        return Math.max(0, Math.round(capacity));
+    }
+
+    // Floor: even distressed nations maintain some organic trade
+    var minCapacity = Math.round(0.02 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
     return Math.max(minCapacity, Math.round(capacity));
 }
 
@@ -234,13 +1117,93 @@ export function calculateExportCapacity(nation, sector, opts) {
  * @param {Object} [opts]    – optional: { defense_budget, has_arms_exports } for arms sector
  * @returns {number} import demand in dollars
  */
+// Shared fuel-demand math — single source of truth for the simplified model.
+// Four-factor conglomeration, with urbanization and standard_of_living
+// weighted 3x manufacturing because gasoline consumption is dominated by
+// personal transportation (cars driven by urban, commuter-rich, affluent
+// populations) more than industrial fuel use.
+//   intensity = (urban*3 + sol*3 + manuf) / 700
+//   gross     = (pop/1M) × $550M × intensity
+// A nation with urban=100, sol=100, manuf=100 hits intensity 1.0. Low
+// urbanization + low SoL collapses intensity even if manufacturing is
+// maxed (Montequilla-style: urban 27 + sol 55 + manuf 76 → intensity 0.46).
+// No caps, no currency modifier, no separate coverage layer.
+// Import demand and export capacity derive directly from max(0, gross -
+// production) and max(0, production - gross).
+function computeFuelDemand(nation) {
+    const pop = Number(nation.population) || 0;
+    const urban = Number(nation.urbanization) || 0;
+    const sol = Number(nation.standard_of_living) || 0;
+    const manuf = Number(nation.manufacturing_output) || 0;
+
+    const intensity = (urban * 3 + sol * 3 + manuf) / 700;
+    const gross = (pop / 1_000_000) * 550_000_000 * intensity;
+    return { gross: Math.round(gross) };
+}
+
+// Gross domestic demand for fuel — total consumption before the domestic-
+// coverage offset carves out imports. Used by processTradeFlows to populate
+// trade_flows.domestic_demand and by the YOUR ECONOMY panel in diplomacy.html.
+export function calculateDomesticFuelDemand(nation) {
+    return computeFuelDemand(nation).gross;
+}
+
+// Shared manufactured-goods demand math — mirror of computeFuelDemand.
+// Drivers: population, urbanization, standard_of_living, higher_education.
+// Domestic offset: manufacturing_output (what you make, you don't import).
+// Currency strength scales import power (linear 0-to-1).
+// No floors, no caps, no stability, no tariff dampener.
+// Calibration: 250M per 1M pop — at pop 100M, intensity 1.0, coverage 0,
+// currency 100 → $25B max demand per nation. Scales linearly with pop.
+function computeManufDemand(nation) {
+    const pop = Number(nation.population) || 0;
+    const urban = Number(nation.urbanization) || 0;
+    const sol = Number(nation.standard_of_living) || 0;
+    const edu = Number(nation.higher_education) || 0;
+    const manuf = Number(nation.manufacturing_output) || 0;
+    const currency = Number(nation.currency_strength) || 0;
+
+    const intensity        = (urban + sol + edu) / 300;
+    const domesticCoverage = manuf / 100;
+    const importPower      = currency / 100;
+
+    const gross = (pop / 1_000_000) * 250_000_000 * intensity * importPower;
+    return {
+        gross: Math.round(gross),
+        importDemand: Math.round(gross * (1 - domesticCoverage)),
+    };
+}
+
+// Gross domestic demand for manufactured goods — mirror of calculateDomesticFuelDemand.
+export function calculateDomesticManufDemand(nation) {
+    return computeManufDemand(nation).gross;
+}
+
 export function calculateImportDemand(nation, sector, opts) {
     // Export-only sectors have no import demand
     if (sector.export_only) return 0;
 
+    // ── FUEL & ENERGY — direct net shortfall ──
+    // import_demand = max(0, gross_consumption − own_production).
+    // No separate "coverage" layer: if you pump enough to feed yourself,
+    // you don't import. Pairs 1:1 with calculateExportCapacity below.
+    if (sector.key === 'fuel_energy') {
+        var fuelGross = computeFuelDemand(nation).gross;
+        var fuelProd = calculateDomesticProduction(nation, sector, opts);
+        return Math.max(0, Math.round(fuelGross - fuelProd));
+    }
+
+    // ── MANUFACTURED GOODS — simplified model ──
+    if (sector.key === 'manufactured_goods') {
+        return computeManufDemand(nation).importDemand;
+    }
+
     var cfg = TRADE_CONFIG;
     var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    // Resource sectors pin at 1.0 to stay consistent with the export-side
+    // (calculateExportCapacity), so gross demand for fuel/minerals does
+    // not scale with GDP while production is also pinned.
+    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;   // stat normalizer: divide 0-100 stats by 5
 
@@ -250,26 +1213,10 @@ export function calculateImportDemand(nation, sector, opts) {
     var grossDemand = 0;
     var domesticCoverage = 0;  // 0.0–0.7: how much domestic production offsets
 
-    // ── FUEL & ENERGY ──
-    // Demand: population + manufacturing + urbanization + transport needs.
-    // Domestic offset: oil/gas + energy generation (max 70%).
-    if (sector.key === 'fuel_energy') {
-        var manufNorm = (Number(nation.manufacturing_output) || 0) / SN;
-        var urbanNorm = (Number(nation.urbanization) || 0) / SN;
-        var colNorm = (Number(nation.cost_of_living) || 0) / SN;
-        var railNorm = (Number(nation.rail_network) || 0) / SN;
-        var transportNeed = Math.max(0, 12 - railNorm) * 0.15;
-        grossDemand = (popNorm * 2 + manufNorm * 0.3 + urbanNorm * 0.2 + colNorm * 0.15 + transportNeed) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
-
-        var oilGas = (Number(nation.oil_and_gas) || 0) / 100;
-        var energyGen = (Number(nation.energy_generation) || 0) / 100;
-        domesticCoverage = Math.min(0.70, (oilGas + energyGen) / 2);
-    }
-
     // ── MINERALS & RAW MATERIALS ──
     // Demand: manufacturing needs + infrastructure development + technology production.
     // Domestic offset: rare_minerals (max 65%).
-    else if (sector.key === 'minerals') {
+    if (sector.key === 'minerals') {
         var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
         var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
         var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
@@ -290,18 +1237,6 @@ export function calculateImportDemand(nation, sector, opts) {
 
         var arableLand = (Number(nation.arable_land) || 0) / 100;
         domesticCoverage = arableLand / Math.max(0.2, popNorm * 1.2);
-    }
-
-    // ── MANUFACTURED GOODS ──
-    // Demand: population × standard of living (consumer purchasing power).
-    // Domestic offset: manufacturing_output (max 60% — even industrial nations
-    // import cars, electronics, clothing from abroad).
-    else if (sector.key === 'manufactured_goods') {
-        var sol = (Number(nation.standard_of_living ?? 50)) / SN;
-        grossDemand = popNorm * (sol / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
-
-        var manufScore = (Number(nation.manufacturing_output) || 0) / 100;
-        domesticCoverage = Math.min(0.60, manufScore * 0.7);
     }
 
     // ── TECHNOLOGY & ELECTRONICS ──
@@ -350,7 +1285,7 @@ export function calculateImportDemand(nation, sector, opts) {
     rawDemand *= tariffDampener;
 
     // Floor: even distressed nations import essential goods (5% of GDP-scaled baseline)
-    var minDemand = Math.round(0.05 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
+    var minDemand = Math.round(0.02 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
     return Math.max(minDemand, Math.round(rawDemand));
 }
 
@@ -586,6 +1521,11 @@ export function calculateTariffRevenue(totalImports, tariffRate, collectionRate)
 /**
  * Main trade engine — runs once per tick for ALL nations simultaneously.
  *
+ * NOT exported: the browser never calls this (the tick processor does).
+ * sync-edge-function.js concatenates this file into advance-tick/index.ts
+ * and strips the `export` prefix anyway, so dropping `export` here just
+ * trims the browser's public surface.
+ *
  * Pipeline:
  *   1. Compute per-nation per-sector export capacity + import demand
  *   2. Aggregate supply/demand per sector → price modifiers (with smoothing)
@@ -593,26 +1533,55 @@ export function calculateTariffRevenue(totalImports, tariffRate, collectionRate)
  *   4. For each exporter-sector, distribute capacity among importers (weighted by affinity × demand)
  *   5. Write trade_flows, trade_partners, trade_summary rows
  *   6. Update nation trade_balance stat + add tariff revenue
- *
- * @param {Object} supabase     – Supabase client
- * @param {Array}  nationList   – array of nation rows (already fetched)
- * @param {number} currentTick  – current game tick
- * @returns {Object} { processed, totalVolume }
  */
-export async function processTradeFlows(supabase, nationList, currentTick) {
+
+// Does a trade lane between two nations require maritime shipping?
+// Single source of truth for the shipping-efficiency logic — used by
+// processTradeFlows (tick) and diplomacy.html (UI badge).
+//
+// Returns { needsShipping, reason }:
+//   needsShipping=false, reason='landlocked'   — at least one party is landlocked
+//   needsShipping=false, reason='land_border'  — they share a 'land' border
+//   needsShipping=true,  reason=null           — maritime / mountain-only / unknown
+//
+// 'mountain' alone does NOT skip shipping — mountain terrain is treated as
+// land-accessible-but-disrupted (baseline 85%, shippable up to 100% with
+// active vessels) which is identical to the maritime case, so the formula
+// collapses. No separate branch.
+export function shippingNeedFor(exporterNation, importerNation, borderTypes) {
+    if (exporterNation?.is_landlocked || importerNation?.is_landlocked) {
+        return { needsShipping: false, reason: 'landlocked' };
+    }
+    if (Array.isArray(borderTypes) && borderTypes.includes('land')) {
+        return { needsShipping: false, reason: 'land_border' };
+    }
+    return { needsShipping: true, reason: null };
+}
+
+async function processTradeFlows(supabase, nationList, currentTick) {
     if (!nationList || nationList.length < 2) {
         console.log('[processTradeFlows] Need at least 2 nations for trade, skipping');
         return { processed: 0, totalVolume: 0 };
     }
 
     var cfg = TRADE_CONFIG;
-    var sectors = TRADE_SECTORS;
+    var sectors = buildEffectiveSectorList(); // Replaces food_agriculture with 4 sub-sectors
     var nationCount = nationList.length;
 
     // Build nation lookup by id
     var nationMap = {};
     for (var ni = 0; ni < nationCount; ni++) {
         nationMap[nationList[ni].id] = nationList[ni];
+    }
+
+    // ── Step 0: Fetch food land allocations for all nations ──
+    var foodAllocMap = {}; // foodAllocMap[nationId] = { grains_pct, livestock_pct, ... }
+    var { data: foodAllocRows } = await supabase.from('food_land_allocation')
+        .select('nation_id, grains_pct, livestock_pct, perishables_pct, cash_crops_pct');
+    if (foodAllocRows) {
+        for (var fi = 0; fi < foodAllocRows.length; fi++) {
+            foodAllocMap[foodAllocRows[fi].nation_id] = foodAllocRows[fi];
+        }
     }
 
     // ── Step 1: Compute per-nation budget info (for arms sector opts) ──
@@ -623,7 +1592,7 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
     }
 
     // ── Step 2: Compute export capacity + import demand for every nation × sector ──
-    // nationFlows[nationId][sectorKey] = { exportCapacity, importDemand }
+    // nationFlows[nationId][sectorKey] = { domesticProduction, exportCapacity, importDemand }
     var nationFlows = {};
     // sectorAgg[sectorKey] = { totalSupply, totalDemand }
     var sectorAgg = {};
@@ -635,38 +1604,59 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
     for (var ni = 0; ni < nationCount; ni++) {
         var n = nationList[ni];
         nationFlows[n.id] = {};
+        var foodAlloc = foodAllocMap[n.id] || DEFAULT_FOOD_ALLOCATION;
 
         for (var si = 0; si < sectors.length; si++) {
             var sector = sectors[si];
+            var expCap, impDem, domProd;
 
-            // Arms sector needs special opts
-            var exportOpts = null;
-            var importOpts = null;
-            if (sector.key === 'arms') {
-                // Estimate defense allocation as 10% of available budget (default assumption)
-                var avail = budgetMap[n.id].availableBudget || 0;
-                var defenseBudget = avail * 0.10;
-                exportOpts = { defense_pct: 10 };
-                importOpts = { defense_budget: defenseBudget, has_arms_exports: false };
-            }
+            if (isFoodSubsector(sector.key)) {
+                // ── Food sub-sector: use specialized calculation ──
+                domProd = calculateFoodDomesticProduction(n, sector, foodAlloc);
+                expCap = calculateFoodExportCapacity(n, sector, foodAlloc);
+                impDem = calculateFoodImportDemand(n, sector, foodAlloc);
+            } else {
+                // ── Regular sector ──
+                var exportOpts = null;
+                var importOpts = null;
+                if (sector.key === 'arms') {
+                    var avail = budgetMap[n.id].availableBudget || 0;
+                    var defenseBudget = avail * 0.10;
+                    exportOpts = { defense_pct: 10 };
+                    importOpts = { defense_budget: defenseBudget, has_arms_exports: false };
+                }
 
-            var expCap = calculateExportCapacity(n, sector, exportOpts);
-            var impDem = calculateImportDemand(n, sector, importOpts);
-
-            // Check if this nation can export arms (for import reduction)
-            if (sector.key === 'arms' && expCap > 0 && importOpts) {
-                importOpts.has_arms_exports = true;
+                domProd = calculateDomesticProduction(n, sector, exportOpts);
+                expCap = calculateExportCapacity(n, sector, exportOpts);
                 impDem = calculateImportDemand(n, sector, importOpts);
+
+                if (sector.key === 'arms' && expCap > 0 && importOpts) {
+                    importOpts.has_arms_exports = true;
+                    impDem = calculateImportDemand(n, sector, importOpts);
+                }
             }
 
-            // Export controls: nations can cap exports per sector (e.g., OPEC strategy)
-            // export_caps is a JSONB object like { energy: 50, minerals: 75 } meaning % of capacity
+            // Export controls: nations can cap exports per sector
             var exportCaps = n.export_caps;
             if (exportCaps && exportCaps[sector.key] != null) {
                 expCap = Math.round(expCap * (exportCaps[sector.key] / 100));
             }
+            // Also check parent food_agriculture cap for sub-sectors
+            if (isFoodSubsector(sector.key) && exportCaps && exportCaps['food_agriculture'] != null) {
+                expCap = Math.round(expCap * (exportCaps['food_agriculture'] / 100));
+            }
 
-            nationFlows[n.id][sector.key] = { exportCapacity: expCap, importDemand: impDem };
+            // Gross domestic demand — populated for sectors that have been
+            // migrated to the simplified multiplicative model (fuel_energy,
+            // manufactured_goods). Other sectors stay at 0 until they get
+            // the same treatment.
+            var domDem = 0;
+            if (sector.key === 'fuel_energy') domDem = calculateDomesticFuelDemand(n);
+            else if (sector.key === 'manufactured_goods') domDem = calculateDomesticManufDemand(n);
+
+            // Export caps only restrict what leaves the country — they don't
+            // change what's produced, so domProd is captured pre-cap.
+            nationFlows[n.id][sector.key] = { domesticProduction: domProd, exportCapacity: expCap, importDemand: impDem, domesticDemand: domDem };
             sectorAgg[sector.key].totalSupply += expCap;
             sectorAgg[sector.key].totalDemand += impDem;
         }
@@ -702,7 +1692,7 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
 
     // ── Step 4: Fetch diplomatic relations + proposals for affinity ──
     var { data: relations } = await supabase.from('diplomatic_relations')
-        .select('nation_a_id, nation_b_id, relation_score, active_treaties, proximity');
+        .select('nation_a_id, nation_b_id, relation_score, active_treaties, proximity, border_types');
 
     var { data: activeProposals } = await supabase.from('diplomatic_proposals')
         .select('id, proposal_type, proposing_nation_id, target_nation_id')
@@ -742,11 +1732,11 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         }
     }
 
-    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT, ES, Embargo) ──
+    // ── Step 4b: Fetch ALL active trade agreements (FTA, PTA, RSC, RT, ES, Embargo, Goods Trade) ──
     var { data: activeTradeAgreements } = await supabase.from('trade_agreements')
         .select('id, nation_a_id, nation_b_id, agreement_type, articles')
         .eq('status', 'active')
-        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff', 'export_subsidy', 'impose_embargo']);
+        .in('agreement_type', ['fta', 'pta', 'resource_supply', 'retaliatory_tariff', 'export_subsidy', 'impose_embargo', 'goods_trade']);
 
     // Set type-specific affinity flags from trade_agreements
     // Build tariff modifier map: tariffModMap[importerId|exporterId][sector] = reduction fraction (0-1)
@@ -758,6 +1748,48 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
     var exportSubsidyMap = {};
     var embargoMap = {};
     var activeRSCs = [];
+    // Goods Trade agreements (type='goods_trade') collected here for the
+    // Step 4d trade_flow pre-allocation pass below. Article-level overrides
+    // (market_access → tariff reduction) are applied inline in the
+    // agreement-type switch.
+    var activeGoodsTrades = [];
+
+    // Helper: expand a sector key to account for food sub-sectors.
+    // If an agreement references 'food_agriculture', it applies to all 4 sub-sectors.
+    function expandSectorKey(sectorKey) {
+        if (sectorKey === 'food_agriculture') return FOOD_SUBSECTOR_KEYS;
+        return [sectorKey];
+    }
+
+    // Shared handler for 'tariff_reduction' articles. Used by both PTA
+    // (agreement_type='pta') and Goods Trade (agreement_type='goods_trade')
+    // since the article shape + semantics are identical. One place to keep
+    // the direction/author/partner logic correct.
+    //   d.direction: 'mutual' | 'your_exports' | 'their_exports'
+    //     your_exports   → partner (importer) reduces tariffs on author's exports
+    //     their_exports  → author (importer) reduces tariffs on partner's exports
+    //     mutual         → both
+    function applyTariffReductionArticle(ta, d) {
+        if (!d || !d.sector) return; // skip malformed articles rather than polluting tariffModMap[key][undefined]
+        var reduction = (d.reduction_pct || 0) / 100;
+        var direction = d.direction || 'mutual';
+        var authorId = d.author_nation_id || ta.nation_a_id;
+        var partnerId = (authorId === ta.nation_a_id) ? ta.nation_b_id : ta.nation_a_id;
+        var secs = expandSectorKey(d.sector);
+        for (var i = 0; i < secs.length; i++) {
+            var sec = secs[i];
+            if (direction === 'mutual' || direction === 'your_exports') {
+                var k = partnerId + '|' + authorId;
+                if (!tariffModMap[k]) tariffModMap[k] = {};
+                tariffModMap[k][sec] = Math.max(tariffModMap[k][sec] || 0, reduction);
+            }
+            if (direction === 'mutual' || direction === 'their_exports') {
+                var k2 = authorId + '|' + partnerId;
+                if (!tariffModMap[k2]) tariffModMap[k2] = {};
+                tariffModMap[k2][sec] = Math.max(tariffModMap[k2][sec] || 0, reduction);
+            }
+        }
+    }
 
     if (activeTradeAgreements) {
         for (var ti = 0; ti < activeTradeAgreements.length; ti++) {
@@ -790,31 +1822,12 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
             } else if (ta.agreement_type === 'pta') {
                 flagsMap[k1].has_pta = true;
                 flagsMap[k2].has_pta = true;
-
-                // PTA: per-sector tariff reductions from tariff_reduction articles
+                // PTA: per-sector tariff reductions from tariff_reduction articles.
+                // Shares applyTariffReductionArticle with goods_trade.
                 var arts = ta.articles || [];
                 for (var ai = 0; ai < arts.length; ai++) {
                     if (arts[ai].type !== 'tariff_reduction') continue;
-                    var d = arts[ai].data;
-                    var reduction = (d.reduction_pct || 0) / 100;
-                    var direction = d.direction || 'mutual';
-
-                    // Resolve direction: "your_exports" / "their_exports" relative to author
-                    var authorId = d.author_nation_id || ta.nation_a_id;
-                    var partnerId = (authorId === ta.nation_a_id) ? ta.nation_b_id : ta.nation_a_id;
-
-                    // your_exports: partner (importer) reduces tariffs on author's (exporter's) goods
-                    // their_exports: author (importer) reduces tariffs on partner's (exporter's) goods
-                    if (direction === 'mutual' || direction === 'your_exports') {
-                        var impExpKey = partnerId + '|' + authorId;
-                        if (!tariffModMap[impExpKey]) tariffModMap[impExpKey] = {};
-                        tariffModMap[impExpKey][d.sector] = Math.max(tariffModMap[impExpKey][d.sector] || 0, reduction);
-                    }
-                    if (direction === 'mutual' || direction === 'their_exports') {
-                        var impExpKey = authorId + '|' + partnerId;
-                        if (!tariffModMap[impExpKey]) tariffModMap[impExpKey] = {};
-                        tariffModMap[impExpKey][d.sector] = Math.max(tariffModMap[impExpKey][d.sector] || 0, reduction);
-                    }
+                    applyTariffReductionArticle(ta, arts[ai].data || {});
                 }
             } else if (ta.agreement_type === 'resource_supply') {
                 flagsMap[k1].has_rsc = true;
@@ -833,8 +1846,11 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                     // Key: importer (imposer) | exporter (target) — surcharge on imports FROM target
                     var surKey = imposerId + '|' + targetId;
                     if (!tariffSurchargeMap[surKey]) tariffSurchargeMap[surKey] = {};
-                    // Stack surcharges per sector (take max if multiple)
-                    tariffSurchargeMap[surKey][d.sector] = Math.max(tariffSurchargeMap[surKey][d.sector] || 0, surcharge);
+                    // Expand food_agriculture to sub-sectors
+                    var rtSectors = expandSectorKey(d.sector);
+                    for (var rti = 0; rti < rtSectors.length; rti++) {
+                        tariffSurchargeMap[surKey][rtSectors[rti]] = Math.max(tariffSurchargeMap[surKey][rtSectors[rti]] || 0, surcharge);
+                    }
                 }
             } else if (ta.agreement_type === 'export_subsidy') {
                 // Export subsidy: unilateral — nation_a subsidizes its own exports in a sector
@@ -845,7 +1861,11 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                     var subsidyPct = (d.subsidy_pct || 0) / 100;
                     var nationId = ta.nation_a_id;
                     if (!exportSubsidyMap[nationId]) exportSubsidyMap[nationId] = {};
-                    exportSubsidyMap[nationId][d.sector] = Math.max(exportSubsidyMap[nationId][d.sector] || 0, subsidyPct);
+                    // Expand food_agriculture to sub-sectors
+                    var esSectors = expandSectorKey(d.sector);
+                    for (var esi = 0; esi < esSectors.length; esi++) {
+                        exportSubsidyMap[nationId][esSectors[esi]] = Math.max(exportSubsidyMap[nationId][esSectors[esi]] || 0, subsidyPct);
+                    }
                 }
             } else if (ta.agreement_type === 'impose_embargo') {
                 // Impose embargo: per-sector trade blocking between imposer (nation_a) and target (nation_b)
@@ -860,8 +1880,49 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                     var ek2 = embTargetId + '|' + imposerId;
                     if (!embargoMap[ek1]) embargoMap[ek1] = {};
                     if (!embargoMap[ek2]) embargoMap[ek2] = {};
-                    embargoMap[ek1][d.sector] = true;
-                    embargoMap[ek2][d.sector] = true;
+                    // Expand food_agriculture to sub-sectors
+                    var embSectors = expandSectorKey(d.sector);
+                    for (var embi = 0; embi < embSectors.length; embi++) {
+                        embargoMap[ek1][embSectors[embi]] = true;
+                        embargoMap[ek2][embSectors[embi]] = true;
+                    }
+                }
+            } else if (ta.agreement_type === 'goods_trade') {
+                // Goods & Services Trade Agreement (from diplomacy.html trade
+                // modal). Collect the row for Step 4d trade_flow pre-allocation,
+                // and apply inline market_access / tariff_reduction articles
+                // so tariffs reflect the deal this same tick.
+                // No has_goods_trade flag — nothing reads it and the affinity
+                // calc already weights FTA/PTA/RSC explicitly.
+                activeGoodsTrades.push(ta);
+
+                var arts = ta.articles || [];
+                for (var ai = 0; ai < arts.length; ai++) {
+                    var artType = arts[ai].article_type || arts[ai].type;
+                    var d = arts[ai].data || {};
+
+                    if (artType === 'tariff_reduction') {
+                        applyTariffReductionArticle(ta, d);
+                    } else if (artType === 'market_access') {
+                        // free_trade → 100% tariff reduction (same as FTA).
+                        // preferential → 50% reduction. restricted → no-op.
+                        var accessReduction = d.level === 'free_trade' ? 1.0
+                            : d.level === 'preferential' ? 0.5
+                            : 0;
+                        if (accessReduction <= 0) continue;
+                        var maSectors = d.scope === 'all_goods'
+                            ? sectors.map(function (s) { return s.key; })
+                            : expandSectorKey(d.scope_sector);
+                        if (!tariffModMap[k1]) tariffModMap[k1] = {};
+                        if (!tariffModMap[k2]) tariffModMap[k2] = {};
+                        for (var maj = 0; maj < maSectors.length; maj++) {
+                            var maSec = maSectors[maj];
+                            tariffModMap[k1][maSec] = Math.max(tariffModMap[k1][maSec] || 0, accessReduction);
+                            tariffModMap[k2][maSec] = Math.max(tariffModMap[k2][maSec] || 0, accessReduction);
+                        }
+                    }
+                    // trade_flow handled in Step 4d below; transfer / exit_terms
+                    // / text_article have no tick-level side effect.
                 }
             }
         }
@@ -903,6 +1964,9 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
 
             if (!supplyArt || !supplyArt.sector || !supplyArt.commitment_pct) continue;
 
+            // Expand food_agriculture RSCs to all sub-sectors (split commitment proportionally)
+            var rscSectors = expandSectorKey(supplyArt.sector);
+
             // Resolve buyer/seller from direction + author_nation_id
             var authorNationId = supplyArt.author_nation_id || rsc.nation_a_id;
             var otherNationId = (authorNationId === rsc.nation_a_id) ? rsc.nation_b_id : rsc.nation_a_id;
@@ -915,37 +1979,136 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 buyerNationId = otherNationId;
             }
 
-            // Calculate guaranteed volume from seller's export capacity
             var sellerFlows = nationFlows[sellerNationId];
             var buyerFlows = nationFlows[buyerNationId];
             if (!sellerFlows || !buyerFlows) continue;
 
-            var sellerExport = (sellerFlows[supplyArt.sector] && sellerFlows[supplyArt.sector].exportCapacity) || 0;
-            var buyerDemand = (buyerFlows[supplyArt.sector] && buyerFlows[supplyArt.sector].importDemand) || 0;
-            if (sellerExport <= 0 || buyerDemand <= 0) continue;
+            for (var rsi = 0; rsi < rscSectors.length; rsi++) {
+                var rscSec = rscSectors[rsi];
 
-            var guaranteedVolume = Math.round(sellerExport * (supplyArt.commitment_pct / 100));
-            guaranteedVolume = Math.min(guaranteedVolume, buyerDemand);
+                var sellerExport = (sellerFlows[rscSec] && sellerFlows[rscSec].exportCapacity) || 0;
+                var buyerDemand = (buyerFlows[rscSec] && buyerFlows[rscSec].importDemand) || 0;
+                if (sellerExport <= 0 || buyerDemand <= 0) continue;
 
-            // Apply price modifier based on price_terms article
-            var sectorPriceMod = priceModifiers[supplyArt.sector] || 1.0;
-            var rscPriceMod = sectorPriceMod;
-            if (priceArt) {
-                if (priceArt.price_type === 'fixed') rscPriceMod = 1.0;
-                else if (priceArt.price_type === 'discounted') rscPriceMod = sectorPriceMod * (1 - (priceArt.modifier_pct || 0) / 100);
-                else if (priceArt.price_type === 'premium') rscPriceMod = sectorPriceMod * (1 + (priceArt.modifier_pct || 0) / 100);
+                var guaranteedVolume = Math.round(sellerExport * (supplyArt.commitment_pct / 100));
+                guaranteedVolume = Math.min(guaranteedVolume, buyerDemand);
+
+                var sectorPriceMod = priceModifiers[rscSec] || 1.0;
+                var rscPriceMod = sectorPriceMod;
+                if (priceArt) {
+                    if (priceArt.price_type === 'fixed') rscPriceMod = 1.0;
+                    else if (priceArt.price_type === 'discounted') rscPriceMod = sectorPriceMod * (1 - (priceArt.modifier_pct || 0) / 100);
+                    else if (priceArt.price_type === 'premium') rscPriceMod = sectorPriceMod * (1 + (priceArt.modifier_pct || 0) / 100);
+                }
+
+                var adjustedVolume = Math.round(guaranteedVolume * rscPriceMod);
+                if (adjustedVolume <= 0) continue;
+
+                rscPreAllocations.push({
+                    sellerNationId: sellerNationId,
+                    buyerNationId: buyerNationId,
+                    sector: rscSec,
+                    volume: adjustedVolume,
+                    agreementId: rsc.id
+                });
             }
+        }
+    }
 
-            var adjustedVolume = Math.round(guaranteedVolume * rscPriceMod);
-            if (adjustedVolume <= 0) continue;
+    // ── Step 4d: Pre-allocate goods_trade trade_flow volumes ──
+    // Each trade_flow article on a goods_trade agreement commits an absolute
+    // dollar volume per tick (the diplomacy wizard captures it as d.volume).
+    // Unlike RSC's percentage-of-capacity model, goods_trade is a literal
+    // "Nation A buys from Nation B N dollars per tick" deal.
+    //
+    // Capped by the seller's current export_capacity and buyer's current
+    // import_demand so a 10B/tick agreement doesn't magically produce 10B
+    // from a nation that only has 8B available this tick. Shipping
+    // efficiency (base 85% + 3% per active ship) is applied downstream in
+    // Step 6b to partnerRows, same treatment as RSC pre-allocations.
+    //
+    // Pushes into the same rscPreAllocations bucket so the existing Step 5
+    // distribution loop handles it without additional plumbing.
+    if (activeGoodsTrades && activeGoodsTrades.length > 0) {
+        for (var gi = 0; gi < activeGoodsTrades.length; gi++) {
+            var gt = activeGoodsTrades[gi];
+            var gArts = gt.articles || [];
+            for (var gai = 0; gai < gArts.length; gai++) {
+                var gArtType = gArts[gai].article_type || gArts[gai].type;
+                if (gArtType !== 'trade_flow') continue;
+                var gd = gArts[gai].data || {};
+                if (!gd.commodity || !gd.volume) continue;
 
-            rscPreAllocations.push({
-                sellerNationId: sellerNationId,
-                buyerNationId: buyerNationId,
-                sector: supplyArt.sector,
-                volume: adjustedVolume,
-                agreementId: rsc.id
-            });
+                // direction: 'a_buys_b' means nation_a buys FROM nation_b.
+                // Skip articles with an unrecognized direction rather than
+                // silently mis-attributing the flow.
+                var gBuyerId, gSellerId;
+                if (gd.direction === 'a_buys_b') {
+                    gBuyerId = gt.nation_a_id;
+                    gSellerId = gt.nation_b_id;
+                } else if (gd.direction === 'b_buys_a') {
+                    gBuyerId = gt.nation_b_id;
+                    gSellerId = gt.nation_a_id;
+                } else {
+                    continue;
+                }
+
+                var gSellerFlows = nationFlows[gSellerId];
+                var gBuyerFlows = nationFlows[gBuyerId];
+                if (!gSellerFlows || !gBuyerFlows) continue;
+
+                var gSectors = expandSectorKey(gd.commodity);
+                // For food_agriculture, split the agreed volume evenly across
+                // the 4 sub-sectors so the total flow matches the article.
+                var perSectorVolume = Math.round(Number(gd.volume) / gSectors.length);
+
+                for (var gsi = 0; gsi < gSectors.length; gsi++) {
+                    var gSec = gSectors[gsi];
+                    // Inflate BOTH the buyer's importDemand and the
+                    // seller's exportCapacity by the contracted volume
+                    // BEFORE the cap check. A trade_flow article is a
+                    // mutual commitment — both parties have to fulfill
+                    // their side regardless of organic supply/demand:
+                    //
+                    //   * Buyer-side: a net-exporter (e.g., Calveth
+                    //     fuel) can contractually buy a commodity even
+                    //     with zero organic importDemand.
+                    //   * Seller-side: a non-producer (e.g., a trade
+                    //     hub committing to forward-sell something
+                    //     they don't make) can contractually sell.
+                    //     The game treats this as the seller drawing
+                    //     from reserves / re-exporting / off-the-books
+                    //     supply — economically a "trade hub" model.
+                    //
+                    // Step 5 distribution reads the inflated importDemand
+                    // / exportCapacity and subtracts actualImports /
+                    // actualExports (which include our agreement
+                    // pre-allocation). The math nets out to organic
+                    // remainder via the market: the agreement portion
+                    // is captured by the pre-allocation, so Step 5
+                    // doesn't double-count it.
+                    if (gBuyerFlows[gSec]) {
+                        gBuyerFlows[gSec].importDemand = (Number(gBuyerFlows[gSec].importDemand) || 0) + perSectorVolume;
+                    }
+                    if (gSellerFlows[gSec]) {
+                        gSellerFlows[gSec].exportCapacity = (Number(gSellerFlows[gSec].exportCapacity) || 0) + perSectorVolume;
+                    }
+                    var gSellerExport = (gSellerFlows[gSec] && gSellerFlows[gSec].exportCapacity) || 0;
+                    var gBuyerDemand = (gBuyerFlows[gSec] && gBuyerFlows[gSec].importDemand) || 0;
+                    if (gSellerExport <= 0 || gBuyerDemand <= 0) continue;
+
+                    var allocVolume = Math.min(perSectorVolume, gSellerExport, gBuyerDemand);
+                    if (allocVolume <= 0) continue;
+
+                    rscPreAllocations.push({
+                        sellerNationId: gSellerId,
+                        buyerNationId: gBuyerId,
+                        sector: gSec,
+                        volume: allocVolume,
+                        agreementId: gt.id
+                    });
+                }
+            }
         }
     }
 
@@ -1101,9 +2264,9 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 if (remainingDem <= 0) continue;
 
                 var aff = affinityMap[exporter.id + '|' + importer.id] || 0;
-                // Strategic necessity: fuel & energy trades even through poor relations
+                // Strategic necessity: fuel & grains trade even through poor relations
                 // Floor scales with exporter capacity — major producers always find buyers
-                if (sector.key === 'fuel_energy' && !(pairFlags && pairFlags.has_embargo)) {
+                if ((sector.key === 'fuel_energy' || sector.key === 'grains_staples') && !(pairFlags && pairFlags.has_embargo)) {
                     var strategicFloor = Math.min(15, Math.round(nationFlows[exporter.id][sector.key].exportCapacity / 6));
                     if (aff < strategicFloor) aff = strategicFloor;
                 }
@@ -1236,6 +2399,8 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 nation_id: n.id,
                 tick: currentTick,
                 sector: sKey,
+                domestic_production: nationFlows[n.id][sKey].domesticProduction,
+                domestic_demand: nationFlows[n.id][sKey].domesticDemand || 0,
                 export_capacity: nationFlows[n.id][sKey].exportCapacity,
                 export_volume: expVol,
                 import_demand: nationFlows[n.id][sKey].importDemand,
@@ -1368,13 +2533,40 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
                 nationUpdates.manufacturing_output = Math.round(Math.max(0, (Number(n.manufacturing_output ?? 50)) - fuelManufPen) * 10) / 10;
                 nationUpdates.inflation = Math.round(Math.min(100, (nationUpdates.inflation != null ? nationUpdates.inflation : (Number(n.inflation ?? 50))) + fuelInflation) * 10) / 10;
                 nationUpdates.cost_of_living = Math.round(Math.min(100, (Number(n.cost_of_living ?? 50)) + fuelCol) * 10) / 10;
-            } else if (sKey3 === 'food_agriculture') {
-                var foodHappiness = severity * 1.2;
-                var foodUnrest = severity * 1.5;
-                var foodHealth = severity * 0.8;
-                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness ?? 50)) - foodHappiness) * 10) / 10;
-                nationUpdates.civil_unrest = Math.round(Math.min(100, (Number(n.civil_unrest) || 0) + foodUnrest) * 10) / 10;
-                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality ?? 50)) - foodHealth) * 10) / 10;
+            } else if (sKey3 === 'grains_staples') {
+                // Grain shortage: famine risk — stability, legitimacy, civil unrest, emigration
+                var grainHappiness = severity * 1.5;
+                var grainUnrest = severity * 2.0;
+                var grainStability = severity * 1.5;
+                var grainLegitimacy = severity * 1.5;
+                var grainPoverty = severity * 2.0;
+                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness ?? 50)) - grainHappiness) * 10) / 10;
+                nationUpdates.civil_unrest = Math.round(Math.min(100, (Number(n.civil_unrest) || 0) + grainUnrest) * 10) / 10;
+                nationUpdates.stability = Math.round(Math.max(0, (nationUpdates.stability != null ? nationUpdates.stability : (Number(n.stability ?? 50))) - grainStability) * 10) / 10;
+                nationUpdates.legitimacy = Math.round(Math.max(0, (Number(n.legitimacy ?? 50)) - grainLegitimacy) * 10) / 10;
+                nationUpdates.poverty_rate = Math.round(Math.min(100, (Number(n.poverty_rate) || 0) + grainPoverty) * 10) / 10;
+            } else if (sKey3 === 'livestock_dairy') {
+                // Livestock shortage: quality of life decline
+                var livestockSol = severity * 1.0;
+                var livestockHappy = severity * 0.8;
+                var livestockCol = severity * 0.8;
+                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living ?? 50)) - livestockSol) * 10) / 10;
+                nationUpdates.happiness = Math.round(Math.max(0, (nationUpdates.happiness != null ? nationUpdates.happiness : (Number(n.happiness ?? 50))) - livestockHappy) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + livestockCol) * 10) / 10;
+            } else if (sKey3 === 'fruits_vegetables') {
+                // Perishables shortage: health and happiness impact
+                var fvHealth = severity * 1.0;
+                var fvHappy = severity * 1.0;
+                var fvCol = severity * 0.6;
+                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality ?? 50)) - fvHealth) * 10) / 10;
+                nationUpdates.happiness = Math.round(Math.max(0, (nationUpdates.happiness != null ? nationUpdates.happiness : (Number(n.happiness ?? 50))) - fvHappy) * 10) / 10;
+                nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + fvCol) * 10) / 10;
+            } else if (sKey3 === 'cash_crops') {
+                // Cash crop shortage: GDP and investment impact (not food security)
+                var ccGdp = severity * 0.8;
+                var ccFdi = severity * 0.6;
+                nationUpdates.gdp_growth = Math.round(Math.max(0, (nationUpdates.gdp_growth != null ? nationUpdates.gdp_growth : (Number(n.gdp_growth ?? 50))) - ccGdp) * 10) / 10;
+                nationUpdates.foreign_investment = Math.round(Math.max(0, (Number(n.foreign_investment ?? 50)) - ccFdi) * 10) / 10;
             } else if (sKey3 === 'minerals') {
                 var minManuf = severity * 1.0;
                 var minInfra = severity * 0.7;
@@ -1399,6 +2591,49 @@ export async function processTradeFlows(supabase, nationList, currentTick) {
         await supabase.from('nations')
             .update(nationUpdates)
             .eq('id', n.id);
+    }
+
+    // ── Step 6b: Apply shipping efficiency multiplier ──
+    // Maritime lanes: 85% base, +3% per active ship claim, cap 100%.
+    // Land lanes (landlocked nation or 'land' border): 100% flat, no penalty.
+    // See shippingNeedFor() above for the rule.
+    try {
+        var { data: activeClaims } = await supabase.from('shipping_claims')
+            .select('route_id, shipping_routes!inner(trade_agreement_id, origin_nation_id, destination_nation_id, trade_sector)')
+            .eq('status', 'active');
+
+        var shipCountMap = {};
+        for (var sci = 0; sci < (activeClaims || []).length; sci++) {
+            var sr = activeClaims[sci].shipping_routes;
+            if (!sr) continue;
+            var key1 = sr.origin_nation_id + '|' + sr.destination_nation_id + '|' + sr.trade_sector;
+            var key2 = sr.destination_nation_id + '|' + sr.origin_nation_id + '|' + sr.trade_sector;
+            shipCountMap[key1] = (shipCountMap[key1] || 0) + 1;
+            shipCountMap[key2] = (shipCountMap[key2] || 0) + 1;
+        }
+
+        var BASE_EFFICIENCY = 0.85;
+        var PER_SHIP_BONUS = 0.03;
+        var landRouteCount = 0;
+        for (var pri = 0; pri < partnerRows.length; pri++) {
+            var pr = partnerRows[pri];
+            var expNation = nationMap[pr.exporter_nation_id];
+            var impNation = nationMap[pr.importer_nation_id];
+            var rel = relMap[pr.exporter_nation_id + '|' + pr.importer_nation_id];
+            var shipNeed = shippingNeedFor(expNation, impNation, rel?.border_types);
+            if (!shipNeed.needsShipping) {
+                // Land route — 100% efficiency, trade_volume untouched.
+                landRouteCount += 1;
+                continue;
+            }
+            var ships = shipCountMap[pr.exporter_nation_id + '|' + pr.importer_nation_id + '|' + pr.sector] || 0;
+            var efficiency = Math.min(1.0, BASE_EFFICIENCY + (ships * PER_SHIP_BONUS));
+            partnerRows[pri].trade_volume = Math.round(pr.trade_volume * efficiency);
+        }
+
+        console.log('[processTradeFlows] Shipping efficiency: ' + (partnerRows.length - landRouteCount) + ' maritime lanes processed, ' + landRouteCount + ' land lanes at 100%');
+    } catch (shipEffErr) {
+        console.error('[processTradeFlows] Shipping efficiency calculation failed (non-fatal):', shipEffErr);
     }
 
     // ── Step 7: Write to database ──

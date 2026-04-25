@@ -7,20 +7,23 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/laws-CT55JrVa.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-BK1MnW6R.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-C2W-HleY.js">
-  <link rel="modulepreload" crossorigin href="/assets/config-fKhFNVuq.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-types-BwzErBjP.js">
-  <link rel="modulepreload" crossorigin href="/assets/ideology-DpNSiogU.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-structure-DYTqr3LI.js">
-  <link rel="modulepreload" crossorigin href="/assets/stats-DqgGwtpW.js">
-  <link rel="modulepreload" crossorigin href="/assets/elections-t68ZJ56h.js">
-  <link rel="modulepreload" crossorigin href="/assets/budget-CgjZACXY.js">
+  <script type="module" crossorigin src="/assets/laws-6il5jQ38.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-DjsO9xG_.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-rMK78I65.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-CrPqfvZ8.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-valuation-C0hsb2EQ.js">
+  <link rel="modulepreload" crossorigin href="/assets/config-CKNXR-qR.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-tIiBSaQA.js">
+  <link rel="modulepreload" crossorigin href="/assets/political-actions-DGca11uY.js">
+  <link rel="modulepreload" crossorigin href="/assets/budget-DVpkeL-0.js">
+  <link rel="modulepreload" crossorigin href="/assets/bills-CMTsVFN3.js">
+  <link rel="modulepreload" crossorigin href="/assets/presidential-Uk2aoZIO.js">
   <link rel="modulepreload" crossorigin href="/assets/sovereign-default-DRjRiSGP.js">
-  <link rel="stylesheet" crossorigin href="/assets/laws-BKp02-14.css">
-  <link rel="stylesheet" crossorigin href="/assets/dashboard-Bk9Ly0o-.css">
+  <link rel="stylesheet" crossorigin href="/assets/laws-K9hZiW_l.css">
+  <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
 </head>
 <body>
 <div id="top-bar"></div>
@@ -52,11 +55,138 @@
         <div class="add-text-article-section" id="add-entrenchment-section" onclick="showEntrenchmentForm()">
             <span class="add-text-article-btn-text">+ Add Entrenchment</span>
         </div>
-        <div id="add-article-form" style="display:none;">
+        <div class="add-text-article-section" id="add-permit-section" onclick="showPermitForm()">
+            <span class="add-text-article-btn-text">+ Add Permit</span>
+        </div>
+        <div class="add-text-article-section" id="add-tariff-section" onclick="showTariffForm()">
+            <span class="add-text-article-btn-text">+ Tariff Article</span>
+        </div>
+        <div class="add-text-article-section" id="add-tax-section" onclick="showTaxForm()">
+            <span class="add-text-article-btn-text">+ Tax Article</span>
+        </div>
+        <div class="add-text-article-section" id="add-bailout-section" onclick="showBailoutForm()">
+            <span class="add-text-article-btn-text">+ Government Bailout</span>
+        </div>
+        <div id="add-tax-form" style="display:none;">
             <div class="form-group">
+                <label class="form-label" style="color:var(--amber);">Tax Type</label>
+                <select class="form-select" id="tax-key-select" onchange="onTaxKeyChange()">
+                    <option value="">-- Choose tax type --</option>
+                    <option value="income_tax">Income Tax</option>
+                    <option value="corporate_tax">Corporate Tax</option>
+                    <option value="sales_tax">Sales Tax</option>
+                    <option value="property_tax">Property Tax</option>
+                </select>
+            </div>
+            <div id="tax-current-wrap" style="display:none;padding:10px 14px;background:var(--bg-card);border-radius:4px;margin-bottom:12px;">
+                <div id="tax-current-label" style="font-size:0.7rem;color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase;">Current Rate</div>
+                <div id="tax-current-rate" style="font-size:1.3rem;font-weight:700;color:var(--text-primary);">—</div>
+            </div>
+            <div class="form-group" id="tax-direction-wrap" style="display:none;">
+                <label class="form-label" style="color:var(--amber);">Direction</label>
+                <div style="display:flex;gap:8px;">
+                    <button type="button" class="tax-dir-btn" id="tax-dir-cut" onclick="onTaxDirectionChange('cut')">Cut (−3pp / step)</button>
+                    <button type="button" class="tax-dir-btn" id="tax-dir-hike" onclick="onTaxDirectionChange('hike')">Hike (+2pp / step)</button>
+                </div>
+            </div>
+            <div class="form-group" id="tax-rate-wrap" style="display:none;">
+                <label class="form-label">New Rate</label>
+                <select class="form-select" id="tax-new-rate" onchange="onTaxRateChange()" disabled>
+                    <option value="">-- Choose direction first --</option>
+                </select>
+            </div>
+            <div id="tax-effects-preview" style="display:none;padding:12px 14px;background:var(--bg-card);border-left:3px solid var(--blue);border-radius:4px;margin-bottom:12px;">
+                <div style="font-size:0.7rem;color:var(--text-secondary);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;">Projected Effects on Passage</div>
+                <div id="tax-effects-body" style="font-size:0.85rem;line-height:1.7;"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hideTaxForm()">Cancel</button>
+                <button class="btn-add" id="add-tax-btn" disabled onclick="addTaxArticle()">Add to Bill</button>
+            </div>
+        </div>
+        <div id="add-bailout-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label" style="color:var(--amber);">Corporation (headquartered in this nation)</label>
+                <select class="form-select" id="bailout-corp-select" onchange="onBailoutCorpChange()">
+                    <option value="">-- Choose a corporation --</option>
+                </select>
+                <div id="bailout-valuation" style="font-size:0.75rem;color:var(--text-secondary);margin-top:4px;"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Amount (in millions of $)</label>
+                <input type="number" class="form-input" id="bailout-amount" min="1" step="1" value="100" oninput="onBailoutAmountChange()">
+                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px;">Funded first from national budget reserves; any shortfall adds to debt. Cannot exceed 3× market valuation.</div>
+                <div id="bailout-cap-warning" style="font-size:0.75rem;color:var(--red);margin-top:4px;display:none;"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hideBailoutForm()">Cancel</button>
+                <button class="btn-add" id="add-bailout-btn" disabled onclick="addBailoutArticle()">Add to Bill</button>
+            </div>
+        </div>
+        <div id="add-tariff-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label" style="color:var(--amber);">Select Sector or Good</label>
+                <select class="form-select" id="tariff-sector-select" onchange="onTariffSectorChange()">
+                    <option value="">-- Choose a sector --</option>
+                    <option value="fuel_energy">Fuel & Energy</option>
+                    <option value="minerals">Minerals & Raw Materials</option>
+                    <option value="grains_staples">Grains & Staples</option>
+                    <option value="livestock_dairy">Livestock & Dairy</option>
+                    <option value="fruits_vegetables">Fruits & Vegetables</option>
+                    <option value="cash_crops">Cash Crops & Plantation</option>
+                    <option value="manufactured_goods">Manufactured Goods</option>
+                    <option value="technology">Technology & Electronics</option>
+                    <option value="arms">Arms & Military Equipment</option>
+                </select>
+            </div>
+            <div id="tariff-controls" style="display:none;">
+                <div class="form-group">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <label class="form-label" style="margin:0;">Tariff Rate</label>
+                        <span id="tariff-rate-display" style="font-family:var(--font-mono);font-size:1.2rem;font-weight:700;color:var(--amber);">0%</span>
+                    </div>
+                    <input type="range" id="tariff-rate-slider" class="form-select" min="0" max="100" step="1" value="0" oninput="onTariffRateChange()" style="width:100%;accent-color:var(--amber);height:6px;padding:0;border:none;background:transparent;" />
+                    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-top:2px;">
+                        <span>0% (Free Trade)</span>
+                        <span>50% (Protectionist)</span>
+                        <span>100% (Embargo)</span>
+                    </div>
+                </div>
+                <div id="tariff-preview" style="margin:8px 0;padding:10px;background:var(--bg-card);border:1px solid var(--border-main);border-radius:4px;font-size:0.75rem;color:var(--text-muted);line-height:1.6;"></div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button class="btn-cancel" onclick="hideTariffForm()">Cancel</button>
+                    <button class="btn-add" id="add-tariff-btn" disabled onclick="addTariffArticle()">Add to Bill</button>
+                </div>
+            </div>
+        </div>
+        <div id="add-permit-form" style="display:none;">
+            <div class="form-group">
+                <label class="form-label" style="color:var(--amber);">Select Permit Policy</label>
+                <select class="form-select" id="permit-policy-select" onchange="onPermitPolicyChange()">
+                    <option value="">-- Choose a permit to enact or repeal --</option>
+                </select>
+            </div>
+            <div id="permit-detail-preview" style="display:none;margin:8px 0;padding:10px;background:var(--bg-card);border:1px solid var(--border-main);border-radius:4px;font-size:0.75rem;color:var(--text-muted);line-height:1.5;"></div>
+            <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-cancel" onclick="hidePermitForm()">Cancel</button>
+                <button class="btn-add" id="add-permit-btn" disabled onclick="addPermitArticle()">Add to Bill</button>
+            </div>
+        </div>
+        <div id="add-article-form" style="display:none;">
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <div onclick="setSearchMode('sector')" id="search-mode-sector" class="form-toggle active" style="flex:1;text-align:center;padding:6px 0;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border-mid);color:var(--text-bright);background:rgba(255,255,255,0.04);">Search by Sector</div>
+                <div onclick="setSearchMode('stat')" id="search-mode-stat" class="form-toggle" style="flex:1;text-align:center;padding:6px 0;font-family:var(--font-mono);font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border-mid);color:var(--text-dim);background:transparent;">Search by Stat</div>
+            </div>
+            <div class="form-group" id="sector-search-group">
                 <label class="form-label">Select Sector</label>
                 <select class="form-select" id="sector-select" onchange="onSectorChange()">
                     <option value="">-- Choose a sector --</option>
+                </select>
+            </div>
+            <div class="form-group" id="global-stat-search-group" style="display:none;">
+                <label class="form-label">Select Stat</label>
+                <select class="form-select" id="global-stat-select" onchange="onGlobalStatSearch()">
+                    <option value="">-- Choose a stat --</option>
                 </select>
             </div>
             <div class="form-group" id="stat-filter-group" style="display:none;">
@@ -130,7 +260,7 @@
                         <input type="radio" name="entrenchment-tier" value="entrenched" style="margin-top:3px;">
                         <div>
                             <div style="font-weight:600;color:var(--purple);">Entrenched Law</div>
-                            <div style="font-size:0.75rem;color:var(--text-secondary);">Requires 67% supermajority to repeal or amend. ${GAME_CONFIG.ENTRENCHED_COOLDOWN_TICKS}-tick cooldown before repeal can be filed. This bill must also pass with 67%.</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">Requires 67% supermajority to repeal or amend. 60-tick cooldown before repeal can be filed. This bill must also pass with 67%.</div>
                         </div>
                     </label>
                     <label class="entrenchment-option" style="display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--border-main);border-radius:4px;cursor:pointer;">
@@ -155,7 +285,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-            <button class="btn-submit" id="submit-bill-btn" disabled onclick="submitToCommittee()">Submit to Committee — 2 AP</button>
+            <button class="btn-submit" id="submit-bill-btn" disabled onclick="submitToCommittee()">Submit Bill to Committee — $50k</button>
         </div>
     </div>
 </div>

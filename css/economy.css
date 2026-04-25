@@ -1009,6 +1009,68 @@ body.light-mode .econ-health-threshold {
     }
 }
 
+/* ===== INDUSTRIES TAB ===== */
+
+.industries-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+}
+
+.industries-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.industries-legend {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+    font-size: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.industries-driver-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 4px;
+}
+
+@media (max-width: 1100px) {
+    .industries-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .industries-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .industries-header {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .industries-driver-row {
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .industries-legend {
+        gap: 8px;
+    }
+}
+
+@media (max-width: 480px) {
+    .industries-grid {
+        gap: 10px;
+    }
+}
+
 /* ===== LEGACY HERO BAR (kept for backward compat) ===== */
 
 .economy-hero {
@@ -2188,6 +2250,141 @@ body.light-mode .tft-row-clickable:hover {
     background: rgba(255,255,255,0.03);
 }
 
+/* ── Food Sub-Sector Tabs ── */
+.food-subsector-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 4px 0 0 0;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+}
+.food-subsector-tab {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    letter-spacing: 0.3px;
+}
+.food-subsector-tab:hover {
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.02);
+}
+.food-subsector-tab.active {
+    color: var(--text-bright);
+    border-bottom-color: #c9a54e;
+    background: rgba(201,165,78,0.06);
+}
+
+/* ── Arable Land Allocation Bar ── */
+.food-alloc-bar {
+    display: flex;
+    height: 28px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 8px 16px;
+    border: 1px solid var(--border-color);
+}
+.food-alloc-segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2px;
+    transition: opacity 0.15s;
+    position: relative;
+}
+.food-alloc-segment.active {
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,0.3);
+}
+.food-alloc-label {
+    font-size: 0.65rem;
+    color: rgba(0,0,0,0.7);
+    font-weight: 600;
+    white-space: nowrap;
+    text-shadow: 0 1px 1px rgba(255,255,255,0.3);
+}
+.food-alloc-legend {
+    display: flex;
+    gap: 16px;
+    padding: 6px 16px 12px;
+    flex-wrap: wrap;
+}
+.food-alloc-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+}
+.food-alloc-legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+/* ── 5-column cards row ── */
+.econ-cards-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+.econ-cards-5 {
+    grid-template-columns: repeat(5, 1fr);
+}
+.econ-cards-6 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+body.light-mode .food-subsector-tab {
+    color: var(--text-secondary);
+}
+body.light-mode .food-subsector-tab.active {
+    color: var(--text-bright);
+    background: rgba(201,165,78,0.08);
+}
+body.light-mode .food-alloc-label {
+    color: rgba(0,0,0,0.8);
+}
+
+@media (max-width: 768px) {
+    .food-subsector-tabs {
+        flex-wrap: wrap;
+    }
+    .food-subsector-tab {
+        min-width: 45%;
+        flex: 1 1 45%;
+    }
+    .econ-cards-3 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .econ-cards-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .econ-cards-5 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .econ-cards-6 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .econ-card-value {
+        font-size: 1rem;
+        word-break: break-word;
+    }
+    .econ-card-label {
+        font-size: 0.55rem;
+    }
+    .econ-card {
+        padding: 8px 10px;
+    }
+    .food-alloc-legend {
+        gap: 8px;
+    }
+}
+
 /* Sector badge (export only) */
 .sector-badge {
     font-size: 0.5rem;
@@ -2542,6 +2739,18 @@ body.light-mode .sector-score-threshold {
 
     .sector-driver-track {
         display: none;
+    }
+
+    .econ-cards-3, .econ-cards-4, .econ-cards-5, .econ-cards-6 {
+        grid-template-columns: 1fr;
+    }
+
+    .econ-card-value {
+        font-size: 0.9rem;
+    }
+
+    .econ-section-header {
+        font-size: 0.8rem;
     }
 }
 
@@ -3870,3 +4079,74 @@ body.light-mode .trade-diag-table td.muted { color: #bbb; }
 body.light-mode .trade-diag-affinity-summary { border-top-color: rgba(0,0,0,0.06); }
 body.light-mode .trade-diag-affinity-name { color: #555; }
 body.light-mode .trade-diag-affinity-breakdown { color: #aaa; }
+
+/* ===== DUAL-PERIOD DISPLAY (Annual + Monthly) ===== */
+.dual-period {
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 1.15;
+}
+.dual-period-yr {
+    /* inherits parent font-size — this is the "large" number */
+}
+.dual-period-label {
+    font-size: 0.65em;
+    opacity: 0.55;
+    font-weight: 400;
+}
+.dual-period-mo {
+    font-size: 0.65em;
+    opacity: 0.6;
+    color: var(--text-muted, #8a8978);
+    font-weight: 400;
+}
+.dual-period-mo .dual-period-label {
+    font-size: 0.8em;
+}
+
+/* Ensure dual-period inherits color in surplus/deficit card contexts */
+.econ-card-surplus .dual-period-yr,
+.econ-card-surplus .dual-period-mo { color: var(--green, #5cb85c); }
+.econ-card-deficit .dual-period-yr,
+.econ-card-deficit .dual-period-mo { color: var(--red, #d9534f); }
+.econ-card-surplus .dual-period-mo,
+.econ-card-deficit .dual-period-mo { opacity: 0.6; }
+
+/* In budget net-amount, keep the monthly proportionally smaller */
+.bv2-net-amount .dual-period-mo {
+    font-size: 0.55em;
+}
+
+/* In compact contexts (row values, totals), tighten spacing */
+.bv2-row-value .dual-period,
+.bv2-total-value .dual-period,
+.bv2-col-total .dual-period {
+    line-height: 1.1;
+}
+.bv2-col-total .dual-period-mo {
+    font-size: 0.85em;
+}
+
+/* Tax revenue block dual display */
+.tax-revenue-value .dual-period-mo {
+    font-size: 0.7em;
+}
+.tax-revenue-delta .dual-period {
+    line-height: 1.1;
+}
+
+/* Light mode overrides */
+body.light-mode .dual-period-mo {
+    color: #999;
+}
+
+/* ── Mobile: 768px — Tax summary, slider rows ── */
+@media (max-width: 768px) {
+    .tax-summary-bar { flex-wrap: wrap; gap: 16px 24px; padding: 12px 16px 14px; }
+}
+
+/* ── Mobile: 480px — Tax, compact displays ── */
+@media (max-width: 480px) {
+    .tax-summary-bar { gap: 12px 16px; padding: 10px 12px; }
+    .tax-summary-label { font-size: 0.55rem; }
+}

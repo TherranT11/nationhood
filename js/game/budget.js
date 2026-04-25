@@ -14,16 +14,17 @@ import { fireBilateralEvent } from './event-helpers.js';
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
-export function calculateNationalBudget(nation) {
+export function calculateNationalBudget(nation, opts = {}) {
     // GDP and Debt are stored as raw dollars
     const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
     const debt = Number(nation.debt ?? 0);
 
     // Tax rates: 0-100 percentages
-    const incomeTaxRate  = Number(nation.income_tax ?? 0);
-    const corpTaxRate    = Number(nation.corporate_tax ?? 0);
-    const salesTaxRate   = Number(nation.sales_tax ?? 0);
-    const tariffsRate    = Number(nation.tariffs ?? 0);
+    const incomeTaxRate    = Number(nation.income_tax ?? 0);
+    const corpTaxRate      = Number(nation.corporate_tax ?? 0);
+    const salesTaxRate     = Number(nation.sales_tax ?? 0);
+    const propertyTaxRate  = Number(nation.property_tax ?? 0);
+    const tariffsRate      = Number(nation.tariffs ?? 0);
 
     // Other 0-100 stats
     const efficiency     = Number(nation.efficiency ?? 50);
@@ -31,30 +32,46 @@ export function calculateNationalBudget(nation) {
     const oilGas         = Number(nation.oil_and_gas ?? 0);
     const creditRating   = Number(nation.credit ?? 50);
 
-    // Collection Rate = (Efficiency + (100 - Corruption)) / 200  →  0.0 to 1.0
-    const collectionRate = (efficiency + (100 - corruption)) / 200;
+    // Collection Rate: floor at 0.35 so even poorly-governed nations collect some tax.
+    // Ranges 0.35 (eff=0, corr=100) to 1.0 (eff=100, corr=0).
+    const rawCR = (efficiency + (100 - corruption)) / 200;
+    const collectionRate = 0.35 + rawCR * 0.65;
 
     // Tax Revenue (raw dollars, since GDP is raw dollars)
-    const incomeRevenue  = gdp * (incomeTaxRate / 100) * 0.40 * collectionRate;
-    const corpRevenue    = gdp * (corpTaxRate / 100)   * 0.10 * collectionRate;
-    const salesRevenue   = gdp * (salesTaxRate / 100)  * 0.30 * collectionRate;
-    const tariffRevenue  = gdp * (tariffsRate / 100)   * 0.0025 * collectionRate;
+    // Property-tax multiplier (0.08) is a starting guess: at the default
+    // 50% rate it yields up to ~4% of GDP at full collection (1.0), and
+    // ~2.4% at typical mid-game collection (~0.6). Within the real-world
+    // 2-4% band where property tax sits for most nations. Tune in one
+    // place if needed — everything downstream (Tax Article ongoing-cost
+    // projection, budget displays, deficit calc) reads from here.
+    const incomeRevenue   = gdp * (incomeTaxRate / 100)   * 0.55   * collectionRate;
+    const corpRevenue     = gdp * (corpTaxRate / 100)     * 0.15   * collectionRate;
+    const salesRevenue    = gdp * (salesTaxRate / 100)    * 0.35   * collectionRate;
+    const propertyRevenue = gdp * (propertyTaxRate / 100) * 0.08   * collectionRate;
+    const tariffRevenue   = gdp * (tariffsRate / 100)     * 0.0025 * collectionRate;
 
     // Oil & Gas Revenue (only if oil_and_gas stat > 30)
     const oilRevenue = oilGas > 30 ? gdp * (oilGas / 100) * 0.06 : 0;
 
-    const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + tariffRevenue + oilRevenue;
+    const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + propertyRevenue + tariffRevenue + oilRevenue;
 
-    // Debt Service: Effective Interest = 15% - (Credit × 0.13%), clamped 2%-18%
+    // Debt Service. Prefer the actual sum of active bond coupon obligations
+    // (passed in by the tick processor as opts.actualDebtService — that's
+    // SUM(bond_holdings.principal × coupon_rate) for this nation, and the
+    // SSoT for what the nation owes its bondholders this tick). Falls back
+    // to the legacy credit-derived formula for callers that don't have
+    // holdings data on hand (UI displays, projections, simulation).
     const effectiveInterest = Math.min(0.18, Math.max(0.02, 0.15 - (creditRating * 0.0013)));
-    const debtService = debt * effectiveInterest;
+    const debtService = opts.actualDebtService != null
+        ? Number(opts.actualDebtService)
+        : debt * effectiveInterest;
 
     // Available Budget = Revenue - Debt Service
     const availableBudget = grossRevenue - debtService;
 
     return {
         grossRevenue, debtService, availableBudget, collectionRate,
-        incomeRevenue, corpRevenue, salesRevenue, tariffRevenue, oilRevenue
+        incomeRevenue, corpRevenue, salesRevenue, propertyRevenue, tariffRevenue, oilRevenue
     };
 }
 
@@ -91,7 +108,7 @@ export const TAX_CONFIG = [
         category: 'Income',
         categoryClass: 'pill-income',
         revenueKey: 'incomeRevenue',
-        gdpMultiplier: 0.40,
+        gdpMultiplier: 0.55,
         maxRate: 50
     },
     {
@@ -100,7 +117,7 @@ export const TAX_CONFIG = [
         category: 'Consumption',
         categoryClass: 'pill-consumption',
         revenueKey: 'salesRevenue',
-        gdpMultiplier: 0.30,
+        gdpMultiplier: 0.35,
         maxRate: 50
     },
     {
@@ -109,7 +126,7 @@ export const TAX_CONFIG = [
         category: 'Corporate',
         categoryClass: 'pill-corporate',
         revenueKey: 'corpRevenue',
-        gdpMultiplier: 0.10,
+        gdpMultiplier: 0.15,
         maxRate: 50
     }
 ];
@@ -542,7 +559,7 @@ export async function processAidConditionReview(supabase, nation, currentTick) {
  */
 export async function processExpiredTradeAgreements(supabase, currentTick) {
     const { data: expired } = await supabase.from('trade_agreements')
-        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id')
+        .select('id, agreement_type, agreement_name, nation_a_id, nation_b_id, auto_renew, duration_ticks')
         .eq('status', 'active')
         .not('expires_at_tick', 'is', null)
         .lte('expires_at_tick', currentTick);
@@ -551,6 +568,37 @@ export async function processExpiredTradeAgreements(supabase, currentTick) {
 
     const results = [];
     for (const agreement of expired) {
+        // Auto-renew: extend the agreement by another duration period instead of expiring
+        if (agreement.auto_renew && agreement.duration_ticks > 0) {
+            const newExpiry = currentTick + agreement.duration_ticks;
+            await supabase.from('trade_agreements').update({
+                expires_at_tick: newExpiry
+            }).eq('id', agreement.id);
+
+            // For economic aid, clear any suspension and restore amount so renewed agreement
+            // flows through the budget. If conditions are still failing, the per-tick
+            // processAidConditionReview will re-suspend on this same tick.
+            if (agreement.agreement_type === 'economic_aid') {
+                const { data: aidState } = await supabase.from('aid_agreement_state')
+                    .select('original_annual_amount')
+                    .eq('agreement_id', agreement.id)
+                    .maybeSingle();
+
+                const { error: aidErr } = await supabase.from('aid_agreement_state').update({
+                    is_suspended: false,
+                    suspended_at_tick: null,
+                    suspension_reason: null,
+                    current_annual_amount: aidState?.original_annual_amount || 0
+                }).eq('agreement_id', agreement.id);
+
+                if (aidErr) console.error(`[processExpiredTradeAgreements] Failed to clear aid suspension for ${agreement.id}: ${aidErr.message}`);
+            }
+
+            console.log(`[processExpiredTradeAgreements] Auto-renewed: ${agreement.agreement_name} — new expiry tick ${newExpiry}${agreement.agreement_type === 'economic_aid' ? ' (suspension cleared)' : ''}`);
+            results.push({ id: agreement.id, name: agreement.agreement_name, type: agreement.agreement_type, renewed: true });
+            continue;
+        }
+
         await supabase.from('trade_agreements').update({
             status: 'expired'
         }).eq('id', agreement.id);

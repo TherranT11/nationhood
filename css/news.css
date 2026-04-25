@@ -218,7 +218,7 @@
     font-size: 12px;
     color: var(--nws-paper);
     white-space: nowrap;
-    animation: nws-ticker 30s linear infinite;
+    animation: nws-ticker 60s linear infinite;
     letter-spacing: 0.3px;
 }
 
@@ -1116,6 +1116,59 @@
     padding: 32px 0 40px;
 }
 
+.nws-reader-notice {
+    float: right;
+    width: 220px;
+    margin: 4px 0 16px 20px;
+    padding: 12px 14px;
+    background: #fdf1dc;
+    border: 1px solid #c0392b;
+    border-left-width: 4px;
+    color: #6b2116;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    line-height: 1.45;
+    letter-spacing: 0.1px;
+}
+
+.nws-reader-notice strong {
+    color: #9b1c0e;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-size: 11px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+@media (max-width: 560px) {
+    .nws-reader-notice {
+        float: none;
+        width: auto;
+        margin: 0 0 16px;
+    }
+}
+
+.nws-writer-notice {
+    background: #fdf1dc;
+    border: 1px solid #c0392b;
+    border-left-width: 4px;
+    color: #6b2116;
+    padding: 12px 14px;
+    margin: 0 0 18px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.nws-writer-notice strong {
+    color: #9b1c0e;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-size: 11px;
+    display: block;
+    margin-bottom: 4px;
+}
+
 .nws-reader-headline {
     font-family: 'Playfair Display', serif;
     font-size: clamp(32px, 5vw, 48px);
@@ -1867,4 +1920,197 @@
     .ct-hero__headline { font-size: 26px; }
     .ct-hero__content { padding: 24px; }
     .ct-analysis-story__headline { font-size: 20px; }
+}
+@media (max-width: 480px) {
+    .ct-hero__headline { font-size: 20px; }
+    .ct-hero__content { padding: 16px; }
+    .ct-story-card__content { padding: 12px; }
+    .ct-analysis-story__headline { font-size: 17px; }
+    .ct-analysis-band { padding: 16px; }
+    .ct-footer__inner { padding: 16px; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ARTICLE LIKE BUTTON
+   ══════════════════════════════════════════════════════════════ */
+.nws-like-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0;
+}
+.nws-like-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    background: transparent;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.nws-like-btn:hover {
+    border-color: #c23a22;
+    color: #c23a22;
+    background: rgba(194, 58, 34, 0.04);
+}
+.nws-like-btn--liked {
+    border-color: #c23a22;
+    color: #c23a22;
+    background: rgba(194, 58, 34, 0.06);
+}
+.nws-like-btn--liked:hover {
+    background: rgba(194, 58, 34, 0.1);
+}
+.nws-like-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.nws-like-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+.nws-like-count {
+    font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #888;
+}
+
+/* Continental publication like override */
+.nws-pub-continental .nws-like-btn {
+    border-color: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.5);
+}
+.nws-pub-continental .nws-like-btn:hover {
+    border-color: #c23a22;
+    color: #c23a22;
+    background: rgba(194, 58, 34, 0.1);
+}
+.nws-pub-continental .nws-like-btn--liked {
+    border-color: #c23a22;
+    color: #c23a22;
+    background: rgba(194, 58, 34, 0.12);
+}
+.nws-pub-continental .nws-like-count {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* ═══════════════════════════════════════
+   AL-SAHWA — Islamic-inspired newspaper
+   ═══════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
+
+.nws-top-ribbon--alsahwa { background: #141310; }
+
+/* Page background — warm pearl */
+.nws-pub-alsahwa { background: #f8f7f3; color: #2a2824; }
+
+/* Hide the default Cruceran nav when Al-Sahwa is active */
+.nws-pub-alsahwa .nws-nav { display: none; }
+
+/* Geometric border */
+.nws-alsahwa-geo-border {
+    height: 8px; background: #0a6e5c;
+    position: relative; overflow: hidden;
+}
+.nws-alsahwa-geo-border::after {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(90deg, transparent 0px, transparent 16px, #c8a24a 16px, #c8a24a 18px, transparent 18px, transparent 26px, #c8a24a 26px, #c8a24a 27px, transparent 27px, transparent 34px);
+    opacity: 0.4;
+}
+
+/* Masthead — deep teal */
+.nws-alsahwa-masthead { background: #04483a; color: #fff; }
+.nws-alsahwa-masthead-inner {
+    max-width: 1200px; margin: 0 auto; padding: 18px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.nws-alsahwa-brand { display: flex; align-items: center; gap: 18px; }
+.nws-alsahwa-mark { width: 48px; height: 48px; position: relative; flex-shrink: 0; }
+.nws-alsahwa-mark-outer { width: 48px; height: 48px; border: 2px solid #c8a24a; transform: rotate(45deg); position: absolute; top: 0; left: 0; }
+.nws-alsahwa-mark-inner { width: 30px; height: 30px; border: 1.5px solid #c8a24a; transform: rotate(45deg); position: absolute; top: 9px; left: 9px; }
+.nws-alsahwa-mark-dot { width: 8px; height: 8px; background: #c8a24a; border-radius: 50%; position: absolute; top: 20px; left: 20px; }
+.nws-alsahwa-titles { display: flex; flex-direction: column; }
+.nws-alsahwa-arabic { font-family: 'Noto Naskh Arabic', serif; font-size: 28px; font-weight: 700; color: #c8a24a; line-height: 1.1; }
+.nws-alsahwa-english { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 32px; font-weight: 700; color: #fff; letter-spacing: 0.02em; line-height: 1; margin-top: -2px; }
+.nws-alsahwa-subtitle { font-size: 9.5px; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-top: 3px; }
+.nws-alsahwa-right { display: flex; align-items: center; gap: 18px; text-align: right; }
+.nws-alsahwa-date { font-size: 11px; color: rgba(255,255,255,0.45); }
+.nws-alsahwa-watch {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 8px 20px; background: #c8a24a; color: #04483a; border: none; cursor: pointer;
+}
+.nws-alsahwa-watch:hover { background: #dab85a; }
+
+/* Nav — white bar with teal accents */
+.nws-alsahwa-nav { background: #fff; border-bottom: 1px solid #ede9df; position: sticky; top: 0; z-index: 100; }
+.nws-alsahwa-nav-inner {
+    max-width: 1200px; margin: 0 auto; padding: 0 24px;
+    display: flex; align-items: center; height: 40px; gap: 0; overflow-x: auto;
+}
+.nws-alsahwa-nav-item {
+    font-size: 12px; font-weight: 600; padding: 0 15px; height: 100%;
+    display: flex; align-items: center; color: #706a5e; text-decoration: none;
+    border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.12s; white-space: nowrap; cursor: pointer;
+}
+.nws-alsahwa-nav-item:hover { color: #2a2824; }
+.nws-alsahwa-nav-item--active, .nws-alsahwa-nav-item.active { color: #0a6e5c; border-bottom-color: #0a6e5c; font-weight: 700; }
+
+/* Energy strip — dark bar with gold/green values */
+.nws-alsahwa-energy { background: #141310; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.nws-alsahwa-energy-inner {
+    max-width: 1200px; margin: 0 auto; padding: 0 24px;
+    display: flex; align-items: center; height: 32px; gap: 0; overflow-x: auto;
+}
+.nws-alsahwa-energy-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #c8a24a; padding-right: 14px; border-right: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0; height: 100%; display: flex; align-items: center;
+}
+.nws-alsahwa-energy-item {
+    display: flex; align-items: center; gap: 6px; padding: 0 14px;
+    border-right: 1px solid rgba(255,255,255,0.05); height: 100%; flex-shrink: 0; font-size: 10.5px;
+}
+.nws-alsahwa-energy-item:last-child { border-right: none; }
+.nws-alsahwa-energy-name { color: rgba(255,255,255,0.3); font-weight: 500; }
+.nws-alsahwa-energy-val { font-weight: 700; font-size: 11px; color: rgba(255,255,255,0.85); }
+.nws-alsahwa-energy-up { font-weight: 600; font-size: 10px; color: #4a9a5a; }
+.nws-alsahwa-energy-down { font-weight: 600; font-size: 10px; color: #c43030; }
+
+/* Article styling overrides for Al-Sahwa */
+.nws-pub-alsahwa .nws-front-page { background: #f8f7f3; }
+.nws-pub-alsahwa .nws-hero { background: linear-gradient(135deg, #04483a 0%, #085a4a 50%, #0a6e5c 100%); }
+.nws-pub-alsahwa .nws-hero-section-tag { background: #0a6e5c; color: #fff; }
+.nws-pub-alsahwa .nws-hero-headline { color: #fff; font-family: 'Cormorant Garamond', Georgia, serif; }
+.nws-pub-alsahwa .nws-hero-lede { color: rgba(255,255,255,0.6); }
+.nws-pub-alsahwa .nws-hero-meta { color: rgba(255,255,255,0.3); }
+.nws-pub-alsahwa .nws-article-card { background: #fff; border-color: #ede9df; }
+.nws-pub-alsahwa .nws-article-card:hover { border-color: #d4cfc2; }
+.nws-pub-alsahwa .nws-article-headline { color: #2a2824; font-family: 'Cormorant Garamond', Georgia, serif; }
+.nws-pub-alsahwa .nws-article-section { color: #0a6e5c; }
+.nws-pub-alsahwa .nws-article-lede { color: #706a5e; }
+.nws-pub-alsahwa .nws-article-body { color: #4a4540; }
+.nws-pub-alsahwa .nws-article-meta { color: #a8a090; }
+.nws-pub-alsahwa .nws-sidebar-section-title { color: #2a2824; border-bottom-color: #2a2824; }
+.nws-pub-alsahwa .nws-ticker { background: #04483a; }
+.nws-pub-alsahwa .nws-ticker-label { color: #c8a24a; }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .nws-alsahwa-arabic { font-size: 20px; }
+    .nws-alsahwa-english { font-size: 24px; }
+    .nws-alsahwa-mark { width: 36px; height: 36px; }
+    .nws-alsahwa-mark-outer { width: 36px; height: 36px; }
+    .nws-alsahwa-mark-inner { width: 22px; height: 22px; top: 7px; left: 7px; }
+    .nws-alsahwa-mark-dot { top: 14px; left: 14px; }
+    .nws-alsahwa-nav-inner { padding: 0 12px; }
+    .nws-alsahwa-nav-item { padding: 0 10px; font-size: 11px; }
+    .nws-alsahwa-masthead-inner { padding: 12px 16px; }
+    .nws-alsahwa-right { flex-direction: column; gap: 6px; }
 }
