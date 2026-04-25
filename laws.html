@@ -366,7 +366,7 @@ import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidenti
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
-import { getValidNewRates, computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_STEP_PP } from './js/game/tax-articles.js';
+import { getValidNewRates, computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_STEP_PP, TAX_KEY_LABELS } from './js/game/tax-articles.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
@@ -2014,7 +2014,8 @@ window.addTariffArticle = addTariffArticle;
 // Stepped rate change for any supported tax type (income, corporate, ...).
 // Cuts in −3pp increments, hikes in +2pp increments. SSoT for valid
 // rates, supported keys, side effects, and labels: js/game/tax-articles.js.
-const _TAX_LABELS = { income_tax: 'Income Tax', corporate_tax: 'Corporate Tax', sales_tax: 'Sales Tax' };
+// Title-cased labels come from TAX_KEY_LABELS (imported above); lowercase
+// renderings derive via .toLowerCase() at the call site.
 let _taxKey = null;
 let _taxDirection = null;
 
@@ -2057,7 +2058,7 @@ function onTaxKeyChange() {
         return;
     }
     const cur = _curTaxRate();
-    document.getElementById('tax-current-label').textContent = 'Current ' + (_TAX_LABELS[_taxKey] || _taxKey);
+    document.getElementById('tax-current-label').textContent = 'Current ' + (TAX_KEY_LABELS[_taxKey] || _taxKey);
     document.getElementById('tax-current-rate').textContent = cur.toFixed(1).replace(/\.0$/, '') + '%';
     document.getElementById('tax-current-wrap').style.display = 'block';
     document.getElementById('tax-direction-wrap').style.display = 'block';
@@ -2129,7 +2130,7 @@ function addTaxArticle() {
             articleNumber: articleNum,
             isTax: true,
             taxKey: _taxKey,
-            title: `${_TAX_LABELS[_taxKey] || _taxKey} ${titleDir}: ${cur}% → ${newRate}%`,
+            title: `${TAX_KEY_LABELS[_taxKey] || _taxKey} ${titleDir}: ${cur}% → ${newRate}%`,
             effect_data: {
                 type: 'TAX_CHANGE',
                 tax_key: _taxKey,
@@ -3629,7 +3630,7 @@ function renderDraftArticles() {
             const ed = art.effect_data;
             const dir = ed.direction;
             const taxKey = ed.tax_key || art.taxKey || 'income_tax';
-            const taxLabel = ({ income_tax: 'income tax', corporate_tax: 'corporate tax', sales_tax: 'sales tax' })[taxKey] || taxKey;
+            const taxLabel = (TAX_KEY_LABELS[taxKey] || taxKey).toLowerCase();
             const steps = Number(ed.steps) || 0;
             const fx = computeTaxArticleEffects(taxKey, dir, steps);
             const borderColor = dir === 'cut' ? 'var(--green)' : 'var(--red)';
@@ -4162,7 +4163,7 @@ async function submitToCommittee() {
                 }
                 if (art.isTax) {
                     const ed = art.effect_data;
-                    const taxLabel = ({ income_tax: 'income tax', corporate_tax: 'corporate tax', sales_tax: 'sales tax' })[ed.tax_key || art.taxKey] || 'tax';
+                    const taxLabel = (TAX_KEY_LABELS[ed.tax_key || art.taxKey] || 'tax').toLowerCase();
                     return {
                         bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id,
                         article_title: art.title,
