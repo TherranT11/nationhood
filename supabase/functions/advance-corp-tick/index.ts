@@ -4709,7 +4709,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
                 const { data: activeClaims } = await supabase
                     .from('shipping_claims')
-                    .select('id, route_id, faction_id, vessel_status, transit_started_tick, transit_arrives_tick, revenue_per_transit, total_revenue, transits_completed, shipping_routes!inner(transit_ticks, status, destination_nation_id)')
+                    .select('id, route_id, faction_id, transit_started_tick, transit_arrives_tick, revenue_per_transit, total_revenue, transits_completed, shipping_routes!inner(transit_ticks, status, destination_nation_id)')
                     .eq('status', 'active')
                     .eq('nation_id', nation.id);
 
@@ -4755,7 +4755,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         // Skip if route expired — release claim and free vessel
                         if (claim.shipping_routes?.status !== 'active') {
                             await supabase.from('shipping_claims').update({
-                                status: 'released', released_at_tick: currentTick, vessel_status: 'idle'
+                                status: 'released', released_at_tick: currentTick
                             }).eq('id', claim.id);
                             await supabase.from('factions').update({
                                 shipping_fleet_deployed: Math.max(0, (await supabase.from('factions').select('shipping_fleet_deployed').eq('id', claim.faction_id).single()).data?.shipping_fleet_deployed - 1 || 0)
@@ -4776,20 +4776,28 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
                         const transitTicks = claim.shipping_routes?.transit_ticks || 2;
 
-                        if (claim.vessel_status === 'loading') {
+                        // Derive the claim's transit phase from the assigned
+                        // vessel's status — corp_vessels.status is now the
+                        // sole SSoT for vessel activity. "loading" means the
+                        // vessel is at port waiting to depart for this claim
+                        // (vessel.status='in_port'). "in_transit" means it's
+                        // at sea (vessel.status='in_transit'). No assigned
+                        // vessel → claim is orphaned, skip.
+                        const assignedVessel = (corpVesselsForTransit || []).find(v => v.active_claim_id === claim.id);
+                        if (!assignedVessel) continue;
+
+                        if (assignedVessel.status === 'in_port') {
                             // Check fuel before departure — need at least 15% to start transit
-                            const assignedVessel = (corpVesselsForTransit || []).find(v => v.active_claim_id === claim.id);
-                            if (assignedVessel && assignedVessel.fuel < 15) {
+                            if (assignedVessel.fuel < 15) {
                                 console.log(`[advance-corp-tick] Vessel ${assignedVessel.vessel_name} too low on fuel (${assignedVessel.fuel}%) to depart. Skipping transit.`);
-                                continue; // Ship stays loading, can't depart
+                                continue; // Ship stays in port, can't depart
                             }
 
                             // Start transit next tick. Capture error so silent
                             // failures surface — previously an UPDATE rejection
                             // (trigger, constraint, RLS) was swallowed and the
-                            // claim stayed 'loading' forever with no signal.
+                            // claim stayed stuck with no signal.
                             var { error: claimTransitErr } = await supabase.from('shipping_claims').update({
-                                vessel_status: 'in_transit',
                                 transit_started_tick: currentTick,
                                 transit_arrives_tick: currentTick + transitTicks,
                             }).eq('id', claim.id);
@@ -4817,7 +4825,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 currentTick,
                             });
 
-                        } else if (claim.vessel_status === 'in_transit' && currentTick >= (claim.transit_arrives_tick || 0)) {
+                        } else if (assignedVessel.status === 'in_transit' && currentTick >= (claim.transit_arrives_tick || 0)) {
                             // Transit complete — collect revenue and restart cycle
                             const revenue = Number(claim.revenue_per_transit) || 0;
 
@@ -4834,9 +4842,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 revenueCollected += revenue;
                             }
 
-                            // Update claim: increment transits, add revenue, restart loading
+                            // Update claim: increment transits, add revenue, clear
+                            // transit timestamps (vessel arrival below flips it back
+                            // to in_port, which the SSoT model reads as "loading").
                             await supabase.from('shipping_claims').update({
-                                vessel_status: 'loading',
                                 transits_completed: (claim.transits_completed || 0) + 1,
                                 total_revenue: (Number(claim.total_revenue) || 0) + revenue,
                                 transit_started_tick: null,
@@ -4953,7 +4962,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             claim_id: claim.id,
                             vessel_id: diagVessel?.id || null,
                             vessel_class: diagVessel?.vessel_class || null,
-                            vessel_status: claim.vessel_status || diagVessel?.status || null,
+                            vessel_status: diagVessel?.status || null,
                             gross_revenue: diagMargin.grossRevenue,
                             fuel_cost: diagMargin.fuelCost,
                             maintenance_cost: diagMargin.maintenanceCost,
@@ -5035,7 +5044,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         const activeClaimIdsForCorp = vessels.filter(v => v.active_claim_id).map(v => v.active_claim_id);
                         if (activeClaimIdsForCorp.length > 0) {
                             const { data: activeClaimsForCorp } = await supabase.from('shipping_claims')
-                                .select('id, route_id, revenue_per_transit, vessel_status, shipping_routes!inner(id, transit_ticks, scope, proximity)')
+                                .select('id, route_id, revenue_per_transit, shipping_routes!inner(id, transit_ticks, scope, proximity)')
                                 .in('id', activeClaimIdsForCorp)
                                 .eq('faction_id', corp.id)
                                 .eq('status', 'active');
@@ -5242,7 +5251,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                     updates.active_claim_id = null;
                                     if (v.active_claim_id) {
                                         const { error: relErr } = await supabase.from('shipping_claims').update({
-                                            vessel_status: 'idle',
                                             status: 'released',
                                             released_at_tick: currentTick,
                                             revenue_per_transit: 0,
@@ -5318,7 +5326,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 // lost ship. Insurance (below) is the only remaining cashflow.
                                 if (v.active_claim_id) {
                                     const { error: relErr } = await supabase.from('shipping_claims').update({
-                                        vessel_status: 'idle',
                                         status: 'released',
                                         released_at_tick: currentTick,
                                         revenue_per_transit: 0,
