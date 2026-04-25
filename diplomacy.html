@@ -1028,6 +1028,10 @@ window.endShippingContract = async function(claimId, factionId, routeId) {
     _shippingApprovalPending = true;
 
     try {
+        // KNOWN GAP: release_shipping_route has no server-side authorization
+        // (anyone with auth can call it with a spoofed p_faction_id). Tracked
+        // separately; the client-side MoT gate above is the only barrier here
+        // until the RPC is hardened to match claim_shipping_route.
         const { data, error } = await _supabase.rpc('release_shipping_route', {
             p_faction_id: factionId,
             p_claim_id: claimId,
@@ -1046,9 +1050,16 @@ window.endShippingContract = async function(claimId, factionId, routeId) {
         // Re-open the slot for re-application by flipping the originating
         // application from 'approved' to 'rejected'. The unique index on
         // (route_id, faction_id) for ('pending','approved') would otherwise
-        // block the corp from ever re-applying on this route.
+        // block the corp from ever re-applying on this route. Field set
+        // matches _doRejectShippingApp (954) so reviewed_by_faction_id is
+        // populated consistently — single source of truth on rejections.
         const { error: appErr } = await _supabase.from('shipping_applications')
-            .update({ status: 'rejected', rejection_reason: 'Contract ended by Trade Minister', reviewed_at_tick: tick })
+            .update({
+                status: 'rejected',
+                reviewed_at_tick: tick,
+                reviewed_by_faction_id: _worldState?.faction?.id,
+                rejection_reason: 'Contract ended by Trade Minister',
+            })
             .eq('route_id', routeId)
             .eq('faction_id', factionId)
             .eq('status', 'approved');
