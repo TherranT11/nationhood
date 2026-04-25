@@ -6943,7 +6943,14 @@ function renderActiveVoyages() {
         const route = claim.shipping_routes || {};
         const isExp = avSelected === i;
 
-        const status = claim.vessel_status || 'idle';
+        // Derive status from the assigned vessel (corp_vessels.status is SSoT).
+        // 'in_port' with active claim = "loading" (vessel at port preparing to depart).
+        // 'in_transit' = at sea. 'anchored' = stranded. Anything else = idle.
+        const _vesselStatus = claim._vessel?.status;
+        const status = _vesselStatus === 'in_port'    ? 'loading'
+                     : _vesselStatus === 'in_transit' ? 'in_transit'
+                     : _vesselStatus === 'anchored'   ? 'stranded'
+                     : 'idle';
         let statusLabel = status.toUpperCase().replace('_', ' ');
         let statusClass = 'av-status--idle';
         let transitBar = '';
