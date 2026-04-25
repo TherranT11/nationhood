@@ -1011,6 +1011,80 @@ window.rejectShippingApp = async function(appId) {
     }
 };
 
+// End an active shipping contract from the buyer's side. Reuses the
+// existing release_shipping_route RPC (corp's RELEASE ROUTE flow) so
+// claim teardown stays single-source — see corp-operations-shipping.html
+// avRelease() at 6859. Application is flipped to 'rejected' (not left
+// 'approved') so the corp can re-apply later if the government changes
+// its mind. Server-side authorization in claim_shipping_route prevents
+// non-MoTs from re-creating a claim after this.
+window.endShippingContract = async function(claimId, factionId, routeId) {
+    if (_shippingApprovalPending) return;
+    await refreshTradeMinisterFlag();
+    if (!_isTradeMinister) { alert('Only the Minister of Trade can end shipping contracts.'); return; }
+    if (!confirm('End this shipping contract?\n\nFuture revenue stops; past payouts are not reversed. The corporation may re-apply later.')) return;
+
+    const tick = _worldState?.shard?.current_tick || 0;
+    _shippingApprovalPending = true;
+
+    try {
+        // KNOWN GAP: release_shipping_route has no server-side authorization
+        // (anyone with auth can call it with a spoofed p_faction_id). Tracked
+        // separately; the client-side MoT gate above is the only barrier here
+        // until the RPC is hardened to match claim_shipping_route.
+        const { data, error } = await _supabase.rpc('release_shipping_route', {
+            p_faction_id: factionId,
+            p_claim_id: claimId,
+            p_current_tick: tick,
+        });
+        if (error) { alert('Could not end contract: ' + error.message); return; }
+        if (data && data.success === false) { alert(data.error || 'Could not end contract.'); return; }
+
+        // Free vessels assigned to this claim (mirror of corp-operations-shipping.html:6874).
+        const { error: vesselErr } = await _supabase.from('corp_vessels')
+            .update({ status: 'in_port', active_claim_id: null })
+            .eq('active_claim_id', claimId)
+            .eq('faction_id', factionId);
+        if (vesselErr) console.warn('[ShippingEnd] Vessel free failed:', vesselErr.message);
+
+        // Re-open the slot for re-application by flipping the originating
+        // application from 'approved' to 'rejected'. The unique index on
+        // (route_id, faction_id) for ('pending','approved') would otherwise
+        // block the corp from ever re-applying on this route. Field set
+        // matches _doRejectShippingApp (954) so reviewed_by_faction_id is
+        // populated consistently — single source of truth on rejections.
+        const { error: appErr } = await _supabase.from('shipping_applications')
+            .update({
+                status: 'rejected',
+                reviewed_at_tick: tick,
+                reviewed_by_faction_id: _worldState?.faction?.id,
+                rejection_reason: 'Contract ended by Trade Minister',
+            })
+            .eq('route_id', routeId)
+            .eq('faction_id', factionId)
+            .eq('status', 'approved');
+        if (appErr) console.warn('[ShippingEnd] Application reject failed:', appErr.message);
+
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: _worldState?.nation?.id,
+                event_name: 'Shipping contract ended',
+                category: 'trade',
+                description_chosen: 'The government has ended an active shipping contract.',
+                fired_at_tick: tick,
+            });
+        } catch (_) { /* event log is non-fatal */ }
+
+        await loadShippingData();
+        renderTradeAgreements();
+    } catch (err) {
+        console.error('[ShippingEnd] Error:', err);
+        alert('Failed to end contract.');
+    } finally {
+        _shippingApprovalPending = false;
+    }
+};
+
 // ═══════════════════════════════════════════════════
 // TRADE AGREEMENTS PANEL
 // ═══════════════════════════════════════════════════
@@ -1060,6 +1134,7 @@ function renderShippingContractsBlock() {
     // "awaiting decision" notice instead of action buttons.
     // (diplomaticRoles is unreliable on this page — see refreshTradeMinisterFlag.)
     const canAct = !!_isTradeMinister;
+    const ourNationId = _worldState?.nation?.id;
 
     // Group pending applications BY ROUTE so every route with pending bids
     // collapses into one summary row (regardless of how many corps applied).
@@ -1201,6 +1276,13 @@ function renderShippingContractsBlock() {
                         <div style="color:var(--text-dim);font-size:8px;">${transits} transit${transits === 1 ? '' : 's'}</div>
                     </div>
                 </div>
+                ${(canAct && r.destination_nation_id === ourNationId) ? `
+                <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+                    <button onclick="event.stopPropagation();endShippingContract('${claim.id}', '${claim.faction_id}', '${claim.route_id}')"
+                            style="padding:8px 18px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:pointer;">
+                        END CONTRACT
+                    </button>
+                </div>` : ''}
             </div>` : ''}
         </div>`;
     }
