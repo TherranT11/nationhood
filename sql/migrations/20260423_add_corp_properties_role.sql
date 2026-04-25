@@ -25,13 +25,50 @@ ALTER TABLE corp_properties
     ADD COLUMN IF NOT EXISTS role TEXT;
 
 -- 2. Backfill: rows created via "Create Subsidiary" flow = subsidiary.
---    Signal: type='regional_hq' + catalog_id NULL + subsector populated.
-UPDATE corp_properties
+--    IMPORTANT: subsector alone is not the only discriminator anymore.
+--    We also treat a row as subsidiary if it is legacy-untyped but has
+--    finance/subsidiary service references or cross-nation branch signals.
+WITH subsidiary_candidates AS (
+    SELECT cp.id
+    FROM corp_properties cp
+    LEFT JOIN factions f ON f.id = cp.faction_id
+    WHERE cp.role IS NULL
+      AND cp.type = 'regional_hq'
+      AND cp.catalog_id IS NULL
+      AND (
+            cp.subsector IS NOT NULL
+            OR EXISTS (
+                SELECT 1
+                FROM subsidiary_auto_rates sar
+                WHERE sar.subsidiary_id = cp.id
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM subsidiary_auto_policies sap
+                WHERE sap.subsidiary_id = cp.id
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM subsidiary_sales ss
+                WHERE ss.subsidiary_id = cp.id
+            )
+            OR (
+                f.nation_id IS DISTINCT FROM cp.nation_id
+                AND EXISTS (
+                    SELECT 1
+                    FROM corp_properties hq
+                    WHERE hq.faction_id = cp.faction_id
+                      AND hq.type = 'regional_hq'
+                      AND hq.catalog_id IS NOT NULL
+                      AND hq.nation_id = f.nation_id
+                )
+            )
+      )
+)
+UPDATE corp_properties cp
    SET role = 'subsidiary'
- WHERE role IS NULL
-   AND type = 'regional_hq'
-   AND catalog_id IS NULL
-   AND subsector IS NOT NULL;
+  FROM subsidiary_candidates sc
+ WHERE cp.id = sc.id;
 
 -- 3. Backfill: everything else inherits role from type.
 UPDATE corp_properties
