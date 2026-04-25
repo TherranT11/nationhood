@@ -3546,6 +3546,22 @@ const SALE_REASONS = [
     'Bankruptcy liquidation — priced to sell',
 ];
 
+// Keep in sync with js/game/equipment.js so delayed-delivery fulfillment
+// computes maintenance/tier exactly the same way as immediate purchases.
+const CORP_EQUIPMENT_DEFS = {
+    trucks: { tier: 1, maintenancePerUnit: 1500 },
+    excavators: { tier: 1, maintenancePerUnit: 5500 },
+    bulldozers: { tier: 1, maintenancePerUnit: 7000 },
+    mixers: { tier: 1, maintenancePerUnit: 4500 },
+    cranes: { tier: 2, maintenancePerUnit: 32500 },
+    haulers: { tier: 2, maintenancePerUnit: 15000 },
+    piledrivers: { tier: 2, maintenancePerUnit: 18000 },
+    asphalt: { tier: 2, maintenancePerUnit: 22000 },
+    industrial: { tier: 3, maintenancePerUnit: 85000 },
+    tbm: { tier: 3, maintenancePerUnit: 200000 },
+    dredge: { tier: 3, maintenancePerUnit: 95000 },
+};
+
 async function generateShipMarketListings(supabase, currentTick) {
     // Expire old NPC listings (24 ticks old)
     var { error: expireErr } = await supabase.from('ship_market_listings')
@@ -3648,6 +3664,142 @@ async function processVesselOrderDeliveries(supabase, currentTick) {
         } else if (result === 'cancelled') {
             console.log('[Vessel Orders] Order cancelled (insufficient funds) for ' + order.vessel_name);
         }
+    }
+}
+
+async function processEquipmentDeliveries(supabase, currentTick) {
+    const { data: dueDeliveries, error: fetchErr } = await supabase
+        .from('corp_equipment_deliveries')
+        .select('id, faction_id, equipment_key, quantity, condition')
+        .lte('delivery_tick', currentTick);
+
+    if (fetchErr) {
+        console.error('[Equipment Deliveries] Failed to fetch due deliveries:', fetchErr.message);
+        return;
+    }
+    if (!dueDeliveries || dueDeliveries.length === 0) return;
+
+    const factionIds = [...new Set(dueDeliveries.map(d => d.faction_id).filter(Boolean))];
+    const equipmentKeys = [...new Set(dueDeliveries.map(d => d.equipment_key).filter(Boolean))];
+
+    const nationByFactionId = {};
+    if (factionIds.length > 0) {
+        const { data: factions, error: facErr } = await supabase
+            .from('factions')
+            .select('id, nation_id')
+            .in('id', factionIds);
+        if (facErr) {
+            console.warn('[Equipment Deliveries] Could not load faction nation mapping:', facErr.message);
+        } else {
+            for (const f of (factions || [])) nationByFactionId[f.id] = f.nation_id;
+        }
+    }
+
+    const equipmentByKey = {};
+    if (factionIds.length > 0 && equipmentKeys.length > 0) {
+        const { data: existingRows, error: existingErr } = await supabase
+            .from('corp_equipment')
+            .select('id, faction_id, nation_id, equipment_key, tier, owned, deployed, condition, maintenance_per_tick')
+            .in('faction_id', factionIds)
+            .in('equipment_key', equipmentKeys);
+        if (existingErr) {
+            console.warn('[Equipment Deliveries] Could not load existing corp_equipment rows:', existingErr.message);
+        } else {
+            for (const row of (existingRows || [])) {
+                equipmentByKey[`${row.faction_id}:${row.equipment_key}`] = row;
+            }
+        }
+    }
+
+    const successfulIds = [];
+    for (const delivery of dueDeliveries) {
+        const eqKey = delivery.equipment_key;
+        const qty = Math.max(0, Number(delivery.quantity) || 0);
+        const incomingCond = Math.max(0, Math.min(100, Number(delivery.condition) || 100));
+        const mapKey = `${delivery.faction_id}:${eqKey}`;
+        const existing = equipmentByKey[mapKey];
+        const def = CORP_EQUIPMENT_DEFS[eqKey];
+
+        try {
+            if (!delivery.faction_id || !eqKey || qty <= 0) {
+                throw new Error('Invalid delivery payload');
+            }
+
+            const oldOwned = Math.max(0, Number(existing?.owned) || 0);
+            const oldCondition = Math.max(0, Math.min(100, Number(existing?.condition) || 100));
+            const newOwned = oldOwned + qty;
+            const newCondition = Math.round(((oldCondition * oldOwned) + (incomingCond * qty)) / newOwned);
+            const perUnitMaintenance = Number(def?.maintenancePerUnit)
+                || (oldOwned > 0 ? Math.round((Number(existing?.maintenance_per_tick) || 0) / oldOwned) : 0);
+            const maintenancePerTick = Math.round(perUnitMaintenance * newOwned);
+            const tier = Number(existing?.tier) || Number(def?.tier) || 1;
+            const nationId = existing?.nation_id || nationByFactionId[delivery.faction_id] || null;
+
+            if (!nationId) throw new Error('Missing nation_id for faction');
+            if (!perUnitMaintenance) throw new Error(`No maintenance definition for equipment_key=${eqKey}`);
+
+            const { data: upsertedRow, error: upsertErr } = await supabase
+                .from('corp_equipment')
+                .upsert({
+                    faction_id: delivery.faction_id,
+                    nation_id: nationId,
+                    equipment_key: eqKey,
+                    tier,
+                    owned: newOwned,
+                    deployed: Number(existing?.deployed) || 0,
+                    condition: newCondition,
+                    maintenance_per_tick: maintenancePerTick,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'faction_id,equipment_key' })
+                .select('id, faction_id, nation_id, equipment_key, tier, owned, deployed, condition, maintenance_per_tick')
+                .single();
+
+            if (upsertErr) throw upsertErr;
+
+            equipmentByKey[mapKey] = upsertedRow || {
+                faction_id: delivery.faction_id,
+                nation_id: nationId,
+                equipment_key: eqKey,
+                tier,
+                owned: newOwned,
+                deployed: Number(existing?.deployed) || 0,
+                condition: newCondition,
+                maintenance_per_tick: maintenancePerTick,
+            };
+            successfulIds.push(delivery.id);
+        } catch (err) {
+            const msg = err?.message || String(err);
+            console.error(`[Equipment Deliveries] Failed delivery ${delivery.id} (${delivery.faction_id}/${eqKey}):`, err);
+            await supabase.from('event_log').insert({
+                nation_id: nationByFactionId[delivery.faction_id] || null,
+                faction_id: delivery.faction_id || null,
+                event_name: 'Equipment delivery fulfillment failed',
+                category: 'corporate',
+                description_chosen: `Failed processing equipment delivery ${delivery.id} for ${eqKey}: ${msg}`,
+                fired_at_tick: currentTick,
+            });
+        }
+    }
+
+    if (successfulIds.length === 0) return;
+
+    const { error: deleteErr } = await supabase
+        .from('corp_equipment_deliveries')
+        .delete()
+        .in('id', successfulIds);
+
+    if (deleteErr) {
+        console.error('[Equipment Deliveries] Failed to delete processed deliveries:', deleteErr.message);
+        for (const id of successfulIds) {
+            await supabase.from('event_log').insert({
+                event_name: 'Equipment delivery cleanup failed',
+                category: 'corporate',
+                description_chosen: `Processed equipment delivery ${id} but failed to delete queue row: ${deleteErr.message}`,
+                fired_at_tick: currentTick,
+            });
+        }
+    } else {
+        console.log(`[Equipment Deliveries] Processed ${successfulIds.length} due deliveries`);
     }
 }
 
@@ -4696,6 +4848,16 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 }
             } catch (ordErr) {
                 console.error(`[advance-corp-tick] Vessel order delivery failed (non-fatal):`, ordErr);
+            }
+
+            // ── Equipment Orders — Deliver delayed equipment purchases ────
+            try {
+                if (!summary._equipmentDeliveriesProcessed) {
+                    await processEquipmentDeliveries(supabase, currentTick);
+                    summary._equipmentDeliveriesProcessed = true;
+                }
+            } catch (eqDelErr) {
+                console.error(`[advance-corp-tick] Equipment delivery fulfillment failed (non-fatal):`, eqDelErr);
             }
 
             // ── Shipping Sector — Transit Cycles & Revenue ───────────────
