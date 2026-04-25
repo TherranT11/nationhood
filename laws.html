@@ -1988,6 +1988,7 @@ function addTariffArticle() {
         renderDraftArticles();
         _showAllArticleButtons(); _hideAllArticleForms();
         document.getElementById('bill-name-section').style.display = 'block';
+        document.getElementById('submit-bill-btn').disabled = false;
         updateSubmitButtonCost();
     } finally {
         _draftArticleLock = false;
@@ -2098,6 +2099,7 @@ function addIncomeTaxArticle() {
         renderDraftArticles();
         _showAllArticleButtons(); _hideAllArticleForms();
         document.getElementById('bill-name-section').style.display = 'block';
+        document.getElementById('submit-bill-btn').disabled = false;
         updateSubmitButtonCost();
     } finally {
         _draftArticleLock = false;
@@ -2242,6 +2244,7 @@ function addBailoutArticle() {
         renderDraftArticles();
         _showAllArticleButtons(); _hideAllArticleForms();
         document.getElementById('bill-name-section').style.display = 'block';
+        document.getElementById('submit-bill-btn').disabled = false;
         updateSubmitButtonCost();
     } finally {
         _draftArticleLock = false;
