@@ -5778,10 +5778,11 @@ function calculateNationalBudget(nation, opts = {}) {
     const debt = Number(nation.debt ?? 0);
 
     // Tax rates: 0-100 percentages
-    const incomeTaxRate  = Number(nation.income_tax ?? 0);
-    const corpTaxRate    = Number(nation.corporate_tax ?? 0);
-    const salesTaxRate   = Number(nation.sales_tax ?? 0);
-    const tariffsRate    = Number(nation.tariffs ?? 0);
+    const incomeTaxRate    = Number(nation.income_tax ?? 0);
+    const corpTaxRate      = Number(nation.corporate_tax ?? 0);
+    const salesTaxRate     = Number(nation.sales_tax ?? 0);
+    const propertyTaxRate  = Number(nation.property_tax ?? 0);
+    const tariffsRate      = Number(nation.tariffs ?? 0);
 
     // Other 0-100 stats
     const efficiency     = Number(nation.efficiency ?? 50);
@@ -5795,15 +5796,22 @@ function calculateNationalBudget(nation, opts = {}) {
     const collectionRate = 0.35 + rawCR * 0.65;
 
     // Tax Revenue (raw dollars, since GDP is raw dollars)
-    const incomeRevenue  = gdp * (incomeTaxRate / 100) * 0.55 * collectionRate;
-    const corpRevenue    = gdp * (corpTaxRate / 100)   * 0.15 * collectionRate;
-    const salesRevenue   = gdp * (salesTaxRate / 100)  * 0.35 * collectionRate;
-    const tariffRevenue  = gdp * (tariffsRate / 100)   * 0.0025 * collectionRate;
+    // Property-tax multiplier (0.08) is a starting guess: at the default
+    // 50% rate this yields ~4% of GDP after collection, matching the
+    // real-world band where property tax sits (~3-5% of GDP for most
+    // nations). Tune in one place if needed; everything downstream
+    // (Tax Article ongoing-cost projection, budget displays, deficit
+    // calc) reads from here.
+    const incomeRevenue   = gdp * (incomeTaxRate / 100)   * 0.55   * collectionRate;
+    const corpRevenue     = gdp * (corpTaxRate / 100)     * 0.15   * collectionRate;
+    const salesRevenue    = gdp * (salesTaxRate / 100)    * 0.35   * collectionRate;
+    const propertyRevenue = gdp * (propertyTaxRate / 100) * 0.08   * collectionRate;
+    const tariffRevenue   = gdp * (tariffsRate / 100)     * 0.0025 * collectionRate;
 
     // Oil & Gas Revenue (only if oil_and_gas stat > 30)
     const oilRevenue = oilGas > 30 ? gdp * (oilGas / 100) * 0.06 : 0;
 
-    const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + tariffRevenue + oilRevenue;
+    const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + propertyRevenue + tariffRevenue + oilRevenue;
 
     // Debt Service. Prefer the actual sum of active bond coupon obligations
     // (passed in by the tick processor as opts.actualDebtService — that's
@@ -5821,7 +5829,7 @@ function calculateNationalBudget(nation, opts = {}) {
 
     return {
         grossRevenue, debtService, availableBudget, collectionRate,
-        incomeRevenue, corpRevenue, salesRevenue, tariffRevenue, oilRevenue
+        incomeRevenue, corpRevenue, salesRevenue, propertyRevenue, tariffRevenue, oilRevenue
     };
 }
 
@@ -7941,17 +7949,66 @@ const TAX_ARTICLE_EFFECTS = Object.freeze({
             inflation:    +0.5,
         }),
     }),
+    // Property tax taxes asset ownership (land + buildings). Direct effect
+    // on housing_affordability — cuts make housing cheaper to hold/rent,
+    // hikes pass through to renters and add to mortgage costs. The voter
+    // bloc system (electorate.js: urban_suburban) already cascades from
+    // housing_affordability into approval, so the flat ±2 gov_approval
+    // here understates total political impact for housing-sensitive
+    // nations. No inflation effect — property tax doesn't ride on
+    // consumer prices.
+    property_tax: Object.freeze({
+        cut: Object.freeze({
+            gov_approval:          +2,
+            credit:                -2,
+            gdp_growth:            +0.5,
+            inflation:             0,
+            housing_affordability: +1,
+        }),
+        hike: Object.freeze({
+            gov_approval:          -2,
+            credit:                +1,
+            gdp_growth:            -0.5,
+            inflation:             0,
+            housing_affordability: -1,
+        }),
+    }),
 });
 
 // Tax keys that have effects defined — feeds the draft modal's tax-type
-// selector. Property will appear here when its effects land.
-const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax', 'sales_tax']);
+// selector.
+const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax', 'sales_tax', 'property_tax']);
 
 const TAX_KEY_LABELS = Object.freeze({
     income_tax:    'Income Tax',
     corporate_tax: 'Corporate Tax',
     sales_tax:     'Sales Tax',
+    property_tax:  'Property Tax',
 });
+
+// Effect-key → display label, used by the article-card / preview UI to
+// render each effect row. Keys here must match the keys used in the
+// per-step entries above. Adding a new effect dimension (e.g.,
+// urbanization for a future tax) only requires adding it here + to a
+// tax's per-step block.
+const TAX_EFFECT_LABELS = Object.freeze({
+    gov_approval:          'Gov Approval',
+    credit:                'Credit',
+    gdp_growth:            'GDP Growth',
+    inflation:             'Inflation',
+    housing_affordability: 'Housing Affordability',
+});
+
+// Effect keys that map directly to a nations.<column>. Used by the
+// enactment handler to know which keys to read+write to the nations
+// table (vs. gov_approval, which routes through adjust_momentum →
+// gov_approval_events). New numeric stat effects join this list.
+const TAX_EFFECT_NATION_COLUMNS = Object.freeze([
+    'credit',
+    'gdp_growth',
+    'inflation',
+    'housing_affordability',
+]);
 
 // Enumerate the valid new rates a player can pick given their current rate
 // and chosen direction. Cuts step down in 3pp increments until hitting 0;
@@ -7971,19 +8028,19 @@ function getValidNewRates(currentRate, direction) {
 
 // Compute total side effects for a (taxKey, direction, steps) triple.
 // Used by the preview panel AND the enactment handler — one calculation,
-// two callers. Returns { gov_approval, credit, gdp_growth, inflation }.
+// two callers. Returns an object keyed by whatever effect dimensions
+// the tax defines (gov_approval, credit, gdp_growth, inflation, plus
+// any tax-specific extras like housing_affordability). Callers must
+// not assume a fixed shape — iterate Object.entries(fx).
 function computeTaxArticleEffects(taxKey, direction, steps) {
     const perStep = TAX_ARTICLE_EFFECTS[taxKey]?.[direction];
     const n = Number(steps) || 0;
-    if (!perStep || n <= 0) {
-        return { gov_approval: 0, credit: 0, gdp_growth: 0, inflation: 0 };
+    if (!perStep || n <= 0) return {};
+    const result = {};
+    for (const [key, val] of Object.entries(perStep)) {
+        result[key] = val * n;
     }
-    return {
-        gov_approval: perStep.gov_approval * n,
-        credit:       perStep.credit       * n,
-        gdp_growth:   perStep.gdp_growth   * n,
-        inflation:    perStep.inflation    * n,
-    };
+    return result;
 }
 
 // Compute the bill's ongoing budget impact from a tax rate change, in
@@ -11380,25 +11437,31 @@ async function enactBill(supabase, bill, currentTick) {
                 const newRate = Math.max(TAX_RATE_MIN, Math.min(TAX_RATE_MAX, Number(effect.new_rate)));
                 taxUpdates[taxKey] = newRate;
                 const fx = computeTaxArticleEffects(taxKey, val.direction, val.steps);
-                const { data: nRow, error: nErr } = await supabase.from('nations')
-                    .select('credit, gdp_growth, inflation').eq('id', bill.nation_id).single();
-                if (nErr) {
-                    console.error(`[enactBill] TAX_CHANGE (${taxKey}) read failed:`, nErr.message);
-                } else {
-                    const newCredit    = Math.max(0, Math.min(100, Number(nRow.credit    ?? 50) + fx.credit));
-                    const newGdpGrowth = Math.max(0, Math.min(100, Number(nRow.gdp_growth ?? 50) + fx.gdp_growth));
-                    const newInflation = Math.max(0, Math.min(100, Number(nRow.inflation  ?? 50) + fx.inflation));
-                    const { error: upErr } = await supabase.from('nations').update({
-                        credit:     newCredit,
-                        gdp_growth: newGdpGrowth,
-                        inflation:  newInflation,
-                    }).eq('id', bill.nation_id);
-                    if (upErr) console.error(`[enactBill] TAX_CHANGE (${taxKey}) stat update failed:`, upErr.message);
-                    if (fx.gov_approval !== 0) {
-                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, fx.gov_approval, `${taxKey}_article`);
+                // Generic effect-key application: read only the nation
+                // columns this tax actually moves (per fx + the canonical
+                // TAX_EFFECT_NATION_COLUMNS list), apply clamped deltas,
+                // write back. Adding a new effect dimension means adding
+                // it to TAX_EFFECT_NATION_COLUMNS — no surgery here.
+                const statKeys = TAX_EFFECT_NATION_COLUMNS.filter(k => Number.isFinite(fx[k]) && fx[k] !== 0);
+                if (statKeys.length > 0) {
+                    const { data: nRow, error: nErr } = await supabase.from('nations')
+                        .select(statKeys.join(', ')).eq('id', bill.nation_id).single();
+                    if (nErr) {
+                        console.error(`[enactBill] TAX_CHANGE (${taxKey}) read failed:`, nErr.message);
+                    } else {
+                        const updates = {};
+                        for (const k of statKeys) {
+                            updates[k] = Math.max(0, Math.min(100, Number(nRow[k] ?? 50) + fx[k]));
+                        }
+                        const { error: upErr } = await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+                        if (upErr) console.error(`[enactBill] TAX_CHANGE (${taxKey}) stat update failed:`, upErr.message);
                     }
-                    console.log(`[enactBill] TAX_CHANGE ${taxKey} ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, approval ${fx.gov_approval >= 0 ? '+' : ''}${fx.gov_approval}, credit ${fx.credit >= 0 ? '+' : ''}${fx.credit}, gdp_growth ${fx.gdp_growth >= 0 ? '+' : ''}${fx.gdp_growth}, inflation ${fx.inflation >= 0 ? '+' : ''}${fx.inflation}`);
                 }
+                if (Number.isFinite(fx.gov_approval) && fx.gov_approval !== 0) {
+                    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, fx.gov_approval, `${taxKey}_article`);
+                }
+                console.log(`[enactBill] TAX_CHANGE ${taxKey} ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, ` +
+                    Object.entries(fx).map(([k, v]) => `${k} ${v >= 0 ? '+' : ''}${v}`).join(', '));
             }
         } else if (effect.type === 'TARIFF_RATE_CHANGE' && effect.sector) {
             // Per-sector tariff: merge into nation's sector_tariffs jsonb

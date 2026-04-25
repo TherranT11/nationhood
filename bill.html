@@ -248,7 +248,7 @@ import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, F
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
 import { executeWhipCaucus } from './js/game/caucus.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
-import { computeTaxArticleEffects, computeTaxArticleOngoingCost } from './js/game/tax-articles.js';
+import { computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_EFFECT_LABELS } from './js/game/tax-articles.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
     if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
@@ -1518,13 +1518,19 @@ function renderArticles() {
                 const ongoingCost = computeTaxArticleOngoingCost(taxKey, ed.new_rate, currentNation);
                 const ongoingLabel = ongoingCost > 0 ? 'Ongoing Cost' : ongoingCost < 0 ? 'Ongoing Relief' : 'Ongoing Impact';
                 const ongoingColor = ongoingCost > 0 ? 'var(--red)' : ongoingCost < 0 ? 'var(--green)' : 'var(--text-secondary, #888)';
+                // Build effect rows generically from fx — every effect key
+                // the tax defines gets a row, in TAX_EFFECT_LABELS order
+                // (so display ordering stays stable as new dimensions land).
+                const effectRow = (label, val) =>
+                    `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>${label}</span><span style="color:${color(val)};">${sign(val)}</span></div>`;
+                const fxRowsHtml = Object.keys(TAX_EFFECT_LABELS)
+                    .filter(k => Number.isFinite(fx[k]))
+                    .map(k => effectRow(TAX_EFFECT_LABELS[k], fx[k]))
+                    .join('');
                 const rowsHtml =
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Rate</span><span>${ed.old_rate}% → ${ed.new_rate}% <span style="color:${borderColor};">(${dir === 'cut' ? '−' : '+'}${deltaAbs}pp · ${steps} step${steps === 1 ? '' : 's'})</span></span></div>` +
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>${ongoingLabel}</span><span style="color:${ongoingColor};">${formatCurrency(ongoingCost)}/mo</span></div>` +
-                    `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Gov Approval</span><span style="color:${color(fx.gov_approval)};">${sign(fx.gov_approval)}</span></div>` +
-                    `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Credit</span><span style="color:${color(fx.credit)};">${sign(fx.credit)}</span></div>` +
-                    `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>GDP Growth</span><span style="color:${color(fx.gdp_growth)};">${sign(fx.gdp_growth)}</span></div>` +
-                    `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Inflation</span><span style="color:${color(fx.inflation)};">${sign(fx.inflation)}</span></div>`;
+                    fxRowsHtml;
                 return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
                     '<div class="article-title">' + escapeHtml(art.article_title || 'Tax Change') + '</div>' +
