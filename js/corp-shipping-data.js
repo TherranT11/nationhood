@@ -110,22 +110,6 @@ export async function loadShippingRoutesSafe(supabase, factionId, corpSubsector,
     };
 }
 
-// Stitch the assigned vessel onto each claim as `_vessel`. The UI derives
-// the claim's display status (LOADING / IN TRANSIT / IDLE) from the vessel's
-// status — corp_vessels.status is the SSoT for vessel activity since the
-// shipping_claims.vessel_status column was dropped (one source, no drift).
-async function attachAssignedVessels(supabase, claims) {
-    if (!claims || claims.length === 0) return claims || [];
-    const claimIds = claims.map((c) => c.id).filter(Boolean);
-    if (claimIds.length === 0) return claims;
-    const { data: vessels } = await supabase.from('corp_vessels')
-        .select('id, status, fuel, condition, vessel_name, vessel_class, active_claim_id')
-        .in('active_claim_id', claimIds);
-    const byClaimId = {};
-    for (const v of (vessels || [])) byClaimId[v.active_claim_id] = v;
-    return claims.map((c) => ({ ...c, _vessel: byClaimId[c.id] || null }));
-}
-
 export async function loadActiveVoyagesSafe(supabase, factionId) {
     const joinedResult = await supabase
         .from('shipping_claims')
@@ -135,8 +119,7 @@ export async function loadActiveVoyagesSafe(supabase, factionId) {
         .order('claimed_at_tick', { ascending: false });
 
     if (!joinedResult.error) {
-        const enriched = await attachAssignedVessels(supabase, joinedResult.data || []);
-        return buildLoadResult('claims', enriched, null);
+        return buildLoadResult('claims', joinedResult.data || [], null);
     }
 
     if (!isSchemaMissingError(joinedResult.error)) {
@@ -165,10 +148,10 @@ export async function loadActiveVoyagesSafe(supabase, factionId) {
         }
     }
 
-    const stitchedClaims = await attachAssignedVessels(supabase, claims.map((claim) => ({
+    const stitchedClaims = claims.map((claim) => ({
         ...claim,
         shipping_routes: routeMap[claim.route_id] || null,
-    })));
+    }));
 
     return {
         ok: true,

@@ -6944,9 +6944,13 @@ function renderActiveVoyages() {
         const isExp = avSelected === i;
 
         // Derive status from the assigned vessel (corp_vessels.status is SSoT).
-        // 'in_port' with active claim = "loading" (vessel at port preparing to depart).
-        // 'in_transit' = at sea. 'anchored' = stranded. Anything else = idle.
-        const _vesselStatus = claim._vessel?.status;
+        // _fleetVessels is already loaded in parallel with active voyages
+        // (see Promise.all in renderShippingTab) — reuse it instead of an
+        // extra fetch. 'in_port' with active claim = "loading" (vessel at
+        // port preparing to depart). 'in_transit' = at sea. 'anchored' =
+        // stranded. Anything else = idle.
+        const _assignedVessel = (_fleetVessels || []).find(v => v.active_claim_id === claim.id);
+        const _vesselStatus = _assignedVessel?.status;
         const status = _vesselStatus === 'in_port'    ? 'loading'
                      : _vesselStatus === 'in_transit' ? 'in_transit'
                      : _vesselStatus === 'anchored'   ? 'stranded'
