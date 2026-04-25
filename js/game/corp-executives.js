@@ -53,8 +53,6 @@ export var EXEC_ROLE_META = {
     Lobbyist: { fullTitle: 'Corporate Lobbyist',       color: '#8a6aaa' },
 };
 
-var HIREABLE_ROLES = ['CFO', 'COO', 'CTO', 'CMO', 'CLO', 'Lobbyist'];
-
 // Which roles each candidate can fill (randomly assigned 1-3 specializations)
 var ROLE_GROUPS = [
     ['CFO'],
@@ -142,7 +140,10 @@ export function generateExecutivePool(nationId, nationName) {
         var origin = pickOrigin(nationName);
         var firstName, lastName, fullName;
 
-        // Avoid duplicate names
+        // Avoid duplicate names. If 20 attempts all collide, skip this slot
+        // entirely rather than insert a silent duplicate. With 50+ names per
+        // pool and only 18 candidates, the skip path is effectively unreachable
+        // — but if a future pool shrinks, we'd rather return < 18 than dup.
         var attempts = 0;
         do {
             firstName = pickRandom(origin.firstNames);
@@ -150,6 +151,7 @@ export function generateExecutivePool(nationId, nationName) {
             fullName = firstName + ' ' + lastName;
             attempts++;
         } while (usedNames.has(fullName) && attempts < 20);
+        if (usedNames.has(fullName)) continue;
         usedNames.add(fullName);
 
         var skill = randInt(25, 90);

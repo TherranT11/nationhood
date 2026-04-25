@@ -25914,6 +25914,15 @@ const FEMALE_NAMES = new Set([
     'Snežana', 'Vesna',
     // Dravka
     'Afërdita', 'Bora', 'Era', 'Luljeta', 'Teuta'
+    // Danwei: intentionally NO entries. Family-first convention stores
+    // surnames (Chen, Lin, Han) in the FIRST_NAMES slot and given names
+    // (Mei-ling, Kuo-yu) in LAST_NAMES — but isFemaleName() tests the
+    // FIRST_NAMES slot only, so adding female given names here would
+    // never match. Gender-aware titles (Queen/King in bills.js:4480 and
+    // 4579) only fire for monarchies, which Danwei isn't, so the gap
+    // is currently inert. If a future change wants gendered titles for
+    // Danwei, the fix is to make isFemaleName nation-aware (check the
+    // last-name slot for family-first cultures), not to add entries here.
 ]);
 
 function isFemaleName(firstName) {
@@ -25940,6 +25949,38 @@ const ALMAKIR_LAST_NAMES = [
     'Al-Rifai','Al-Qadri','Al-Ayoubi','Al-Barghouti','Al-Khatri','Al-Shihabi','Al-Awadi','Al-Sarraf',
     'Al-Zubaidi','Al-Hussein','Al-Attar','Al-Safadi','Al-Hourani','Al-Kassab','Al-Taleb','Al-Hamdan',
     'Al-Rantisi','Al-Banna','Al-Khatour',
+];
+
+// Danwei (Taiwanese) name pools.
+//
+// Convention: Danweian display order is family-first (e.g. "Han Kuo-yu"),
+// so DANWEI_FIRST_NAMES holds Taiwanese family/surnames and
+// DANWEI_LAST_NAMES holds given names. This way the existing
+// "first_name + ' ' + last_name" display logic produces the correct
+// Taiwanese-style ordering without rewriting display logic across the
+// codebase. See sql/insert_danwei.sql Phase 2 (caretaker Han Kuo-yu).
+const DANWEI_NATIONS = ['Danwei'];
+const DANWEI_FIRST_NAMES = [
+    // Family / surnames (Wade-Giles transliteration; Taiwan-frequency order)
+    'Chen', 'Lin', 'Huang', 'Chang', 'Lee', 'Wang', 'Wu', 'Liu', 'Tsai', 'Yang',
+    'Hsu', 'Cheng', 'Chou', 'Hsieh', 'Kuo', 'Chiang', 'Tang', 'Lo', 'Pan', 'Chao',
+    'Ho', 'Chu', 'Tseng', 'Yeh', 'Hsiao', 'Lai', 'Su', 'Ma', 'Hung', 'Chiu',
+    'Shih', 'Chien', 'Liao', 'Han', 'Sun', 'Wei', 'Ku', 'Fang', 'Yu', 'Shen',
+    'Fu', 'Hsiang', 'Tsao', 'Hu', 'Sung', 'Shao', 'Kao', 'Pao', 'Po', 'Lung',
+];
+const DANWEI_LAST_NAMES = [
+    // Given names (hyphenated 2-syllable Wade-Giles).
+    // Male
+    'Kuo-yu', 'Wei-ming', 'Ming-chen', 'Chih-yuan', 'Hsiao-ping', 'Wen-cheng',
+    'Yu-ren', 'Ying-jeou', 'Teng-hui', 'Cheng-yi', 'Chen-yi', 'Tien-hsing',
+    'Po-yu', 'Chih-hao', 'Yi-feng', 'Chih-hung', 'Wei-jen', 'Cheng-ming',
+    'Po-chen', 'Hsing-kuo', 'Wen-fan', 'Po-hsiung', 'Tsung-hsien', 'Chao-ming',
+    'Yi-chun', 'Chang-ting',
+    // Female (also added to FEMALE_NAMES set above)
+    'Mei-ling', 'Hsiu-lien', 'Wen-chi', 'Yu-hua', 'Su-chen', 'Yi-fang', 'Hsin-yi',
+    'Yu-ling', 'Chia-ling', 'Pei-ling', 'Mei-feng', 'Hsiao-mei', 'Yu-chen',
+    'Wen-ling', 'Mei-yu', 'Chia-hsuan', 'Pei-yi', 'Hsin-mei', 'Chia-jung',
+    'Pei-chen', 'Hsiu-chen', 'Mei-chen', 'Yi-ling', 'Hsiu-mei',
 ];
 
 // Dravka (Albanian) name pools
@@ -25985,6 +26026,9 @@ function getNationNames(nationName) {
     }
     if (DRAVKA_NATIONS.includes(nationName)) {
         return { firstNames: DRAVKA_FIRST_NAMES, lastNames: DRAVKA_LAST_NAMES };
+    }
+    if (DANWEI_NATIONS.includes(nationName)) {
+        return { firstNames: DANWEI_FIRST_NAMES, lastNames: DANWEI_LAST_NAMES };
     }
     return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
 }
