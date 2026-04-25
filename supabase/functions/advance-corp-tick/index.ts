@@ -4288,6 +4288,16 @@ async function captureShippingRouteTelemetry(supabase, currentTick) {
 // ════════════════════════════════════════════════════════════════════════════════
 
 async function advanceCorpTick(supabase, { force = false } = {}) {
+    // ── Build fingerprint canary ──
+    // Tells us whether a deploy actually replaced the running bundle.
+    // After `supabase functions deploy advance-corp-tick`, the next
+    // cron invocation should log this exact string. If it doesn't,
+    // the deploy didn't take effect (Supabase dashboard cache /
+    // wrong project / silent failure). Bump the date suffix on each
+    // intentional redeploy so we can distinguish stale invocations
+    // from new ones in the function logs.
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-04-25-c (workforce-audit-followup)');
+
     // 1. Read shard to get current tick and scheduling info
     const { data: shard, error: shardErr } = await supabase
         .from('shard')
