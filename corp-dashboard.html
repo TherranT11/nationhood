@@ -2985,6 +2985,7 @@ function cpToggleBid(bidUid) {
 window.cpToggleBid = cpToggleBid;
 
 let _convertTargetType = 'branch_office';
+let _propConverting = false;
 
 function showConvertModal(propId, propName, purchasePrice) {
     const subsector = (faction?.corp_subsector || '').toLowerCase();
@@ -3024,44 +3025,75 @@ function showConvertModal(propId, propName, purchasePrice) {
 }
 
 async function confirmConvertProperty(propId, cost, ticks) {
-    const cash = Number(faction?.corp_cash_reserves ?? 0);
-    if (cash < cost) { alert('Insufficient cash. Need ' + fmtMoney(cost) + '.'); return; }
-
-    // Defense-in-depth: subsidiary HQs (role='subsidiary') aren't convertible.
-    // The UI button is gated, but re-check on the write so a stale render or
-    // direct call can't slip through.
-    const { data: targetRow, error: targetErr } = await _supabase
-        .from('corp_properties')
-        .select('role')
-        .eq('id', propId)
-        .single();
-    if (targetErr) { alert('Conversion failed: ' + targetErr.message); return; }
-    if (targetRow?.role === 'subsidiary') { alert('Subsidiary HQs cannot be converted.'); return; }
-
-    const currentTick = shard?.current_tick || 0;
-
+    if (_propConverting) return;
+    _propConverting = true;
     try {
-        // Deduct cost
-        await _supabase.from('factions').update({
-            corp_cash_reserves: Math.max(0, cash - cost)
-        }).eq('id', faction.id);
-        faction.corp_cash_reserves = Math.max(0, cash - cost);
+        const cash = Number(faction?.corp_cash_reserves ?? 0);
+        if (cash < cost) { alert('Insufficient cash. Need ' + fmtMoney(cost) + '.'); return; }
 
-        // Set property to converting state. role mirrors type for non-
-        // subsidiary properties — keep them in sync to avoid the same
-        // role/type drift that produced the earlier classification bug.
-        await _supabase.from('corp_properties').update({
-            type: _convertTargetType,
-            role: _convertTargetType,
-            refurbish_until_tick: currentTick + ticks,
-            condition: 100,
-        }).eq('id', propId);
+        // Defense-in-depth: subsidiary HQs (role='subsidiary') aren't
+        // convertible. The UI button is gated, but re-check on the write so a
+        // stale render or direct call can't slip through. Refuse if the row
+        // can't be verified at all — silent allow on a missing fetch is how
+        // the original drift bug propagated.
+        const { data: targetRow, error: targetErr } = await _supabase
+            .from('corp_properties')
+            .select('role')
+            .eq('id', propId)
+            .single();
+        if (targetErr || !targetRow) {
+            alert('Conversion failed: ' + (targetErr?.message || 'property not found'));
+            return;
+        }
+        if (targetRow.role === 'subsidiary') { alert('Subsidiary HQs cannot be converted.'); return; }
+
+        const currentTick = shard?.current_tick || 0;
+
+        // Deduct cost first so the player can't double-spend, then update the
+        // property. Supabase-js does not throw on errors, so check `error`
+        // explicitly on each write — a silent RLS denial here previously could
+        // have produced a "free" conversion or a cash-debited-but-untouched
+        // property.
+        const newCash = Math.max(0, cash - cost);
+        const { error: cashErr } = await _supabase
+            .from('factions')
+            .update({ corp_cash_reserves: newCash })
+            .eq('id', faction.id);
+        if (cashErr) { alert('Conversion failed: ' + cashErr.message); return; }
+        faction.corp_cash_reserves = newCash;
+
+        // role mirrors type for non-subsidiary properties — keep them in sync
+        // to avoid the same role/type drift that produced the earlier
+        // classification bug.
+        const { error: propErr } = await _supabase
+            .from('corp_properties')
+            .update({
+                type: _convertTargetType,
+                role: _convertTargetType,
+                refurbish_until_tick: currentTick + ticks,
+                condition: 100,
+            })
+            .eq('id', propId);
+        if (propErr) {
+            // Best-effort refund. If this also fails, the alert is loud
+            // enough that the player will notice the cash discrepancy and
+            // can flag it for an admin fix rather than silently absorbing it.
+            const { error: refundErr } = await _supabase
+                .from('factions')
+                .update({ corp_cash_reserves: cash })
+                .eq('id', faction.id);
+            if (!refundErr) faction.corp_cash_reserves = cash;
+            alert('Conversion failed: ' + propErr.message + (refundErr ? ' (refund also failed — contact admin)' : ''));
+            return;
+        }
 
         closePropModal();
         const nation = window._nationStats;
         await renderProperty(nation, nation?.name || faction?.nation, faction, shard);
     } catch (err) {
         alert('Conversion failed: ' + err.message);
+    } finally {
+        _propConverting = false;
     }
 }
 
