@@ -2428,10 +2428,47 @@ function nationInfoUrl(nationName) {
 // WORLD MAP — Pan + Zoom
 // ═══════════════════════════════════════════════════
 
-function initWorldMap() {
+async function initWorldMap() {
     const panel = document.getElementById('world-map-panel');
-    const img = document.getElementById('world-map-img');
+    let img = document.getElementById('world-map-img');
     if (!panel || !img) return;
+
+    // Upgrade <img src="*.svg"> → inline <svg> so high-zoom renders
+    // stay sharp. Browsers rasterize SVG-via-<img> ONCE at the natural
+    // display size, then transform-scale the bitmap — produces visible
+    // pixelation past ~150% zoom. Inline <svg> keeps the vector
+    // representation; the browser re-rasterizes at every scale.
+    //
+    // On fetch / parse failure the original <img> stays in place
+    // (still functional, just pixelates at high zoom), so the panel
+    // never goes blank. After the swap, the new <svg> keeps the same
+    // id="world-map-img" so the pan/zoom code below operates on it
+    // unchanged — every property used (offsetWidth, style.transform,
+    // etc.) works on SVG block elements just like on img.
+    try {
+        const src = img.getAttribute('src') || '';
+        if (src) {
+            const res = await fetch(src);
+            if (res.ok) {
+                const svgText = await res.text();
+                const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+                const root = doc.documentElement;
+                if (root && root.tagName.toLowerCase() === 'svg') {
+                    const svgEl = document.importNode(root, true);
+                    svgEl.id = 'world-map-img';
+                    // Strip Inkscape-set width/height so CSS width:100%
+                    // controls layout; viewBox handles aspect ratio.
+                    svgEl.removeAttribute('width');
+                    svgEl.removeAttribute('height');
+                    svgEl.style.cssText = 'display:block;transform-origin:0 0;width:100%;height:auto;pointer-events:none;will-change:transform;';
+                    img.replaceWith(svgEl);
+                    img = svgEl;
+                }
+            }
+        }
+    } catch (err) {
+        console.warn('[WorldMap] inline-SVG upgrade failed, using <img> fallback:', err?.message || err);
+    }
 
     let scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
     const minScale = 1, maxScale = 4;
