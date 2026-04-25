@@ -5523,7 +5523,22 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         const { error: cashHistErr } = await supabase
                             .from('corp_cash_history')
                             .upsert(rows, { onConflict: 'faction_id,tick' });
-                        if (cashHistErr) console.warn(`[advance-corp-tick] corp_cash_history upsert failed for ${nation.name}:`, cashHistErr.message);
+                        if (cashHistErr) {
+                            const errorMessage = cashHistErr?.message || String(cashHistErr);
+                            console.warn(`[advance-corp-tick] corp_cash_history upsert failed for ${nation.name}:`, errorMessage);
+                            const { error: eventLogErr } = await supabase
+                                .from('event_log')
+                                .insert({
+                                    nation_id: nation.id,
+                                    event_name: 'Corp cash history upsert failed',
+                                    category: 'system',
+                                    description_chosen: `corp_cash_history upsert failed for ${nation.name} at tick ${currentTick}: ${errorMessage}`,
+                                    fired_at_tick: currentTick,
+                                });
+                            if (eventLogErr) {
+                                console.warn(`[advance-corp-tick] event_log insert failed after corp_cash_history failure for ${nation.name}:`, eventLogErr.message);
+                            }
+                        }
                     }
                 } catch (cashHistOuterErr) {
                     console.warn(`[advance-corp-tick] Cash history write failed for ${nation.name}:`, cashHistOuterErr?.message || cashHistOuterErr);
