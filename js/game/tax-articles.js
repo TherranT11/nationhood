@@ -6,9 +6,13 @@
 //   * rate bounds (0–50%)
 //   * valid-new-rate enumeration used by the draft modal dropdown
 //   * step/effect computation used by the enactment handler
+//   * projected ongoing budget impact (revenue gained/lost per month)
 //
-// Imported by bill.html (draft modal preview + article-card renderer)
-// and js/game/bills.js (enactment). Any tuning of numbers happens here.
+// Imported by bill.html (draft modal preview + article-card renderer),
+// laws.html (draft preview), and js/game/bills.js (enactment +
+// computeBillCostTotals). Any tuning of numbers happens here.
+
+import { calculateNationalBudget } from './budget.js';
 
 export const TAX_RATE_MIN = 0;
 export const TAX_RATE_MAX = 50;
@@ -22,8 +26,8 @@ export const TAX_STEP_PP = Object.freeze({
 });
 
 // Per-step effects by tax key + direction. When more tax types land
-// (corporate, sales, property) add their own entry here — the rest of
-// the pipeline is tax-key-agnostic.
+// (sales, property) add their own entry here — the rest of the pipeline
+// is tax-key-agnostic.
 export const TAX_ARTICLE_EFFECTS = Object.freeze({
     income_tax: Object.freeze({
         cut: Object.freeze({
@@ -39,7 +43,25 @@ export const TAX_ARTICLE_EFFECTS = Object.freeze({
             inflation:    -0.3,
         }),
     }),
+    corporate_tax: Object.freeze({
+        cut: Object.freeze({
+            gov_approval: +1,
+            credit:       -2,
+            gdp_growth:   +1.0,
+            inflation:    0,
+        }),
+        hike: Object.freeze({
+            gov_approval: -1,
+            credit:       +1,
+            gdp_growth:   -1.0,
+            inflation:    0,
+        }),
+    }),
 });
+
+// Tax keys that have effects defined — feeds the draft modal's tax-type
+// selector. Sales / Property will appear here when their effects land.
+export const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax']);
 
 export const TAX_KEY_LABELS = Object.freeze({
     income_tax:    'Income Tax',
@@ -78,6 +100,31 @@ export function computeTaxArticleEffects(taxKey, direction, steps) {
         gdp_growth:   perStep.gdp_growth   * n,
         inflation:    perStep.inflation    * n,
     };
+}
+
+// Compute the bill's ongoing budget impact from a tax rate change, in
+// MILLIONS of dollars per month ($M/mo) — matching the convention used
+// by computeBillCostTotals and funding-article base_cost. Positive =
+// ongoing cost (revenue lost from a cut); negative = ongoing relief
+// (revenue gained from a hike).
+//
+// Implementation calls calculateNationalBudget twice — once with current
+// rates, once with the new rate substituted — so this helper stays in
+// sync with whatever multipliers / collection-rate logic budget.js uses.
+// SSoT: budget.js owns the formula; we just take the delta and convert
+// raw dollars → $M in one place so every caller gets consistent units.
+//
+// Returns 0 if nation is missing (caller should treat as "not yet
+// computable" — e.g., during initial render before nation loads).
+export function computeTaxArticleOngoingCost(taxKey, newRate, nation) {
+    if (!nation || !taxKey) return 0;
+    const cur    = calculateNationalBudget(nation);
+    const future = calculateNationalBudget({ ...nation, [taxKey]: Number(newRate) });
+    // grossRevenue is raw dollars/year. Divide by 12 for monthly, by 1e6 for $M.
+    const monthlyRevenueDeltaMillions = (future.grossRevenue - cur.grossRevenue) / 12 / 1e6;
+    // Bill-cost convention: positive = budget gets worse. Revenue lost
+    // (cut) makes the budget worse, so flip the sign of the revenue delta.
+    return -monthlyRevenueDeltaMillions;
 }
 
 // Validate an effect_data payload before insert / on enactment.

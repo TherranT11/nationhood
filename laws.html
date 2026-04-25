@@ -46,37 +46,45 @@
         <div class="add-text-article-section" id="add-tariff-section" onclick="showTariffForm()">
             <span class="add-text-article-btn-text">+ Tariff Article</span>
         </div>
-        <div class="add-text-article-section" id="add-income-tax-section" onclick="showIncomeTaxForm()">
-            <span class="add-text-article-btn-text">+ Income Tax Article</span>
+        <div class="add-text-article-section" id="add-tax-section" onclick="showTaxForm()">
+            <span class="add-text-article-btn-text">+ Tax Article</span>
         </div>
         <div class="add-text-article-section" id="add-bailout-section" onclick="showBailoutForm()">
             <span class="add-text-article-btn-text">+ Government Bailout</span>
         </div>
-        <div id="add-income-tax-form" style="display:none;">
-            <div style="padding:10px 14px;background:var(--bg-card);border-radius:4px;margin-bottom:12px;">
-                <div style="font-size:0.7rem;color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase;">Current Income Tax</div>
-                <div id="income-tax-current-rate" style="font-size:1.3rem;font-weight:700;color:var(--text-primary);">—</div>
-            </div>
+        <div id="add-tax-form" style="display:none;">
             <div class="form-group">
+                <label class="form-label" style="color:var(--amber);">Tax Type</label>
+                <select class="form-select" id="tax-key-select" onchange="onTaxKeyChange()">
+                    <option value="">-- Choose tax type --</option>
+                    <option value="income_tax">Income Tax</option>
+                    <option value="corporate_tax">Corporate Tax</option>
+                </select>
+            </div>
+            <div id="tax-current-wrap" style="display:none;padding:10px 14px;background:var(--bg-card);border-radius:4px;margin-bottom:12px;">
+                <div id="tax-current-label" style="font-size:0.7rem;color:var(--text-secondary);letter-spacing:0.08em;text-transform:uppercase;">Current Rate</div>
+                <div id="tax-current-rate" style="font-size:1.3rem;font-weight:700;color:var(--text-primary);">—</div>
+            </div>
+            <div class="form-group" id="tax-direction-wrap" style="display:none;">
                 <label class="form-label" style="color:var(--amber);">Direction</label>
                 <div style="display:flex;gap:8px;">
-                    <button type="button" class="income-tax-dir-btn" id="income-tax-dir-cut" onclick="onIncomeTaxDirectionChange('cut')">Cut (−3pp / step)</button>
-                    <button type="button" class="income-tax-dir-btn" id="income-tax-dir-hike" onclick="onIncomeTaxDirectionChange('hike')">Hike (+2pp / step)</button>
+                    <button type="button" class="tax-dir-btn" id="tax-dir-cut" onclick="onTaxDirectionChange('cut')">Cut (−3pp / step)</button>
+                    <button type="button" class="tax-dir-btn" id="tax-dir-hike" onclick="onTaxDirectionChange('hike')">Hike (+2pp / step)</button>
                 </div>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="tax-rate-wrap" style="display:none;">
                 <label class="form-label">New Rate</label>
-                <select class="form-select" id="income-tax-new-rate" onchange="onIncomeTaxRateChange()" disabled>
+                <select class="form-select" id="tax-new-rate" onchange="onTaxRateChange()" disabled>
                     <option value="">-- Choose direction first --</option>
                 </select>
             </div>
-            <div id="income-tax-effects-preview" style="display:none;padding:12px 14px;background:var(--bg-card);border-left:3px solid var(--blue);border-radius:4px;margin-bottom:12px;">
+            <div id="tax-effects-preview" style="display:none;padding:12px 14px;background:var(--bg-card);border-left:3px solid var(--blue);border-radius:4px;margin-bottom:12px;">
                 <div style="font-size:0.7rem;color:var(--text-secondary);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;">Projected Effects on Passage</div>
-                <div id="income-tax-effects-body" style="font-size:0.85rem;line-height:1.7;"></div>
+                <div id="tax-effects-body" style="font-size:0.85rem;line-height:1.7;"></div>
             </div>
             <div style="display:flex;gap:8px;margin-top:12px;">
-                <button class="btn-cancel" onclick="hideIncomeTaxForm()">Cancel</button>
-                <button class="btn-add" id="add-income-tax-btn" disabled onclick="addIncomeTaxArticle()">Add to Bill</button>
+                <button class="btn-cancel" onclick="hideTaxForm()">Cancel</button>
+                <button class="btn-add" id="add-tax-btn" disabled onclick="addTaxArticle()">Add to Bill</button>
             </div>
         </div>
         <div id="add-bailout-form" style="display:none;">
@@ -357,7 +365,7 @@ import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidenti
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
-import { getValidNewRates, computeTaxArticleEffects, TAX_STEP_PP } from './js/game/tax-articles.js';
+import { getValidNewRates, computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_STEP_PP } from './js/game/tax-articles.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
@@ -1552,7 +1560,7 @@ function _hideAllArticleForms() {
     document.getElementById('add-entrenchment-form').style.display = 'none';
     document.getElementById('add-permit-form').style.display = 'none';
     document.getElementById('add-tariff-form').style.display = 'none';
-    document.getElementById('add-income-tax-form').style.display = 'none';
+    document.getElementById('add-tax-form').style.display = 'none';
     document.getElementById('add-bailout-form').style.display = 'none';
 }
 function _showAllArticleButtons() {
@@ -1564,9 +1572,9 @@ function _showAllArticleButtons() {
     document.getElementById('add-entrenchment-section').style.display = (hasEntrenchment || hasFoundational) ? 'none' : 'block';
     document.getElementById('add-permit-section').style.display = 'block';
     document.getElementById('add-tariff-section').style.display = 'block';
-    // One income tax article per bill — hide button if already added.
-    const hasIncomeTax = draftArticles.some(a => a.isIncomeTax);
-    document.getElementById('add-income-tax-section').style.display = hasIncomeTax ? 'none' : 'block';
+    // One tax article per bill (any tax type) — hide button if already added.
+    const hasTax = draftArticles.some(a => a.isTax);
+    document.getElementById('add-tax-section').style.display = hasTax ? 'none' : 'block';
     document.getElementById('add-bailout-section').style.display = 'block';
 }
 function _hideAllArticleButtons() {
@@ -1576,7 +1584,7 @@ function _hideAllArticleButtons() {
     document.getElementById('add-entrenchment-section').style.display = 'none';
     document.getElementById('add-permit-section').style.display = 'none';
     document.getElementById('add-tariff-section').style.display = 'none';
-    document.getElementById('add-income-tax-section').style.display = 'none';
+    document.getElementById('add-tax-section').style.display = 'none';
     document.getElementById('add-bailout-section').style.display = 'none';
 }
 
@@ -2001,35 +2009,67 @@ window.onTariffSectorChange = onTariffSectorChange;
 window.onTariffRateChange = onTariffRateChange;
 window.addTariffArticle = addTariffArticle;
 
-// ==================== INCOME TAX ARTICLE ====================
-// Stepped rate change: cuts in −3pp increments, hikes in +2pp increments.
-// SSoT for valid rates and side effects: js/game/tax-articles.js.
-let _incomeTaxDirection = null;
+// ==================== TAX ARTICLE ====================
+// Stepped rate change for any supported tax type (income, corporate, ...).
+// Cuts in −3pp increments, hikes in +2pp increments. SSoT for valid
+// rates, supported keys, side effects, and labels: js/game/tax-articles.js.
+const _TAX_LABELS = { income_tax: 'Income Tax', corporate_tax: 'Corporate Tax' };
+let _taxKey = null;
+let _taxDirection = null;
 
-function showIncomeTaxForm() {
-    _hideAllArticleButtons(); _hideAllArticleForms();
-    _incomeTaxDirection = null;
-    const cur = Number(currentNation?.income_tax ?? 0);
-    document.getElementById('income-tax-current-rate').textContent = cur.toFixed(1).replace(/\.0$/, '') + '%';
-    document.getElementById('income-tax-dir-cut').classList.remove('active');
-    document.getElementById('income-tax-dir-hike').classList.remove('active');
-    const sel = document.getElementById('income-tax-new-rate');
-    sel.innerHTML = '<option value="">-- Choose direction first --</option>';
-    sel.disabled = true;
-    document.getElementById('income-tax-effects-preview').style.display = 'none';
-    document.getElementById('add-income-tax-btn').disabled = true;
-    document.getElementById('add-income-tax-form').style.display = 'block';
+function _curTaxRate() {
+    if (!_taxKey || !currentNation) return 0;
+    return Number(currentNation[_taxKey] ?? 0);
 }
-function hideIncomeTaxForm() {
+
+function showTaxForm() {
+    _hideAllArticleButtons(); _hideAllArticleForms();
+    _taxKey = null;
+    _taxDirection = null;
+    document.getElementById('tax-key-select').value = '';
+    document.getElementById('tax-current-wrap').style.display = 'none';
+    document.getElementById('tax-direction-wrap').style.display = 'none';
+    document.getElementById('tax-rate-wrap').style.display = 'none';
+    document.getElementById('tax-effects-preview').style.display = 'none';
+    document.getElementById('tax-dir-cut').classList.remove('active');
+    document.getElementById('tax-dir-hike').classList.remove('active');
+    document.getElementById('add-tax-btn').disabled = true;
+    document.getElementById('add-tax-form').style.display = 'block';
+}
+function hideTaxForm() {
     _showAllArticleButtons(); _hideAllArticleForms();
 }
-function onIncomeTaxDirectionChange(dir) {
-    _incomeTaxDirection = dir;
-    document.getElementById('income-tax-dir-cut').classList.toggle('active', dir === 'cut');
-    document.getElementById('income-tax-dir-hike').classList.toggle('active', dir === 'hike');
-    const cur = Number(currentNation?.income_tax ?? 0);
+function onTaxKeyChange() {
+    _taxKey = document.getElementById('tax-key-select').value || null;
+    _taxDirection = null;
+    document.getElementById('tax-dir-cut').classList.remove('active');
+    document.getElementById('tax-dir-hike').classList.remove('active');
+    const sel = document.getElementById('tax-new-rate');
+    sel.innerHTML = '<option value="">-- Choose direction first --</option>';
+    sel.disabled = true;
+    document.getElementById('tax-effects-preview').style.display = 'none';
+    document.getElementById('add-tax-btn').disabled = true;
+    if (!_taxKey) {
+        document.getElementById('tax-current-wrap').style.display = 'none';
+        document.getElementById('tax-direction-wrap').style.display = 'none';
+        document.getElementById('tax-rate-wrap').style.display = 'none';
+        return;
+    }
+    const cur = _curTaxRate();
+    document.getElementById('tax-current-label').textContent = 'Current ' + (_TAX_LABELS[_taxKey] || _taxKey);
+    document.getElementById('tax-current-rate').textContent = cur.toFixed(1).replace(/\.0$/, '') + '%';
+    document.getElementById('tax-current-wrap').style.display = 'block';
+    document.getElementById('tax-direction-wrap').style.display = 'block';
+    document.getElementById('tax-rate-wrap').style.display = 'block';
+}
+function onTaxDirectionChange(dir) {
+    if (!_taxKey) return;
+    _taxDirection = dir;
+    document.getElementById('tax-dir-cut').classList.toggle('active', dir === 'cut');
+    document.getElementById('tax-dir-hike').classList.toggle('active', dir === 'hike');
+    const cur = _curTaxRate();
     const rates = getValidNewRates(cur, dir);
-    const sel = document.getElementById('income-tax-new-rate');
+    const sel = document.getElementById('tax-new-rate');
     const stepPp = TAX_STEP_PP[dir];
     if (rates.length === 0) {
         sel.innerHTML = `<option value="">No valid ${dir === 'cut' ? 'cuts' : 'hikes'} available</option>`;
@@ -2044,55 +2084,57 @@ function onIncomeTaxDirectionChange(dir) {
             }).join('');
         sel.disabled = false;
     }
-    document.getElementById('income-tax-effects-preview').style.display = 'none';
-    document.getElementById('add-income-tax-btn').disabled = true;
+    document.getElementById('tax-effects-preview').style.display = 'none';
+    document.getElementById('add-tax-btn').disabled = true;
 }
-function onIncomeTaxRateChange() {
-    const sel = document.getElementById('income-tax-new-rate');
-    if (!sel.value || !_incomeTaxDirection) {
-        document.getElementById('income-tax-effects-preview').style.display = 'none';
-        document.getElementById('add-income-tax-btn').disabled = true;
+function onTaxRateChange() {
+    const sel = document.getElementById('tax-new-rate');
+    if (!sel.value || !_taxKey || !_taxDirection) {
+        document.getElementById('tax-effects-preview').style.display = 'none';
+        document.getElementById('add-tax-btn').disabled = true;
         return;
     }
     const newRate = Number(sel.value);
-    const cur = Number(currentNation?.income_tax ?? 0);
-    const steps = Math.abs(newRate - cur) / TAX_STEP_PP[_incomeTaxDirection];
-    const fx = computeTaxArticleEffects('income_tax', _incomeTaxDirection, steps);
+    const cur = _curTaxRate();
+    const steps = Math.abs(newRate - cur) / TAX_STEP_PP[_taxDirection];
+    const fx = computeTaxArticleEffects(_taxKey, _taxDirection, steps);
     const sign = v => v > 0 ? '+' + v : String(v);
     const color = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-secondary)';
-    document.getElementById('income-tax-effects-body').innerHTML =
-        `<div style="display:flex;justify-content:space-between;"><span>Rate Change</span><span>${cur}% → ${newRate}% <span style="color:${_incomeTaxDirection === 'cut' ? 'var(--green)' : 'var(--red)'};">(${_incomeTaxDirection === 'cut' ? '−' : '+'}${Math.abs(newRate - cur)}pp)</span></span></div>` +
+    document.getElementById('tax-effects-body').innerHTML =
+        `<div style="display:flex;justify-content:space-between;"><span>Rate Change</span><span>${cur}% → ${newRate}% <span style="color:${_taxDirection === 'cut' ? 'var(--green)' : 'var(--red)'};">(${_taxDirection === 'cut' ? '−' : '+'}${Math.abs(newRate - cur)}pp)</span></span></div>` +
         `<div style="display:flex;justify-content:space-between;"><span>Gov Approval</span><span style="color:${color(fx.gov_approval)};">${sign(fx.gov_approval)}</span></div>` +
         `<div style="display:flex;justify-content:space-between;"><span>Credit</span><span style="color:${color(fx.credit)};">${sign(fx.credit)}</span></div>` +
         `<div style="display:flex;justify-content:space-between;"><span>GDP Growth</span><span style="color:${color(fx.gdp_growth)};">${sign(fx.gdp_growth)}</span></div>` +
         `<div style="display:flex;justify-content:space-between;"><span>Inflation</span><span style="color:${color(fx.inflation)};">${sign(fx.inflation)}</span></div>`;
-    document.getElementById('income-tax-effects-preview').style.display = 'block';
-    document.getElementById('add-income-tax-btn').disabled = false;
+    document.getElementById('tax-effects-preview').style.display = 'block';
+    document.getElementById('add-tax-btn').disabled = false;
 }
-function addIncomeTaxArticle() {
+function addTaxArticle() {
     if (_draftArticleLock) return;
-    const sel = document.getElementById('income-tax-new-rate');
-    if (!sel.value || !_incomeTaxDirection) return;
-    if (draftArticles.some(a => a.isIncomeTax)) {
-        alert('This bill already contains an Income Tax Article. Only one per bill.');
+    const sel = document.getElementById('tax-new-rate');
+    if (!sel.value || !_taxKey || !_taxDirection) return;
+    if (draftArticles.some(a => a.isTax)) {
+        alert('This bill already contains a Tax Article. Only one per bill.');
         return;
     }
     _draftArticleLock = true;
     try {
         const newRate = Number(sel.value);
-        const cur = Number(currentNation?.income_tax ?? 0);
-        const steps = Math.abs(newRate - cur) / TAX_STEP_PP[_incomeTaxDirection];
-        const titleDir = _incomeTaxDirection === 'cut' ? 'Cut' : 'Hike';
+        const cur = _curTaxRate();
+        const steps = Math.abs(newRate - cur) / TAX_STEP_PP[_taxDirection];
+        const titleDir = _taxDirection === 'cut' ? 'Cut' : 'Hike';
         const articleNum = draftArticles.length + 2;
         draftArticles.push({
             articleNumber: articleNum,
-            isIncomeTax: true,
-            title: `Income Tax ${titleDir}: ${cur}% → ${newRate}%`,
+            isTax: true,
+            taxKey: _taxKey,
+            title: `${_TAX_LABELS[_taxKey] || _taxKey} ${titleDir}: ${cur}% → ${newRate}%`,
             effect_data: {
-                type: 'INCOME_TAX_CHANGE',
+                type: 'TAX_CHANGE',
+                tax_key: _taxKey,
                 old_rate: cur,
                 new_rate: newRate,
-                direction: _incomeTaxDirection,
+                direction: _taxDirection,
                 steps,
             },
         });
@@ -2106,11 +2148,12 @@ function addIncomeTaxArticle() {
     }
 }
 
-window.showIncomeTaxForm = showIncomeTaxForm;
-window.hideIncomeTaxForm = hideIncomeTaxForm;
-window.onIncomeTaxDirectionChange = onIncomeTaxDirectionChange;
-window.onIncomeTaxRateChange = onIncomeTaxRateChange;
-window.addIncomeTaxArticle = addIncomeTaxArticle;
+window.showTaxForm = showTaxForm;
+window.hideTaxForm = hideTaxForm;
+window.onTaxKeyChange = onTaxKeyChange;
+window.onTaxDirectionChange = onTaxDirectionChange;
+window.onTaxRateChange = onTaxRateChange;
+window.addTaxArticle = addTaxArticle;
 
 // ==================== GOVERNMENT BAILOUT ARTICLE ====================
 
@@ -3581,11 +3624,13 @@ function renderDraftArticles() {
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;
         }
-        if (art.isIncomeTax) {
+        if (art.isTax) {
             const ed = art.effect_data;
             const dir = ed.direction;
+            const taxKey = ed.tax_key || art.taxKey || 'income_tax';
+            const taxLabel = ({ income_tax: 'income tax', corporate_tax: 'corporate tax' })[taxKey] || taxKey;
             const steps = Number(ed.steps) || 0;
-            const fx = computeTaxArticleEffects('income_tax', dir, steps);
+            const fx = computeTaxArticleEffects(taxKey, dir, steps);
             const borderColor = dir === 'cut' ? 'var(--green)' : 'var(--red)';
             const tagLabel = dir === 'cut' ? 'TAX CUT' : 'TAX HIKE';
             const tagBg = dir === 'cut' ? 'rgba(96,180,108,0.10)' : 'rgba(200,80,80,0.10)';
@@ -3598,12 +3643,17 @@ function renderDraftArticles() {
             const color = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-secondary)';
             const tok = (label, v) => `${label} <span style="color:${color(v)};">${sign(v)}</span>`;
             const fxLine = `${tok('Approval', fx.gov_approval)} · ${tok('Credit', fx.credit)} · ${tok('GDP', fx.gdp_growth)} · ${tok('Inflation', fx.inflation)}`;
+            // Projected ongoing budget impact ($M/mo). SSoT helper.
+            const ongoingCostM = computeTaxArticleOngoingCost(taxKey, ed.new_rate, currentNation);
+            const _fmtC = (m) => Math.abs(m) >= 1000 ? '$' + (Math.abs(m) / 1000).toFixed(Math.abs(m) % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(Math.abs(m)) + 'M';
+            const ongoingLabel = ongoingCostM > 0 ? 'Ongoing Cost' : ongoingCostM < 0 ? 'Ongoing Relief' : 'Ongoing Impact';
+            const ongoingColor = ongoingCostM > 0 ? 'var(--red)' : ongoingCostM < 0 ? 'var(--green)' : 'var(--text-secondary)';
             return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
                 <div class="draft-article-info">
                     <div class="draft-article-num">Article ${art.articleNumber}</div>
                     <div class="draft-article-name">${escapeHtml(art.title)} <span class="article-ideology" style="background:${tagBg};color:${borderColor};border:1px solid ${tagBorder};">${tagLabel}</span></div>
-                    <div class="draft-article-meta">Sets income tax to ${ed.new_rate}% (${steps} step${steps === 1 ? '' : 's'} from ${ed.old_rate}%).</div>
-                    <div style="margin-top:4px;font-family:var(--font-mono);font-size:0.78rem;color:var(--text-secondary);">${fxLine}</div>
+                    <div class="draft-article-meta">Sets ${taxLabel} to ${ed.new_rate}% (${steps} step${steps === 1 ? '' : 's'} from ${ed.old_rate}%).</div>
+                    <div style="margin-top:4px;font-family:var(--font-mono);font-size:0.78rem;"><span style="color:${ongoingColor};">${ongoingLabel}: ${_fmtC(ongoingCostM)}/mo</span> &nbsp;·&nbsp; <span style="color:var(--text-secondary);">${fxLine}</span></div>
                 </div>
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;
@@ -4109,12 +4159,13 @@ async function submitToCommittee() {
                         effect_data: art.effect_data,
                     };
                 }
-                if (art.isIncomeTax) {
+                if (art.isTax) {
                     const ed = art.effect_data;
+                    const taxLabel = ({ income_tax: 'income tax', corporate_tax: 'corporate tax' })[ed.tax_key || art.taxKey] || 'tax';
                     return {
                         bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id,
                         article_title: art.title,
-                        article_text: `Sets income tax to ${ed.new_rate}% (${ed.direction === 'cut' ? '−' : '+'}${Math.abs(ed.new_rate - ed.old_rate)}pp · ${ed.steps} step${ed.steps === 1 ? '' : 's'}).`,
+                        article_text: `Sets ${taxLabel} to ${ed.new_rate}% (${ed.direction === 'cut' ? '−' : '+'}${Math.abs(ed.new_rate - ed.old_rate)}pp · ${ed.steps} step${ed.steps === 1 ? '' : 's'}).`,
                         effect_data: ed,
                     };
                 }

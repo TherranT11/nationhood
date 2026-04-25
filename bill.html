@@ -248,7 +248,7 @@ import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, F
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
 import { executeWhipCaucus } from './js/game/caucus.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
-import { computeTaxArticleEffects } from './js/game/tax-articles.js';
+import { computeTaxArticleEffects, computeTaxArticleOngoingCost } from './js/game/tax-articles.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
 function scalePolicyCost(baseCost, scalingStat, nation) {
     if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
@@ -1499,26 +1499,35 @@ function renderArticles() {
                 '</div>';
             }
 
-            // Income Tax Article — stepped rate change with side effects.
-            if (art.effect_data?.type === 'INCOME_TAX_CHANGE') {
+            // Tax Article — stepped rate change with side effects. TAX_CHANGE
+            // is the current type; INCOME_TAX_CHANGE is accepted for legacy
+            // bills drafted before the rename (treated as tax_key='income_tax').
+            if (art.effect_data?.type === 'TAX_CHANGE' || art.effect_data?.type === 'INCOME_TAX_CHANGE') {
                 const ed = art.effect_data;
+                const taxKey = ed.tax_key || (ed.type === 'INCOME_TAX_CHANGE' ? 'income_tax' : 'income_tax');
                 const dir = ed.direction;
                 const steps = Number(ed.steps) || 0;
-                const fx = computeTaxArticleEffects('income_tax', dir, steps);
+                const fx = computeTaxArticleEffects(taxKey, dir, steps);
                 const borderColor = dir === 'cut' ? 'var(--green)' : 'var(--red)';
                 const tagLabel = dir === 'cut' ? 'TAX CUT' : 'TAX HIKE';
                 const deltaAbs = Math.abs(Number(ed.new_rate) - Number(ed.old_rate));
                 const sign = v => v > 0 ? '+' + v : String(v);
                 const color = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-secondary, #888)';
+                // Projected ongoing budget impact in $M/mo (helper returns
+                // $M directly — matches formatCurrency + bill-cost SSoT).
+                const ongoingCost = computeTaxArticleOngoingCost(taxKey, ed.new_rate, currentNation);
+                const ongoingLabel = ongoingCost > 0 ? 'Ongoing Cost' : ongoingCost < 0 ? 'Ongoing Relief' : 'Ongoing Impact';
+                const ongoingColor = ongoingCost > 0 ? 'var(--red)' : ongoingCost < 0 ? 'var(--green)' : 'var(--text-secondary, #888)';
                 const rowsHtml =
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Rate</span><span>${ed.old_rate}% → ${ed.new_rate}% <span style="color:${borderColor};">(${dir === 'cut' ? '−' : '+'}${deltaAbs}pp · ${steps} step${steps === 1 ? '' : 's'})</span></span></div>` +
+                    `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>${ongoingLabel}</span><span style="color:${ongoingColor};">${formatCurrency(ongoingCost)}/mo</span></div>` +
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Gov Approval</span><span style="color:${color(fx.gov_approval)};">${sign(fx.gov_approval)}</span></div>` +
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Credit</span><span style="color:${color(fx.credit)};">${sign(fx.credit)}</span></div>` +
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>GDP Growth</span><span style="color:${color(fx.gdp_growth)};">${sign(fx.gdp_growth)}</span></div>` +
                     `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;"><span>Inflation</span><span style="color:${color(fx.inflation)};">${sign(fx.inflation)}</span></div>`;
                 return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
-                    '<div class="article-title">' + escapeHtml(art.article_title || 'Income Tax Change') + '</div>' +
+                    '<div class="article-title">' + escapeHtml(art.article_title || 'Tax Change') + '</div>' +
                     '<div class="article-description">' + rowsHtml + '</div>' +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                     articleActionsDiv(art) +

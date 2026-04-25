@@ -7871,9 +7871,11 @@ function computeCorpValuation({ cash, loans, properties, propertyValue, vessels,
 //   * rate bounds (0–50%)
 //   * valid-new-rate enumeration used by the draft modal dropdown
 //   * step/effect computation used by the enactment handler
+//   * projected ongoing budget impact (revenue gained/lost per month)
 //
-// Imported by bill.html (draft modal preview + article-card renderer)
-// and js/game/bills.js (enactment). Any tuning of numbers happens here.
+// Imported by bill.html (draft modal preview + article-card renderer),
+// laws.html (draft preview), and js/game/bills.js (enactment +
+// computeBillCostTotals). Any tuning of numbers happens here.
 
 const TAX_RATE_MIN = 0;
 const TAX_RATE_MAX = 50;
@@ -7887,8 +7889,8 @@ const TAX_STEP_PP = Object.freeze({
 });
 
 // Per-step effects by tax key + direction. When more tax types land
-// (corporate, sales, property) add their own entry here — the rest of
-// the pipeline is tax-key-agnostic.
+// (sales, property) add their own entry here — the rest of the pipeline
+// is tax-key-agnostic.
 const TAX_ARTICLE_EFFECTS = Object.freeze({
     income_tax: Object.freeze({
         cut: Object.freeze({
@@ -7904,7 +7906,25 @@ const TAX_ARTICLE_EFFECTS = Object.freeze({
             inflation:    -0.3,
         }),
     }),
+    corporate_tax: Object.freeze({
+        cut: Object.freeze({
+            gov_approval: +1,
+            credit:       -2,
+            gdp_growth:   +1.0,
+            inflation:    0,
+        }),
+        hike: Object.freeze({
+            gov_approval: -1,
+            credit:       +1,
+            gdp_growth:   -1.0,
+            inflation:    0,
+        }),
+    }),
 });
+
+// Tax keys that have effects defined — feeds the draft modal's tax-type
+// selector. Sales / Property will appear here when their effects land.
+const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax']);
 
 const TAX_KEY_LABELS = Object.freeze({
     income_tax:    'Income Tax',
@@ -7943,6 +7963,31 @@ function computeTaxArticleEffects(taxKey, direction, steps) {
         gdp_growth:   perStep.gdp_growth   * n,
         inflation:    perStep.inflation    * n,
     };
+}
+
+// Compute the bill's ongoing budget impact from a tax rate change, in
+// MILLIONS of dollars per month ($M/mo) — matching the convention used
+// by computeBillCostTotals and funding-article base_cost. Positive =
+// ongoing cost (revenue lost from a cut); negative = ongoing relief
+// (revenue gained from a hike).
+//
+// Implementation calls calculateNationalBudget twice — once with current
+// rates, once with the new rate substituted — so this helper stays in
+// sync with whatever multipliers / collection-rate logic budget.js uses.
+// SSoT: budget.js owns the formula; we just take the delta and convert
+// raw dollars → $M in one place so every caller gets consistent units.
+//
+// Returns 0 if nation is missing (caller should treat as "not yet
+// computable" — e.g., during initial render before nation loads).
+function computeTaxArticleOngoingCost(taxKey, newRate, nation) {
+    if (!nation || !taxKey) return 0;
+    const cur    = calculateNationalBudget(nation);
+    const future = calculateNationalBudget({ ...nation, [taxKey]: Number(newRate) });
+    // grossRevenue is raw dollars/year. Divide by 12 for monthly, by 1e6 for $M.
+    const monthlyRevenueDeltaMillions = (future.grossRevenue - cur.grossRevenue) / 12 / 1e6;
+    // Bill-cost convention: positive = budget gets worse. Revenue lost
+    // (cut) makes the budget worse, so flip the sign of the revenue delta.
+    return -monthlyRevenueDeltaMillions;
 }
 
 // Validate an effect_data payload before insert / on enactment.
@@ -8053,6 +8098,19 @@ function computeBillCostTotals(bill, nation) {
                 if (fromPct === toPct) continue;
                 const baseCost = Number(inst.base_cost || 0);
                 ongoingMonthly += ((toPct - fromPct) / 100) * baseCost;
+            }
+            continue;
+        }
+
+        // (1b) Tax Article — projected revenue change. Cuts are an ongoing
+        // cost to the budget (revenue forgone); hikes are an ongoing relief.
+        // SSoT for the math is computeTaxArticleOngoingCost in tax-articles.js,
+        // which derives the delta from calculateNationalBudget.
+        const ed = art.effect_data;
+        if (ed && (ed.type === 'TAX_CHANGE' || ed.type === 'INCOME_TAX_CHANGE')) {
+            const taxKey = ed.tax_key || (ed.type === 'INCOME_TAX_CHANGE' ? 'income_tax' : null);
+            if (taxKey) {
+                ongoingMonthly += computeTaxArticleOngoingCost(taxKey, ed.new_rate, nation);
             }
             continue;
         }
@@ -11284,24 +11342,27 @@ async function enactBill(supabase, bill, currentTick) {
             const newRate = Math.max(0, Math.min(50, Number(effect.new_rate)));
             taxUpdates[effect.tax_key] = newRate;
             console.log(`[enactBill] Tax rate change: ${effect.tax_key} ${effect.old_rate}% → ${newRate}%`);
-        } else if (effect.type === 'INCOME_TAX_CHANGE') {
-            // Stepped Tax Article (v1: income_tax only). Rate change + per-step
-            // side effects on gov_approval / credit / gdp_growth / inflation.
-            // Effects scaled linearly by step count; payload validated at draft
-            // time and re-validated here for safety (rate clamped defensively).
-            const val = validateTaxArticlePayload('income_tax', effect.old_rate, effect.new_rate);
+        } else if (effect.type === 'TAX_CHANGE' || effect.type === 'INCOME_TAX_CHANGE') {
+            // Stepped Tax Article. Rate change + per-step side effects on
+            // gov_approval / credit / gdp_growth / inflation, all keyed by
+            // tax_key (income_tax / corporate_tax / ...). Effects scaled
+            // linearly by step count; payload validated at draft time and
+            // re-validated here for safety (rate clamped defensively).
+            //
+            // INCOME_TAX_CHANGE accepted for legacy bills drafted before the
+            // type was renamed to TAX_CHANGE; treated as tax_key='income_tax'.
+            const taxKey = effect.tax_key || (effect.type === 'INCOME_TAX_CHANGE' ? 'income_tax' : null);
+            const val = taxKey ? validateTaxArticlePayload(taxKey, effect.old_rate, effect.new_rate) : { valid: false, reason: 'missing tax_key' };
             if (!val.valid) {
-                console.warn(`[enactBill] INCOME_TAX_CHANGE rejected: ${val.reason}`);
+                console.warn(`[enactBill] TAX_CHANGE rejected: ${val.reason}`);
             } else {
                 const newRate = Math.max(TAX_RATE_MIN, Math.min(TAX_RATE_MAX, Number(effect.new_rate)));
-                taxUpdates.income_tax = newRate;
-                const fx = computeTaxArticleEffects('income_tax', val.direction, val.steps);
-                // Read current stats once; apply all deltas in one UPDATE below
-                // after the rate-updates consolidation (same pattern as taxUpdates).
+                taxUpdates[taxKey] = newRate;
+                const fx = computeTaxArticleEffects(taxKey, val.direction, val.steps);
                 const { data: nRow, error: nErr } = await supabase.from('nations')
                     .select('credit, gdp_growth, inflation').eq('id', bill.nation_id).single();
                 if (nErr) {
-                    console.error('[enactBill] INCOME_TAX_CHANGE read failed:', nErr.message);
+                    console.error(`[enactBill] TAX_CHANGE (${taxKey}) read failed:`, nErr.message);
                 } else {
                     const newCredit    = Math.max(0, Math.min(100, Number(nRow.credit    ?? 50) + fx.credit));
                     const newGdpGrowth = Math.max(0, Math.min(100, Number(nRow.gdp_growth ?? 50) + fx.gdp_growth));
@@ -11311,11 +11372,11 @@ async function enactBill(supabase, bill, currentTick) {
                         gdp_growth: newGdpGrowth,
                         inflation:  newInflation,
                     }).eq('id', bill.nation_id);
-                    if (upErr) console.error('[enactBill] INCOME_TAX_CHANGE stat update failed:', upErr.message);
+                    if (upErr) console.error(`[enactBill] TAX_CHANGE (${taxKey}) stat update failed:`, upErr.message);
                     if (fx.gov_approval !== 0) {
-                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, fx.gov_approval, 'income_tax_article');
+                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, fx.gov_approval, `${taxKey}_article`);
                     }
-                    console.log(`[enactBill] INCOME_TAX_CHANGE ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, approval ${fx.gov_approval >= 0 ? '+' : ''}${fx.gov_approval}, credit ${fx.credit >= 0 ? '+' : ''}${fx.credit}, gdp_growth ${fx.gdp_growth >= 0 ? '+' : ''}${fx.gdp_growth}, inflation ${fx.inflation >= 0 ? '+' : ''}${fx.inflation}`);
+                    console.log(`[enactBill] TAX_CHANGE ${taxKey} ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, approval ${fx.gov_approval >= 0 ? '+' : ''}${fx.gov_approval}, credit ${fx.credit >= 0 ? '+' : ''}${fx.credit}, gdp_growth ${fx.gdp_growth >= 0 ? '+' : ''}${fx.gdp_growth}, inflation ${fx.inflation >= 0 ? '+' : ''}${fx.inflation}`);
                 }
             }
         } else if (effect.type === 'TARIFF_RATE_CHANGE' && effect.sector) {

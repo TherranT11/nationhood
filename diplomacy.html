@@ -31,7 +31,7 @@
 <div class="world-page">
     <!-- Map panel -->
     <div class="world-map-panel" id="world-map-panel">
-        <img id="world-map-img" src="./assets/map/World Map Crucera 2.5.svg" alt="World Map" draggable="false"
+        <img id="world-map-img" src="./assets/map/World Map Crucera 3.1.svg" alt="World Map" draggable="false"
              style="width:100%;height:auto;pointer-events:none;">
         <div class="world-map-controls">
             <div class="world-map-btn" id="map-zoom-in">+</div>
@@ -2436,7 +2436,27 @@ function initWorldMap() {
     let scale = 1, panX = 0, panY = 0, dragging = false, startX = 0, startY = 0;
     const minScale = 1, maxScale = 4;
 
+    // Edge lock: clamp panX/panY so the image's visual rect always covers
+    // the panel — no panning past the map into the panel's blue background.
+    // CSS gives us 'transform-origin: 0 0' and 'width: 100%' on the img,
+    // so visual size = layoutSize × scale, anchored at (panX, panY).
+    // For coverage:  panX ∈ [panelW − visualW, 0],  same for Y.
+    // If the image is smaller than the panel in either axis (e.g., at
+    // scale=1 with a wide-aspect map shorter than the panel), the
+    // coverage range collapses — lock that axis at 0 (top/left).
+    function clampPan() {
+        const panelW = panel.clientWidth;
+        const panelH = panel.clientHeight;
+        const visualW = img.offsetWidth * scale;
+        const visualH = img.offsetHeight * scale;
+        if (visualW <= panelW) panX = 0;
+        else panX = Math.max(panelW - visualW, Math.min(0, panX));
+        if (visualH <= panelH) panY = 0;
+        else panY = Math.max(panelH - visualH, Math.min(0, panY));
+    }
+
     function applyTransform() {
+        clampPan();
         img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
         const label = document.getElementById('map-zoom-label');
         if (label) label.textContent = Math.round(scale * 100) + '%';
