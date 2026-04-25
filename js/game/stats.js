@@ -126,7 +126,13 @@ export const NATION_STAT_COLUMNS = [
     'civil_unrest', 'terrorism', 'political_violence',
     'immigration', 'illegal_immigration', 'emigration',
     'international_reputation',
-    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability'
+    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability',
+    // Computed/composite — written by dedicated systems, valid as a connector
+    // source (and read-only target via the standard validators). gov_approval
+    // is recomputed each tick from institutional/outcomes/events components,
+    // so connectors targeting it will be fighting that recomputation; treat
+    // it as source-only by convention.
+    'gov_approval'
 ];
 
 export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);

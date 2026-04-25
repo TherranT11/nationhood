@@ -5163,7 +5163,13 @@ const NATION_STAT_COLUMNS = [
     'civil_unrest', 'terrorism', 'political_violence',
     'immigration', 'illegal_immigration', 'emigration',
     'international_reputation',
-    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability'
+    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability',
+    // Computed/composite — written by dedicated systems, valid as a connector
+    // source (and read-only target via the standard validators). gov_approval
+    // is recomputed each tick from institutional/outcomes/events components,
+    // so connectors targeting it will be fighting that recomputation; treat
+    // it as source-only by convention.
+    'gov_approval'
 ];
 
 const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
@@ -25039,10 +25045,10 @@ async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
-// All columns that nations_history tracks (must match the DB table schema)
+// All columns that nations_history tracks (must match the DB table schema).
+// gov_approval is now part of NATION_STAT_COLUMNS, so the spread covers it.
 const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
-    'gov_approval',
     'competition_voters', 'liberty_voters', 'security_voters', 'globalism_voters',
     'progressive_voters', 'liberal_voters', 'moderate_voters', 'conservative_voters', 'nationalist_voters'
 ];

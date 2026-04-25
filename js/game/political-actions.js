@@ -1951,10 +1951,10 @@ export async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
-// All columns that nations_history tracks (must match the DB table schema)
+// All columns that nations_history tracks (must match the DB table schema).
+// gov_approval is now part of NATION_STAT_COLUMNS, so the spread covers it.
 export const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
-    'gov_approval',
     'competition_voters', 'liberty_voters', 'security_voters', 'globalism_voters',
     'progressive_voters', 'liberal_voters', 'moderate_voters', 'conservative_voters', 'nationalist_voters'
 ];
