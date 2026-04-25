@@ -2064,6 +2064,28 @@ async function processTradeFlows(supabase, nationList, currentTick) {
 
                 for (var gsi = 0; gsi < gSectors.length; gsi++) {
                     var gSec = gSectors[gsi];
+                    // Inflate the buyer's importDemand by the contracted
+                    // volume BEFORE the cap check. A trade_flow article is
+                    // a commitment to buy regardless of organic need — a
+                    // net-exporter who contracts to import a commodity
+                    // (e.g., Calveth importing fuel from Hajjara despite
+                    // being a fuel net-exporter with organic
+                    // importDemand=0) should be able to receive the
+                    // contracted volume. Without this, the article is
+                    // silently dropped at the <=0 check below.
+                    //
+                    // Seller side stays organic-only: a nation that
+                    // organically produces 0 of a commodity has nothing
+                    // to sell, so no inflation there. Step 5 distribution
+                    // reads importDemand and subtracts actualImports
+                    // (which includes our agreement pre-allocation), so
+                    // the inflated value flows through correctly:
+                    // remaining gap = organic + contract − contractAlloc
+                    // = organic, and Step 5 fills only the organic
+                    // remainder via the market.
+                    if (gBuyerFlows[gSec]) {
+                        gBuyerFlows[gSec].importDemand = (Number(gBuyerFlows[gSec].importDemand) || 0) + perSectorVolume;
+                    }
                     var gSellerExport = (gSellerFlows[gSec] && gSellerFlows[gSec].exportCapacity) || 0;
                     var gBuyerDemand = (gBuyerFlows[gSec] && gBuyerFlows[gSec].importDemand) || 0;
                     if (gSellerExport <= 0 || gBuyerDemand <= 0) continue;
