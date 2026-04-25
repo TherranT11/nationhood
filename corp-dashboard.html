@@ -2265,7 +2265,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
                 : `<div style="display:flex;gap:4px;margin-top:4px;">
                 <button class="prop-action-btn prop-action-btn--sell" onclick="showSellModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.purchase_price || 0},${prop.condition})">SELL</button>
                 <button class="prop-action-btn prop-action-btn--refurbish" onclick="showRefurbishModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.condition},${prop.purchase_price || 0},${prop.refurbish_count || 0})">REFURBISH</button>
-                ${factionData?.corp_sector === 'Finance' && (prop.type === 'office' || prop.type === 'regional_hq') && !['branch_office','trading_floor','claims_office'].includes(prop.type)
+                ${factionData?.corp_sector === 'Finance' && (prop.type === 'office' || prop.type === 'regional_hq') && prop.role !== 'subsidiary' && !['branch_office','trading_floor','claims_office'].includes(prop.type)
                     ? `<button class="prop-action-btn" style="background:rgba(138,106,170,0.08);border-color:rgba(138,106,170,0.2);color:#8a6aaa;" onclick="showConvertModal('${prop.id}','${escapeHtml(prop.name).replace(/'/g, "\\'")}',${prop.purchase_price || 0})">CONVERT</button>`
                     : ''}
             </div>`}
@@ -3027,6 +3027,17 @@ async function confirmConvertProperty(propId, cost, ticks) {
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     if (cash < cost) { alert('Insufficient cash. Need ' + fmtMoney(cost) + '.'); return; }
 
+    // Defense-in-depth: subsidiary HQs (role='subsidiary') aren't convertible.
+    // The UI button is gated, but re-check on the write so a stale render or
+    // direct call can't slip through.
+    const { data: targetRow, error: targetErr } = await _supabase
+        .from('corp_properties')
+        .select('role')
+        .eq('id', propId)
+        .single();
+    if (targetErr) { alert('Conversion failed: ' + targetErr.message); return; }
+    if (targetRow?.role === 'subsidiary') { alert('Subsidiary HQs cannot be converted.'); return; }
+
     const currentTick = shard?.current_tick || 0;
 
     try {
@@ -3036,9 +3047,12 @@ async function confirmConvertProperty(propId, cost, ticks) {
         }).eq('id', faction.id);
         faction.corp_cash_reserves = Math.max(0, cash - cost);
 
-        // Set property to converting state
+        // Set property to converting state. role mirrors type for non-
+        // subsidiary properties — keep them in sync to avoid the same
+        // role/type drift that produced the earlier classification bug.
         await _supabase.from('corp_properties').update({
             type: _convertTargetType,
+            role: _convertTargetType,
             refurbish_until_tick: currentTick + ticks,
             condition: 100,
         }).eq('id', propId);
