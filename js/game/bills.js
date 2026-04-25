@@ -3621,11 +3621,22 @@ export async function enactBill(supabase, bill, currentTick) {
                         needed_amount: neededAmt
                     }, { onConflict: 'bill_id,item_type,item_id' });
                 if (allocErr) {
-                    console.error('[enactBill] stage=upsert_institution_allocation result=error', {
+                    // Fatal: if the budget_item_allocations row can't be written,
+                    // the decay engine has no input for this institution and the
+                    // bill's intent is silently lost. Roll back the bill rather
+                    // than mark it 'passed' with no effect (this exact path
+                    // produced ghost-passed Austerity Acts in Hajjara during a
+                    // deploy-lag window — see backfill at sql/...).
+                    console.error('[enactBill] stage=upsert_institution_allocation result=fatal', {
                         ...logContext,
                         institutionId: inst.id,
                         error: allocErr.message
                     });
+                    console.error('[enactBill] stage=terminal_result result=allocation_upsert_failed', {
+                        ...logContext,
+                        error: allocErr.message
+                    });
+                    return { success: false, error: `Budget allocation upsert failed for ${inst.id}: ${allocErr.message}` };
                 }
             }
             console.log('[enactBill] stage=upsert_institution_allocations result=success', {
