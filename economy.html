@@ -1336,7 +1336,7 @@ function renderTaxationTab(nation) {
     }
 
     var avgRate = (incomeTax + corpTax + salesTax) / 3;
-    var totalTaxRevenue = budget.incomeRevenue + budget.corpRevenue + budget.salesRevenue;
+    var totalTaxRevenue = budget.incomeRevenue + budget.corpRevenue + budget.salesRevenue + (budget.propertyRevenue || 0);
 
     var h = '<div class="econ-tab-body">';
 
@@ -1685,6 +1685,7 @@ function renderBudgetTab(nation) {
     h += bv2RevenueRow('INCOME TAX', Math.round(Number(nation.income_tax || 0)) + '% rate · Income bracket', budget.incomeRevenue);
     h += bv2RevenueRow('SALES TAX', Math.round(Number(nation.sales_tax || 0)) + '% rate · Consumption', budget.salesRevenue);
     h += bv2RevenueRow('CORPORATE TAX', Math.round(Number(nation.corporate_tax || 0)) + '% rate · Corporate profits', budget.corpRevenue);
+    h += bv2RevenueRow('PROPERTY TAX', Math.round(Number(nation.property_tax || 0)) + '% rate · Real estate value', budget.propertyRevenue || 0);
     h += bv2RevenueRow('TARIFF & TRADE', 'Import duties · Trade balance', budget.tariffRevenue);
     if (budget.oilRevenue > 0) {
         h += bv2RevenueRow('OIL & GAS', 'State resource revenue', budget.oilRevenue);

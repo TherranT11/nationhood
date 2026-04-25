@@ -20,10 +20,11 @@ export function calculateNationalBudget(nation, opts = {}) {
     const debt = Number(nation.debt ?? 0);
 
     // Tax rates: 0-100 percentages
-    const incomeTaxRate  = Number(nation.income_tax ?? 0);
-    const corpTaxRate    = Number(nation.corporate_tax ?? 0);
-    const salesTaxRate   = Number(nation.sales_tax ?? 0);
-    const tariffsRate    = Number(nation.tariffs ?? 0);
+    const incomeTaxRate    = Number(nation.income_tax ?? 0);
+    const corpTaxRate      = Number(nation.corporate_tax ?? 0);
+    const salesTaxRate     = Number(nation.sales_tax ?? 0);
+    const propertyTaxRate  = Number(nation.property_tax ?? 0);
+    const tariffsRate      = Number(nation.tariffs ?? 0);
 
     // Other 0-100 stats
     const efficiency     = Number(nation.efficiency ?? 50);
@@ -37,15 +38,22 @@ export function calculateNationalBudget(nation, opts = {}) {
     const collectionRate = 0.35 + rawCR * 0.65;
 
     // Tax Revenue (raw dollars, since GDP is raw dollars)
-    const incomeRevenue  = gdp * (incomeTaxRate / 100) * 0.55 * collectionRate;
-    const corpRevenue    = gdp * (corpTaxRate / 100)   * 0.15 * collectionRate;
-    const salesRevenue   = gdp * (salesTaxRate / 100)  * 0.35 * collectionRate;
-    const tariffRevenue  = gdp * (tariffsRate / 100)   * 0.0025 * collectionRate;
+    // Property-tax multiplier (0.08) is a starting guess: at the default
+    // 50% rate it yields up to ~4% of GDP at full collection (1.0), and
+    // ~2.4% at typical mid-game collection (~0.6). Within the real-world
+    // 2-4% band where property tax sits for most nations. Tune in one
+    // place if needed — everything downstream (Tax Article ongoing-cost
+    // projection, budget displays, deficit calc) reads from here.
+    const incomeRevenue   = gdp * (incomeTaxRate / 100)   * 0.55   * collectionRate;
+    const corpRevenue     = gdp * (corpTaxRate / 100)     * 0.15   * collectionRate;
+    const salesRevenue    = gdp * (salesTaxRate / 100)    * 0.35   * collectionRate;
+    const propertyRevenue = gdp * (propertyTaxRate / 100) * 0.08   * collectionRate;
+    const tariffRevenue   = gdp * (tariffsRate / 100)     * 0.0025 * collectionRate;
 
     // Oil & Gas Revenue (only if oil_and_gas stat > 30)
     const oilRevenue = oilGas > 30 ? gdp * (oilGas / 100) * 0.06 : 0;
 
-    const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + tariffRevenue + oilRevenue;
+    const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + propertyRevenue + tariffRevenue + oilRevenue;
 
     // Debt Service. Prefer the actual sum of active bond coupon obligations
     // (passed in by the tick processor as opts.actualDebtService — that's
@@ -63,7 +71,7 @@ export function calculateNationalBudget(nation, opts = {}) {
 
     return {
         grossRevenue, debtService, availableBudget, collectionRate,
-        incomeRevenue, corpRevenue, salesRevenue, tariffRevenue, oilRevenue
+        incomeRevenue, corpRevenue, salesRevenue, propertyRevenue, tariffRevenue, oilRevenue
     };
 }
 

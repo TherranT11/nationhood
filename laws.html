@@ -59,6 +59,8 @@
                     <option value="">-- Choose tax type --</option>
                     <option value="income_tax">Income Tax</option>
                     <option value="corporate_tax">Corporate Tax</option>
+                    <option value="sales_tax">Sales Tax</option>
+                    <option value="property_tax">Property Tax</option>
                 </select>
             </div>
             <div id="tax-current-wrap" style="display:none;padding:10px 14px;background:var(--bg-card);border-radius:4px;margin-bottom:12px;">
@@ -365,7 +367,7 @@ import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidenti
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
-import { getValidNewRates, computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_STEP_PP } from './js/game/tax-articles.js';
+import { getValidNewRates, computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_STEP_PP, TAX_KEY_LABELS, TAX_EFFECT_LABELS } from './js/game/tax-articles.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
@@ -2013,7 +2015,8 @@ window.addTariffArticle = addTariffArticle;
 // Stepped rate change for any supported tax type (income, corporate, ...).
 // Cuts in −3pp increments, hikes in +2pp increments. SSoT for valid
 // rates, supported keys, side effects, and labels: js/game/tax-articles.js.
-const _TAX_LABELS = { income_tax: 'Income Tax', corporate_tax: 'Corporate Tax' };
+// Title-cased labels come from TAX_KEY_LABELS (imported above); lowercase
+// renderings derive via .toLowerCase() at the call site.
 let _taxKey = null;
 let _taxDirection = null;
 
@@ -2056,7 +2059,7 @@ function onTaxKeyChange() {
         return;
     }
     const cur = _curTaxRate();
-    document.getElementById('tax-current-label').textContent = 'Current ' + (_TAX_LABELS[_taxKey] || _taxKey);
+    document.getElementById('tax-current-label').textContent = 'Current ' + (TAX_KEY_LABELS[_taxKey] || _taxKey);
     document.getElementById('tax-current-rate').textContent = cur.toFixed(1).replace(/\.0$/, '') + '%';
     document.getElementById('tax-current-wrap').style.display = 'block';
     document.getElementById('tax-direction-wrap').style.display = 'block';
@@ -2100,12 +2103,16 @@ function onTaxRateChange() {
     const fx = computeTaxArticleEffects(_taxKey, _taxDirection, steps);
     const sign = v => v > 0 ? '+' + v : String(v);
     const color = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-secondary)';
+    // Effect rows render generically from fx — adding a new effect
+    // dimension to TAX_ARTICLE_EFFECTS only requires adding it to
+    // TAX_EFFECT_LABELS to make it appear here.
+    const fxRows = Object.keys(TAX_EFFECT_LABELS)
+        .filter(k => Number.isFinite(fx[k]))
+        .map(k => `<div style="display:flex;justify-content:space-between;"><span>${TAX_EFFECT_LABELS[k]}</span><span style="color:${color(fx[k])};">${sign(fx[k])}</span></div>`)
+        .join('');
     document.getElementById('tax-effects-body').innerHTML =
         `<div style="display:flex;justify-content:space-between;"><span>Rate Change</span><span>${cur}% → ${newRate}% <span style="color:${_taxDirection === 'cut' ? 'var(--green)' : 'var(--red)'};">(${_taxDirection === 'cut' ? '−' : '+'}${Math.abs(newRate - cur)}pp)</span></span></div>` +
-        `<div style="display:flex;justify-content:space-between;"><span>Gov Approval</span><span style="color:${color(fx.gov_approval)};">${sign(fx.gov_approval)}</span></div>` +
-        `<div style="display:flex;justify-content:space-between;"><span>Credit</span><span style="color:${color(fx.credit)};">${sign(fx.credit)}</span></div>` +
-        `<div style="display:flex;justify-content:space-between;"><span>GDP Growth</span><span style="color:${color(fx.gdp_growth)};">${sign(fx.gdp_growth)}</span></div>` +
-        `<div style="display:flex;justify-content:space-between;"><span>Inflation</span><span style="color:${color(fx.inflation)};">${sign(fx.inflation)}</span></div>`;
+        fxRows;
     document.getElementById('tax-effects-preview').style.display = 'block';
     document.getElementById('add-tax-btn').disabled = false;
 }
@@ -2128,7 +2135,7 @@ function addTaxArticle() {
             articleNumber: articleNum,
             isTax: true,
             taxKey: _taxKey,
-            title: `${_TAX_LABELS[_taxKey] || _taxKey} ${titleDir}: ${cur}% → ${newRate}%`,
+            title: `${TAX_KEY_LABELS[_taxKey] || _taxKey} ${titleDir}: ${cur}% → ${newRate}%`,
             effect_data: {
                 type: 'TAX_CHANGE',
                 tax_key: _taxKey,
@@ -3628,7 +3635,7 @@ function renderDraftArticles() {
             const ed = art.effect_data;
             const dir = ed.direction;
             const taxKey = ed.tax_key || art.taxKey || 'income_tax';
-            const taxLabel = ({ income_tax: 'income tax', corporate_tax: 'corporate tax' })[taxKey] || taxKey;
+            const taxLabel = (TAX_KEY_LABELS[taxKey] || taxKey).toLowerCase();
             const steps = Number(ed.steps) || 0;
             const fx = computeTaxArticleEffects(taxKey, dir, steps);
             const borderColor = dir === 'cut' ? 'var(--green)' : 'var(--red)';
@@ -3641,8 +3648,13 @@ function renderDraftArticles() {
             // −credit). A single line color would mislead — see commit 95717e3
             // audit for context.
             const color = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text-secondary)';
-            const tok = (label, v) => `${label} <span style="color:${color(v)};">${sign(v)}</span>`;
-            const fxLine = `${tok('Approval', fx.gov_approval)} · ${tok('Credit', fx.credit)} · ${tok('GDP', fx.gdp_growth)} · ${tok('Inflation', fx.inflation)}`;
+            // Short labels for the inline summary (saves horizontal space
+            // in the draft card vs. the full TAX_EFFECT_LABELS).
+            const _SHORT = { gov_approval: 'Approval', credit: 'Credit', gdp_growth: 'GDP', inflation: 'Inflation', housing_affordability: 'Housing' };
+            const fxLine = Object.keys(TAX_EFFECT_LABELS)
+                .filter(k => Number.isFinite(fx[k]))
+                .map(k => `${_SHORT[k] || TAX_EFFECT_LABELS[k]} <span style="color:${color(fx[k])};">${sign(fx[k])}</span>`)
+                .join(' · ');
             // Projected ongoing budget impact ($M/mo). SSoT helper.
             const ongoingCostM = computeTaxArticleOngoingCost(taxKey, ed.new_rate, currentNation);
             const _fmtC = (m) => Math.abs(m) >= 1000 ? '$' + (Math.abs(m) / 1000).toFixed(Math.abs(m) % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(Math.abs(m)) + 'M';
@@ -4161,7 +4173,7 @@ async function submitToCommittee() {
                 }
                 if (art.isTax) {
                     const ed = art.effect_data;
-                    const taxLabel = ({ income_tax: 'income tax', corporate_tax: 'corporate tax' })[ed.tax_key || art.taxKey] || 'tax';
+                    const taxLabel = (TAX_KEY_LABELS[ed.tax_key || art.taxKey] || 'tax').toLowerCase();
                     return {
                         bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id,
                         article_title: art.title,

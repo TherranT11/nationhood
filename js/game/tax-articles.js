@@ -57,17 +57,87 @@ export const TAX_ARTICLE_EFFECTS = Object.freeze({
             inflation:    0,
         }),
     }),
+    // Sales tax is the only tax whose inflation direction is INVERTED
+    // versus income/corporate. Cutting sales tax literally removes pp
+    // from sticker prices → CPI falls; hiking it raises prices → CPI
+    // rises. Magnitude (±0.5) larger than income's ±0.3 because the
+    // effect is mechanical (on the receipt), not transmitted via demand.
+    // Highest gov_approval magnitude (±4) since the tax is regressive
+    // and visible at every transaction.
+    sales_tax: Object.freeze({
+        cut: Object.freeze({
+            gov_approval: +4,
+            credit:       -2,
+            gdp_growth:   +0.3,
+            inflation:    -0.5,
+        }),
+        hike: Object.freeze({
+            gov_approval: -4,
+            credit:       +1,
+            gdp_growth:   -0.3,
+            inflation:    +0.5,
+        }),
+    }),
+    // Property tax taxes asset ownership (land + buildings). Direct effect
+    // on housing_affordability — cuts make housing cheaper to hold/rent,
+    // hikes pass through to renters and add to mortgage costs. The voter
+    // bloc system (electorate.js: urban_suburban) already cascades from
+    // housing_affordability into approval, so the flat ±2 gov_approval
+    // here understates total political impact for housing-sensitive
+    // nations. No inflation effect — property tax doesn't ride on
+    // consumer prices.
+    property_tax: Object.freeze({
+        cut: Object.freeze({
+            gov_approval:          +2,
+            credit:                -2,
+            gdp_growth:            +0.5,
+            inflation:             0,
+            housing_affordability: +1,
+        }),
+        hike: Object.freeze({
+            gov_approval:          -2,
+            credit:                +1,
+            gdp_growth:            -0.5,
+            inflation:             0,
+            housing_affordability: -1,
+        }),
+    }),
 });
 
 // Tax keys that have effects defined — feeds the draft modal's tax-type
-// selector. Sales / Property will appear here when their effects land.
-export const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax']);
+// selector.
+export const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax', 'sales_tax', 'property_tax']);
 
 export const TAX_KEY_LABELS = Object.freeze({
     income_tax:    'Income Tax',
     corporate_tax: 'Corporate Tax',
     sales_tax:     'Sales Tax',
+    property_tax:  'Property Tax',
 });
+
+// Effect-key → display label, used by the article-card / preview UI to
+// render each effect row. Keys here must match the keys used in the
+// per-step entries above. Adding a new effect dimension (e.g.,
+// urbanization for a future tax) only requires adding it here + to a
+// tax's per-step block.
+export const TAX_EFFECT_LABELS = Object.freeze({
+    gov_approval:          'Gov Approval',
+    credit:                'Credit',
+    gdp_growth:            'GDP Growth',
+    inflation:             'Inflation',
+    housing_affordability: 'Housing Affordability',
+});
+
+// Effect keys that map directly to a nations.<column>. Used by the
+// enactment handler to know which keys to read+write to the nations
+// table (vs. gov_approval, which routes through adjust_momentum →
+// gov_approval_events). New numeric stat effects join this list.
+export const TAX_EFFECT_NATION_COLUMNS = Object.freeze([
+    'credit',
+    'gdp_growth',
+    'inflation',
+    'housing_affordability',
+]);
 
 // Enumerate the valid new rates a player can pick given their current rate
 // and chosen direction. Cuts step down in 3pp increments until hitting 0;
@@ -87,19 +157,19 @@ export function getValidNewRates(currentRate, direction) {
 
 // Compute total side effects for a (taxKey, direction, steps) triple.
 // Used by the preview panel AND the enactment handler — one calculation,
-// two callers. Returns { gov_approval, credit, gdp_growth, inflation }.
+// two callers. Returns an object keyed by whatever effect dimensions
+// the tax defines (gov_approval, credit, gdp_growth, inflation, plus
+// any tax-specific extras like housing_affordability). Callers must
+// not assume a fixed shape — iterate Object.entries(fx).
 export function computeTaxArticleEffects(taxKey, direction, steps) {
     const perStep = TAX_ARTICLE_EFFECTS[taxKey]?.[direction];
     const n = Number(steps) || 0;
-    if (!perStep || n <= 0) {
-        return { gov_approval: 0, credit: 0, gdp_growth: 0, inflation: 0 };
+    if (!perStep || n <= 0) return {};
+    const result = {};
+    for (const [key, val] of Object.entries(perStep)) {
+        result[key] = val * n;
     }
-    return {
-        gov_approval: perStep.gov_approval * n,
-        credit:       perStep.credit       * n,
-        gdp_growth:   perStep.gdp_growth   * n,
-        inflation:    perStep.inflation    * n,
-    };
+    return result;
 }
 
 // Compute the bill's ongoing budget impact from a tax rate change, in

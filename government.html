@@ -2042,12 +2042,13 @@ async function loadBudgetData() {
 function _gbBuildIncomeRows(d) {
     const b = d.budget;
     const rows = [
-        { key: 'income_tax',   name: 'Income Tax',       yr: Number(b.incomeRevenue  || 0), descKey: 'incomeTax' },
-        { key: 'corporate_tax',name: 'Corporate Tax',    yr: Number(b.corpRevenue    || 0), descKey: 'corpTax'   },
-        { key: 'sales_tax',    name: 'Sales Tax',        yr: Number(b.salesRevenue   || 0), descKey: 'salesTax'  },
-        { key: 'oil_gas',      name: 'Oil & Gas',        yr: Number(b.oilRevenue     || 0), descKey: 'oilGas'    },
-        { key: 'trade_agrs',   name: 'Trade Agreements', yr: Number(d.aidReceived    || 0), descKey: 'tradeAgr'  },
-        { key: 'tariffs',      name: 'Tariffs',          yr: Number(b.tariffRevenue  || 0), descKey: 'tariffs'   },
+        { key: 'income_tax',   name: 'Income Tax',       yr: Number(b.incomeRevenue   || 0), descKey: 'incomeTax'   },
+        { key: 'corporate_tax',name: 'Corporate Tax',    yr: Number(b.corpRevenue     || 0), descKey: 'corpTax'     },
+        { key: 'sales_tax',    name: 'Sales Tax',        yr: Number(b.salesRevenue    || 0), descKey: 'salesTax'    },
+        { key: 'property_tax', name: 'Property Tax',     yr: Number(b.propertyRevenue || 0), descKey: 'propertyTax' },
+        { key: 'oil_gas',      name: 'Oil & Gas',        yr: Number(b.oilRevenue      || 0), descKey: 'oilGas'      },
+        { key: 'trade_agrs',   name: 'Trade Agreements', yr: Number(d.aidReceived     || 0), descKey: 'tradeAgr'    },
+        { key: 'tariffs',      name: 'Tariffs',          yr: Number(b.tariffRevenue   || 0), descKey: 'tariffs'     },
     ];
     // Hide oil & gas row if the nation isn't a producer (matches
     // calculateNationalBudget's gate: oil_and_gas must exceed 30).
@@ -2302,6 +2303,7 @@ const _GB_DEEP_COPY = {
     incomeTax:   { desc: 'Progressive tax on household income. Scales with GDP and tax rate; collection rate is a blend of efficiency and (inverse) corruption.' },
     corpTax:     { desc: 'Corporate income tax on registered businesses. Same efficiency/corruption collection rate applies; base share of GDP is ~15%.' },
     salesTax:    { desc: 'Consumption tax levied at point of sale. Base share of GDP is ~35% since it lands on a much wider base than income.' },
+    propertyTax: { desc: 'Tax on assessed value of real estate (land + buildings). Base share of GDP is ~8%; revenue scales linearly with the rate. Also affects housing affordability — see Tax Articles.' },
     oilGas:      { desc: 'Resource revenue, only active when the nation\'s oil_and_gas stat exceeds 30. Scales with both GDP and the resource stat.' },
     tradeAgr:    { desc: 'Net recurring financial aid received from accepted trade agreements. Agreements structured as "give" flow out on the Costs side.' },
     tariffs:     { desc: 'Import duties. Capped at 0.2% of GDP to avoid dwarfing structural tax revenue; real capped value is preferred over the formula estimate when trade_summary data exists.' },

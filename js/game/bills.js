@@ -13,7 +13,7 @@ import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
-import { computeTaxArticleEffects, computeTaxArticleOngoingCost, validateTaxArticlePayload, TAX_RATE_MIN, TAX_RATE_MAX } from './tax-articles.js';
+import { computeTaxArticleEffects, computeTaxArticleOngoingCost, validateTaxArticlePayload, TAX_RATE_MIN, TAX_RATE_MAX, TAX_EFFECT_NATION_COLUMNS } from './tax-articles.js';
 import { MILITARY_LOYALTY_POLICY_KEY, onMilitaryLoyaltyEnacted } from './military-loyalty.js';
 import { getNationNames, isFemaleName, installHOG } from './political-actions.js';
 import { allocateSeatsByVotes } from './election-simulation.js';
@@ -3363,25 +3363,31 @@ export async function enactBill(supabase, bill, currentTick) {
                 const newRate = Math.max(TAX_RATE_MIN, Math.min(TAX_RATE_MAX, Number(effect.new_rate)));
                 taxUpdates[taxKey] = newRate;
                 const fx = computeTaxArticleEffects(taxKey, val.direction, val.steps);
-                const { data: nRow, error: nErr } = await supabase.from('nations')
-                    .select('credit, gdp_growth, inflation').eq('id', bill.nation_id).single();
-                if (nErr) {
-                    console.error(`[enactBill] TAX_CHANGE (${taxKey}) read failed:`, nErr.message);
-                } else {
-                    const newCredit    = Math.max(0, Math.min(100, Number(nRow.credit    ?? 50) + fx.credit));
-                    const newGdpGrowth = Math.max(0, Math.min(100, Number(nRow.gdp_growth ?? 50) + fx.gdp_growth));
-                    const newInflation = Math.max(0, Math.min(100, Number(nRow.inflation  ?? 50) + fx.inflation));
-                    const { error: upErr } = await supabase.from('nations').update({
-                        credit:     newCredit,
-                        gdp_growth: newGdpGrowth,
-                        inflation:  newInflation,
-                    }).eq('id', bill.nation_id);
-                    if (upErr) console.error(`[enactBill] TAX_CHANGE (${taxKey}) stat update failed:`, upErr.message);
-                    if (fx.gov_approval !== 0) {
-                        await adjustGovernmentApprovalEvent(supabase, bill.nation_id, fx.gov_approval, `${taxKey}_article`);
+                // Generic effect-key application: read only the nation
+                // columns this tax actually moves (per fx + the canonical
+                // TAX_EFFECT_NATION_COLUMNS list), apply clamped deltas,
+                // write back. Adding a new effect dimension means adding
+                // it to TAX_EFFECT_NATION_COLUMNS — no surgery here.
+                const statKeys = TAX_EFFECT_NATION_COLUMNS.filter(k => Number.isFinite(fx[k]) && fx[k] !== 0);
+                if (statKeys.length > 0) {
+                    const { data: nRow, error: nErr } = await supabase.from('nations')
+                        .select(statKeys.join(', ')).eq('id', bill.nation_id).single();
+                    if (nErr) {
+                        console.error(`[enactBill] TAX_CHANGE (${taxKey}) read failed:`, nErr.message);
+                    } else {
+                        const updates = {};
+                        for (const k of statKeys) {
+                            updates[k] = Math.max(0, Math.min(100, Number(nRow[k] ?? 50) + fx[k]));
+                        }
+                        const { error: upErr } = await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+                        if (upErr) console.error(`[enactBill] TAX_CHANGE (${taxKey}) stat update failed:`, upErr.message);
                     }
-                    console.log(`[enactBill] TAX_CHANGE ${taxKey} ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, approval ${fx.gov_approval >= 0 ? '+' : ''}${fx.gov_approval}, credit ${fx.credit >= 0 ? '+' : ''}${fx.credit}, gdp_growth ${fx.gdp_growth >= 0 ? '+' : ''}${fx.gdp_growth}, inflation ${fx.inflation >= 0 ? '+' : ''}${fx.inflation}`);
                 }
+                if (Number.isFinite(fx.gov_approval) && fx.gov_approval !== 0) {
+                    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, fx.gov_approval, `${taxKey}_article`);
+                }
+                console.log(`[enactBill] TAX_CHANGE ${taxKey} ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, ` +
+                    Object.entries(fx).map(([k, v]) => `${k} ${v >= 0 ? '+' : ''}${v}`).join(', '));
             }
         } else if (effect.type === 'TARIFF_RATE_CHANGE' && effect.sector) {
             // Per-sector tariff: merge into nation's sector_tariffs jsonb
