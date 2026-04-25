@@ -59,6 +59,7 @@
                     <option value="">-- Choose tax type --</option>
                     <option value="income_tax">Income Tax</option>
                     <option value="corporate_tax">Corporate Tax</option>
+                    <option value="sales_tax">Sales Tax</option>
                 </select>
             </div>
             <div id="tax-current-wrap" style="display:none;padding:10px 14px;background:var(--bg-card);border-radius:4px;margin-bottom:12px;">
@@ -2013,7 +2014,7 @@ window.addTariffArticle = addTariffArticle;
 // Stepped rate change for any supported tax type (income, corporate, ...).
 // Cuts in −3pp increments, hikes in +2pp increments. SSoT for valid
 // rates, supported keys, side effects, and labels: js/game/tax-articles.js.
-const _TAX_LABELS = { income_tax: 'Income Tax', corporate_tax: 'Corporate Tax' };
+const _TAX_LABELS = { income_tax: 'Income Tax', corporate_tax: 'Corporate Tax', sales_tax: 'Sales Tax' };
 let _taxKey = null;
 let _taxDirection = null;
 
@@ -3628,7 +3629,7 @@ function renderDraftArticles() {
             const ed = art.effect_data;
             const dir = ed.direction;
             const taxKey = ed.tax_key || art.taxKey || 'income_tax';
-            const taxLabel = ({ income_tax: 'income tax', corporate_tax: 'corporate tax' })[taxKey] || taxKey;
+            const taxLabel = ({ income_tax: 'income tax', corporate_tax: 'corporate tax', sales_tax: 'sales tax' })[taxKey] || taxKey;
             const steps = Number(ed.steps) || 0;
             const fx = computeTaxArticleEffects(taxKey, dir, steps);
             const borderColor = dir === 'cut' ? 'var(--green)' : 'var(--red)';
@@ -4161,7 +4162,7 @@ async function submitToCommittee() {
                 }
                 if (art.isTax) {
                     const ed = art.effect_data;
-                    const taxLabel = ({ income_tax: 'income tax', corporate_tax: 'corporate tax' })[ed.tax_key || art.taxKey] || 'tax';
+                    const taxLabel = ({ income_tax: 'income tax', corporate_tax: 'corporate tax', sales_tax: 'sales tax' })[ed.tax_key || art.taxKey] || 'tax';
                     return {
                         bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id,
                         article_title: art.title,

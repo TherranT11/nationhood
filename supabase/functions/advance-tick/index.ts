@@ -7920,11 +7920,32 @@ const TAX_ARTICLE_EFFECTS = Object.freeze({
             inflation:    0,
         }),
     }),
+    // Sales tax is the only tax whose inflation direction is INVERTED
+    // versus income/corporate. Cutting sales tax literally removes pp
+    // from sticker prices → CPI falls; hiking it raises prices → CPI
+    // rises. Magnitude (±0.5) larger than income's ±0.3 because the
+    // effect is mechanical (on the receipt), not transmitted via demand.
+    // Highest gov_approval magnitude (±4) since the tax is regressive
+    // and visible at every transaction.
+    sales_tax: Object.freeze({
+        cut: Object.freeze({
+            gov_approval: +4,
+            credit:       -2,
+            gdp_growth:   +0.3,
+            inflation:    -0.5,
+        }),
+        hike: Object.freeze({
+            gov_approval: -4,
+            credit:       +1,
+            gdp_growth:   -0.3,
+            inflation:    +0.5,
+        }),
+    }),
 });
 
 // Tax keys that have effects defined — feeds the draft modal's tax-type
-// selector. Sales / Property will appear here when their effects land.
-const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax']);
+// selector. Property will appear here when its effects land.
+const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax', 'sales_tax']);
 
 const TAX_KEY_LABELS = Object.freeze({
     income_tax:    'Income Tax',
