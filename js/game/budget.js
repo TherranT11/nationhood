@@ -39,11 +39,11 @@ export function calculateNationalBudget(nation, opts = {}) {
 
     // Tax Revenue (raw dollars, since GDP is raw dollars)
     // Property-tax multiplier (0.08) is a starting guess: at the default
-    // 50% rate this yields ~4% of GDP after collection, matching the
-    // real-world band where property tax sits (~3-5% of GDP for most
-    // nations). Tune in one place if needed; everything downstream
-    // (Tax Article ongoing-cost projection, budget displays, deficit
-    // calc) reads from here.
+    // 50% rate it yields up to ~4% of GDP at full collection (1.0), and
+    // ~2.4% at typical mid-game collection (~0.6). Within the real-world
+    // 2-4% band where property tax sits for most nations. Tune in one
+    // place if needed — everything downstream (Tax Article ongoing-cost
+    // projection, budget displays, deficit calc) reads from here.
     const incomeRevenue   = gdp * (incomeTaxRate / 100)   * 0.55   * collectionRate;
     const corpRevenue     = gdp * (corpTaxRate / 100)     * 0.15   * collectionRate;
     const salesRevenue    = gdp * (salesTaxRate / 100)    * 0.35   * collectionRate;
