@@ -634,6 +634,30 @@ const DRAVKA_LAST = [
   'Rugova','Sadiku','Sejdiu','Selimi','Shala','Shehu','Smajlaj','Spahiu','Tafa','Zaimi'
 ];
 
+// Danwei names (Taiwanese, family-first convention). Mirrors DANWEI_*
+// pools in political-actions.js. FIRST = surnames, LAST = given names —
+// produces "Lin Mei-ling" display order.
+const DANWEI_FIRST = [
+  'Chen','Lin','Huang','Chang','Lee','Wang','Wu','Liu','Tsai','Yang',
+  'Hsu','Cheng','Chou','Hsieh','Kuo','Chiang','Tang','Lo','Pan','Chao',
+  'Ho','Chu','Tseng','Yeh','Hsiao','Lai','Su','Ma','Hung','Chiu',
+  'Shih','Chien','Liao','Han','Sun','Wei','Ku','Fang','Yu','Shen',
+  'Fu','Hsiang','Tsao','Hu','Sung','Shao','Kao','Pao','Po','Lung'
+];
+const DANWEI_LAST = [
+  // Male
+  'Kuo-yu','Wei-ming','Ming-chen','Chih-yuan','Hsiao-ping','Wen-cheng',
+  'Yu-ren','Ying-jeou','Teng-hui','Cheng-yi','Chen-yi','Tien-hsing',
+  'Po-yu','Chih-hao','Yi-feng','Chih-hung','Wei-jen','Cheng-ming',
+  'Po-chen','Hsing-kuo','Wen-fan','Po-hsiung','Tsung-hsien','Chao-ming',
+  'Yi-chun','Chang-ting',
+  // Female
+  'Mei-ling','Hsiu-lien','Wen-chi','Yu-hua','Su-chen','Yi-fang','Hsin-yi',
+  'Yu-ling','Chia-ling','Pei-ling','Mei-feng','Hsiao-mei','Yu-chen',
+  'Wen-ling','Mei-yu','Chia-hsuan','Pei-yi','Hsin-mei','Chia-jung',
+  'Pei-chen','Hsiu-chen','Mei-chen','Yi-ling','Hsiu-mei'
+];
+
 // Nation-aware name selection
 const NATION_NAMES = {
   'Calveth': { first: CALVETH_FIRST, last: CALVETH_LAST },
@@ -641,7 +665,8 @@ const NATION_NAMES = {
   'Flandis': { first: FLANDIS_FIRST, last: FLANDIS_LAST },
   'Vostia':  { first: VOSTIA_FIRST,  last: VOSTIA_LAST  },
   'Hajjara': { first: HAJJARA_FIRST, last: HAJJARA_LAST },
-  'Dravka':  { first: DRAVKA_FIRST,  last: DRAVKA_LAST  }
+  'Dravka':  { first: DRAVKA_FIRST,  last: DRAVKA_LAST  },
+  'Danwei':  { first: DANWEI_FIRST,  last: DANWEI_LAST  }
 };
 function getNamePool(nationName) {
   const pool = NATION_NAMES[nationName];

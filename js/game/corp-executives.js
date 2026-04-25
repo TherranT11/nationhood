@@ -8,29 +8,33 @@
  * CEO is auto-seeded from existing faction leader data at corp creation.
  */
 
-import {
-    PM_FIRST_NAMES, PM_LAST_NAMES,
-    AVELIA_FIRST_NAMES, AVELIA_LAST_NAMES,
-    CALVETH_FIRST_NAMES, CALVETH_LAST_NAMES,
-    FLANDIS_FIRST_NAMES, FLANDIS_LAST_NAMES,
-    VOSTIA_FIRST_NAMES, VOSTIA_LAST_NAMES,
-} from './political-actions.js';
+import { getNationNames } from './political-actions.js';
 
 // ═══════════════════════════════════════════════════
-// NAME POOLS BY ORIGIN NATION
+// EXECUTIVE ORIGIN NATIONS
 // ═══════════════════════════════════════════════════
+//
+// Origin nations available to supply executives, with relative weights.
+// Local nation is upweighted 3× inside pickOrigin so domestic candidates
+// dominate. Names for each origin are resolved through getNationNames()
+// in political-actions.js — that is the single source of truth, so adding
+// a new nation here only requires (1) adding it to getNationNames and
+// (2) appending one row below. No more drift between nation pools.
 
-var NAME_POOLS = [
-    { origin: 'Melizea',      weight: 2, firstNames: PM_FIRST_NAMES,      lastNames: PM_LAST_NAMES },
-    { origin: 'Sangreza',     weight: 1, firstNames: PM_FIRST_NAMES,      lastNames: PM_LAST_NAMES },
-    { origin: 'Sierramar',    weight: 1, firstNames: PM_FIRST_NAMES,      lastNames: PM_LAST_NAMES },
-    { origin: 'San Estrella', weight: 1, firstNames: PM_FIRST_NAMES,      lastNames: PM_LAST_NAMES },
-    { origin: 'Palvera',      weight: 1, firstNames: PM_FIRST_NAMES,      lastNames: PM_LAST_NAMES },
-    { origin: 'Montequilla',  weight: 1, firstNames: PM_FIRST_NAMES,      lastNames: PM_LAST_NAMES },
-    { origin: 'Avelia',       weight: 2, firstNames: AVELIA_FIRST_NAMES,  lastNames: AVELIA_LAST_NAMES },
-    { origin: 'Calveth',      weight: 2, firstNames: CALVETH_FIRST_NAMES, lastNames: CALVETH_LAST_NAMES },
-    { origin: 'Flandis',      weight: 2, firstNames: FLANDIS_FIRST_NAMES, lastNames: FLANDIS_LAST_NAMES },
-    { origin: 'Vostia',       weight: 2, firstNames: VOSTIA_FIRST_NAMES,  lastNames: VOSTIA_LAST_NAMES },
+var EXEC_ORIGIN_NATIONS = [
+    { origin: 'Melizea',      weight: 2 },
+    { origin: 'Sangreza',     weight: 1 },
+    { origin: 'Sierramar',    weight: 1 },
+    { origin: 'San Estrella', weight: 1 },
+    { origin: 'Palvera',      weight: 1 },
+    { origin: 'Montequilla',  weight: 1 },
+    { origin: 'Avelia',       weight: 2 },
+    { origin: 'Calveth',      weight: 2 },
+    { origin: 'Flandis',      weight: 2 },
+    { origin: 'Vostia',       weight: 2 },
+    { origin: 'Hajjara',      weight: 2 },
+    { origin: 'Dravka',       weight: 2 },
+    { origin: 'Danwei',       weight: 2 },
 ];
 
 // ═══════════════════════════════════════════════════
@@ -94,18 +98,23 @@ export function calculateCompensation(skill) {
 /**
  * Pick a random origin nation using weighted selection.
  * Local nation gets a higher weight for domestic candidates.
+ * Names are resolved through getNationNames (the SSoT in
+ * political-actions.js), so every nation registered there
+ * automatically participates here.
  */
 function pickOrigin(localNationName) {
-    var pools = NAME_POOLS.map(function(p) {
-        return { pool: p, weight: p.origin === localNationName ? p.weight * 3 : p.weight };
+    var weighted = EXEC_ORIGIN_NATIONS.map(function(p) {
+        return { origin: p.origin, weight: p.origin === localNationName ? p.weight * 3 : p.weight };
     });
-    var totalWeight = pools.reduce(function(s, p) { return s + p.weight; }, 0);
+    var totalWeight = weighted.reduce(function(s, p) { return s + p.weight; }, 0);
     var r = Math.random() * totalWeight;
-    for (var i = 0; i < pools.length; i++) {
-        r -= pools[i].weight;
-        if (r <= 0) return pools[i].pool;
+    var picked = weighted[weighted.length - 1];
+    for (var i = 0; i < weighted.length; i++) {
+        r -= weighted[i].weight;
+        if (r <= 0) { picked = weighted[i]; break; }
     }
-    return pools[pools.length - 1].pool;
+    var names = getNationNames(picked.origin);
+    return { origin: picked.origin, firstNames: names.firstNames, lastNames: names.lastNames };
 }
 
 function pickRandom(arr) {
@@ -227,10 +236,10 @@ function deterministicInt(seed, min, max) {
 function buildNameCatalog() {
     var first = [];
     var last = [];
-    for (var i = 0; i < NAME_POOLS.length; i++) {
-        var pool = NAME_POOLS[i];
-        first = first.concat(pool.firstNames || []);
-        last = last.concat(pool.lastNames || []);
+    for (var i = 0; i < EXEC_ORIGIN_NATIONS.length; i++) {
+        var names = getNationNames(EXEC_ORIGIN_NATIONS[i].origin);
+        first = first.concat(names.firstNames || []);
+        last = last.concat(names.lastNames || []);
     }
     return { first: first, last: last };
 }
