@@ -1,22 +1,24 @@
 -- ════════════════════════════════════════════════════════════════════════════════
--- Audit trigger for corp workforce changes
+-- Audit trigger for corp workforce changes — PERMANENT CANARY
 --
--- Problem: corps report corp_general_workforce (and peers) silently reducing
--- between ticks. Yakovic Concern at Calveth tick 19 and Montequilla
--- Contructions at tick 15 both hit dramatic unexpected drops. A grep of the
--- entire repo turned up zero code paths that write workforce outside of
--- player-initiated actions (Restructure, Hire/Fire, Subsidiary Merge). The
--- reductions must be coming from somewhere — either a trigger/function not
--- tracked in migrations, a RPC body, or a client flow we haven't found.
+-- Originally shipped as a diagnostic to trace silent workforce reductions
+-- across multiple corps (Yakovic Concern @ Calveth tick 19, Montequilla
+-- Constructions @ tick 15). Root cause turned out to be production drift:
+-- the deployed advance-corp-tick Edge Function bundle still ran an auto-
+-- layoff block that had been removed from local source but never re-
+-- deployed. A redeploy fixed the source of writes; this trigger caught the
+-- drift in one tick.
 --
--- Fix strategy: ship a logging trigger that captures the SQL of any statement
--- that modifies a workforce column. Next time a drop happens, the audit row
--- will show the exact query text + application that caused it, making the
--- source trivial to trace.
+-- Kept on permanently as a canary. If any future regression — drift, new
+-- code, or a hand-rolled SQL function — starts writing to a workforce
+-- column outside the documented player paths (Restructure / Hire / Fire /
+-- Subsidiary Merge), the audit row will name the offender within one tick.
 --
--- No behavior change. Only fires when general / skilled / innovative workforce
--- actually changes (the WHEN clause short-circuits on no-op updates so tick
--- processors that update unrelated columns don't spam the log).
+-- Cost is negligible. The trigger only fires when general / skilled /
+-- innovative workforce ACTUALLY changes (the WHEN clause short-circuits
+-- no-op updates). Inserting one audit row per real change is cheap.
+--
+-- Do NOT drop this trigger. See README.md → Contributor notes.
 --
 -- Idempotent: DROP TRIGGER IF EXISTS + CREATE OR REPLACE FUNCTION. Safe to
 -- re-run.
