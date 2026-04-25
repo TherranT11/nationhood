@@ -1227,18 +1227,20 @@ function adm2RenderExecCard() {
         </div>`);
     }
 
-    // Head of State (monarchies — separate from PM)
-    const isMonarchy = (nation?.government_type || '').toLowerCase().includes('monarchy');
-    if (isMonarchy && nation?.head_of_state_first_name) {
+    // Head of State (hereditary HoS — separate from PM/president rows)
+    const isHereditaryHos = (nation?.hos_election_method === 'hereditary');
+    if (isHereditaryHos && nation?.head_of_state_first_name) {
         const name = `${nation.head_of_state_first_name || ''} ${nation.head_of_state_last_name || ''}`.trim();
         const title = nation.head_of_state_title || 'King';
         const initials = name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+        const ageLine = `<div class="party">Age ${escapeHtml(String(nation.head_of_state_age || '—'))}</div>`;
         const dynastyLine = nation.dynasty_name ? `<div class="party" style="font-style:italic;">${escapeHtml(nation.dynasty_name)}</div>` : '';
         rows.push(`<div class="adm2-exec-person">
             <div class="adm2-avatar" style="color:var(--amber);border-color:rgba(176,154,91,0.3);background:rgba(176,154,91,0.1);">${escapeHtml(initials)}</div>
             <div class="adm2-exec-body">
                 <div class="role">${escapeHtml(title)}</div>
                 <div class="name">${escapeHtml(name)}</div>
+                ${ageLine}
                 ${dynastyLine}
             </div>
         </div>`);
