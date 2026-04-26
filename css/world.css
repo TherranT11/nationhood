@@ -42,6 +42,15 @@
    WORLD PAGE — Map + Nation Highlight
    ══════════════════════════════════════════════════════════════ */
 
+/* Diplomacy subtab containers (#subtab-world / #subtab-trade / #subtab-ipo).
+   Without this, .world-page's flex:1 has no flex parent — the panel collapses
+   and panel.clientHeight goes weird, which also breaks the map zoom/pan math. */
+.diplo-subtab-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
 .world-page {
     display: flex; gap: 12px; padding: 12px;
     flex: 1; min-height: 0; overflow-y: auto;
