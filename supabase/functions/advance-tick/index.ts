@@ -35770,6 +35770,20 @@ async function processBudgetDeficit(supabase, nation, currentTick, institutionCo
 
 // ==================== IPO VOTE EFFECT HELPER ====================
 
+// IPO economy is denominated in cash (faction.party_funds). 1 AP = $50,000.
+const IPO_AP_TO_CASH = 50000;
+
+/**
+ * Format a dollar amount the same way the topbar does ($X.YM / $Xk / $X).
+ * Used in IPO chat messages so members see consistent currency formatting.
+ */
+function fmtIPOCash(val: number): string {
+    val = Number(val) || 0;
+    if (val >= 1000000) return '$' + (val / 1000000).toFixed(1) + 'M';
+    if (val >= 1000)    return '$' + Math.round(val / 1000) + 'k';
+    return '$' + val;
+}
+
 /**
  * Apply side-effects when an IPO vote passes (called from tick processor).
  */
@@ -35840,23 +35854,38 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
         }
         case 'fund_draw': {
             if (meta.amount_requested && meta.amount_requested > 0) {
-                const newBalance = Math.max(0, (org.solidarity_fund_balance || 0) - meta.amount_requested);
+                const currentBalance = Number(org.solidarity_fund_balance) || 0;
+                const actualDraw = Math.min(meta.amount_requested, currentBalance);
+                if (actualDraw <= 0) break;
+
+                const newBalance = currentBalance - actualDraw;
                 await supabase.from('international_orgs')
                     .update({ solidarity_fund_balance: newBalance })
                     .eq('id', org.id);
+
+                // Credit cash to the proposing faction
+                if (vote.proposed_by) {
+                    const { data: proposer } = await supabase
+                        .from('factions').select('party_funds').eq('id', vote.proposed_by).maybeSingle();
+                    if (proposer) {
+                        await supabase.from('factions')
+                            .update({ party_funds: (Number(proposer.party_funds) || 0) + actualDraw })
+                            .eq('id', vote.proposed_by);
+                    }
+                }
 
                 await supabase.from('ipo_fund_transactions').insert({
                     org_id: org.id,
                     faction_id: vote.proposed_by,
                     transaction_type: 'draw',
-                    amount: -meta.amount_requested,
+                    amount: -actualDraw,
                     description: meta.purpose || 'Fund draw (vote passed)',
                     tick: tick
                 });
 
                 await supabase.from('ipo_chat').insert({
                     org_id: org.id, faction_id: null, is_system: true,
-                    message_text: `Fund draw approved: ${meta.amount_requested} AP withdrawn. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
+                    message_text: `Fund draw approved: ${fmtIPOCash(actualDraw)} withdrawn. ${meta.purpose ? 'Purpose: ' + meta.purpose : ''}`,
                     tick_posted: tick
                 });
             }
@@ -37937,54 +37966,65 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 }
 
                 // ── 3. SOLIDARITY FUND QUARTERLY COLLECTION ──
-                // Every 3 ticks (quarterly), collect contributions from members
+                // Every 3 ticks (quarterly), collect cash contributions from members.
+                // contributionPerQuarter is stored as integer "AP units"; 1 unit = $50,000.
                 if (resources.solidarityFund?.enabled && newTick % 3 === 0) {
-                    const contribution = resources.solidarityFund.contributionPerQuarter || 1;
+                    const contributionUnits = Number(resources.solidarityFund.contributionPerQuarter) || 1;
+                    const contributionCash = contributionUnits * IPO_AP_TO_CASH;
                     let totalCollected = 0;
 
                     for (const m of fullMembers) {
-                        // Deduct AP from faction
-                        const { data: deducted } = await supabase.rpc('deduct_ap', {
-                            p_faction_id: m.faction_id,
-                            p_cost: contribution
-                        });
+                        // Read faction cash and deduct atomically via update guard
+                        const { data: f } = await supabase
+                            .from('factions')
+                            .select('party_funds')
+                            .eq('id', m.faction_id)
+                            .maybeSingle();
+                        const funds = Number(f?.party_funds) || 0;
+                        if (funds < contributionCash) continue; // skip silently if insufficient cash
 
-                        if (deducted !== null && deducted >= 0) {
-                            totalCollected += contribution;
-                            await supabase.from('ipo_fund_transactions').insert({
-                                org_id: org.id,
-                                faction_id: m.faction_id,
-                                transaction_type: 'contribution',
-                                amount: contribution,
-                                description: 'Quarterly solidarity fund contribution',
-                                tick: newTick
-                            });
-                            await supabase.from('ap_ledger').insert({ faction_id: m.faction_id, tick: newTick, delta: -contribution, reason: 'ipo_contribution', detail: org.name + ' solidarity fund' }).then(() => {});
-                        }
-                        // If deduction fails (insufficient AP), skip silently
+                        const { error: updErr } = await supabase
+                            .from('factions')
+                            .update({ party_funds: funds - contributionCash })
+                            .eq('id', m.faction_id);
+                        if (updErr) continue;
+
+                        totalCollected += contributionCash;
+                        const { error: txErr } = await supabase.from('ipo_fund_transactions').insert({
+                            org_id: org.id,
+                            faction_id: m.faction_id,
+                            transaction_type: 'contribution',
+                            amount: contributionCash,
+                            description: 'Quarterly solidarity fund contribution',
+                            tick: newTick
+                        });
+                        if (txErr) console.error(`[advanceTick] IPO ${org.name}: contribution log insert failed for ${m.faction_id}:`, txErr);
                     }
 
                     if (totalCollected > 0) {
-                        const newBalance = (org.solidarity_fund_balance || 0) + totalCollected;
-                        await supabase.from('international_orgs')
+                        const newBalance = (Number(org.solidarity_fund_balance) || 0) + totalCollected;
+                        const { error: balErr } = await supabase.from('international_orgs')
                             .update({ solidarity_fund_balance: newBalance })
                             .eq('id', org.id);
+                        if (balErr) {
+                            console.error(`[advanceTick] IPO ${org.name}: fund balance update failed (members were debited!):`, balErr);
+                        }
                         // Update local copy so HQ cost (section 4) reads the post-collection balance
                         org.solidarity_fund_balance = newBalance;
 
                         await supabase.from('ipo_chat').insert({
                             org_id: org.id, faction_id: null, is_system: true,
-                            message_text: `Quarterly fund collection: ${totalCollected} AP collected from ${fullMembers.length} member(s).`,
+                            message_text: `Quarterly fund collection: ${fmtIPOCash(totalCollected)} collected from ${fullMembers.length} member(s).`,
                             tick_posted: newTick
                         });
                     }
                 }
 
-                // ── 4. HQ AP COST ──
-                // If HQ is set, deduct 1 AP per tick from solidarity fund as upkeep
+                // ── 4. HQ CASH UPKEEP ──
+                // If HQ is set, deduct $50,000 per tick from solidarity fund as upkeep
                 if (org.headquarters_nation_id && resources.solidarityFund?.enabled) {
-                    const hqCost = 1;
-                    const currentBalance = org.solidarity_fund_balance || 0;
+                    const hqCost = IPO_AP_TO_CASH; // $50K / tick
+                    const currentBalance = Number(org.solidarity_fund_balance) || 0;
                     if (currentBalance >= hqCost) {
                         await supabase.from('international_orgs')
                             .update({ solidarity_fund_balance: currentBalance - hqCost })
