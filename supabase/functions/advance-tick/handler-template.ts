@@ -1667,22 +1667,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             let mutated = false;
 
             for (const art of arts) {
-                if (art?.type !== 'transfer') continue;
-                const d = art.data || {};
+                const d = art?.data || {};
+                // Caller-side filters: only recurring, only not-yet-paid this tick.
                 if (d.transfer_type !== 'recurring') continue;
-                if (d.last_paid_at_tick === newTick) continue; // already paid this tick
-
-                const amount = Number(d.amount || 0);
-                if (!Number.isFinite(amount) || amount <= 0) continue;
-
-                const author = art.author_nation_id;
-                if (!author || (author !== agreement.nation_a_id && author !== agreement.nation_b_id)) {
-                    console.error('[recurring transfer] invalid author_nation_id', author, 'on agreement', agreement.id);
+                if (d.last_paid_at_tick === newTick) continue;
+                // Endpoint resolution is shared across callsites
+                // (see js/game/diplomacy-constants.js → resolveTransferEndpoints).
+                const endpoints = resolveTransferEndpoints(art, agreement);
+                if (!endpoints) {
+                    if (art?.type === 'transfer') {
+                        console.error('[recurring transfer] transfer article malformed on agreement', agreement.id);
+                    }
                     continue;
                 }
-                const counterparty = author === agreement.nation_a_id ? agreement.nation_b_id : agreement.nation_a_id;
-                const fromNation = d.direction === 'a_to_b' ? author : counterparty;
-                const toNation   = d.direction === 'a_to_b' ? counterparty : author;
+                const { fromNation, toNation, amount } = endpoints;
 
                 // Atomic per-pair: read both, debit (floor 0), credit, write.
                 // Skip on read failure or incomplete result — without correct
