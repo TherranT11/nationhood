@@ -4522,12 +4522,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     // 5. Process each nation
     for (const nation of nationList) {
         try {
-            // [TIMING] Per-block elapsed-ms instrumentation for diagnosing the
-            // 150s edge-runtime timeout. Removable once we know the slow block.
-            const _T = Date.now();
-            let _t = _T;
-            const _mark = (l) => { const n = Date.now(); console.log(`[TIMING] ${nation.name}/${l}: ${n-_t}ms`); _t = n; };
-
             // Load corporation factions for this nation (exclude dissolved corps)
             const { data: corpFactions, error: corpErr } = await supabase
                 .from('factions')
@@ -4711,7 +4705,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Construction failed for ${nation.name} (non-fatal):`, constructionErr);
                 summary.errors.push({ nation: nation.name, sector: 'construction', error: String(constructionErr) });
             }
-            _mark('construction');
 
             // ── Subsidiary Revenue (GDP-based growth/loss per subsidiary) ──
             try {
@@ -4723,7 +4716,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Subsidiary revenue failed for ${nation.name} (non-fatal):`, subRevErr);
                 summary.errors.push({ nation: nation.name, sector: 'subsidiary_revenue', error: String(subRevErr) });
             }
-            _mark('subRev');
 
             // ── Regional HQ Property Income (flat-ish income from marketplace HQs) ──
             try {
@@ -4732,7 +4724,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Regional HQ income failed for ${nation.name} (non-fatal):`, hqIncErr);
                 summary.errors.push({ nation: nation.name, sector: 'regional_hq_income', error: String(hqIncErr) });
             }
-            _mark('hqInc');
 
             // ── Health Insurance (Phase 2: policyholder growth + premium revenue) ──
             try {
@@ -4744,7 +4735,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Health insurance failed for ${nation.name} (non-fatal):`, healthErr);
                 summary.errors.push({ nation: nation.name, sector: 'health_insurance', error: String(healthErr) });
             }
-            _mark('healthIns');
 
             // ── Health Insurance Lawsuits (Phase 5: resolve ripe lawsuits) ──
             try {
@@ -4756,13 +4746,9 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Health insurance lawsuits failed for ${nation.name} (non-fatal):`, lawsuitErr);
                 summary.errors.push({ nation: nation.name, sector: 'health_insurance_lawsuits', error: String(lawsuitErr) });
             }
-            _mark('lawsuits');
 
             // ── Corp-specific processing (requires local corporations) ──
-            if (corps.length === 0) {
-                console.log(`[TIMING] ${nation.name}/TOTAL: ${Date.now()-_T}ms (no-corps)`);
-                continue;
-            }
+            if (corps.length === 0) continue;
             summary.corpsProcessed += corps.length;
             console.log(`[advance-corp-tick] ${nation.name}: ${corps.length} corporation(s)`);
 
@@ -4773,7 +4759,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Property effects failed for ${nation.name} (non-fatal):`, propEffErr);
                 summary.errors.push({ nation: nation.name, sector: 'property_effects', error: String(propEffErr) });
             }
-            _mark('propEff');
 
             // ── Corporation Monthly Income ──────────────────────────────
             try {
@@ -4782,7 +4767,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Corp income failed for ${nation.name} (non-fatal):`, incomeErr);
                 summary.errors.push({ nation: nation.name, sector: 'income', error: String(incomeErr) });
             }
-            _mark('income');
 
             // ── Reputation Decay ─────────────────────────────────────────
             // Base: -0.25/tick. Accelerated to -1.0/tick when workforce is 0 (company is a shell).
@@ -4805,7 +4789,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (repDecayErr) {
                 console.error(`[advance-corp-tick] Reputation decay failed for ${nation.name} (non-fatal):`, repDecayErr);
             }
-            _mark('repDecay');
 
             // ── Energy Sector ────────────────────────────────────────────
             // FUTURE: Energy production, grid management, fuel contracts
@@ -4820,7 +4803,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (finErr) {
                 console.error(`[advance-corp-tick] Finance loan processing failed for ${nation.name} (non-fatal):`, finErr);
             }
-            _mark('finance');
 
             // ── Shipping Sector — Route Generation ───────────────────────
             // Generate shipping routes from bilateral trade_partners data.
@@ -4847,7 +4829,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (shipErr) {
                 console.error(`[advance-corp-tick] Shipping route generation failed (non-fatal):`, shipErr);
             }
-            _mark('shipRouteGen');
 
             // ── Ship Market — Generate listings every 8 ticks ────────────
             try {
@@ -4858,7 +4839,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (mktErr) {
                 console.error(`[advance-corp-tick] Ship market generation failed (non-fatal):`, mktErr);
             }
-            _mark('shipMarket');
 
             // ── Vessel Orders — Deliver completed commissions ────────────
             try {
@@ -4869,7 +4849,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (ordErr) {
                 console.error(`[advance-corp-tick] Vessel order delivery failed (non-fatal):`, ordErr);
             }
-            _mark('vesselOrders');
 
             // ── Equipment Orders — Deliver delayed equipment purchases ────
             try {
@@ -4880,7 +4859,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (eqDelErr) {
                 console.error(`[advance-corp-tick] Equipment delivery fulfillment failed (non-fatal):`, eqDelErr);
             }
-            _mark('equipDeliv');
 
             // ── Shipping Sector — Transit Cycles & Revenue ───────────────
             // Process active shipping claims: advance vessel status, collect
@@ -5181,7 +5159,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (shipRevErr) {
                 console.error(`[advance-corp-tick] Shipping revenue failed for ${nation.name} (non-fatal):`, shipRevErr);
             }
-            _mark('shipRev');
 
             // ── Vessel Decay & Maintenance ──────────────────────────────
             // Condition degrades 1d2% per tick for all vessels.
@@ -5622,7 +5599,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Vessel decay failed for ${corp.faction_name} (non-fatal):`, vesselErr);
             }
             } // end for (const corp of corps) — vessel decay/maintenance per-corp
-            _mark('vesselDecay');
 
             // ── Specialty Building Effects ────────────────────────────────
             try {
@@ -5658,7 +5634,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (specErr) {
                 console.warn(`[advance-corp-tick] Specialty building effects failed for ${nation.name}:`, specErr.message);
             }
-            _mark('specialty');
 
             // ── Defense Sector ───────────────────────────────────────────
             // FUTURE: Arms contracts, military equipment production
@@ -5731,8 +5706,6 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     console.warn(`[advance-corp-tick] Cash history write failed for ${nation.name}:`, cashHistOuterErr?.message || cashHistOuterErr);
                 }
             }
-            _mark('cashHist');
-            console.log(`[TIMING] ${nation.name}/TOTAL: ${Date.now()-_T}ms`);
 
         } catch (nationProcessErr) {
             console.error(`[advance-corp-tick] FAILED processing corps for ${nation.name}:`, nationProcessErr);
