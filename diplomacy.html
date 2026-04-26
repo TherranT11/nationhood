@@ -120,6 +120,12 @@
     </div>
 </div>
 
+<!-- ═══ IPO Creation / Action Modal (shared overlay used by openIPOCreationModal,
+        openIPOActionModal, executeIPOAction, the back-channel modal, etc.) ═══ -->
+<div class="modal-overlay" id="ipo-create-modal" onclick="if(event.target===this){closeIPOCreationModal();}">
+    <div class="ipo-modal-content" id="ipo-create-modal-inner" onclick="event.stopPropagation();"></div>
+</div>
+
 <!-- Shared Scripts -->
 
 <!-- Page-Specific Script -->
