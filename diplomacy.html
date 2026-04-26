@@ -16787,10 +16787,7 @@ const IPO_ACTION_COSTS = {
     fund_draw:       0                    // free — draws from solidarity fund
 };
 
-// Per-tick cash drawn from the solidarity fund when an HQ is established.
-const IPO_HQ_UPKEEP_CASH = 1 * IPO_AP_TO_CASH;  // $50K / tick
-// Cash drawn from the solidarity fund per back-channel "from fund" use.
-const IPO_BACK_CHANNEL_FUND_COST = 1 * IPO_AP_TO_CASH;  // $50K
+// (HQ upkeep is enforced server-side in advance-tick; not exposed to the client.)
 
 // Format a dollar amount the same way the topbar does ($X.YM / $Xk / $X).
 function fmtIPOCash(val) {
@@ -16918,7 +16915,7 @@ function renderIPOActionsPanel() {
     actions.push({
         key: 'back_channel',
         label: 'Back-Channel Resources',
-        desc: `Transfer cash to another member. Personal: ${fmtIPOCash(IPO_ACTION_COSTS.back_channel)} overhead, no risk. Fund: ${fmtIPOCash(IPO_BACK_CHANNEL_FUND_COST)} from fund, 25% exposure.`,
+        desc: `Transfer cash to another member. Personal: ${fmtIPOCash(IPO_ACTION_COSTS.back_channel)} overhead, no risk. Fund: drawn from solidarity fund, 25% exposure.`,
         cost: IPO_ACTION_COSTS.back_channel, // minimum personal cost (overhead + transfer)
         icon: '🤝',
         available: currentCash >= (IPO_ACTION_COSTS.back_channel + minBackChannelTransfer)
@@ -17339,7 +17336,7 @@ function openBackChannelModal() {
     const charter = org?.charter || {};
     const cap = charter.resources?.resourceSharingCap;
     const fundEnabled = charter.resources?.solidarityFund?.enabled;
-    const fundBalance = org?.solidarity_fund_balance || 0;
+    const fundBalance = Number(org?.solidarity_fund_balance) || 0;
 
     backChannelTargetId = null;
     backChannelAmount = IPO_AP_TO_CASH; // default $50K
@@ -17353,7 +17350,7 @@ function openBackChannelModal() {
 
     const capNote = cap ? `<div class="ipo-vote-form-note">Resource sharing cap: ${cap} transfers per term.</div>` : '';
     const fundOption = fundEnabled && fundBalance > 0
-        ? `<option value="fund">Solidarity Fund (${fmtIPOCash(IPO_BACK_CHANNEL_FUND_COST)} fee · 25% exposure risk)</option>`
+        ? `<option value="fund">Solidarity Fund (drawn from fund · 25% exposure risk)</option>`
         : '';
 
     const inner = document.getElementById('ipo-create-modal-inner');
@@ -17420,15 +17417,14 @@ async function executeBackChannel() {
         let cashCostPaid = 0;
 
         if (source === 'fund') {
-            // Fund source: amount comes from solidarity fund + flat fee, 25% exposure risk
+            // Fund source: transfer amount drawn from solidarity fund, 25% exposure risk
             const fundBalance = Number(org?.solidarity_fund_balance) || 0;
-            const fundDraw = amount + IPO_BACK_CHANNEL_FUND_COST;
-            if (fundDraw > fundBalance) {
-                alert(`Fund only has ${fmtIPOCash(fundBalance)} available — need ${fmtIPOCash(fundDraw)} (${fmtIPOCash(amount)} transfer + ${fmtIPOCash(IPO_BACK_CHANNEL_FUND_COST)} fee).`);
+            if (amount > fundBalance) {
+                alert(`Fund only has ${fmtIPOCash(fundBalance)} available — need ${fmtIPOCash(amount)}.`);
                 return;
             }
 
-            const newBalance = fundBalance - fundDraw;
+            const newBalance = fundBalance - amount;
             const { error: fundErr } = await _supabase.from('international_orgs')
                 .update({ solidarity_fund_balance: newBalance })
                 .eq('id', ipoSelectedOrgId);
@@ -18459,9 +18455,14 @@ async function submitIPOCreation() {
 
         if (orgErr) {
             console.error('[IPO] Create org error:', orgErr);
-            // Refund cash since org creation failed
-            const refunded = (currentFaction.party_funds || 0) + cashCost;
-            await _supabase.from('factions').update({ party_funds: refunded }).eq('id', currentFaction.id);
+            // Refund cash since org creation failed. Fresh read avoids clobbering
+            // any concurrent cash updates that landed between deduction and refund.
+            const { data: fresh } = await _supabase
+                .from('factions').select('party_funds').eq('id', currentFaction.id).single();
+            const refunded = (Number(fresh?.party_funds) || 0) + cashCost;
+            const { error: refundErr } = await _supabase
+                .from('factions').update({ party_funds: refunded }).eq('id', currentFaction.id);
+            if (refundErr) console.error('[IPO] Refund failed (manual reconciliation may be needed):', refundErr);
             currentFaction.party_funds = refunded;
             alert('Failed to create organisation: ' + orgErr.message);
             return;

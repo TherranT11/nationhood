@@ -1579,7 +1579,7 @@ const guideContent = {
 <h3>Solidarity Fund</h3>
 <p>If enabled in the charter, members contribute cash each quarter (in $50k increments) to a shared fund. The fund can be spent on:</p>
 <ul>
-<li><strong>Back-channel transfers</strong> &mdash; Send cash to another member ($50k fund fee, 25% exposure risk)</li>
+<li><strong>Back-channel transfers</strong> &mdash; Send cash to another member, drawn from the fund (25% exposure risk)</li>
 <li><strong>Funding org actions</strong> &mdash; Rallies, symposiums, and other collective actions</li>
 </ul>
 <p>The resource sharing cap (if set) limits how many transfers each member can make per term. Headquarters upkeep draws $50k/tick from the fund.</p>
@@ -1589,7 +1589,7 @@ const guideContent = {
 <tr><th>Action</th><th>Cost</th><th>Effect</th></tr>
 <tr><td><strong>Targeted Rally</strong></td><td>$200k</td><td>Roll for approval change for one other member faction (+8 to &minus;1 range)</td></tr>
 <tr><td><strong>Global Rally</strong></td><td>$350k</td><td>Roll for every member faction independently (president only)</td></tr>
-<tr><td><strong>Back-Channel</strong></td><td>$100k overhead + transfer (or $50k fee from fund)</td><td>Secret cash transfer to another member (25% exposure risk if drawn from fund)</td></tr>
+<tr><td><strong>Back-Channel</strong></td><td>$100k overhead + transfer (or fund-source: amount drawn from fund)</td><td>Secret cash transfer to another member (25% exposure risk if drawn from fund)</td></tr>
 <tr><td><strong>Joint Statement</strong></td><td>$50k</td><td>President issues org-wide statement</td></tr>
 <tr><td><strong>Symposium</strong></td><td>Vote required</td><td>Shift a target nation's ideology by +3 on a chosen axis (4-tick delay, 20-tick cooldown)</td></tr>
 </table>
