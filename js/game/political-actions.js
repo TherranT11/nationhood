@@ -20,6 +20,26 @@ function _tickToDate(tick) {
     return `${_PA_MONTHS[tick % 12]}, ${2000 + Math.floor(tick / 12)}`;
 }
 
+/**
+ * Per-tick stat-debug ledger writer. No-op unless nation.debug_stat_logging is true.
+ * Fire-and-forget — don't await; never let an instrumentation failure abort tick processing.
+ * Writes to stat_debug_log (table from migration 20260426_stat_debug_log.sql).
+ */
+function _logStatDebug(supabase, nation, tick, statKey, contributorType, contributorName, rawRate, multiplier, effectiveDelta, notes) {
+    if (!nation || !nation.debug_stat_logging) return;
+    supabase.from('stat_debug_log').insert({
+        nation_id: nation.id,
+        tick,
+        stat_key: statKey,
+        contributor_type: contributorType,
+        contributor_name: contributorName ?? null,
+        raw_rate: rawRate ?? null,
+        multiplier: multiplier ?? null,
+        effective_delta: effectiveDelta ?? null,
+        notes: notes ?? null
+    }).then(() => {}, (e) => console.warn('[stat_debug_log] insert failed:', e?.message));
+}
+
 // ==================== STAT DECAY PROCESSING ====================
 
 /**
@@ -76,7 +96,7 @@ export async function buildPolicyDecayAdjustments(supabase, nationId) {
     return adjustments;
 }
 
-export async function processStatDecay(supabase, nation, statInstitutionMap, policyDecayAdjustments = null) {
+export async function processStatDecay(supabase, nation, statInstitutionMap, policyDecayAdjustments = null, currentTick = 0) {
     const appliedDecay = [];
     const nationUpdates = {};
 
@@ -124,10 +144,16 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
 
         if (newVal !== Math.round(currentVal * 10) / 10) {
             nationUpdates[statKey] = newVal;
+            const prevRounded = Math.round(currentVal * 10) / 10;
+            _logStatDebug(supabase, nation, currentTick, statKey,
+                'decay',
+                instDecay !== null ? `institution-decay (target=${target}, avg=${speed})` : `natural-decay (target=${target}, speed=${speed})`,
+                speed, null, newVal - prevRounded,
+                instDecay !== null ? 'institution-modified' : 'natural');
             appliedDecay.push({
                 stat: statKey,
                 type: config.type,
-                previousValue: Math.round(currentVal * 10) / 10,
+                previousValue: prevRounded,
                 newValue: newVal,
                 target,
                 speed,
@@ -247,11 +273,19 @@ export async function processStatConnections(supabase, nation, currentTick, conn
         }
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
+            const thisDelta = newVal - targetVal;
+            _logStatDebug(supabase, nation, currentTick, conn.target_stat,
+                'stat_link',
+                `${conn.source_stat} ${conn.source_dir} ${conn.threshold} → ${conn.target_dir}`,
+                Number(conn.magnitude),
+                conn.dampening ? (conn.target_dir === 'up' ? (1 - targetVal / 100) : (targetVal / 100)) : 1,
+                thisDelta,
+                `source=${sourceVal}, target_pre=${targetVal}, dampening=${!!conn.dampening}`);
+
             // Accumulate — multiple connections can affect the same target
             if (nationUpdates[conn.target_stat] !== undefined) {
                 // Add delta on top of already-accumulated value
                 const prevDelta = nationUpdates[conn.target_stat] - targetVal;
-                const thisDelta = newVal - targetVal;
                 const accumulated = targetVal + prevDelta + thisDelta;
                 nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
                     ? Math.max(0, accumulated)
@@ -1295,8 +1329,19 @@ export async function processStatEffects(supabase, nation, currentTick) {
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
 
+                    const policyLabel = isReversal ? '↩ Reversal: ' + (policy?.policy_name || 'Unknown') : (policy?.policy_name || 'Unknown');
+                    const signedRate = dir === 'up' ? rate : -rate;
+                    const signedScaled = dir === 'up' ? scaledRate : -scaledRate;
+                    _logStatDebug(supabase, nation, tick, statKey,
+                        'policy',
+                        policyLabel,
+                        signedRate,
+                        rate !== 0 ? (signedScaled / signedRate) : null,
+                        newVal - currentVal,
+                        `dir=${dir}, raw_to_applied_window_tick=${tick}, ticksSincePassed=${ticksSincePassed}`);
+
                     appliedEffects.push({
-                        policy: isReversal ? '↩ Reversal: ' + (policy?.policy_name || 'Unknown') : (policy?.policy_name || 'Unknown'),
+                        policy: policyLabel,
                         stat: statKey,
                         direction: dir,
                         rate: rate,
