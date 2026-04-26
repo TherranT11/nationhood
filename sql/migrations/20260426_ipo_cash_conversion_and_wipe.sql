@@ -13,18 +13,23 @@
 
 BEGIN;
 
--- 1. Wipe all IPO data. Order matters because of foreign keys; using TRUNCATE
---    CASCADE is the cleanest path and resets any sequences too.
-TRUNCATE TABLE
-    ipo_invitations,
-    ipo_fund_transactions,
-    ipo_action_log,
-    ipo_ballots,
-    ipo_votes,
-    ipo_chat,
-    ipo_members,
-    international_orgs
-RESTART IDENTITY CASCADE;
+-- 1. Wipe all IPO data.
+--    DO NOT use TRUNCATE ... CASCADE here. group_chats has a FK to
+--    international_orgs (group_chats.ipo_org_id), and TRUNCATE CASCADE
+--    truncates ENTIRE referencing tables — not just the referencing rows.
+--    Using TRUNCATE CASCADE earlier wiped every group_chats /
+--    group_chat_members / group_chat_messages row in the database.
+--    DELETE only cascades through ON DELETE CASCADE relationships, which
+--    correctly removes only the IPO-linked group_chats while leaving
+--    Global / Nation / custom chats intact.
+DELETE FROM ipo_invitations;
+DELETE FROM ipo_fund_transactions;
+DELETE FROM ipo_action_log;
+DELETE FROM ipo_ballots;
+DELETE FROM ipo_votes;
+DELETE FROM ipo_chat;
+DELETE FROM ipo_members;
+DELETE FROM international_orgs;
 
 -- 2. Widen the fund balance column. Dollar amounts can grow well past INT4
 --    (e.g. quarterly $250K contributions × many members × many ticks).
