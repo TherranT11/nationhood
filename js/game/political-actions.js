@@ -100,8 +100,21 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
     const appliedDecay = [];
     const nationUpdates = {};
 
-    for (const [statKey, config] of Object.entries(STAT_DECAY_CONFIG)) {
+    // Iterate the union of (a) stats with natural decay configured and
+    // (b) stats covered by any institution. Institution-only stats use
+    // target=50, speed=0 defaults — natural decay is a no-op for them, but
+    // institution decay can now apply. Without this union, any stat that
+    // institutions target but that isn't listed in STAT_DECAY_CONFIG has
+    // its institution effects silently dropped (e.g. labor_force_participation
+    // showed COLLAPSED institutions in the UI but the stat wasn't decaying).
+    const allStatKeys = new Set([
+        ...Object.keys(STAT_DECAY_CONFIG),
+        ...Object.keys(statInstitutionMap || {}),
+    ]);
+
+    for (const statKey of allStatKeys) {
         if (!NATION_STAT_COLUMN_SET.has(statKey)) continue;
+        const config = STAT_DECAY_CONFIG[statKey] || { type: 'equilibrium', target: 50, speed: 0 };
 
         const rawDecayVal = nation[statKey];
         // Skip if stat is null/undefined — never default to 50
