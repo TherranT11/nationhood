@@ -5800,18 +5800,24 @@ Deno.serve(async (req) => {
 
         console.log(`[advance-corp-tick] Invoked (force=${force})`);
 
-        const summary = await advanceCorpTick(supabase, { force });
+        // Background tasks pattern: kick off the work but don't block the
+        // HTTP response on it. The 150s "request idle timeout" gateway will
+        // close the request after that long even if the worker is still
+        // chewing — so we respond immediately, then EdgeRuntime.waitUntil
+        // keeps the worker alive (up to the 400s wall-clock limit) until
+        // advanceCorpTick finishes. The function does its own idempotency
+        // check internally (line 4469), so safe to fire on every invocation.
+        const work = advanceCorpTick(supabase, { force })
+            .catch((err) => {
+                console.error("[advance-corp-tick] Background work failed:", err);
+            });
 
-        // If already processed, return early with 200
-        if (summary.status === 'already_processed') {
-            return new Response(
-                JSON.stringify({ status: "already_processed", tick: summary.tick }),
-                { headers: corsHeaders }
-            );
+        if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+            EdgeRuntime.waitUntil(work);
         }
 
         return new Response(
-            JSON.stringify({ status: "success", summary }),
+            JSON.stringify({ status: "started" }),
             { headers: corsHeaders }
         );
     } catch (error) {
