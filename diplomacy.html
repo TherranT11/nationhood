@@ -2613,6 +2613,7 @@ async function initWorldMap() {
 
     // Scroll to zoom
     panel.addEventListener('wheel', (e) => {
+        console.log('[map-debug] wheel', { scale, deltaY: e.deltaY, panelW: panel.clientWidth, panelH: panel.clientHeight, imgW: img.offsetWidth, imgH: img.offsetHeight });
         e.preventDefault();
         const rect = panel.getBoundingClientRect();
         const mx = e.clientX - rect.left;
@@ -2628,6 +2629,7 @@ async function initWorldMap() {
 
     // Drag to pan
     panel.addEventListener('mousedown', (e) => {
+        console.log('[map-debug] mousedown', { clientX: e.clientX, clientY: e.clientY, panX, panY });
         dragging = true;
         startX = e.clientX - panX;
         startY = e.clientY - panY;
