@@ -1969,6 +1969,39 @@ async function loadBudgetData() {
         }
     } catch (_) { /* aid stays 0 */ }
 
+    // 2b. Recurring transfer flows from active GTAs (any agreement_type).
+    //     Annualized by multiplying per-tick amount × TICKS_PER_YEAR.
+    //     One-time transfers excluded — they hit budget_reserves once and
+    //     don't represent ongoing income/expense. See the per-tick processor
+    //     at advance-tick handler-template.ts step 3.5f for what actually
+    //     pays these out at runtime; this block just shows the contracted
+    //     annual flow on the budget UI.
+    let recurringReceivedAnnual = 0;
+    let recurringGivenAnnual = 0;
+    try {
+        const { data: gtas } = await _supabase.from('trade_agreements')
+            .select('nation_a_id, nation_b_id, articles')
+            .eq('status', 'active')
+            .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
+        for (const a of (gtas || [])) {
+            for (const art of (a.articles || [])) {
+                if (art?.type !== 'transfer') continue;
+                const data = art.data || {};
+                if (data.transfer_type !== 'recurring') continue;
+                const amount = Number(data.amount || 0);
+                if (!Number.isFinite(amount) || amount <= 0) continue;
+                const author = art.author_nation_id;
+                if (!author || (author !== a.nation_a_id && author !== a.nation_b_id)) continue;
+                const counterparty = author === a.nation_a_id ? a.nation_b_id : a.nation_a_id;
+                const fromNation = data.direction === 'a_to_b' ? author : counterparty;
+                const toNation   = data.direction === 'a_to_b' ? counterparty : author;
+                const annual = amount * GAME_CONFIG.TICKS_PER_YEAR;
+                if (toNation === nation.id)   recurringReceivedAnnual += annual;
+                if (fromNation === nation.id) recurringGivenAnnual    += annual;
+            }
+        }
+    } catch (_) { /* recurring stays 0 */ }
+
     // 3. Expenditures by fiscal category — replicates economy.html's
     //    loadExpenditureData, totals only. We need annualized dollars.
     const yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
@@ -2031,6 +2064,8 @@ async function loadBudgetData() {
         expenditures,
         aidReceived,
         aidGiven,
+        recurringReceivedAnnual,
+        recurringGivenAnnual,
         debtService: Number(budget.debtService || 0),
         debt: Number(nation.debt || 0),
     };
@@ -2049,7 +2084,7 @@ function _gbBuildIncomeRows(d) {
         { key: 'sales_tax',    name: 'Sales Tax',        yr: Number(b.salesRevenue    || 0), descKey: 'salesTax'    },
         { key: 'property_tax', name: 'Property Tax',     yr: Number(b.propertyRevenue || 0), descKey: 'propertyTax' },
         { key: 'oil_gas',      name: 'Oil & Gas',        yr: Number(b.oilRevenue      || 0), descKey: 'oilGas'      },
-        { key: 'trade_agrs',   name: 'Trade Agreements', yr: Number(d.aidReceived     || 0), descKey: 'tradeAgr'    },
+        { key: 'trade_agrs',   name: 'Trade Agreements', yr: Number(d.aidReceived || 0) + Number(d.recurringReceivedAnnual || 0), descKey: 'tradeAgr'    },
         { key: 'tariffs',      name: 'Tariffs',          yr: Number(b.tariffRevenue   || 0), descKey: 'tariffs'     },
     ];
     // Hide oil & gas row if the nation isn't a producer (matches
@@ -2082,6 +2117,9 @@ function _gbBuildCostRows(d) {
     ];
     if (d.aidGiven > 0) {
         rows.push({ key: 'aid_given', name: 'Foreign Aid (Given)', yr: Number(d.aidGiven), descKey: 'aidGiven' });
+    }
+    if (d.recurringGivenAnnual > 0) {
+        rows.push({ key: 'trade_transfers_given', name: 'Trade Transfers (Given)', yr: Number(d.recurringGivenAnnual), descKey: 'tradeTransfersGiven' });
     }
     for (const m of ministryMeta) {
         rows.push({
@@ -2307,10 +2345,11 @@ const _GB_DEEP_COPY = {
     salesTax:    { desc: 'Consumption tax levied at point of sale. Base share of GDP is ~35% since it lands on a much wider base than income.' },
     propertyTax: { desc: 'Tax on assessed value of real estate (land + buildings). Base share of GDP is ~8%; revenue scales linearly with the rate. Also affects housing affordability — see Tax Articles.' },
     oilGas:      { desc: 'Resource revenue, only active when the nation\'s oil_and_gas stat exceeds 30. Scales with both GDP and the resource stat.' },
-    tradeAgr:    { desc: 'Net recurring financial aid received from accepted trade agreements. Agreements structured as "give" flow out on the Costs side.' },
+    tradeAgr:    { desc: 'Recurring income from accepted trade agreements — both economic aid received and recurring financial transfers under GTAs. Outgoing flows appear on the Costs side. One-time transfers are not counted here (they hit reserves once and are not ongoing income).' },
     tariffs:     { desc: 'Import duties. Capped at 0.2% of GDP to avoid dwarfing structural tax revenue; real capped value is preferred over the formula estimate when trade_summary data exists.' },
     debtInterest:{ desc: 'Interest service on sovereign debt. Effective coupon = 15% − (credit × 0.13%), clamped to 2–18%.' },
-    aidGiven:    { desc: 'Outgoing financial aid under accepted trade agreements. Offsets inbound trade-agreement income on the Revenue side.' },
+    aidGiven:    { desc: 'Outgoing financial aid under accepted economic-aid agreements. Offsets inbound trade-agreement income on the Revenue side.' },
+    tradeTransfersGiven: { desc: 'Outgoing recurring financial transfers under accepted GTAs. Annualized as per-tick amount × ticks-per-year. Mirrors inbound transfers on the Revenue side.' },
     // ministries fall through to a shared template, filled with
     // funding-pct / institution count at render time
 };
