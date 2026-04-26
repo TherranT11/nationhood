@@ -1291,7 +1291,7 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
 // Each corp tick: deduct maintenance from cash, degrade condition, enforce capacity
 
 async function processPropertyEffects(supabase, nation, corps, currentTick) {
-    await Promise.all(corps.map(async (corp) => {
+    for (const corp of corps) {
         // No nation filter: subsidiary properties can live in a different
         // nation than their parent corp. Filtering by nation.id here silently
         // skipped those rows — same bug pattern processSubsidiaryRevenue was
@@ -1303,7 +1303,7 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
             .eq('faction_id', corp.id)
             .eq('is_active', true);
 
-        if (propErr || !properties || properties.length === 0) return;
+        if (propErr || !properties || properties.length === 0) continue;
 
         let totalMaintenance = 0;
         const conditionUpdates = [];
@@ -1412,7 +1412,7 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
                 else console.log(`[PropertyEffects] ${corp.faction_name}: operational efficiency = ${efficiency}% (${effectiveWf}/${totalCapacity})`);
             }
         }
-    }));
+    }
 }
 
 // ==================== SUBSIDIARY REVENUE ====================
@@ -3405,13 +3405,7 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
     const LOAN_TERM_MONTHS = 120;
     const monthlyRate = (LOAN_ANNUAL_RATE_PCT / 100) / 12;
 
-    // Tax credits are accumulated here so we can apply ONE atomic
-    // nations.debt update after the per-corp loop. Each corp doing its own
-    // read-modify-write was a soft race condition even serially, and a hard
-    // blocker for the Promise.all parallelization below.
-    let totalTaxToCreditNation = 0;
-
-    await Promise.all(corpFactions.map(async (corp) => {
+    for (const corp of corpFactions) {
         const currentCash = Number(corp.corp_cash_reserves || 0);
         const currentLoans = Number(corp.corp_loans || 0);
 
@@ -3504,19 +3498,15 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
             accruePnl(corp.id, -taxAmount);
         }
 
-        // Accumulate tax credit; applied to nations.debt once after the loop.
-        if (taxAmount > 0) totalTaxToCreditNation += taxAmount;
-    }));
-
-    // One atomic read-modify-write of nations.debt with the summed tax credit.
-    if (totalTaxToCreditNation > 0) {
-        const { data: nationRow } = await supabase.from('nations').select('debt').eq('id', nation.id).single();
-        if (nationRow) {
-            const newDebt = Math.max(0, Number(nationRow.debt || 0) - totalTaxToCreditNation);
-            await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
+        // Credit corporate tax to the nation's debt reduction
+        if (taxAmount > 0) {
+            const { data: nationRow } = await supabase.from('nations').select('debt').eq('id', nation.id).single();
+            if (nationRow) {
+                const newDebt = Math.max(0, Number(nationRow.debt || 0) - taxAmount);
+                await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
+            }
         }
     }
-
     console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, tax rate=${ns('corporate_tax')}%`);
 }
 
@@ -4798,7 +4788,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // Base: -0.25/tick. Accelerated to -1.0/tick when workforce is 0 (company is a shell).
             // Uses integer-safe rounding: multiply by 100, round, divide by 100.
             try {
-                await Promise.all(corps.map(async (corp) => {
+                for (const corp of corps) {
                     const totalWf = Number(corp.corp_general_workforce ?? 0)
                                   + Number(corp.corp_skilled_workforce ?? 0)
                                   + Number(corp.corp_innovative_workforce ?? 0);
@@ -4811,7 +4801,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             .eq('id', corp.id);
                         if (repErr) console.warn(`[RepDecay] Failed for ${corp.faction_name}:`, repErr.message);
                     }
-                }));
+                }
             } catch (repDecayErr) {
                 console.error(`[advance-corp-tick] Reputation decay failed for ${nation.name} (non-fatal):`, repDecayErr);
             }
@@ -5206,7 +5196,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // ran, condition never decayed, incidents never fired. Wrapped
             // in a per-corp loop so each corp's fleet is processed in its
             // own scope.
-            await Promise.all(corps.map(async (corp) => {
+            for (const corp of corps) {
             try {
                 const { data: corpCashRow, error: corpCashErr } = await supabase.from('factions')
                     .select('corp_cash_reserves')
@@ -5631,7 +5621,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (vesselErr) {
                 console.error(`[advance-corp-tick] Vessel decay failed for ${corp.faction_name} (non-fatal):`, vesselErr);
             }
-            })); // end Promise.all(corps.map) — vessel decay/maintenance per-corp
+            } // end for (const corp of corps) — vessel decay/maintenance per-corp
             _mark('vesselDecay');
 
             // ── Specialty Building Effects ────────────────────────────────
