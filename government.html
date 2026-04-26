@@ -76,7 +76,7 @@ import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
 import { calculateBillSupport, computeBillCostTotals } from './js/game/bills.js';
 import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_TO_MINISTRY_KEY, FISCAL_CATEGORIES } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
-import { RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
+import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
 (function () {
@@ -1985,16 +1985,13 @@ async function loadBudgetData() {
             .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
         for (const a of (gtas || [])) {
             for (const art of (a.articles || [])) {
-                if (art?.type !== 'transfer') continue;
-                const data = art.data || {};
-                if (data.transfer_type !== 'recurring') continue;
-                const amount = Number(data.amount || 0);
-                if (!Number.isFinite(amount) || amount <= 0) continue;
-                const author = art.author_nation_id;
-                if (!author || (author !== a.nation_a_id && author !== a.nation_b_id)) continue;
-                const counterparty = author === a.nation_a_id ? a.nation_b_id : a.nation_a_id;
-                const fromNation = data.direction === 'a_to_b' ? author : counterparty;
-                const toNation   = data.direction === 'a_to_b' ? counterparty : author;
+                // Caller-side filter: only recurring (one-time hits reserves once).
+                if (art?.data?.transfer_type !== 'recurring') continue;
+                // Endpoint resolution is shared across callsites
+                // (see js/game/diplomacy-constants.js → resolveTransferEndpoints).
+                const endpoints = resolveTransferEndpoints(art, a);
+                if (!endpoints) continue;
+                const { fromNation, toNation, amount } = endpoints;
                 const annual = amount * GAME_CONFIG.TICKS_PER_YEAR;
                 if (toNation === nation.id)   recurringReceivedAnnual += annual;
                 if (fromNation === nation.id) recurringGivenAnnual    += annual;

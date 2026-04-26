@@ -5,7 +5,7 @@
 
 import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { hasElectedPresident, getCurrentConstitutionalSystem, MINISTRY_OFFICE_NAMES } from './government-types.js';
-import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
+import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './diplomacy-constants.js';
 import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology, loadNationIdeologies } from './ideology.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
 import { computeCorpValuation } from './corp-valuation.js';
@@ -2026,25 +2026,22 @@ export async function resolveTradeRatificationBill(supabase, bill, ctx) {
                 // skipped here — they need a per-tick processor (not yet implemented).
                 if (newAgreement) {
                     let articlesMutated = false;
+                    const agreementForResolve = { nation_a_id: nA, nation_b_id: nB };
                     for (const article of articles) {
-                        if (article?.type !== 'transfer') continue;
-                        const data = article.data || {};
+                        const data = article?.data || {};
+                        // Caller-side filters: only one-time, only unpaid.
                         if (data.transfer_type === 'recurring') continue;
                         if (data.executed_at_tick != null) continue; // idempotent
-                        const amount = Number(data.amount || 0);
-                        if (!Number.isFinite(amount) || amount <= 0) continue;
-
-                        // Resolve sender/receiver from author + direction.
-                        // direction='a_to_b' → drafter (author) pays counterparty;
-                        // direction='b_to_a' → counterparty pays drafter.
-                        const author = article.author_nation_id;
-                        if (!author || (author !== nA && author !== nB)) {
-                            console.error('[resolveTradeRatification] transfer article has invalid author_nation_id', author, '— skipping');
+                        // Endpoint resolution is shared across callsites
+                        // (see js/game/diplomacy-constants.js).
+                        const endpoints = resolveTransferEndpoints(article, agreementForResolve);
+                        if (!endpoints) {
+                            if (article?.type === 'transfer') {
+                                console.error('[resolveTradeRatification] transfer article malformed; skipping', article);
+                            }
                             continue;
                         }
-                        const counterparty = author === nA ? nB : nA;
-                        const fromNation = data.direction === 'a_to_b' ? author : counterparty;
-                        const toNation   = data.direction === 'a_to_b' ? counterparty : author;
+                        const { fromNation, toNation, amount } = endpoints;
 
                         // Read current reserves of both nations, deduct from sender,
                         // credit receiver. Floor sender at 0 (no negative reserves).

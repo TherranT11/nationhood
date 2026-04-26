@@ -3297,6 +3297,47 @@ const DIPLOMACY_CONFIG = {
 };
 
 /**
+ * Resolve sender, receiver, and amount for a trade-agreement `transfer` article.
+ * Centralizes the author + direction → from/to logic that previously lived
+ * inline in the ratification handler, the per-tick recurring processor, and
+ * the budget UI aggregator (and was prone to drift across them).
+ *
+ * Article schema (constructed in the diplomacy negotiation modal):
+ *   - article.author_nation_id: the drafter
+ *   - article.data.amount: dollars (per-tick if recurring, lump-sum otherwise)
+ *   - article.data.direction: 'a_to_b' = drafter pays counterparty,
+ *                             'b_to_a' = counterparty pays drafter
+ *   - article.data.transfer_type: 'recurring' | undefined (one-time)
+ *
+ * Agreement schema: nation_a_id / nation_b_id (canonical sorted order, a < b).
+ *
+ * Returns { fromNation, toNation, amount } on success, or null when the
+ * article is malformed (wrong type, bad amount, invalid author). Callers
+ * should treat null as "skip this article". Does NOT filter by transfer_type
+ * or executed/paid markers — those are caller-side concerns since each
+ * callsite has different idempotency rules.
+ */
+function resolveTransferEndpoints(article, agreement) {
+    if (!article || article.type !== 'transfer') return null;
+    if (!agreement || !agreement.nation_a_id || !agreement.nation_b_id) return null;
+
+    var data = article.data || {};
+    var amount = Number(data.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+
+    var author = article.author_nation_id;
+    if (!author || (author !== agreement.nation_a_id && author !== agreement.nation_b_id)) return null;
+
+    var counterparty = author === agreement.nation_a_id
+        ? agreement.nation_b_id
+        : agreement.nation_a_id;
+    var fromNation = data.direction === 'a_to_b' ? author : counterparty;
+    var toNation   = data.direction === 'a_to_b' ? counterparty : author;
+
+    return { fromNation: fromNation, toNation: toNation, amount: amount };
+}
+
+/**
  * Check if a nation's credit rating allows proposing a specific trade agreement type.
  * Returns { allowed: true } or { allowed: false, required: number, reason: string }.
  */
@@ -10129,25 +10170,22 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                 // skipped here — they need a per-tick processor (not yet implemented).
                 if (newAgreement) {
                     let articlesMutated = false;
+                    const agreementForResolve = { nation_a_id: nA, nation_b_id: nB };
                     for (const article of articles) {
-                        if (article?.type !== 'transfer') continue;
-                        const data = article.data || {};
+                        const data = article?.data || {};
+                        // Caller-side filters: only one-time, only unpaid.
                         if (data.transfer_type === 'recurring') continue;
                         if (data.executed_at_tick != null) continue; // idempotent
-                        const amount = Number(data.amount || 0);
-                        if (!Number.isFinite(amount) || amount <= 0) continue;
-
-                        // Resolve sender/receiver from author + direction.
-                        // direction='a_to_b' → drafter (author) pays counterparty;
-                        // direction='b_to_a' → counterparty pays drafter.
-                        const author = article.author_nation_id;
-                        if (!author || (author !== nA && author !== nB)) {
-                            console.error('[resolveTradeRatification] transfer article has invalid author_nation_id', author, '— skipping');
+                        // Endpoint resolution is shared across callsites
+                        // (see js/game/diplomacy-constants.js).
+                        const endpoints = resolveTransferEndpoints(article, agreementForResolve);
+                        if (!endpoints) {
+                            if (article?.type === 'transfer') {
+                                console.error('[resolveTradeRatification] transfer article malformed; skipping', article);
+                            }
                             continue;
                         }
-                        const counterparty = author === nA ? nB : nA;
-                        const fromNation = data.direction === 'a_to_b' ? author : counterparty;
-                        const toNation   = data.direction === 'a_to_b' ? counterparty : author;
+                        const { fromNation, toNation, amount } = endpoints;
 
                         // Read current reserves of both nations, deduct from sender,
                         // credit receiver. Floor sender at 0 (no negative reserves).
@@ -36575,22 +36613,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             let mutated = false;
 
             for (const art of arts) {
-                if (art?.type !== 'transfer') continue;
-                const d = art.data || {};
+                const d = art?.data || {};
+                // Caller-side filters: only recurring, only not-yet-paid this tick.
                 if (d.transfer_type !== 'recurring') continue;
-                if (d.last_paid_at_tick === newTick) continue; // already paid this tick
-
-                const amount = Number(d.amount || 0);
-                if (!Number.isFinite(amount) || amount <= 0) continue;
-
-                const author = art.author_nation_id;
-                if (!author || (author !== agreement.nation_a_id && author !== agreement.nation_b_id)) {
-                    console.error('[recurring transfer] invalid author_nation_id', author, 'on agreement', agreement.id);
+                if (d.last_paid_at_tick === newTick) continue;
+                // Endpoint resolution is shared across callsites
+                // (see js/game/diplomacy-constants.js → resolveTransferEndpoints).
+                const endpoints = resolveTransferEndpoints(art, agreement);
+                if (!endpoints) {
+                    if (art?.type === 'transfer') {
+                        console.error('[recurring transfer] transfer article malformed on agreement', agreement.id);
+                    }
                     continue;
                 }
-                const counterparty = author === agreement.nation_a_id ? agreement.nation_b_id : agreement.nation_a_id;
-                const fromNation = d.direction === 'a_to_b' ? author : counterparty;
-                const toNation   = d.direction === 'a_to_b' ? counterparty : author;
+                const { fromNation, toNation, amount } = endpoints;
 
                 // Atomic per-pair: read both, debit (floor 0), credit, write.
                 // Skip on read failure or incomplete result — without correct
