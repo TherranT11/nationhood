@@ -961,6 +961,17 @@ async function proceed() {
         action_points: 5,
         last_seen_tick: currentTick,
         abandoned_at: null,
+        // Explicit nulls so an upsert into a row that was previously a corp
+        // (same auth UID before the user switched faction type) can't carry
+        // corp data forward. Only the fields that were actually observed
+        // surviving the merge — workforce/reputation/fleet defaults are
+        // schema-level and harmless on parties post chat-popover fix.
+        corp_sector: null,
+        corp_subsector: null,
+        corp_company_type: null,
+        corp_ticker: null,
+        corp_cash_reserves: null,
+        corp_loans: null,
     };
 
     if (isLinkedParty) {

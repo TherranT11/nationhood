@@ -1649,7 +1649,7 @@ function openIdentityPopover(anchorEl, factionId) {
             <span>${nationName ? escapeHtml(nationName) : 'No nation'}</span>
         </div>
         <div class="msg-identity-popover__row">
-            <span>${escapeHtml(typeLabel)}${cached.corp_sector ? ' — ' + escapeHtml(cached.corp_sector) : ''}</span>
+            <span>${escapeHtml(typeLabel)}${rawType === 'corporation' && cached.corp_sector ? ' — ' + escapeHtml(cached.corp_sector) : ''}</span>
         </div>
         ${slug ? `<a class="msg-identity-popover__link" href="nation-info.html?name=${encodeURIComponent(slug)}" target="_blank" rel="noopener">View Nation &rarr;</a>` : ''}
         ${blockBtn}
