@@ -14496,6 +14496,7 @@ async function openIPOInviteModal() {
         .from('factions')
         .select('id, faction_name, nation_id, ideology_value_1, ideology_value_2')
         .eq('faction_type', 'party')
+        .is('abandoned_at', null)
         .order('faction_name');
     if (facErr) console.error('[IPO Invite] Factions query error:', facErr.message);
 
@@ -17024,48 +17025,15 @@ async function deductIPOCash(factionId, amount) {
 }
 
 const IPO_RALLY_OUTCOMES = [
-    { id: 'rousing',  name: 'Rousing Success',  effect: '+6 to +8 approval',  min: 6,  max: 8,  weight: 15, color: '#5cb85c', icon: '★' },
-    { id: 'solid',    name: 'Solid Turnout',     effect: '+3 to +5 approval',  min: 3,  max: 5,  weight: 35, color: '#5aafa5', icon: '●' },
-    { id: 'low',      name: 'Low Turnout',       effect: '+1 to +2 approval',  min: 1,  max: 2,  weight: 25, color: '#c8a64e', icon: '○' },
-    { id: 'gaffe',    name: 'Gaffe',             effect: '-3 to -2 approval',  min: -3, max: -2, weight: 12, color: '#d97a35', icon: '✕' },
+    { id: 'rousing',  name: 'Rousing Success',  effect: '+6 to +8 momentum',  min: 6,  max: 8,  weight: 15, color: '#5cb85c', icon: '★' },
+    { id: 'solid',    name: 'Solid Turnout',     effect: '+3 to +5 momentum',  min: 3,  max: 5,  weight: 35, color: '#5aafa5', icon: '●' },
+    { id: 'low',      name: 'Low Turnout',       effect: '+1 to +2 momentum',  min: 1,  max: 2,  weight: 25, color: '#c8a64e', icon: '○' },
+    { id: 'gaffe',    name: 'Gaffe',             effect: '-3 to -2 momentum',  min: -3, max: -2, weight: 12, color: '#d97a35', icon: '✕' },
     { id: 'divisive', name: 'Divisive Speech',   effect: '+5 own / -2 others', min: 5,  max: 7,  weight: 8,  color: '#8b7ec8', icon: '◆' },
     { id: 'counter',  name: 'Counter-Protest',   effect: '-1 all',             min: -1, max: -1, weight: 5,  color: '#d9534f', icon: '⚡' }
 ];
 
 const IPO_BACK_CHANNEL_EXPOSURE_CHANCE = 0.25; // 25% chance of being exposed
-
-/**
- * Apply an IPO rally approval change through the proper electorate system.
- * Updates faction_electoral_standing.party_approval and logs to party_approval_log.
- */
-async function ipoNudgeApproval(factionId, nationId, delta, source) {
-    if (!delta || delta === 0) return;
-    const { data: standing } = await _supabase
-        .from('faction_electoral_standing')
-        .select('id, party_approval')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId)
-        .maybeSingle();
-    if (!standing) return;
-
-    const old = Number(standing.party_approval ?? 40);
-    const newApproval = Math.round(Math.min(100, Math.max(0, old + delta)) * 100) / 100;
-
-    await _supabase.from('faction_electoral_standing')
-        .update({ party_approval: newApproval })
-        .eq('id', standing.id);
-
-    // Audit log (non-fatal)
-    try {
-        await _supabase.from('party_approval_log').insert({
-            faction_id: factionId,
-            nation_id: nationId,
-            amount: delta,
-            source: source || 'ipo:rally',
-            tick: shardTick || 0
-        });
-    } catch (e) { /* non-blocking */ }
-}
 
 /**
  * Render the actions panel with available action buttons.
@@ -17254,11 +17222,13 @@ async function loadIPOEventLog(orgId) {
                 let desc = '';
 
                 switch (log.action_type) {
-                    case 'hold_rally':
+                    case 'hold_rally': {
+                        const change = data.momentum_change ?? data.approval_change ?? 0;
                         desc = data.type === 'expulsion'
                             ? `expelled ${data.target_name || 'a member'}`
-                            : `held a rally: ${data.outcome_name || '?'} (${data.approval_change >= 0 ? '+' : ''}${data.approval_change || 0})`;
+                            : `held a rally: ${data.outcome_name || '?'} (${change >= 0 ? '+' : ''}${change})`;
                         break;
+                    }
                     case 'rally_all':
                         desc = `rallied all members (${(data.results || []).length} parties)`;
                         break;
@@ -17412,12 +17382,20 @@ async function confirmHoldRally() {
 
         // Roll outcome
         const outcome = rollRallyOutcome();
-        const approvalChange = randomInt(outcome.min, outcome.max);
+        const momentumChange = randomInt(outcome.min, outcome.max);
 
-        // Apply approval change to the TARGET faction via electorate system
-        const targetNationId = targetMember?.factions?.nation_id;
-        if (targetNationId) {
-            await ipoNudgeApproval(targetId, targetNationId, approvalChange, 'ipo:hold_rally');
+        // Apply momentum change to the TARGET faction
+        if (momentumChange !== 0) {
+            try {
+                await _supabase.rpc('adjust_momentum', {
+                    p_faction_id: targetId,
+                    p_delta: momentumChange,
+                    p_label: `IPO rally by ${currentFaction.faction_name} (${outcome.name})`,
+                    p_tick: shardTick || 0
+                });
+            } catch (e) {
+                console.error('[IPO Action] adjust_momentum failed:', e);
+            }
         }
 
         // Log the action
@@ -17426,7 +17404,7 @@ async function confirmHoldRally() {
             target_faction_name: targetName,
             outcome_id: outcome.id,
             outcome_name: outcome.name,
-            approval_change: approvalChange
+            momentum_change: momentumChange
         };
 
         await _supabase.from('ipo_action_log').insert({
@@ -17443,13 +17421,13 @@ async function confirmHoldRally() {
             org_id: ipoSelectedOrgId,
             faction_id: null,
             is_system: true,
-            message_text: `${currentFaction.faction_name} rallied support for ${targetName}: ${outcome.name} (${approvalChange >= 0 ? '+' : ''}${approvalChange} approval).`,
+            message_text: `${currentFaction.faction_name} rallied support for ${targetName}: ${outcome.name} (${momentumChange >= 0 ? '+' : ''}${momentumChange} momentum).`,
             tick_posted: shardTick
         });
 
         closeIPOActionModal();
         renderIPOActionsPanel();
-        showIPOActionResult('Hold Rally for ' + targetName, outcome, approvalChange);
+        showIPOActionResult('Hold Rally for ' + targetName, outcome, momentumChange);
     } catch (e) {
         console.error('[IPO Action] Hold rally error:', e);
         alert('Failed to execute rally.');
@@ -17485,14 +17463,22 @@ async function executeRallyAll() {
                 faction_name: m.factions?.faction_name || 'Unknown',
                 outcome_id: outcome.id,
                 outcome_name: outcome.name,
-                approval_change: change
+                momentum_change: change
             };
         });
 
-        // Apply approval changes via electorate system
+        // Apply momentum changes
         for (const r of results) {
-            if (r.nation_id) {
-                await ipoNudgeApproval(r.faction_id, r.nation_id, r.approval_change, 'ipo:rally_all');
+            if (r.momentum_change === 0) continue;
+            try {
+                await _supabase.rpc('adjust_momentum', {
+                    p_faction_id: r.faction_id,
+                    p_delta: r.momentum_change,
+                    p_label: `IPO rally-all by ${currentFaction.faction_name} (${r.outcome_name})`,
+                    p_tick: shardTick || 0
+                });
+            } catch (e) {
+                console.error('[IPO Action] adjust_momentum failed:', e);
             }
         }
 
@@ -17507,7 +17493,7 @@ async function executeRallyAll() {
 
         // Build summary
         const summaryLines = results.map(r =>
-            `${r.faction_name}: ${r.outcome_name} (${r.approval_change >= 0 ? '+' : ''}${r.approval_change})`
+            `${r.faction_name}: ${r.outcome_name} (${r.momentum_change >= 0 ? '+' : ''}${r.momentum_change})`
         ).join(', ');
 
         await _supabase.from('ipo_chat').insert({
@@ -17928,7 +17914,7 @@ function showIPOActionResult(title, outcome, change) {
         <div class="ipo-modal-body" style="text-align:center; padding:30px;">
             <div class="ipo-action-result-icon" style="color:${outcome.color}">${outcome.icon}</div>
             <div class="ipo-action-result-name" style="color:${outcome.color}">${outcome.name}</div>
-            <div class="ipo-action-result-effect">${change >= 0 ? '+' : ''}${change} Approval</div>
+            <div class="ipo-action-result-effect">${change >= 0 ? '+' : ''}${change} Momentum</div>
             <div class="ipo-action-result-desc">${outcome.effect}</div>
             <button class="ipo-btn ipo-btn--create-large" style="margin-top:20px;" onclick="closeIPOActionModal()">OK</button>
         </div>`;
@@ -17945,7 +17931,7 @@ function showIPOActionResultMulti(title, results) {
                 <span class="ipo-action-multi-icon" style="color:${outcome.color}">${outcome.icon}</span>
                 <span class="ipo-action-multi-name">${escapeHtml(r.faction_name)}</span>
                 <span class="ipo-action-multi-outcome" style="color:${outcome.color}">${r.outcome_name}</span>
-                <span class="ipo-action-multi-change">${r.approval_change >= 0 ? '+' : ''}${r.approval_change}</span>
+                <span class="ipo-action-multi-change">${r.momentum_change >= 0 ? '+' : ''}${r.momentum_change}</span>
             </div>`;
     }).join('');
 
