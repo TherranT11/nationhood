@@ -18551,6 +18551,18 @@ window.submitIPOCreation = submitIPOCreation;
 window.renderIPOCreateStep = renderIPOCreateStep;
 window.ipoHandleLogoUpload = ipoHandleLogoUpload;
 window.ipoRemoveLogoUpload = ipoRemoveLogoUpload;
+// Toggle the wizard step-1 Next button based on whether name + logo text are filled.
+// Updates the existing button in-place to avoid blowing away focus / cursor position
+// in the input the user is typing into.
+function ipoUpdateStep1Next() {
+    const btn = document.getElementById('ipo-step1-next');
+    if (!btn) return;
+    const ready = ipoCreateName.trim() && ipoCreateLogoText.trim();
+    btn.disabled = !ready;
+    // Sync logo preview if it's on screen so the user sees their text update
+    const preview = document.getElementById('ipo-create-logo-preview');
+    if (preview) preview.innerHTML = `Preview: ${ipoCreateLogoSymbol} ${escapeHtml(ipoCreateLogoText) || '...'}`;
+}
 // Setter functions for module-scoped variables used in inline handlers
 window.ipoSetCreateName = function(v) { ipoCreateName = v; ipoUpdateStep1Next(); };
 window.ipoSetCreateDesc = function(v) { ipoCreateDesc = v; };
