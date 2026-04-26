@@ -2019,6 +2019,68 @@ export async function resolveTradeRatificationBill(supabase, bill, ctx) {
                 }).select('id').single();
                 if (taInsertErr) console.error('[resolveTradeRatification] trade_agreements insert failed:', taInsertErr.message);
 
+                // Execute one-time `transfer` articles. Previously these were stored
+                // in the agreement row but never read, so payments like "Vostia shall
+                // make a one-time transfer of $5B to Dravka" silently never landed.
+                // Recurring transfers (transfer_type === 'recurring') are intentionally
+                // skipped here — they need a per-tick processor (not yet implemented).
+                if (newAgreement) {
+                    let articlesMutated = false;
+                    for (const article of articles) {
+                        if (article?.type !== 'transfer') continue;
+                        const data = article.data || {};
+                        if (data.transfer_type === 'recurring') continue;
+                        if (data.executed_at_tick != null) continue; // idempotent
+                        const amount = Number(data.amount || 0);
+                        if (!Number.isFinite(amount) || amount <= 0) continue;
+
+                        // Resolve sender/receiver from author + direction.
+                        // direction='a_to_b' → drafter (author) pays counterparty;
+                        // direction='b_to_a' → counterparty pays drafter.
+                        const author = article.author_nation_id;
+                        if (!author || (author !== nA && author !== nB)) {
+                            console.error('[resolveTradeRatification] transfer article has invalid author_nation_id', author, '— skipping');
+                            continue;
+                        }
+                        const counterparty = author === nA ? nB : nA;
+                        const fromNation = data.direction === 'a_to_b' ? author : counterparty;
+                        const toNation   = data.direction === 'a_to_b' ? counterparty : author;
+
+                        // Read current reserves of both nations, deduct from sender,
+                        // credit receiver. Floor sender at 0 (no negative reserves).
+                        const { data: rows } = await supabase.from('nations')
+                            .select('id, budget_reserves').in('id', [fromNation, toNation]);
+                        const reserves = {};
+                        for (const r of (rows || [])) reserves[r.id] = Number(r.budget_reserves || 0);
+                        const fromAfter = Math.max(0, (reserves[fromNation] ?? 0) - amount);
+                        const toAfter   = (reserves[toNation] ?? 0) + amount;
+                        const actualDebit = (reserves[fromNation] ?? 0) - fromAfter; // capped by available
+
+                        const { error: fromErr } = await supabase.from('nations')
+                            .update({ budget_reserves: fromAfter }).eq('id', fromNation);
+                        if (fromErr) {
+                            console.error('[resolveTradeRatification] transfer debit failed for', fromNation, fromErr.message);
+                            continue;
+                        }
+                        const { error: toErr } = await supabase.from('nations')
+                            .update({ budget_reserves: toAfter }).eq('id', toNation);
+                        if (toErr) {
+                            console.error('[resolveTradeRatification] transfer credit failed for', toNation, toErr.message);
+                            // Best-effort rollback of the debit so reserves don't vanish.
+                            await supabase.from('nations').update({ budget_reserves: reserves[fromNation] ?? 0 }).eq('id', fromNation);
+                            continue;
+                        }
+
+                        // Mark as executed in the article so this never fires twice.
+                        article.data = { ...data, executed_at_tick: currentTick, executed_amount: actualDebit };
+                        articlesMutated = true;
+                        console.log(`[resolveTradeRatification] transfer executed: ${fromNation} → ${toNation}, $${(actualDebit/1e9).toFixed(2)}B (requested $${(amount/1e9).toFixed(2)}B)`);
+                    }
+                    if (articlesMutated) {
+                        await supabase.from('trade_agreements').update({ articles }).eq('id', newAgreement.id);
+                    }
+                }
+
                 if (neg.agreement_type === 'economic_aid' && newAgreement) {
                     const aidTerms = articles.find(a => a.type === 'aid_terms');
                     if (aidTerms) {

@@ -1647,6 +1647,97 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Stockpile purchase execution failed (non-fatal):', spErr);
     }
 
+    // 3.5f Recurring transfer execution — pay every `transfer` article where
+    // data.transfer_type === 'recurring' once per tick. One-time transfers are
+    // executed at ratification (see resolveTradeRatificationBill); this loop
+    // only fires the recurring kind. Idempotent within a tick via
+    // data.last_paid_at_tick so re-runs (or partial-progress retries) don't
+    // double-pay.
+    try {
+        const { data: activeAgreements } = await supabase
+            .from('trade_agreements')
+            .select('id, nation_a_id, nation_b_id, articles, expires_at_tick')
+            .eq('status', 'active');
+
+        for (const agreement of (activeAgreements || [])) {
+            // Skip already-expired (3.6 below will mark them; don't pre-pay them this tick).
+            if (agreement.expires_at_tick != null && agreement.expires_at_tick <= newTick) continue;
+
+            const arts = agreement.articles || [];
+            let mutated = false;
+
+            for (const art of arts) {
+                if (art?.type !== 'transfer') continue;
+                const d = art.data || {};
+                if (d.transfer_type !== 'recurring') continue;
+                if (d.last_paid_at_tick === newTick) continue; // already paid this tick
+
+                const amount = Number(d.amount || 0);
+                if (!Number.isFinite(amount) || amount <= 0) continue;
+
+                const author = art.author_nation_id;
+                if (!author || (author !== agreement.nation_a_id && author !== agreement.nation_b_id)) {
+                    console.error('[recurring transfer] invalid author_nation_id', author, 'on agreement', agreement.id);
+                    continue;
+                }
+                const counterparty = author === agreement.nation_a_id ? agreement.nation_b_id : agreement.nation_a_id;
+                const fromNation = d.direction === 'a_to_b' ? author : counterparty;
+                const toNation   = d.direction === 'a_to_b' ? counterparty : author;
+
+                // Atomic per-pair: read both, debit (floor 0), credit, write.
+                // Skip on read failure or incomplete result — without correct
+                // baselines the UPDATE below would overwrite reserves with
+                // garbage (sender → 0, receiver → just `amount`).
+                const { data: rows, error: readErr } = await supabase.from('nations')
+                    .select('id, budget_reserves')
+                    .in('id', [fromNation, toNation]);
+                if (readErr || !rows || rows.length < 2) {
+                    console.error('[recurring transfer] reserves read failed/incomplete; skipping agreement',
+                        agreement.id, readErr?.message || `got ${rows?.length || 0}/2 rows`);
+                    continue;
+                }
+                const reserves: Record<string, number> = {};
+                for (const r of rows) reserves[r.id] = Number(r.budget_reserves || 0);
+                const fromAfter = Math.max(0, (reserves[fromNation] ?? 0) - amount);
+                const toAfter   = (reserves[toNation] ?? 0) + amount;
+
+                const { error: fromErr } = await supabase.from('nations')
+                    .update({ budget_reserves: fromAfter }).eq('id', fromNation);
+                if (fromErr) {
+                    console.error('[recurring transfer] debit failed for', fromNation, fromErr.message);
+                    continue;
+                }
+                const { error: toErr } = await supabase.from('nations')
+                    .update({ budget_reserves: toAfter }).eq('id', toNation);
+                if (toErr) {
+                    console.error('[recurring transfer] credit failed for', toNation, toErr.message);
+                    // Best-effort rollback so reserves don't vanish.
+                    await supabase.from('nations').update({ budget_reserves: reserves[fromNation] ?? 0 }).eq('id', fromNation);
+                    continue;
+                }
+
+                art.data = { ...d, last_paid_at_tick: newTick };
+                mutated = true;
+                console.log(`[recurring transfer] paid: ${fromNation} → ${toNation}, $${(amount/1e9).toFixed(2)}B (agreement ${agreement.id})`);
+            }
+
+            if (mutated) {
+                // If this update fails AFTER money moved, last_paid_at_tick won't
+                // land and next tick will re-process the same articles → DOUBLE-PAY.
+                // Surface loudly so it's visible in logs.
+                const { error: markErr } = await supabase.from('trade_agreements')
+                    .update({ articles: arts }).eq('id', agreement.id);
+                if (markErr) {
+                    console.error('[recurring transfer] FAILED to mark articles paid for agreement',
+                        agreement.id, markErr.message,
+                        "— money moved but mark didn't; next tick may double-pay");
+                }
+            }
+        }
+    } catch (rtErr) {
+        console.error('[advanceTick] Recurring transfer execution failed (non-fatal):', rtErr);
+    }
+
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
     try {
         const expiredAgreements = await processExpiredTradeAgreements(supabase, newTick);
