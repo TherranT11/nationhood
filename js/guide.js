@@ -1216,11 +1216,11 @@ const guideContent = {
         title: 'Diplomacy Guide',
         html: `
 <details open><summary>Dashboard Overview</summary><div>
-<p>The Diplomacy page is your window into foreign affairs. It has <strong>three main views</strong>, toggled at the top:</p>
+<p>The Diplomacy page is your window into foreign affairs. It has three top-level subtabs (<strong>WORLD</strong> &middot; <strong>TRADE</strong> &middot; <strong>IPO</strong>) and, inside the WORLD subtab, a view toggle for Diplomacy and World Nations:</p>
 <ul>
-<li><strong>Diplomacy</strong> &mdash; the default view with four sub-tabs: Relations, Agreements, Initiative, and Inbox</li>
-<li><strong>International Orgs</strong> &mdash; International Party Organisations (IPOs) you belong to</li>
-<li><strong>World Nations</strong> &mdash; a global overview of every nation in the game</li>
+<li><strong>WORLD</strong> &mdash; the default subtab. Diplomacy view has four sub-sections: Relations, Agreements, Initiative, and Inbox. Toggle to World Nations for the global overview.</li>
+<li><strong>TRADE</strong> &mdash; trade negotiations, agreements, and shipping</li>
+<li><strong>IPO</strong> &mdash; International Party Organisations you belong to</li>
 </ul>
 
 <h3>Diplomacy Sub-Tabs</h3>
@@ -1540,11 +1540,11 @@ const guideContent = {
 </div></details>
 
 <details><summary>International Party Organisations (IPOs)</summary><div>
-<p>IPOs are voluntary cross-nation associations of like-minded parties. They let you coordinate strategy, pool resources, and project ideological influence across borders. Access them via the <strong>International Orgs</strong> tab on the Diplomacy page.</p>
+<p>IPOs are voluntary cross-nation associations of like-minded parties. They let you coordinate strategy, pool resources, and project ideological influence across borders. Access them via the <strong>IPO</strong> subtab on the Diplomacy page. All costs are paid in cash from your party funds.</p>
 
 <h3>Creating an Organisation</h3>
 <ul>
-<li><strong>Cost:</strong> 4 AP</li>
+<li><strong>Cost:</strong> $200k base, plus $50k for each charter article beyond the first</li>
 <li>You define a <strong>charter</strong> with up to 5 articles (only Article I &mdash; Mission is required)</li>
 <li>The founding party becomes the first president and member</li>
 <li>Choose a name, logo symbol, and abbreviation</li>
@@ -1557,7 +1557,7 @@ const guideContent = {
 <tr><td><strong>II. Leadership</strong></td><td>Presidency type (Rotation, Most Seats, or Random), term length (1&ndash;7 years), voting weight (Equal or Seat Share), vote threshold (Majority or Unanimous).</td></tr>
 <tr><td><strong>III. Membership</strong></td><td>Admission method (Vote or President decides), ideological threshold (restrict by ideology direction), expulsion clause (Disabled, President, Majority, or Unanimous).</td></tr>
 <tr><td><strong>IV. Governance</strong></td><td>Action leadership model, vote transparency (Public or Secret ballot), observer status, veto rights, emergency powers.</td></tr>
-<tr><td><strong>V. Resources</strong></td><td>Solidarity fund (enable + AP per quarter), resource sharing cap, joint statement clause, headquarters nation.</td></tr>
+<tr><td><strong>V. Resources</strong></td><td>Solidarity fund (enable + cash per quarter), resource sharing cap, joint statement clause, headquarters nation.</td></tr>
 </table>
 
 <h3>Membership</h3>
@@ -1577,20 +1577,20 @@ const guideContent = {
 </ul>
 
 <h3>Solidarity Fund</h3>
-<p>If enabled in the charter, members contribute AP each quarter to a shared fund. The fund can be spent on:</p>
+<p>If enabled in the charter, members contribute cash each quarter (in $50k increments) to a shared fund. The fund can be spent on:</p>
 <ul>
-<li><strong>Back-channel transfers</strong> &mdash; Send AP to another member (1 AP from fund, 25% exposure risk)</li>
+<li><strong>Back-channel transfers</strong> &mdash; Send cash to another member, drawn from the fund (25% exposure risk)</li>
 <li><strong>Funding org actions</strong> &mdash; Rallies, symposiums, and other collective actions</li>
 </ul>
-<p>The resource sharing cap (if set) limits how many transfers each member can make per term.</p>
+<p>The resource sharing cap (if set) limits how many transfers each member can make per term. Headquarters upkeep draws $50k/tick from the fund.</p>
 
 <h3>IPO Actions</h3>
 <table>
 <tr><th>Action</th><th>Cost</th><th>Effect</th></tr>
-<tr><td><strong>Targeted Rally</strong></td><td>4 AP</td><td>Roll for approval change for one other member faction (+8 to &minus;1 range)</td></tr>
-<tr><td><strong>Global Rally</strong></td><td>7 AP</td><td>Roll for every member faction independently (president only)</td></tr>
-<tr><td><strong>Back-Channel</strong></td><td>2 AP (or 1 from fund)</td><td>Secret AP transfer to another member (25% exposure risk from fund)</td></tr>
-<tr><td><strong>Joint Statement</strong></td><td>1 AP</td><td>President issues org-wide statement</td></tr>
+<tr><td><strong>Targeted Rally</strong></td><td>$200k</td><td>Roll for approval change for one other member faction (+8 to &minus;1 range)</td></tr>
+<tr><td><strong>Global Rally</strong></td><td>$350k</td><td>Roll for every member faction independently (president only)</td></tr>
+<tr><td><strong>Back-Channel</strong></td><td>$100k overhead + transfer (or fund-source: amount drawn from fund)</td><td>Secret cash transfer to another member (25% exposure risk if drawn from fund)</td></tr>
+<tr><td><strong>Joint Statement</strong></td><td>$50k</td><td>President issues org-wide statement</td></tr>
 <tr><td><strong>Symposium</strong></td><td>Vote required</td><td>Shift a target nation's ideology by +3 on a chosen axis (4-tick delay, 20-tick cooldown)</td></tr>
 </table>
 
