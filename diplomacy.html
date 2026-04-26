@@ -15138,7 +15138,7 @@ function renderIPOCharterPanel(charter, org) {
             committee: 'Committee — all actions require a vote (funded from solidarity fund)',
             presidential: 'Presidential — only the president can execute actions',
             delegated: 'Delegated — president + officers can act, others must vote',
-            tiered: 'Tiered — actions ≤2 AP are unilateral, higher cost requires a vote'
+            tiered: `Tiered — actions ≤${fmtIPOCash(2 * IPO_AP_TO_CASH)} are unilateral, higher cost requires a vote`
         };
         const transLabels = { public: 'Public Ballot', secret: 'Secret Ballot' };
         const vetoLabels = { founding: 'Founding Party', president: 'Current President', hq: 'HQ Nation Party' };
@@ -18131,11 +18131,11 @@ function renderGovernanceFields(art, idx) {
     const c = art.config;
     return `
         ${ipoRadioGroup('Action Leadership', idx, 'actionLeadership', [
-            { value: 'unilateral', label: 'Unilateral', hint: 'Any member can execute actions with their own AP' },
+            { value: 'unilateral', label: 'Unilateral', hint: 'Any member can execute actions with their own cash' },
             { value: 'committee', label: 'Committee', hint: 'All actions require a vote. Funded from solidarity fund' },
             { value: 'presidential', label: 'Presidential', hint: 'Only the president can execute actions' },
             { value: 'delegated', label: 'Delegated', hint: 'President + designated officers can act. Others vote' },
-            { value: 'tiered', label: 'Tiered', hint: 'Actions ≤2 AP are unilateral. Higher cost requires a vote' }
+            { value: 'tiered', label: 'Tiered', hint: `Actions ≤${fmtIPOCash(2 * IPO_AP_TO_CASH)} are unilateral. Higher cost requires a vote` }
         ], c.actionLeadership || 'unilateral')}
         ${ipoRadioGroup('Vote Transparency', idx, 'voteTransparency', [
             { value: 'public', label: 'Public Ballot', hint: 'All see how everyone voted' },
