@@ -51,9 +51,19 @@
     min-height: 0;
 }
 
+/* World page is now a column: top-row (map + side panel) then a full-width
+   nations grid below the map. */
 .world-page {
-    display: flex; gap: 12px; padding: 12px;
+    display: flex; flex-direction: column; gap: 12px; padding: 12px;
     flex: 1; min-height: 0; overflow-y: auto;
+}
+.world-top-row {
+    display: flex; gap: 12px;
+    flex-shrink: 0;
+}
+.world-side {
+    display: flex; flex-direction: column; gap: 12px;
+    flex-shrink: 0;
 }
 
 /* ── Map panel (left/center) ── */
@@ -235,16 +245,80 @@
     font-style: italic; padding: 4px 0;
 }
 
+/* ── Bottom nations grid (full-width below the map) ── */
+.world-nations-grid-wrap {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-main);
+    flex-shrink: 0;
+}
+.world-nations-grid-header {
+    padding: 10px 14px; border-bottom: 1px solid var(--border-main);
+    background: var(--bg-card);
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.1em; color: var(--text-secondary); text-transform: uppercase;
+}
+.world-nations-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    padding: 12px 14px;
+}
+.wn-grid-cell {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hair, var(--border-main));
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s;
+    min-width: 0;
+}
+.wn-grid-cell:hover { background: var(--bg-hover); border-color: var(--border-main); }
+.wn-grid-cell.is-selected {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-card));
+}
+.wn-grid-cell.is-you .wn-grid-name { color: var(--accent); font-weight: 700; }
+.wn-grid-flag {
+    width: 28px; height: 18px; object-fit: cover;
+    border: 1px solid var(--border-main); flex-shrink: 0;
+}
+.wn-grid-info { flex: 1; min-width: 0; }
+.wn-grid-name {
+    font-size: 12px; font-weight: 600; color: var(--text-bright);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wn-grid-gov {
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wn-grid-empty {
+    grid-column: 1 / -1;
+    padding: 16px; text-align: center;
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--text-dim);
+}
+
 /* ── Responsive ── */
+@media (max-width: 1400px) {
+    .world-nations-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 @media (max-width: 1200px) {
-    .world-page { flex-direction: column; align-items: center; height: auto; overflow: auto; }
+    .world-top-row { flex-direction: column; align-items: stretch; }
     .world-map-panel { width: 100%; max-width: 1140px; height: 500px; }
-    .world-highlight { width: 100%; max-width: 600px; height: auto; max-height: 400px; }
+    .world-side { width: 100%; }
+    .world-highlight { width: 100%; max-width: 100%; height: auto; max-height: 400px; }
     .world-events-panel { width: 100%; max-width: 600px; max-height: 300px; }
+    .world-nations-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 768px) {
     .world-page { padding: 8px; gap: 8px; }
+    .world-top-row { gap: 8px; }
     .world-map-panel { height: 350px; }
     .world-highlight { max-height: 350px; }
     .world-events-panel { max-height: 280px; }
+    .world-nations-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px; gap: 6px; }
+    .wn-grid-cell { padding: 8px; gap: 8px; }
+}
+@media (max-width: 480px) {
+    .world-nations-grid { grid-template-columns: 1fr; }
 }

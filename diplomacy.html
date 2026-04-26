@@ -29,39 +29,47 @@
 <!-- ===== WORLD SUBTAB ===== -->
 <div id="subtab-world" class="diplo-subtab-content">
 <div class="world-page">
-    <!-- Map panel -->
-    <div class="world-map-panel" id="world-map-panel">
-        <img id="world-map-img" src="./assets/map/World Map Crucera 3.1.svg" alt="World Map" draggable="false"
-             style="width:100%;height:auto;pointer-events:none;">
-        <div class="world-map-controls">
-            <div class="world-map-btn" id="map-zoom-in">+</div>
-            <div class="world-map-btn" id="map-zoom-out">&minus;</div>
-            <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+    <div class="world-top-row">
+        <!-- Map panel -->
+        <div class="world-map-panel" id="world-map-panel">
+            <img id="world-map-img" src="./assets/map/World Map Crucera 3.1.svg" alt="World Map" draggable="false"
+                 style="width:100%;height:auto;pointer-events:none;">
+            <div class="world-map-controls">
+                <div class="world-map-btn" id="map-zoom-in">+</div>
+                <div class="world-map-btn" id="map-zoom-out">&minus;</div>
+                <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+            </div>
+            <div class="world-map-zoom" id="map-zoom-label">100%</div>
+            <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
         </div>
-        <div class="world-map-zoom" id="map-zoom-label">100%</div>
-        <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
-    </div>
 
-    <!-- Nation highlight panel -->
-    <div style="display:flex;flex-direction:column;gap:12px;flex-shrink:0;">
-    <div class="world-highlight" id="world-highlight">
-        <div class="world-highlight-header">
-            <div class="world-highlight-dot" style="background:var(--accent);"></div>
-            <span class="world-highlight-title">Nation Overview</span>
-        </div>
-        <!-- Search input -->
-        <div style="padding:8px 14px;border-bottom:1px solid var(--border-main);">
-            <input id="world-nation-search" type="text" placeholder="Search nations..." style="width:100%;padding:6px 10px;background:var(--bg-card);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;outline:none;box-sizing:border-box;">
-        </div>
-        <div class="world-highlight-body" id="world-highlight-body">
-            <div class="world-highlight-empty">
-                <div style="font-size:1.5rem;margin-bottom:8px;opacity:0.4;">&#127758;</div>
-                <div style="font-family:var(--font-mono);font-size:10px;">Select a nation</div>
-                <div style="font-family:var(--font-mono);font-size:8px;margin-top:4px;">Type a name above or select from the list</div>
+        <!-- Nation highlight panel (search + selected nation card) -->
+        <div class="world-side">
+            <div class="world-highlight" id="world-highlight">
+                <div class="world-highlight-header">
+                    <div class="world-highlight-dot" style="background:var(--accent);"></div>
+                    <span class="world-highlight-title">Nation Overview</span>
+                </div>
+                <!-- Search input -->
+                <div style="padding:8px 14px;border-bottom:1px solid var(--border-main);">
+                    <input id="world-nation-search" type="text" placeholder="Search nations..." style="width:100%;padding:6px 10px;background:var(--bg-card);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;outline:none;box-sizing:border-box;">
+                </div>
+                <div class="world-highlight-body" id="world-highlight-body">
+                    <div class="world-highlight-empty">
+                        <div style="font-size:1.5rem;margin-bottom:8px;opacity:0.4;">&#127758;</div>
+                        <div style="font-family:var(--font-mono);font-size:10px;">Select a nation</div>
+                        <div style="font-family:var(--font-mono);font-size:8px;margin-top:4px;">Type a name above or select from the list</div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+    </div><!-- /world-top-row -->
 
+    <!-- Full-width nations grid (renders below the map). renderNationList()
+         populates #world-nations-grid; the search input above filters it. -->
+    <div class="world-nations-grid-wrap">
+        <div class="world-nations-grid-header">ALL NATIONS</div>
+        <div id="world-nations-grid" class="world-nations-grid"></div>
     </div>
 </div>
 </div><!-- /subtab-world -->
@@ -2719,44 +2727,44 @@ function initNationHighlight(allNations, state) {
 }
 
 function renderNationList(allNations, myNationId, filter) {
-    const body = document.getElementById('world-highlight-body');
-    if (!body) return;
-
-    // Remove old list if it exists
-    const oldList = document.getElementById('world-nation-list');
-    if (oldList) oldList.remove();
+    // Renders into the static #world-nations-grid container below the map.
+    // (List previously lived inside #world-highlight as a sibling of the
+    // selected-nation body — moved out so the right-side card carries only
+    // the search input + selected-nation details.)
+    const grid = document.getElementById('world-nations-grid');
+    if (!grid) return;
 
     const filtered = filter
         ? allNations.filter(n => n.name.toLowerCase().includes(filter.toLowerCase()))
         : allNations;
 
-    const listHtml = filtered.map(n => {
+    const cellsHtml = filtered.map(n => {
         const isYou = n.id === myNationId;
         const isSelected = n.id === _worldSelectedNationId;
-        const nameColor = isSelected ? 'var(--accent)' : isYou ? 'var(--accent)' : 'var(--text-bright)';
-        const nameWeight = isSelected || isYou ? '700' : '500';
-        const indicator = isSelected ? ' \u25C0' : '';
+        const cellClasses = ['wn-grid-cell'];
+        if (isSelected) cellClasses.push('is-selected');
+        if (isYou) cellClasses.push('is-you');
         const flagUrl = n.flag_url || `assets/flags/${n.name}.png`;
-        return `<div class="world-highlight-stat-row" style="cursor:pointer;padding:6px 0;display:flex;align-items:center;gap:8px;" data-nation-id="${n.id}">
-            <img src="${flagUrl}" alt="" style="width:24px;height:16px;object-fit:cover;border:1px solid var(--border-main);flex-shrink:0;" onerror="this.style.display='none'">
-            <div style="flex:1;min-width:0;">
-                <div style="font-size:12px;font-weight:${nameWeight};color:${nameColor};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(n.name)}${isYou ? ' (You)' : ''}${indicator}</div>
-                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${escapeHtml(n.government_type || '')}</div>
+        return `<div class="${cellClasses.join(' ')}" data-nation-id="${n.id}">
+            <img class="wn-grid-flag" src="${flagUrl}" alt="" onerror="this.style.display='none'">
+            <div class="wn-grid-info">
+                <div class="wn-grid-name">${escapeHtml(n.name)}${isYou ? ' (You)' : ''}${isSelected ? ' ◀' : ''}</div>
+                <div class="wn-grid-gov">${escapeHtml(n.government_type || '')}</div>
             </div>
         </div>`;
     }).join('');
 
-    const listDiv = document.createElement('div');
-    listDiv.id = 'world-nation-list';
-    listDiv.style.cssText = 'padding:0 14px 14px;border-top:1px solid var(--border-main);';
-    listDiv.innerHTML = `<div class="world-highlight-section" style="margin-top:8px;">ALL NATIONS</div>${listHtml}`;
-    body.after(listDiv);
+    grid.innerHTML = cellsHtml || '<div class="wn-grid-empty">No nations match your search.</div>';
 
-    listDiv.addEventListener('click', (e) => {
-        const row = e.target.closest('[data-nation-id]');
-        if (!row) return;
-        selectWorldNation(row.dataset.nationId);
-    });
+    // Bind the click handler once — re-renders on filter/select shouldn't
+    // pile up listeners.
+    if (!grid.dataset.clickBound) {
+        grid.addEventListener('click', (e) => {
+            const cell = e.target.closest('[data-nation-id]');
+            if (cell) selectWorldNation(cell.dataset.nationId);
+        });
+        grid.dataset.clickBound = '1';
+    }
 
     // Wire up search input (once)
     const searchInput = document.getElementById('world-nation-search');
