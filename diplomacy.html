@@ -2580,7 +2580,10 @@ async function initWorldMap() {
                     // controls layout; viewBox handles aspect ratio.
                     svgEl.removeAttribute('width');
                     svgEl.removeAttribute('height');
-                    svgEl.style.cssText = 'display:block;transform-origin:0 0;width:100%;height:auto;pointer-events:none;will-change:transform;';
+                    // No will-change:transform — see comment in world.css; the
+                    // GPU layer promotion makes Chrome bitmap-cache the SVG and
+                    // re-introduces blur at high zoom.
+                    svgEl.style.cssText = 'display:block;transform-origin:0 0;width:100%;height:auto;pointer-events:none;';
                     img.replaceWith(svgEl);
                     img = svgEl;
                 }

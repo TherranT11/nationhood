@@ -79,7 +79,12 @@
 .world-map-panel #world-map-img {
     display: block; transform-origin: 0 0;
     width: 100%; height: auto;
-    pointer-events: none; will-change: transform;
+    pointer-events: none;
+    /* No `will-change: transform` — that promotes the element to a GPU layer,
+       which makes the browser rasterize the inline SVG once at 100% size and
+       bitmap-scale on zoom (visibly blurry past ~150%). Without it, the SVG
+       re-rasterizes at each scale and stays sharp at full 400% zoom. Slightly
+       more CPU during drag, but worth it for vector quality. */
 }
 /* SVG path children retain their default pointer-events independently
    of the root SVG's value — without this, the wheel/drag events on
