@@ -15138,7 +15138,7 @@ function renderIPOCharterPanel(charter, org) {
             committee: 'Committee — all actions require a vote (funded from solidarity fund)',
             presidential: 'Presidential — only the president can execute actions',
             delegated: 'Delegated — president + officers can act, others must vote',
-            tiered: 'Tiered — actions ≤2 AP are unilateral, higher cost requires a vote'
+            tiered: `Tiered — actions ≤${fmtIPOCash(2 * IPO_AP_TO_CASH)} are unilateral, higher cost requires a vote`
         };
         const transLabels = { public: 'Public Ballot', secret: 'Secret Ballot' };
         const vetoLabels = { founding: 'Founding Party', president: 'Current President', hq: 'HQ Nation Party' };
@@ -18131,11 +18131,11 @@ function renderGovernanceFields(art, idx) {
     const c = art.config;
     return `
         ${ipoRadioGroup('Action Leadership', idx, 'actionLeadership', [
-            { value: 'unilateral', label: 'Unilateral', hint: 'Any member can execute actions with their own AP' },
+            { value: 'unilateral', label: 'Unilateral', hint: 'Any member can execute actions with their own cash' },
             { value: 'committee', label: 'Committee', hint: 'All actions require a vote. Funded from solidarity fund' },
             { value: 'presidential', label: 'Presidential', hint: 'Only the president can execute actions' },
             { value: 'delegated', label: 'Delegated', hint: 'President + designated officers can act. Others vote' },
-            { value: 'tiered', label: 'Tiered', hint: 'Actions ≤2 AP are unilateral. Higher cost requires a vote' }
+            { value: 'tiered', label: 'Tiered', hint: `Actions ≤${fmtIPOCash(2 * IPO_AP_TO_CASH)} are unilateral. Higher cost requires a vote` }
         ], c.actionLeadership || 'unilateral')}
         ${ipoRadioGroup('Vote Transparency', idx, 'voteTransparency', [
             { value: 'public', label: 'Public Ballot', hint: 'All see how everyone voted' },
@@ -18508,15 +18508,53 @@ async function submitIPOCreation() {
             tick_posted: shardTick
         });
 
-        // Event log entry
+        // ── News event ──
+        // One row per affected nation; category='political' so it lands in the
+        // Politics tab. trigger_key is set so the world-events feed picks it up
+        // (so the same row also reads as Political | World).
+        const orgName = ipoCreateName.trim();
+        const founderNationName = currentNation.name || 'their nation';
+        let hqNationName = founderNationName;
+        if (charter.resources.headquarters && charter.resources.headquarters !== currentNation.id) {
+            try {
+                const { data: hqNation } = await _supabase
+                    .from('nations').select('name').eq('id', charter.resources.headquarters).maybeSingle();
+                if (hqNation?.name) hqNationName = hqNation.name;
+            } catch (_) { /* fall back to founder */ }
+        }
+        const eventName = `${currentFaction.faction_name} founds ${orgName}`;
+        const description = `The ${currentFaction.faction_name} of ${founderNationName} has created the ${orgName}, headquartered in ${hqNationName}.`;
+        const effects = {
+            org_name: orgName,
+            party: currentFaction.faction_name,
+            founder_nation: founderNationName,
+            hq_nation: hqNationName
+        };
+
+        // Founding nation entry
         await _supabase.from('event_log').insert({
             nation_id: currentNation.id,
-            event_name: `${currentFaction.faction_name} has founded ${ipoCreateName.trim()}.`,
+            event_name: eventName,
+            description_chosen: description,
             trigger_key: 'ipo_founded',
-            category: 'international',
-            effects_applied: { org_name: ipoCreateName.trim(), party: currentFaction.faction_name },
+            category: 'political',
+            effects_applied: effects,
             fired_at_tick: shardTick
         });
+
+        // HQ-nation entry (only if HQ is in a different nation than the founder).
+        // Same description so the HQ nation's local news mentions the new org too.
+        if (charter.resources.headquarters && charter.resources.headquarters !== currentNation.id) {
+            await _supabase.from('event_log').insert({
+                nation_id: charter.resources.headquarters,
+                event_name: eventName,
+                description_chosen: description,
+                trigger_key: 'ipo_founded',
+                category: 'political',
+                effects_applied: effects,
+                fired_at_tick: shardTick
+            });
+        }
 
         closeIPOCreationModal();
         ipoSelectedOrgId = newOrg.id;
