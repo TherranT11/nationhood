@@ -13,20 +13,20 @@
     <!-- Supabase SDK -->
 
     <!-- Shared Styles -->
-  <script type="module" crossorigin src="/assets/diplomacy-B6gyjg-Z.js"></script>
+  <script type="module" crossorigin src="/assets/diplomacy-C1h0-hDT.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-structure-DjsO9xG_.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-CkdB1PU_.js">
   <link rel="modulepreload" crossorigin href="/assets/corp-topbar-rMK78I65.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-RZjANO8p.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-CjDOos3h.js">
   <link rel="modulepreload" crossorigin href="/assets/config-CKNXR-qR.js">
   <link rel="modulepreload" crossorigin href="/assets/stats-tIiBSaQA.js">
-  <link rel="modulepreload" crossorigin href="/assets/political-actions-DGca11uY.js">
+  <link rel="modulepreload" crossorigin href="/assets/political-actions-4MrzZSo4.js">
   <link rel="modulepreload" crossorigin href="/assets/corp-valuation-C0hsb2EQ.js">
-  <link rel="modulepreload" crossorigin href="/assets/budget-DVpkeL-0.js">
-  <link rel="modulepreload" crossorigin href="/assets/bills-CMTsVFN3.js">
-  <link rel="modulepreload" crossorigin href="/assets/trade-constants-CS1Ym9My.js">
+  <link rel="modulepreload" crossorigin href="/assets/budget-Cxyv7-Lf.js">
+  <link rel="modulepreload" crossorigin href="/assets/bills-C99fvC15.js">
+  <link rel="modulepreload" crossorigin href="/assets/trade-constants-CNEDhz_t.js">
   <link rel="modulepreload" crossorigin href="/assets/shipping-CQiz46tZ.js">
   <link rel="stylesheet" crossorigin href="/assets/diplomacy-CAE8Y_CB.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
@@ -132,6 +132,12 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- ═══ IPO Creation / Action Modal (shared overlay used by openIPOCreationModal,
+        openIPOActionModal, executeIPOAction, the back-channel modal, etc.) ═══ -->
+<div class="modal-overlay" id="ipo-create-modal" onclick="if(event.target===this){closeIPOCreationModal();}">
+    <div class="ipo-modal-content" id="ipo-create-modal-inner" onclick="event.stopPropagation();"></div>
 </div>
 
 <!-- Shared Scripts -->
