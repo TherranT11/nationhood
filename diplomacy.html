@@ -518,24 +518,31 @@ function renderTradeEconomy() {
             // all its own oil showed the $10M floor even at 88 oil_and_gas.
             production: Number(flow.domestic_production) || 0,
             // exportCapacity = production surplus after domestic demand is
-            // covered. Drives BAL and the surplus/deficit classification —
-            // same formula partner views use via getNationSurplusesAndDeficits,
-            // so the two panels can't disagree.
+            // covered. Kept on the row for downstream display, but BAL is
+            // now read from net_flow (realized export_volume − import_volume)
+            // so the table matches what actually happened at the engine,
+            // not theoretical capacities.
             exportCapacity: Number(flow.export_capacity) || 0,
             // domesticDemand = gross consumption before domestic-coverage
             // offset. Currently only fuel_energy populates this; other
             // sectors render the value as '-' in the table row below.
             domesticDemand: Number(flow.domestic_demand) || 0,
             demand: Number(flow.import_demand) || 0,
+            // netFlow = export_volume − import_volume, computed once by the
+            // trade engine and stored on trade_flows.net_flow. Drives BAL,
+            // the surplus/deficit classification, and the bottom panels —
+            // single source of truth so all three can't disagree.
+            netFlow: Number(flow.net_flow) || 0,
         });
     }
     // Sort by total volume descending
     commodities.sort((a, b) => (b.production + b.demand) - (a.production + a.demand));
 
-    // Net trade position = export_capacity − import_demand, matching
-    // getNationSurplusesAndDeficits so YOUR ECONOMY and partner views agree.
-    const surpluses = commodities.filter(c => c.exportCapacity > c.demand).sort((a, b) => (b.exportCapacity - b.demand) - (a.exportCapacity - a.demand));
-    const deficits = commodities.filter(c => c.demand > c.exportCapacity).sort((a, b) => (b.demand - b.exportCapacity) - (a.demand - a.exportCapacity));
+    // Net trade position = trade_flows.net_flow (export_volume − import_volume)
+    // computed once at tick time. Same source as getNationSurplusesAndDeficits
+    // so YOUR ECONOMY and partner views agree.
+    const surpluses = commodities.filter(c => c.netFlow > 0).sort((a, b) => b.netFlow - a.netFlow);
+    const deficits = commodities.filter(c => c.netFlow < 0).sort((a, b) => a.netFlow - b.netFlow);
 
     let html = '';
 
@@ -555,7 +562,7 @@ function renderTradeEconomy() {
 
     const nationId = _worldState?.nation?.id;
     for (const c of commodities) {
-        const bal = c.exportCapacity - c.demand;
+        const bal = c.netFlow;
         const isExp = _expandedCommodity === c.key;
         const isSelected = _tradeCommodityFilter === c.key;
         const bgStyle = isExp ? 'background:var(--bg-card);' : isSelected ? (bal > 0 ? 'background:rgba(92,204,92,0.04);' : 'background:rgba(204,85,85,0.04);') : '';
@@ -711,7 +718,7 @@ function renderTradeEconomy() {
     for (const c of surpluses.slice(0, 5)) {
         html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
             <span style="font-size:13px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
-            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">+${fmtBudgetCurrency(c.exportCapacity - c.demand)}</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">+${fmtBudgetCurrency(c.netFlow)}</span>
         </div>`;
     }
     if (surpluses.length === 0) html += `<div style="font-size:13px;color:var(--text-dim);font-style:italic;">None</div>`;
@@ -723,7 +730,7 @@ function renderTradeEconomy() {
     for (const c of deficits.slice(0, 5)) {
         html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
             <span style="font-size:13px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
-            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--red);">${fmtBudgetCurrency(c.exportCapacity - c.demand)}</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--red);">${fmtBudgetCurrency(c.netFlow)}</span>
         </div>`;
     }
     if (deficits.length === 0) html += `<div style="font-size:13px;color:var(--text-dim);font-style:italic;">None</div>`;
@@ -2136,8 +2143,8 @@ function computeCompatibility(myNationId, theirNationId) {
 
     for (const sector of Object.keys({ ...myFlows, ...theirFlows })) {
         if (sector === 'food_agriculture' && (myFlows.grains_staples || theirFlows.grains_staples)) continue;
-        const myBal = (myFlows[sector]?.export_capacity || 0) - (myFlows[sector]?.import_demand || 0);
-        const theirBal = (theirFlows[sector]?.export_capacity || 0) - (theirFlows[sector]?.import_demand || 0);
+        const myBal = Number(myFlows[sector]?.net_flow) || 0;
+        const theirBal = Number(theirFlows[sector]?.net_flow) || 0;
         totalSectors++;
         // Complementary: we have surplus + they have deficit (or vice versa)
         if ((myBal > 0 && theirBal < 0) || (myBal < 0 && theirBal > 0)) {
@@ -2156,7 +2163,7 @@ function getNationSurplusesAndDeficits(nationId) {
     const deficits = [];
     for (const [sector, flow] of Object.entries(flows)) {
         if (sector === 'food_agriculture' && (flows.grains_staples || flows.livestock_dairy)) continue;
-        const bal = flow.export_capacity - flow.import_demand;
+        const bal = Number(flow.net_flow) || 0;
         const entry = {
             sector,
             icon: TRADE_SECTOR_ICONS[sector] || '\uD83D\uDCE6',
@@ -2254,7 +2261,7 @@ function renderTradePartners() {
         let matchType = null;
         if (filterComm) {
             const myFlow = _tradeFlows[filterComm];
-            const myBal = myFlow ? (myFlow.export_capacity || 0) - (myFlow.import_demand || 0) : 0;
+            const myBal = Number(myFlow?.net_flow) || 0;
             const theyNeed = deficits.find(d => d.sector === filterComm);
             const theyHave = surpluses.find(s => s.sector === filterComm);
             if (myBal > 0 && theyNeed) matchType = 'export';
@@ -19303,7 +19310,7 @@ function _negRenderTheirEconomyHtml(partnerId) {
     const deficits  = [];
     for (const [sector, flow] of Object.entries(partnerFlows)) {
         if (sector === 'food_agriculture' && (partnerFlows.grains_staples || partnerFlows.livestock_dairy)) continue;
-        const bal = Number(flow.export_capacity || 0) - Number(flow.import_demand || 0);
+        const bal = Number(flow.net_flow) || 0;
         const entry = { sector, name: sectorLabel(sector), icon: sectorIcon(sector), amount: Math.abs(bal) };
         if (bal > 0) surpluses.push(entry);
         else if (bal < 0) deficits.push(entry);
