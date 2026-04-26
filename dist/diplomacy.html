@@ -13,13 +13,13 @@
     <!-- Supabase SDK -->
 
     <!-- Shared Styles -->
-  <script type="module" crossorigin src="/assets/diplomacy-C1h0-hDT.js"></script>
+  <script type="module" crossorigin src="/assets/diplomacy-B8t-hUFM.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
   <link rel="modulepreload" crossorigin href="/assets/government-structure-CkdB1PU_.js">
-  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-rMK78I65.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-CPI0igZM.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-CjDOos3h.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-Dup8Usyw.js">
   <link rel="modulepreload" crossorigin href="/assets/config-CKNXR-qR.js">
   <link rel="modulepreload" crossorigin href="/assets/stats-tIiBSaQA.js">
   <link rel="modulepreload" crossorigin href="/assets/political-actions-4MrzZSo4.js">
@@ -28,7 +28,7 @@
   <link rel="modulepreload" crossorigin href="/assets/bills-C99fvC15.js">
   <link rel="modulepreload" crossorigin href="/assets/trade-constants-CNEDhz_t.js">
   <link rel="modulepreload" crossorigin href="/assets/shipping-CQiz46tZ.js">
-  <link rel="stylesheet" crossorigin href="/assets/diplomacy-CAE8Y_CB.css">
+  <link rel="stylesheet" crossorigin href="/assets/diplomacy-AQTI3pMw.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
   <link rel="stylesheet" crossorigin href="/assets/diplomacy-V0W3Zioo.css">
 </head>
@@ -43,39 +43,47 @@
 <!-- ===== WORLD SUBTAB ===== -->
 <div id="subtab-world" class="diplo-subtab-content">
 <div class="world-page">
-    <!-- Map panel -->
-    <div class="world-map-panel" id="world-map-panel">
-        <img id="world-map-img" src="/assets/World%20Map%20Crucera%203.1-9pFuWCel.svg" alt="World Map" draggable="false"
-             style="width:100%;height:auto;pointer-events:none;">
-        <div class="world-map-controls">
-            <div class="world-map-btn" id="map-zoom-in">+</div>
-            <div class="world-map-btn" id="map-zoom-out">&minus;</div>
-            <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+    <div class="world-top-row">
+        <!-- Map panel -->
+        <div class="world-map-panel" id="world-map-panel">
+            <img id="world-map-img" src="/assets/World%20Map%20Crucera%203.1-9pFuWCel.svg" alt="World Map" draggable="false"
+                 style="width:100%;height:auto;pointer-events:none;">
+            <div class="world-map-controls">
+                <div class="world-map-btn" id="map-zoom-in">+</div>
+                <div class="world-map-btn" id="map-zoom-out">&minus;</div>
+                <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+            </div>
+            <div class="world-map-zoom" id="map-zoom-label">100%</div>
+            <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
         </div>
-        <div class="world-map-zoom" id="map-zoom-label">100%</div>
-        <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
-    </div>
 
-    <!-- Nation highlight panel -->
-    <div style="display:flex;flex-direction:column;gap:12px;flex-shrink:0;">
-    <div class="world-highlight" id="world-highlight">
-        <div class="world-highlight-header">
-            <div class="world-highlight-dot" style="background:var(--accent);"></div>
-            <span class="world-highlight-title">Nation Overview</span>
-        </div>
-        <!-- Search input -->
-        <div style="padding:8px 14px;border-bottom:1px solid var(--border-main);">
-            <input id="world-nation-search" type="text" placeholder="Search nations..." style="width:100%;padding:6px 10px;background:var(--bg-card);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;outline:none;box-sizing:border-box;">
-        </div>
-        <div class="world-highlight-body" id="world-highlight-body">
-            <div class="world-highlight-empty">
-                <div style="font-size:1.5rem;margin-bottom:8px;opacity:0.4;">&#127758;</div>
-                <div style="font-family:var(--font-mono);font-size:10px;">Select a nation</div>
-                <div style="font-family:var(--font-mono);font-size:8px;margin-top:4px;">Type a name above or select from the list</div>
+        <!-- Nation highlight panel (search + selected nation card) -->
+        <div class="world-side">
+            <div class="world-highlight" id="world-highlight">
+                <div class="world-highlight-header">
+                    <div class="world-highlight-dot" style="background:var(--accent);"></div>
+                    <span class="world-highlight-title">Nation Overview</span>
+                </div>
+                <!-- Search input -->
+                <div style="padding:8px 14px;border-bottom:1px solid var(--border-main);">
+                    <input id="world-nation-search" type="text" placeholder="Search nations..." style="width:100%;padding:6px 10px;background:var(--bg-card);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:11px;outline:none;box-sizing:border-box;">
+                </div>
+                <div class="world-highlight-body" id="world-highlight-body">
+                    <div class="world-highlight-empty">
+                        <div style="font-size:1.5rem;margin-bottom:8px;opacity:0.4;">&#127758;</div>
+                        <div style="font-family:var(--font-mono);font-size:10px;">Select a nation</div>
+                        <div style="font-family:var(--font-mono);font-size:8px;margin-top:4px;">Type a name above or select from the list</div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+    </div><!-- /world-top-row -->
 
+    <!-- Full-width nations grid (renders below the map). renderNationList()
+         populates #world-nations-grid; the search input above filters it. -->
+    <div class="world-nations-grid-wrap">
+        <div class="world-nations-grid-header">ALL NATIONS</div>
+        <div id="world-nations-grid" class="world-nations-grid"></div>
     </div>
 </div>
 </div><!-- /subtab-world -->
