@@ -517,12 +517,6 @@ function renderTradeEconomy() {
             // which is the exportable surplus — a petro-state that consumed
             // all its own oil showed the $10M floor even at 88 oil_and_gas.
             production: Number(flow.domestic_production) || 0,
-            // exportCapacity = production surplus after domestic demand is
-            // covered. Kept on the row for downstream display, but BAL is
-            // now read from net_flow (realized export_volume − import_volume)
-            // so the table matches what actually happened at the engine,
-            // not theoretical capacities.
-            exportCapacity: Number(flow.export_capacity) || 0,
             // domesticDemand = gross consumption before domestic-coverage
             // offset. Currently only fuel_energy populates this; other
             // sectors render the value as '-' in the table row below.
@@ -2120,8 +2114,11 @@ let _allNationFlows = {}; // nationId → { sector → { export_capacity, import
 
 async function loadAllNationFlows() {
     if (!_tradeSummary) return;
+    // net_flow is required by computeCompatibility / getNationSurplusesAndDeficits
+    // (both read it from this map). export_capacity and import_demand stay
+    // because computeCompatibility uses their sum for the totalVol denominator.
     const { data: allFlows } = await _supabase.from('trade_flows')
-        .select('nation_id, sector, export_capacity, import_demand')
+        .select('nation_id, sector, export_capacity, import_demand, net_flow')
         .eq('tick', _tradeSummary.tick);
     _allNationFlows = {};
     if (allFlows) {
@@ -2130,6 +2127,7 @@ async function loadAllNationFlows() {
             _allNationFlows[row.nation_id][row.sector] = {
                 export_capacity: Number(row.export_capacity) || 0,
                 import_demand: Number(row.import_demand) || 0,
+                net_flow: Number(row.net_flow) || 0,
             };
         }
     }
