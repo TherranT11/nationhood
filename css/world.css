@@ -115,9 +115,12 @@
 }
 
 /* ── Nation highlight panel (right) ── */
+/* `height` (not `max-height`) so the panel stays the same size regardless of
+   which nation is selected — short summaries don't collapse it, long ones
+   scroll inside .world-highlight-body. */
 .world-highlight {
     width: 380px;
-    max-height: calc(100vh - 140px);
+    height: calc(100vh - 140px);
     background: var(--bg-panel); border: 1px solid var(--border-main);
     display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
     position: sticky; top: 12px;
@@ -306,7 +309,7 @@
     .world-top-row { flex-direction: column; align-items: stretch; }
     .world-map-panel { width: 100%; max-width: 1140px; height: 500px; }
     .world-side { width: 100%; }
-    .world-highlight { width: 100%; max-width: 100%; height: auto; max-height: 400px; }
+    .world-highlight { width: 100%; max-width: 100%; height: 400px; }
     .world-events-panel { width: 100%; max-width: 600px; max-height: 300px; }
     .world-nations-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
@@ -314,7 +317,7 @@
     .world-page { padding: 8px; gap: 8px; }
     .world-top-row { gap: 8px; }
     .world-map-panel { height: 350px; }
-    .world-highlight { max-height: 350px; }
+    .world-highlight { height: 350px; }
     .world-events-panel { max-height: 280px; }
     .world-nations-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px; gap: 6px; }
     .wn-grid-cell { padding: 8px; gap: 8px; }
