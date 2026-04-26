@@ -1812,7 +1812,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 .order('created_at', { ascending: true });
             const statInstMap = buildStatInstitutionMap(_institutionConfig, _fundingRows);
             const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
-            const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj);
+            const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj, newTick);
             if (decayResults.length > 0) {
                 summary.decay = summary.decay || [];
                 summary.decay.push({ nation: nation.name, effects: decayResults });
