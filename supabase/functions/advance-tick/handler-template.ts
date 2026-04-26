@@ -1685,11 +1685,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const toNation   = d.direction === 'a_to_b' ? counterparty : author;
 
                 // Atomic per-pair: read both, debit (floor 0), credit, write.
-                const { data: rows } = await supabase.from('nations')
+                // Skip on read failure or incomplete result — without correct
+                // baselines the UPDATE below would overwrite reserves with
+                // garbage (sender → 0, receiver → just `amount`).
+                const { data: rows, error: readErr } = await supabase.from('nations')
                     .select('id, budget_reserves')
                     .in('id', [fromNation, toNation]);
+                if (readErr || !rows || rows.length < 2) {
+                    console.error('[recurring transfer] reserves read failed/incomplete; skipping agreement',
+                        agreement.id, readErr?.message || `got ${rows?.length || 0}/2 rows`);
+                    continue;
+                }
                 const reserves: Record<string, number> = {};
-                for (const r of (rows || [])) reserves[r.id] = Number(r.budget_reserves || 0);
+                for (const r of rows) reserves[r.id] = Number(r.budget_reserves || 0);
                 const fromAfter = Math.max(0, (reserves[fromNation] ?? 0) - amount);
                 const toAfter   = (reserves[toNation] ?? 0) + amount;
 
@@ -1710,10 +1718,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
                 art.data = { ...d, last_paid_at_tick: newTick };
                 mutated = true;
+                console.log(`[recurring transfer] paid: ${fromNation} → ${toNation}, $${(amount/1e9).toFixed(2)}B (agreement ${agreement.id})`);
             }
 
             if (mutated) {
-                await supabase.from('trade_agreements').update({ articles: arts }).eq('id', agreement.id);
+                // If this update fails AFTER money moved, last_paid_at_tick won't
+                // land and next tick will re-process the same articles → DOUBLE-PAY.
+                // Surface loudly so it's visible in logs.
+                const { error: markErr } = await supabase.from('trade_agreements')
+                    .update({ articles: arts }).eq('id', agreement.id);
+                if (markErr) {
+                    console.error('[recurring transfer] FAILED to mark articles paid for agreement',
+                        agreement.id, markErr.message,
+                        "— money moved but mark didn't; next tick may double-pay");
+                }
             }
         }
     } catch (rtErr) {
