@@ -2596,8 +2596,14 @@ async function initWorldMap() {
     function clampPan() {
         const panelW = panel.clientWidth;
         const panelH = panel.clientHeight;
-        const visualW = img.offsetWidth * scale;
-        const visualH = img.offsetHeight * scale;
+        // BCR works for both <img> and inline <svg>; offsetWidth/offsetHeight
+        // are HTMLElement-only and return undefined on SVGElement, which
+        // produced NaN translations after the SVG upgrade and silently
+        // disabled pan/zoom. BCR returns post-transform size, which is
+        // exactly what visualW/visualH need to be.
+        const r = img.getBoundingClientRect();
+        const visualW = r.width;
+        const visualH = r.height;
         if (visualW <= panelW) panX = 0;
         else panX = Math.max(panelW - visualW, Math.min(0, panX));
         if (visualH <= panelH) panY = 0;
@@ -2613,7 +2619,6 @@ async function initWorldMap() {
 
     // Scroll to zoom
     panel.addEventListener('wheel', (e) => {
-        console.log('[map-debug] wheel', { scale, deltaY: e.deltaY, panelW: panel.clientWidth, panelH: panel.clientHeight, imgW: img.offsetWidth, imgH: img.offsetHeight });
         e.preventDefault();
         const rect = panel.getBoundingClientRect();
         const mx = e.clientX - rect.left;
@@ -2629,7 +2634,6 @@ async function initWorldMap() {
 
     // Drag to pan
     panel.addEventListener('mousedown', (e) => {
-        console.log('[map-debug] mousedown', { clientX: e.clientX, clientY: e.clientY, panX, panY });
         dragging = true;
         startX = e.clientX - panX;
         startY = e.clientY - panY;
