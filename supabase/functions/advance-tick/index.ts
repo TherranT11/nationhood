@@ -3297,6 +3297,47 @@ const DIPLOMACY_CONFIG = {
 };
 
 /**
+ * Resolve sender, receiver, and amount for a trade-agreement `transfer` article.
+ * Centralizes the author + direction → from/to logic that previously lived
+ * inline in the ratification handler, the per-tick recurring processor, and
+ * the budget UI aggregator (and was prone to drift across them).
+ *
+ * Article schema (constructed in the diplomacy negotiation modal):
+ *   - article.author_nation_id: the drafter
+ *   - article.data.amount: dollars (per-tick if recurring, lump-sum otherwise)
+ *   - article.data.direction: 'a_to_b' = drafter pays counterparty,
+ *                             'b_to_a' = counterparty pays drafter
+ *   - article.data.transfer_type: 'recurring' | undefined (one-time)
+ *
+ * Agreement schema: nation_a_id / nation_b_id (canonical sorted order, a < b).
+ *
+ * Returns { fromNation, toNation, amount } on success, or null when the
+ * article is malformed (wrong type, bad amount, invalid author). Callers
+ * should treat null as "skip this article". Does NOT filter by transfer_type
+ * or executed/paid markers — those are caller-side concerns since each
+ * callsite has different idempotency rules.
+ */
+function resolveTransferEndpoints(article, agreement) {
+    if (!article || article.type !== 'transfer') return null;
+    if (!agreement || !agreement.nation_a_id || !agreement.nation_b_id) return null;
+
+    var data = article.data || {};
+    var amount = Number(data.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+
+    var author = article.author_nation_id;
+    if (!author || (author !== agreement.nation_a_id && author !== agreement.nation_b_id)) return null;
+
+    var counterparty = author === agreement.nation_a_id
+        ? agreement.nation_b_id
+        : agreement.nation_a_id;
+    var fromNation = data.direction === 'a_to_b' ? author : counterparty;
+    var toNation   = data.direction === 'a_to_b' ? counterparty : author;
+
+    return { fromNation: fromNation, toNation: toNation, amount: amount };
+}
+
+/**
  * Check if a nation's credit rating allows proposing a specific trade agreement type.
  * Returns { allowed: true } or { allowed: false, required: number, reason: string }.
  */
@@ -10121,6 +10162,65 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                     expires_at_tick: isPermanent ? null : (durationTicks ? currentTick + durationTicks : null),
                 }).select('id').single();
                 if (taInsertErr) console.error('[resolveTradeRatification] trade_agreements insert failed:', taInsertErr.message);
+
+                // Execute one-time `transfer` articles. Previously these were stored
+                // in the agreement row but never read, so payments like "Vostia shall
+                // make a one-time transfer of $5B to Dravka" silently never landed.
+                // Recurring transfers (transfer_type === 'recurring') are intentionally
+                // skipped here — they need a per-tick processor (not yet implemented).
+                if (newAgreement) {
+                    let articlesMutated = false;
+                    const agreementForResolve = { nation_a_id: nA, nation_b_id: nB };
+                    for (const article of articles) {
+                        const data = article?.data || {};
+                        // Caller-side filters: only one-time, only unpaid.
+                        if (data.transfer_type === 'recurring') continue;
+                        if (data.executed_at_tick != null) continue; // idempotent
+                        // Endpoint resolution is shared across callsites
+                        // (see js/game/diplomacy-constants.js).
+                        const endpoints = resolveTransferEndpoints(article, agreementForResolve);
+                        if (!endpoints) {
+                            if (article?.type === 'transfer') {
+                                console.error('[resolveTradeRatification] transfer article malformed; skipping', article);
+                            }
+                            continue;
+                        }
+                        const { fromNation, toNation, amount } = endpoints;
+
+                        // Read current reserves of both nations, deduct from sender,
+                        // credit receiver. Floor sender at 0 (no negative reserves).
+                        const { data: rows } = await supabase.from('nations')
+                            .select('id, budget_reserves').in('id', [fromNation, toNation]);
+                        const reserves = {};
+                        for (const r of (rows || [])) reserves[r.id] = Number(r.budget_reserves || 0);
+                        const fromAfter = Math.max(0, (reserves[fromNation] ?? 0) - amount);
+                        const toAfter   = (reserves[toNation] ?? 0) + amount;
+                        const actualDebit = (reserves[fromNation] ?? 0) - fromAfter; // capped by available
+
+                        const { error: fromErr } = await supabase.from('nations')
+                            .update({ budget_reserves: fromAfter }).eq('id', fromNation);
+                        if (fromErr) {
+                            console.error('[resolveTradeRatification] transfer debit failed for', fromNation, fromErr.message);
+                            continue;
+                        }
+                        const { error: toErr } = await supabase.from('nations')
+                            .update({ budget_reserves: toAfter }).eq('id', toNation);
+                        if (toErr) {
+                            console.error('[resolveTradeRatification] transfer credit failed for', toNation, toErr.message);
+                            // Best-effort rollback of the debit so reserves don't vanish.
+                            await supabase.from('nations').update({ budget_reserves: reserves[fromNation] ?? 0 }).eq('id', fromNation);
+                            continue;
+                        }
+
+                        // Mark as executed in the article so this never fires twice.
+                        article.data = { ...data, executed_at_tick: currentTick, executed_amount: actualDebit };
+                        articlesMutated = true;
+                        console.log(`[resolveTradeRatification] transfer executed: ${fromNation} → ${toNation}, $${(actualDebit/1e9).toFixed(2)}B (requested $${(amount/1e9).toFixed(2)}B)`);
+                    }
+                    if (articlesMutated) {
+                        await supabase.from('trade_agreements').update({ articles }).eq('id', newAgreement.id);
+                    }
+                }
 
                 if (neg.agreement_type === 'economic_aid' && newAgreement) {
                     const aidTerms = articles.find(a => a.type === 'aid_terms');
@@ -23188,21 +23288,8 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
     const appliedDecay = [];
     const nationUpdates = {};
 
-    // Iterate the union of (a) stats with natural decay configured and
-    // (b) stats covered by any institution. Institution-only stats use
-    // target=50, speed=0 defaults — natural decay is a no-op for them, but
-    // institution decay can now apply. Without this union, any stat that
-    // institutions target but that isn't listed in STAT_DECAY_CONFIG has
-    // its institution effects silently dropped (e.g. labor_force_participation
-    // showed COLLAPSED institutions in the UI but the stat wasn't decaying).
-    const allStatKeys = new Set([
-        ...Object.keys(STAT_DECAY_CONFIG),
-        ...Object.keys(statInstitutionMap || {}),
-    ]);
-
-    for (const statKey of allStatKeys) {
+    for (const [statKey, config] of Object.entries(STAT_DECAY_CONFIG)) {
         if (!NATION_STAT_COLUMN_SET.has(statKey)) continue;
-        const config = STAT_DECAY_CONFIG[statKey] || { type: 'equilibrium', target: 50, speed: 0 };
 
         const rawDecayVal = nation[statKey];
         // Skip if stat is null/undefined — never default to 50
@@ -36491,6 +36578,95 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (spErr) {
         console.error('[advanceTick] Stockpile purchase execution failed (non-fatal):', spErr);
+    }
+
+    // 3.5f Recurring transfer execution — pay every `transfer` article where
+    // data.transfer_type === 'recurring' once per tick. One-time transfers are
+    // executed at ratification (see resolveTradeRatificationBill); this loop
+    // only fires the recurring kind. Idempotent within a tick via
+    // data.last_paid_at_tick so re-runs (or partial-progress retries) don't
+    // double-pay.
+    try {
+        const { data: activeAgreements } = await supabase
+            .from('trade_agreements')
+            .select('id, nation_a_id, nation_b_id, articles, expires_at_tick')
+            .eq('status', 'active');
+
+        for (const agreement of (activeAgreements || [])) {
+            // Skip already-expired (3.6 below will mark them; don't pre-pay them this tick).
+            if (agreement.expires_at_tick != null && agreement.expires_at_tick <= newTick) continue;
+
+            const arts = agreement.articles || [];
+            let mutated = false;
+
+            for (const art of arts) {
+                const d = art?.data || {};
+                // Caller-side filters: only recurring, only not-yet-paid this tick.
+                if (d.transfer_type !== 'recurring') continue;
+                if (d.last_paid_at_tick === newTick) continue;
+                // Endpoint resolution is shared across callsites
+                // (see js/game/diplomacy-constants.js → resolveTransferEndpoints).
+                const endpoints = resolveTransferEndpoints(art, agreement);
+                if (!endpoints) {
+                    if (art?.type === 'transfer') {
+                        console.error('[recurring transfer] transfer article malformed on agreement', agreement.id);
+                    }
+                    continue;
+                }
+                const { fromNation, toNation, amount } = endpoints;
+
+                // Atomic per-pair: read both, debit (floor 0), credit, write.
+                // Skip on read failure or incomplete result — without correct
+                // baselines the UPDATE below would overwrite reserves with
+                // garbage (sender → 0, receiver → just `amount`).
+                const { data: rows, error: readErr } = await supabase.from('nations')
+                    .select('id, budget_reserves')
+                    .in('id', [fromNation, toNation]);
+                if (readErr || !rows || rows.length < 2) {
+                    console.error('[recurring transfer] reserves read failed/incomplete; skipping agreement',
+                        agreement.id, readErr?.message || `got ${rows?.length || 0}/2 rows`);
+                    continue;
+                }
+                const reserves: Record<string, number> = {};
+                for (const r of rows) reserves[r.id] = Number(r.budget_reserves || 0);
+                const fromAfter = Math.max(0, (reserves[fromNation] ?? 0) - amount);
+                const toAfter   = (reserves[toNation] ?? 0) + amount;
+
+                const { error: fromErr } = await supabase.from('nations')
+                    .update({ budget_reserves: fromAfter }).eq('id', fromNation);
+                if (fromErr) {
+                    console.error('[recurring transfer] debit failed for', fromNation, fromErr.message);
+                    continue;
+                }
+                const { error: toErr } = await supabase.from('nations')
+                    .update({ budget_reserves: toAfter }).eq('id', toNation);
+                if (toErr) {
+                    console.error('[recurring transfer] credit failed for', toNation, toErr.message);
+                    // Best-effort rollback so reserves don't vanish.
+                    await supabase.from('nations').update({ budget_reserves: reserves[fromNation] ?? 0 }).eq('id', fromNation);
+                    continue;
+                }
+
+                art.data = { ...d, last_paid_at_tick: newTick };
+                mutated = true;
+                console.log(`[recurring transfer] paid: ${fromNation} → ${toNation}, $${(amount/1e9).toFixed(2)}B (agreement ${agreement.id})`);
+            }
+
+            if (mutated) {
+                // If this update fails AFTER money moved, last_paid_at_tick won't
+                // land and next tick will re-process the same articles → DOUBLE-PAY.
+                // Surface loudly so it's visible in logs.
+                const { error: markErr } = await supabase.from('trade_agreements')
+                    .update({ articles: arts }).eq('id', agreement.id);
+                if (markErr) {
+                    console.error('[recurring transfer] FAILED to mark articles paid for agreement',
+                        agreement.id, markErr.message,
+                        "— money moved but mark didn't; next tick may double-pay");
+                }
+            }
+        }
+    } catch (rtErr) {
+        console.error('[advanceTick] Recurring transfer execution failed (non-fatal):', rtErr);
     }
 
     // 3.6 Expire trade agreements (including economic aid) that have passed their expires_at_tick
