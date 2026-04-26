@@ -41,4 +41,10 @@ ALTER TABLE ipo_fund_transactions
 COMMENT ON COLUMN ipo_fund_transactions.amount
     IS 'Transaction amount in dollars. Positive = inflow, negative = outflow.';
 
+-- 4. Document the (now misleadingly named) ap_cost column on the action log.
+--    The column still holds cost paid by the executing faction, but it's now
+--    in dollars (cash) rather than action points.
+COMMENT ON COLUMN ipo_action_log.ap_cost
+    IS 'Cost paid by the executing faction, in dollars. Column is named ap_cost for legacy reasons.';
+
 COMMIT;

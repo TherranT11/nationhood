@@ -3202,7 +3202,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         if (updErr) continue;
 
                         totalCollected += contributionCash;
-                        await supabase.from('ipo_fund_transactions').insert({
+                        const { error: txErr } = await supabase.from('ipo_fund_transactions').insert({
                             org_id: org.id,
                             faction_id: m.faction_id,
                             transaction_type: 'contribution',
@@ -3210,13 +3210,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             description: 'Quarterly solidarity fund contribution',
                             tick: newTick
                         });
+                        if (txErr) console.error(`[advanceTick] IPO ${org.name}: contribution log insert failed for ${m.faction_id}:`, txErr);
                     }
 
                     if (totalCollected > 0) {
                         const newBalance = (Number(org.solidarity_fund_balance) || 0) + totalCollected;
-                        await supabase.from('international_orgs')
+                        const { error: balErr } = await supabase.from('international_orgs')
                             .update({ solidarity_fund_balance: newBalance })
                             .eq('id', org.id);
+                        if (balErr) {
+                            console.error(`[advanceTick] IPO ${org.name}: fund balance update failed (members were debited!):`, balErr);
+                        }
                         // Update local copy so HQ cost (section 4) reads the post-collection balance
                         org.solidarity_fund_balance = newBalance;
 

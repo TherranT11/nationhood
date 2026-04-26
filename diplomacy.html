@@ -16590,25 +16590,31 @@ async function applyVoteEffects(vote, org) {
             break;
         }
         case 'fund_draw': {
-            if (meta.amount_requested && meta.amount_requested > 0) {
+            if (meta.amount_requested && meta.amount_requested > 0 && vote.proposed_by) {
                 const currentBalance = Number(org.solidarity_fund_balance) || 0;
                 const actualDraw = Math.min(meta.amount_requested, currentBalance);
                 if (actualDraw <= 0) break;
 
-                const newBalance = currentBalance - actualDraw;
-                await _supabase.from('international_orgs')
-                    .update({ solidarity_fund_balance: newBalance })
-                    .eq('id', ipoSelectedOrgId);
+                // Debit the fund via RPC (RLS would otherwise require president).
+                const { error: debitErr } = await _supabase.rpc('ipo_debit_solidarity_fund', {
+                    p_org_id: ipoSelectedOrgId,
+                    p_amount: actualDraw
+                });
+                if (debitErr) {
+                    console.error('[IPO] Fund-draw debit failed:', debitErr);
+                    alert('Failed to draw from fund: ' + debitErr.message);
+                    break;
+                }
 
-                // Credit the drawn cash to the proposing faction
-                if (vote.proposed_by) {
-                    const { data: proposerFaction } = await _supabase
-                        .from('factions').select('party_funds').eq('id', vote.proposed_by).single();
-                    if (proposerFaction) {
-                        await _supabase.from('factions')
-                            .update({ party_funds: (Number(proposerFaction.party_funds) || 0) + actualDraw })
-                            .eq('id', vote.proposed_by);
-                    }
+                // Credit the proposer via RPC (RLS would otherwise block cross-faction write).
+                const { error: creditErr } = await _supabase.rpc('ipo_credit_party_funds', {
+                    p_target_faction_id: vote.proposed_by,
+                    p_amount: actualDraw,
+                    p_org_id: ipoSelectedOrgId
+                });
+                if (creditErr) {
+                    console.error('[IPO] Fund-draw credit failed:', creditErr);
+                    alert('Fund debited but proposer credit FAILED — contact an admin to reconcile. Error: ' + creditErr.message);
                 }
 
                 await _supabase.from('ipo_fund_transactions').insert({
@@ -17417,19 +17423,17 @@ async function executeBackChannel() {
         let cashCostPaid = 0;
 
         if (source === 'fund') {
-            // Fund source: transfer amount drawn from solidarity fund, 25% exposure risk
-            const fundBalance = Number(org?.solidarity_fund_balance) || 0;
-            if (amount > fundBalance) {
-                alert(`Fund only has ${fmtIPOCash(fundBalance)} available — need ${fmtIPOCash(amount)}.`);
+            // Fund source: amount drawn from solidarity fund via SECURITY DEFINER RPC
+            // (RLS on international_orgs only allows the president to UPDATE; the RPC
+            // permits any active member while validating membership server-side).
+            const { error: debitErr } = await _supabase.rpc('ipo_debit_solidarity_fund', {
+                p_org_id: ipoSelectedOrgId,
+                p_amount: amount
+            });
+            if (debitErr) {
+                alert('Failed to draw from fund: ' + debitErr.message);
                 return;
             }
-
-            const newBalance = fundBalance - amount;
-            const { error: fundErr } = await _supabase.from('international_orgs')
-                .update({ solidarity_fund_balance: newBalance })
-                .eq('id', ipoSelectedOrgId);
-            if (fundErr) throw fundErr;
-
             cashCostPaid = 0; // no personal cost for fund source
             exposed = Math.random() < IPO_BACK_CHANNEL_EXPOSURE_CHANCE; // 25% risk
         } else {
@@ -17445,16 +17449,18 @@ async function executeBackChannel() {
             exposed = false; // personal cash = no exposure risk
         }
 
-        // Credit recipient with cash
-        const { data: recipient } = await _supabase
-            .from('factions')
-            .select('party_funds')
-            .eq('id', backChannelTargetId)
-            .single();
-        if (recipient) {
-            await _supabase.from('factions')
-                .update({ party_funds: (Number(recipient.party_funds) || 0) + amount })
-                .eq('id', backChannelTargetId);
+        // Credit recipient via SECURITY DEFINER RPC (RLS blocks direct cross-faction UPDATE).
+        // If credit fails after sender was already debited, surface loudly so the player
+        // can flag it — the alternative is silent disappearance of cash.
+        const { error: creditErr } = await _supabase.rpc('ipo_credit_party_funds', {
+            p_target_faction_id: backChannelTargetId,
+            p_amount: amount,
+            p_org_id: ipoSelectedOrgId
+        });
+        if (creditErr) {
+            console.error('[IPO] Back-channel credit failed:', creditErr);
+            alert('Transfer initiated but the recipient credit FAILED — please contact an admin to reconcile. Error: ' + creditErr.message);
+            // Don't return — still log the action so the failure is in the audit trail.
         }
 
         await _supabase.from('ipo_action_log').insert({
