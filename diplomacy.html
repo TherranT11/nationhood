@@ -3215,6 +3215,12 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
 }
 
 initPage('diplomacy', async (state) => {
+    // Restore module-level state references the diplomacy refactor (9733595)
+    // dropped. ~200 sites in this file read these globals and would otherwise
+    // see null. See note around refreshTradeMinisterFlag for context.
+    currentFaction = state.faction || null;
+    currentNation  = state.nation  || null;
+
     // ── Subtab navigation ──
     renderDiploSubtabs();
 
