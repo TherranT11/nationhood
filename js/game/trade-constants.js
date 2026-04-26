@@ -832,6 +832,26 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
  *   livestock_dairy:   wealth-driven (standard_of_living scales demand)
  *   fruits_vegetables: urbanization + wealth driven
  *   cash_crops:        low import demand (export-oriented sector)
+/**
+ * Tariff dampener for import demand. Per-sector overrides come from
+ * nations.sector_tariffs JSONB (set by bill TARIFF_RATE_CHANGE articles in
+ * enactBill); falls back to aggregate nation.tariffs when no override exists
+ * for the requested sector. Single source of truth — both food-import and
+ * generic-import demand calculations call this so per-sector tariffs from
+ * bills actually take effect.
+ *
+ * @param {Object} nation - nations row (must have .tariffs and .sector_tariffs)
+ * @param {string|null} sectorKey - e.g. 'fruits_vegetables'; null = aggregate only
+ * @returns {number} multiplier in [0.5, 1.0] (1.0 = no tariff, 0.5 = 100% tariff)
+ */
+export function getTariffDampener(nation, sectorKey) {
+    var sectorTariffs = nation.sector_tariffs || {};
+    var hasOverride = sectorKey != null && Object.prototype.hasOwnProperty.call(sectorTariffs, sectorKey);
+    var tariff = hasOverride ? (Number(sectorTariffs[sectorKey]) || 0) : (Number(nation.tariffs) || 0);
+    return 1 - (tariff / 200);
+}
+
+/**
  *
  * @param {Object} nation      – nation row
  * @param {Object} subsector   – FOOD_SUBSECTORS entry
@@ -907,10 +927,9 @@ export function calculateFoodImportDemand(nation, subsector, allocation) {
     var affordability = currencyStrength / 50;
     rawDemand *= affordability;
 
-    // Tariff dampener
-    var tariffs = Number(nation.tariffs) || 0;
-    var tariffDampener = 1 - (tariffs / 200);
-    rawDemand *= tariffDampener;
+    // Tariff dampener — per-sector override from bill TARIFF_RATE_CHANGE
+    // articles (nations.sector_tariffs jsonb), else aggregate nation.tariffs.
+    rawDemand *= getTariffDampener(nation, subsector.key);
 
     // Floor
     var minDemand = Math.round(0.005 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
@@ -1279,10 +1298,10 @@ export function calculateImportDemand(nation, sector, opts) {
 
     // ── Tariff dampener ──
     // Your own tariffs reduce import volume (makes foreign goods more expensive).
-    // tariffs 0 = 1.0 (free trade), 50 = 0.75 (25% reduction), 100 = 0.50 (protectionist)
-    var tariffs = Number(nation.tariffs) || 0;
-    var tariffDampener = 1 - (tariffs / 200);
-    rawDemand *= tariffDampener;
+    // Tariff value 0 → 1.0 (free trade), 50 → 0.75, 100 → 0.50 (protectionist).
+    // Per-sector override from bill TARIFF_RATE_CHANGE articles
+    // (nations.sector_tariffs jsonb), else aggregate nation.tariffs.
+    rawDemand *= getTariffDampener(nation, sector.key);
 
     // Floor: even distressed nations import essential goods (5% of GDP-scaled baseline)
     var minDemand = Math.round(0.02 * cfg.BASE_TRADE_MULTIPLIER * gdpModifier);
