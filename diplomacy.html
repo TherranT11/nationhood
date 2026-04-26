@@ -15521,7 +15521,8 @@ const IPO_VOTE_TYPE_LABELS = {
     charter_amendment:   'Charter Amendment',
     change_headquarters: 'Change Headquarters',
     symposium:           'Symposium',
-    leadership_election: 'Leadership Election'
+    leadership_election: 'Leadership Election',
+    change_logo:         'Change Logo'
 };
 
 const IPO_VOTE_TYPE_DESCRIPTIONS = {
@@ -15532,7 +15533,8 @@ const IPO_VOTE_TYPE_DESCRIPTIONS = {
     charter_amendment:   'Vote to amend the organisation charter.',
     change_headquarters: 'Vote to relocate the organisation headquarters.',
     symposium:           'Vote to hold a symposium influencing a nation\'s ideology.',
-    leadership_election: 'Elect a new president from the member parties.'
+    leadership_election: 'Elect a new president from the member parties.',
+    change_logo:         'Vote to change the organisation\'s logo (symbol, text, or image).'
 };
 
 /**
@@ -15878,6 +15880,20 @@ function renderVoteMetaSummary(vote) {
             text = `Elect the next president from <strong>${numCandidates}</strong> candidate${numCandidates !== 1 ? 's' : ''}.`;
             break;
         }
+        case 'change_logo': {
+            const proposed = meta.proposed_logo || {};
+            const membership = ipoMemberships.find(m => m.org.id === vote.org_id || m.org.id === ipoSelectedOrgId);
+            const org = membership?.org;
+            const currentLogo = { logo_symbol: org?.logo_symbol || '', logo_text: org?.logo_text || '', logo_image_url: org?.logo_image_url || null };
+            const proposedLogo = { logo_symbol: proposed.symbol || '', logo_text: proposed.text || '', logo_image_url: proposed.image_url || null };
+            text = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="font-size:0.85em;color:var(--text-muted);">Change logo:</span>
+                ${renderIPOLogo(currentLogo, 'ipo-vote-logo-preview', '')}
+                <span style="color:var(--text-muted);">→</span>
+                ${renderIPOLogo(proposedLogo, 'ipo-vote-logo-preview', '')}
+            </div>`;
+            break;
+        }
     }
     return text ? `<div class="ipo-vote-meta-summary">${text}</div>` : '';
 }
@@ -15885,6 +15901,10 @@ function renderVoteMetaSummary(vote) {
 // ── Vote Creation Modal ──
 
 let ipoVoteModalType = null;
+// State for change_logo vote proposals
+let ipoVoteLogo = null;          // { symbol, text, image_url }
+let ipoVoteLogoFile = null;      // pending upload File or null
+let ipoVoteLogoPreviewUrl = null;// preview URL (existing or object URL)
 
 function openIPOVoteModal() {
     if (!currentFaction || !ipoSelectedOrgId) return;
@@ -15892,6 +15912,9 @@ function openIPOVoteModal() {
     if (!membership || membership.role === 'observer') return;
 
     ipoVoteModalType = null;
+    ipoVoteLogo = null;
+    ipoVoteLogoFile = null;
+    ipoVoteLogoPreviewUrl = null;
     const modal = document.getElementById('ipo-create-modal');
     modal.classList.add('active');
     renderIPOVoteModalTypeSelect();
@@ -15900,6 +15923,25 @@ function openIPOVoteModal() {
 function closeIPOVoteModal() {
     document.getElementById('ipo-create-modal').classList.remove('active');
     ipoVoteModalType = null;
+    ipoVoteLogo = null;
+    ipoVoteLogoFile = null;
+    ipoVoteLogoPreviewUrl = null;
+}
+
+function ipoVoteHandleLogoFile(input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    if (file.size > 512 * 1024) { alert('Logo must be under 512KB.'); return; }
+    ipoVoteLogoFile = file;
+    ipoVoteLogoPreviewUrl = URL.createObjectURL(file);
+    renderIPOVoteModalForm();
+}
+
+function ipoVoteRemoveLogo() {
+    ipoVoteLogoFile = null;
+    ipoVoteLogoPreviewUrl = null;
+    if (ipoVoteLogo) ipoVoteLogo.image_url = null;
+    renderIPOVoteModalForm();
 }
 
 function renderIPOVoteModalTypeSelect() {
@@ -15928,6 +15970,8 @@ function renderIPOVoteModalTypeSelect() {
     }
     // charter_amendment — always available
     available.push('charter_amendment');
+    // change_logo — always available (cosmetic-only, follows charter votePass)
+    available.push('change_logo');
     // change_headquarters — always available
     available.push('change_headquarters');
     // symposium — only if not on cooldown and no pending symposium
@@ -15954,6 +15998,17 @@ function renderIPOVoteModalTypeSelect() {
 
 async function selectIPOVoteType(type) {
     ipoVoteModalType = type;
+    if (type === 'change_logo') {
+        const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
+        const org = membership?.org;
+        ipoVoteLogo = {
+            symbol: org?.logo_symbol || '',
+            text: org?.logo_text || '',
+            image_url: org?.logo_image_url || null
+        };
+        ipoVoteLogoFile = null;
+        ipoVoteLogoPreviewUrl = org?.logo_image_url || null;
+    }
     await renderIPOVoteModalForm();
 }
 
@@ -16057,6 +16112,38 @@ async function renderIPOVoteModalForm() {
                 </select>`;
             break;
         }
+        case 'change_logo': {
+            const logoPreview = ipoVoteLogoPreviewUrl
+                ? `<img src="${escapeHtml(ipoVoteLogoPreviewUrl)}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border-0);" />`
+                : `<span style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;background:var(--bg-3);border:1px solid var(--border-0);border-radius:6px;font-family:var(--font-mono);font-size:14px;color:var(--text-dim);">${escapeHtml((ipoVoteLogo?.symbol || '') + ' ' + (ipoVoteLogo?.text || ''))}</span>`;
+            formFields = `
+                <div class="ipo-vote-form-note">Proposes a cosmetic logo change. Cost: ${fmtIPOCash(IPO_AP_TO_CASH)} on submission. Same vote threshold as charter amendments.</div>
+                <div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px;">
+                    <div>${logoPreview}</div>
+                    <div style="flex:1;">
+                        <div style="display:flex;gap:6px;margin-bottom:6px;">
+                            <div style="flex:1;">
+                                <label style="display:block;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px;">Symbol</label>
+                                <input type="text" id="ipo-vote-logo-symbol" value="${escapeHtml(ipoVoteLogo?.symbol || '')}" maxlength="2" placeholder="🌐"
+                                    style="width:100%;padding:4px 6px;background:var(--bg-4);border:1px solid var(--border-0);border-radius:3px;color:var(--text-bright);font-size:14px;text-align:center;"
+                                    oninput="ipoVoteSetLogoSymbol(this.value)">
+                            </div>
+                            <div style="flex:2;">
+                                <label style="display:block;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px;">Text</label>
+                                <input type="text" id="ipo-vote-logo-text" value="${escapeHtml(ipoVoteLogo?.text || '')}" maxlength="6" placeholder="IPO"
+                                    style="width:100%;padding:4px 6px;background:var(--bg-4);border:1px solid var(--border-0);border-radius:3px;color:var(--text-bright);font-family:var(--font-mono);font-size:11px;"
+                                    oninput="ipoVoteSetLogoText(this.value)">
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:6px;align-items:center;">
+                            <button onclick="document.getElementById('ipo-vote-logo-file').click()" style="font-family:var(--font-mono);font-size:8px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border-0);color:var(--text-muted);cursor:pointer;border-radius:2px;">Upload Image</button>
+                            ${ipoVoteLogoPreviewUrl ? '<button onclick="ipoVoteRemoveLogo()" style="font-family:var(--font-mono);font-size:8px;padding:3px 8px;background:none;border:1px solid rgba(217,83,79,0.3);color:var(--red);cursor:pointer;border-radius:2px;">Remove</button>' : ''}
+                            <input type="file" accept="image/png,image/jpeg,image/webp" id="ipo-vote-logo-file" style="display:none" onchange="ipoVoteHandleLogoFile(this)">
+                        </div>
+                    </div>
+                </div>`;
+            break;
+        }
     }
 
     // Title field (auto-generated but editable)
@@ -16149,6 +16236,24 @@ async function submitIPOVote() {
             meta.direction = document.getElementById('ipo-vote-meta-direction')?.value || 'left';
             break;
         }
+        case 'change_logo': {
+            const symbol = (ipoVoteLogo?.symbol || '').trim();
+            const text = (ipoVoteLogo?.text || '').trim();
+            const currentSymbol = (org?.logo_symbol || '').trim();
+            const currentText = (org?.logo_text || '').trim();
+            const currentImage = org?.logo_image_url || null;
+            const willUploadNewImage = !!ipoVoteLogoFile;
+            const proposedImage = willUploadNewImage ? '__pending__' : (ipoVoteLogo?.image_url || null);
+            const symbolChanged = symbol !== currentSymbol;
+            const textChanged = text !== currentText;
+            const imageChanged = willUploadNewImage || (proposedImage !== currentImage);
+            if (!symbolChanged && !textChanged && !imageChanged) {
+                alert('No changes to propose. Edit the symbol, text, or image first.');
+                return;
+            }
+            // Defer cash + upload until after open-vote-limit check below.
+            break;
+        }
     }
 
     _ipoActionLock = true;
@@ -16157,6 +16262,37 @@ async function submitIPOVote() {
             alert(`This organisation already has ${IPO_MAX_OPEN_VOTES} open votes. Wait for some to close before proposing new ones.`);
             return;
         }
+
+        // change_logo: charge $50k, upload image if any, finalise meta.proposed_logo
+        if (ipoVoteModalType === 'change_logo') {
+            const cashResult = await deductIPOCash(currentFaction.id, IPO_AP_TO_CASH);
+            if (!cashResult.success) {
+                alert('Not enough cash. Logo change votes cost ' + fmtIPOCash(IPO_AP_TO_CASH) + '.');
+                return;
+            }
+            currentFaction.party_funds = cashResult.newFunds;
+
+            let proposedLogoImageUrl = ipoVoteLogo?.image_url || null;
+            if (ipoVoteLogoFile) {
+                const ext = ipoVoteLogoFile.name.split('.').pop().toLowerCase();
+                const filePath = `ipo-logos/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+                const { error: upErr } = await _supabase.storage.from('public-assets').upload(filePath, ipoVoteLogoFile, { upsert: true });
+                if (upErr) {
+                    console.error('[IPO] Logo upload error:', upErr);
+                    alert('Failed to upload logo: ' + upErr.message);
+                    return;
+                }
+                const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
+                proposedLogoImageUrl = urlData?.publicUrl || null;
+            }
+
+            meta.proposed_logo = {
+                symbol: ipoVoteLogo?.symbol || '',
+                text: ipoVoteLogo?.text || '',
+                image_url: proposedLogoImageUrl
+            };
+        }
+
         const { error } = await _supabase.from('ipo_votes').insert({
             org_id: ipoSelectedOrgId,
             title: title,
@@ -16745,6 +16881,38 @@ async function applyVoteEffects(vote, org) {
                 faction_id: currentFaction.id,
                 action_type: 'charter_amendment',
                 action_data: { description: meta.description, proposed_charter: proposedCharter, proposed_logo: proposedLogo },
+                ap_cost: 1,
+                performed_at_tick: shardTick
+            });
+            break;
+        }
+        case 'change_logo': {
+            const proposedLogo = meta.proposed_logo;
+            if (proposedLogo) {
+                const logoUpdate = {};
+                if (proposedLogo.symbol !== undefined) logoUpdate.logo_symbol = proposedLogo.symbol;
+                if (proposedLogo.text !== undefined) logoUpdate.logo_text = proposedLogo.text;
+                if (proposedLogo.image_url !== undefined) logoUpdate.logo_image_url = proposedLogo.image_url;
+                if (Object.keys(logoUpdate).length > 0) {
+                    const { error: logoErr } = await _supabase
+                        .from('international_orgs')
+                        .update(logoUpdate)
+                        .eq('id', org.id);
+                    if (logoErr) console.error('[IPO] Logo change apply error:', logoErr);
+                }
+            }
+            await _supabase.from('ipo_chat').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: null,
+                is_system: true,
+                message_text: 'Logo change approved and applied.',
+                tick_posted: shardTick
+            });
+            await _supabase.from('ipo_action_log').insert({
+                org_id: ipoSelectedOrgId,
+                faction_id: currentFaction.id,
+                action_type: 'change_logo',
+                action_data: { proposed_logo: proposedLogo },
                 ap_cost: 1,
                 performed_at_tick: shardTick
             });
@@ -18610,6 +18778,10 @@ window.closeIPOAmendModal = closeIPOAmendModal;
 window.ipoAmendAddArticle = ipoAmendAddArticle;
 window.ipoAmendHandleLogoFile = ipoAmendHandleLogoFile;
 window.ipoAmendRemoveLogo = ipoAmendRemoveLogo;
+window.ipoVoteHandleLogoFile = ipoVoteHandleLogoFile;
+window.ipoVoteRemoveLogo = ipoVoteRemoveLogo;
+window.ipoVoteSetLogoSymbol = function(v) { if (ipoVoteLogo) ipoVoteLogo.symbol = v; };
+window.ipoVoteSetLogoText = function(v) { if (ipoVoteLogo) ipoVoteLogo.text = v; };
 window.submitIPOAmend = submitIPOAmend;
 // IPO voting exports
 window.openIPOVoteModal = openIPOVoteModal;

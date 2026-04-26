@@ -1142,6 +1142,30 @@ async function applyIPOVoteEffect(supabase, org, vote, fullMembers, tick) {
             });
             break;
         }
+        case 'change_logo': {
+            const proposedLogo = meta.proposed_logo;
+            if (proposedLogo) {
+                const logoUpdate: Record<string, unknown> = {};
+                if (proposedLogo.symbol !== undefined) logoUpdate.logo_symbol = proposedLogo.symbol;
+                if (proposedLogo.text !== undefined) logoUpdate.logo_text = proposedLogo.text;
+                if (proposedLogo.image_url !== undefined) logoUpdate.logo_image_url = proposedLogo.image_url;
+                if (Object.keys(logoUpdate).length > 0) {
+                    await supabase.from('international_orgs').update(logoUpdate).eq('id', org.id);
+                }
+            }
+            await supabase.from('ipo_chat').insert({
+                org_id: org.id, faction_id: null, is_system: true,
+                message_text: 'Logo change approved and applied.',
+                tick_posted: tick
+            });
+            await supabase.from('ipo_action_log').insert({
+                org_id: org.id, faction_id: vote.proposed_by,
+                action_type: 'change_logo',
+                action_data: { proposed_logo: proposedLogo },
+                ap_cost: 0, performed_at_tick: tick
+            });
+            break;
+        }
         case 'symposium': {
             const SYMPOSIUM_DELAY = 4;
             const SYMPOSIUM_COOLDOWN = 20;
