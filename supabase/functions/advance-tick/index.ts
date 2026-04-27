@@ -8398,7 +8398,9 @@ function computeSectorShifts({ effects, voters, sponsorId, result }) {
     if (!Array.isArray(effects) || effects.length === 0) return [];
 
     const cleanEffects = effects.filter(e =>
-        e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0
+        e
+        && typeof e.sector_key === 'string' && e.sector_key.length > 0
+        && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0
     );
     if (cleanEffects.length === 0) return [];
 
@@ -8453,7 +8455,7 @@ function sumSectorEffects(effectsArrays) {
     for (const arr of effectsArrays || []) {
         if (!Array.isArray(arr)) continue;
         for (const e of arr) {
-            if (!e || typeof e.sector_key !== 'string') continue;
+            if (!e || typeof e.sector_key !== 'string' || e.sector_key.length === 0) continue;
             const change = Number(e.change_tenths);
             if (!Number.isFinite(change) || change === 0) continue;
             totals.set(e.sector_key, (totals.get(e.sector_key) || 0) + change);
@@ -9067,7 +9069,7 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
  * nation doesn't have silently no-op (forward-compatible with custom
  * per-nation sectors).
  */
-async function processSectorShifts(supabase, nationId, resolutions, currentTick) {
+async function processSectorShifts(supabase, nationId, resolutions) {
     if (!resolutions || resolutions.length === 0) return;
 
     // Map every resolution to passed/failed/skip. Only passed and failed
@@ -9183,12 +9185,15 @@ async function processSectorShifts(supabase, nationId, resolutions, currentTick)
 
     // Build clamped upserts. Skip rows where the clamp produces no change
     // (e.g., already at 100 with a positive delta) so the network round-trip
-    // only carries actual writes.
+    // only carries actual writes. Math.round defends against fractional
+    // change_tenths slipping in from a malformed policy: the CHECK constraint
+    // requires change_tenths to be a JSON number but doesn't enforce integer,
+    // and faction_sector_popularity.popularity is smallint.
     const upserts = [];
     for (const [key, delta] of aggregatedDeltas) {
         const [factionId, sectorId] = key.split(':');
         const current = currentByKey.get(key) ?? 0;
-        const next = Math.max(0, Math.min(100, current + delta));
+        const next = Math.max(0, Math.min(100, Math.round(current + delta)));
         if (next === current) continue;
         upserts.push({ faction_id: factionId, sector_id: sectorId, popularity: next });
     }
@@ -37913,7 +37918,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Runs alongside ideology shifts during the transition; sectors are
         // shadow-tracked until Phase 3 swaps the election engine over.
         try {
-            await processSectorShifts(supabase, nation.id, resolutions, newTick);
+            await processSectorShifts(supabase, nation.id, resolutions);
         } catch (sectorErr) {
             console.error(`[advanceTick] Sector shifts failed for ${nation.name} (non-fatal):`, sectorErr);
         }

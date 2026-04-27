@@ -2466,7 +2466,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Runs alongside ideology shifts during the transition; sectors are
         // shadow-tracked until Phase 3 swaps the election engine over.
         try {
-            await processSectorShifts(supabase, nation.id, resolutions, newTick);
+            await processSectorShifts(supabase, nation.id, resolutions);
         } catch (sectorErr) {
             console.error(`[advanceTick] Sector shifts failed for ${nation.name} (non-fatal):`, sectorErr);
         }

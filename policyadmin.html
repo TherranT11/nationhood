@@ -1116,6 +1116,15 @@ async function savePolicy() {
     const validEffects = statEffects.filter(e => e.stat_key);
     if (validEffects.length === 0) { alert('Add at least 1 stat effect.'); return; }
 
+    // Phase 2: catch sector rows the user added but never picked a sector for.
+    // Without this alert, the save filter further down silently drops them
+    // and the user thinks the effect was saved.
+    const incompleteSectorRows = sectorEffects.filter(e => !e.sector_key);
+    if (incompleteSectorRows.length > 0) {
+        alert(`${incompleteSectorRows.length} sector effect row${incompleteSectorRows.length === 1 ? '' : 's'} ${incompleteSectorRows.length === 1 ? 'has' : 'have'} no sector picked. Pick a sector or remove the row.`);
+        return;
+    }
+
     const normalizedEffects = validEffects.map(e => ({ ...e, stat_key: normalizePolicyStatKey(e.stat_key) }));
     const unknownStatKeys = [...new Set(
         normalizedEffects

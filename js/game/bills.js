@@ -573,7 +573,7 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
  * nation doesn't have silently no-op (forward-compatible with custom
  * per-nation sectors).
  */
-export async function processSectorShifts(supabase, nationId, resolutions, currentTick) {
+export async function processSectorShifts(supabase, nationId, resolutions) {
     if (!resolutions || resolutions.length === 0) return;
 
     // Map every resolution to passed/failed/skip. Only passed and failed
@@ -689,12 +689,15 @@ export async function processSectorShifts(supabase, nationId, resolutions, curre
 
     // Build clamped upserts. Skip rows where the clamp produces no change
     // (e.g., already at 100 with a positive delta) so the network round-trip
-    // only carries actual writes.
+    // only carries actual writes. Math.round defends against fractional
+    // change_tenths slipping in from a malformed policy: the CHECK constraint
+    // requires change_tenths to be a JSON number but doesn't enforce integer,
+    // and faction_sector_popularity.popularity is smallint.
     const upserts = [];
     for (const [key, delta] of aggregatedDeltas) {
         const [factionId, sectorId] = key.split(':');
         const current = currentByKey.get(key) ?? 0;
-        const next = Math.max(0, Math.min(100, current + delta));
+        const next = Math.max(0, Math.min(100, Math.round(current + delta)));
         if (next === current) continue;
         upserts.push({ faction_id: factionId, sector_id: sectorId, popularity: next });
     }

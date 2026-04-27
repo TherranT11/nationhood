@@ -370,6 +370,18 @@ suite('computeSectorShifts — withdrawn / empty / malformed', () => {
             []
         );
     });
+
+    test('empty sector_key string is skipped (audit fix)', () => {
+        const bad = [{ sector_key: '', change_tenths: 20 }];
+        assert.deepEqual(
+            computeSectorShifts({ effects: bad, voters, sponsorId: 'fac-a', result: 'passed' }),
+            []
+        );
+        assert.deepEqual(
+            computeSectorShifts({ effects: bad, voters, sponsorId: 'fac-a', result: 'failed' }),
+            []
+        );
+    });
 });
 
 suite('computeSectorShifts — passed (vote-aligned)', () => {
@@ -528,6 +540,7 @@ suite('sumSectorEffects', () => {
                 null,
                 { sector_key: 'RETIREES', change_tenths: 'oops' },
                 { change_tenths: 20 },                        // missing key
+                { sector_key: '',         change_tenths: 50 },// empty key (audit fix)
                 { sector_key: 'RETIREES', change_tenths: 12 },
             ],
         ]);

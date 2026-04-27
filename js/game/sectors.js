@@ -213,7 +213,9 @@ export function computeSectorShifts({ effects, voters, sponsorId, result }) {
     if (!Array.isArray(effects) || effects.length === 0) return [];
 
     const cleanEffects = effects.filter(e =>
-        e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0
+        e
+        && typeof e.sector_key === 'string' && e.sector_key.length > 0
+        && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0
     );
     if (cleanEffects.length === 0) return [];
 
@@ -268,7 +270,7 @@ export function sumSectorEffects(effectsArrays) {
     for (const arr of effectsArrays || []) {
         if (!Array.isArray(arr)) continue;
         for (const e of arr) {
-            if (!e || typeof e.sector_key !== 'string') continue;
+            if (!e || typeof e.sector_key !== 'string' || e.sector_key.length === 0) continue;
             const change = Number(e.change_tenths);
             if (!Number.isFinite(change) || change === 0) continue;
             totals.set(e.sector_key, (totals.get(e.sector_key) || 0) + change);
