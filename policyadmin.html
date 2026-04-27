@@ -191,6 +191,17 @@
                     <div class="effect-preview" id="effect-preview" style="display:none;"></div>
                 </div>
 
+                <!-- Section 5b: Sector Effects (Phase 2 — vote-aligned) -->
+                <div class="builder-section">
+                    <div class="builder-section-title">🗳️ 5b. Sector Effects (up to 5)</div>
+                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                        Per-sector popularity shift on resolution. <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected. <strong>Fail:</strong> sponsor takes the inverse alone.<br>
+                        Magnitude is integer tenths (10 = 1.0). Practical bounds: ±5 (Universal), ±15 (Moderate), ±30 (Radical).
+                    </p>
+                    <div id="sector-effects-container"></div>
+                    <button class="add-btn" id="add-sector-effect-btn" onclick="addSectorEffect()">+ Add Sector Effect</button>
+                </div>
+
                 <!-- Section 6: Opposed Policies -->
                 <div class="builder-section">
                     <div class="builder-section-title">⚔️ 6. Opposed Policies (up to 3, same law category)</div>
@@ -324,6 +335,8 @@ let statEffects = []; // array of { stat_key, direction, rate, delay_ticks, dura
 let opposedSlots = []; // array of policy UUIDs or ''
 let startingNations = new Set(); // nation IDs
 let selectedPrereqId = null; // requires_policy_id
+let sectorEffects = []; // [{ sector_key, change_tenths }] — Phase 2 sector deltas
+let sectorOptions = []; // [{ sector_key, name }] — default sectors loaded once on init
 
 function normalizeEffectDirection(direction) {
     const dir = String(direction || '').toLowerCase();
@@ -341,12 +354,40 @@ async function checkAuth() {
 
 // ==================== INIT ====================
 async function init() {
-    await Promise.all([loadPolicies(), loadNations()]);
+    await Promise.all([loadPolicies(), loadNations(), loadSectorOptions()]);
     populateFilterDropdowns();
     populateScalingStatDropdown();
     renderIdeologyChips();
     renderNationChecks();
     renderPolicyTable();
+}
+
+// Load the canonical default sectors once. Bills are template-level (the
+// policies table has no nation_id), so we only expose the 12 default
+// sector_keys that exist in every nation. Custom per-nation sectors are
+// out of scope for bill effects — they'd silently no-op for nations that
+// don't have them, which is forward-compatible if we ever scope bills.
+async function loadSectorOptions() {
+    try {
+        const { data, error } = await _supabase
+            .from('sectors')
+            .select('sector_key, name, display_order')
+            .eq('is_default', true)
+            .order('display_order');
+        if (error) throw error;
+        // Dedupe by sector_key — every nation has the same 12 defaults so
+        // the first occurrence per key (in display_order) wins. Names can
+        // differ per nation if an admin renamed locally; the policy admin
+        // is template-level, so we just pick one canonical label.
+        const seen = new Map();
+        for (const row of (data || [])) {
+            if (!seen.has(row.sector_key)) seen.set(row.sector_key, row.name);
+        }
+        sectorOptions = [...seen].map(([sector_key, name]) => ({ sector_key, name }));
+    } catch (e) {
+        console.error('loadSectorOptions failed', e);
+        sectorOptions = [];
+    }
 }
 
 async function loadPolicies() {
@@ -590,6 +631,15 @@ function loadPolicyIntoBuilder(p) {
     }
     renderStatEffects();
 
+    // Sector effects (Phase 2): coerce to the {sector_key, change_tenths} shape
+    sectorEffects = Array.isArray(p.sector_effects)
+        ? p.sector_effects
+            .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
+            .slice(0, SECTOR_EFFECT_MAX)
+            .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }))
+        : [];
+    renderSectorEffects();
+
     // Opposed
     opposedSlots = (p.opposed_policy_ids || []).filter(Boolean);
     renderOpposedSlots();
@@ -792,6 +842,95 @@ function updateEffect(idx, field, value) {
     statEffects[idx][field] = value;
     if (field === 'direction' || field === 'adjust_type') renderStatEffects();
     else updateEffectPreview();
+}
+
+// ==================== SECTOR EFFECTS (Phase 2) ====================
+const SECTOR_EFFECT_MAX = 5;
+const SECTOR_EFFECT_MIN_CHANGE = -30;
+const SECTOR_EFFECT_MAX_CHANGE = 30;
+
+function addSectorEffect() {
+    if (sectorEffects.length >= SECTOR_EFFECT_MAX) return;
+    sectorEffects.push({ sector_key: '', change_tenths: 0 });
+    renderSectorEffects();
+}
+
+function removeSectorEffect(idx) {
+    sectorEffects.splice(idx, 1);
+    renderSectorEffects();
+}
+
+function updateSectorEffect(idx, field, value) {
+    if (!sectorEffects[idx]) return;
+    if (field === 'change_tenths') {
+        const n = parseInt(value, 10);
+        sectorEffects[idx][field] = Number.isFinite(n) ? n : 0;
+    } else {
+        sectorEffects[idx][field] = value;
+    }
+    // Re-render so the live "= Display" preview updates with the new value
+    // (sign / color / formatted decimal). Re-render is safe because every
+    // input rebuilds its value from the in-memory sectorEffects array.
+    renderSectorEffects();
+}
+
+function renderSectorEffects() {
+    const container = document.getElementById('sector-effects-container');
+    const addBtn = document.getElementById('add-sector-effect-btn');
+    if (!container) return;
+    if (addBtn) addBtn.disabled = sectorEffects.length >= SECTOR_EFFECT_MAX;
+
+    if (sectorEffects.length === 0) {
+        container.innerHTML = '<div style="color:#666; font-size:0.85rem; padding:8px 0;">No sector effects. Bills without sector effects shift no popularity on resolution.</div>';
+        return;
+    }
+
+    if (sectorOptions.length === 0) {
+        container.innerHTML = '<div style="color:#e57373; font-size:0.85rem;">No sectors loaded — make sure the Phase 0 sectors migration has run.</div>';
+        return;
+    }
+
+    container.innerHTML = sectorEffects.map((e, idx) => {
+        const optionsHtml = sectorOptions.map(s =>
+            `<option value="${s.sector_key}"${s.sector_key === e.sector_key ? ' selected' : ''}>${escapePolicyHtml(s.name)}</option>`
+        ).join('');
+        const change = Number(e.change_tenths) || 0;
+        const displayChange = (change / 10).toFixed(1);
+        const changeColor = change > 0 ? '#81c784' : change < 0 ? '#e57373' : '#888';
+        return `
+            <div class="stat-effect-card">
+                <div class="se-header">
+                    <span class="se-label">Sector ${idx + 1}</span>
+                    <button class="se-remove" onclick="removeSectorEffect(${idx})">✕ Remove</button>
+                </div>
+                <div class="se-fields">
+                    <div class="form-field" style="flex:2;">
+                        <label>Sector</label>
+                        <select onchange="updateSectorEffect(${idx},'sector_key',this.value)">
+                            <option value="">-- Select --</option>
+                            ${optionsHtml}
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Change (tenths)</label>
+                        <input type="number" value="${change}" min="${SECTOR_EFFECT_MIN_CHANGE}" max="${SECTOR_EFFECT_MAX_CHANGE}" step="1" onchange="updateSectorEffect(${idx},'change_tenths',this.value)">
+                    </div>
+                    <div class="form-field" style="flex:0 0 auto; min-width:90px;">
+                        <label>= Display</label>
+                        <div style="padding:6px 8px; font-weight:bold; font-size:1rem; color:${changeColor};">${change > 0 ? '+' : ''}${displayChange}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Tiny HTML-escape helper local to the policy admin page (it doesn't import
+// utils.js, and the existing renderStatEffects relies on safe stat keys).
+function escapePolicyHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
 }
 
 function updateOpposed(idx, value) {
@@ -1057,6 +1196,9 @@ async function savePolicy() {
             adjust_value: e.adjust_type ? (e.adjust_value || 0) : 0
         })),
         opposed_policy_ids: opposedIds.length > 0 ? opposedIds : null,
+        sector_effects: sectorEffects
+            .filter(e => e.sector_key && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0)
+            .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) })),
         // Legacy fields — write defaults so old code doesn't break
         target_stat: normalizedEffects[0]?.stat_key || null,
         stat_direction: (normalizeEffectDirection(normalizedEffects[0]?.direction) || 'up').toUpperCase(),
@@ -1158,6 +1300,8 @@ function resetBuilder() {
     updateCostPreview();
     statEffects = [];
     renderStatEffects();
+    sectorEffects = [];
+    renderSectorEffects();
     opposedSlots = [];
     renderOpposedSlots();
     selectedPrereqId = null;
@@ -1208,6 +1352,9 @@ window.toggleAgnostic = toggleAgnostic;
 window.togglePrereq = togglePrereq;
 window.updateEffect = updateEffect;
 window.updateOpposed = updateOpposed;
+window.addSectorEffect = addSectorEffect;
+window.removeSectorEffect = removeSectorEffect;
+window.updateSectorEffect = updateSectorEffect;
 </script>
 </body>
 </html>
