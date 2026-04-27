@@ -412,6 +412,24 @@ const ELECTABILITY_MODIFIER = {
 };
 
 /**
+ * Bucket a numeric electability score (factions.electability is 10..60 from
+ * _seed_electability) into V3's three-tier modifier categories.
+ *
+ *   < 30  → Low      (-2%)
+ *   30-50 → Moderate ( 0%)
+ *   > 50  → High     (+2%)
+ *
+ * Non-numeric / null inputs default to 'Moderate'.
+ */
+export function electabilityBucket(score) {
+    const s = Number(score);
+    if (!Number.isFinite(s)) return 'Moderate';
+    if (s < 30) return 'Low';
+    if (s > 50) return 'High';
+    return 'Moderate';
+}
+
+/**
  * Apply the leader Electability modifier to each faction's seat count.
  * Modifier table per V3 §4.5: Low = -2%, Moderate = 0%, High = +2%.
  *
