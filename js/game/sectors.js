@@ -364,32 +364,28 @@ export function allocateSeatsByTwp(twpByFaction, totalSeats, fringeThreshold = D
         return distributeEvenly(ids, totalSeats);
     }
 
-    // Largest Remainder among qualifying factions; non-qualifying get 0.
-    const totalQualifying = qualifying.reduce((s, id) => s + Number(twpByFaction[id]), 0);
-    const seats = {};
-    for (const id of ids) seats[id] = 0;
+    // Build a weights map containing only the qualifying parties. Below-fringe
+    // parties stay in the result with seats: 0.
+    const weights = {};
+    let totalQualifying = 0;
+    for (const id of qualifying) {
+        const w = Number(twpByFaction[id]);
+        weights[id] = w;
+        totalQualifying += w;
+    }
 
+    // Edge: every qualifying party at TWP=0 (only happens when fringe=0).
+    // Treat as zero-fallback within the qualifying set.
     if (totalQualifying === 0) {
-        // All qualifying factions tied at exactly the threshold and threshold
-        // is 0 (rare). Treat the same as the zero-fallback for the qualifying set.
+        const seats = {};
+        for (const id of ids) seats[id] = 0;
         return { ...seats, ...distributeEvenly(qualifying, totalSeats) };
     }
 
-    const quota = totalQualifying / totalSeats;
-    const fractionals = [];
-    let allocated = 0;
-    for (const id of qualifying) {
-        const raw = Number(twpByFaction[id]) / quota;
-        const floor = Math.floor(raw);
-        seats[id] = floor;
-        allocated += floor;
-        fractionals.push({ id, fractional: raw - floor });
-    }
-    fractionals.sort((a, b) => b.fractional - a.fractional);
-    const remaining = totalSeats - allocated;
-    for (let i = 0; i < remaining; i++) {
-        seats[fractionals[i].id] += 1;
-    }
+    // Delegate the Largest Remainder math to the shared internal helper.
+    const allocated = allocateByLargestRemainder(weights, totalSeats);
+    const seats = {};
+    for (const id of ids) seats[id] = allocated[id] ?? 0;
     return seats;
 }
 

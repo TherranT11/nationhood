@@ -1682,26 +1682,11 @@ export async function processPartialElection(supabase, nation, election, current
     //    the same sector engine as full elections, but skip the independents
     //    roll (these are delta seats added to an existing parliament, not a
     //    fresh contest) and skip the uncertainty roll (deltas should be a
-    //    direct read of current standings).
-    const [
-        { data: factions, error: factErr },
-        { data: sectors,  error: secErr  },
-    ] = await Promise.all([
-        supabase.from('factions')
-            .select('id, faction_name, electability, seats')
-            .eq('nation_id', nation.id)
-            .eq('faction_type', 'party')
-            .is('abandoned_at', null),
-        supabase.from('sectors')
-            .select('id, sector_key, name, weight, base_turnout, is_active')
-            .eq('nation_id', nation.id)
-            .eq('is_active', true)
-            .order('display_order'),
-    ]);
-    if (factErr) throw factErr;
-    if (secErr)  throw secErr;
+    //    direct read of current standings). Existing seats are needed for
+    //    the delta-add at step 4, so includeCurrentSeats: true.
+    const { factions: factionList, sectors: sectorList, popularity } =
+        await loadSectorElectionInputs(supabase, nation.id, { includeCurrentSeats: true });
 
-    const factionList = factions || [];
     if (factionList.length === 0) {
         console.warn('No parties found for partial election');
         await supabase.from('elections')
@@ -1710,22 +1695,12 @@ export async function processPartialElection(supabase, nation, election, current
         return;
     }
 
-    let popularity = [];
-    if ((sectors || []).length > 0) {
-        const { data: pop, error: popErr } = await supabase
-            .from('faction_sector_popularity')
-            .select('faction_id, sector_id, popularity')
-            .in('faction_id', factionList.map(f => f.id));
-        if (popErr) throw popErr;
-        popularity = pop || [];
-    }
-
     // 2. Tie-breakers + TWP per faction.
-    const bonuses = applyTieBreakerBonuses(factionList, sectors || [], popularity);
-    const augmentedPop = layerBonusesIntoPopularity(popularity, sectors || [], bonuses);
+    const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
+    const augmentedPop = layerBonusesIntoPopularity(popularity, sectorList, bonuses);
     const twpByFaction = {};
     for (const f of factionList) {
-        twpByFaction[f.id] = calculateTotalWeightedPopularity(f.id, sectors || [], augmentedPop);
+        twpByFaction[f.id] = calculateTotalWeightedPopularity(f.id, sectorList, augmentedPop);
     }
 
     // 3. Allocate ONLY the delta via TWP. No uncertainty roll on partials.
@@ -2116,36 +2091,9 @@ async function runSectorElection(supabase, nation) {
     }
     const availableSeats = Math.max(0, totalSeats - indep.next);
 
-    // 2. Load factions + sectors + popularity in parallel.
-    const [
-        { data: factions, error: factErr },
-        { data: sectors,  error: secErr  },
-    ] = await Promise.all([
-        supabase.from('factions')
-            .select('id, faction_name, electability, seats')
-            .eq('nation_id', nationId)
-            .eq('faction_type', 'party')
-            .is('abandoned_at', null),
-        supabase.from('sectors')
-            .select('id, sector_key, name, weight, base_turnout, is_active')
-            .eq('nation_id', nationId)
-            .eq('is_active', true)
-            .order('display_order'),
-    ]);
-    if (factErr) throw new Error(`load factions: ${factErr.message}`);
-    if (secErr)  throw new Error(`load sectors: ${secErr.message}`);
-
-    const factionList = factions || [];
-    const sectorList  = sectors  || [];
-    let popularity = [];
-    if (factionList.length > 0 && sectorList.length > 0) {
-        const { data: pop, error: popErr } = await supabase
-            .from('faction_sector_popularity')
-            .select('faction_id, sector_id, popularity')
-            .in('faction_id', factionList.map(f => f.id));
-        if (popErr) throw new Error(`load faction_sector_popularity: ${popErr.message}`);
-        popularity = pop || [];
-    }
+    // 2. Load factions + sectors + popularity (shared with processPartialElection).
+    const { factions: factionList, sectors: sectorList, popularity } =
+        await loadSectorElectionInputs(supabase, nationId, { includeCurrentSeats: false });
 
     if (factionList.length === 0) {
         // Nation has no parties — return an empty result.
@@ -2205,6 +2153,50 @@ async function runSectorElection(supabase, nation) {
         indep,
         totalSeats,
     });
+}
+
+/**
+ * Shared loader for the sector-election inputs (factions, sectors, popularity).
+ * Used by both runSectorElection (full election) and processPartialElection
+ * (foundational-bill delta seats). Set includeCurrentSeats=true if the caller
+ * needs to read existing factions.seats — runSectorElection only writes seats
+ * so it skips that column.
+ */
+async function loadSectorElectionInputs(supabase, nationId, { includeCurrentSeats = false } = {}) {
+    const factionColumns = includeCurrentSeats
+        ? 'id, faction_name, electability, seats'
+        : 'id, faction_name, electability';
+
+    const [
+        { data: factions, error: factErr },
+        { data: sectors,  error: secErr  },
+    ] = await Promise.all([
+        supabase.from('factions')
+            .select(factionColumns)
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .is('abandoned_at', null),
+        supabase.from('sectors')
+            .select('id, sector_key, name, weight, base_turnout, is_active')
+            .eq('nation_id', nationId)
+            .eq('is_active', true)
+            .order('display_order'),
+    ]);
+    if (factErr) throw new Error(`load factions: ${factErr.message}`);
+    if (secErr)  throw new Error(`load sectors: ${secErr.message}`);
+
+    const factionList = factions || [];
+    const sectorList  = sectors  || [];
+    let popularity = [];
+    if (factionList.length > 0 && sectorList.length > 0) {
+        const { data: pop, error: popErr } = await supabase
+            .from('faction_sector_popularity')
+            .select('faction_id, sector_id, popularity')
+            .in('faction_id', factionList.map(f => f.id));
+        if (popErr) throw new Error(`load faction_sector_popularity: ${popErr.message}`);
+        popularity = pop || [];
+    }
+    return { factions: factionList, sectors: sectorList, popularity };
 }
 
 function layerBonusesIntoPopularity(popularity, sectors, bonuses) {
