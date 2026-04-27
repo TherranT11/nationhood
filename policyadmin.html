@@ -135,14 +135,15 @@
 </div>
                 </div>
 
-                <!-- Section 2: Ideologies -->
+                <!-- Section 2: Sector Effects (Phase 2 — replaces ideology authoring) -->
                 <div class="builder-section">
-                    <div class="builder-section-title">🗳️ 2. Ideologies (select 1–3)</div>
-                    <div class="ideology-chips" id="ideology-chips"></div>
-                    <div style="color:#888; font-size:0.8rem; margin-top:10px;">
-                        Selected: <strong style="color:#ffcc00;" id="ideo-count">0</strong> / 3 —
-                        <span id="ideo-list" style="color:#bb86fc;">None</span>
-                    </div>
+                    <div class="builder-section-title">🗳️ 2. Sector Effects (up to 5)</div>
+                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                        Per-sector popularity shift on resolution. <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected. <strong>Fail:</strong> sponsor takes the inverse alone.<br>
+                        Magnitude is 0.1 to 2.0 in 0.1 steps.
+                    </p>
+                    <div id="sector-effects-container"></div>
+                    <button class="add-btn" id="add-sector-effect-btn" onclick="addSectorEffect()">+ Add Sector</button>
                 </div>
 
                 <!-- Section 3: Starting Status -->
@@ -189,17 +190,6 @@
                     <div id="stat-effects-container"></div>
                     <button class="add-btn" id="add-effect-btn" onclick="addStatEffect()">+ Add Stat Effect</button>
                     <div class="effect-preview" id="effect-preview" style="display:none;"></div>
-                </div>
-
-                <!-- Section 5b: Sector Effects (Phase 2 — vote-aligned) -->
-                <div class="builder-section">
-                    <div class="builder-section-title">🗳️ 5b. Sector Effects (up to 5)</div>
-                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                        Per-sector popularity shift on resolution. <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected. <strong>Fail:</strong> sponsor takes the inverse alone.<br>
-                        Magnitude is integer tenths (10 = 1.0). Practical bounds: ±5 (Universal), ±15 (Moderate), ±30 (Radical).
-                    </p>
-                    <div id="sector-effects-container"></div>
-                    <button class="add-btn" id="add-sector-effect-btn" onclick="addSectorEffect()">+ Add Sector Effect</button>
                 </div>
 
                 <!-- Section 6: Opposed Policies -->
@@ -257,21 +247,14 @@ async function hashPassword(pw) {
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-const IDEOLOGY_SPECTRUMS = [
-    { left: 'Liberty', right: 'Equality' },
-    { left: 'Freedom', right: 'Security' },
-    { left: 'Tradition', right: 'Progress' },
-    { left: 'Globalism', right: 'Nationalism' },
-    { left: 'Individualism', right: 'Collectivism' }
-];
-const ALL_IDEOLOGIES = IDEOLOGY_SPECTRUMS.flatMap(s => [s.left, s.right]);
-const OPPOSITES = {};
-    const RAW_SCALING_INFO = {
+// Phase 2: ideology authoring removed; existing policy ideology data is
+// preserved on edit but no longer editable through this UI.
+
+const RAW_SCALING_INFO = {
     population: { divisor: 1_000_000, unit: 'per million people', example: '10M', exampleVal: 10_000_000 },
     gdp: { divisor: 1_000_000_000, unit: 'per $1B GDP', example: '$500B', exampleVal: 500_000_000_000 },
     debt: { divisor: 1_000_000_000, unit: 'per $1B debt', example: '$200B', exampleVal: 200_000_000_000 }
 };
-IDEOLOGY_SPECTRUMS.forEach(s => { OPPOSITES[s.left] = s.right; OPPOSITES[s.right] = s.left; });
 
 const STAT_GROUPS = [
     { label: '💰 Economic', stats: ['gdp','gdp_growth','debt','debt_growth','inflation','interest_rates','trade_balance','currency_strength','foreign_investment','credit'] },
@@ -329,14 +312,17 @@ let allNations = [];
 let editingPolicyId = null;
 
 // Builder state
-let selectedIdeologies = new Set();
-let isAgnostic = false; // no ideology requirement
 let statEffects = []; // array of { stat_key, direction, rate, delay_ticks, duration_ticks }
 let opposedSlots = []; // array of policy UUIDs or ''
 let startingNations = new Set(); // nation IDs
 let selectedPrereqId = null; // requires_policy_id
 let sectorEffects = []; // [{ sector_key, change_tenths }] — Phase 2 sector deltas
 let sectorOptions = []; // [{ sector_key, name }] — default sectors loaded once on init
+// Preserved ideology data — Phase 2 stops authoring new ideology, but
+// existing policies' ideology must not be destroyed when an admin edits
+// other fields. Captured in editPolicy, written back in savePolicy.
+let preservedIdeology = null;
+let preservedIdeologies = [];
 
 function normalizeEffectDirection(direction) {
     const dir = String(direction || '').toLowerCase();
@@ -357,7 +343,6 @@ async function init() {
     await Promise.all([loadPolicies(), loadNations(), loadSectorOptions()]);
     populateFilterDropdowns();
     populateScalingStatDropdown();
-    renderIdeologyChips();
     renderNationChecks();
     renderPolicyTable();
 }
@@ -592,10 +577,12 @@ function loadPolicyIntoBuilder(p) {
     document.getElementById('b-fiscal-category').value = p.fiscal_category || '';
 
     // Ideologies
-    const loadedIdeos = p.ideologies || (p.ideology ? [p.ideology] : []);
-    isAgnostic = Array.isArray(loadedIdeos) && loadedIdeos.length === 0 && !p.ideology;
-    selectedIdeologies = new Set(loadedIdeos);
-    renderIdeologyChips();
+    // Preserve any existing ideology data so re-saving this policy doesn't
+    // destroy it. Phase 2 deprecates authoring; Phase 5 removes the columns.
+    preservedIdeology   = p.ideology || null;
+    preservedIdeologies = Array.isArray(p.ideologies)
+        ? [...p.ideologies]
+        : (p.ideology ? [p.ideology] : []);
 
     // Starting nations (we'll need to look up nation_policies or active_laws — for now just clear)
     startingNations = new Set();
@@ -649,50 +636,6 @@ function loadPolicyIntoBuilder(p) {
     document.getElementById('b-has-prereq').checked = hasPrereq;
     document.getElementById('prereq-select-area').style.display = hasPrereq ? 'block' : 'none';
     if (hasPrereq) populatePrereqDropdown();
-}
-
-// ==================== IDEOLOGY CHIPS ====================
-function renderIdeologyChips() {
-    const container = document.getElementById('ideology-chips');
-    const disabledSet = new Set();
-    selectedIdeologies.forEach(ideo => { if (OPPOSITES[ideo]) disabledSet.add(OPPOSITES[ideo]); });
-
-    // Agnostic chip first
-    const agnosticCls = isAgnostic ? 'selected agnostic' : '';
-    let html = `<div class="ideology-chip ideology-chip-agnostic ${agnosticCls}" onclick="toggleAgnostic()">Agnostic</div>`;
-    html += '<span class="ideology-divider">|</span>';
-
-    html += ALL_IDEOLOGIES.map(ideo => {
-        const sel = selectedIdeologies.has(ideo);
-        const dis = isAgnostic || (disabledSet.has(ideo) && !sel);
-        const full = !sel && selectedIdeologies.size >= 3;
-        const cls = sel ? 'selected' : (dis || full) ? 'disabled' : '';
-        const click = (dis || full) && !sel ? '' : `toggleIdeology('${ideo}')`;
-        return `<div class="ideology-chip ${cls}" onclick="${click}">${ideo}</div>`;
-    }).join('');
-
-    container.innerHTML = html;
-
-    document.getElementById('ideo-count').textContent = isAgnostic ? '—' : selectedIdeologies.size;
-    document.getElementById('ideo-list').textContent = isAgnostic ? 'Agnostic (no requirement)' : (selectedIdeologies.size > 0 ? [...selectedIdeologies].join(', ') : 'None');
-}
-
-function toggleAgnostic() {
-    isAgnostic = !isAgnostic;
-    if (isAgnostic) selectedIdeologies = new Set();
-    renderIdeologyChips();
-}
-
-function toggleIdeology(ideo) {
-    if (isAgnostic) return; // can't select ideologies while agnostic
-    if (selectedIdeologies.has(ideo)) {
-        selectedIdeologies.delete(ideo);
-    } else {
-        if (selectedIdeologies.size >= 3) return;
-        if (OPPOSITES[ideo] && selectedIdeologies.has(OPPOSITES[ideo])) return;
-        selectedIdeologies.add(ideo);
-    }
-    renderIdeologyChips();
 }
 
 // ==================== NATION CHECKS ====================
@@ -846,12 +789,16 @@ function updateEffect(idx, field, value) {
 
 // ==================== SECTOR EFFECTS (Phase 2) ====================
 const SECTOR_EFFECT_MAX = 5;
-const SECTOR_EFFECT_MIN_CHANGE = -30;
-const SECTOR_EFFECT_MAX_CHANGE = 30;
+// Display range: 0.1–2.0 (= 1–20 tenths). Sign comes from the +/− toggle,
+// not from the magnitude input itself.
+const SECTOR_EFFECT_MIN_MAGNITUDE_TENTHS = 1;
+const SECTOR_EFFECT_MAX_MAGNITUDE_TENTHS = 20;
 
 function addSectorEffect() {
     if (sectorEffects.length >= SECTOR_EFFECT_MAX) return;
-    sectorEffects.push({ sector_key: '', change_tenths: 0 });
+    // Default new rows to +1.0 — a typical Moderate-tier shift; admin can
+    // dial it down or flip the sign with the +/− toggle.
+    sectorEffects.push({ sector_key: '', change_tenths: 10 });
     renderSectorEffects();
 }
 
@@ -860,17 +807,35 @@ function removeSectorEffect(idx) {
     renderSectorEffects();
 }
 
+// Update sector_key only — the dropdown change handler.
 function updateSectorEffect(idx, field, value) {
     if (!sectorEffects[idx]) return;
-    if (field === 'change_tenths') {
-        const n = parseInt(value, 10);
-        sectorEffects[idx][field] = Number.isFinite(n) ? n : 0;
-    } else {
-        sectorEffects[idx][field] = value;
-    }
-    // Re-render so the live "= Display" preview updates with the new value
-    // (sign / color / formatted decimal). Re-render is safe because every
-    // input rebuilds its value from the in-memory sectorEffects array.
+    sectorEffects[idx][field] = value;
+    renderSectorEffects();
+}
+
+// Flip the sign of an effect, preserving its magnitude. Called by the
+// +/− toggle. A row at 0 (rare — usually only seen mid-edit) flips to +1.
+function setSectorSign(idx, sign) {
+    if (!sectorEffects[idx]) return;
+    const current = Number(sectorEffects[idx].change_tenths) || 0;
+    const magnitude = Math.abs(current) || 1;
+    sectorEffects[idx].change_tenths = sign < 0 ? -magnitude : magnitude;
+    renderSectorEffects();
+}
+
+// Update the magnitude (0.1–2.0). Sign is preserved from the existing
+// change_tenths so the +/− toggle isn't fought.
+function updateSectorMagnitude(idx, value) {
+    if (!sectorEffects[idx]) return;
+    const tenths = Math.round(parseFloat(value) * 10);
+    if (!Number.isFinite(tenths)) return;
+    const clamped = Math.max(
+        SECTOR_EFFECT_MIN_MAGNITUDE_TENTHS,
+        Math.min(SECTOR_EFFECT_MAX_MAGNITUDE_TENTHS, tenths)
+    );
+    const sign = (Number(sectorEffects[idx].change_tenths) || 0) < 0 ? -1 : 1;
+    sectorEffects[idx].change_tenths = sign * clamped;
     renderSectorEffects();
 }
 
@@ -884,42 +849,39 @@ function renderSectorEffects() {
         container.innerHTML = '<div style="color:#666; font-size:0.85rem; padding:8px 0;">No sector effects. Bills without sector effects shift no popularity on resolution.</div>';
         return;
     }
-
     if (sectorOptions.length === 0) {
         container.innerHTML = '<div style="color:#e57373; font-size:0.85rem;">No sectors loaded — make sure the Phase 0 sectors migration has run.</div>';
         return;
     }
+
+    const rowStyle  = 'display:flex; gap:10px; align-items:center; padding:10px 12px; background:#1a1a1a; border:1px solid #333; margin-bottom:8px; border-radius:4px;';
+    const selStyle  = 'flex:1; min-width:220px; background:#0f0f0f; border:1px solid #333; color:#eee; padding:6px 8px; border-radius:3px;';
+    const numStyle  = 'width:78px; background:#0f0f0f; border:1px solid #333; color:#eee; padding:6px 8px; border-radius:3px; text-align:center;';
+    const signGroup = 'display:inline-flex; border:1px solid #333; border-radius:3px; overflow:hidden;';
+    const signBase  = 'background:#0f0f0f; color:#888; border:none; padding:6px 12px; cursor:pointer; font-weight:bold; font-size:0.95rem;';
+    const signPosOn = 'background:#1f3a1f; color:#81c784;';
+    const signNegOn = 'background:#3a1d1d; color:#e57373;';
+    const xBtnStyle = 'background:transparent; color:#666; border:1px solid #333; padding:5px 9px; cursor:pointer; border-radius:3px; font-size:0.85rem;';
 
     container.innerHTML = sectorEffects.map((e, idx) => {
         const optionsHtml = sectorOptions.map(s =>
             `<option value="${s.sector_key}"${s.sector_key === e.sector_key ? ' selected' : ''}>${escapePolicyHtml(s.name)}</option>`
         ).join('');
         const change = Number(e.change_tenths) || 0;
-        const displayChange = (change / 10).toFixed(1);
-        const changeColor = change > 0 ? '#81c784' : change < 0 ? '#e57373' : '#888';
+        const isPositive = change >= 0;
+        const magnitude = (Math.abs(change) / 10).toFixed(1);
         return `
-            <div class="stat-effect-card">
-                <div class="se-header">
-                    <span class="se-label">Sector ${idx + 1}</span>
-                    <button class="se-remove" onclick="removeSectorEffect(${idx})">✕ Remove</button>
+            <div style="${rowStyle}">
+                <select style="${selStyle}" onchange="updateSectorEffect(${idx},'sector_key',this.value)">
+                    <option value="">-- Select sector --</option>
+                    ${optionsHtml}
+                </select>
+                <div style="${signGroup}" title="Direction: + = popularity gain on pass, − = loss">
+                    <button type="button" style="${signBase}${isPositive  ? signPosOn : ''}" onclick="setSectorSign(${idx},  1)">+</button>
+                    <button type="button" style="${signBase}${!isPositive ? signNegOn : ''}" onclick="setSectorSign(${idx}, -1)">−</button>
                 </div>
-                <div class="se-fields">
-                    <div class="form-field" style="flex:2;">
-                        <label>Sector</label>
-                        <select onchange="updateSectorEffect(${idx},'sector_key',this.value)">
-                            <option value="">-- Select --</option>
-                            ${optionsHtml}
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label>Change (tenths)</label>
-                        <input type="number" value="${change}" min="${SECTOR_EFFECT_MIN_CHANGE}" max="${SECTOR_EFFECT_MAX_CHANGE}" step="1" onchange="updateSectorEffect(${idx},'change_tenths',this.value)">
-                    </div>
-                    <div class="form-field" style="flex:0 0 auto; min-width:90px;">
-                        <label>= Display</label>
-                        <div style="padding:6px 8px; font-weight:bold; font-size:1rem; color:${changeColor};">${change > 0 ? '+' : ''}${displayChange}</div>
-                    </div>
-                </div>
+                <input type="number" min="0.1" max="2.0" step="0.1" value="${magnitude}" style="${numStyle}" onchange="updateSectorMagnitude(${idx}, this.value)" title="Magnitude (0.1 to 2.0)">
+                <button type="button" style="${xBtnStyle}" onclick="removeSectorEffect(${idx})" title="Remove">✕</button>
             </div>
         `;
     }).join('');
@@ -1151,8 +1113,6 @@ async function savePolicy() {
     const lawCategory = getLawCategoryValue();
     if (!lawCategory) { alert('Select or create a law category.'); return; }
 
-    if (!isAgnostic && selectedIdeologies.size === 0) { alert('Select at least 1 ideology, or choose Agnostic.'); return; }
-
     const validEffects = statEffects.filter(e => e.stat_key);
     if (validEffects.length === 0) { alert('Add at least 1 stat effect.'); return; }
 
@@ -1168,7 +1128,6 @@ async function savePolicy() {
         return;
     }
 
-    const ideologiesArr = isAgnostic ? [] : [...selectedIdeologies];
     const opposedIds = opposedSlots.filter(Boolean);
 
     const policyData = {
@@ -1180,8 +1139,11 @@ async function savePolicy() {
         minor_sector: lawCategory, // keep for backward compat
         law_category: lawCategory,
         fiscal_category: document.getElementById('b-fiscal-category').value || null,
-        ideology: ideologiesArr[0] || 'Agnostic', // keep for backward compat; column is NOT NULL
-        ideologies: ideologiesArr,
+        // Phase 2: ideology authoring is deprecated. Preserve whatever the
+        // policy already had (or 'Agnostic' / [] for newly-created bills) so
+        // the existing engine still has data while sectors run shadow-mode.
+        ideology: preservedIdeology || 'Agnostic', // column is NOT NULL
+        ideologies: preservedIdeologies,
         upfront_cost: parseFloat(document.getElementById('b-upfront').value) || 0,
         upfront_scaling_stat: document.getElementById('b-upfront-scaling').value || null,
         ongoing_base_cost: parseFloat(document.getElementById('b-ongoing-base').value) || 0,
@@ -1288,9 +1250,10 @@ function resetBuilder() {
     document.getElementById('b-law-category-new').value = '';
     document.getElementById('new-category-wrapper').style.display = 'none';
     document.getElementById('b-fiscal-category').value = '';
-    selectedIdeologies = new Set();
-    isAgnostic = false;
-    renderIdeologyChips();
+    // Phase 2: a new bill starts with no preserved ideology — it will save
+    // as Agnostic / [] without going through the deprecated chip UI.
+    preservedIdeology = null;
+    preservedIdeologies = [];
     startingNations = new Set();
     renderNationChecks();
     document.getElementById('b-upfront').value = 0;
@@ -1347,14 +1310,14 @@ window.deletePolicy = deletePolicy;
 window.toggleStartingNation = toggleStartingNation;
 window.removeStatEffect = removeStatEffect;
 window.removeOpposedSlot = removeOpposedSlot;
-window.toggleIdeology = toggleIdeology;
-window.toggleAgnostic = toggleAgnostic;
 window.togglePrereq = togglePrereq;
 window.updateEffect = updateEffect;
 window.updateOpposed = updateOpposed;
 window.addSectorEffect = addSectorEffect;
 window.removeSectorEffect = removeSectorEffect;
 window.updateSectorEffect = updateSectorEffect;
+window.setSectorSign = setSectorSign;
+window.updateSectorMagnitude = updateSectorMagnitude;
 </script>
 </body>
 </html>
