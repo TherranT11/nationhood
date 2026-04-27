@@ -54,6 +54,7 @@ import { NATION_STAT_COLUMNS, STAT_DECAY_CONFIG, normalizeNationStatKey, buildFu
 import { runElectionPreview, runPresidentialElectionPreview } from './js/game/election-simulation.js';
 import { SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS } from './js/game/valdorian-templates.js';
 import { generateArticle, generateTickArticles } from './js/game/valdorian-generator.js';
+import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePopularity } from './js/game/sectors.js';
 
     let isAuthenticated = false;
     let nations = [];
@@ -2063,6 +2064,249 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
             .replace(/^_|_$/g, '');
     }
 
+    // ==================== SECTORS TAB — PHASE 1: POPULARITY EDITOR + DIAGNOSTICS ====================
+
+    let sectorPopFactions = [];
+    let sectorPopSectors = [];
+    let sectorPopOriginal = new Map(); // key: `${factionId}:${sectorId}` -> integer-tenths popularity
+
+    async function fetchPopulationDataForSelectedNation() {
+        if (!sectorNationId) throw new Error('No nation selected.');
+        const [{ data: factions, error: fErr }, { data: sectors, error: sErr }] = await Promise.all([
+            _supabase.from('factions')
+                .select('id, faction_name, abbreviation')
+                .eq('nation_id', sectorNationId)
+                .order('faction_name'),
+            _supabase.from('sectors')
+                .select('id, sector_key, name, weight, base_turnout, is_active, display_order')
+                .eq('nation_id', sectorNationId)
+                .eq('is_active', true)
+                .order('display_order')
+        ]);
+        if (fErr) throw fErr;
+        if (sErr) throw sErr;
+
+        const factionList = factions || [];
+        const sectorList = sectors || [];
+        let popularity = [];
+        if (factionList.length > 0) {
+            const { data: pop, error: pErr } = await _supabase
+                .from('faction_sector_popularity')
+                .select('faction_id, sector_id, popularity')
+                .in('faction_id', factionList.map(f => f.id));
+            if (pErr) throw pErr;
+            popularity = pop || [];
+        }
+        return { factions: factionList, sectors: sectorList, popularity };
+    }
+
+    async function loadFactionPopularityEditor() {
+        const statusEl = document.getElementById('sector-popularity-editor-status');
+        const container = document.getElementById('sector-popularity-editor-container');
+        const saveBtn = document.getElementById('sector-popularity-save-btn');
+        if (!sectorNationId) { statusEl.style.color = '#e57373'; statusEl.textContent = 'Select a nation first.'; return; }
+
+        statusEl.style.color = ''; statusEl.textContent = 'Loading…';
+        container.innerHTML = '';
+        if (saveBtn) saveBtn.style.display = 'none';
+
+        try {
+            const { factions, sectors, popularity } = await fetchPopulationDataForSelectedNation();
+            sectorPopFactions = factions;
+            sectorPopSectors = sectors;
+            sectorPopOriginal = new Map();
+            for (const r of popularity) {
+                sectorPopOriginal.set(`${r.faction_id}:${r.sector_id}`, Number(r.popularity) || 0);
+            }
+            renderFactionPopularityEditor();
+            statusEl.textContent = `${sectorPopFactions.length} faction${sectorPopFactions.length === 1 ? '' : 's'} × ${sectorPopSectors.length} sectors loaded.`;
+        } catch (err) {
+            console.error('loadFactionPopularityEditor failed', err);
+            statusEl.style.color = '#e57373';
+            statusEl.textContent = 'Load failed: ' + (err.message || String(err));
+        }
+    }
+
+    function renderFactionPopularityEditor() {
+        const container = document.getElementById('sector-popularity-editor-container');
+        if (sectorPopFactions.length === 0) {
+            container.innerHTML = '<div class="no-players">This nation has no factions yet.</div>';
+            return;
+        }
+        if (sectorPopSectors.length === 0) {
+            container.innerHTML = '<div class="no-players">No active sectors for this nation.</div>';
+            return;
+        }
+        const inputStyle = 'background:#1a1a1a; border:1px solid #333; color:#eee; padding:3px 4px; border-radius:2px; width:54px; text-align:center; font-family:inherit; font-size:0.85rem;';
+        const headerCell = 'padding:6px 8px; text-align:center; border-bottom:1px solid #444; color:#ffcc00; text-transform:uppercase; font-size:0.65rem; letter-spacing:0.5px; min-width:72px;';
+
+        let html = '<table style="border-collapse:collapse; font-size:0.85rem;"><thead><tr style="background:#252525;">';
+        html += '<th style="padding:6px 8px; text-align:left; border-bottom:1px solid #444; color:#ffcc00; text-transform:uppercase; font-size:0.7rem; letter-spacing:1px; position:sticky; left:0; background:#252525; z-index:1; min-width:200px;">Faction</th>';
+        for (const s of sectorPopSectors) {
+            const tooltip = `${s.name} (W=${s.weight}, T=${parseFloat(s.base_turnout).toFixed(2)})`;
+            const shortLabel = s.sector_key.replace(/_/g, ' ');
+            html += `<th style="${headerCell}" title="${escHtml(tooltip)}">${escHtml(shortLabel)}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+
+        for (const f of sectorPopFactions) {
+            const label = f.abbreviation ? `${escHtml(f.faction_name)} <span style="color:#888;">(${escHtml(f.abbreviation)})</span>` : escHtml(f.faction_name);
+            html += '<tr style="border-bottom:1px solid #2a2a2a;">';
+            html += `<td style="padding:6px 8px; position:sticky; left:0; background:#1a1a1a; z-index:1;">${label}</td>`;
+            for (const s of sectorPopSectors) {
+                const key = `${f.id}:${s.id}`;
+                const current = sectorPopOriginal.get(key) ?? 0;
+                const display = (current / 10).toFixed(1);
+                html += `<td style="padding:4px 6px; text-align:center;"><input type="number" min="0" max="10" step="0.1" value="${display}" data-faction-id="${f.id}" data-sector-id="${s.id}" data-original="${current}" oninput="onPopularityCellInput(this)" style="${inputStyle}"></td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    function onPopularityCellInput(input) {
+        const original = parseInt(input.dataset.original, 10);
+        const parsed = parsePopularity(input.value);
+        if (parsed === null) {
+            input.style.borderColor = '#e57373';
+            input.style.background = '#3a1d1d';
+        } else if (parsed !== original) {
+            input.style.borderColor = '#facc15';
+            input.style.background = '#3a2f0d';
+        } else {
+            input.style.borderColor = '#333';
+            input.style.background = '#1a1a1a';
+        }
+        const saveBtn = document.getElementById('sector-popularity-save-btn');
+        if (saveBtn) saveBtn.style.display = anyPopularityDirty() ? 'inline-block' : 'none';
+    }
+
+    function anyPopularityDirty() {
+        const inputs = document.querySelectorAll('#sector-popularity-editor-container input[data-faction-id]');
+        for (const input of inputs) {
+            const original = parseInt(input.dataset.original, 10);
+            const parsed = parsePopularity(input.value);
+            if (parsed !== null && parsed !== original) return true;
+        }
+        return false;
+    }
+
+    async function saveFactionPopularityChanges() {
+        const statusEl = document.getElementById('sector-popularity-editor-status');
+        const saveBtn = document.getElementById('sector-popularity-save-btn');
+        const inputs = document.querySelectorAll('#sector-popularity-editor-container input[data-faction-id]');
+
+        const upserts = [];
+        const invalid = [];
+        for (const input of inputs) {
+            const original = parseInt(input.dataset.original, 10);
+            const parsed = parsePopularity(input.value);
+            if (parsed === null) { invalid.push(input); continue; }
+            if (parsed !== original) {
+                upserts.push({ faction_id: input.dataset.factionId, sector_id: input.dataset.sectorId, popularity: parsed });
+            }
+        }
+
+        if (invalid.length > 0) {
+            statusEl.style.color = '#e57373';
+            statusEl.textContent = `${invalid.length} cell${invalid.length === 1 ? '' : 's'} have invalid values (must be 0.0–10.0). Fix and try again.`;
+            return;
+        }
+        if (upserts.length === 0) {
+            statusEl.style.color = '#888';
+            statusEl.textContent = 'No changes to save.';
+            return;
+        }
+
+        if (saveBtn) saveBtn.disabled = true;
+        statusEl.style.color = '';
+        statusEl.textContent = `Saving ${upserts.length} change${upserts.length === 1 ? '' : 's'}…`;
+        try {
+            const { error } = await _supabase
+                .from('faction_sector_popularity')
+                .upsert(upserts, { onConflict: 'faction_id,sector_id' });
+            if (error) throw error;
+            for (const input of inputs) {
+                const parsed = parsePopularity(input.value);
+                if (parsed !== null) {
+                    input.dataset.original = String(parsed);
+                    input.style.borderColor = '#333';
+                    input.style.background = '#1a1a1a';
+                    sectorPopOriginal.set(`${input.dataset.factionId}:${input.dataset.sectorId}`, parsed);
+                }
+            }
+            if (saveBtn) saveBtn.style.display = 'none';
+            statusEl.style.color = '#81c784';
+            statusEl.textContent = `Saved ${upserts.length} change${upserts.length === 1 ? '' : 's'}.`;
+        } catch (err) {
+            console.error('saveFactionPopularityChanges failed', err);
+            statusEl.style.color = '#e57373';
+            statusEl.textContent = 'Save failed: ' + (err.message || String(err));
+        } finally {
+            if (saveBtn) saveBtn.disabled = false;
+        }
+    }
+
+    async function loadSectorDiagnostics() {
+        const container = document.getElementById('sector-diagnostics-container');
+        if (!sectorNationId) { container.innerHTML = '<div style="color:#e57373;">Select a nation first.</div>'; return; }
+        container.innerHTML = '<div style="color:#888;">Loading…</div>';
+        try {
+            const { factions, sectors, popularity } = await fetchPopulationDataForSelectedNation();
+            renderSectorDiagnostics(factions, sectors, popularity);
+        } catch (err) {
+            console.error('loadSectorDiagnostics failed', err);
+            container.innerHTML = `<div style="color:#e57373;">Load failed: ${escHtml(err.message || String(err))}</div>`;
+        }
+    }
+
+    function renderSectorDiagnostics(factions, sectors, popularity) {
+        const container = document.getElementById('sector-diagnostics-container');
+        if (factions.length === 0) {
+            container.innerHTML = '<div class="no-players">This nation has no factions yet.</div>';
+            return;
+        }
+
+        const rows = factions.map(f => ({
+            faction: f,
+            twp: calculateTotalWeightedPopularity(f.id, sectors, popularity),
+            contribs: calculateSectorContributions(f.id, sectors, popularity),
+        }));
+        rows.sort((a, b) => b.twp - a.twp);
+        const maxTwp = rows.length > 0 ? rows[0].twp : 0;
+
+        const headerCell = 'padding:8px; border-bottom:1px solid #444; color:#ffcc00; text-transform:uppercase; font-size:0.7rem; letter-spacing:1px;';
+        let html = '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;"><thead><tr style="background:#252525;">';
+        html += `<th style="${headerCell} text-align:left; width:40px;">#</th>`;
+        html += `<th style="${headerCell} text-align:left;">Faction</th>`;
+        html += `<th style="${headerCell} text-align:right; width:100px;">TWP</th>`;
+        html += `<th style="${headerCell} text-align:left;">Top sector contributions</th>`;
+        html += '</tr></thead><tbody>';
+
+        rows.forEach((row, idx) => {
+            const f = row.faction;
+            const label = f.abbreviation ? `${escHtml(f.faction_name)} <span style="color:#888;">(${escHtml(f.abbreviation)})</span>` : escHtml(f.faction_name);
+            const sortedContribs = [...row.contribs].sort((a, b) => b.contribution - a.contribution);
+            const top = sortedContribs.slice(0, 3)
+                .filter(c => c.contribution > 0)
+                .map(c => `${escHtml(c.name)}: <strong>${c.contribution.toFixed(0)}</strong>`)
+                .join(' &middot; ');
+            html += '<tr style="border-bottom:1px solid #2a2a2a;">';
+            html += `<td style="padding:8px; color:#888;">${idx + 1}</td>`;
+            html += `<td style="padding:8px;">${label}</td>`;
+            html += `<td style="padding:8px; text-align:right; color:#ffcc00; font-weight:bold; font-size:1rem;">${row.twp.toFixed(0)}</td>`;
+            html += `<td style="padding:8px; color:#aaa;">${top || '<em style="color:#666;">all sectors at 0</em>'}</td>`;
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+
+        if (maxTwp === 0) {
+            html += '<div style="margin-top:12px; padding:10px 12px; background:#2a2317; border-left:3px solid #ffcc00; color:#aaa; font-size:0.85rem;">All factions show TWP=0 because every <code>faction_sector_popularity.popularity</code> is currently 0. Use the Faction Popularity Editor above to set values, then reload diagnostics.</div>';
+        }
+        container.innerHTML = html;
+    }
+
 
     // ==================== INSPECTOR TAB ====================
 
@@ -2869,6 +3113,10 @@ window.updateSector = updateSector;
 window.updateSectorTotals = updateSectorTotals;
 window.addCustomSector = addCustomSector;
 window.softDeleteSector = softDeleteSector;
+window.loadFactionPopularityEditor = loadFactionPopularityEditor;
+window.onPopularityCellInput = onPopularityCellInput;
+window.saveFactionPopularityChanges = saveFactionPopularityChanges;
+window.loadSectorDiagnostics = loadSectorDiagnostics;
 window.runPolicyAudit = runPolicyAudit;
 window.recalculatePolicyCosts = recalculatePolicyCosts;
 window.saveInstitutionRow = saveInstitutionRow;

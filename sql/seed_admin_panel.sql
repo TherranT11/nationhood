@@ -305,6 +305,34 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
                     </div>
                     <div id="sector-add-status" style="margin-top:8px; font-weight:bold;"></div>
                 </div>
+
+                <!-- Phase 1: Faction popularity editor -->
+                <div style="border-top:2px solid #333; padding-top:20px; margin-top:24px;">
+                    <h3 style="color:#ffcc00; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
+                        Faction Popularity Editor
+                    </h3>
+                    <p style="color:#888; font-size:0.85rem; margin-bottom:12px;">
+                        Set each faction's popularity per active sector (0.0 to 10.0, in 0.1 steps). Changes are buffered &mdash; click <strong>Save Changes</strong> to persist them. Phase 0 created these rows at 0.0 for every faction.
+                    </p>
+                    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="loadFactionPopularityEditor()">Load Editor</button>
+                        <button class="btn btn-success" id="sector-popularity-save-btn" onclick="saveFactionPopularityChanges()" style="display:none;">Save Changes</button>
+                        <span id="sector-popularity-editor-status" style="font-weight:bold;"></span>
+                    </div>
+                    <div id="sector-popularity-editor-container" style="margin-top:16px; overflow-x:auto;"></div>
+                </div>
+
+                <!-- Phase 1: Sector diagnostics -->
+                <div style="border-top:2px solid #333; padding-top:20px; margin-top:24px;">
+                    <h3 style="color:#ffcc00; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
+                        Sector Diagnostics
+                    </h3>
+                    <p style="color:#888; font-size:0.85rem; margin-bottom:12px;">
+                        For each faction in this nation, the calc module computes <strong>Total Weighted Popularity</strong> (TWP = popularity &times; weight &times; base_turnout, summed across active sectors) and a per-sector contribution breakdown. Recomputes from current DB state every time you click Load.
+                    </p>
+                    <button class="btn btn-primary" onclick="loadSectorDiagnostics()">Load Diagnostics</button>
+                    <div id="sector-diagnostics-container" style="margin-top:16px; overflow-x:auto;"></div>
+                </div>
             </div>
         </div>
 
