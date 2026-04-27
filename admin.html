@@ -146,6 +146,7 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
         await loadElectionNations();
         await updateScheduleTickHint();
         await loadVoterNations();
+        await loadSectorNations();
         await loadInspectorNations();
         await loadMinistryConfig();
     }
@@ -1802,6 +1803,240 @@ import { generateArticle, generateTickArticles } from './js/game/valdorian-gener
     }
 
 
+    // ==================== SECTORS TAB ====================
+
+    let sectorNationData = null;
+    let sectorListData = [];
+
+    async function loadSectorNations() {
+        try {
+            const { data } = await _supabase.from('nations').select('id, name').order('name');
+            const select = document.getElementById('sector-nation-select');
+            if (!select) return;
+            select.innerHTML = '<option value="">-- Choose a nation --</option>';
+            (data || []).forEach(n => {
+                select.innerHTML += `<option value="${n.id}">${escHtml(n.name)}</option>`;
+            });
+        } catch (err) { console.error(err); }
+    }
+
+    async function onSectorNationSelect() {
+        const nationId = document.getElementById('sector-nation-select').value;
+        const infoDiv = document.getElementById('sector-nation-info');
+        if (!nationId) { infoDiv.classList.add('hidden'); sectorNationData = null; return; }
+        sectorNationData = { id: nationId };
+        await loadSectorsForNation(nationId);
+        infoDiv.classList.remove('hidden');
+    }
+
+    async function loadSectorsForNation(nationId) {
+        try {
+            const { data, error } = await _supabase
+                .from('sectors')
+                .select('*')
+                .eq('nation_id', nationId)
+                .eq('is_active', true)
+                .order('display_order');
+            if (error) throw error;
+            sectorListData = data || [];
+            renderSectorList();
+            updateSectorTotals();
+        } catch (err) {
+            console.error(err);
+            const c = document.getElementById('sector-list-container');
+            if (c) c.innerHTML = `<div style="color:#e57373;">Error loading sectors: ${escHtml(err.message || String(err))}</div>`;
+        }
+    }
+
+    function renderSectorList() {
+        const container = document.getElementById('sector-list-container');
+        if (!container) return;
+        if (sectorListData.length === 0) {
+            container.innerHTML = '<div class="no-players">No active sectors for this nation. The 12 defaults should have been seeded automatically — check the migration applied cleanly.</div>';
+            return;
+        }
+        const inputStyle = 'background:#1a1a1a; border:1px solid #333; color:#eee; padding:4px; border-radius:2px;';
+        let html = `
+            <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+                <thead>
+                    <tr style="background:#252525; color:#ffcc00; text-transform:uppercase; font-size:0.7rem; letter-spacing:1px;">
+                        <th style="padding:8px; text-align:left; border-bottom:1px solid #444; width:32px;">#</th>
+                        <th style="padding:8px; text-align:left; border-bottom:1px solid #444;">Name</th>
+                        <th style="padding:8px; text-align:left; border-bottom:1px solid #444;">Description</th>
+                        <th style="padding:8px; text-align:center; border-bottom:1px solid #444; width:90px;">Weight</th>
+                        <th style="padding:8px; text-align:center; border-bottom:1px solid #444; width:120px;">Base Turnout</th>
+                        <th style="padding:8px; text-align:center; border-bottom:1px solid #444; width:90px;">Type</th>
+                        <th style="padding:8px; text-align:center; border-bottom:1px solid #444; width:170px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        sectorListData.forEach((s, idx) => {
+            const typeBadge = s.is_default
+                ? '<span style="background:#1976d2; color:#fff; padding:2px 8px; border-radius:3px; font-size:0.7rem; letter-spacing:0.5px;">DEFAULT</span>'
+                : '<span style="background:#7b1fa2; color:#fff; padding:2px 8px; border-radius:3px; font-size:0.7rem; letter-spacing:0.5px;">CUSTOM</span>';
+            const removeBtn = s.is_default
+                ? ''
+                : `<button class="btn-del" style="margin-left:6px;" onclick="softDeleteSector('${s.id}', '${escapeAttr(s.name)}')">Remove</button>`;
+            html += `
+                <tr id="sector-row-${s.id}" style="border-bottom:1px solid #2a2a2a;">
+                    <td style="padding:8px; color:#888;">${idx + 1}</td>
+                    <td style="padding:8px;"><input type="text" data-sector-id="${s.id}" data-field="name" value="${escapeAttr(s.name)}" maxlength="80" style="width:100%; ${inputStyle}"></td>
+                    <td style="padding:8px;"><input type="text" data-sector-id="${s.id}" data-field="description" value="${escapeAttr(s.description || '')}" maxlength="240" style="width:100%; ${inputStyle}"></td>
+                    <td style="padding:8px;"><input type="number" data-sector-id="${s.id}" data-field="weight" min="1" max="3" step="1" value="${s.weight}" onchange="updateSectorTotals()" oninput="updateSectorTotals()" style="width:60px; text-align:center; ${inputStyle}"></td>
+                    <td style="padding:8px;"><input type="number" data-sector-id="${s.id}" data-field="base_turnout" min="0.50" max="1.30" step="0.05" value="${parseFloat(s.base_turnout).toFixed(2)}" style="width:90px; text-align:center; ${inputStyle}"></td>
+                    <td style="padding:8px; text-align:center;">${typeBadge}</td>
+                    <td style="padding:8px; text-align:center; white-space:nowrap;">
+                        <button class="btn btn-primary" style="padding:4px 12px; font-size:0.8rem;" onclick="updateSector('${s.id}')">Update</button>
+                        ${removeBtn}
+                    </td>
+                </tr>
+            `;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    function updateSectorTotals() {
+        const totalWeightEl = document.getElementById('sector-total-weight');
+        const statusEl = document.getElementById('sector-weight-status');
+        const countEl = document.getElementById('sector-count-display');
+        if (!totalWeightEl) return;
+
+        let totalWeight = 0;
+        let defaultCount = 0;
+        let customCount = 0;
+        sectorListData.forEach(s => {
+            const input = document.querySelector(`input[data-sector-id="${s.id}"][data-field="weight"]`);
+            const w = input ? parseInt(input.value, 10) : s.weight;
+            if (!isNaN(w)) totalWeight += w;
+            if (s.is_default) defaultCount++; else customCount++;
+        });
+
+        totalWeightEl.textContent = totalWeight;
+        countEl.textContent = `${defaultCount} default + ${customCount} custom = ${defaultCount + customCount}`;
+
+        if (totalWeight < 24) {
+            statusEl.textContent = `below target band 24-26 (${24 - totalWeight} short)`;
+            statusEl.style.color = '#e57373';
+        } else if (totalWeight > 26) {
+            statusEl.textContent = `above target band 24-26 (${totalWeight - 26} over)`;
+            statusEl.style.color = '#e57373';
+        } else {
+            statusEl.textContent = 'within target band 24-26';
+            statusEl.style.color = '#81c784';
+        }
+    }
+
+    async function updateSector(sectorId) {
+        const nameInput = document.querySelector(`input[data-sector-id="${sectorId}"][data-field="name"]`);
+        const descInput = document.querySelector(`input[data-sector-id="${sectorId}"][data-field="description"]`);
+        const weightInput = document.querySelector(`input[data-sector-id="${sectorId}"][data-field="weight"]`);
+        const turnoutInput = document.querySelector(`input[data-sector-id="${sectorId}"][data-field="base_turnout"]`);
+        if (!nameInput || !weightInput || !turnoutInput) return;
+
+        const name = (nameInput.value || '').trim();
+        const description = (descInput.value || '').trim();
+        const weight = parseInt(weightInput.value, 10);
+        const baseTurnout = parseFloat(turnoutInput.value);
+
+        if (!name) { alert('Name cannot be empty.'); return; }
+        if (isNaN(weight) || weight < 1 || weight > 3) { alert('Weight must be 1, 2, or 3.'); return; }
+        if (isNaN(baseTurnout) || baseTurnout < 0.50 || baseTurnout > 1.30) { alert('Base Turnout must be between 0.50 and 1.30.'); return; }
+
+        try {
+            const { error } = await _supabase
+                .from('sectors')
+                .update({ name, description, weight, base_turnout: baseTurnout })
+                .eq('id', sectorId);
+            if (error) throw error;
+            await loadSectorsForNation(sectorNationData.id);
+        } catch (err) {
+            console.error(err);
+            alert('Update failed: ' + (err.message || String(err)));
+        }
+    }
+
+    async function addCustomSector() {
+        if (!sectorNationData) return;
+        const nameEl = document.getElementById('new-sector-name');
+        const descEl = document.getElementById('new-sector-description');
+        const weightEl = document.getElementById('new-sector-weight');
+        const turnoutEl = document.getElementById('new-sector-turnout');
+        const statusEl = document.getElementById('sector-add-status');
+
+        const name = (nameEl.value || '').trim();
+        const description = (descEl.value || '').trim();
+        const weight = parseInt(weightEl.value, 10);
+        const baseTurnout = parseFloat(turnoutEl.value);
+
+        const setError = msg => { statusEl.style.color = '#e57373'; statusEl.textContent = msg; };
+        statusEl.textContent = '';
+
+        if (!name) return setError('Name is required.');
+        if (isNaN(weight) || weight < 1 || weight > 3) return setError('Weight must be 1, 2, or 3.');
+        if (isNaN(baseTurnout) || baseTurnout < 0.50 || baseTurnout > 1.30) return setError('Base Turnout must be 0.50-1.30.');
+
+        const sectorKey = generateSectorKey(name);
+        if (!sectorKey) return setError('Could not generate a key from this name — use letters/numbers.');
+        if (sectorListData.some(s => s.sector_key === sectorKey)) return setError(`A sector with key "${sectorKey}" already exists in this nation.`);
+
+        const nextOrder = sectorListData.reduce((m, s) => Math.max(m, s.display_order || 0), 0) + 1;
+
+        try {
+            const { error } = await _supabase
+                .from('sectors')
+                .insert({
+                    nation_id: sectorNationData.id,
+                    sector_key: sectorKey,
+                    name,
+                    description,
+                    weight,
+                    base_turnout: baseTurnout,
+                    is_default: false,
+                    is_active: true,
+                    display_order: nextOrder
+                });
+            if (error) throw error;
+            nameEl.value = '';
+            descEl.value = '';
+            weightEl.value = 1;
+            turnoutEl.value = '1.00';
+            statusEl.style.color = '#81c784';
+            statusEl.textContent = `Added "${name}" (key: ${sectorKey}). All factions in this nation now have popularity 0 for it.`;
+            await loadSectorsForNation(sectorNationData.id);
+        } catch (err) {
+            console.error(err);
+            setError('Insert failed: ' + (err.message || String(err)));
+        }
+    }
+
+    async function softDeleteSector(sectorId, sectorName) {
+        if (!confirm(`Soft-delete "${sectorName}"?\n\nThe sector will be hidden from gameplay but its popularity history is preserved. Affects only this nation.`)) return;
+        try {
+            const { error } = await _supabase
+                .from('sectors')
+                .update({ is_active: false })
+                .eq('id', sectorId);
+            if (error) throw error;
+            await loadSectorsForNation(sectorNationData.id);
+        } catch (err) {
+            console.error(err);
+            alert('Soft-delete failed: ' + (err.message || String(err)));
+        }
+    }
+
+    function generateSectorKey(name) {
+        return (name || '')
+            .toUpperCase()
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/[^A-Z0-9\s_]/g, ' ')
+            .trim()
+            .replace(/\s+/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_|_$/g, '');
+    }
+
 
     // ==================== INSPECTOR TAB ====================
 
@@ -2603,6 +2838,11 @@ window.deleteVoterBloc = deleteVoterBloc;
 window.toggleIssue = toggleIssue;
 window.saveBlocForm = saveBlocForm;
 window.cancelBlocForm = cancelBlocForm;
+window.onSectorNationSelect = onSectorNationSelect;
+window.updateSector = updateSector;
+window.updateSectorTotals = updateSectorTotals;
+window.addCustomSector = addCustomSector;
+window.softDeleteSector = softDeleteSector;
 window.runPolicyAudit = runPolicyAudit;
 window.recalculatePolicyCosts = recalculatePolicyCosts;
 window.saveInstitutionRow = saveInstitutionRow;
