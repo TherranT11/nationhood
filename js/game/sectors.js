@@ -285,6 +285,266 @@ export function sumSectorEffects(effectsArrays) {
     return out;
 }
 
+// ─── Election: independents roll (Phase 3) ──────────────────────────────────
+
+// Lookup table mapping a 1D10 roll (1..10) to the delta applied to a nation's
+// independent_seats count on each election. Negative on rolls 1-6, positive
+// on rolls 7-10 — biased toward decay so independents fade absent disruption.
+const INDEPENDENT_ROLL_TABLE = {
+    1: -6, 2: -5, 3: -4, 4: -3, 5: -2, 6: -1,
+    7: +1, 8: +2, 9: +3, 10: +4,
+};
+const INDEPENDENT_CAP_FRACTION = 0.08; // max 8% of parliament_size, floored
+
+/**
+ * Roll the per-election delta on a nation's independent seat count and
+ * clamp the result to [0, floor(parliamentSize * 0.08)].
+ *
+ *   roll: 1  2  3  4  5  6  7  8  9  10
+ *   Δ:   -6 -5 -4 -3 -2 -1 +1 +2 +3 +4
+ *
+ * Returns { roll, delta, next, cap } where:
+ *   roll  = the 1D10 result (1..10)
+ *   delta = the table delta for that roll
+ *   next  = the new independent_seats value after applying delta + clamp
+ *   cap   = floor(parliamentSize * 0.08)
+ *
+ * RNG is injectable for deterministic tests; defaults to Math.random.
+ */
+export function rollIndependents(currentCount, parliamentSize, rng = Math.random) {
+    const ps = Number(parliamentSize) || 0;
+    const cap = Math.max(0, Math.floor(ps * INDEPENDENT_CAP_FRACTION));
+    const current = Math.max(0, Math.min(cap, Number(currentCount) || 0));
+
+    const roll = 1 + Math.floor(rng() * 10);
+    const safeRoll = Math.min(10, Math.max(1, roll));   // defensive clamp on bad RNGs
+    const delta = INDEPENDENT_ROLL_TABLE[safeRoll];
+    const next = Math.max(0, Math.min(cap, current + delta));
+
+    return { roll: safeRoll, delta, next, cap };
+}
+
+// ─── Election: seat allocation (Phase 3) ────────────────────────────────────
+
+const DEFAULT_FRINGE_THRESHOLD = 30;
+
+/**
+ * Allocate seats to factions by Total Weighted Popularity using the Largest
+ * Remainder method (same algorithm as the legacy allocateSeatsByVotes —
+ * proven proportional allocation). Wraps the math with two Phase 3 rules:
+ *
+ *   1. Fringe threshold — factions with TWP below `fringeThreshold` get 0
+ *      seats. Below-threshold parties are excluded from the divisor; their
+ *      voters effectively don't count for seat math.
+ *   2. Zero-fallback — if NO faction qualifies (every TWP is 0 or below the
+ *      threshold, common in early Phase 3 before sector data is seeded),
+ *      seats are split evenly across all input factions. Predictable, no
+ *      division-by-zero, gives a working election when there's no signal.
+ *
+ * Inputs:
+ *   twpByFaction    = { factionId: twp, ... }
+ *   totalSeats      = available seats (parliament_size - independent_seats)
+ *   fringeThreshold = below-this TWP gets zero seats (default 30)
+ *
+ * Output:
+ *   { factionId: seats, ... } summing to exactly totalSeats.
+ */
+export function allocateSeatsByTwp(twpByFaction, totalSeats, fringeThreshold = DEFAULT_FRINGE_THRESHOLD) {
+    const ids = Object.keys(twpByFaction || {});
+    if (ids.length === 0 || totalSeats <= 0) {
+        const empty = {};
+        for (const id of ids) empty[id] = 0;
+        return empty;
+    }
+
+    const qualifying = ids.filter(id => Number(twpByFaction[id]) >= fringeThreshold);
+
+    // Zero-fallback: nobody qualifies → split evenly across ALL inputs.
+    if (qualifying.length === 0) {
+        return distributeEvenly(ids, totalSeats);
+    }
+
+    // Largest Remainder among qualifying factions; non-qualifying get 0.
+    const totalQualifying = qualifying.reduce((s, id) => s + Number(twpByFaction[id]), 0);
+    const seats = {};
+    for (const id of ids) seats[id] = 0;
+
+    if (totalQualifying === 0) {
+        // All qualifying factions tied at exactly the threshold and threshold
+        // is 0 (rare). Treat the same as the zero-fallback for the qualifying set.
+        return { ...seats, ...distributeEvenly(qualifying, totalSeats) };
+    }
+
+    const quota = totalQualifying / totalSeats;
+    const fractionals = [];
+    let allocated = 0;
+    for (const id of qualifying) {
+        const raw = Number(twpByFaction[id]) / quota;
+        const floor = Math.floor(raw);
+        seats[id] = floor;
+        allocated += floor;
+        fractionals.push({ id, fractional: raw - floor });
+    }
+    fractionals.sort((a, b) => b.fractional - a.fractional);
+    const remaining = totalSeats - allocated;
+    for (let i = 0; i < remaining; i++) {
+        seats[fractionals[i].id] += 1;
+    }
+    return seats;
+}
+
+function distributeEvenly(ids, totalSeats) {
+    const out = {};
+    if (ids.length === 0) return out;
+    const base = Math.floor(totalSeats / ids.length);
+    const remainder = totalSeats - (base * ids.length);
+    // Stable order: input order, first N factions get the +1.
+    ids.forEach((id, i) => { out[id] = base + (i < remainder ? 1 : 0); });
+    return out;
+}
+
+// ─── Election: post-allocation modifiers (Phase 3) ──────────────────────────
+
+const ELECTABILITY_MODIFIER = {
+    Low:      -0.02,
+    Moderate:  0.00,
+    High:     +0.02,
+};
+
+/**
+ * Apply the leader Electability modifier to each faction's seat count.
+ * Modifier table per V3 §4.5: Low = -2%, Moderate = 0%, High = +2%.
+ *
+ * Inputs are integer seat counts. The modifier produces fractional results;
+ * the caller normalizes back to integers (uses Largest Remainder again to
+ * ensure the total still equals the input total).
+ *
+ *   seatsByFaction        = { factionId: seats, ... }
+ *   electabilityByFaction = { factionId: 'Low'|'Moderate'|'High', ... }
+ *   totalSeats            = expected sum (caller passes parliament_size - independents)
+ *
+ * Returns adjusted integer seat counts that still sum to totalSeats.
+ * Factions with no electability entry get the Moderate (0%) modifier.
+ */
+export function applyElectabilityModifier(seatsByFaction, electabilityByFaction, totalSeats) {
+    const ids = Object.keys(seatsByFaction || {});
+    if (ids.length === 0) return {};
+
+    // Step 1: scale each faction's seats by (1 + modifier).
+    const scaled = {};
+    for (const id of ids) {
+        const seats = Number(seatsByFaction[id]) || 0;
+        const electability = electabilityByFaction?.[id] ?? 'Moderate';
+        const mod = ELECTABILITY_MODIFIER[electability] ?? 0;
+        scaled[id] = seats * (1 + mod);
+    }
+
+    // Step 2: re-normalize to integers summing to totalSeats via Largest Remainder.
+    const total = Object.values(scaled).reduce((s, v) => s + v, 0);
+    if (total <= 0) {
+        // All zeros after scaling — return zeros.
+        const zeros = {};
+        for (const id of ids) zeros[id] = 0;
+        return zeros;
+    }
+    return allocateByLargestRemainder(scaled, totalSeats);
+}
+
+/**
+ * Apply the ±5% uncertainty roll (V3 §4.4) to the leading party's seat count,
+ * then re-normalize so the total still equals totalSeats. Other parties absorb
+ * the swing proportionally to their existing seat share.
+ *
+ * If there's no clear leader (no one above 0 seats), the function is a no-op.
+ *
+ * RNG is injectable for tests; defaults to Math.random.
+ */
+export function applyUncertaintyRoll(seatsByFaction, totalSeats, rng = Math.random) {
+    const ids = Object.keys(seatsByFaction || {});
+    if (ids.length === 0) return {};
+
+    let leaderId = null;
+    let leaderSeats = -1;
+    for (const id of ids) {
+        const seats = Number(seatsByFaction[id]) || 0;
+        if (seats > leaderSeats) { leaderSeats = seats; leaderId = id; }
+    }
+    if (!leaderId || leaderSeats <= 0) return { ...seatsByFaction };
+
+    // ±5% of parliament_size. (rng() * 2 - 1) ∈ [-1, 1).
+    const swing = Math.round((rng() * 2 - 1) * 0.05 * totalSeats);
+    if (swing === 0) return { ...seatsByFaction };
+
+    // Apply swing to leader, absorb the inverse proportionally across others.
+    const adjusted = { ...seatsByFaction };
+    adjusted[leaderId] = Math.max(0, leaderSeats + swing);
+
+    const otherIds = ids.filter(id => id !== leaderId);
+    const otherTotal = otherIds.reduce((s, id) => s + (Number(seatsByFaction[id]) || 0), 0);
+    if (otherTotal > 0) {
+        const others = {};
+        for (const id of otherIds) others[id] = (Number(seatsByFaction[id]) || 0) - swing * (Number(seatsByFaction[id]) || 0) / otherTotal;
+        const normalized = allocateByLargestRemainder(others, totalSeats - adjusted[leaderId]);
+        for (const id of otherIds) adjusted[id] = normalized[id];
+    }
+    // Final defensive normalize: if rounding put us off by 1, give/take from leader.
+    const sum = ids.reduce((s, id) => s + adjusted[id], 0);
+    if (sum !== totalSeats) adjusted[leaderId] = Math.max(0, adjusted[leaderId] + (totalSeats - sum));
+    return adjusted;
+}
+
+// ─── Election: tie-breaker bonuses (Phase 3) ────────────────────────────────
+
+/**
+ * For each sector where 2+ factions are tied at the highest popularity,
+ * roll a die to pick the winner and assign them a virtual +10 popularity
+ * (== +1.0 displayed) for THIS election only. The caller layers the bonus
+ * map on top of stored popularity when computing TWP.
+ *
+ * Returns: Map<factionId, Map<sectorKey, bonusTenths>>
+ *
+ * RNG is injectable for tests.
+ */
+export function applyTieBreakerBonuses(factions, sectors, popularityRows, rng = Math.random) {
+    const tied = findTiedSectors(factions, sectors, popularityRows);
+    const bonuses = new Map();
+    for (const t of tied) {
+        const winner = resolveTie(t.tied_faction_ids, rng);
+        if (!bonuses.has(winner)) bonuses.set(winner, new Map());
+        // V3 §3.2 specifies +1 displayed popularity = +10 in integer tenths.
+        bonuses.get(winner).set(t.sector_key, 10);
+    }
+    return bonuses;
+}
+
+// ─── Internal: Largest Remainder (DRY across the new helpers) ───────────────
+
+function allocateByLargestRemainder(weightsByFaction, totalSeats) {
+    const ids = Object.keys(weightsByFaction);
+    const out = {};
+    for (const id of ids) out[id] = 0;
+    const total = ids.reduce((s, id) => s + Math.max(0, Number(weightsByFaction[id]) || 0), 0);
+    if (total <= 0 || totalSeats <= 0) return out;
+
+    const quota = total / totalSeats;
+    const fractionals = [];
+    let allocated = 0;
+    for (const id of ids) {
+        const w = Math.max(0, Number(weightsByFaction[id]) || 0);
+        const raw = w / quota;
+        const floor = Math.floor(raw);
+        out[id] = floor;
+        allocated += floor;
+        fractionals.push({ id, fractional: raw - floor });
+    }
+    fractionals.sort((a, b) => b.fractional - a.fractional);
+    for (let i = 0; i < (totalSeats - allocated); i++) {
+        out[fractionals[i].id] += 1;
+    }
+    return out;
+}
+
+
 // ─── Display helpers ────────────────────────────────────────────────────────
 
 /**
