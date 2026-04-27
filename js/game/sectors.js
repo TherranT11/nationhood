@@ -32,41 +32,20 @@ const LEAD_CURVE_TAIL_SLOPE = 0.14; // seats gained per +1 lead beyond 200
 // ─── Total Weighted Popularity ──────────────────────────────────────────────
 
 /**
- * Computes one faction's Total Weighted Popularity for a nation.
- *
- * TWP = Σ over active sectors of (popularity * weight * base_turnout)
- *
- * Inputs are arrays straight from the DB:
- *   sectors[i]         = { id, sector_key, weight, base_turnout, is_active, ... }
- *   popularityRows[i]  = { faction_id, sector_id, popularity }   (0..100)
- *
- * Returns an integer-ish number (popularity tenths × weight × turnout). Inactive
- * sectors are skipped. Missing popularity rows are treated as 0.
- */
-export function calculateTotalWeightedPopularity(factionId, sectors, popularityRows) {
-    if (!factionId) return 0;
-    const popBySector = indexPopularityByFactionAndSector(popularityRows);
-    const factionPop = popBySector.get(factionId) || new Map();
-
-    let total = 0;
-    for (const s of sectors) {
-        if (!s.is_active) continue;
-        const pop = factionPop.get(s.id) ?? 0;
-        const weight = Number(s.weight) || 0;
-        const turnout = Number(s.base_turnout) || 0;
-        total += pop * weight * turnout;
-    }
-    return total;
-}
-
-/**
  * Per-sector contribution breakdown for one faction. Used by the diagnostics
- * panel so admins can see exactly which sectors are pulling weight.
+ * panel so admins can see exactly which sectors are pulling weight, and as
+ * the single source of truth that calculateTotalWeightedPopularity sums over.
  *
  * Returns an array, one entry per ACTIVE sector (preserving the input order):
  *   { sector_id, sector_key, name, popularity, weight, base_turnout, contribution }
  *
  *   contribution = popularity * weight * base_turnout
+ *
+ * Inputs are arrays straight from the DB:
+ *   sectors[i]         = { id, sector_key, weight, base_turnout, is_active, ... }
+ *   popularityRows[i]  = { faction_id, sector_id, popularity }   (0..100)
+ *
+ * Inactive sectors are skipped. Missing popularity rows are treated as 0.
  */
 export function calculateSectorContributions(factionId, sectors, popularityRows) {
     const popBySector = indexPopularityByFactionAndSector(popularityRows);
@@ -89,6 +68,21 @@ export function calculateSectorContributions(factionId, sectors, popularityRows)
         });
     }
     return out;
+}
+
+/**
+ * Computes one faction's Total Weighted Popularity for a nation.
+ *
+ *   TWP = Σ over active sectors of (popularity * weight * base_turnout)
+ *
+ * Implemented as a sum over calculateSectorContributions so the math has a
+ * single source of truth. The array allocation is fine for Phase 1's admin
+ * use case; if Phase 3's election hot path needs a fast path, add one then.
+ */
+export function calculateTotalWeightedPopularity(factionId, sectors, popularityRows) {
+    if (!factionId) return 0;
+    return calculateSectorContributions(factionId, sectors, popularityRows)
+        .reduce((sum, c) => sum + c.contribution, 0);
 }
 
 // ─── Lead-to-seats curve ────────────────────────────────────────────────────

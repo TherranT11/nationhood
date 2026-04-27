@@ -1841,6 +1841,10 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     async function onSectorNationSelect() {
         const nationId = document.getElementById('sector-nation-select').value;
         const infoDiv = document.getElementById('sector-nation-info');
+        // Always reset Phase 1 panels — leaving them populated after a nation
+        // switch would let an admin save edits to the previous nation while
+        // the dropdown reads as the new one.
+        clearPhase1Panels();
         if (!nationId) { infoDiv.classList.add('hidden'); sectorNationId = null; sectorListData = []; return; }
         sectorNationId = nationId;
         infoDiv.classList.remove('hidden');
@@ -2070,6 +2074,52 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     let sectorPopSectors = [];
     let sectorPopOriginal = new Map(); // key: `${factionId}:${sectorId}` -> integer-tenths popularity
 
+    // Reset Phase 1 panels back to their unloaded state. Called from
+    // onSectorNationSelect so a nation switch can never leave a stale grid
+    // visible (which would let an admin save edits to the wrong nation).
+    function clearPhase1Panels() {
+        sectorPopFactions = [];
+        sectorPopSectors = [];
+        sectorPopOriginal = new Map();
+        const editorContainer = document.getElementById('sector-popularity-editor-container');
+        const editorStatus    = document.getElementById('sector-popularity-editor-status');
+        const saveBtn         = document.getElementById('sector-popularity-save-btn');
+        const diagContainer   = document.getElementById('sector-diagnostics-container');
+        if (editorContainer) editorContainer.innerHTML = '';
+        if (editorStatus)    { editorStatus.textContent = ''; editorStatus.style.color = ''; }
+        if (saveBtn)         saveBtn.style.display = 'none';
+        if (diagContainer)   diagContainer.innerHTML = '';
+    }
+
+    // Read one editor cell's parsed value, original value, and dirty/invalid
+    // state. Single source of truth for the input-state pattern reused by
+    // onPopularityCellInput, anyPopularityDirty, and saveFactionPopularityChanges.
+    function getCellState(input) {
+        const original = parseInt(input.dataset.original, 10);
+        const parsed = parsePopularity(input.value);
+        return {
+            original,
+            parsed,
+            invalid: parsed === null,
+            dirty: parsed !== null && parsed !== original,
+        };
+    }
+
+    // Apply visual styling to an editor cell based on its state. Single
+    // source of truth so the dirty/invalid/clean palette stays in sync.
+    function setCellStyle(input, state) {
+        if (state.invalid) {
+            input.style.borderColor = '#e57373';
+            input.style.background = '#3a1d1d';
+        } else if (state.dirty) {
+            input.style.borderColor = '#facc15';
+            input.style.background = '#3a2f0d';
+        } else {
+            input.style.borderColor = '#333';
+            input.style.background = '#1a1a1a';
+        }
+    }
+
     async function fetchPopulationDataForSelectedNation() {
         if (!sectorNationId) throw new Error('No nation selected.');
         const [{ data: factions, error: fErr }, { data: sectors, error: sErr }] = await Promise.all([
@@ -2106,12 +2156,16 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         const saveBtn = document.getElementById('sector-popularity-save-btn');
         if (!sectorNationId) { statusEl.style.color = '#e57373'; statusEl.textContent = 'Select a nation first.'; return; }
 
+        // Capture the nation we're loading for. If the user switches nations
+        // before the fetch resolves, we discard the stale result.
+        const fetchNationId = sectorNationId;
         statusEl.style.color = ''; statusEl.textContent = 'Loading…';
         container.innerHTML = '';
         if (saveBtn) saveBtn.style.display = 'none';
 
         try {
             const { factions, sectors, popularity } = await fetchPopulationDataForSelectedNation();
+            if (sectorNationId !== fetchNationId) return; // user switched mid-fetch
             sectorPopFactions = factions;
             sectorPopSectors = sectors;
             sectorPopOriginal = new Map();
@@ -2121,6 +2175,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             renderFactionPopularityEditor();
             statusEl.textContent = `${sectorPopFactions.length} faction${sectorPopFactions.length === 1 ? '' : 's'} × ${sectorPopSectors.length} sectors loaded.`;
         } catch (err) {
+            if (sectorNationId !== fetchNationId) return; // already moved on
             console.error('loadFactionPopularityEditor failed', err);
             statusEl.style.color = '#e57373';
             statusEl.textContent = 'Load failed: ' + (err.message || String(err));
@@ -2166,18 +2221,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     }
 
     function onPopularityCellInput(input) {
-        const original = parseInt(input.dataset.original, 10);
-        const parsed = parsePopularity(input.value);
-        if (parsed === null) {
-            input.style.borderColor = '#e57373';
-            input.style.background = '#3a1d1d';
-        } else if (parsed !== original) {
-            input.style.borderColor = '#facc15';
-            input.style.background = '#3a2f0d';
-        } else {
-            input.style.borderColor = '#333';
-            input.style.background = '#1a1a1a';
-        }
+        setCellStyle(input, getCellState(input));
         const saveBtn = document.getElementById('sector-popularity-save-btn');
         if (saveBtn) saveBtn.style.display = anyPopularityDirty() ? 'inline-block' : 'none';
     }
@@ -2185,9 +2229,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     function anyPopularityDirty() {
         const inputs = document.querySelectorAll('#sector-popularity-editor-container input[data-faction-id]');
         for (const input of inputs) {
-            const original = parseInt(input.dataset.original, 10);
-            const parsed = parsePopularity(input.value);
-            if (parsed !== null && parsed !== original) return true;
+            if (getCellState(input).dirty) return true;
         }
         return false;
     }
@@ -2196,15 +2238,19 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         const statusEl = document.getElementById('sector-popularity-editor-status');
         const saveBtn = document.getElementById('sector-popularity-save-btn');
         const inputs = document.querySelectorAll('#sector-popularity-editor-container input[data-faction-id]');
+        // Lock save scope to the nation that's currently selected. If the
+        // user switches nations after upsert resolves but before we update
+        // the in-memory state, we abort the state-refresh step (the DB write
+        // already landed against the correct nation).
+        const saveNationId = sectorNationId;
 
         const upserts = [];
         const invalid = [];
         for (const input of inputs) {
-            const original = parseInt(input.dataset.original, 10);
-            const parsed = parsePopularity(input.value);
-            if (parsed === null) { invalid.push(input); continue; }
-            if (parsed !== original) {
-                upserts.push({ faction_id: input.dataset.factionId, sector_id: input.dataset.sectorId, popularity: parsed });
+            const state = getCellState(input);
+            if (state.invalid) { invalid.push(input); continue; }
+            if (state.dirty) {
+                upserts.push({ faction_id: input.dataset.factionId, sector_id: input.dataset.sectorId, popularity: state.parsed });
             }
         }
 
@@ -2227,14 +2273,15 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 .from('faction_sector_popularity')
                 .upsert(upserts, { onConflict: 'faction_id,sector_id' });
             if (error) throw error;
+            // If the nation changed mid-save, the DOM/state we'd be syncing
+            // doesn't apply anymore — bail out without touching the new view.
+            if (sectorNationId !== saveNationId) return;
             for (const input of inputs) {
-                const parsed = parsePopularity(input.value);
-                if (parsed !== null) {
-                    input.dataset.original = String(parsed);
-                    input.style.borderColor = '#333';
-                    input.style.background = '#1a1a1a';
-                    sectorPopOriginal.set(`${input.dataset.factionId}:${input.dataset.sectorId}`, parsed);
-                }
+                const state = getCellState(input);
+                if (state.invalid) continue;
+                input.dataset.original = String(state.parsed);
+                setCellStyle(input, { ...state, dirty: false });
+                sectorPopOriginal.set(`${input.dataset.factionId}:${input.dataset.sectorId}`, state.parsed);
             }
             if (saveBtn) saveBtn.style.display = 'none';
             statusEl.style.color = '#81c784';
@@ -2251,17 +2298,21 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     async function loadSectorDiagnostics() {
         const container = document.getElementById('sector-diagnostics-container');
         if (!sectorNationId) { container.innerHTML = '<div style="color:#e57373;">Select a nation first.</div>'; return; }
+        const fetchNationId = sectorNationId;
+        const dirtyOnLoad = anyPopularityDirty();
         container.innerHTML = '<div style="color:#888;">Loading…</div>';
         try {
             const { factions, sectors, popularity } = await fetchPopulationDataForSelectedNation();
-            renderSectorDiagnostics(factions, sectors, popularity);
+            if (sectorNationId !== fetchNationId) return;
+            renderSectorDiagnostics(factions, sectors, popularity, dirtyOnLoad);
         } catch (err) {
+            if (sectorNationId !== fetchNationId) return;
             console.error('loadSectorDiagnostics failed', err);
             container.innerHTML = `<div style="color:#e57373;">Load failed: ${escHtml(err.message || String(err))}</div>`;
         }
     }
 
-    function renderSectorDiagnostics(factions, sectors, popularity) {
+    function renderSectorDiagnostics(factions, sectors, popularity, hasDirtyEditor = false) {
         const container = document.getElementById('sector-diagnostics-container');
         if (factions.length === 0) {
             container.innerHTML = '<div class="no-players">This nation has no factions yet.</div>';
@@ -2276,8 +2327,13 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         rows.sort((a, b) => b.twp - a.twp);
         const maxTwp = rows.length > 0 ? rows[0].twp : 0;
 
+        let html = '';
+        if (hasDirtyEditor) {
+            html += '<div style="margin-bottom:12px; padding:10px 12px; background:#3a2f0d; border-left:3px solid #facc15; color:#ffe89a; font-size:0.85rem;">The popularity editor above has unsaved edits. Diagnostics below reflect the <strong>saved</strong> database state, not your pending changes — save the editor first to see their impact here.</div>';
+        }
+
         const headerCell = 'padding:8px; border-bottom:1px solid #444; color:#ffcc00; text-transform:uppercase; font-size:0.7rem; letter-spacing:1px;';
-        let html = '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;"><thead><tr style="background:#252525;">';
+        html += '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;"><thead><tr style="background:#252525;">';
         html += `<th style="${headerCell} text-align:left; width:40px;">#</th>`;
         html += `<th style="${headerCell} text-align:left;">Faction</th>`;
         html += `<th style="${headerCell} text-align:right; width:100px;">TWP</th>`;
