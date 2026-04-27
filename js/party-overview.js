@@ -3,15 +3,15 @@
 // Fetches all data needed for the Parties overview in parallel:
 // - Active administration + governance score
 // - All factions in nation (rivals)
-// - Faction ideology for all parties
-// - Electoral standings (ideology capture, vote share)
+// - Sector strongholds for all parties (Phase 4 — replaces ideology axes)
+// - Electoral standings (vote share)
 // - Recent campaign actions (activity feed)
 // - Caucus factions
 // - Election schedule
 //
 // Exports initPartyOverview(supabase, state, containerId)
 
-import { IDEOLOGY_AXES } from './game/ideology.js';
+import { getStrongholdSectors } from './game/sectors.js';
 import { getGoverningStatus, getGoverningStatusFor } from './game/agitator.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, statDirectionSign } from './game/stats.js';
 import { hasElectedPresident } from './game/government-types.js';
@@ -33,13 +33,11 @@ export let _overview = {
     myFaction: null,
     allParties: [],             // all party factions in this nation
     rivalParties: [],           // allParties minus mine
-    factionIdeology: {},        // { factionId: { liberty_equality, ... } }
-    electoralStandings: [],     // faction_electoral_standing rows
+    strongholdsByParty: {},     // { factionId: [{ sector_key, name, contribution }, ...top 3] }
     recentActivity: [],         // campaign_actions for my faction
     caucuses: [],               // caucus_factions for my faction
     nextElection: null,         // next scheduled election
     nextElectionTicks: null,    // ticks until next election
-    ideologyAxes: [],           // processed axis data with positions + capture
 };
 
 function esc(str) {
@@ -88,33 +86,19 @@ function computeGovernanceScore(nation, statsAtStart, startedAtTick, currentTick
 }
 
 // ═══════════════════════════════════════════════════
-// IDEOLOGY AXIS PROCESSING
+// SECTOR STRONGHOLDS PROCESSING (Phase 4)
 // ═══════════════════════════════════════════════════
 
-function processIdeologyAxes(myFactionId, allIdeology, allParties) {
-    return IDEOLOGY_AXES.map(axis => {
-        const myIdeo = allIdeology[myFactionId];
-        const myScore = myIdeo ? Number(myIdeo[axis.key] ?? 0) : 0;
-        // Convert -100..+100 score to 0..1 position (0 = left, 1 = right)
-        const myPos = (myScore + 100) / 200;
-
-        const parties = allParties.map(p => {
-            const ideo = allIdeology[p.id];
-            const score = ideo ? Number(ideo[axis.key] ?? 0) : 0;
-            return { id: p.id, pos: (score + 100) / 200, color: p.party_color || '#666' };
-        });
-
-        return {
-            key: axis.key,
-            name: `${axis.leftLabel} / ${axis.rightLabel}`,
-            left: axis.leftLabel.toUpperCase(),
-            right: axis.rightLabel.toUpperCase(),
-            leftColor: axis.leftColor,
-            rightColor: axis.rightColor,
-            yourPos: myPos,
-            parties: parties,
-        };
-    });
+// Compute each party's top-3 stronghold sectors. Returns
+// { factionId: [{ sector_key, name, contribution }, ...] }.
+// A party with no popularity data gets an empty array — the renderer
+// shows "Unaligned" in that case.
+function processStrongholds(allParties, sectors, popularityRows) {
+    const out = {};
+    for (const p of allParties) {
+        out[p.id] = getStrongholdSectors(p.id, sectors, popularityRows, 3);
+    }
+    return out;
 }
 
 // ═══════════════════════════════════════════════════
@@ -155,8 +139,7 @@ export async function initPartyOverview(supabase, state, containerId) {
         const [
             governingResult,
             partiesResult,
-            ideologyResult,
-            standingsResult,
+            sectorsResult,
             activityResult,
             caucusResult,
             electionResult,
@@ -165,8 +148,13 @@ export async function initPartyOverview(supabase, state, containerId) {
         ] = await Promise.all([
             getGoverningStatus(supabase, nationId, factionId),
             supabase.from('factions').select('*').eq('nation_id', nationId).eq('faction_type', 'party'),
-            supabase.from('faction_ideology').select('*'),  // fetch all, filter by party IDs after
-            supabase.from('faction_electoral_standing').select('*').eq('nation_id', nationId),
+            // Phase 4: replaced faction_ideology fetch with sectors. Strongholds
+            // come from joining sectors + faction_sector_popularity below.
+            supabase.from('sectors')
+                .select('id, sector_key, name, weight, base_turnout, is_active')
+                .eq('nation_id', nationId)
+                .eq('is_active', true)
+                .order('display_order'),
             supabase.from('campaign_actions').select('*').eq('party_id', factionId).order('tick_performed', { ascending: false }).limit(20),
             supabase.from('caucus_factions').select('*').eq('party_id', factionId).eq('is_active', true),
             supabase.from('elections').select('*').eq('nation_id', nationId).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(5),
@@ -176,13 +164,13 @@ export async function initPartyOverview(supabase, state, containerId) {
 
         // Log errors but don't fail
         if (partiesResult.error) console.error('[PartyOverview] Parties fetch error:', partiesResult.error.message);
-        if (ideologyResult.error) console.error('[PartyOverview] Ideology fetch error:', ideologyResult.error.message);
-        if (standingsResult.error) console.error('[PartyOverview] Standings fetch error:', standingsResult.error.message);
+        if (sectorsResult.error) console.error('[PartyOverview] Sectors fetch error:', sectorsResult.error.message);
         if (activityResult.error) console.error('[PartyOverview] Activity fetch error:', activityResult.error.message);
         if (caucusResult.error) console.error('[PartyOverview] Caucus fetch error:', caucusResult.error.message);
         if (electionResult.error) console.error('[PartyOverview] Election fetch error:', electionResult.error.message);
 
         const allParties = partiesResult.data || [];
+        const sectors = sectorsResult.data || [];
         const admin = governingResult.administration;
         // Pre-computed set of party IDs holding an active ministry, used by
         // getGoverningStatusFor to determine cabinet-held status in rival rows.
@@ -190,11 +178,19 @@ export async function initPartyOverview(supabase, state, containerId) {
             (ministriesResult.data || []).map(m => m.party_id).filter(Boolean)
         );
 
-        // Build ideology lookup: { factionId: row }
-        const ideoMap = {};
-        for (const row of (ideologyResult.data || [])) {
-            ideoMap[row.faction_id] = row;
+        // Phase 4: load popularity rows for the parties we care about, then
+        // compute each party's top-3 stronghold sectors.
+        let popularityRows = [];
+        if (allParties.length > 0 && sectors.length > 0) {
+            const partyIds = allParties.map(p => p.id);
+            const { data: pop, error: popErr } = await supabase
+                .from('faction_sector_popularity')
+                .select('faction_id, sector_id, popularity')
+                .in('faction_id', partyIds);
+            if (popErr) console.error('[PartyOverview] Popularity fetch error:', popErr.message);
+            popularityRows = pop || [];
         }
+        const strongholdsByParty = processStrongholds(allParties, sectors, popularityRows);
 
         // Compute governance score
         let govResult = { score: 0, deltas: [], decayCycles: 0, multiplier: 1, ticksInPower: 0 };
@@ -217,8 +213,6 @@ export async function initPartyOverview(supabase, state, containerId) {
         }
 
         // Process ideology axes
-        const ideologyAxes = processIdeologyAxes(factionId, ideoMap, allParties);
-
         // Store everything
         _overview = {
             isGoverning: governingResult.isGoverning,
@@ -234,14 +228,12 @@ export async function initPartyOverview(supabase, state, containerId) {
             allParties: allParties,
             rivalParties: allParties.filter(p => p.id !== factionId),
             blocMap,
-            factionIdeology: ideoMap,
-            electoralStandings: standingsResult.data || [],
+            strongholdsByParty,
             recentActivity: activityResult.data || [],
             caucuses: caucusResult.data || [],
             nextElection: nextElection,
             nextElectionTicks: nextElectionTicks,
             nextElectionLabel: nextElectionLabel,
-            ideologyAxes: ideologyAxes,
         };
 
         renderPartyOverview(container);
@@ -283,7 +275,7 @@ function renderPartyOverview(container) {
             <div class="po-col-left">
                 ${renderIdentityCard(o, faction, partyColor, statusLabel, statusColor)}
                 ${renderGovernanceTable(o)}
-                ${renderIdeologySection(o, faction, partyColor, container)}
+                ${renderStrongholdsSection(o, faction, partyColor)}
                 ${renderCaucuses(o)}
             </div>
             <div class="po-col-center" id="po-center-col">
@@ -433,8 +425,10 @@ function renderGovernanceTable(o) {
     </div>`;
 }
 
-function renderIdeologySection(o, faction, partyColor) {
-    // Build legend
+// Phase 4: replaces ideology axis bars. Each visible party gets a row showing
+// their top-3 stronghold sectors as chips, with the contribution magnitude as
+// a small bar. Same legend toggle pattern as before.
+function renderStrongholdsSection(o, faction, partyColor) {
     const allLegend = [
         { id: faction?.id, name: 'You', color: partyColor },
         ...o.rivalParties.map(p => ({ id: p.id, name: p.abbreviation || p.faction_name?.slice(0, 3) || '?', color: p.party_color || '#666' })),
@@ -448,33 +442,47 @@ function renderIdeologySection(o, faction, partyColor) {
         </div>`;
     }).join('');
 
-    const axesHtml = o.ideologyAxes.map(axis => {
-        const dotsHtml = axis.parties
-            .filter(p => _visibleParties.includes(p.id))
-            .map(p => `<div class="po-axis-dot" style="left:${p.pos * 100}%;background:${p.color};"></div>`)
-            .join('');
+    // Compute the largest contribution across all visible parties so chip
+    // bars share a scale (taller bar = stronger relative to the room).
+    const visibleIds = new Set(_visibleParties);
+    let maxContribution = 0;
+    for (const id of visibleIds) {
+        const sh = o.strongholdsByParty[id] || [];
+        for (const s of sh) if (s.contribution > maxContribution) maxContribution = s.contribution;
+    }
+    if (maxContribution <= 0) maxContribution = 1; // avoid divide-by-zero on empty data
 
-        const zones = [20, 40, 60, 80].map(pct =>
-            `<div class="po-axis-zone" style="left:${pct}%;"></div>`
-        ).join('');
-
-        return `<div class="po-axis">
-            <div class="po-axis-labels">
-                <span class="po-axis-label">${esc(axis.left)}</span>
-                <span class="po-axis-name">${esc(axis.name)}</span>
-                <span class="po-axis-label">${esc(axis.right)}</span>
-            </div>
-            <div class="po-axis-track">${zones}${dotsHtml}</div>
-        </div>`;
-    }).join('');
+    const partyRows = allLegend
+        .filter(p => visibleIds.has(p.id))
+        .map(p => {
+            const sh = o.strongholdsByParty[p.id] || [];
+            const chipColor = p.color || '#666';
+            const chipsHtml = sh.length > 0
+                ? sh.map(s => {
+                    const widthPct = Math.max(8, (s.contribution / maxContribution) * 100);
+                    return `<div class="po-stronghold-chip" style="border-color:${chipColor}44;background:${chipColor}10;">
+                        <div class="po-stronghold-chip-bar" style="width:${widthPct}%;background:${chipColor};"></div>
+                        <span class="po-stronghold-chip-label">${esc(s.name)}</span>
+                    </div>`;
+                }).join('')
+                : `<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);padding:4px 0;">Unaligned (no sector popularity yet)</div>`;
+            return `<div class="po-stronghold-row">
+                <div class="po-stronghold-party">
+                    <div class="po-legend-dot" style="background:${chipColor};"></div>
+                    <span class="po-stronghold-party-name">${esc(p.name)}</span>
+                </div>
+                <div class="po-stronghold-chips">${chipsHtml}</div>
+            </div>`;
+        }).join('');
 
     return `<div class="po-card">
         <div class="po-card-header">
-            <span class="po-card-title">IDEOLOGY</span>
+            <span class="po-card-title">SECTOR STRONGHOLDS</span>
+            <span class="po-card-subtitle">top 3 by contribution</span>
         </div>
         <div style="padding:8px 12px;">
             <div class="po-legend">${legendHtml}</div>
-            ${axesHtml}
+            ${partyRows || '<div style="padding:8px 0;font-size:9px;color:var(--text-dim);font-family:var(--font-mono);">No parties to display.</div>'}
         </div>
     </div>`;
 }
@@ -669,9 +677,6 @@ function renderRivalParties(o, myFaction) {
     const pmPartyId = admin?.pm_party_id;
     const totalSeats = nation?.total_seats || 100;
 
-    const AXIS_LABELS = ['SEC/FRE', 'TRA/PRO', 'IND/COL', 'LIB/EQL', 'GLB/NAT'];
-    const AXIS_KEYS = ['security_freedom', 'tradition_progress', 'individualism_collectivism', 'liberty_equality', 'globalism_nationalism'];
-
     const rivalHtml = rivals.map(party => {
         const pColor = party.party_color || '#666';
         const abbr = party.abbreviation || party.faction_name?.slice(0, 3)?.toUpperCase() || '?';
@@ -694,18 +699,13 @@ function renderRivalParties(o, myFaction) {
         const seatDiff = seats - (myFaction?.seats || 0);
         const diffColor = seatDiff > 0 ? 'var(--green)' : seatDiff < 0 ? 'var(--red)' : 'var(--text-dim)';
 
-        // Mini ideology axes
-        const ideo = o.factionIdeology[party.id];
-        const miniAxesHtml = AXIS_KEYS.map((key, i) => {
-            const score = ideo ? Number(ideo[key] ?? 0) : 0;
-            const pos = (score + 100) / 200;
-            return `<div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);width:42px;text-align:right;">${AXIS_LABELS[i]}</span>
-                <div style="flex:1;height:5px;background:var(--border-main);position:relative;">
-                    <div style="position:absolute;top:50%;left:${pos * 100}%;transform:translate(-50%,-50%);width:8px;height:8px;border-radius:50%;background:${pColor};"></div>
-                </div>
-            </div>`;
-        }).join('');
+        // Phase 4: mini-strongholds (top 3 sector names) replaces ideology axis bars.
+        const strongholds = o.strongholdsByParty?.[party.id] || [];
+        const miniStrongholdsHtml = strongholds.length > 0
+            ? `<div style="display:flex;flex-wrap:wrap;gap:4px;">${
+                strongholds.map(s => `<span style="font-family:var(--font-mono);font-size:9px;padding:2px 6px;border:1px solid ${pColor}44;background:${pColor}10;color:var(--text-bright);white-space:nowrap;">${esc(s.name)}</span>`).join('')
+            }</div>`
+            : `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Unaligned</div>`;
 
         return `<div style="padding:12px 16px;border-bottom:1px solid var(--border-main);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -732,7 +732,7 @@ function renderRivalParties(o, myFaction) {
                     <span style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${diffColor};">${seatDiff > 0 ? '+' : ''}${seatDiff}</span>
                 </div>
             </div>
-            <div style="display:flex;flex-direction:column;gap:3px;">${miniAxesHtml}</div>
+            ${miniStrongholdsHtml}
         </div>`;
     }).join('');
 

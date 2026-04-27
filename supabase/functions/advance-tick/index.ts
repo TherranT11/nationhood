@@ -8744,6 +8744,107 @@ function allocateByLargestRemainder(weightsByFaction, totalSeats) {
 }
 
 
+// ─── Phase 4: stronghold helpers (cascade redirect) ─────────────────────────
+
+/**
+ * Return the faction's top-N sectors by contribution to TWP. The "stronghold"
+ * concept replaces ideology-axis lookups: instead of "this party leans Left",
+ * downstream code asks "this party's strongholds are RETIREES, RURAL, and
+ * RELIGIOUS_CONSERVATIVES" and reasons about overlap / alignment from there.
+ *
+ * Returns array of length <= topN, ordered by contribution descending. Each
+ * entry is { sector_key, name, contribution }. Sectors with contribution = 0
+ * are excluded (a party with no popularity has no strongholds).
+ *
+ * topN defaults to 3 (V3 §6 uses a 3-sector stronghold concept).
+ */
+function getStrongholdSectors(factionId, sectors, popularityRows, topN = 3) {
+    const all = calculateSectorContributions(factionId, sectors, popularityRows);
+    return all
+        .filter(c => c.contribution > 0)
+        .sort((a, b) => b.contribution - a.contribution)
+        .slice(0, Math.max(0, topN))
+        .map(c => ({ sector_key: c.sector_key, name: c.name, contribution: c.contribution }));
+}
+
+/**
+ * Compute the "stronghold score" of a bill against a faction's strongholds.
+ * Replaces the V3 §15.2 calculate_stronghold_score and the ideology-axis
+ * alignment math used in calculateBillSponsorApprovalDelta.
+ *
+ *   score = Σ over strongholds of bill.sector_effects[stronghold].change_tenths
+ *
+ * Positive = bill helps strongholds (faction likely votes YES); negative =
+ * hurts (likely NO); zero = neutral.
+ *
+ * Inputs:
+ *   billSectorEffects   = [{ sector_key, change_tenths }]  (from policies.sector_effects)
+ *   factionStrongholds  = [{ sector_key, ... }]            (from getStrongholdSectors)
+ */
+function computeStrongholdScore(billSectorEffects, factionStrongholds) {
+    if (!Array.isArray(billSectorEffects) || billSectorEffects.length === 0) return 0;
+    if (!Array.isArray(factionStrongholds) || factionStrongholds.length === 0) return 0;
+    const strongholdKeys = new Set(factionStrongholds.map(s => s.sector_key));
+    let score = 0;
+    for (const eff of billSectorEffects) {
+        if (!eff || typeof eff.sector_key !== 'string') continue;
+        if (!strongholdKeys.has(eff.sector_key)) continue;
+        const change = Number(eff.change_tenths);
+        if (Number.isFinite(change)) score += change;
+    }
+    return score;
+}
+
+/**
+ * Coalition affinity between two factions, computed as the Jaccard-style
+ * overlap of their stronghold sets weighted by combined contribution. High
+ * score = they appeal to the same voter base (good coalition partners);
+ * low / zero = they compete for different voters (forced coalition).
+ *
+ * Replaces the ideology-distance score that previously drove coalition
+ * formation logic.
+ *
+ *   affinity = Σ over shared strongholds of min(contribA, contribB)
+ *            / max(1, Σ over union of strongholds of max(contribA, contribB))
+ *
+ * Range: [0, 1]. 0 = no overlap; 1 = identical strongholds with identical
+ * weights. Symmetric: affinity(A, B) === affinity(B, A).
+ */
+function coalitionAffinity(factionAStrongholds, factionBStrongholds) {
+    const a = new Map((factionAStrongholds || []).map(s => [s.sector_key, Number(s.contribution) || 0]));
+    const b = new Map((factionBStrongholds || []).map(s => [s.sector_key, Number(s.contribution) || 0]));
+    if (a.size === 0 || b.size === 0) return 0;
+
+    let intersection = 0;
+    let union = 0;
+    const keys = new Set([...a.keys(), ...b.keys()]);
+    for (const key of keys) {
+        const av = a.get(key) || 0;
+        const bv = b.get(key) || 0;
+        intersection += Math.min(av, bv);
+        union += Math.max(av, bv);
+    }
+    if (union <= 0) return 0;
+    return intersection / union;
+}
+
+/**
+ * Return the human-readable name of the faction's #1 stronghold sector,
+ * or a fallback string if the faction has no popularity. Used for news
+ * copy, party badges, and any UI that previously showed a single-word
+ * ideology label.
+ *
+ * Caller passes the strongholds array (from getStrongholdSectors) so
+ * we don't re-compute. Pass `fallback` to control what shows when the
+ * faction has zero strongholds (default: 'Unaligned').
+ */
+function dominantSectorLabel(strongholds, fallback = 'Unaligned') {
+    if (!Array.isArray(strongholds) || strongholds.length === 0) return fallback;
+    const top = strongholds[0];
+    if (!top || !top.name) return fallback;
+    return top.name;
+}
+
 // ─── Display helpers ────────────────────────────────────────────────────────
 
 /**
@@ -9149,6 +9250,12 @@ async function ensureBlocApprovals(supabase, factionId, nationId) {
 // ==================== IDEOLOGY SHIFT PROCESSOR ====================
 
 async function processIdeologyShifts(supabase, nationId, resolutions, currentTick) {
+    // Phase 4: ideology cascade redirect. Sectors now drive bill outcomes via
+    // processSectorShifts. Ideology data is frozen — the historical values
+    // remain in the DB for replay / archaeology, but no new writes happen
+    // here. Phase 5 will delete the columns and this function entirely.
+    return;
+    // eslint-disable-next-line no-unreachable
     if (!resolutions || resolutions.length === 0) return;
 
     // Only process bills with terminal resolutions — skip deferred bills
@@ -9495,6 +9602,11 @@ const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
  * Dead zone: scores within ±10 don't decay.
  */
 async function processIdeologyDecay(supabase, nationId, currentTick) {
+    // Phase 4: ideology cascade redirect. Decay-toward-center kept faction
+    // ideology drifting tick-by-tick; with sectors driving gameplay, that
+    // drift is invisible noise. No-op pending Phase 5 deletion.
+    return;
+    // eslint-disable-next-line no-unreachable
     const ideologies = await loadNationIdeologies(supabase, nationId);
     if (!ideologies || ideologies.length === 0) return;
 

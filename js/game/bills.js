@@ -379,6 +379,12 @@ export async function ensureBlocApprovals(supabase, factionId, nationId) {
 // ==================== IDEOLOGY SHIFT PROCESSOR ====================
 
 export async function processIdeologyShifts(supabase, nationId, resolutions, currentTick) {
+    // Phase 4: ideology cascade redirect. Sectors now drive bill outcomes via
+    // processSectorShifts. Ideology data is frozen — the historical values
+    // remain in the DB for replay / archaeology, but no new writes happen
+    // here. Phase 5 will delete the columns and this function entirely.
+    return;
+    // eslint-disable-next-line no-unreachable
     if (!resolutions || resolutions.length === 0) return;
 
     // Only process bills with terminal resolutions — skip deferred bills
@@ -725,6 +731,11 @@ const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
  * Dead zone: scores within ±10 don't decay.
  */
 export async function processIdeologyDecay(supabase, nationId, currentTick) {
+    // Phase 4: ideology cascade redirect. Decay-toward-center kept faction
+    // ideology drifting tick-by-tick; with sectors driving gameplay, that
+    // drift is invisible noise. No-op pending Phase 5 deletion.
+    return;
+    // eslint-disable-next-line no-unreachable
     const ideologies = await loadNationIdeologies(supabase, nationId);
     if (!ideologies || ideologies.length === 0) return;
 

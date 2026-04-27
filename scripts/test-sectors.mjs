@@ -22,6 +22,10 @@ import {
     applyElectabilityModifier,
     applyUncertaintyRoll,
     applyTieBreakerBonuses,
+    getStrongholdSectors,
+    computeStrongholdScore,
+    coalitionAffinity,
+    dominantSectorLabel,
 } from '../js/game/sectors.js';
 
 // ─── Tiny test runner ───────────────────────────────────────────────────────
@@ -777,6 +781,137 @@ suite('applyTieBreakerBonuses', () => {
         let totalBonuses = 0;
         for (const m of got.values()) totalBonuses += m.size;
         assert.equal(totalBonuses, 1);
+    });
+});
+
+// ─── Phase 4 stronghold helpers ─────────────────────────────────────────────
+suite('getStrongholdSectors', () => {
+    test('zero popularity → no strongholds', () => {
+        assert.deepEqual(getStrongholdSectors(FACTION_A, SECTORS_BASIC, []), []);
+    });
+
+    test('returns top contributors sorted descending', () => {
+        // POP_BASIC for A: s1 contrib=30, s2 contrib=192, s3 contrib=96
+        const got = getStrongholdSectors(FACTION_A, SECTORS_BASIC, POP_BASIC, 3);
+        assert.equal(got.length, 3);
+        assert.deepEqual(got.map(s => s.sector_key), ['URBAN_PROFS', 'TRADES', 'RETIREES']);
+        assert.equal(got[0].contribution, 192);
+    });
+
+    test('topN limits the list', () => {
+        const got = getStrongholdSectors(FACTION_A, SECTORS_BASIC, POP_BASIC, 1);
+        assert.equal(got.length, 1);
+        assert.equal(got[0].sector_key, 'URBAN_PROFS');
+    });
+
+    test('topN=0 returns empty', () => {
+        assert.deepEqual(getStrongholdSectors(FACTION_A, SECTORS_BASIC, POP_BASIC, 0), []);
+    });
+
+    test('sector with zero contribution is excluded', () => {
+        const pop = [
+            { faction_id: FACTION_A, sector_id: 's1', popularity: 50 },
+            { faction_id: FACTION_A, sector_id: 's2', popularity: 0  },
+            { faction_id: FACTION_A, sector_id: 's3', popularity: 0  },
+        ];
+        const got = getStrongholdSectors(FACTION_A, SECTORS_BASIC, pop, 3);
+        assert.equal(got.length, 1);
+        assert.equal(got[0].sector_key, 'RETIREES');
+    });
+});
+
+suite('computeStrongholdScore', () => {
+    const strongholds = [
+        { sector_key: 'URBAN_PROFS', contribution: 192 },
+        { sector_key: 'TRADES',      contribution:  96 },
+    ];
+
+    test('empty bill effects → 0', () => {
+        assert.equal(computeStrongholdScore([], strongholds), 0);
+    });
+
+    test('empty strongholds → 0', () => {
+        assert.equal(computeStrongholdScore([{ sector_key: 'URBAN_PROFS', change_tenths: 20 }], []), 0);
+    });
+
+    test('positive effect on stronghold → positive score', () => {
+        const effects = [{ sector_key: 'URBAN_PROFS', change_tenths: 20 }];
+        assert.equal(computeStrongholdScore(effects, strongholds), 20);
+    });
+
+    test('effect on non-stronghold sector is ignored', () => {
+        const effects = [{ sector_key: 'RETIREES', change_tenths: 20 }];
+        assert.equal(computeStrongholdScore(effects, strongholds), 0);
+    });
+
+    test('mix of stronghold + non-stronghold sums only strongholds', () => {
+        const effects = [
+            { sector_key: 'URBAN_PROFS', change_tenths:  15 },
+            { sector_key: 'TRADES',      change_tenths: -10 },
+            { sector_key: 'RETIREES',    change_tenths:  99 },  // non-stronghold, ignored
+        ];
+        assert.equal(computeStrongholdScore(effects, strongholds), 5);
+    });
+
+    test('non-numeric change_tenths is skipped', () => {
+        const effects = [{ sector_key: 'URBAN_PROFS', change_tenths: 'bad' }];
+        assert.equal(computeStrongholdScore(effects, strongholds), 0);
+    });
+});
+
+suite('coalitionAffinity', () => {
+    test('empty inputs → 0', () => {
+        assert.equal(coalitionAffinity([], []), 0);
+        assert.equal(coalitionAffinity(null, [{ sector_key: 'X', contribution: 10 }]), 0);
+    });
+
+    test('disjoint strongholds → 0', () => {
+        const a = [{ sector_key: 'X', contribution: 100 }];
+        const b = [{ sector_key: 'Y', contribution: 100 }];
+        assert.equal(coalitionAffinity(a, b), 0);
+    });
+
+    test('identical strongholds → 1', () => {
+        const a = [{ sector_key: 'X', contribution: 100 }, { sector_key: 'Y', contribution: 50 }];
+        const b = [{ sector_key: 'X', contribution: 100 }, { sector_key: 'Y', contribution: 50 }];
+        assert.equal(coalitionAffinity(a, b), 1);
+    });
+
+    test('partial overlap produces fractional score', () => {
+        const a = [{ sector_key: 'X', contribution: 100 }, { sector_key: 'Y', contribution: 50 }];
+        const b = [{ sector_key: 'X', contribution:  50 }, { sector_key: 'Z', contribution: 50 }];
+        // intersection: min(100,50)=50 on X, 0 on Y, 0 on Z → 50
+        // union: max(100,50)=100 on X, max(50,0)=50 on Y, max(0,50)=50 on Z → 200
+        // 50/200 = 0.25
+        assert.equal(coalitionAffinity(a, b), 0.25);
+    });
+
+    test('symmetric: affinity(A,B) === affinity(B,A)', () => {
+        const a = [{ sector_key: 'X', contribution: 30 }, { sector_key: 'Y', contribution: 70 }];
+        const b = [{ sector_key: 'X', contribution: 90 }, { sector_key: 'Z', contribution: 10 }];
+        assert.equal(coalitionAffinity(a, b), coalitionAffinity(b, a));
+    });
+});
+
+suite('dominantSectorLabel', () => {
+    test('empty → fallback', () => {
+        assert.equal(dominantSectorLabel([]), 'Unaligned');
+    });
+
+    test('null → fallback', () => {
+        assert.equal(dominantSectorLabel(null), 'Unaligned');
+    });
+
+    test('custom fallback', () => {
+        assert.equal(dominantSectorLabel([], 'Centrist'), 'Centrist');
+    });
+
+    test('returns top entry name', () => {
+        const sh = [
+            { sector_key: 'URBAN_PROFS', name: 'Urban Professionals', contribution: 192 },
+            { sector_key: 'TRADES',      name: 'Trades',              contribution:  96 },
+        ];
+        assert.equal(dominantSectorLabel(sh), 'Urban Professionals');
     });
 });
 
