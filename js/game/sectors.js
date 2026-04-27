@@ -177,6 +177,112 @@ export function resolveTie(tiedFactionIds, rng = Math.random) {
     return tiedFactionIds[Math.min(idx, tiedFactionIds.length - 1)];
 }
 
+// ─── Bill resolution: vote-aligned sector shifts (Phase 2) ──────────────────
+
+/**
+ * Translate one bill's sector_effects + per-faction votes into the list of
+ * popularity deltas to apply on resolution. Pure function — caller does the
+ * DB upsert + 0..100 clamp.
+ *
+ * Inputs:
+ *   effects   = [{ sector_key: string, change_tenths: number }, ...]
+ *               Signed; positive = popularity gain on pass. Caller is
+ *               responsible for summing across articles before invoking.
+ *   voters    = Map<factionId, 'yes' | 'no' | 'abstain'>
+ *               Normalized stances from bill_support. Sponsor is auto-merged
+ *               internally as 'yes' regardless of whether they cast a vote.
+ *   sponsorId = string | null   The proposing faction.
+ *   result    = 'passed' | 'failed' | 'withdrawn'
+ *
+ * Output:
+ *   [{ factionId, sector_key, delta_tenths }, ...]
+ *
+ * Effect model (Phase 2 design — vote-aligned pass / asymmetric fail):
+ *   * passed:    sponsor + YES voters get +change_tenths;
+ *                NO voters get -change_tenths;
+ *                abstain unaffected.
+ *   * failed:    sponsor gets -change_tenths (full inverse); other voters
+ *                unaffected. The proposer "owns" the failed bill alone.
+ *   * withdrawn: no effect for anyone.
+ *
+ * Effects with non-numeric or zero change_tenths are skipped so callers can
+ * pass raw arrays without pre-filtering.
+ */
+export function computeSectorShifts({ effects, voters, sponsorId, result }) {
+    if (result !== 'passed' && result !== 'failed') return [];
+    if (!Array.isArray(effects) || effects.length === 0) return [];
+
+    const cleanEffects = effects.filter(e =>
+        e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0
+    );
+    if (cleanEffects.length === 0) return [];
+
+    const out = [];
+
+    if (result === 'passed') {
+        // Snapshot voters and force the sponsor to YES so callers don't have
+        // to remember to pre-merge. Matches the existing processIdeologyShifts
+        // pattern (bills.js:432-433).
+        const stances = new Map(voters || []);
+        if (sponsorId) stances.set(sponsorId, 'yes');
+
+        for (const eff of cleanEffects) {
+            const change = Number(eff.change_tenths);
+            for (const [factionId, stance] of stances) {
+                if (stance === 'yes') {
+                    out.push({ factionId, sector_key: eff.sector_key, delta_tenths:  change });
+                } else if (stance === 'no') {
+                    out.push({ factionId, sector_key: eff.sector_key, delta_tenths: -change });
+                }
+                // abstain or unknown stance => no row
+            }
+        }
+        return out;
+    }
+
+    // result === 'failed': only the sponsor takes the hit, full inverse magnitude.
+    if (!sponsorId) return [];
+    for (const eff of cleanEffects) {
+        out.push({
+            factionId: sponsorId,
+            sector_key: eff.sector_key,
+            delta_tenths: -Number(eff.change_tenths),
+        });
+    }
+    return out;
+}
+
+/**
+ * Sum sector_effects arrays across multiple articles of one bill into a
+ * single deduplicated list, grouping by sector_key. Skips malformed entries
+ * silently so downstream calc stays defensive.
+ *
+ * Inputs:
+ *   effectsArrays = [[{sector_key, change_tenths}, ...], [...], ...]
+ *
+ * Output:
+ *   [{ sector_key, change_tenths }, ...]
+ */
+export function sumSectorEffects(effectsArrays) {
+    const totals = new Map();
+    for (const arr of effectsArrays || []) {
+        if (!Array.isArray(arr)) continue;
+        for (const e of arr) {
+            if (!e || typeof e.sector_key !== 'string') continue;
+            const change = Number(e.change_tenths);
+            if (!Number.isFinite(change) || change === 0) continue;
+            totals.set(e.sector_key, (totals.get(e.sector_key) || 0) + change);
+        }
+    }
+    // Drop net-zero totals (e.g., +10 then -10) so downstream code never has
+    // to filter them — they're equivalent to "no effect on this sector".
+    const out = [];
+    for (const [sector_key, change_tenths] of totals) {
+        if (change_tenths !== 0) out.push({ sector_key, change_tenths });
+    }
+    return out;
+}
+
 // ─── Display helpers ────────────────────────────────────────────────────────
 
 /**

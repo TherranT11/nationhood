@@ -1,8 +1,8 @@
 // scripts/test-sectors.mjs
 //
-// Phase 1 of the sectors rollout: unit tests for the pure helpers exported
-// by js/game/sectors.js. Pattern follows scripts/test-bills-helpers.mjs —
-// plain Node + node:assert/strict, no test framework.
+// Unit tests for the pure helpers exported by js/game/sectors.js. Pattern
+// follows scripts/test-bills-helpers.mjs — plain Node + node:assert/strict,
+// no test framework. Covers Phase 1 (calc) and Phase 2 (bill resolution).
 //
 // Run: `npm run test:sectors`
 
@@ -15,6 +15,8 @@ import {
     resolveTie,
     formatPopularity,
     parsePopularity,
+    computeSectorShifts,
+    sumSectorEffects,
 } from '../js/game/sectors.js';
 
 // ─── Tiny test runner ───────────────────────────────────────────────────────
@@ -309,6 +311,227 @@ suite('format / parse popularity', () => {
 
     test('round-trip: 73 → "7.3" → 73', () => {
         assert.equal(parsePopularity(formatPopularity(73)), 73);
+    });
+});
+
+// ─── computeSectorShifts (Phase 2) ──────────────────────────────────────────
+suite('computeSectorShifts — withdrawn / empty / malformed', () => {
+    const effects = [{ sector_key: 'RETIREES', change_tenths: 20 }];
+    const voters = new Map([['fac-a', 'yes'], ['fac-b', 'no']]);
+
+    test('withdrawn → empty array', () => {
+        assert.deepEqual(
+            computeSectorShifts({ effects, voters, sponsorId: 'fac-a', result: 'withdrawn' }),
+            []
+        );
+    });
+
+    test('unknown result → empty array', () => {
+        assert.deepEqual(
+            computeSectorShifts({ effects, voters, sponsorId: 'fac-a', result: 'deferred' }),
+            []
+        );
+    });
+
+    test('empty effects → empty array (passed)', () => {
+        assert.deepEqual(
+            computeSectorShifts({ effects: [], voters, sponsorId: 'fac-a', result: 'passed' }),
+            []
+        );
+    });
+
+    test('null effects → empty array', () => {
+        assert.deepEqual(
+            computeSectorShifts({ effects: null, voters, sponsorId: 'fac-a', result: 'passed' }),
+            []
+        );
+    });
+
+    test('zero-change effects are skipped', () => {
+        const noOpEffects = [{ sector_key: 'RETIREES', change_tenths: 0 }];
+        assert.deepEqual(
+            computeSectorShifts({ effects: noOpEffects, voters, sponsorId: 'fac-a', result: 'passed' }),
+            []
+        );
+    });
+
+    test('non-numeric change is skipped', () => {
+        const bad = [{ sector_key: 'RETIREES', change_tenths: 'lots' }];
+        assert.deepEqual(
+            computeSectorShifts({ effects: bad, voters, sponsorId: 'fac-a', result: 'passed' }),
+            []
+        );
+    });
+
+    test('missing sector_key is skipped', () => {
+        const bad = [{ change_tenths: 20 }];
+        assert.deepEqual(
+            computeSectorShifts({ effects: bad, voters, sponsorId: 'fac-a', result: 'passed' }),
+            []
+        );
+    });
+});
+
+suite('computeSectorShifts — passed (vote-aligned)', () => {
+    const effects = [{ sector_key: 'RETIREES', change_tenths: 20 }];
+
+    test('YES voter gets +effect', () => {
+        const voters = new Map([['fac-a', 'yes']]);
+        const got = computeSectorShifts({ effects, voters, sponsorId: 'fac-a', result: 'passed' });
+        assert.deepEqual(got, [{ factionId: 'fac-a', sector_key: 'RETIREES', delta_tenths: 20 }]);
+    });
+
+    test('NO voter gets -effect (mirror)', () => {
+        const voters = new Map([['fac-b', 'no']]);
+        const got = computeSectorShifts({ effects, voters, sponsorId: 'fac-a', result: 'passed' });
+        // sponsor (fac-a) auto-counts as YES even if not in voters map
+        const map = new Map(got.map(r => [r.factionId, r.delta_tenths]));
+        assert.equal(map.get('fac-a'),  20);
+        assert.equal(map.get('fac-b'), -20);
+    });
+
+    test('abstain → no row', () => {
+        const voters = new Map([['fac-a', 'yes'], ['fac-c', 'abstain']]);
+        const got = computeSectorShifts({ effects, voters, sponsorId: 'fac-a', result: 'passed' });
+        const ids = new Set(got.map(r => r.factionId));
+        assert.ok(ids.has('fac-a'));
+        assert.ok(!ids.has('fac-c'));
+    });
+
+    test('sponsor not in voters map is still credited as YES', () => {
+        const voters = new Map([['fac-b', 'no']]);
+        const got = computeSectorShifts({ effects, voters, sponsorId: 'fac-sponsor', result: 'passed' });
+        const map = new Map(got.map(r => [r.factionId, r.delta_tenths]));
+        assert.equal(map.get('fac-sponsor'), 20);
+    });
+
+    test('sponsor explicitly NO is overridden to YES (matches ideology pattern)', () => {
+        // edge case from processIdeologyShifts at bills.js:432-433: sponsor
+        // is always treated as YES regardless of recorded stance.
+        const voters = new Map([['fac-a', 'no']]);
+        const got = computeSectorShifts({ effects, voters, sponsorId: 'fac-a', result: 'passed' });
+        const map = new Map(got.map(r => [r.factionId, r.delta_tenths]));
+        assert.equal(map.get('fac-a'), 20);
+    });
+
+    test('multiple sectors fan out per voter', () => {
+        const multi = [
+            { sector_key: 'RETIREES',   change_tenths:  15 },
+            { sector_key: 'CAPITAL_OWNERS', change_tenths: -25 },
+        ];
+        const voters = new Map([['fac-a', 'yes'], ['fac-b', 'no']]);
+        const got = computeSectorShifts({ effects: multi, voters, sponsorId: 'fac-a', result: 'passed' });
+        // 2 voters × 2 sectors = 4 rows
+        assert.equal(got.length, 4);
+        const lookup = new Map(got.map(r => [`${r.factionId}:${r.sector_key}`, r.delta_tenths]));
+        assert.equal(lookup.get('fac-a:RETIREES'),         15);
+        assert.equal(lookup.get('fac-a:CAPITAL_OWNERS'),  -25);
+        assert.equal(lookup.get('fac-b:RETIREES'),        -15);
+        assert.equal(lookup.get('fac-b:CAPITAL_OWNERS'),   25);
+    });
+
+    test('does not mutate caller voters Map', () => {
+        const voters = new Map([['fac-other', 'no']]);
+        computeSectorShifts({ effects, voters, sponsorId: 'fac-sponsor', result: 'passed' });
+        assert.equal(voters.size, 1);
+        assert.ok(!voters.has('fac-sponsor'));
+    });
+});
+
+suite('computeSectorShifts — failed (asymmetric, sponsor-only)', () => {
+    const effects = [
+        { sector_key: 'RETIREES',       change_tenths:  20 },
+        { sector_key: 'CAPITAL_OWNERS', change_tenths: -15 },
+    ];
+
+    test('sponsor takes full inverse magnitude on every sector', () => {
+        const voters = new Map([['fac-a', 'yes'], ['fac-b', 'no']]);
+        const got = computeSectorShifts({ effects, voters, sponsorId: 'fac-sponsor', result: 'failed' });
+        assert.equal(got.length, 2);
+        const lookup = new Map(got.map(r => [r.sector_key, r.delta_tenths]));
+        assert.equal(lookup.get('RETIREES'),       -20);
+        assert.equal(lookup.get('CAPITAL_OWNERS'),  15);
+    });
+
+    test('only sponsor is in the output — YES voters not penalized', () => {
+        const voters = new Map([['fac-a', 'yes'], ['fac-b', 'no']]);
+        const got = computeSectorShifts({ effects, voters, sponsorId: 'fac-sponsor', result: 'failed' });
+        const ids = new Set(got.map(r => r.factionId));
+        assert.deepEqual(ids, new Set(['fac-sponsor']));
+    });
+
+    test('no sponsor → no rows (defensive)', () => {
+        const voters = new Map([['fac-a', 'yes']]);
+        assert.deepEqual(
+            computeSectorShifts({ effects, voters, sponsorId: null, result: 'failed' }),
+            []
+        );
+    });
+
+    test('failed with empty effects → empty', () => {
+        assert.deepEqual(
+            computeSectorShifts({ effects: [], voters: new Map(), sponsorId: 'fac-a', result: 'failed' }),
+            []
+        );
+    });
+});
+
+// ─── sumSectorEffects (Phase 2) ─────────────────────────────────────────────
+suite('sumSectorEffects', () => {
+    test('empty input → empty output', () => {
+        assert.deepEqual(sumSectorEffects([]), []);
+        assert.deepEqual(sumSectorEffects(null), []);
+    });
+
+    test('single article passes through unchanged', () => {
+        const got = sumSectorEffects([[
+            { sector_key: 'RETIREES', change_tenths: 20 },
+        ]]);
+        assert.deepEqual(got, [{ sector_key: 'RETIREES', change_tenths: 20 }]);
+    });
+
+    test('two articles sum into one row per sector', () => {
+        const got = sumSectorEffects([
+            [{ sector_key: 'RETIREES', change_tenths: 20 }],
+            [{ sector_key: 'RETIREES', change_tenths: 15 }],
+        ]);
+        assert.deepEqual(got, [{ sector_key: 'RETIREES', change_tenths: 35 }]);
+    });
+
+    test('opposite-sign effects on same sector cancel', () => {
+        const got = sumSectorEffects([
+            [{ sector_key: 'CAPITAL_OWNERS', change_tenths:  10 }],
+            [{ sector_key: 'CAPITAL_OWNERS', change_tenths: -10 }],
+        ]);
+        // Cancel to 0, which is then dropped by the zero-skip filter.
+        assert.deepEqual(got, []);
+    });
+
+    test('mixed sectors stay distinct', () => {
+        const got = sumSectorEffects([
+            [
+                { sector_key: 'RETIREES',       change_tenths: 20 },
+                { sector_key: 'CAPITAL_OWNERS', change_tenths: -15 },
+            ],
+            [
+                { sector_key: 'RETIREES', change_tenths: 5 },
+            ],
+        ]);
+        const lookup = Object.fromEntries(got.map(r => [r.sector_key, r.change_tenths]));
+        assert.equal(lookup.RETIREES,       25);
+        assert.equal(lookup.CAPITAL_OWNERS, -15);
+    });
+
+    test('malformed entries are skipped silently', () => {
+        const got = sumSectorEffects([
+            [
+                null,
+                { sector_key: 'RETIREES', change_tenths: 'oops' },
+                { change_tenths: 20 },                        // missing key
+                { sector_key: 'RETIREES', change_tenths: 12 },
+            ],
+        ]);
+        assert.deepEqual(got, [{ sector_key: 'RETIREES', change_tenths: 12 }]);
     });
 });
 
