@@ -2462,6 +2462,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
         }
 
+        // Phase 2: sector popularity shifts from resolved bills (vote-aligned).
+        // Runs alongside ideology shifts during the transition; sectors are
+        // shadow-tracked until Phase 3 swaps the election engine over.
+        try {
+            await processSectorShifts(supabase, nation.id, resolutions);
+        } catch (sectorErr) {
+            console.error(`[advanceTick] Sector shifts failed for ${nation.name} (non-fatal):`, sectorErr);
+        }
+
         // Natural ideology decay toward center (extremism erodes over time)
         try {
             await processIdeologyDecay(supabase, nation.id, newTick);
