@@ -20,6 +20,7 @@ import { allocateSeatsByVotes } from './election-simulation.js';
 import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
 import { calculateCaucusDispositions, calculateCaucusVoteAdjustment, updateCaucusRelationships } from './caucus.js';
+import { computeSectorShifts, sumSectorEffects } from './sectors.js';
 
 const _BILL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -545,6 +546,169 @@ export async function processIdeologyShifts(supabase, nationId, resolutions, cur
                 error: histErr.message
             });
         }
+    }
+}
+
+// ==================== SECTOR POPULARITY SHIFTS (Phase 2) ====================
+
+/**
+ * Apply per-faction sector popularity changes from terminal bill resolutions.
+ *
+ * Vote-aligned model (Phase 2 design):
+ *   * passed:  sponsor + YES voters get +change_tenths per sector;
+ *              NO voters get -change_tenths; abstain unaffected.
+ *   * failed:  sponsor takes -change_tenths (full inverse); other voters
+ *              unaffected — proposer "owns" the failed bill alone.
+ *   * Other terminal states (expired_committee, withdrawn,
+ *     failed_proposer_disbanded, etc.) are administrative outcomes, not
+ *     political defeats, so they skip — no popularity moves.
+ *
+ * Mirrors processIdeologyShifts in shape: load bills with bill_articles,
+ * policies, and bill_support; build voter stance map; delegate the math to
+ * the pure helpers in sectors.js (computeSectorShifts + sumSectorEffects);
+ * aggregate per (faction, sector); upsert with 0..100 clamp.
+ *
+ * Sector lookup is per-nation: a bill's effects reference sector_key, but
+ * popularity rows reference sector_id. Effects naming a sector_key the
+ * nation doesn't have silently no-op (forward-compatible with custom
+ * per-nation sectors).
+ */
+export async function processSectorShifts(supabase, nationId, resolutions, currentTick) {
+    if (!resolutions || resolutions.length === 0) return;
+
+    // Map every resolution to passed/failed/skip. Only passed and failed
+    // move popularity; everything else (deferred, withdrawn, committee
+    // expirations, proposer-disbanded) is administrative.
+    function normalizeResult(r) {
+        if (r === 'passed' || r === 'approved') return 'passed';
+        if (r === 'failed' || r === 'rejected') return 'failed';
+        return null;
+    }
+    const actionable = resolutions
+        .map(r => ({ billId: r.billId, result: normalizeResult(r.result) }))
+        .filter(r => r.billId && r.result);
+    if (actionable.length === 0) return;
+
+    const billIds = actionable.map(r => r.billId);
+    const { data: bills, error: billErr } = await supabase
+        .from('bills')
+        .select('id, nation_id, proposed_by, bill_type, bill_articles(*, policies(sector_effects)), bill_support(faction_id, stance)')
+        .in('id', billIds);
+    if (billErr) {
+        console.error('[processSectorShifts] failed to load bills', { nationId, error: billErr.message });
+        return;
+    }
+    if (!bills || bills.length === 0) return;
+
+    // Match the legislative-bills filter from processIdeologyShifts. Non-
+    // legislative bills (no_confidence, confirmations, foundational, veto
+    // override) are political-process votes, not policy outcomes — they
+    // don't carry sector effects.
+    const legislative = bills.filter(b =>
+        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
+    );
+    if (legislative.length === 0) return;
+
+    const resultByBill = new Map(actionable.map(r => [r.billId, r.result]));
+
+    // Load active sectors for this nation once so we can translate
+    // sector_key (in policies) to sector_id (in faction_sector_popularity).
+    const { data: sectors, error: secErr } = await supabase
+        .from('sectors')
+        .select('id, sector_key')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (secErr) {
+        console.error('[processSectorShifts] failed to load sectors', { nationId, error: secErr.message });
+        return;
+    }
+    const sectorIdByKey = new Map((sectors || []).map(s => [s.sector_key, s.id]));
+    if (sectorIdByKey.size === 0) return; // nation has no sectors yet
+
+    // Aggregate deltas across every bill in this batch. A faction can be
+    // shifted multiple times in one tick if multiple bills affect them.
+    const aggregatedDeltas = new Map(); // key: `${factionId}:${sectorId}` -> total delta
+    for (const bill of legislative) {
+        const result = resultByBill.get(bill.id);
+        if (!result) continue;
+
+        const articleEffects = (bill.bill_articles || [])
+            .map(art => art?.policies?.sector_effects)
+            .filter(e => Array.isArray(e) && e.length > 0);
+        if (articleEffects.length === 0) continue;
+        const summed = sumSectorEffects(articleEffects);
+        if (summed.length === 0) continue;
+
+        // Build voter stance map (normalize committee 'accept'/'reject').
+        const voters = new Map();
+        for (const s of (bill.bill_support || [])) {
+            const stance = s.stance === 'accept' ? 'yes'
+                         : s.stance === 'reject' ? 'no'
+                         : s.stance;
+            if (stance === 'yes' || stance === 'no' || stance === 'abstain') {
+                voters.set(s.faction_id, stance);
+            }
+        }
+
+        const shiftRows = computeSectorShifts({
+            effects: summed,
+            voters,
+            sponsorId: bill.proposed_by,
+            result,
+        });
+        for (const row of shiftRows) {
+            const sectorId = sectorIdByKey.get(row.sector_key);
+            if (!sectorId) continue; // sector not present in this nation
+            const key = `${row.factionId}:${sectorId}`;
+            aggregatedDeltas.set(key, (aggregatedDeltas.get(key) || 0) + row.delta_tenths);
+        }
+    }
+    if (aggregatedDeltas.size === 0) return;
+
+    // Fetch current popularity for every (faction, sector) pair we'll write.
+    const factionIds = new Set();
+    const sectorIds  = new Set();
+    for (const key of aggregatedDeltas.keys()) {
+        const [fid, sid] = key.split(':');
+        factionIds.add(fid);
+        sectorIds.add(sid);
+    }
+    const { data: currentRows, error: curErr } = await supabase
+        .from('faction_sector_popularity')
+        .select('faction_id, sector_id, popularity')
+        .in('faction_id', [...factionIds])
+        .in('sector_id',  [...sectorIds]);
+    if (curErr) {
+        console.error('[processSectorShifts] failed to load current popularities', { nationId, error: curErr.message });
+        return;
+    }
+    const currentByKey = new Map();
+    for (const r of (currentRows || [])) {
+        currentByKey.set(`${r.faction_id}:${r.sector_id}`, Number(r.popularity) || 0);
+    }
+
+    // Build clamped upserts. Skip rows where the clamp produces no change
+    // (e.g., already at 100 with a positive delta) so the network round-trip
+    // only carries actual writes.
+    const upserts = [];
+    for (const [key, delta] of aggregatedDeltas) {
+        const [factionId, sectorId] = key.split(':');
+        const current = currentByKey.get(key) ?? 0;
+        const next = Math.max(0, Math.min(100, current + delta));
+        if (next === current) continue;
+        upserts.push({ faction_id: factionId, sector_id: sectorId, popularity: next });
+    }
+    if (upserts.length === 0) return;
+
+    const { error: upsertErr } = await supabase
+        .from('faction_sector_popularity')
+        .upsert(upserts, { onConflict: 'faction_id,sector_id' });
+    if (upsertErr) {
+        console.error('[processSectorShifts] upsert failed', {
+            nationId,
+            count: upserts.length,
+            error: upsertErr.message,
+        });
     }
 }
 
