@@ -301,7 +301,7 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
                             <label>Base Turnout</label>
                             <input type="number" id="new-sector-turnout" min="0.50" max="1.30" step="0.05" value="1.00">
                         </div>
-                        <button class="btn btn-primary" onclick="addCustomSector()">+ Add Sector</button>
+                        <button class="btn btn-primary" onclick="addCustomSector(this)">+ Add Sector</button>
                     </div>
                     <div id="sector-add-status" style="margin-top:8px; font-weight:bold;"></div>
                 </div>
