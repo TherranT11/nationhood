@@ -4,7 +4,6 @@
  */
 
 import { isAbsoluteMonarchy, isPresidentialRepublic, hasElectedPresident } from './government-types.js';
-import { IDEOLOGY_OPPOSITES } from './ideology.js';
 
 // ==================== SEAT LOADING ====================
 
@@ -280,25 +279,15 @@ export async function fetchActiveCoalition(supabase, nationId) {
 // ==================== POLICY COMPATIBILITY ====================
 
 export function getCompatiblePolicies(sector, allPolicies, faction, excludePolicyIds = [], activePolicyIds = null) {
-    const ideo1 = (faction?.ideology_value_1 || '').toUpperCase();
-    const ideo2 = (faction?.ideology_value_2 || '').toUpperCase();
-    const factionIdeos = [ideo1, ideo2].filter(Boolean);
-
-    const factionOpposites = new Set(
-        factionIdeos.map(fi => IDEOLOGY_OPPOSITES[fi]).filter(Boolean)
-    );
+    // Phase 5a: ideology opposition filter removed. Policies were flagged
+    // isOpposed when their ideology tag matched the opposite of the
+    // faction's ideology_value_1/2. With ideology going away, every policy
+    // is treated as compatible; the isOpposed flag stays in the return
+    // shape (always false) so existing UI consumers don't break.
 
     return allPolicies
         .filter(p => p.major_sector === sector && !excludePolicyIds.includes(p.id))
         .map(p => {
-            const policyIdeos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-                ? p.ideologies.map(i => i.toUpperCase())
-                : (p.ideology ? [p.ideology.toUpperCase()] : []);
-
-            const isOpposed = factionIdeos.length > 0 &&
-                policyIdeos.length > 0 &&
-                policyIdeos.some(pi => factionOpposites.has(pi));
-
             let prerequisiteMissing = false;
             let prerequisiteName = null;
             if (p.requires_policy_id && activePolicyIds) {
@@ -314,6 +303,6 @@ export function getCompatiblePolicies(sector, allPolicies, faction, excludePolic
             const alreadyEnacted = isActive && p.policy_type === 'structural';
             const alreadyEnactedLever = isActive && p.policy_type === 'lever';
 
-            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted, alreadyEnactedLever };
+            return { ...p, isOpposed: false, prerequisiteMissing, prerequisiteName, alreadyEnacted, alreadyEnactedLever };
         });
 }

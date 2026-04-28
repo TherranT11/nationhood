@@ -4874,229 +4874,6 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
 
 
 
-// ────────── ideology ──────────
-
-
-// Ideology spectrum opposites
-const IDEOLOGY_OPPOSITES = {
-    'LIBERTY': 'EQUALITY',           'EQUALITY': 'LIBERTY',
-    'FREEDOM': 'SECURITY',           'SECURITY': 'FREEDOM',
-    'TRADITION': 'PROGRESS',         'PROGRESS': 'TRADITION',
-    'GLOBALISM': 'NATIONALISM',      'NATIONALISM': 'GLOBALISM',
-    'INDIVIDUALISM': 'COLLECTIVISM', 'COLLECTIVISM': 'INDIVIDUALISM'
-};
-
-// Audit: detect stances with opposed poles on the same axis
-for (const [sector, stances] of Object.entries(POLICY_STANCES)) {
-    for (const stance of stances) {
-        if (stance.poles.length === 2 && IDEOLOGY_OPPOSITES[stance.poles[0]] === stance.poles[1]) {
-            console.error(`STANCE CONFLICT: ${sector}.${stance.key} has opposed poles: ${stance.poles.join(' vs ')}`);
-        }
-    }
-}
-
-// ==================== DYNAMIC IDEOLOGY SYSTEM ====================
-
-const IDEOLOGY_AXES = [
-    {
-        key: 'liberty_equality',
-        left: 'LIBERTY',       right: 'EQUALITY',
-        leftLabel: 'Liberty',  rightLabel: 'Equality',
-        leftColor: '#3b82f6',  rightColor: '#ef4444',
-        description: 'Individual rights vs. collective fairness'
-    },
-    {
-        key: 'tradition_progress',
-        left: 'TRADITION',      right: 'PROGRESS',
-        leftLabel: 'Tradition', rightLabel: 'Progress',
-        leftColor: '#a855f7',   rightColor: '#22c55e',
-        description: 'Cultural conservatism vs. social reform'
-    },
-    {
-        key: 'security_freedom',
-        left: 'SECURITY',      right: 'FREEDOM',
-        leftLabel: 'Security', rightLabel: 'Freedom',
-        leftColor: '#f59e0b',  rightColor: '#06b6d4',
-        description: 'State protection vs. personal autonomy'
-    },
-    {
-        key: 'globalism_nationalism',
-        left: 'GLOBALISM',       right: 'NATIONALISM',
-        leftLabel: 'Globalism',  rightLabel: 'Nationalism',
-        leftColor: '#14b8a6',    rightColor: '#f97316',
-        description: 'International integration vs. national sovereignty'
-    },
-    {
-        key: 'individualism_collectivism',
-        left: 'INDIVIDUALISM',       right: 'COLLECTIVISM',
-        leftLabel: 'Individualism',  rightLabel: 'Collectivism',
-        leftColor: '#eab308',        rightColor: '#ec4899',
-        description: 'Personal self-reliance vs. communal structures'
-    }
-];
-
-const IDEOLOGY_TO_AXIS = {};
-for (const axis of IDEOLOGY_AXES) {
-    IDEOLOGY_TO_AXIS[axis.left]  = { axisKey: axis.key, direction: -1 };
-    IDEOLOGY_TO_AXIS[axis.right] = { axisKey: axis.key, direction: +1 };
-}
-
-
-/**
- * Return an alignment CSS class ('aligned', 'opposed', 'neutral') for
- * an ideology tag relative to a faction's ideology scores.
- */
-function getIdeologyChipClass(ideologyTag, factionIdeology) {
-    if (!factionIdeology) return 'neutral';
-    const tag = (ideologyTag || '').toUpperCase();
-    const mapping = IDEOLOGY_TO_AXIS[tag];
-    if (!mapping) return 'neutral';
-    const score = factionIdeology[mapping.axisKey] || 0;
-    const alignment = score * mapping.direction;
-    if (alignment >= 20) return 'aligned';
-    if (alignment <= -20) return 'opposed';
-    return 'neutral';
-}
-
-// ==================== IDEOLOGY LABELS ====================
-
-const IDEOLOGY_LABEL_THRESHOLDS = [
-    { min: 0,  max: 10,  label: 'Centrist' },
-    { min: 11, max: 30,  label: 'Leaning' },
-    { min: 31, max: 60,  label: 'Strong' },
-    { min: 61, max: 100, label: 'Radical' }
-];
-
-function getIdeologyLabel(score, axisDef) {
-    const abs = Math.abs(score);
-    const threshold = IDEOLOGY_LABEL_THRESHOLDS.find(t => abs >= t.min && abs <= t.max);
-    const intensityLabel = threshold ? threshold.label : 'Centrist';
-
-    if (intensityLabel === 'Centrist') return 'Centrist';
-
-    const sideName = score < 0 ? axisDef.leftLabel : axisDef.rightLabel;
-    return `${intensityLabel} ${sideName}`;
-}
-
-function getFullIdeologyProfile(ideologyRow) {
-    return IDEOLOGY_AXES.map(axis => {
-        const score = ideologyRow[axis.key] || 0;
-        return {
-            axisKey: axis.key,
-            axisDef: axis,
-            score: score,
-            label: getIdeologyLabel(score, axis)
-        };
-    });
-}
-
-
-// ==================== DYNAMIC OPPOSITION PENALTY ====================
-
-function calculateDynamicOppositionPenalty(factionIdeology, policyIdeologyTag, basePenalty = 2) {
-    const tag = policyIdeologyTag.toUpperCase();
-    const mapping = IDEOLOGY_TO_AXIS[tag];
-    if (!mapping) return 0;
-
-    const factionScore = factionIdeology[mapping.axisKey] || 0;
-    const policyDirection = mapping.direction;
-    const oppositionScore = -policyDirection * factionScore;
-
-    if (oppositionScore <= 0) return 0;
-
-    const penaltyScale = oppositionScore / 100;
-    return -Math.round(basePenalty * penaltyScale * 10) / 10;
-}
-
-function calculateBillDynamicPenalty(factionIdeology, articles, basePenalty = 2, isRepealBill = false) {
-    let totalPenalty = 0;
-
-    for (const art of articles) {
-        const p = art.policies || art;
-        if (!p) continue;
-
-        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-            ? p.ideologies.map(i => i.toUpperCase())
-            : (p.ideology ? [p.ideology.toUpperCase()] : []);
-
-        // Repealing a policy inverts the ideology effect:
-        // repealing an opposed policy is a BONUS, repealing an aligned policy is a PENALTY
-        const artIsRepeal = isRepealBill || !!art.repeal_active_law_id;
-
-        for (const tag of ideos) {
-            const penalty = calculateDynamicOppositionPenalty(factionIdeology, tag, basePenalty);
-            // Invert for repeals: penalty becomes bonus, bonus becomes penalty
-            totalPenalty += artIsRepeal ? -penalty : penalty;
-        }
-    }
-
-    return totalPenalty;
-}
-
-
-// REMOVED: computeIdeologyAlignment, countIdeologyRelationship, ideologyOppositionMultiplier
-// (old voter bloc alignment functions — electorate engine replaces them)
-
-
-// ==================== IDEOLOGY DATABASE HELPERS ====================
-
-async function loadFactionIdeology(supabase, factionId) {
-    const cacheKey = 'faction_ideo_' + factionId;
-    if (typeof qCache === 'function') {
-        const cached = qCache(cacheKey);
-        if (cached) return cached;
-    }
-    const { data, error } = await supabase
-        .from('faction_ideology')
-        .select('*')
-        .eq('faction_id', factionId)
-        .maybeSingle();
-
-    if (error) {
-        console.error('Error loading faction ideology:', error);
-        return { _error: true, message: error.message };
-    }
-    if (data && typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 2 * 60 * 1000);
-    return data;
-}
-
-async function loadNationIdeologies(supabase, nationId) {
-    const cacheKey = 'nation_ideos_' + nationId;
-    if (typeof qCache === 'function') {
-        const cached = qCache(cacheKey);
-        if (cached) return cached;
-    }
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party');
-
-    if (!factions || factions.length === 0) return [];
-
-    const factionIds = factions.map(f => f.id);
-    const { data, error } = await supabase
-        .from('faction_ideology')
-        .select('*, factions(id, faction_name, faction_type, nation_id)')
-        .in('faction_id', factionIds);
-
-    if (error) {
-        console.error('Error loading nation ideologies:', error);
-        return [];
-    }
-    const result = data || [];
-    if (result.length && typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 2 * 60 * 1000);
-    return result;
-}
-
-function extractAxisScores(ideologyRow) {
-    const scores = {};
-    for (const axis of IDEOLOGY_AXES) {
-        scores[axis.key] = ideologyRow[axis.key] || 0;
-    }
-    return scores;
-}
-
 // ────────── stats ──────────
 
 
@@ -6845,25 +6622,15 @@ async function fetchActiveCoalition(supabase, nationId) {
 // ==================== POLICY COMPATIBILITY ====================
 
 function getCompatiblePolicies(sector, allPolicies, faction, excludePolicyIds = [], activePolicyIds = null) {
-    const ideo1 = (faction?.ideology_value_1 || '').toUpperCase();
-    const ideo2 = (faction?.ideology_value_2 || '').toUpperCase();
-    const factionIdeos = [ideo1, ideo2].filter(Boolean);
-
-    const factionOpposites = new Set(
-        factionIdeos.map(fi => IDEOLOGY_OPPOSITES[fi]).filter(Boolean)
-    );
+    // Phase 5a: ideology opposition filter removed. Policies were flagged
+    // isOpposed when their ideology tag matched the opposite of the
+    // faction's ideology_value_1/2. With ideology going away, every policy
+    // is treated as compatible; the isOpposed flag stays in the return
+    // shape (always false) so existing UI consumers don't break.
 
     return allPolicies
         .filter(p => p.major_sector === sector && !excludePolicyIds.includes(p.id))
         .map(p => {
-            const policyIdeos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-                ? p.ideologies.map(i => i.toUpperCase())
-                : (p.ideology ? [p.ideology.toUpperCase()] : []);
-
-            const isOpposed = factionIdeos.length > 0 &&
-                policyIdeos.length > 0 &&
-                policyIdeos.some(pi => factionOpposites.has(pi));
-
             let prerequisiteMissing = false;
             let prerequisiteName = null;
             if (p.requires_policy_id && activePolicyIds) {
@@ -6879,738 +6646,8 @@ function getCompatiblePolicies(sector, allPolicies, faction, excludePolicyIds = 
             const alreadyEnacted = isActive && p.policy_type === 'structural';
             const alreadyEnactedLever = isActive && p.policy_type === 'lever';
 
-            return { ...p, isOpposed, prerequisiteMissing, prerequisiteName, alreadyEnacted, alreadyEnactedLever };
+            return { ...p, isOpposed: false, prerequisiteMissing, prerequisiteName, alreadyEnacted, alreadyEnactedLever };
         });
-}
-
-// ────────── caucus ──────────
-
-/**
- * caucus.js — Caucus System for dominant-party internal factions
- *
- * When a party holds >= 50% of parliamentary seats, internal caucuses
- * activate based on ideology axis spread across voter blocs. These
- * caucuses can defect on bills that touch their dominant axis.
- */
-
-// ==================== CONSTANTS ====================
-
-const CAUCUS_CONFIG = {
-    THRESHOLD: 0.50,
-    TIERS: [
-        { min: 0.50, max: 0.59, factions: 2 },
-        { min: 0.60, max: 0.69, factions: 3 },
-        { min: 0.70, max: 0.79, factions: 4 },
-        { min: 0.80, max: 1.00, factions: 5 },
-    ],
-    DEFAULT_RELATIONSHIP: 65,
-    WHIP_AP_COST_BASE: 1,
-    WHIP_AP_COST_LARGE: 2,       // for factions with seat_share > 0.20
-    WHIP_LARGE_THRESHOLD: 0.20,
-    // Disposition thresholds (bill_score on faction's axis)
-    THRESHOLD_ALIGNED: 0,
-    THRESHOLD_NERVOUS: -15,
-    THRESHOLD_RANGE: 20,          // how much relationship shifts thresholds
-    // Non-governing factions are 15% more trigger-happy
-    NON_GOVERNING_MODIFIER: 0.85,
-    // Relationship score deltas
-    REL_BILL_FAVORABLE_ARTICLE: 1, // +1 per favorable ideological article in a passed bill
-    REL_BILL_OPPOSED_PASS: -20,
-    REL_WHIP: 3,
-    // REL_PLEDGE_HONOURED / REL_PLEDGE_BETRAYED: reserved for future pledge system
-    REL_DECAY: -2,                 // unconditional decay per tick
-    // Relationship = 0 means permanently opposed on any touching bill
-    // REL_VOLATILE_THRESHOLD: reserved for future volatile-caucus mechanics
-    // Defection: caucus members leave to join ideologically compatible opposition
-    DEFECTION_THRESHOLD: 20,       // relationship_score at or below this triggers defection
-};
-
-/** Wing names per axis, keyed by dominant_axis */
-const CAUCUS_WING_NAMES = {
-    liberty_equality:           { left: 'Civil Libertarians',    right: 'Egalitarians' },
-    tradition_progress:         { left: 'Traditionalist Caucus', right: 'Reform Caucus' },
-    security_freedom:           { left: 'Security Hawks',        right: 'Civil Liberties Caucus' },
-    globalism_nationalism:      { left: 'Internationalists',     right: 'National Interest Caucus' },
-    individualism_collectivism: { left: 'Free Market Caucus',    right: 'Collectivist Caucus' },
-};
-
-
-// ==================== TIER HELPERS ====================
-
-/** Get the number of caucus factions for a given seat share. Returns 0 if below threshold. */
-function getCaucusFactionCount(seatShare) {
-    for (const tier of CAUCUS_CONFIG.TIERS) {
-        if (seatShare >= tier.min && seatShare <= tier.max) return tier.factions;
-    }
-    if (seatShare > 1.0) return CAUCUS_CONFIG.TIERS[CAUCUS_CONFIG.TIERS.length - 1].factions;
-    return 0;
-}
-
-
-// ==================== ACTIVATION / DEACTIVATION ====================
-
-/**
- * Evaluate caucus activation for all parties in a nation.
- * Called once per tick. Activates or deactivates caucuses based on seat share.
- */
-async function evaluateCaucusActivation(supabase, nationId, totalSeats) {
-    const { data: parties, error } = await supabase
-        .from('factions')
-        .select('id, faction_name, seats')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party');
-
-    if (error || !parties || parties.length === 0) return;
-
-    for (const party of parties) {
-        const seatShare = (party.seats || 0) / totalSeats;
-        const targetCount = getCaucusFactionCount(seatShare);
-
-        // Load existing active caucuses for this party
-        const { data: existing } = await supabase
-            .from('caucus_factions')
-            .select('id, dominant_axis, wing_end, is_active')
-            .eq('party_id', party.id);
-
-        const activeCaucuses = (existing || []).filter(c => c.is_active);
-
-        if (targetCount === 0 && activeCaucuses.length > 0) {
-            // Deactivate all
-            await supabase
-                .from('caucus_factions')
-                .update({ is_active: false })
-                .eq('party_id', party.id)
-                .eq('is_active', true);
-            console.log(`[Caucus] Deactivated all caucuses for ${party.faction_name} (seats ${party.seats}/${totalSeats} = ${(seatShare * 100).toFixed(1)}%)`);
-        } else if (targetCount > 0 && activeCaucuses.length === 0) {
-            // First activation
-            await assignCaucusFactions(supabase, party, nationId, targetCount);
-            console.log(`[Caucus] Activated ${targetCount} caucuses for ${party.faction_name} (${(seatShare * 100).toFixed(1)}%)`);
-        } else if (targetCount > activeCaucuses.length) {
-            // Crossed a tier boundary upward — add new factions
-            const existingAxes = new Set(activeCaucuses.map(c => c.dominant_axis));
-            const additionalCount = targetCount - activeCaucuses.length;
-            await assignCaucusFactions(supabase, party, nationId, targetCount, existingAxes);
-            console.log(`[Caucus] Added ${additionalCount} caucuses for ${party.faction_name} (now ${targetCount} total)`);
-        }
-        // targetCount < activeCaucuses.length: don't remove on downward tier shift
-        // — only full deactivation below 50%
-    }
-}
-
-
-// ==================== FACTION ASSIGNMENT ====================
-
-/**
- * Assign caucus factions to a party based on ideology axis spread.
- *
- * @param {object} supabase
- * @param {object} party - { id, faction_name, seats }
- * @param {string} nationId
- * @param {number} totalFactionCount - Total desired caucus factions (including existing)
- * @param {Set<string>} [existingAxes] - Axes already assigned (skip these)
- */
-async function assignCaucusFactions(supabase, party, nationId, totalFactionCount, existingAxes = new Set()) {
-    // voter_blocs table removed — use empty array for spread calculation
-    const blocs = [];
-
-    // Calculate spread per axis, weighted by bloc preference for this party
-    const axisKeys = IDEOLOGY_AXES.map(a => a.key);
-    const axisSpreads = [];
-
-    for (const axisKey of axisKeys) {
-        if (existingAxes.has(axisKey)) continue;
-
-        const colName = 'axis_' + axisKey;
-        let weightedMin = 100, weightedMax = 0;
-        let totalWeight = 0;
-        let leftWeight = 0, rightWeight = 0;
-
-        for (const bloc of blocs) {
-            const score = bloc[colName] ?? 50;
-            const weight = 30 * (bloc.population_weight || 1);
-            if (weight <= 0) continue;
-
-            totalWeight += weight;
-            if (score < weightedMin) weightedMin = score;
-            if (score > weightedMax) weightedMax = score;
-
-            // Accumulate weight for each wing
-            if (score < 45) leftWeight += weight;
-            else if (score > 55) rightWeight += weight;
-        }
-
-        const spread = weightedMax - weightedMin;
-        axisSpreads.push({
-            axisKey,
-            spread,
-            leftWeight: leftWeight / (totalWeight || 1),
-            rightWeight: rightWeight / (totalWeight || 1),
-        });
-    }
-
-    // Sort by spread descending, take the top axes we need
-    axisSpreads.sort((a, b) => b.spread - a.spread);
-
-    // Determine how many axes and wings to create.
-    // Each axis can produce 1 wing (dominant side) or 2 wings (both sides).
-    // We prioritize diversity: spread across more axes first, then fill with second wings.
-    const totalNew = totalFactionCount - existingAxes.size * 2;
-    const availableAxes = axisSpreads.slice(0, Math.min(axisSpreads.length, totalNew));
-
-    // Phase 1: assign 1 wing per axis (dominant wing) across as many axes as we have slots
-    const assignments = []; // { axis, wing }
-    for (const axis of availableAxes) {
-        if (assignments.length >= totalNew) break;
-        // Pick the dominant wing (more internal tension = higher weight)
-        const dominantWing = axis.leftWeight >= axis.rightWeight ? 'left' : 'right';
-        assignments.push({ axis, wing: dominantWing });
-    }
-
-    // Phase 2: if we still need more caucuses, go back and add the opposite wing
-    if (assignments.length < totalNew) {
-        for (const axis of availableAxes) {
-            if (assignments.length >= totalNew) break;
-            const existingWing = assignments.find(a => a.axis.axisKey === axis.axisKey)?.wing;
-            if (!existingWing) continue;
-            const oppositeWing = existingWing === 'left' ? 'right' : 'left';
-            assignments.push({ axis, wing: oppositeWing });
-        }
-    }
-
-    // Create caucus factions from assignments
-    for (const { axis, wing } of assignments) {
-        const wingNames = CAUCUS_WING_NAMES[axis.axisKey];
-        if (!wingNames) continue;
-
-        // Seat share: 20% + 1D10% of party's total available seats
-        const d10 = Math.floor(Math.random() * 10) + 1; // 1-10
-        const seatShare = 0.20 + (d10 / 100);           // 0.21 to 0.30
-
-        await supabase.from('caucus_factions').insert({
-            party_id: party.id,
-            nation_id: nationId,
-            name: wingNames[wing],
-            dominant_axis: axis.axisKey,
-            wing_end: wing,
-            seat_share: Math.round(seatShare * 1000) / 1000,
-            relationship_score: CAUCUS_CONFIG.DEFAULT_RELATIONSHIP,
-            is_active: true,
-        });
-    }
-}
-
-
-// ==================== BILL AXIS SCORE EXTRACTION ====================
-
-/**
- * Extract net ideology axis scores from a bill's articles.
- * Returns { axisKey: netScore } where positive = right pole, negative = left pole.
- * Also identifies the primary axis (highest absolute score).
- */
-function extractBillAxisScores(billArticles) {
-    const axisScores = {};
-
-    for (const art of (billArticles || [])) {
-        const p = art.policies || art;
-        if (!p) continue;
-
-        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-            ? p.ideologies.map(i => i.toUpperCase())
-            : (p.ideology ? [p.ideology.toUpperCase()] : []);
-
-        for (const tag of ideos) {
-            const mapping = IDEOLOGY_TO_AXIS[tag];
-            if (!mapping) continue;
-            axisScores[mapping.axisKey] = (axisScores[mapping.axisKey] || 0) + mapping.direction;
-        }
-    }
-
-    // Determine primary axis
-    let primaryAxis = null;
-    let maxAbs = 0;
-    for (const [key, score] of Object.entries(axisScores)) {
-        if (Math.abs(score) > maxAbs) {
-            maxAbs = Math.abs(score);
-            primaryAxis = key;
-        }
-    }
-
-    return { axisScores, primaryAxis };
-}
-
-
-// ==================== DISPOSITION CALCULATION ====================
-
-/**
- * Calculate caucus dispositions for a bill. Call when a bill moves to floor
- * or when vote tallies are recalculated.
- *
- * @param {object} supabase
- * @param {string} billId
- * @param {string} nationId
- * @param {Array} billArticles - bill_articles rows with policies
- * @returns {Array} disposition records
- */
-async function calculateCaucusDispositions(supabase, billId, nationId, billArticles) {
-    const { axisScores, primaryAxis } = extractBillAxisScores(billArticles);
-
-    // No ideology content → no caucus impact
-    if (!primaryAxis) return [];
-
-    // Load active caucus factions
-    const { data: caucuses, error } = await supabase
-        .from('caucus_factions')
-        .select('id, party_id, name, dominant_axis, wing_end, seat_share, relationship_score')
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-
-    if (error || !caucuses || caucuses.length === 0) return [];
-
-    // Load party seats for vote calculation
-    const partyIds = [...new Set(caucuses.map(c => c.party_id))];
-    const { data: parties } = await supabase
-        .from('factions')
-        .select('id, seats')
-        .in('id', partyIds);
-
-    const partySeatsMap = {};
-    for (const p of (parties || [])) partySeatsMap[p.id] = p.seats || 0;
-
-    // Check which parties are in the governing coalition
-    const coalition = await fetchActiveCoalition(supabase, nationId);
-    const coalitionPartyIds = new Set(coalition?.party_ids || []);
-
-    const dispositions = [];
-
-    for (const caucus of caucuses) {
-        const billScore = axisScores[caucus.dominant_axis];
-
-        // Bill doesn't touch this axis → not triggered
-        if (billScore === undefined || billScore === 0) {
-            dispositions.push({
-                caucus_faction_id: caucus.id,
-                bill_id: billId,
-                disposition: 'not_triggered',
-                votes_affected: 0,
-                whipped: false,
-            });
-            continue;
-        }
-
-        // Determine if bill moves toward or away from this faction's wing
-        // wing_end='left' means faction favors negative axis scores (left pole)
-        // wing_end='right' means faction favors positive axis scores (right pole)
-        const favoredDirection = caucus.wing_end === 'left' ? -1 : 1;
-        const effectiveScore = billScore * favoredDirection;
-
-        // Secondary axis: cap at NERVOUS (never OPPOSED)
-        const isSecondary = caucus.dominant_axis !== primaryAxis;
-
-        // Relationship modifier: higher rel = more tolerant
-        const relModifier = (caucus.relationship_score - 50) / 100 * CAUCUS_CONFIG.THRESHOLD_RANGE;
-
-        // Non-governing parties have lower thresholds (trigger more easily)
-        const isGoverning = coalitionPartyIds.has(caucus.party_id);
-        const govMod = isGoverning ? 1.0 : CAUCUS_CONFIG.NON_GOVERNING_MODIFIER;
-
-        const effectiveNervous = (CAUCUS_CONFIG.THRESHOLD_NERVOUS + relModifier) * govMod;
-        const effectiveAligned = CAUCUS_CONFIG.THRESHOLD_ALIGNED + relModifier;
-
-        // Relationship = 0: permanently opposed on any touching bill
-        let disposition;
-        if (caucus.relationship_score === 0) {
-            disposition = 'opposed';
-        } else if (effectiveScore >= effectiveAligned) {
-            disposition = 'aligned';
-        } else if (effectiveScore >= effectiveNervous || isSecondary) {
-            disposition = 'nervous';
-        } else {
-            disposition = 'opposed';
-        }
-
-        const partySeats = partySeatsMap[caucus.party_id] || 0;
-        const votesAffected = disposition === 'not_triggered' || disposition === 'aligned'
-            ? 0
-            : Math.round(partySeats * caucus.seat_share);
-
-        dispositions.push({
-            caucus_faction_id: caucus.id,
-            bill_id: billId,
-            disposition,
-            votes_affected: votesAffected,
-            whipped: false,
-        });
-    }
-
-    // Upsert all dispositions
-    if (dispositions.length > 0) {
-        const { error: upsertErr } = await supabase
-            .from('caucus_dispositions')
-            .upsert(dispositions, { onConflict: 'caucus_faction_id,bill_id' });
-
-        if (upsertErr) {
-            console.error(`[Caucus] Failed to upsert dispositions for bill ${billId}:`, upsertErr.message);
-        }
-    }
-
-    return dispositions;
-}
-
-
-// ==================== VOTE ADJUSTMENT ====================
-
-/**
- * Calculate total caucus votes withheld for a bill.
- * OPPOSED factions subtract from YES votes. NERVOUS (not whipped) shown as soft but not subtracted.
- *
- * @returns {{ withheld: number, nervousAtRisk: number, details: Array }}
- */
-async function calculateCaucusVoteAdjustment(supabase, billId) {
-    const { data: dispositions, error } = await supabase
-        .from('caucus_dispositions')
-        .select('caucus_faction_id, disposition, votes_affected, whipped, caucus_factions(name, party_id)')
-        .eq('bill_id', billId);
-
-    if (error || !dispositions || dispositions.length === 0) {
-        return { withheld: 0, nervousAtRisk: 0, details: [] };
-    }
-
-    let withheld = 0;
-    let nervousAtRisk = 0;
-    const details = [];
-
-    for (const d of dispositions) {
-        if (d.disposition === 'opposed' && !d.whipped) {
-            withheld += d.votes_affected;
-            details.push({ name: d.caucus_factions?.name, disposition: 'opposed', votes: d.votes_affected });
-        } else if (d.disposition === 'nervous' && !d.whipped) {
-            nervousAtRisk += d.votes_affected;
-            details.push({ name: d.caucus_factions?.name, disposition: 'nervous', votes: d.votes_affected });
-        }
-    }
-
-    // Update the bill's caucus_votes_withheld (always write, so stale values are cleared)
-    await supabase
-        .from('bills')
-        .update({ caucus_votes_withheld: withheld })
-        .eq('id', billId);
-
-    return { withheld, nervousAtRisk, details };
-}
-
-
-// ==================== WHIP ACTION ====================
-
-/**
- * Execute the Party Whip action on a NERVOUS caucus faction for a specific bill.
- * Delegates to server-side whip_caucus RPC for atomic execution with proper authorization.
- *
- * @returns {{ success: boolean, error?: string, apCost?: number }}
- */
-async function executeWhipCaucus(supabase, factionId, caucusFactionId, billId) {
-    const { data, error } = await supabase.rpc('whip_caucus', {
-        p_faction_id: factionId,
-        p_caucus_faction_id: caucusFactionId,
-        p_bill_id: billId,
-    });
-
-    if (error) {
-        return { success: false, error: 'Whip failed: ' + error.message };
-    }
-
-    if (!data || !data.success) {
-        return { success: false, error: data?.error || 'Unknown error' };
-    }
-
-    return { success: true, apCost: data.ap_cost, newAp: data.new_ap };
-}
-
-
-// ==================== RELATIONSHIP UPDATES ====================
-
-/**
- * Update caucus relationship scores after a bill is resolved.
- * +1 per favorable ideological article in a passed bill that the caucus's party voted on.
- * -20 if opposed and bill passes anyway.
- *
- * @param {string} outcome - 'passed' or 'failed'
- * @param {Array} billArticles - bill_articles rows with policies (from bill query)
- * @param {Array} billSupport - bill_support rows with faction_id/stance
- */
-async function updateCaucusRelationships(supabase, billId, outcome, billArticles, billSupport) {
-    if (outcome !== 'passed') return; // no relationship change on failed bills
-
-    const { data: dispositions, error } = await supabase
-        .from('caucus_dispositions')
-        .select('caucus_faction_id, disposition, whipped')
-        .eq('bill_id', billId);
-
-    if (error || !dispositions || dispositions.length === 0) return;
-
-    // Build set of party IDs that voted on this bill
-    const votedPartyIds = new Set();
-    for (const s of (billSupport || [])) {
-        if (s.faction_id) votedPartyIds.add(s.faction_id);
-    }
-
-    // Load caucus faction details (need party_id, dominant_axis, wing_end)
-    const caucusIds = dispositions.map(d => d.caucus_faction_id);
-    const { data: caucusFactions } = await supabase
-        .from('caucus_factions')
-        .select('id, party_id, dominant_axis, wing_end, relationship_score')
-        .in('id', caucusIds);
-
-    if (!caucusFactions || caucusFactions.length === 0) return;
-
-    const caucusMap = {};
-    for (const cf of caucusFactions) caucusMap[cf.id] = cf;
-
-    for (const d of dispositions) {
-        if (d.disposition === 'not_triggered') continue;
-
-        const caucus = caucusMap[d.caucus_faction_id];
-        if (!caucus) continue;
-
-        // Party must have voted on the bill
-        if (!votedPartyIds.has(caucus.party_id)) continue;
-
-        let delta = 0;
-
-        if (d.disposition === 'opposed' && !d.whipped) {
-            delta = CAUCUS_CONFIG.REL_BILL_OPPOSED_PASS;
-        } else {
-            // Count favorable articles: ideology tags on the caucus's dominant axis
-            // in the caucus's favored direction
-            const favoredDirection = caucus.wing_end === 'left' ? -1 : 1;
-            let favorableCount = 0;
-
-            for (const art of (billArticles || [])) {
-                const p = art.policies || art;
-                if (!p) continue;
-
-                const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-                    ? p.ideologies.map(i => i.toUpperCase())
-                    : (p.ideology ? [p.ideology.toUpperCase()] : []);
-
-                for (const tag of ideos) {
-                    const mapping = IDEOLOGY_TO_AXIS[tag];
-                    if (!mapping) continue;
-                    // Article must be on the caucus's dominant axis and in the favored direction
-                    if (mapping.axisKey === caucus.dominant_axis && mapping.direction === favoredDirection) {
-                        favorableCount++;
-                    }
-                }
-            }
-
-            delta = favorableCount * CAUCUS_CONFIG.REL_BILL_FAVORABLE_ARTICLE;
-        }
-
-        if (delta === 0) continue;
-
-        const newScore = Math.max(0, Math.min(100, caucus.relationship_score + delta));
-        const { error: updErr } = await supabase
-            .from('caucus_factions')
-            .update({ relationship_score: newScore })
-            .eq('id', d.caucus_faction_id);
-        if (updErr) {
-            console.error(`[Caucus] Failed to update relationship for caucus ${d.caucus_faction_id}:`, updErr.message);
-        }
-    }
-}
-
-/**
- * Decay caucus relationship scores unconditionally.
- * Called once per tick. Every active caucus loses REL_DECAY (-2) per tick.
- */
-async function decayCaucusRelationships(supabase, nationId) {
-    const { data: caucuses, error } = await supabase
-        .from('caucus_factions')
-        .select('id, relationship_score')
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-
-    if (error || !caucuses || caucuses.length === 0) return;
-
-    for (const caucus of caucuses) {
-        const newScore = Math.max(0, caucus.relationship_score + CAUCUS_CONFIG.REL_DECAY);
-        if (newScore !== caucus.relationship_score) {
-            const { error: updErr } = await supabase
-                .from('caucus_factions')
-                .update({ relationship_score: newScore })
-                .eq('id', caucus.id);
-            if (updErr) {
-                console.error(`[Caucus] Failed to decay relationship for caucus ${caucus.id}:`, updErr.message);
-            }
-        }
-    }
-}
-
-
-// ==================== DEFECTION ====================
-
-/**
- * Process caucus defections for a nation. Called once per tick after decay.
- * Threshold-based defection:
- *   - relationship_score <= 20: 1 member defects per tick
- *   - relationship_score <= 19: 2 members defect per tick
- * Defectors join the ideologically closest opposition party on the caucus's
- * dominant axis. If no compatible party exists, seats are lost (independents).
- */
-async function processCaucusDefections(supabase, nationId, currentTick) {
-    const { data: caucuses, error } = await supabase
-        .from('caucus_factions')
-        .select('id, party_id, name, dominant_axis, wing_end, seat_share, relationship_score')
-        .eq('nation_id', nationId)
-        .eq('is_active', true)
-        .lte('relationship_score', CAUCUS_CONFIG.DEFECTION_THRESHOLD);
-
-    if (error || !caucuses || caucuses.length === 0) return;
-
-    // Load all parties in the nation with their seats and ideology
-    const { data: parties } = await supabase
-        .from('factions')
-        .select('id, faction_name, seats, faction_type')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party');
-    if (!parties || parties.length === 0) return;
-
-    const partyMap = {};
-    for (const p of parties) partyMap[p.id] = p;
-
-    // Load faction ideologies for axis matching
-    const partyIds = parties.map(p => p.id);
-    const { data: ideologies } = await supabase
-        .from('faction_ideology')
-        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .in('faction_id', partyIds);
-
-    const ideoMap = {};
-    for (const ideo of (ideologies || [])) ideoMap[ideo.faction_id] = ideo;
-
-    // Load nation name for event log
-    const { data: nation } = await supabase.from('nations').select('name, total_seats').eq('id', nationId).single();
-
-    for (const caucus of caucuses) {
-        const sourceParty = partyMap[caucus.party_id];
-        if (!sourceParty || sourceParty.seats <= 0) continue;
-
-        // Threshold-based: 1 at <=20, 2 at <=19
-        const baseDefections = caucus.relationship_score <= 19 ? 2 : 1;
-        const seatsToLose = Math.min(baseDefections, sourceParty.seats);
-        if (seatsToLose <= 0) continue;
-
-        // Find the best ideological match among OTHER parties on this caucus's axis
-        // wing_end='left' → caucus favors low axis scores (left pole)
-        // wing_end='right' → caucus favors high axis scores (right pole)
-        const axisKey = caucus.dominant_axis;
-        const favorsHigh = caucus.wing_end === 'right';
-        let bestParty = null;
-        let bestScore = -Infinity;
-
-        for (const party of parties) {
-            if (party.id === caucus.party_id) continue; // skip source party
-            const ideo = ideoMap[party.id];
-            if (!ideo) continue;
-
-            const axisValue = ideo[axisKey] ?? 50;
-            // How well does this party match the caucus wing's preferred direction?
-            // Right wing: higher axis value = better match
-            // Left wing: lower axis value = better match (invert)
-            const score = favorsHigh ? axisValue : (100 - axisValue);
-            if (score > bestScore) {
-                bestScore = score;
-                bestParty = party;
-            }
-        }
-
-        // Transfer seats
-        const { error: srcErr } = await supabase
-            .from('factions')
-            .update({ seats: sourceParty.seats - seatsToLose })
-            .eq('id', sourceParty.id);
-        if (srcErr) {
-            console.error(`[Caucus Defection] Failed to remove seats from ${sourceParty.faction_name}:`, srcErr.message);
-            continue;
-        }
-        sourceParty.seats -= seatsToLose; // update local cache
-
-        let targetName = 'independents';
-        if (bestParty && bestScore > 40) {
-            // Transfer to compatible party (threshold: axis score > 40 means at least some alignment)
-            const { error: tgtErr } = await supabase
-                .from('factions')
-                .update({ seats: bestParty.seats + seatsToLose })
-                .eq('id', bestParty.id);
-            if (tgtErr) {
-                console.error(`[Caucus Defection] Failed to add seats to ${bestParty.faction_name}:`, tgtErr.message);
-            } else {
-                bestParty.seats += seatsToLose;
-                targetName = bestParty.faction_name;
-            }
-        }
-        // If no compatible party (or score <= 40), seats are simply lost — independents
-
-        // Reduce caucus seat_share proportionally
-        const newSeatShare = Math.max(0, caucus.seat_share - (seatsToLose / (nation?.total_seats || 100)));
-        const { error: shareErr } = await supabase
-            .from('caucus_factions')
-            .update({ seat_share: Math.round(newSeatShare * 1000) / 1000 })
-            .eq('id', caucus.id);
-        if (shareErr) {
-            console.error(`[Caucus Defection] Failed to update seat_share for ${caucus.name}:`, shareErr.message);
-        }
-
-        // Get wing label for event
-        const axisInfo = IDEOLOGY_AXES.find(a => a.key === axisKey);
-        const wingLabel = caucus.wing_end === 'left' ? axisInfo?.leftLabel : axisInfo?.rightLabel;
-
-        console.log(`[Caucus Defection] ${seatsToLose} seat(s) defected from ${sourceParty.faction_name} (${caucus.name}) to ${targetName}`);
-
-        // Fire nation political event
-        try {
-            await supabase.rpc('fire_system_event', {
-                p_trigger_key: 'caucus_defection',
-                p_nation_id: nationId,
-                p_tick: currentTick,
-                p_placeholders: {
-                    caucus_name: caucus.name,
-                    source_party: sourceParty.faction_name,
-                    target_party: targetName,
-                    seats_lost: seatsToLose,
-                    wing: wingLabel || caucus.wing_end,
-                    relationship_score: caucus.relationship_score
-                }
-            });
-        } catch (e) {
-            console.error('[Caucus Defection] Failed to fire political event:', e);
-        }
-
-        // Fire world event log
-        const desc = targetName === 'independents'
-            ? `${seatsToLose} member${seatsToLose !== 1 ? 's' : ''} of the ${caucus.name} wing defected from ${sourceParty.faction_name} in ${nation?.name || 'a nation'}, leaving parliament as independents.`
-            : `${seatsToLose} member${seatsToLose !== 1 ? 's' : ''} of the ${caucus.name} wing defected from ${sourceParty.faction_name} to ${targetName} in ${nation?.name || 'a nation'} over ideological disagreements.`;
-
-        try {
-            await supabase.from('event_log').insert({
-                nation_id: nationId,
-                event_name: 'Caucus Defection',
-                trigger_key: 'caucus_defection',
-                description_chosen: desc,
-                category: 'government',
-                effects_applied: {
-                    caucus: caucus.name,
-                    source: sourceParty.faction_name,
-                    target: targetName,
-                    seats: seatsToLose,
-                    relationship: caucus.relationship_score
-                },
-                fired_at_tick: currentTick
-            });
-        } catch (e) {
-            console.error('[Caucus Defection] Failed to insert event_log:', e);
-        }
-    }
 }
 
 // ────────── repeal-helper ──────────
@@ -9045,103 +8082,6 @@ async function syncVoteTallies(supabase, billId) {
 }
 
 
-// ==================== ENACTMENT APPROVAL IMPACT ====================
-
-function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIdeologies) {
-    const APPROVAL_CAP_POSITIVE = 4;
-    const APPROVAL_CAP_NEGATIVE = -10;
-    const OPPOSITION_KICKER = -2;
-
-    // Collect all ideology tags from bill articles
-    const allTags = [];
-    for (const art of articles) {
-        const p = art.policies || art;
-        if (!p) continue;
-        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-            ? p.ideologies.map(i => i.toUpperCase())
-            : (p.ideology ? [p.ideology.toUpperCase()] : []);
-        allTags.push(...ideos);
-    }
-
-    if (allTags.length === 0) return {};
-
-    // Calculate net direction per axis from all article tags
-    const axisNetScores = {};
-    for (const tag of allTags) {
-        const mapping = IDEOLOGY_TO_AXIS[tag];
-        if (!mapping) continue;
-        axisNetScores[mapping.axisKey] = (axisNetScores[mapping.axisKey] || 0) + mapping.direction;
-    }
-
-    if (Object.keys(axisNetScores).length === 0) return {};
-
-    // Build voter map: factionId -> normalized stance
-    const votes = {};
-    votes[sponsorId] = 'yes';
-    for (const s of (billSupport || [])) {
-        if (s.faction_id !== sponsorId) {
-            // Normalize: 'accept' → 'yes', 'reject' → 'no'
-            const normalized = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
-            votes[s.faction_id] = normalized;
-        }
-    }
-
-    const approvalDeltas = {};
-
-    for (const [factionId, stance] of Object.entries(votes)) {
-        if (stance !== 'yes' && stance !== 'no') continue;
-
-        const factionAxes = factionIdeologies[factionId];
-        if (!factionAxes) continue;
-
-        // Sum net alignment: positive = bill aligns with faction, negative = opposes
-        let netAlignment = 0;
-        for (const [axisKey, netDirection] of Object.entries(axisNetScores)) {
-            const factionScore = factionAxes[axisKey] || 0;
-            // factionScore > 0 means faction leans "right" on this axis
-            // netDirection > 0 means bill pushes "right" on this axis
-            // Same sign = aligned
-            if (factionScore !== 0 && netDirection !== 0) {
-                netAlignment += Math.sign(factionScore) === Math.sign(netDirection)
-                    ? Math.abs(netDirection)
-                    : -Math.abs(netDirection);
-            }
-        }
-
-        // YES vote: aligned bill = positive, opposed bill = negative
-        // NO vote: inverted — opposed bill = positive, aligned bill = negative
-        let delta = stance === 'yes' ? netAlignment : -netAlignment;
-
-        // Apply opposition kicker: extra -1 when the result is negative
-        if (delta < 0) {
-            delta += OPPOSITION_KICKER;
-        }
-
-        // Cap the final value
-        delta = Math.max(APPROVAL_CAP_NEGATIVE, Math.min(APPROVAL_CAP_POSITIVE, delta));
-        approvalDeltas[factionId] = Math.round(delta * 10) / 10;
-    }
-
-    return approvalDeltas;
-}
-
-// No-op: enactment no longer awards momentum.
-async function applyEnactmentApproval() { }
-
-
-// ==================== SPONSOR BLOC PREFERENCE ON BILL PASSAGE ====================
-// Legacy — now a no-op; electorate engine handles vote share effects.
-
-/**
- * @deprecated Removed — electorate engine handles vote share now.
- * @param {object} supabase
- * @param {object} bill - Full bill row with bill_articles (with policies)
- * @param {string} nationId
- */
-async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
-    // Legacy faction_bloc_approval writes removed — electorate engine handles approval now.
-    return;
-}
 
 
 // ==================== NO-VOTE PENALTY ====================
@@ -9247,186 +8187,6 @@ async function ensureBlocApprovals(supabase, factionId, nationId) {
 }
 
 
-// ==================== IDEOLOGY SHIFT PROCESSOR ====================
-
-async function processIdeologyShifts(supabase, nationId, resolutions, currentTick) {
-    // Phase 4: ideology cascade redirect. Sectors now drive bill outcomes via
-    // processSectorShifts. Ideology data is frozen — the historical values
-    // remain in the DB for replay / archaeology, but no new writes happen
-    // here. Phase 5 will delete the columns and this function entirely.
-    return;
-    // eslint-disable-next-line no-unreachable
-    if (!resolutions || resolutions.length === 0) return;
-
-    // Only process bills with terminal resolutions — skip deferred bills
-    // to avoid double-counting when they resolve on a subsequent tick.
-    const terminalResolutions = resolutions.filter(r => r.result !== 'deferred');
-    if (terminalResolutions.length === 0) return;
-
-    const billIds = terminalResolutions.map(r => r.billId);
-
-    const { data: bills } = await supabase
-        .from('bills')
-        .select('id, proposed_by, bill_type, bill_articles(*, policies(*)), bill_support(faction_id, stance)')
-        .in('id', billIds);
-
-    if (!bills || bills.length === 0) return;
-
-    // Only legislative bills affect ideology
-    const legislativeBills = bills.filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
-    );
-    if (legislativeBills.length === 0) return;
-
-    // Accumulate shifts: { factionId: { axisKey: totalShift } }
-    const factionShifts = {};
-
-    function addShift(factionId, axisKey, amount) {
-        if (!factionShifts[factionId]) factionShifts[factionId] = {};
-        factionShifts[factionId][axisKey] = (factionShifts[factionId][axisKey] || 0) + amount;
-    }
-
-    for (const bill of legislativeBills) {
-        // Collect ideology tags from articles (per-article, with duplicates)
-        const tags = [];
-        for (const art of (bill.bill_articles || [])) {
-            const p = art.policies || art;
-            if (!p) continue;
-            const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-                ? p.ideologies.map(i => i.toUpperCase())
-                : (p.ideology ? [p.ideology.toUpperCase()] : []);
-            tags.push(...ideos);
-        }
-        if (tags.length === 0) continue;
-
-        // Build YES and NO voter sets (normalize committee stances)
-        const yesVoters = new Set();
-        const noVoters = new Set();
-        for (const s of (bill.bill_support || [])) {
-            const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
-            if (stance === 'yes') yesVoters.add(s.faction_id);
-            else if (stance === 'no') noVoters.add(s.faction_id);
-        }
-        // Sponsor always counts as YES
-        if (bill.proposed_by) yesVoters.add(bill.proposed_by);
-
-        // Track how many times each (axis, direction) pair appears in this bill
-        // for diminishing returns: 1st = full, 2nd = 50%, 3rd = 25%, 4th+ = 12.5%
-        const axisTagCounts = {};
-
-        for (const tag of tags) {
-            const mapping = IDEOLOGY_TO_AXIS[tag];
-            if (!mapping) continue;
-
-            const key = `${mapping.axisKey}:${mapping.direction}`;
-            const count = (axisTagCounts[key] || 0) + 1;
-            axisTagCounts[key] = count;
-
-            const diminish = count <= 3 ? (1 / Math.pow(2, count - 1)) : 0.125;
-
-            // +2 for proposing (sponsor only)
-            if (bill.proposed_by) {
-                addShift(bill.proposed_by, mapping.axisKey, 2 * mapping.direction * diminish);
-            }
-
-            // +4 for voting YES (all YES voters including sponsor)
-            for (const factionId of yesVoters) {
-                addShift(factionId, mapping.axisKey, 4 * mapping.direction * diminish);
-            }
-
-            // -4 for voting NO (opposite direction)
-            for (const factionId of noVoters) {
-                addShift(factionId, mapping.axisKey, -4 * mapping.direction * diminish);
-            }
-        }
-    }
-
-    // Apply accumulated shifts to faction_ideology
-    const historyRows = [];
-
-    for (const [factionId, axisShifts] of Object.entries(factionShifts)) {
-        let ideologyRow = await loadFactionIdeology(supabase, factionId);
-        if (ideologyRow?._error || !ideologyRow) {
-            console.warn(`[processIdeologyShifts] Skipping faction ${factionId}: ${ideologyRow?._error ? 'DB error' : 'no ideology row'}`);
-            continue;
-        }
-
-        const currentScores = extractAxisScores(ideologyRow);
-        const updateObj = {};
-        let hasChanges = false;
-
-        for (const [axisKey, shift] of Object.entries(axisShifts)) {
-            const oldScore = currentScores[axisKey] || 0;
-            const normalizedScore = Math.round(oldScore + shift);
-            const newScore = Math.max(-100, Math.min(100, normalizedScore));
-            if (newScore !== oldScore) {
-                updateObj[axisKey] = newScore;
-                hasChanges = true;
-            }
-        }
-
-        if (hasChanges) {
-            try {
-                const { error: updateErr } = await supabase
-                    .from('faction_ideology')
-                    .update(updateObj)
-                    .eq('faction_id', factionId);
-
-                if (updateErr) {
-                    console.error('[processIdeologyShifts] faction_ideology update failed', {
-                        factionId,
-                        nationId,
-                        currentTick,
-                        attemptedAxisUpdates: updateObj,
-                        error: updateErr.message
-                    });
-                    continue;
-                }
-            } catch (err) {
-                console.error('[processIdeologyShifts] faction_ideology update threw', {
-                    factionId,
-                    nationId,
-                    currentTick,
-                    attemptedAxisUpdates: updateObj,
-                    error: err?.message || String(err)
-                });
-                continue;
-            }
-
-            // Record snapshot for ideology_history
-            if (typeof currentTick === 'number') {
-                const finalScores = { ...currentScores, ...updateObj };
-                historyRows.push({
-                    faction_id: factionId,
-                    nation_id: nationId,
-                    tick: currentTick,
-                    liberty_equality: finalScores.liberty_equality || 0,
-                    tradition_progress: finalScores.tradition_progress || 0,
-                    security_freedom: finalScores.security_freedom || 0,
-                    globalism_nationalism: finalScores.globalism_nationalism || 0,
-                    individualism_collectivism: finalScores.individualism_collectivism || 0
-                });
-            }
-        }
-    }
-
-    // Batch insert ideology history snapshots
-    if (historyRows.length > 0) {
-        const { error: histErr } = await supabase
-            .from('ideology_history')
-            .insert(historyRows);
-        if (histErr) {
-            console.warn('[processIdeologyShifts] ideology_history insert failed (table may not exist yet)', {
-                nationId,
-                currentTick,
-                affectedFactionIds: historyRows.map(row => row.faction_id),
-                error: histErr.message
-            });
-        }
-    }
-}
-
-// ==================== SECTOR POPULARITY SHIFTS (Phase 2) ====================
 
 /**
  * Apply per-faction sector popularity changes from terminal bill resolutions.
@@ -9592,77 +8352,6 @@ async function processSectorShifts(supabase, nationId, resolutions) {
     }
 }
 
-
-// ==================== IDEOLOGY DECAY ====================
-
-const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
-/**
- * Per-tick ideology decay toward center (0).
- *   ±11–49 → 0.5/tick, ±50–100 → 1/tick
- * Dead zone: scores within ±10 don't decay.
- */
-async function processIdeologyDecay(supabase, nationId, currentTick) {
-    // Phase 4: ideology cascade redirect. Decay-toward-center kept faction
-    // ideology drifting tick-by-tick; with sectors driving gameplay, that
-    // drift is invisible noise. No-op pending Phase 5 deletion.
-    return;
-    // eslint-disable-next-line no-unreachable
-    const ideologies = await loadNationIdeologies(supabase, nationId);
-    if (!ideologies || ideologies.length === 0) return;
-
-    const historyRows = [];
-
-    for (const ideo of ideologies) {
-        const updateObj = {};
-
-        for (const axis of IDEOLOGY_AXES) {
-            const score = ideo[axis.key] || 0;
-            if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
-
-            const absDecay = Math.abs(score) >= 50 ? 1 : 0.5;
-            // Round to int — smallint columns reject decimals like 28.5
-            const newScore = Math.round(score > 0
-                ? Math.max(0, score - absDecay)
-                : Math.min(0, score + absDecay));
-
-            if (newScore !== score) updateObj[axis.key] = newScore;
-        }
-
-        if (Object.keys(updateObj).length === 0) continue;
-
-        const { error: updateErr } = await supabase
-            .from('faction_ideology')
-            .update(updateObj)
-            .eq('faction_id', ideo.faction_id);
-
-        if (updateErr) {
-            console.error(`[processIdeologyDecay] update failed for faction ${ideo.faction_id}:`, updateErr.message);
-            continue;
-        }
-
-        if (typeof currentTick === 'number') {
-            historyRows.push({
-                faction_id: ideo.faction_id,
-                nation_id: nationId,
-                tick: currentTick,
-                liberty_equality: updateObj.liberty_equality ?? ideo.liberty_equality ?? 0,
-                tradition_progress: updateObj.tradition_progress ?? ideo.tradition_progress ?? 0,
-                security_freedom: updateObj.security_freedom ?? ideo.security_freedom ?? 0,
-                globalism_nationalism: updateObj.globalism_nationalism ?? ideo.globalism_nationalism ?? 0,
-                individualism_collectivism: updateObj.individualism_collectivism ?? ideo.individualism_collectivism ?? 0,
-            });
-        }
-    }
-
-    if (historyRows.length > 0) {
-        const { error: histErr } = await supabase
-            .from('ideology_history')
-            .insert(historyRows);
-        if (histErr) {
-            console.warn('[processIdeologyDecay] ideology_history insert failed:', histErr.message);
-        }
-    }
-}
 
 // ==================== BILL RESOLUTION ENGINE ====================
 
@@ -11421,7 +10110,7 @@ async function resolveVetoOverrideBill(supabase, bill, ctx) {
         await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
         // Enact the ORIGINAL vetoed bill — bypasses president's desk.
         const { data: originalBill } = await supabase.from('bills')
-            .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+            .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
             .eq('id', bill.original_bill_id).single();
         if (originalBill) {
             await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
@@ -11633,7 +10322,7 @@ async function resolveExpiredVotes(supabase, nationId) {
         // Simplified query: bill_support only needs faction_id/stance/seat_count for vote
         // tallying. Nesting factions() inside bill_support adds a FK join that can cause
         // the entire query to fail silently in PostgREST, leaving all bills stuck on floor.
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+        .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
@@ -11695,27 +10384,8 @@ async function resolveExpiredVotes(supabase, nationId) {
             console.log(`[MinorityPenalty] ${bill.bill_name}: votesFor ${votesFor} → ${effectiveVotesFor} (emergency minority -20%)`);
         }
 
-        // Caucus system: read existing dispositions (created when bill entered floor)
-        // and recalculate vote adjustment to account for any whipping during voting window.
-        // Fallback: if no dispositions exist yet (legacy bills), calculate them now.
-        try {
-            const { data: existingDisp } = await supabase
-                .from('caucus_dispositions')
-                .select('id')
-                .eq('bill_id', bill.id)
-                .limit(1);
-            if (!existingDisp || existingDisp.length === 0) {
-                // Legacy fallback: dispositions weren't created at floor entry
-                await calculateCaucusDispositions(supabase, bill.id, bill.nation_id, bill.bill_articles || []);
-            }
-            const caucusAdj = await calculateCaucusVoteAdjustment(supabase, bill.id);
-            if (caucusAdj.withheld > 0) {
-                effectiveVotesFor = Math.max(0, effectiveVotesFor - caucusAdj.withheld);
-                console.log(`[CaucusVote] ${bill.bill_name}: ${caucusAdj.withheld} votes withheld by opposed caucuses (effective YES: ${effectiveVotesFor})`);
-            }
-        } catch (caucusErr) {
-            console.error(`[CaucusVote] Failed for bill ${bill.id} (non-fatal):`, caucusErr);
-        }
+        // Phase 5b: caucus system removed. Vote adjustment by opposed-caucus
+        // whipping is gone with the caucus_factions / caucus_dispositions tables.
 
         // Determine pass/fail using new quorum + majority system
         // Build a bill-like object with effective votes for the resolve function
@@ -11921,13 +10591,7 @@ async function resolveExpiredVotes(supabase, nationId) {
             console.error(`[resolveExpiredVotes] No-vote penalty failed for bill ${bill.id}:`, penaltyErr.message);
         }
 
-        // Caucus relationship updates after bill resolution
-        try {
-            const outcome = passed ? 'passed' : 'failed';
-            await updateCaucusRelationships(supabase, bill.id, outcome, bill.bill_articles || [], bill.bill_support || []);
-        } catch (caucusRelErr) {
-            console.error(`[resolveExpiredVotes] Caucus relationship update failed for bill ${bill.id}:`, caucusRelErr.message);
-        }
+        // Phase 5b: caucus relationship updates removed (caucus tables gone).
       } catch (billErr) {
         // Per-bill error handler: prevents one bill's failure from blocking all others
         console.error(`[resolveExpiredVotes] UNHANDLED error processing bill ${bill.id} ("${bill.bill_name}"):`, billErr);
@@ -12185,7 +10849,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
                 // Load full bill data for enactment — use simplified join (no nested factions in bill_support)
                 const { data: fullBill } = await supabase
                     .from('bills')
-                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+                    .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
                     .eq('id', bill.id)
                     .single();
 
@@ -12813,30 +11477,6 @@ async function enactBill(supabase, bill, currentTick) {
             }
         }
     }
-
-    // Load ideology axes for all voting factions (sponsor + voters)
-    const voterFactionIds = [bill.proposed_by, ...(bill.bill_support || []).map(s => s.faction_id)];
-    const uniqueFactionIds = [...new Set(voterFactionIds.filter(Boolean))];
-    const { data: ideoRows } = await supabase
-        .from('faction_ideology')
-        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .in('faction_id', uniqueFactionIds);
-
-    const factionIdeologies = {};
-    for (const row of (ideoRows || [])) {
-        factionIdeologies[row.faction_id] = row;
-    }
-
-    const approvalDeltas = calculateEnactmentApproval(
-        bill.bill_articles || [],
-        bill.bill_support || [],
-        bill.proposed_by,
-        factionIdeologies
-    );
-    await applyEnactmentApproval(supabase, bill.nation_id, approvalDeltas, currentTick);
-
-    // Sponsor gains/loses preference with voter blocs based on bill ideology alignment
-    await applyBlocPreferenceOnPassage(supabase, bill, bill.nation_id);
 
     console.log('[enactBill] stage=update_bill_status attempt', logContext);
     const { error: billUpdateErr } = await supabase.from('bills').update({
@@ -17283,24 +15923,43 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
         } else {
             runoffResults = runoffData?.presidential_candidates || [];
 
-            // === Redistribute eliminated candidates' votes based on ideology ===
+            // === Redistribute eliminated candidates' votes by sector affinity (Phase 5a) ===
             // The RPC only gives each runoff candidate their base faction votes.
-            // Eliminated candidates' voters must be redistributed proportionally
-            // based on ideological proximity to the two remaining candidates.
-            const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+            // Eliminated candidates' voters redistribute proportionally based on
+            // sector-stronghold overlap between their party and each surviving
+            // runoff candidate's party. coalitionAffinity returns a [0,1] score
+            // from shared / overlapping strongholds.
             const eliminatedCandidates = candidateResults.filter(c => !runoffCandidateIds.has(c.candidate_id));
             const runoffCandidateList = candidateResults.filter(c => runoffCandidateIds.has(c.candidate_id));
 
-            // Fetch ideology axis scores for all involved factions
+            // Load sectors + popularity for every involved faction so we can
+            // compute strongholds. One round trip each.
             const allFactionIds = candidateResults.map(c => c.faction_id).filter(Boolean);
-            const { data: ideologyRows, error: ideologyErr } = await supabase
-                .from('faction_ideology')
-                .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-                .in('faction_id', allFactionIds);
-            if (ideologyErr) console.error(`Failed to fetch ideology data for runoff redistribution (${nation.name}):`, ideologyErr.message);
-            const ideologyByFaction = {};
-            for (const row of (ideologyRows || [])) {
-                ideologyByFaction[row.faction_id] = row;
+            const [
+                { data: sectorRows,     error: sectorErr },
+                { data: popularityRows, error: popErr   },
+            ] = await Promise.all([
+                supabase.from('sectors')
+                    .select('id, sector_key, name, weight, base_turnout, is_active')
+                    .eq('nation_id', nation.id)
+                    .eq('is_active', true)
+                    .order('display_order'),
+                allFactionIds.length > 0
+                    ? supabase.from('faction_sector_popularity')
+                        .select('faction_id, sector_id, popularity')
+                        .in('faction_id', allFactionIds)
+                    : Promise.resolve({ data: [], error: null }),
+            ]);
+            if (sectorErr) console.error(`Failed to fetch sectors for runoff redistribution (${nation.name}):`, sectorErr.message);
+            if (popErr)    console.error(`Failed to fetch popularity for runoff redistribution (${nation.name}):`, popErr.message);
+            const sectorList = sectorRows || [];
+            const popList    = popularityRows || [];
+
+            // Pre-compute strongholds per faction so we don't repeat work
+            // inside the eliminated-candidates loop.
+            const strongholdsByFaction = {};
+            for (const fid of allFactionIds) {
+                strongholdsByFaction[fid] = getStrongholdSectors(fid, sectorList, popList, 3);
             }
 
             // Compute transfers for each eliminated candidate
@@ -17310,36 +15969,39 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             }
             let totalAbstained = 0;
 
-            for (const elim of eliminatedCandidates) {
+            // Defensive: if the RPC returned no runoff candidates, skip the
+            // redistribution math (avoids 1/0 in the affinity-fallback branch).
+            const skipRedistribution = runoffCandidateList.length === 0;
+
+            for (const elim of (skipRedistribution ? [] : eliminatedCandidates)) {
                 const elimVotes = elim.votes || 0;
                 if (elimVotes === 0) continue;
-                const elimIdeology = ideologyByFaction[elim.faction_id] || {};
+                const elimStrongholds = strongholdsByFaction[elim.faction_id] || [];
 
-                // Compute ideological distance to each runoff candidate
-                const distances = runoffCandidateList.map(rc => {
-                    const rcIdeology = ideologyByFaction[rc.faction_id] || {};
-                    let distSq = 0;
-                    for (const axis of AXES) {
-                        const diff = (elimIdeology[axis] || 0) - (rcIdeology[axis] || 0);
-                        distSq += diff * diff;
-                    }
-                    return { candidate_id: rc.candidate_id, dist: Math.sqrt(distSq) };
-                });
+                // Sector affinity (0..1) per runoff candidate. Higher = closer
+                // electoral coalition.
+                const affinitiesRaw = runoffCandidateList.map(rc => ({
+                    candidate_id: rc.candidate_id,
+                    affinity: coalitionAffinity(elimStrongholds, strongholdsByFaction[rc.faction_id] || []),
+                }));
 
-                // Convert distances to affinities (inverse distance = more affinity)
-                const totalDist = distances.reduce((s, d) => s + d.dist, 0);
+                // Normalize. If every affinity is zero (eliminated party has no
+                // strongholds, or no overlap with any runoff candidate), split
+                // transferable votes evenly — same fallback as the legacy code.
+                const affinitySum = affinitiesRaw.reduce((s, a) => s + a.affinity, 0);
                 let affinities;
-                if (totalDist === 0) {
-                    affinities = distances.map(d => ({ ...d, affinity: 1 / distances.length }));
+                if (affinitySum <= 0) {
+                    affinities = affinitiesRaw.map(a => ({ ...a, affinity: 1 / affinitiesRaw.length }));
                 } else {
-                    affinities = distances.map(d => ({ ...d, affinity: 1 - (d.dist / totalDist) }));
-                    const affinitySum = affinities.reduce((s, a) => s + a.affinity, 0);
-                    for (const a of affinities) a.affinity = a.affinity / affinitySum;
+                    affinities = affinitiesRaw.map(a => ({ ...a, affinity: a.affinity / affinitySum }));
                 }
 
-                // Abstention rate: 15% base, increases with ideological distance to nearest candidate
-                const minDist = Math.min(...distances.map(d => d.dist));
-                const abstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
+                // Abstention rate: 15% base, scales with how unaligned the
+                // eliminated party is with the runoff field. With perfect
+                // overlap (max affinitySum across all runoff candidates), 15%
+                // abstain. With zero overlap, abstention climbs toward 50%.
+                const totalOverlap = Math.min(1, affinitySum / Math.max(1, affinitiesRaw.length));
+                const abstainRate = Math.min(0.50, 0.15 + (1 - totalOverlap) * 0.35);
                 const abstainVotes = Math.round(elimVotes * abstainRate);
                 const transferableVotes = elimVotes - abstainVotes;
                 totalAbstained += abstainVotes;
@@ -17482,10 +16144,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
                     first_name: winner.candidate_name?.split(' ')[0] || 'Unknown',
                     last_name: winner.candidate_name?.split(' ').slice(1).join(' ') || 'President',
                     age: 50,
-                    ideology: winner.ideology || 'PROGRESS',
                     trait_key: winner.trait_key || null,
-                    ideology_axis: 'tradition_progress',
-                    ideology_direction: 1
                 };
                 await inauguratePresident(supabase, directCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident, endReason);
                 console.log(`Direct president inaugurated from election data: ${directCandidate.first_name} ${directCandidate.last_name}`);
@@ -17654,13 +16313,13 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     }
 
     // Insert president record (trait resolved at display time, not stored)
+    // Phase 5b: presidents.ideology column dropped.
     const { error: presErr } = await supabase.from('presidents').insert({
         nation_id: nationId,
         faction_id: factionId,
         first_name: candidate.first_name,
         last_name: candidate.last_name,
         age: candidate.age,
-        ideology: candidate.ideology,
         trait: candidate.trait_key,
         trait_upside: null,
         trait_downside: null,
@@ -17671,20 +16330,11 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     });
     if (presErr) throw presErr;
 
-    // Apply ideology shift (+15 on candidate's axis)
-    const axisKey = candidate.ideology_axis;
-    const direction = candidate.ideology_direction;
-    if (axisKey && typeof direction === 'number') {
-        const shift = 15 * direction;
-        let factionIdeology = await loadFactionIdeology(supabase, factionId);
-        if (factionIdeology?._error) factionIdeology = null;
-        if (factionIdeology) {
-            const currentVal = factionIdeology[axisKey] || 0;
-            const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-            await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
-            console.log(`President ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
-        }
-    }
+    // Phase 5a: presidential ideology shift removed. The legacy mechanic
+    // wrote a +15 shift on the winning candidate's ideology axis to faction_
+    // ideology. With sectors as the live political dimension, ideology data
+    // is frozen (Phase 4) and slated for deletion (Phase 5b), so this write
+    // path is gone.
 
     // Old leader_traits effect system removed — trait is display-only now
 
@@ -17911,14 +16561,6 @@ async function registerPartyLeaderAsCandidate(supabase, nationId, factionId, cur
         return null;
     }
 
-    // Load faction ideology to determine candidate's ideology axis
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
-
-    const weightedIdeologies = getWeightedIdeologies(factionIdeology);
-    const ideologyPick = weightedRandomPick(weightedIdeologies);
-    const ideology = ideologyPick.item;
-
     // Use the leader's first positive trait
     const traitKey = (faction.leader_positive_traits && faction.leader_positive_traits.length > 0)
         ? faction.leader_positive_traits[0]
@@ -17938,9 +16580,6 @@ async function registerPartyLeaderAsCandidate(supabase, nationId, factionId, cur
         first_name: faction.leader_first_name,
         last_name: faction.leader_last_name,
         age: faction.leader_age || (35 + Math.floor(Math.random() * 16)),
-        ideology: ideology.tag,
-        ideology_axis: ideology.axisKey,
-        ideology_direction: ideology.direction,
         trait_key: traitKey,
         created_at_tick: currentTick,
         candidate_type: 'presidential',
@@ -17955,24 +16594,6 @@ async function registerPartyLeaderAsCandidate(supabase, nationId, factionId, cur
     console.log(`Registered party leader ${faction.leader_first_name} ${faction.leader_last_name} as presidential candidate for ${faction.faction_name}`);
     return data;
 }
-
-/** Compute the dominant ideology axis and direction for a faction. */
-async function computeDominantIdeologyAxis(supabase, factionId) {
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
-    let ideologyAxis = 'tradition_progress';
-    let ideologyDirection = 1;
-    if (factionIdeology) {
-        const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
-        let maxAbs = 0;
-        for (const axis of axes) {
-            const val = Math.abs(factionIdeology[axis] || 0);
-            if (val > maxAbs) { maxAbs = val; ideologyAxis = axis; ideologyDirection = (factionIdeology[axis] || 0) >= 0 ? 1 : -1; }
-        }
-    }
-    return { ideologyAxis, ideologyDirection };
-}
-
 
 // ==================== PRESIDENTIAL MINISTER NOMINATION ====================
 
@@ -18141,7 +16762,7 @@ async function signPresidentialBill(supabase, billId, presidentFactionId) {
 
     // Reload the full bill with articles and policies for enactBill()
     const { data: signedBill, error: signedBillErr } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+        .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
         .eq('id', billId)
         .single();
 
@@ -18230,7 +16851,7 @@ async function processPresidentDesk(supabase, nation, currentTick) {
     if (!hasElectedPresident(nation)) return [];
 
     const { data: expiredDesks, error: deskErr } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+        .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
         .eq('nation_id', nation.id)
         .eq('status', 'president_desk')
         .lte('president_desk_deadline', currentTick);
@@ -18336,8 +16957,6 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
 
             if (isIncumbentParty && !isTermLimited) {
                 // === INCUMBENT LOCK-IN: use incumbent president's data ===
-                const { ideologyAxis, ideologyDirection } = await computeDominantIdeologyAxis(supabase, incumbentPresident.faction_id);
-
                 await supabase.from('pm_candidates').delete()
                     .eq('nation_id', nation.id)
                     .eq('faction_id', incumbentPresident.faction_id)
@@ -18349,9 +16968,6 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
                     first_name: incumbentPresident.first_name,
                     last_name: incumbentPresident.last_name,
                     age: incumbentPresident.age,
-                    ideology: incumbentPresident.ideology || 'PROGRESS',
-                    ideology_axis: ideologyAxis,
-                    ideology_direction: ideologyDirection,
                     trait_key: incumbentPresident.trait || null,
                     created_at_tick: currentTick,
                     candidate_type: 'presidential',
@@ -18485,7 +17101,6 @@ async function autoSelectPresidentialCandidates(supabase, nation, currentTick) {
             if (isIncumbentParty && !isTermLimited) {
                 // Incumbent lock-in: use incumbent president's data, not party leader
                 console.log(`Auto-registering INCUMBENT ${incumbentPresident.first_name} ${incumbentPresident.last_name} as candidate for ${party.faction_name} in ${nation.name}`);
-                const { ideologyAxis, ideologyDirection } = await computeDominantIdeologyAxis(supabase, incumbentPresident.faction_id);
                 const { error: delErr } = await supabase.from('pm_candidates').delete()
                     .eq('nation_id', nation.id).eq('faction_id', party.id).eq('candidate_type', 'presidential');
                 if (delErr) console.warn(`[autoSelect] delete error for incumbent party ${party.faction_name}:`, delErr.message);
@@ -18493,8 +17108,7 @@ async function autoSelectPresidentialCandidates(supabase, nation, currentTick) {
                 const { error: insErr } = await supabase.from('pm_candidates').insert({
                     nation_id: nation.id, faction_id: party.id,
                     first_name: incumbentPresident.first_name, last_name: incumbentPresident.last_name,
-                    age: incumbentPresident.age, ideology: incumbentPresident.ideology || 'PROGRESS',
-                    ideology_axis: ideologyAxis, ideology_direction: ideologyDirection,
+                    age: incumbentPresident.age,
                     trait_key: incumbentPresident.trait || null,
                     created_at_tick: currentTick, candidate_type: 'presidential', selected: true
                 });
@@ -18764,11 +17378,9 @@ async function computeEngagementScores(supabase, nation, factions, coalitionPart
     }
 
     // ── 2. Load faction stances for issue positioning ──
-    const { data: allStances } = await supabase
-        .from('faction_issue_stance')
-        .select('faction_id, issue_id, strength')
-        .eq('nation_id', nationId)
-        .in('faction_id', factionIds);
+    // Phase 5b: faction_issue_stance dropped. Empty stance map preserves
+    // the downstream loop without changing engagement scoring outcomes.
+    const allStances = [];
 
     const stancesByFaction = {};
     for (const fId of factionIds) stancesByFaction[fId] = [];
@@ -19037,7 +17649,6 @@ const ISSUE_IDS = Object.keys(ISSUE_DEFS);
 // AXIS HELPERS
 // ============================================================================
 
-const AXIS_KEYS = IDEOLOGY_AXES.map(a => a.key);
 
 // ============================================================================
 // BIMODAL ALIGNMENT HELPER
@@ -19297,63 +17908,7 @@ const DEMOGRAPHIC_STAT_MAP = {
     },
 };
 
-// ============================================================================
-// IDEOLOGICAL DISTRIBUTION ← STAT MAPPING
-// ============================================================================
-// Each axis mean is influenced by nation stats. Higher stat pushes
-// the electorate mean toward one pole or the other.
 
-/**
- * Maps nation stats to ideological axis means.
- * direction: +1 means higher stat → higher axis value (toward "right" pole),
- *           -1 means higher stat → lower axis value (toward "left" pole).
- */
-const IDEO_STAT_MAP = {
-    liberty_equality: [
-        { stat: 'income_inequality', weight: 0.4, direction: 1 },     // high inequality → demand for equality
-        { stat: 'poverty_rate',      weight: 0.3, direction: 1 },     // high poverty → demand for equality
-        { stat: 'social_mobility',   weight: 0.3, direction: -1 },    // high mobility → favor liberty
-        { stat: 'freedom_index',     weight: 0.2, direction: -1 },    // high freedom → favor liberty
-    ],
-    tradition_progress: [
-        { stat: 'higher_education',  weight: 0.3, direction: 1 },     // educated → progressive
-        { stat: 'urbanization',      weight: 0.3, direction: 1 },     // urban → progressive
-        { stat: 'religiosity',       weight: 0.4, direction: -1 },    // religious → traditional
-        { stat: 'median_age',        weight: 0.2, direction: -1 },    // older → traditional
-    ],
-    security_freedom: [
-        { stat: 'terrorism',         weight: 0.4, direction: -1 },    // terrorism → demand security
-        { stat: 'crime_rate',        weight: 0.3, direction: -1 },    // crime → demand security
-        { stat: 'civil_unrest',      weight: 0.3, direction: -1 },    // unrest → demand security
-        { stat: 'press_freedom',     weight: 0.3, direction: 1 },     // free press → value freedom
-    ],
-    globalism_nationalism: [
-        { stat: 'international_reputation', weight: 0.3, direction: -1 },  // good rep → globalism
-        { stat: 'foreign_investment',       weight: 0.3, direction: -1 },  // FDI → globalism
-        { stat: 'immigration',              weight: 0.2, direction: -1 },  // immigration → globalism
-        { stat: 'ethnic_diversity',         weight: 0.2, direction: 1 },   // diverse → nationalism backlash
-    ],
-    individualism_collectivism: [
-        { stat: 'benefits',          weight: 0.3, direction: 1 },     // benefits → collectivism
-        { stat: 'union_strength',    weight: 0.3, direction: 1 },     // unions → collectivism
-        { stat: 'income_inequality', weight: 0.2, direction: 1 },     // inequality → collectivism
-        { stat: 'gdp_growth',        weight: 0.2, direction: -1 },    // growth → individualism
-    ],
-};
-
-// ============================================================================
-// IDEOLOGICAL VARIANCE ← STAT MAPPING
-// ============================================================================
-// Variance represents how spread out the electorate is on each axis.
-// Higher polarization → higher variance. Higher stability → lower variance.
-
-const IDEO_VARIANCE_STAT_MAP = {
-    _global: [
-        { stat: 'polarization',  weight: 0.55, direction: 1 },
-        { stat: 'stability',     weight: 0.45, direction: -1 },
-        { stat: 'ethnic_diversity', weight: 0.15, direction: 1 },
-    ],
-};
 
 // ============================================================================
 // SALIENCE ← STAT MAPPING
@@ -19411,11 +17966,15 @@ const ELECTORATE_CONFIG = {
     DEFAULT_VISIBILITY: 0,
     DEFAULT_CREDIBILITY: 1.0,  // 50% credibility score (formula: (modifier - 0.5) * 100)
 
-    // ── 3-pillar election weights (sum to 1.0) ──
-    // Old 5-pillar weights removed. New system: Governance 35%, Momentum 25%, Ideology 30%, Gov Approval 10%.
+    // ── Election pillar weights ──
+    // Phase 5a: ideology pillar removed. The remaining engagement +
+    // momentum pillars carry the signal; gov_approval stays at 0 for
+    // consistency with the prior tuning. Sum doesn't have to equal 1 —
+    // raw_appeal feeds a softmax for contested_vote_share that
+    // re-normalizes regardless.
     PILLAR_WEIGHT_GOVERNANCE: 0.40,
     PILLAR_WEIGHT_MOMENTUM: 0.30,
-    PILLAR_WEIGHT_IDEOLOGY: 0.30,
+    PILLAR_WEIGHT_IDEOLOGY: 0.00,
     PILLAR_WEIGHT_GOV_APPROVAL: 0.00,
 
     // ── Alignment tick config ──
@@ -19541,13 +18100,8 @@ function getStat(nation, key) {
  * Demographics are derived by starting from column defaults (in the schema)
  * and shifting bands based on DEMOGRAPHIC_STAT_MAP influences.
  *
- * Ideological means are derived from IDEO_STAT_MAP: stats push the
- * electorate mean away from center (50) on each axis.
- *
- * Ideological variances are derived from polarization/stability.
- *
- * Axis salience weights start equal (0.2 each) — they'll be adjusted
- * by tickIssueSalience in Phase 2C based on active issue salience.
+ * Phase 5a: ideology-axis means / variances / salience are no longer
+ * computed here — those columns are slated for deletion in Phase 5b.
  *
  * @param {object} supabase - Supabase client
  * @param {object} nation   - Full nation row with stat columns
@@ -19576,46 +18130,14 @@ async function seedElectorateProfile(supabase, nation, currentTick = 0) {
         bandKeys.forEach((key, i) => { demographics[key] = normalized[i]; });
     }
 
-    // ── 2. Derive ideological means ──
-    const ideoMeans = {};
-    for (const axisKey of AXIS_KEYS) {
-        const influences = IDEO_STAT_MAP[axisKey] || [];
-        let shift = 0;
-        for (const inf of influences) {
-            const statVal = getStat(nation, inf.stat);
-            shift += ((statVal - 50) / 50) * inf.direction * inf.weight;
-        }
-        // Scale shift and add to center (50)
-        ideoMeans['ideo_mean_' + axisKey] = round2(clamp(50 + shift * CFG.IDEO_STAT_SENSITIVITY * 50, 5, 95));
-    }
-
-    // ── 3. Derive ideological variances ──
-    const globalInfluences = IDEO_VARIANCE_STAT_MAP._global || [];
-    let varianceShift = 0;
-    for (const inf of globalInfluences) {
-        const statVal = getStat(nation, inf.stat);
-        varianceShift += ((statVal - 50) / 50) * inf.direction * inf.weight;
-    }
-    const ideoVars = {};
-    for (const axisKey of AXIS_KEYS) {
-        ideoVars['ideo_var_' + axisKey] = round2(
-            clamp(CFG.IDEO_VARIANCE_BASE + varianceShift * CFG.IDEO_VARIANCE_SENSITIVITY * 50, 5, 45)
-        );
-    }
-
-    // ── 4. Default salience weights (equal) ──
-    const salience = {};
-    for (const axisKey of AXIS_KEYS) {
-        salience['salience_' + axisKey] = round3(1.0 / AXIS_KEYS.length);
-    }
+    // Phase 5a: ideology axes (ideo_mean_*, ideo_var_*, salience_*) are no
+    // longer derived. Their consumers (computeSpatialAlignments and the
+    // ideology pillar) are gone. The column data is going away in Phase 5b.
 
     // ── 5. Upsert ──
     const row = {
         nation_id: nation.id,
         ...demographics,
-        ...ideoMeans,
-        ...ideoVars,
-        ...salience,
         enthusiasm: CFG.DEFAULT_ENTHUSIASM,
         last_updated_tick: currentTick,
     };
@@ -19665,39 +18187,6 @@ function getDefaultsForDimension(dimension) {
  * @param {object} nation   - Full nation row
  * @returns {object[]} The upserted issue_state rows
  */
-async function seedIssueStates(supabase, nation) {
-    const rows = [];
-
-    for (const issueId of ISSUE_IDS) {
-        const def = ISSUE_DEFS[issueId];
-        const salience = computeIssueSalience(nation, def.stats);
-
-        rows.push({
-            nation_id: nation.id,
-            issue_id: issueId,
-            salience: round2(salience),
-            salience_target: round2(salience),
-            salience_floor: CFG.DEFAULT_SALIENCE_FLOOR,
-            owned_by: null,
-            pioneer_faction_id: null,
-            pioneer_ticks_held: 0,
-            last_updated_tick: 0,
-        });
-    }
-
-    const { data, error } = await supabase
-        .from('issue_state')
-        .upsert(rows, { onConflict: 'nation_id,issue_id' })
-        .select();
-
-    if (error) {
-        console.error(`[Electorate] Failed to seed issue_state for ${nation.name}:`, error.message);
-        return [];
-    }
-
-    console.log(`[Electorate] Seeded ${data.length} issue_state rows for ${nation.name}`);
-    return data;
-}
 
 /**
  * Compute initial salience for an issue based on how "bad" its stats are.
@@ -19773,12 +18262,10 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
         .is('abandoned_at', null);
     const allFactionIds = (allNationFactions || []).map(f => f.id);
 
-    const { data: ideologies } = await supabase
-        .from('faction_ideology')
-        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .in('faction_id', allFactionIds);
-    const ideoMap = {};
-    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
+    // Phase 5a: ideology pillar removed from the electorate engine. We no
+    // longer fetch faction_ideology or compute spatial alignment against the
+    // electorate_profile — the pillar weight is zero, the column is going
+    // away in Phase 5b, and the work was a tick-time hot path.
 
     // Determine governing faction IDs
     const { data: coalitionRow } = await supabase
@@ -19792,29 +18279,14 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 
     const govApproval = Number(nation.gov_approval ?? 50);
 
-    // Compute spatial alignments with ALL parties competing (not just the new ones)
-    const defaultSalience = {};
-    for (const axisKey of AXIS_KEYS) defaultSalience[axisKey] = 0.2;
-    const genesisAlignments = profile
-        ? computeSpatialAlignments(ideoMap, profile, defaultSalience)
-        : {};
-
     const rows = [];
     for (const faction of factions) {
-        const ideo = ideoMap[faction.id];
-
-        // Compute initial alignment from ideology vs electorate profile (spatial competition)
-        const alignment = (genesisAlignments[faction.id] != null)
-            ? genesisAlignments[faction.id]
-            : CFG.DEFAULT_ALIGNMENT;
-
         // Party approval: governing factions inherit gov_approval, new parties start low
         const approval = governingIds.has(faction.id) ? govApproval : CFG.DEFAULT_PARTY_APPROVAL;
 
         rows.push({
             faction_id: faction.id,
             nation_id: nation.id,
-            ideological_alignment: round2(alignment),
             platform_appeal: CFG.DEFAULT_PLATFORM_APPEAL,
             party_approval: round2(approval),
             visibility: CFG.DEFAULT_VISIBILITY,
@@ -19825,19 +18297,18 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
         });
     }
 
-    // Compute initial raw_appeal using 3-pillar formula so elections running
-    // before the first tick don't see NULL contested_vote_share (= 0 votes).
-    // We must include ALL existing standings in the softmax so the new party
-    // doesn't get 100% contested_vote_share from being computed in isolation.
-    // 3-pillar genesis: governance(50) * 0.35 + momentum(0) * 0.25 + ideology * 0.30 + govApprovalPillar * 0.10
+    // Compute initial raw_appeal so elections running before the first tick
+    // don't see NULL contested_vote_share. Phase 5a: ideology pillar dropped;
+    // governance and momentum carry the weight. Existing standings still
+    // need to be in the softmax so a new party doesn't get 100% share from
+    // being computed in isolation.
     const govApprovalPillar = clamp(50 + (govApproval - 35) * (50 / 65), 0, 100);
 
     for (const r of rows) {
-        const ideology = r.ideological_alignment; // from computeSpatialAlignments
         r.raw_appeal = round2(
             50 * 0.35 +       // governance: neutral at genesis
             0 * 0.25 +        // momentum: 0 at genesis
-            ideology * 0.30 + // ideology from spatial alignment
+            0 * 0.30 +        // ideology: pillar removed in Phase 5a
             govApprovalPillar * 0.10
         );
     }
@@ -19895,28 +18366,6 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
  *
  * Returns 0-100 alignment score.
  */
-function computeGenesisAlignment(factionIdeology, profile) {
-    let weightedAlignment = 0;
-    let totalWeight = 0;
-
-    for (const axisKey of AXIS_KEYS) {
-        const partyScore = Number(factionIdeology[axisKey] || 0); // -100 to +100
-        const elecMean = Number(profile['ideo_mean_' + axisKey] ?? 50); // 0-100
-        const elecVar = Number(profile['ideo_var_' + axisKey] ?? 20);  // 0-50
-        const salienceWeight = Number(profile['salience_' + axisKey] ?? 0.2);
-
-        // Convert party score to 0-100 scale
-        const partyNorm = (partyScore + 100) / 2; // -100→0, 0→50, +100→100
-
-        const alignment = bimodalAxisAlignment(partyNorm, elecMean, elecVar);
-
-        weightedAlignment += alignment * salienceWeight;
-        totalWeight += salienceWeight;
-    }
-
-    if (totalWeight <= 0) return 50;
-    return round2(clamp((weightedAlignment / totalWeight) * 100, 0, 100));
-}
 
 // ============================================================================
 // MASTER GENESIS FUNCTION
@@ -19938,11 +18387,10 @@ async function genesisElectorate(supabase, nation, factions, currentTick = 0) {
     console.log(`[Electorate] Running genesis for ${nation.name}...`);
 
     const profile = await seedElectorateProfile(supabase, nation, currentTick);
-    const issues = await seedIssueStates(supabase, nation);
     const standings = await seedFactionElectoralStanding(supabase, nation, factions, profile);
 
-    console.log(`[Electorate] Genesis complete for ${nation.name}: profile=${!!profile}, issues=${issues.length}, standings=${standings.length}`);
-    return { profile, issues, standings };
+    console.log(`[Electorate] Genesis complete for ${nation.name}: profile=${!!profile}, standings=${standings.length}`);
+    return { profile, standings };
 }
 
 // ============================================================================
@@ -20012,35 +18460,10 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         return;
     }
 
-    // 2b. Process active ideology shift actions (think tanks, media campaigns, grassroots)
-    // Must run before pillar computation so drift effects are reflected this tick
-    try {
-        await tickIdeologyShiftActions(supabase, nationId, profile, currentTick);
-    } catch (shiftErr) {
-        console.error(`[tickElectorate] Ideology shift actions failed for ${nation.name} (non-fatal):`, shiftErr);
-    }
+    // Phase 5b: ideology shift actions and issue-salience drift removed
+    // (ideology_shift_actions / issue_state tables dropped).
 
-    // 3. Load issue states, drift salience toward stat-driven targets, then compute weights
-    const { data: issueStates } = await supabase
-        .from('issue_state')
-        .select('*')
-        .eq('nation_id', nationId);
-    try {
-        await tickIssueSalience(supabase, nation, issueStates || [], currentTick);
-    } catch (salErr) {
-        console.error(`[tickElectorate] Issue salience drift failed for ${nation.name} (non-fatal):`, salErr);
-    }
-    const axisSalienceWeights = computeAxisSalienceWeights(issueStates || []);
-
-    // 4. Load faction ideologies
-    const { data: ideologies } = await supabase
-        .from('faction_ideology')
-        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .in('faction_id', factionIds);
-    const ideoMap = {};
-    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
-
-    // 5. Load existing standings (for fields we don't recalculate, like platform_appeal)
+    // Load existing standings (for fields we don't recalculate, like platform_appeal)
     const { data: existingStandings } = await supabase
         .from('faction_electoral_standing')
         .select('faction_id, platform_appeal, visibility, credibility_modifier, party_approval')
@@ -20088,11 +18511,11 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         console.warn(`[tickElectorate] Engagement scores failed for ${nation.name}, using defaults:`, engErr.message);
     }
 
-    // ── PILLAR 1: Ideology (30%) ──
-    // Spatial competition: parties near the same position split voters
-    const spatialAlignments = computeSpatialAlignments(ideoMap, profile, axisSalienceWeights);
+    // Phase 5a: ideology pillar removed. The remaining pillars (governance,
+    // momentum) carry the signal. computeSpatialAlignments was the per-tick
+    // ideology computation; no longer called.
 
-    // ── Gov Approval pillar (10%) ──
+    // ── Gov Approval pillar (10% — currently weighted 0) ──
     // Map gov_approval (0-100, centered ~35-65) to a 0-100 pillar score
     const govApproval = clamp(Number(nation.gov_approval ?? 50), 0, 100);
     const govApprovalPillar = clamp(50 + (govApproval - 35) * (50 / 65), 0, 100);
@@ -20103,13 +18526,10 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     for (const f of activeFactions) {
         const existing = standingMap[f.id] || {};
 
-        // PILLAR 1: Ideology (0-100 from spatial alignment)
-        const ideology = spatialAlignments[f.id] ?? 50;
-
-        // PILLAR 2: Momentum (0-100 from factions.momentum)
+        // PILLAR 1: Momentum (0-100 from factions.momentum)
         const momentum = clamp(Number(f.momentum ?? 0), 0, 100);
 
-        // PILLAR 3: Governance (0-100 from engagement score)
+        // PILLAR 2: Governance (0-100 from engagement score)
         const engagement = engagementResults[f.id]?.engagementScore ?? 50;
 
         // Party approval: governing parties drift toward gov_approval,
@@ -20130,17 +18550,18 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         }
 
         // ── Combine pillars into raw_appeal ──
+        // Phase 5a: ideology and gov_approval terms drop out (their weights
+        // are 0); kept in the formula for symmetry with the genesis path.
         const rawAppeal = round2(
             engagement * CFG.PILLAR_WEIGHT_GOVERNANCE +
             momentum * CFG.PILLAR_WEIGHT_MOMENTUM +
-            ideology * CFG.PILLAR_WEIGHT_IDEOLOGY +
+            0 * CFG.PILLAR_WEIGHT_IDEOLOGY +
             govApprovalPillar * CFG.PILLAR_WEIGHT_GOV_APPROVAL
         );
 
         updates.push({
             faction_id: f.id,
             nation_id: nationId,
-            ideological_alignment: round2(ideology),
             party_approval: round2(partyApproval),
             visibility: round2(momentum),
             raw_appeal: rawAppeal,
@@ -20188,30 +18609,6 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
  * @param {object} axisSalienceWeights - { axisKey: weight } from issue states
  * @returns {number} 0-100 alignment
  */
-function computeTickAlignment(ideo, profile, axisSalienceWeights) {
-    let weightedAlignment = 0;
-    let totalWeight = 0;
-
-    for (const axisKey of AXIS_KEYS) {
-        const partyScore = Number(ideo[axisKey] || 0);
-        const elecMean = Number(profile['ideo_mean_' + axisKey] ?? 50);
-        const elecVar = Number(profile['ideo_var_' + axisKey] ?? 20);
-
-        // Salience: blend profile default with issue-driven weights
-        const profileSalience = Number(profile['salience_' + axisKey] ?? 0.2);
-        const issueSalience = axisSalienceWeights[axisKey] ?? 0.2;
-        const weight = (profileSalience + issueSalience) / 2;
-
-        const partyNorm = (partyScore + 100) / 2;
-        const alignment = bimodalAxisAlignment(partyNorm, elecMean, elecVar);
-
-        weightedAlignment += alignment * weight;
-        totalWeight += weight;
-    }
-
-    if (totalWeight <= 0) return 50;
-    return round2(clamp((weightedAlignment / totalWeight) * 100, 0, 100));
-}
 
 /**
  * Compute spatially-competitive alignment for ALL factions simultaneously.
@@ -20225,74 +18622,6 @@ function computeTickAlignment(ideo, profile, axisSalienceWeights) {
  * @param {object} axisSalienceWeights - { axisKey: weight }
  * @returns {object} { factionId: spatialAlignment (0-100) }
  */
-function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
-    const factionIds = Object.keys(ideoMap);
-    const result = {};
-
-    if (factionIds.length === 0) return result;
-
-    // Single faction: fall back to independent alignment (no competition)
-    if (factionIds.length === 1) {
-        const fid = factionIds[0];
-        result[fid] = computeTickAlignment(ideoMap[fid], profile, axisSalienceWeights);
-        return result;
-    }
-
-    // Accumulate per-faction weighted share across all axes
-    const factionWeightedShare = {};
-    for (const fid of factionIds) factionWeightedShare[fid] = 0;
-    let totalWeight = 0;
-    let varSum = 0;
-
-    for (const axisKey of AXIS_KEYS) {
-        const elecMean = Number(profile['ideo_mean_' + axisKey] ?? 50);
-        const elecVar = Number(profile['ideo_var_' + axisKey] ?? 20);
-        varSum += elecVar;
-
-        // Salience weight for this axis
-        const profileSalience = Number(profile['salience_' + axisKey] ?? 0.2);
-        const issueSalience = axisSalienceWeights[axisKey] ?? 0.2;
-        const weight = (profileSalience + issueSalience) / 2;
-
-        // Build party list for this axis
-        const parties = factionIds.map(fid => {
-            const ideo = ideoMap[fid];
-            const partyScore = Number(ideo[axisKey] || 0);
-            return { factionId: fid, partyNorm: (partyScore + 100) / 2 };
-        });
-
-        // Spatial competition on this axis
-        const axisShares = spatialAxisCompetition(parties, elecMean, elecVar);
-
-        // Accumulate weighted by salience
-        for (const fid of factionIds) {
-            const share = axisShares.get(fid) ?? 0;
-            factionWeightedShare[fid] += share * weight;
-        }
-        totalWeight += weight;
-    }
-
-    // Normalize to 0-100 scale with compression that loosens with polarization.
-    // At low polarization: sqrt compression (spread halved, prevents alignment dominating).
-    // At high polarization: linear mapping (full spread, centrist penalty bites hard).
-    // Blend via polWeight so the transition is smooth.
-    const avgVar = varSum / AXIS_KEYS.length;
-    const polWeight = Math.min(1, Math.max(0, (avgVar - 10) / 30));
-
-    for (const fid of factionIds) {
-        const raw = totalWeight > 0
-            ? factionWeightedShare[fid] / totalWeight
-            : (1 / factionIds.length);
-        const fairShare = 1 / factionIds.length;
-        const relativeStrength = fairShare > 0 ? raw / fairShare : 1;
-        const sqrtScaled = Math.sqrt(relativeStrength) * 50;
-        const linearScaled = relativeStrength * 50;
-        const scaled = clamp((1 - polWeight) * sqrtScaled + polWeight * linearScaled, 0, 100);
-        result[fid] = round2(scaled);
-    }
-
-    return result;
-}
 
 /**
  * Compute axis salience weights from issue_state rows.
@@ -20302,28 +18631,6 @@ function computeSpatialAlignments(ideoMap, profile, axisSalienceWeights) {
  * @param {object[]} issueStates - Array of issue_state rows
  * @returns {object} { axisKey: weight } normalized to sum to 1.0
  */
-function computeAxisSalienceWeights(issueStates) {
-    const rawWeights = {};
-    for (const axisKey of AXIS_KEYS) rawWeights[axisKey] = 0;
-
-    for (const issue of issueStates) {
-        const salience = Number(issue.salience ?? 30);
-        const axisMap = ISSUE_AXIS_SALIENCE[issue.issue_id];
-        if (!axisMap) continue;
-
-        for (const [axisKey, axisWeight] of Object.entries(axisMap)) {
-            rawWeights[axisKey] += salience * axisWeight;
-        }
-    }
-
-    // Normalize to sum to 1.0
-    const total = Object.values(rawWeights).reduce((a, b) => a + b, 0);
-    const result = {};
-    for (const axisKey of AXIS_KEYS) {
-        result[axisKey] = total > 0 ? round3(rawWeights[axisKey] / total) : round3(1 / AXIS_KEYS.length);
-    }
-    return result;
-}
 
 // ============================================================================
 // VOTE SHARE PIPELINE
@@ -20439,51 +18746,6 @@ async function updateNationalVoteShare(supabase, updates, inactiveFactions, nati
  * @param {number} currentTick
  * @returns {object[]} Updated issue state rows (in-memory, also written to DB)
  */
-async function tickIssueSalience(supabase, nation, issueStates, currentTick) {
-    if (issueStates.length === 0) return issueStates;
-
-    const updates = [];
-
-    for (const issue of issueStates) {
-        const def = ISSUE_DEFS[issue.issue_id];
-        if (!def) continue;
-
-        // Recompute target from current stats
-        const target = computeIssueSalience(nation, def.stats);
-        const floor = Number(issue.salience_floor ?? CFG.DEFAULT_SALIENCE_FLOOR);
-        const old = Number(issue.salience ?? 30);
-
-        // Drift toward target
-        const delta = clamp(target - old, -CFG.SALIENCE_DRIFT_SPEED, CFG.SALIENCE_DRIFT_SPEED);
-        let newSalience = round2(clamp(old + delta, floor, CFG.SALIENCE_MAX));
-
-        // Extra decay toward floor when stats are healthy (target < floor + 10)
-        if (target < floor + 10 && newSalience > floor) {
-            newSalience = round2(Math.max(floor, newSalience - CFG.SALIENCE_DECAY_TOWARD_FLOOR));
-        }
-
-        // Update in-memory for downstream use
-        issue.salience = newSalience;
-        issue.salience_target = round2(target);
-
-        updates.push({
-            id: issue.id,
-            salience: newSalience,
-            salience_target: round2(target),
-            last_updated_tick: currentTick,
-        });
-    }
-
-    // Batch write
-    for (const u of updates) {
-        const { error } = await supabase.from('issue_state')
-            .update({ salience: u.salience, salience_target: u.salience_target, last_updated_tick: u.last_updated_tick })
-            .eq('id', u.id);
-        if (error) { console.error('[Electorate] issue_state salience update failed:', error.message); continue; }
-    }
-
-    return issueStates;
-}
 
 // ============================================================================
 // PHASE 2C: ELECTORATE PROFILE DRIFT
@@ -20508,51 +18770,9 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick, ent
     const changes = {};
     let anyChange = false;
 
-    // ── Drift ideo means ──
-    for (const axisKey of AXIS_KEYS) {
-        const col = 'ideo_mean_' + axisKey;
-        const old = Number(profile[col] ?? 50);
-
-        // Recompute target from current stats
-        const influences = IDEO_STAT_MAP[axisKey] || [];
-        let shift = 0;
-        for (const inf of influences) {
-            const statVal = getStat(nation, inf.stat);
-            shift += ((statVal - 50) / 50) * inf.direction * inf.weight;
-        }
-        const target = clamp(50 + shift * CFG.IDEO_STAT_SENSITIVITY * 50, 5, 95);
-
-        const delta = clamp(target - old, -CFG.PROFILE_IDEO_DRIFT_SPEED, CFG.PROFILE_IDEO_DRIFT_SPEED);
-        const newVal = round2(clamp(old + delta, 5, 95));
-
-        if (newVal !== old) {
-            changes[col] = newVal;
-            profile[col] = newVal;
-            anyChange = true;
-        }
-    }
-
-    // ── Drift ideo variances ──
-    const globalInfluences = IDEO_VARIANCE_STAT_MAP._global || [];
-    let varianceShift = 0;
-    for (const inf of globalInfluences) {
-        const statVal = getStat(nation, inf.stat);
-        varianceShift += ((statVal - 50) / 50) * inf.direction * inf.weight;
-    }
-    const targetVar = clamp(CFG.IDEO_VARIANCE_BASE + varianceShift * CFG.IDEO_VARIANCE_SENSITIVITY * 50, 5, 45);
-
-    for (const axisKey of AXIS_KEYS) {
-        const col = 'ideo_var_' + axisKey;
-        const old = Number(profile[col] ?? 20);
-        const delta = clamp(targetVar - old, -CFG.PROFILE_VAR_DRIFT_SPEED, CFG.PROFILE_VAR_DRIFT_SPEED);
-        const newVal = round2(clamp(old + delta, 5, 45));
-
-        if (newVal !== old) {
-            changes[col] = newVal;
-            profile[col] = newVal;
-            anyChange = true;
-        }
-    }
+    // Phase 5a: ideo_mean_* / ideo_var_* drift removed. Their downstream
+    // consumers (computeSpatialAlignments and the ideology pillar) are gone,
+    // and the columns drop in Phase 5b. Enthusiasm drift below stays.
 
     // ── Drift enthusiasm ──
     const oldEnthusiasm = Number(profile.enthusiasm ?? CFG.DEFAULT_ENTHUSIASM);
@@ -20717,46 +18937,6 @@ function computePlatformAppeal(stances, issueStateMap, ideo, alignment) {
  * @param {object[]} stances - All faction_issue_stance rows for this nation
  * @param {number} currentTick
  */
-async function tickStanceDecay(supabase, stances, currentTick) {
-    if (stances.length === 0) return;
-
-    const toUpdate = [];
-    const toDelete = [];
-
-    for (const stance of stances) {
-        const strength = Number(stance.strength ?? 100);
-        const decayRate = Number(stance.decay_rate ?? 4);
-        const newStrength = round2(strength - decayRate);
-
-        if (newStrength < CFG.STANCE_REMOVAL_THRESHOLD) {
-            toDelete.push(stance.id);
-        } else {
-            toUpdate.push({
-                id: stance.id,
-                strength: newStrength,
-                ticks_held: (Number(stance.ticks_held ?? 0)) + 1,
-                ticks_at_current_intensity: (Number(stance.ticks_at_current_intensity ?? 0)) + 1,
-            });
-        }
-    }
-
-    // Batch update surviving stances
-    for (const u of toUpdate) {
-        const { error } = await supabase.from('faction_issue_stance')
-            .update({ strength: u.strength, ticks_held: u.ticks_held, ticks_at_current_intensity: u.ticks_at_current_intensity })
-            .eq('id', u.id);
-        if (error) { console.error('[Electorate] faction_issue_stance update failed:', error.message); continue; }
-    }
-
-    // Delete expired stances
-    if (toDelete.length > 0) {
-        const { error: delErr } = await supabase.from('faction_issue_stance')
-            .delete()
-            .in('id', toDelete);
-        if (delErr) console.error('[Electorate] faction_issue_stance delete failed:', delErr.message);
-        console.log(`[Electorate] Removed ${toDelete.length} expired stances`);
-    }
-}
 
 // ============================================================================
 // PHASE 4: CAMPAIGN ACTION HELPERS
@@ -20880,194 +19060,6 @@ const STANCE_CONFIG = {
  * @param {number} currentTick
  * @returns {{ success, message, stance?, effects? }}
  */
-async function executeTakeStance(supabase, factionId, nationId, issueId, axis, side, intensity, currentTick) {
-    // ── Validate inputs ──
-    if (!ISSUE_DEFS[issueId]) {
-        return { success: false, message: `Unknown issue: ${issueId}` };
-    }
-    if (!AXIS_KEYS.includes(axis)) {
-        return { success: false, message: `Unknown axis: ${axis}` };
-    }
-    if (!['left', 'right'].includes(side)) {
-        return { success: false, message: `Side must be 'left' or 'right'` };
-    }
-    const intensityConfig = STANCE_CONFIG.INTENSITY[intensity];
-    if (!intensityConfig) {
-        return { success: false, message: `Intensity must be centrist, moderate, or radical` };
-    }
-
-    // ── Validate axis is relevant to this issue ──
-    const issueDef = ISSUE_DEFS[issueId];
-    if (!issueDef.axes.includes(axis)) {
-        return { success: false, message: `Axis ${axis} is not relevant to issue ${issueDef.label}` };
-    }
-
-    // ── Cooldown check ──
-    const { data: recentStances } = await supabase
-        .from('campaign_actions')
-        .select('id')
-        .eq('party_id', factionId)
-        .eq('action_type', 'take_stance')
-        .gte('tick_performed', currentTick - STANCE_CONFIG.COOLDOWN_WINDOW);
-    if (recentStances && recentStances.length > 0) {
-        return { success: false, message: `Stance cooldown: wait ${STANCE_CONFIG.COOLDOWN_WINDOW} ticks between stances` };
-    }
-
-    // ── Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, STANCE_CONFIG.AP_COST, { reason: 'take_stance', detail: 'Take a Stance', tick: currentTick });
-    if (!apResult.success) {
-        return { success: false, message: apResult.error || 'Insufficient AP' };
-    }
-
-    // ── Max stances check ──
-    const { data: existingStances } = await supabase
-        .from('faction_issue_stance')
-        .select('id, issue_id')
-        .eq('faction_id', factionId)
-        .eq('nation_id', nationId);
-    const activeCount = (existingStances || []).length;
-    const alreadyHasStance = (existingStances || []).some(s => s.issue_id === issueId);
-
-    if (!alreadyHasStance && activeCount >= STANCE_CONFIG.MAX_STANCES) {
-        return { success: false, message: `Maximum ${STANCE_CONFIG.MAX_STANCES} active stances reached` };
-    }
-
-    // ── Check ideological consistency ──
-    const { data: ideo } = await supabase
-        .from('faction_ideology')
-        .select('*')
-        .eq('faction_id', factionId)
-        .single();
-
-    let ideologicallyConsistent = true;
-    if (ideo) {
-        const partyScore = Number(ideo[axis] || 0); // -100 to +100
-        // Party leans left (negative) → consistent with side='left'
-        // Party leans right (positive) → consistent with side='right'
-        if (side === 'left' && partyScore > 20) ideologicallyConsistent = false;
-        if (side === 'right' && partyScore < -20) ideologicallyConsistent = false;
-    }
-
-    // ── Check pioneer status ──
-    const { data: existingOnIssue } = await supabase
-        .from('faction_issue_stance')
-        .select('id')
-        .eq('nation_id', nationId)
-        .eq('issue_id', issueId)
-        .neq('faction_id', factionId)
-        .limit(1);
-    const isPioneer = !existingOnIssue || existingOnIssue.length === 0;
-
-    // ── Upsert the stance ──
-    const stanceRow = {
-        faction_id: factionId,
-        nation_id: nationId,
-        issue_id: issueId,
-        axis,
-        side,
-        intensity,
-        strength: intensityConfig.strength,
-        decay_rate: intensityConfig.decay_rate,
-        ticks_held: alreadyHasStance ? undefined : 0, // don't reset if refreshing
-        ticks_at_current_intensity: 0,
-        last_intensity_change_tick: currentTick,
-        ideologically_consistent: ideologicallyConsistent,
-        is_pioneer: isPioneer,
-        created_tick: alreadyHasStance ? undefined : currentTick,
-    };
-
-    // Remove undefined keys for upsert
-    for (const k of Object.keys(stanceRow)) {
-        if (stanceRow[k] === undefined) delete stanceRow[k];
-    }
-
-    const { data: stance, error } = await supabase
-        .from('faction_issue_stance')
-        .upsert(stanceRow, { onConflict: 'faction_id,nation_id,issue_id' })
-        .select()
-        .single();
-
-    if (error) {
-        console.error(`[Electorate] Failed to upsert stance:`, error.message);
-        return { success: false, message: 'Database error creating stance' };
-    }
-
-    // ── Shift faction ideology on the chosen axis ──
-    let ideologyShiftApplied = 0;
-    if (intensityConfig.ideology_shift && ideo) {
-        const currentVal = Number(ideo[axis] || 0);
-        // left = negative direction, right = positive direction
-        const direction = side === 'left' ? -1 : 1;
-        const rawShift = intensityConfig.ideology_shift * direction;
-        const newVal = Math.max(-100, Math.min(100, currentVal + rawShift));
-        ideologyShiftApplied = newVal - currentVal;
-        if (ideologyShiftApplied !== 0) {
-            const { error: ideoErr } = await supabase.from('faction_ideology').update({ [axis]: newVal }).eq('faction_id', factionId);
-            if (ideoErr) {
-                console.error('[Electorate] faction_ideology update failed:', ideoErr.message);
-                ideologyShiftApplied = 0; // don't report a shift that didn't persist
-            }
-        }
-    }
-
-    // ── Boost visibility ──
-    await boostVisibility(supabase, factionId, nationId, STANCE_CONFIG.VISIBILITY_BOOST);
-
-    // ── Log to campaign_actions ──
-    const { error: insErr } = await supabase.from('campaign_actions').insert({
-        party_id: factionId,
-        nation_id: nationId,
-        action_type: 'take_stance',
-        ap_cost: STANCE_CONFIG.AP_COST,
-        money_cost: 0,
-        tick_performed: currentTick,
-        result: {
-            issueId,
-            issueLabel: issueDef.label,
-            axis,
-            side,
-            intensity,
-            strength: intensityConfig.strength,
-            ideologyShift: ideologyShiftApplied,
-            isPioneer,
-            ideologicallyConsistent,
-            refreshed: alreadyHasStance,
-        },
-    });
-    if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
-
-    // ── Log to activity_log ──
-    const axisInfo = IDEOLOGY_AXES.find(a => a.key === axis);
-    const sideLabel = side === 'left'
-        ? (axisInfo?.leftLabel ?? 'Left')
-        : (axisInfo?.rightLabel ?? 'Right');
-    await logActivity(supabase, factionId, nationId, 'take_stance',
-        `Take a Stance: ${issueDef.label}`,
-        `${intensity} ${sideLabel} stance on ${issueDef.label}${isPioneer ? ' (pioneer!)' : ''}${!ideologicallyConsistent ? ' (inconsistent)' : ''}`,
-        'success', STANCE_CONFIG.AP_COST, currentTick
-    );
-
-    // ── Boost enthusiasm (1d3) ──
-    const enthusiasmRoll = Math.floor(Math.random() * (CFG.ENTHUSIASM_STANCE_BOOST_MAX - CFG.ENTHUSIASM_STANCE_BOOST_MIN + 1)) + CFG.ENTHUSIASM_STANCE_BOOST_MIN;
-    await nudgeEnthusiasm(supabase, nationId, enthusiasmRoll);
-
-    const effects = [];
-    effects.push({ label: 'Stance', value: `${intensity} ${sideLabel}` });
-    if (ideologyShiftApplied !== 0) effects.push({ label: 'Ideology', value: `${ideologyShiftApplied > 0 ? '+' : ''}${ideologyShiftApplied} ${sideLabel}` });
-    if (isPioneer) effects.push({ label: 'Pioneer bonus', value: '+5 appeal' });
-    if (!ideologicallyConsistent) effects.push({ label: 'Inconsistent', value: '-5 appeal' });
-    effects.push({ label: 'Visibility', value: `+${STANCE_CONFIG.VISIBILITY_BOOST}` });
-    effects.push({ label: 'Enthusiasm', value: `+${enthusiasmRoll}` });
-
-    return {
-        success: true,
-        message: `Took ${intensity} ${sideLabel} stance on ${issueDef.label}`,
-        stance,
-        effects,
-        enthusiasmRoll,
-        newAp: apResult.newAp,
-    };
-}
 
 // ============================================================================
 // PHASE 4: CAMPAIGN ACTION ELECTORATE HOOKS
@@ -21289,17 +19281,17 @@ async function executePollNow(supabase, factionId, nationId, currentTick, pollTi
     }
 
     // ── Snapshot polled columns for ALL factions in this nation ──
+    // Phase 5b: polled_alignment / polled_alignment_contribution dropped
+    // along with ideological_alignment / alignment_contribution.
     for (const s of allStandings) {
         const { error: updErr } = await supabase.from('faction_electoral_standing')
             .update({
                 last_polled_tick: currentTick,
-                polled_alignment: s.ideological_alignment,
                 polled_platform_appeal: s.platform_appeal,
                 polled_party_approval: s.party_approval,
                 polled_visibility: s.visibility,
                 polled_credibility: s.credibility_modifier,
                 polled_vote_share: s.realized_vote_share,
-                polled_alignment_contribution: s.alignment_contribution,
                 polled_appeal_contribution: s.appeal_contribution,
                 polled_approval_contribution: s.approval_contribution,
                 polled_vote_left_on_table: s.vote_left_on_table,
@@ -21384,329 +19376,38 @@ const IDEO_SHIFT_CONFIG = {
 /**
  * Launch a Think Tank — drifts electorate ideological mean on a target axis.
  */
-async function executeFundThinkTank(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
-    const cfg = IDEO_SHIFT_CONFIG.THINK_TANK;
 
-    // ── Validate ──
-    if (!AXIS_KEYS.includes(targetAxis)) {
-        return { success: false, message: `Unknown axis: ${targetAxis}` };
-    }
-    if (!['left', 'right'].includes(targetDirection)) {
-        return { success: false, message: `Direction must be 'left' or 'right'` };
-    }
-
-    // ── Cooldown ──
-    const { data: recent } = await supabase.from('campaign_actions')
-        .select('id').eq('party_id', factionId).eq('action_type', 'fund_think_tank')
-        .gte('tick_performed', currentTick - cfg.COOLDOWN_WINDOW);
-    if (recent && recent.length > 0) {
-        return { success: false, message: `Think tank cooldown: wait ${cfg.COOLDOWN_WINDOW} ticks` };
-    }
-
-    // ── Max active check (includes paused/suspended) ──
-    const { data: active } = await supabase.from('ideology_shift_actions')
-        .select('id').eq('faction_id', factionId).eq('action_type', 'think_tank').in('status', ['active', 'paused', 'suspended']);
-    if ((active || []).length >= cfg.MAX_ACTIVE) {
-        return { success: false, message: 'You already have a think tank running (or paused). Cancel it first to start a new one.' };
-    }
-
-    // ── Deduct AP ──
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, { reason: 'think_tank', detail: 'Fund Think Tank (upfront)', tick: currentTick });
-    if (!apResult.success) {
-        return { success: false, message: apResult.error || 'Insufficient AP' };
-    }
-
-    // ── Create ideology_shift_actions row ──
-    const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
-    const sideLabel = targetDirection === 'left' ? axisDef?.leftLabel : axisDef?.rightLabel;
-
-    const { data: row, error } = await supabase.from('ideology_shift_actions').insert({
-        faction_id: factionId, nation_id: nationId,
-        action_type: 'think_tank',
-        target_axis: targetAxis, target_direction: targetDirection,
-        drift_rate: cfg.DRIFT_MAX,
-        status: 'active', created_tick: currentTick, last_active_tick: currentTick,
-    }).select().single();
-    if (error) {
-        console.error('[Electorate] Think tank insert failed:', error.message);
-        return { success: false, message: 'Database error creating think tank' };
-    }
-
-    await boostVisibility(supabase, factionId, nationId, cfg.VISIBILITY_BOOST);
-
-    const { error: insErr } = await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'fund_think_tank', ap_cost: cfg.AP_COST,
-        money_cost: 0, tick_performed: currentTick,
-        result: { actionId: row.id, targetAxis, targetDirection, sideLabel, driftRate: cfg.DRIFT_RATE },
-    });
-    if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
-
-    await logActivity(supabase, factionId, nationId, 'fund_think_tank',
-        'Fund Think Tank',
-        `Launched think tank pushing ${sideLabel} on ${axisDef?.key || targetAxis}`,
-        'success', cfg.AP_COST, currentTick);
-
-    return {
-        success: true,
-        message: `Think tank launched — pushing electorate toward ${sideLabel}`,
-        effects: [
-            { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
-            { label: 'Direction', value: sideLabel },
-            { label: 'Drift', value: `1d3 (${cfg.DRIFT_MIN}–${cfg.DRIFT_MAX})/tick for ${cfg.DURATION} ticks` },
-            { label: 'Ongoing', value: `${cfg.TICK_AP_COST} AP/tick` },
-        ],
-        newAp: apResult.newAp,
-    };
-}
 
 /**
  * Suspend (pause) an active Think Tank or Grassroots Movement. Costs 1 AP.
  * Sets status to 'paused' (distinct from 'suspended' which auto-resumes on AP availability).
  */
-async function suspendIdeologyAction(supabase, factionId, actionId, currentTick) {
-    const { data: action } = await supabase.from('ideology_shift_actions')
-        .select('id, faction_id, status, action_type')
-        .eq('id', actionId).eq('faction_id', factionId).single();
-    if (!action) return { success: false, message: 'Action not found.' };
-    if (action.status !== 'active') return { success: false, message: 'Action is not active.' };
-    if (action.action_type !== 'think_tank' && action.action_type !== 'grassroots_movement')
-        return { success: false, message: 'Only Think Tanks and Grassroots Movements can be suspended.' };
 
-    const apResult = await deductAP(supabase, factionId, 1, { reason: 'suspend_action', detail: `Suspend ${action.action_type}`, tick: currentTick });
-    if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
-
-    await supabase.from('ideology_shift_actions')
-        .update({ status: 'paused', last_active_tick: currentTick })
-        .eq('id', actionId);
-
-    return { success: true, message: 'Action paused. No per-tick AP cost while paused.', newAp: apResult.newAp };
-}
 
 /**
  * Continue (resume) a paused Think Tank or Grassroots Movement. Costs 1 AP.
  */
-async function continueIdeologyAction(supabase, factionId, actionId, currentTick) {
-    const { data: action } = await supabase.from('ideology_shift_actions')
-        .select('id, faction_id, status, action_type')
-        .eq('id', actionId).eq('faction_id', factionId).single();
-    if (!action) return { success: false, message: 'Action not found.' };
-    if (action.status !== 'paused' && action.status !== 'suspended') return { success: false, message: 'Action is not paused.' };
 
-    const apResult = await deductAP(supabase, factionId, 1, { reason: 'resume_action', detail: `Resume ${action.action_type}`, tick: currentTick });
-    if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
-
-    await supabase.from('ideology_shift_actions')
-        .update({ status: 'active', last_active_tick: currentTick })
-        .eq('id', actionId);
-
-    return { success: true, message: 'Action resumed.', newAp: apResult.newAp };
-}
 
 /**
  * Cancel a Think Tank or Grassroots Movement. Costs 2 AP.
  * Reverts 75% of cumulative ideological drift applied so far.
  */
-async function cancelIdeologyAction(supabase, factionId, nationId, actionId, currentTick) {
-    const { data: action } = await supabase.from('ideology_shift_actions')
-        .select('id, faction_id, nation_id, status, action_type, target_axis, target_direction, band_shift_total')
-        .eq('id', actionId).eq('faction_id', factionId).single();
-    if (!action) return { success: false, message: 'Action not found.' };
-    if (action.status !== 'active' && action.status !== 'paused' && action.status !== 'suspended')
-        return { success: false, message: 'Action cannot be cancelled (already completed or disbanded).' };
-    if (action.action_type !== 'think_tank' && action.action_type !== 'grassroots_movement')
-        return { success: false, message: 'Only Think Tanks and Grassroots Movements can be cancelled.' };
 
-    const apResult = await deductAP(supabase, factionId, 2, { reason: 'cancel_action', detail: `Cancel ${action.action_type}`, tick: currentTick });
-    if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP (need 2)' };
-
-    // Revert 75% of cumulative drift
-    const totalDrift = Number(action.band_shift_total || 0);
-    const revertAmount = totalDrift * 0.75;
-    let revertApplied = 0;
-
-    if (Math.abs(revertAmount) > 0.001) {
-        const col = 'ideo_mean_' + action.target_axis;
-        const { data: profile } = await supabase.from('electorate_profile')
-            .select('id, ' + col)
-            .eq('nation_id', nationId).single();
-        if (profile) {
-            const old = Number(profile[col] ?? 50);
-            const newVal = Math.round(Math.min(95, Math.max(5, old - revertAmount)) * 100) / 100;
-            revertApplied = old - newVal;
-            await supabase.from('electorate_profile')
-                .update({ [col]: newVal, last_updated_tick: currentTick })
-                .eq('id', profile.id);
-        }
-    }
-
-    // Mark as cancelled
-    await supabase.from('ideology_shift_actions')
-        .update({ status: 'disbanded', last_active_tick: currentTick })
-        .eq('id', actionId);
-
-    const axDef = IDEOLOGY_AXES.find(a => a.key === action.target_axis);
-    const axisLabel = axDef ? `${axDef.leftLabel}–${axDef.rightLabel}` : action.target_axis;
-
-    return {
-        success: true,
-        message: `Action cancelled. 75% of drift reverted (${Math.abs(revertApplied).toFixed(2)} on ${axisLabel}).`,
-        newAp: apResult.newAp,
-        revertApplied,
-    };
-}
 
 /**
  * Launch a Media Campaign — shifts electorate ideological variance on a target axis.
  * 'expand' increases variance (makes electorate more polarized),
  * 'narrow' decreases variance (makes electorate more centrist).
  */
-async function executeMediaCampaign(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
-    const cfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
-    const mcLedger = { reason: 'media_campaign', detail: 'Media Campaign (upfront)', tick: currentTick };
 
-    if (!AXIS_KEYS.includes(targetAxis)) {
-        return { success: false, message: `Unknown axis: ${targetAxis}` };
-    }
-    if (!['expand', 'narrow'].includes(targetDirection)) {
-        return { success: false, message: `Direction must be 'expand' or 'narrow'` };
-    }
-
-    const { data: recent } = await supabase.from('campaign_actions')
-        .select('id').eq('party_id', factionId).eq('action_type', 'media_campaign')
-        .gte('tick_performed', currentTick - cfg.COOLDOWN_WINDOW);
-    if (recent && recent.length > 0) {
-        return { success: false, message: `Media campaign cooldown: wait ${cfg.COOLDOWN_WINDOW} ticks` };
-    }
-
-    const { data: active } = await supabase.from('ideology_shift_actions')
-        .select('id').eq('faction_id', factionId).eq('action_type', 'media_campaign').eq('status', 'active');
-    if ((active || []).length >= cfg.MAX_ACTIVE) {
-        return { success: false, message: 'You already have an active media campaign.' };
-    }
-
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, mcLedger);
-    if (!apResult.success) {
-        return { success: false, message: apResult.error || 'Insufficient AP' };
-    }
-
-    const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
-    // For media campaigns, direction maps to variance shift sign
-    const varianceSign = targetDirection === 'expand' ? 1 : -1;
-
-    const { data: row, error } = await supabase.from('ideology_shift_actions').insert({
-        faction_id: factionId, nation_id: nationId,
-        action_type: 'media_campaign',
-        target_axis: targetAxis, target_direction: targetDirection,
-        drift_rate: cfg.VARIANCE_SHIFT * varianceSign,
-        status: 'active', created_tick: currentTick, last_active_tick: currentTick,
-    }).select().single();
-    if (error) {
-        console.error('[Electorate] Media campaign insert failed:', error.message);
-        return { success: false, message: 'Database error creating media campaign' };
-    }
-
-    const { error: insErr } = await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'media_campaign', ap_cost: cfg.AP_COST,
-        money_cost: 0, tick_performed: currentTick,
-        result: { actionId: row.id, targetAxis, targetDirection, varianceShift: cfg.VARIANCE_SHIFT },
-    });
-    if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
-
-    const dirLabel = targetDirection === 'expand' ? 'Polarizing' : 'Moderating';
-    await logActivity(supabase, factionId, nationId, 'media_campaign',
-        'Media Campaign',
-        `${dirLabel} media campaign on ${axisDef?.leftLabel}/${axisDef?.rightLabel} axis`,
-        'success', cfg.AP_COST, currentTick);
-
-    return {
-        success: true,
-        message: `Media campaign launched — ${dirLabel.toLowerCase()} electorate on ${axisDef?.leftLabel}/${axisDef?.rightLabel}`,
-        effects: [
-            { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
-            { label: 'Effect', value: dirLabel },
-            { label: 'Variance', value: `1d5 (${cfg.VARIANCE_MIN}–${cfg.VARIANCE_MAX})/tick for ${cfg.DURATION} ticks` },
-            { label: 'Visibility', value: `1d3 (${cfg.VISIBILITY_MIN}–${cfg.VISIBILITY_MAX})/tick for ${cfg.VISIBILITY_TICKS} ticks` },
-        ],
-        newAp: apResult.newAp,
-    };
-}
 
 /**
  * Launch a Grassroots Movement — slow burn ideology shift on a target axis.
  * Cheaper to start than Think Tank but runs for 100 ticks with 1 AP/tick.
  * Weaker per-tick (1d2) but more total drift (~15 vs ~10).
  */
-async function executeGrassrootsMovement(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
-    const cfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
 
-    if (!AXIS_KEYS.includes(targetAxis)) {
-        return { success: false, message: `Unknown axis: ${targetAxis}` };
-    }
-    if (!['left', 'right'].includes(targetDirection)) {
-        return { success: false, message: `Direction must be 'left' or 'right'` };
-    }
-
-    const { data: recent } = await supabase.from('campaign_actions')
-        .select('id').eq('party_id', factionId).eq('action_type', 'grassroots_movement')
-        .gte('tick_performed', currentTick - cfg.COOLDOWN_WINDOW);
-    if (recent && recent.length > 0) {
-        return { success: false, message: `Grassroots cooldown: wait ${cfg.COOLDOWN_WINDOW} ticks` };
-    }
-
-    const { data: active } = await supabase.from('ideology_shift_actions')
-        .select('id').eq('faction_id', factionId).eq('action_type', 'grassroots_movement').in('status', ['active', 'paused', 'suspended']);
-    if ((active || []).length >= cfg.MAX_ACTIVE) {
-        return { success: false, message: 'You already have a grassroots movement running (or paused). Cancel it first to start a new one.' };
-    }
-
-    const apResult = await deductAP(supabase, factionId, cfg.AP_COST, { reason: 'grassroots', detail: 'Grassroots Movement (upfront)', tick: currentTick });
-    if (!apResult.success) {
-        return { success: false, message: apResult.error || 'Insufficient AP' };
-    }
-
-    const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
-    const sideLabel = targetDirection === 'left' ? axisDef?.leftLabel : axisDef?.rightLabel;
-
-    const { data: row, error } = await supabase.from('ideology_shift_actions').insert({
-        faction_id: factionId, nation_id: nationId,
-        action_type: 'grassroots_movement',
-        target_axis: targetAxis, target_direction: targetDirection,
-        drift_rate: cfg.DRIFT_MAX,
-        status: 'active', created_tick: currentTick, last_active_tick: currentTick,
-    }).select().single();
-    if (error) {
-        console.error('[Electorate] Grassroots insert failed:', error.message);
-        return { success: false, message: 'Database error creating grassroots movement' };
-    }
-
-    const { error: insErr } = await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'grassroots_movement', ap_cost: cfg.AP_COST,
-        money_cost: 0, tick_performed: currentTick,
-        result: { actionId: row.id, targetAxis, targetDirection, sideLabel },
-    });
-    if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
-
-    await logActivity(supabase, factionId, nationId, 'grassroots_movement',
-        'Grassroots Movement',
-        `Grassroots push toward ${sideLabel} on ${axisDef?.key || targetAxis}`,
-        'success', cfg.AP_COST, currentTick);
-
-    return {
-        success: true,
-        message: `Grassroots movement launched — pushing electorate toward ${sideLabel}`,
-        effects: [
-            { label: 'Axis', value: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}` },
-            { label: 'Direction', value: sideLabel },
-            { label: 'Drift', value: `1d2 (${cfg.DRIFT_MIN}–${cfg.DRIFT_MAX})/tick for ${cfg.DURATION} ticks` },
-            { label: 'Ongoing', value: `${cfg.TICK_AP_COST} AP/tick` },
-            { label: 'Visibility', value: `+1 every ${cfg.VISIBILITY_INTERVAL} ticks` },
-        ],
-        newAp: apResult.newAp,
-    };
-}
 
 
 // ============================================================================
@@ -21725,148 +19426,7 @@ async function executeGrassrootsMovement(supabase, factionId, nationId, targetAx
  *
  * Called from tickElectorate after stance decay, before pillar computation.
  */
-async function tickIdeologyShiftActions(supabase, nationId, profile, currentTick) {
-    // Auto-resume suspended actions (AP was insufficient last tick)
-    const { data: suspended } = await supabase
-        .from('ideology_shift_actions')
-        .select('id, faction_id')
-        .eq('nation_id', nationId)
-        .eq('status', 'suspended');
-    for (const s of (suspended || [])) {
-        const { data: fac } = await supabase.from('factions').select('action_points').eq('id', s.faction_id).single();
-        if (fac && (fac.action_points || 0) >= 1) {
-            await supabase.from('ideology_shift_actions').update({ status: 'active' }).eq('id', s.id);
-        }
-    }
 
-    const { data: actions } = await supabase
-        .from('ideology_shift_actions')
-        .select('*')
-        .eq('nation_id', nationId)
-        .eq('status', 'active');
-
-    if (!actions || actions.length === 0) return profile;
-
-    const profileUpdates = {};
-    const toUpdate = [];
-    const toSuspend = [];
-    const toSuspendAP = [];
-
-    for (const act of actions) {
-        // ── Duration check — auto-complete after total ticks ──
-        const ticksActive = currentTick - (act.created_tick || 0);
-        const cfgKey = act.action_type === 'think_tank' ? 'THINK_TANK'
-            : act.action_type === 'media_campaign' ? 'MEDIA_CAMPAIGN' : 'GRASSROOTS';
-        const cfg = IDEO_SHIFT_CONFIG[cfgKey];
-        const totalDuration = act.action_type === 'media_campaign'
-            ? (cfg?.DURATION || 5) + (cfg?.VISIBILITY_TICKS || 5)
-            : (cfg?.DURATION || 50);
-        if (ticksActive >= totalDuration) {
-            toSuspend.push(act.id);
-            continue;
-        }
-
-        if (act.action_type === 'think_tank') {
-            // 1 AP per tick cost — suspend if faction can't afford it
-            const apResult = await deductAP(supabase, act.faction_id, IDEO_SHIFT_CONFIG.THINK_TANK.TICK_AP_COST, { reason: 'think_tank_tick', detail: 'Think Tank (per-tick)', tick: currentTick });
-            if (!apResult?.success) { toSuspendAP.push(act.id); continue; }
-            // 1d3 drift: randomly 0.1, 0.2, or 0.3
-            const col = 'ideo_mean_' + act.target_axis;
-            const old = Number(profile[col] ?? 50);
-            const direction = act.target_direction === 'left' ? -1 : 1;
-            const roll = [0.1, 0.2, 0.3][Math.floor(Math.random() * 3)];
-            const drift = direction * roll;
-            const newVal = round2(clamp(old + drift, 5, 95));
-            const actualDrift = newVal - old;
-            if (newVal !== old) {
-                profileUpdates[col] = newVal;
-                profile[col] = newVal;
-            }
-            // Track cumulative drift for cancel revert
-            const prevTotal = Number(act.band_shift_total || 0);
-            toUpdate.push({ id: act.id, last_active_tick: currentTick, band_shift_total: round2(prevTotal + actualDrift) });
-            continue; // skip default toUpdate push below
-        } else if (act.action_type === 'media_campaign') {
-            const mcCfg = IDEO_SHIFT_CONFIG.MEDIA_CAMPAIGN;
-            if (ticksActive < mcCfg.DURATION) {
-                // Phase 1 (ticks 0–4): variance shift — 1d5 (0.1–0.5)
-                const col = 'ideo_var_' + act.target_axis;
-                const old = Number(profile[col] ?? 20);
-                const sign = act.target_direction === 'expand' ? 1 : -1;
-                const roll = [0.1, 0.2, 0.3, 0.4, 0.5][Math.floor(Math.random() * 5)];
-                const drift = sign * roll;
-                const newVal = round2(clamp(old + drift, 5, 45));
-                if (newVal !== old) {
-                    profileUpdates[col] = newVal;
-                    profile[col] = newVal;
-                }
-            } else if (ticksActive < mcCfg.DURATION + mcCfg.VISIBILITY_TICKS) {
-                // Phase 2 (ticks 5–9): visibility boost — 1d2 (1–2)
-                const visRoll = [1, 2][Math.floor(Math.random() * 2)];
-                await boostVisibility(supabase, act.faction_id, nationId, visRoll);
-            }
-        } else if (act.action_type === 'grassroots_movement') {
-            const grCfg = IDEO_SHIFT_CONFIG.GRASSROOTS;
-            // 1 AP per tick cost — suspend if faction can't afford it
-            const grApResult = await deductAP(supabase, act.faction_id, grCfg.TICK_AP_COST, { reason: 'grassroots_tick', detail: 'Grassroots Movement (per-tick)', tick: currentTick });
-            if (!grApResult?.success) { toSuspendAP.push(act.id); continue; }
-            // 1d2 drift: randomly 0.1 or 0.2
-            const col = 'ideo_mean_' + act.target_axis;
-            const old = Number(profile[col] ?? 50);
-            const direction = act.target_direction === 'left' ? -1 : 1;
-            const roll = [0.1, 0.2][Math.floor(Math.random() * 2)];
-            const drift = direction * roll;
-            const newVal = round2(clamp(old + drift, 5, 95));
-            const grActualDrift = newVal - old;
-            if (newVal !== old) {
-                profileUpdates[col] = newVal;
-                profile[col] = newVal;
-            }
-            // +1 visibility every 10 ticks
-            if (ticksActive > 0 && ticksActive % grCfg.VISIBILITY_INTERVAL === 0) {
-                await boostVisibility(supabase, act.faction_id, nationId, 1);
-            }
-            // Track cumulative drift for cancel revert
-            const grPrevTotal = Number(act.band_shift_total || 0);
-            toUpdate.push({ id: act.id, last_active_tick: currentTick, band_shift_total: round2(grPrevTotal + grActualDrift) });
-            continue; // skip default toUpdate push below
-        }
-
-        toUpdate.push({ id: act.id, last_active_tick: currentTick });
-    }
-
-    // ── Batch write profile changes ──
-    if (Object.keys(profileUpdates).length > 0) {
-        profileUpdates.last_updated_tick = currentTick;
-        const { error } = await supabase.from('electorate_profile')
-            .update(profileUpdates).eq('id', profile.id);
-        if (error) console.error('[Electorate] ideology shift profile update failed:', error.message);
-    }
-
-    // ── Update active actions ──
-    for (const u of toUpdate) {
-        const { id, ...fields } = u;
-        const { error } = await supabase.from('ideology_shift_actions')
-            .update(fields).eq('id', id);
-        if (error) console.error('[Electorate] ideology shift action update failed:', error.message);
-    }
-
-    // ── Complete duration-expired actions ──
-    for (const id of toSuspend) {
-        const { error } = await supabase.from('ideology_shift_actions')
-            .update({ status: 'completed', last_active_tick: currentTick }).eq('id', id);
-        if (error) console.error('[Electorate] ideology shift complete failed:', error.message);
-    }
-
-    // ── Suspend actions that couldn't afford AP ──
-    for (const id of toSuspendAP) {
-        const { error } = await supabase.from('ideology_shift_actions')
-            .update({ status: 'suspended', last_active_tick: currentTick }).eq('id', id);
-        if (error) console.error('[Electorate] ideology shift suspend failed:', error.message);
-    }
-
-    return profile;
-}
 
 
 // KNOWN ISSUES:
@@ -21909,133 +19469,7 @@ const PIVOT_CONFIG = {
  * @param {number} currentTick
  * @returns {{ success, message, effects, newAp, ... }}
  */
-async function executeIdeologicalPivot(supabase, factionId, nationId, targetAxis, targetDirection, currentTick) {
-    const cfg = PIVOT_CONFIG;
 
-    // Validate
-    if (!AXIS_KEYS.includes(targetAxis)) {
-        return { success: false, message: 'Unknown axis.' };
-    }
-    if (!['left', 'right'].includes(targetDirection)) {
-        return { success: false, message: "Direction must be 'left' or 'right'." };
-    }
-
-    // Load faction
-    const { data: faction } = await supabase.from('factions')
-        .select('id, action_points, pivot_count, pivot_last_tick, pivot_cycle_start_tick')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, message: 'Faction not found.' };
-
-    // Cooldown check
-    const lastPivotTick = faction.pivot_last_tick || 0;
-    if (currentTick - lastPivotTick < cfg.COOLDOWN) {
-        const remaining = cfg.COOLDOWN - (currentTick - lastPivotTick);
-        return { success: false, message: `Pivot on cooldown: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining.` };
-    }
-
-    // Compute escalating pivot count (resets after 20 ticks of no pivots)
-    let pivotCount = faction.pivot_count || 0;
-    if (currentTick - lastPivotTick >= cfg.ESCALATION_RESET) {
-        pivotCount = 0; // reset cycle
-    }
-
-    // Load current ideology position
-    const { data: ideo } = await supabase.from('faction_ideology')
-        .select('*').eq('faction_id', factionId).single();
-    if (!ideo) return { success: false, message: 'No ideology data found.' };
-
-    const currentPos = Number(ideo[targetAxis] ?? 0); // -100 to +100
-    const shiftAmount = cfg.SHIFT_AMOUNT;
-    const shiftSign = targetDirection === 'right' ? 1 : -1;
-    const newPos = Math.max(-100, Math.min(100, currentPos + shiftAmount * shiftSign));
-
-    // Reject no-op pivots at boundary (don't charge AP for zero movement)
-    if (newPos === currentPos) {
-        const boundaryLabel = currentPos >= 100 ? 'maximum' : 'minimum';
-        return { success: false, message: `Already at ${boundaryLabel} on this axis.` };
-    }
-
-    // Determine if this is a reversal (pivoting against current lean)
-    const isReversal = (currentPos > 0 && shiftSign < 0) || (currentPos < 0 && shiftSign > 0);
-
-    // Calculate AP cost
-    let apCost = cfg.BASE_AP + pivotCount;
-    if (isReversal) apCost += cfg.REVERSE_AP_EXTRA;
-
-    // Check AP
-    const factionAp = faction.action_points || 0;
-    if (factionAp < apCost) {
-        return { success: false, message: `Need ${apCost} AP, have ${factionAp}.` };
-    }
-
-    // Calculate credibility penalty for reversals
-    let credPenalty = 0;
-    if (isReversal) {
-        credPenalty = cfg.REVERSE_CRED_BASE + Math.abs(currentPos) * cfg.REVERSE_CRED_SCALE;
-    }
-
-    // Deduct AP
-    const apResult = await deductAP(supabase, factionId, apCost, { reason: 'pivot', detail: 'Ideological Pivot', tick: currentTick });
-    if (!apResult.success) return { success: false, message: apResult.error || 'Insufficient AP' };
-
-    // Update ideology — error means AP lost but position unchanged (logged, not fatal)
-    const { error: ideoErr } = await supabase.from('faction_ideology')
-        .update({ [targetAxis]: newPos })
-        .eq('faction_id', factionId);
-    if (ideoErr) {
-        console.error('[Pivot] ideology update failed:', ideoErr.message);
-        return { success: false, message: 'Failed to update ideology position.' };
-    }
-
-    // Update pivot tracking
-    const { error: pivotErr } = await supabase.from('factions')
-        .update({
-            pivot_count: pivotCount + 1,
-            pivot_last_tick: currentTick,
-            pivot_cycle_start_tick: pivotCount === 0 ? currentTick : (faction.pivot_cycle_start_tick || currentTick),
-        })
-        .eq('id', factionId);
-    if (pivotErr) console.error('[Pivot] pivot tracking update failed:', pivotErr.message);
-
-    // Credibility penalty removed — 3-pillar election system. Pivot cost is AP only.
-
-    // Build result
-    const axisDef = IDEOLOGY_AXES.find(a => a.key === targetAxis);
-    const dirLabel = targetDirection === 'left' ? axisDef?.leftLabel : axisDef?.rightLabel;
-
-    // Log to campaign_actions + activity_log (consistent with other actions)
-    const { error: insErr } = await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'ideological_pivot', ap_cost: apCost,
-        money_cost: 0, tick_performed: currentTick,
-        result: { targetAxis, targetDirection, from: currentPos, to: newPos, isReversal, credPenalty },
-    });
-    if (insErr) console.error('[Pivot] campaign_actions insert failed:', insErr.message);
-
-    await logActivity(supabase, factionId, nationId, 'ideological_pivot',
-        'Ideological Pivot',
-        `Pivoted toward ${dirLabel} on ${axisDef?.key || targetAxis} (${currentPos} → ${newPos})${isReversal ? ' [reversal]' : ''}`,
-        'success', apCost, currentTick);
-
-    const effects = [
-        { label: 'AP Spent', value: -apCost },
-        { label: `${axisDef?.leftLabel} ↔ ${axisDef?.rightLabel}`, value: `${currentPos > 0 ? '+' : ''}${currentPos} → ${newPos > 0 ? '+' : ''}${newPos}` },
-    ];
-    if (credPenalty > 0) {
-        effects.push({ label: 'Credibility', value: -credPenalty });
-    }
-    if (pivotCount > 0) {
-        effects.push({ label: 'Next pivot cost', value: `${cfg.BASE_AP + pivotCount + 1} AP` });
-    }
-
-    return {
-        success: true,
-        headline: `Pivoted toward ${dirLabel}`,
-        newAp: apResult.newAp,
-        effects,
-        outcomeName: isReversal ? 'Reversal — credibility hit applied' : 'Position shifted',
-    };
-}
 
 // ────────── party-leadership ──────────
 
@@ -26395,8 +23829,11 @@ async function processOngoingCosts(supabase, nation, currentTick) {
 const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
     'gov_approval',
-    'competition_voters', 'liberty_voters', 'security_voters', 'globalism_voters',
-    'progressive_voters', 'liberal_voters', 'moderate_voters', 'conservative_voters', 'nationalist_voters'
+    // Phase 5b: ideology axis voter columns dropped from nations.
+    // The progressive_/liberal_/moderate_/conservative_/nationalist_voters
+    // entries never existed on nations to begin with — pre-existing dead
+    // config that the snapshot loop was silently skipping via the
+    // `nation[key] !== undefined` guard.
 ];
 
 async function snapshotNationHistory(supabase, nation, currentTick) {
@@ -27396,59 +24833,6 @@ function getNationNames(nationName) {
     return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
 }
 
-const IDEOLOGY_OPTIONS = [
-    { tag: 'LIBERTY',         axisKey: 'liberty_equality',             direction: -1 },
-    { tag: 'EQUALITY',        axisKey: 'liberty_equality',             direction: 1 },
-    { tag: 'TRADITION',       axisKey: 'tradition_progress',           direction: -1 },
-    { tag: 'PROGRESS',        axisKey: 'tradition_progress',           direction: 1 },
-    { tag: 'SECURITY',        axisKey: 'security_freedom',             direction: -1 },
-    { tag: 'FREEDOM',         axisKey: 'security_freedom',             direction: 1 },
-    { tag: 'NATIONALISM',     axisKey: 'globalism_nationalism',        direction: -1 },
-    { tag: 'GLOBALISM',       axisKey: 'globalism_nationalism',        direction: 1 },
-    { tag: 'INDIVIDUALISM',   axisKey: 'individualism_collectivism',   direction: -1 },
-    { tag: 'COLLECTIVISM',    axisKey: 'individualism_collectivism',   direction: 1 }
-];
-
-// PM_TRAIT_KEYS removed — PM/President trait now comes from party leader's first positive trait
-
-
-function getWeightedIdeologies(factionIdeology) {
-    if (!factionIdeology) {
-        return IDEOLOGY_OPTIONS.map(opt => ({ item: opt, weight: 10 }));
-    }
-
-    return IDEOLOGY_OPTIONS.map(opt => {
-        const score = factionIdeology[opt.axisKey] || 0;
-        const alignment = score * opt.direction;
-
-        let weight;
-        if (alignment > 40) {
-            weight = 2;
-        } else if (alignment > 15) {
-            weight = 5;
-        } else if (alignment > -15) {
-            weight = 12;
-        } else if (alignment > -40) {
-            weight = 10;
-        } else {
-            weight = 8;
-        }
-
-        return { item: opt, weight };
-    });
-}
-
-function weightedRandomPick(weightedItems) {
-    const totalWeight = weightedItems.reduce((sum, wi) => sum + wi.weight, 0);
-    let random = Math.random() * totalWeight;
-
-    for (const wi of weightedItems) {
-        random -= wi.weight;
-        if (random <= 0) return wi;
-    }
-    return weightedItems[weightedItems.length - 1];
-}
-
 
 /**
  * Single source of truth for installing a Head of Government row.
@@ -27482,19 +24866,6 @@ async function installHOG(supabase, opts) {
         currentTick, traitKey = null, candidateId = null,
     } = opts;
 
-    let ideologyTag = opts.ideology;
-    if (!ideologyTag) {
-        try {
-            const { data: f } = await supabase
-                .from('factions')
-                .select('leader_ideology')
-                .eq('id', factionId)
-                .maybeSingle();
-            if (f?.leader_ideology) ideologyTag = String(f.leader_ideology).toUpperCase();
-        } catch (_) { /* fall through to CENTRIST */ }
-    }
-    if (!ideologyTag) ideologyTag = 'CENTRIST';
-
     // head_of_government has UNIQUE(nation_id), so a stale inactive row from
     // a previous PM would block a plain insert. Deactivate first, then upsert
     // — the upsert overwrites the just-deactivated row in the same tx.
@@ -27512,14 +24883,13 @@ async function installHOG(supabase, opts) {
             first_name: firstName,
             last_name: lastName,
             age: age || 50,
-            ideology: ideologyTag,
             trait_key: traitKey,
             appointed_tick: currentTick,
             active: true,
         }, { onConflict: 'nation_id' });
 
     if (hogErr) throw hogErr;
-    return { ideologyTag };
+    return { };
 }
 
 
@@ -27575,23 +24945,6 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
         throw new Error('Party leader data is incomplete — cannot auto-appoint PM.');
     }
 
-    // Use the leader's existing ideology as single source of truth.
-    // Only fall back to a weighted random pick if leader_ideology is unset.
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) {
-        console.error(`[autoAppointPartyLeaderAsPM] DB error loading ideology for ${factionId}, using neutral weights`);
-        factionIdeology = null;
-    }
-
-    let ideology;
-    if (faction.leader_ideology) {
-        ideology = IDEOLOGY_OPTIONS.find(o => o.tag === faction.leader_ideology.toUpperCase())
-            || IDEOLOGY_OPTIONS[0];
-    } else {
-        const weightedIdeologies = getWeightedIdeologies(factionIdeology);
-        ideology = weightedRandomPick(weightedIdeologies).item;
-    }
-
     // Use the leader's first positive trait (from party leadership system)
     const traitKey = (faction.leader_positive_traits && faction.leader_positive_traits.length > 0)
         ? faction.leader_positive_traits[0]
@@ -27608,7 +24961,6 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
         age: leaderAge,
         currentTick,
         traitKey,
-        ideology: ideology.tag,
     });
 
     // Update administration record
@@ -27650,16 +25002,6 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
             minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
             stat_baselines: pmBaselines
         });
-    }
-
-    // Apply ideology shift (+5 for PM)
-    const axisKey = ideology.axisKey;
-    const shift = 5 * ideology.direction;
-
-    if (factionIdeology) {
-        const currentVal = factionIdeology[axisKey] || 0;
-        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-        await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
     }
 
     // Fire system event
@@ -28233,9 +25575,7 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     ];
     for (const fn of ipoCleanup) { try { await fn(); } catch (_) { /* table may not exist */ } }
 
-    await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
-    await supabase.from('ideology_history').delete().eq('faction_id', factionId);
-    // momentum_log table dropped — no cleanup needed
+    // Phase 5b: faction_ideology / ideology_history / momentum_log tables dropped — no cleanup needed
     await supabase.from('bill_support').delete().eq('faction_id', factionId);
     await supabase.from('campaign_actions').delete().eq('party_id', factionId).neq('action_type', 'party_disbanded');
     await supabase.from('faction_coalitions').delete().eq('faction_a_id', factionId);
@@ -28265,12 +25605,6 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
  * @param {string} tag        - Ideology tag (e.g. "PROGRESS", "Liberty") — case-insensitive
  * @returns {number} Alignment value: positive = supports, negative = opposes
  */
-function getPartyAlignment(partyAxes, tag) {
-    const info = IDEOLOGY_TO_AXIS[tag.toUpperCase()];
-    if (!info) return 0;
-    const axisValue = partyAxes[info.axisKey] ?? 0;
-    return axisValue * info.direction;
-}
 
 // findEligibleParties removed — replaced by weighted competition model
 // where ALL parties compete simultaneously for each bloc's voters.
@@ -28292,111 +25626,6 @@ function getPartyAlignment(partyAxes, tag) {
  * @param {number}   [avgSaturation]   - Average saturation across active tags
  * @returns {number} Number of abstentions produced
  */
-function distributeVotes(parties, tags, blocCount, tally, blocApprovals, ideologySaturation, avgSaturation) {
-    if (blocCount <= 0) return 0;
-
-    const IDEOLOGY_RATE = 0.02;
-    const MULT_MIN = 0.2;
-    const MULT_MAX = 2.0;
-
-    // Helper: get per-bloc approval for a party (default 40)
-    const getApproval = (partyId) => (blocApprovals && blocApprovals[partyId] != null) ? blocApprovals[partyId] : 40;
-
-    const upperTags = tags.map(t => t.toUpperCase());
-
-    // ---- Abstention ----
-    let abstainRate = upperTags.length === 0 ? 0.35 : 0.22;
-
-    // Ideology Saturation modifier
-    if (upperTags.length > 0 && ideologySaturation && avgSaturation > 0) {
-        const blocSaturation = upperTags.reduce((s, t) => s + (ideologySaturation[t] || 0), 0) / upperTags.length;
-        const SATURATION_RATE = 0.04;
-        const SATURATION_CAP  = 0.12;
-        let satMod = (blocSaturation - avgSaturation) * SATURATION_RATE;
-        satMod = Math.max(-SATURATION_CAP, Math.min(SATURATION_CAP, satMod));
-        abstainRate = Math.max(0.05, Math.min(0.85, abstainRate + satMod));
-    }
-
-    const abstentions = Math.floor(blocCount * abstainRate);
-    const voters = blocCount - abstentions;
-    if (voters <= 0) return blocCount;
-
-    // ---- Calculate softmax-sharpened weights for ALL parties ----
-    const K_TEMP = 7;  // softmax temperature (matches tick-system k_value)
-
-    // Find max approval for numerical stability
-    let maxApproval = 0;
-    for (const party of parties) {
-        const a = getApproval(party.id);
-        if (a > maxApproval) maxApproval = a;
-    }
-
-    const weights = [];
-    let totalWeight = 0;
-
-    for (const party of parties) {
-        const approval = getApproval(party.id);
-        // Softmax sharpening: exp((approval - max) / k)
-        const softmaxExp = Math.exp((approval - maxApproval) / K_TEMP);
-
-        let multiplier = 1.0;
-
-        if (upperTags.length > 0) {
-            // Average alignment across bloc tags
-            const alignSum = upperTags.reduce((s, t) => s + getPartyAlignment(party.axes, t), 0);
-            const alignAvg = alignSum / upperTags.length;
-            multiplier = Math.max(MULT_MIN, Math.min(MULT_MAX, 1.0 + alignAvg * IDEOLOGY_RATE));
-        }
-
-        // Electability modifier: 50 is neutral.
-        // Below 50: penalty grows as distance from 50, / 10 (e.g. 40 → -1.0%)
-        // Above 50: bonus grows as distance from 50, / 20 (e.g. 70 → +1.0%)
-        const electability = party.electability ?? 50;
-        let electMod = 1.0;
-        if (electability <= 50) {
-            electMod = 1.0 - (50 - electability) / 1000;
-        } else {
-            electMod = 1.0 + (electability - 50) / 2000;
-        }
-
-        // Weight = softmax(approval) × ideology_multiplier × electability_modifier
-        const w = Math.max(0, softmaxExp * multiplier * electMod);
-        weights.push({ id: party.id, weight: w });
-        totalWeight += w;
-    }
-
-    // Edge case: all weights are 0 — distribute evenly
-    if (totalWeight === 0) {
-        const evenShare = Math.floor(voters / parties.length);
-        for (const party of parties) {
-            tally[party.id] = (tally[party.id] || 0) + evenShare;
-        }
-        const rem = voters - evenShare * parties.length;
-        if (rem > 0) {
-            tally[parties[0].id] = (tally[parties[0].id] || 0) + rem;
-        }
-        return abstentions;
-    }
-
-    // ---- Distribute proportionally with Largest Remainder ----
-    let allocated = 0;
-    const partyVotes = [];
-    for (const { id, weight } of weights) {
-        const exact = (voters * weight) / totalWeight;
-        const floored = Math.floor(exact);
-        tally[id] = (tally[id] || 0) + floored;
-        allocated += floored;
-        partyVotes.push({ id, fractional: exact - floored });
-    }
-
-    const remainder = voters - allocated;
-    partyVotes.sort((a, b) => b.fractional - a.fractional);
-    for (let i = 0; i < remainder; i++) {
-        tally[partyVotes[i].id] = (tally[partyVotes[i].id] || 0) + 1;
-    }
-
-    return abstentions;
-}
 
 /**
  * Allocate parliamentary seats from vote totals using
@@ -28453,74 +25682,6 @@ function allocateSeatsByVotes(voteTotals, totalSeats = GAME_CONFIG.TOTAL_SEATS) 
  * @param {object}   [allBlocApprovals] - Unused legacy parameter (pass null)
  * @returns {{ votes: object, seats: object, totalAbstentions: number, totalVotesCast: number, details: object[] }}
  */
-function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.TOTAL_SEATS, allBlocApprovals = null) {
-    const tally = {};
-    for (const p of parties) tally[p.id] = 0;
-
-    let totalAbstentions = 0;
-    const details = [];
-
-    // ---- Ideology Saturation: penalise over-served ideologies with higher abstention ----
-    const ALL_IDEOLOGY_TAGS = ['LIBERTY','EQUALITY','TRADITION','PROGRESS','SECURITY','FREEDOM',
-                               'GLOBALISM','NATIONALISM','INDIVIDUALISM','COLLECTIVISM'];
-    const ideologySaturation = {};
-    for (const tag of ALL_IDEOLOGY_TAGS) {
-        ideologySaturation[tag] = parties.filter(p => getPartyAlignment(p.axes, tag) > 0).length;
-    }
-    const activeSatTags = ALL_IDEOLOGY_TAGS.filter(t => ideologySaturation[t] > 0);
-    const avgSaturation = activeSatTags.length > 0
-        ? activeSatTags.reduce((s, t) => s + ideologySaturation[t], 0) / activeSatTags.length
-        : 1;
-
-    for (const bloc of blocs) {
-        if (!bloc.is_active) continue;
-        const count = bloc.voter_count || 0;
-        if (count === 0) continue;
-
-        // Collect ideology tags from the bloc
-        const tags = [bloc.ideology_1, bloc.ideology_2, bloc.ideology_3, bloc.ideology_4, bloc.ideology_5]
-            .filter(t => t && t !== 'Unaligned');
-
-        // Per-bloc approval map for this specific bloc
-        const blocApprovals = allBlocApprovals ? allBlocApprovals[bloc.id] || null : null;
-
-        // Snapshot tally before distribution to compute per-bloc party votes
-        const snapshot = {};
-        for (const p of parties) snapshot[p.id] = tally[p.id];
-
-        // All parties compete simultaneously — no cascade
-        const abstentions = distributeVotes(parties, tags, count, tally, blocApprovals, ideologySaturation, avgSaturation);
-
-        // Compute per-party votes from this bloc
-        const blocVotes = {};
-        const partyVotes = [];
-        for (const p of parties) {
-            const gained = tally[p.id] - snapshot[p.id];
-            if (gained > 0) blocVotes[p.id] = gained;
-            partyVotes.push({
-                party_id: p.id,
-                party_name: p.faction_name,
-                votes: Math.max(0, gained)
-            });
-        }
-
-        totalAbstentions += abstentions;
-        details.push({
-            bloc_id: bloc.id,
-            bloc_name: bloc.bloc_name,
-            voter_count: count,
-            tags,
-            abstentions,
-            party_votes: partyVotes,
-            blocVotes
-        });
-    }
-
-    const totalVotesCast = Object.values(tally).reduce((s, v) => s + v, 0);
-    const seats = allocateSeatsByVotes(tally, totalSeats);
-
-    return { votes: tally, seats, totalAbstentions, totalVotesCast, details };
-}
 
 /**
  * High-level helper: load all data from Supabase and run the election preview.
@@ -28530,210 +25691,22 @@ function runElectionSimulation(blocs, parties, totalSeats = GAME_CONFIG.TOTAL_SE
  * @returns {Promise<object>} Full election result with party names, votes, seats, turnout
  */
 async function runElectionPreview(supabase, nationId) {
-    // 1. Load nation
+    // Phase 5a: legacy preview reads ideology + electorate-engine outputs
+    // that are going away in Phase 5b. Stubbed pending the sector-driven
+    // preview (Phase 5c will rebuild on top of runSectorElection).
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, total_seats, eligible_voters, electoral_commission_reform, ruling_faction_id')
+        .select('id, name, total_seats')
         .eq('id', nationId)
         .single();
-    if (!nation) throw new Error('Nation not found');
-
-    const totalSeats = nation.total_seats || 120;
-    const eligibleVoters = nation.eligible_voters || 0;
-
-    // 2. Load parties (exclude inactive ≥12 ticks)
-    const { data: shard } = await supabase
-        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
-    const { data: allFactions } = await supabase
-        .from('factions')
-        .select('id, faction_name, seats, electability, last_seen_tick, founded_tick, abandoned_at')
-        .eq('nation_id', nationId)
-        .eq('faction_type', 'party')
-        .is('abandoned_at', null);
-    const factions = (allFactions || []).filter(f => {
-        if (f.last_seen_tick != null) return (currentTick - f.last_seen_tick) < 12;
-        // Never logged in — use founded_tick; exclude if founded 12+ ticks ago
-        return (currentTick - (f.founded_tick || 0)) < 12;
-    });
-    if (!factions || factions.length === 0) throw new Error('No eligible parties found for this nation');
-
-    // 3. Load electoral standings from 3-pillar election engine
-    // Columns repurposed: party_approval → governance score, visibility → momentum, raw_appeal → election score
-    const factionIds = factions.map(f => f.id);
-    const { data: standings } = await supabase
-        .from('faction_electoral_standing')
-        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, ideological_alignment, visibility, raw_appeal')
-        .eq('nation_id', nationId)
-        .in('faction_id', factionIds);
-
-    const standingMap = {};
-    for (const s of (standings || [])) standingMap[s.faction_id] = s;
-
-    // 4. Convert vote shares to actual votes
-    // Use contested_vote_share × turnout_rate (NOT realized_vote_share which is
-    // renormalized to sum=1.0 and would produce ~100% turnout).
-    // contested_vote_share = how voters split if everyone voted (sums to ~1.0)
-    // turnout_rate = fraction of each party's supporters who actually show up (0.3-0.95)
-    // actual_share = contested × turnout → sums to < 1.0 → remainder = abstentions
-    const tally = {};
-    let totalVotesCast = 0;
-    let totalAbstentions = 0;
-
-    let totalActualShare = 0;
-    const voteExacts = [];
-    for (const f of factions) {
-        const s = standingMap[f.id];
-        const contested = Number(s?.contested_vote_share || 0);
-        const turnout = Number(s?.turnout_rate || 0.65);
-        const actualShare = contested * turnout;
-        totalActualShare += actualShare;
-        const exactVotes = eligibleVoters * actualShare;
-        voteExacts.push({ id: f.id, exact: exactVotes, floored: Math.floor(exactVotes) });
-        tally[f.id] = Math.floor(exactVotes);
-        totalVotesCast += Math.floor(exactVotes);
-    }
-
-    // Distribute remainder votes via largest remainder
-    const targetVotes = Math.round(eligibleVoters * Math.min(1, totalActualShare));
-    let remainder = targetVotes - totalVotesCast;
-    if (remainder > 0) {
-        voteExacts.sort((a, b) => (b.exact - b.floored) - (a.exact - a.floored));
-        for (let i = 0; i < remainder && i < voteExacts.length; i++) {
-            tally[voteExacts[i].id] += 1;
-            totalVotesCast += 1;
-        }
-    }
-
-    totalAbstentions = Math.max(0, eligibleVoters - totalVotesCast);
-
-    // 5. Allocate seats
-    const seats = allocateSeatsByVotes(tally, totalSeats);
-
-    // 5b. Electoral Commission Reform: ruling coalition gets +5-10% seat bonus
-    if (nation.electoral_commission_reform) {
-        // Load active coalition to identify governing parties
-        const { data: coalition } = await supabase
-            .from('government_formations')
-            .select('party_ids')
-            .eq('nation_id', nationId)
-            .in('status', ['formed', 'caretaker'])
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        const coalitionIds = new Set(coalition?.party_ids || []);
-        if (coalitionIds.size > 0) {
-            // Random bonus: 5-10% of total seats
-            const bonusPct = 0.05 + Math.random() * 0.05;
-            const bonusSeats = Math.round(totalSeats * bonusPct);
-            if (bonusSeats > 0) {
-                // Collect opposition parties and their current seats
-                const oppositionIds = Object.keys(seats).filter(id => !coalitionIds.has(id) && seats[id] > 0);
-                const totalOppSeats = oppositionIds.reduce((s, id) => s + seats[id], 0);
-                if (totalOppSeats > 0) {
-                    // Subtract proportionally from opposition
-                    let seatsToTransfer = Math.min(bonusSeats, totalOppSeats);
-                    let transferred = 0;
-                    for (const id of oppositionIds) {
-                        const share = seats[id] / totalOppSeats;
-                        const loss = Math.round(seatsToTransfer * share);
-                        const actualLoss = Math.min(loss, seats[id]); // can't go below 0
-                        seats[id] -= actualLoss;
-                        transferred += actualLoss;
-                    }
-                    // Add transferred seats to coalition parties proportionally
-                    const coalitionArr = [...coalitionIds].filter(id => seats[id] !== undefined);
-                    const totalCoalSeats = coalitionArr.reduce((s, id) => s + (seats[id] || 0), 0);
-                    let distributed = 0;
-                    for (let i = 0; i < coalitionArr.length; i++) {
-                        const id = coalitionArr[i];
-                        const share = totalCoalSeats > 0 ? (seats[id] || 0) / totalCoalSeats : 1 / coalitionArr.length;
-                        const gain = (i === coalitionArr.length - 1) ? (transferred - distributed) : Math.round(transferred * share);
-                        seats[id] = (seats[id] || 0) + gain;
-                        distributed += gain;
-                    }
-                    console.log(`[Election] Electoral Commission Reform: ${transferred} seats transferred to coalition (${(bonusPct * 100).toFixed(1)}% bonus)`);
-                }
-            }
-        }
-    }
-
-    // 5c. Political Party Registration Act: reallocate seats from parties below threshold
-    const regThreshold = Number(nation.party_registration_threshold || 0);
-    const disbandedPartyIds = [];
-    if (regThreshold > 0) {
-        const minSeats = Math.ceil(totalSeats * regThreshold / 100);
-        const belowThreshold = Object.entries(seats).filter(([id, s]) => s > 0 && s < minSeats);
-        if (belowThreshold.length > 0) {
-            let seatsFreed = 0;
-            for (const [id, s] of belowThreshold) {
-                seatsFreed += s;
-                seats[id] = 0;
-                disbandedPartyIds.push(id);
-            }
-            // Redistribute freed seats proportionally to surviving parties
-            const survivors = Object.entries(seats).filter(([id, s]) => s > 0);
-            const totalSurvivorSeats = survivors.reduce((sum, [, s]) => sum + s, 0);
-            let distributed = 0;
-            for (let i = 0; i < survivors.length; i++) {
-                const [id, s] = survivors[i];
-                const share = totalSurvivorSeats > 0 ? s / totalSurvivorSeats : 1 / survivors.length;
-                const gain = (i === survivors.length - 1) ? (seatsFreed - distributed) : Math.round(seatsFreed * share);
-                seats[id] += gain;
-                distributed += gain;
-            }
-            console.log(`[Election] Party Registration Act: ${belowThreshold.length} parties below ${regThreshold}% threshold (${minSeats} seats), ${seatsFreed} seats reallocated`);
-        }
-    }
-
-    // 6. Build friendly results
-    // Determine governing party IDs for governance/opposition label
-    const { data: coalitionRow } = await supabase
-        .from('government_formations')
-        .select('party_ids')
-        .eq('nation_id', nationId)
-        .in('status', ['formed', 'active', 'caretaker'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    const govIds = new Set(coalitionRow?.party_ids || []);
-
-    const partyResults = factions.map(f => {
-        const s = standingMap[f.id];
-        const isGov = govIds.has(f.id);
-        return {
-            party_id: f.id,
-            party_name: f.faction_name,
-            approval: Math.round(Number(s?.party_approval || 0)),
-            governance: Math.round(Number(s?.party_approval || 0)),
-            momentum: Math.round(Number(s?.visibility || 0)),
-            ideology: Math.round(Number(s?.ideological_alignment || 0)),
-            raw_appeal: Math.round(Number(s?.raw_appeal || 0) * 10) / 10,
-            is_governing: isGov,
-            votes: tally[f.id] || 0,
-            vote_percentage: totalVotesCast > 0
-                ? Math.round(((tally[f.id] || 0) / totalVotesCast) * 10000) / 100
-                : 0,
-            seats: seats[f.id] || 0
-        };
-    }).sort((a, b) => b.seats - a.seats);
-
-    const partyNames = {};
-    for (const f of factions) partyNames[f.id] = f.faction_name;
-
     return {
-        nation: nation.name,
-        total_seats: totalSeats,
-        eligible_voters: eligibleVoters,
-        total_votes_cast: totalVotesCast,
-        total_abstentions: totalAbstentions,
-        turnout_pct: eligibleVoters
-            ? Math.round((totalVotesCast / eligibleVoters) * 10000) / 100
-            : 0,
-        results: partyResults,
-        bloc_details: [],
-        partyNames,
-        disbandedPartyIds
+        nation: nation?.name || 'Unknown',
+        total_seats: nation?.total_seats || 0,
+        eligible_voters: 0,
+        total_votes_cast: 0,
+        total_abstentions: 0,
+        parties: [],
+        notice: 'Preview is being rebuilt for the sector-based engine. Use the live election trigger or the Sectors admin tab in the meantime.',
     };
 }
 
@@ -28744,382 +25717,18 @@ async function runElectionPreview(supabase, nationId) {
  * If a runoff would trigger, re-runs with only the top 2 candidates.
  */
 async function runPresidentialElectionPreview(supabase, nationId) {
-    // 1. Load nation
-    const { data: nation } = await supabase
+    // Phase 5a: legacy preview reads ideology + electorate-engine outputs
+    // that go away in Phase 5b. Stubbed pending the sector-driven preview.
+    const { data: nationStub } = await supabase
         .from('nations')
-        .select('id, name, total_seats, population, eligible_voters')
+        .select('id, name')
         .eq('id', nationId)
         .single();
-    if (!nation) throw new Error('Nation not found');
-
-    const eligibleVoters = nation.eligible_voters || 0;
-
-    // 2. Load selected presidential candidates — or synthesize from party leaders
-    let { data: candidates } = await supabase
-        .from('pm_candidates')
-        .select('id, first_name, last_name, faction_id, ideology, ideology_axis, ideology_direction, trait_key')
-        .eq('nation_id', nationId)
-        .eq('candidate_type', 'presidential')
-        .eq('selected', true);
-
-    // If no candidates registered, build synthetic ones from party leaders
-    // (mirrors autoSelectPresidentialCandidates in the tick handler)
-    if (!candidates || candidates.length === 0) {
-        const { data: parties } = await supabase
-            .from('factions')
-            .select('id, faction_name, leader_first_name, leader_last_name, leader_positive_traits, leader_negative_traits')
-            .eq('nation_id', nationId)
-            .eq('faction_type', 'party')
-            .is('abandoned_at', null);
-        const { data: ideos } = await supabase
-            .from('faction_ideology')
-            .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-            .in('faction_id', (parties || []).map(p => p.id));
-        const ideoLookup = {};
-        for (const r of (ideos || [])) ideoLookup[r.faction_id] = r;
-
-        candidates = (parties || []).filter(p => p.leader_first_name).map(p => {
-            const ideo = ideoLookup[p.id] || {};
-            const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
-            let bestAxis = 'tradition_progress', bestDir = 1, maxAbs = 0;
-            for (const axis of axes) {
-                const val = Math.abs(ideo[axis] || 0);
-                if (val > maxAbs) { maxAbs = val; bestAxis = axis; bestDir = (ideo[axis] || 0) >= 0 ? 1 : -1; }
-            }
-            return {
-                id: p.id, // use faction id as synthetic candidate id
-                first_name: p.leader_first_name,
-                last_name: p.leader_last_name,
-                faction_id: p.id,
-                ideology: bestDir > 0 ? bestAxis.split('_').pop() : bestAxis.split('_')[0],
-                ideology_axis: bestAxis,
-                ideology_direction: bestDir,
-                trait_key: (p.leader_positive_traits || [])[0] || null
-            };
-        });
-    }
-    if (!candidates || candidates.length === 0) throw new Error('No parties with leaders found for presidential preview.');
-
-    // 3. Load faction data + ideology axes for each candidate's party
-    //    Filter out candidates whose factions are inactive ≥12 ticks
-    const { data: shardData } = await supabase
-        .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const presTick = shardData?.current_tick || 0;
-    const allFactionIds = [...new Set(candidates.map(c => c.faction_id))];
-    const { data: factions } = await supabase
-        .from('factions')
-        .select('id, faction_name, last_seen_tick, founded_tick, abandoned_at')
-        .in('id', allFactionIds)
-        .is('abandoned_at', null);
-    const activeFactionIds = new Set((factions || [])
-        .filter(f => {
-            if (f.last_seen_tick != null) return (presTick - f.last_seen_tick) < 12;
-            return (presTick - (f.founded_tick || 0)) < 12;
-        })
-        .map(f => f.id));
-    const eligibleCandidates = candidates.filter(c => activeFactionIds.has(c.faction_id));
-    if (eligibleCandidates.length === 0) throw new Error('No eligible presidential candidates (all factions inactive)');
-    const factionIds = [...activeFactionIds];
-    const factionMap = {};
-    for (const f of (factions || []).filter(f => activeFactionIds.has(f.id))) factionMap[f.id] = f;
-
-    const { data: ideologies } = await supabase
-        .from('faction_ideology')
-        .select('*')
-        .in('faction_id', factionIds);
-    const ideoMap = {};
-    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
-
-    // 4. Load electoral standings for each candidate's faction
-    // party_approval column repurposed: now stores governance score (3-pillar system)
-    const { data: standings } = await supabase
-        .from('faction_electoral_standing')
-        .select('faction_id, realized_vote_share, contested_vote_share, turnout_rate, party_approval, ideological_alignment, visibility, raw_appeal')
-        .eq('nation_id', nationId)
-        .in('faction_id', factionIds);
-    const standingMap = {};
-    for (const s of (standings || [])) standingMap[s.faction_id] = s;
-
-    // 5. Build "virtual party" objects per candidate
-    const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
-    function buildCandidateParty(cand) {
-        const factionIdeo = ideoMap[cand.faction_id] || {};
-        const axes = {};
-        for (const axis of AXES) {
-            let val = factionIdeo[axis] || 0;
-            if (cand.ideology_axis === axis) {
-                const dir = axis === 'globalism_nationalism' ? cand.ideology_direction * -1 : cand.ideology_direction;
-                val += 15 * dir;
-            }
-            axes[axis] = Math.max(-100, Math.min(100, val));
-        }
-        const faction = factionMap[cand.faction_id] || {};
-        return {
-            id: cand.id,
-            faction_name: `${cand.first_name} ${cand.last_name}`,
-            party_name: faction.faction_name || 'Independent',
-            faction_id: cand.faction_id,
-            ideology: cand.ideology,
-            trait_key: cand.trait_key,
-            axes
-        };
-    }
-    const allCandidateParties = eligibleCandidates.map(buildCandidateParty);
-
-    // 6. Run Round 1 using faction vote shares from the electorate engine
-    //    Distribute each faction's realized_vote_share among its candidates proportionally
-    function computePresidentialVotes(candidateParties) {
-        // Group candidates by faction
-        const factionCandidates = {};
-        for (const cp of candidateParties) {
-            if (!factionCandidates[cp.faction_id]) factionCandidates[cp.faction_id] = [];
-            factionCandidates[cp.faction_id].push(cp);
-        }
-
-        const tally = {};
-        let totalVotesCast = 0;
-        for (const cp of candidateParties) tally[cp.id] = 0;
-
-        // Distribute each faction's vote share among its candidates
-        // Use contested × turnout (not realized which is renormalized to sum=1)
-        for (const [fid, cands] of Object.entries(factionCandidates)) {
-            const s = standingMap[fid];
-            const contested = Number(s?.contested_vote_share || 0);
-            const turnout = Number(s?.turnout_rate || 0.65);
-            const factionVotes = Math.round(eligibleVoters * contested * turnout);
-            // Split evenly among candidates from same faction (usually 1)
-            const perCandidate = Math.floor(factionVotes / cands.length);
-            let assigned = 0;
-            for (const c of cands) {
-                tally[c.id] = perCandidate;
-                assigned += perCandidate;
-            }
-            // Remainder to first candidate
-            if (assigned < factionVotes && cands.length > 0) {
-                tally[cands[0].id] += factionVotes - assigned;
-            }
-            totalVotesCast += factionVotes;
-        }
-
-        const totalAbstentions = Math.max(0, eligibleVoters - totalVotesCast);
-        return { votes: tally, totalVotesCast, totalAbstentions, details: [] };
-    }
-
-    const round1 = computePresidentialVotes(allCandidateParties);
-
-    // Build Round 1 candidate results
-    function buildCandidateResults(parties, simResult) {
-        return parties.map(p => {
-            return {
-                candidate_id: p.id,
-                candidate_name: p.faction_name,
-                party_name: p.party_name,
-                faction_id: p.faction_id,
-                ideology: p.ideology,
-                trait_key: p.trait_key,
-                approval: 40,
-                votes: simResult.votes[p.id] || 0,
-                vote_percentage: simResult.totalVotesCast > 0
-                    ? Math.round(((simResult.votes[p.id] || 0) / simResult.totalVotesCast) * 10000) / 100
-                    : 0
-            };
-        }).sort((a, b) => b.votes - a.votes);
-    }
-
-    const round1Results = buildCandidateResults(allCandidateParties, round1);
-
-    // 8. Check for runoff
-    const topPct = round1Results[0]?.vote_percentage || 0;
-    let wasRunoff = false;
-    let runoffResults = null;
-    let round2Details = null;
-    let winner;
-
-    let runoffMeta = null;
-
-    if (topPct > 50 || allCandidateParties.length <= 2) {
-        // Clear winner — no runoff
-        winner = round1Results[0];
-        winner.winner = true;
-    } else {
-        // Runoff: top 2 advance with vote transfers from eliminated candidates
-        wasRunoff = true;
-        const top2 = [round1Results[0], round1Results[1]];
-        const top2Ids = new Set(top2.map(c => c.candidate_id));
-        const runoffParties = allCandidateParties.filter(p => top2Ids.has(p.id));
-        const eliminatedParties = allCandidateParties.filter(p => !top2Ids.has(p.id));
-
-        // Start with the top 2 candidates' Round 1 votes as base
-        const runoffTally = {};
-        for (const c of top2) runoffTally[c.candidate_id] = c.votes;
-        let runoffTotalVotes = top2.reduce((s, c) => s + c.votes, 0);
-        let runoffAbstentions = 0;
-
-        // Load player endorsement preferences (party → party)
-        const elimFactionIds = eliminatedParties.map(p => p.faction_id).filter(Boolean);
-        let endorsementPrefs = {};
-        if (elimFactionIds.length > 0) {
-            const { data: prefs } = await supabase
-                .from('party_endorsement_preferences')
-                .select('endorsing_party_id, endorsed_party_id')
-                .eq('nation_id', nationId)
-                .in('endorsing_party_id', elimFactionIds);
-            for (const p of (prefs || [])) {
-                endorsementPrefs[p.endorsing_party_id] = p.endorsed_party_id;
-            }
-        }
-
-        // Map runoff candidate faction IDs for endorsement lookups
-        const runoffFactionToCandidateId = {};
-        for (const rp of runoffParties) {
-            runoffFactionToCandidateId[rp.faction_id] = rp.id;
-        }
-
-        // Transfer eliminated candidates' votes based on endorsements + ideological proximity
-        const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
-        const endorsements = [];
-
-        for (const elim of eliminatedParties) {
-            const elimR1 = round1Results.find(r => r.candidate_id === elim.id);
-            const elimVotes = elimR1?.votes || 0;
-            if (elimVotes === 0) continue;
-
-            // Compute ideological distance to each runoff candidate
-            const distances = runoffParties.map(rp => {
-                let distSq = 0;
-                for (const axis of AXES) {
-                    const diff = (elim.axes[axis] || 0) - (rp.axes[axis] || 0);
-                    distSq += diff * diff;
-                }
-                return { id: rp.id, name: rp.faction_name, dist: Math.sqrt(distSq) };
-            });
-
-            // Check for player endorsement: does this eliminated faction endorse a runoff candidate's faction?
-            const endorsedFactionId = endorsementPrefs[elim.faction_id] || null;
-            const endorsedCandidateId = endorsedFactionId ? runoffFactionToCandidateId[endorsedFactionId] || null : null;
-
-            // Convert distances to affinity (inverse distance)
-            // If a player endorsement exists, the endorsed candidate gets 75% of affinity
-            const totalDist = distances.reduce((s, d) => s + d.dist, 0);
-            let affinities;
-            if (endorsedCandidateId) {
-                // Player endorsed: 75% to endorsed, 25% to other
-                affinities = distances.map(d => ({
-                    ...d,
-                    affinity: d.id === endorsedCandidateId ? 0.75 : 0.25 / Math.max(1, distances.length - 1)
-                }));
-            } else if (totalDist === 0) {
-                affinities = distances.map(d => ({ ...d, affinity: 0.5 }));
-            } else {
-                affinities = distances.map(d => ({ ...d, affinity: 1 - (d.dist / totalDist) }));
-                const affinitySum = affinities.reduce((s, a) => s + a.affinity, 0);
-                for (const a of affinities) a.affinity = a.affinity / affinitySum;
-            }
-
-            // Abstention rate: lower if there's an endorsement (voters feel more directed)
-            // Base 15%, +1% per 10 distance units. Endorsement reduces by 5%.
-            const minDist = Math.min(...distances.map(d => d.dist));
-            const baseAbstain = endorsedCandidateId ? 0.10 : 0.15;
-            const abstainRate = Math.min(0.50, baseAbstain + (minDist / 1000));
-            const abstainVotes = Math.round(elimVotes * abstainRate);
-            const transferableVotes = elimVotes - abstainVotes;
-
-            const endorsement = {
-                eliminated_candidate: elim.faction_name,
-                eliminated_party: elim.party_name || elim.faction_name,
-                eliminated_faction_id: elim.faction_id,
-                endorsed_candidate_id: endorsedCandidateId,
-                endorsed_faction_name: endorsedCandidateId
-                    ? runoffParties.find(rp => rp.id === endorsedCandidateId)?.faction_name || null
-                    : null,
-                has_player_endorsement: !!endorsedCandidateId,
-                round1_votes: elimVotes,
-                abstain_votes: abstainVotes,
-                transfers: []
-            };
-
-            // Distribute transferable votes proportionally by affinity
-            let distributed = 0;
-            for (const a of affinities) {
-                const xfer = Math.round(transferableVotes * a.affinity);
-                runoffTally[a.id] = (runoffTally[a.id] || 0) + xfer;
-                distributed += xfer;
-                endorsement.transfers.push({
-                    candidate_id: a.id,
-                    candidate_name: a.name,
-                    votes: xfer,
-                    affinity_pct: Math.round(a.affinity * 100)
-                });
-            }
-            // Rounding remainder
-            if (distributed < transferableVotes && affinities.length > 0) {
-                const rem = transferableVotes - distributed;
-                const bestId = affinities.sort((a, b) => b.affinity - a.affinity)[0].id;
-                runoffTally[bestId] += rem;
-                const t = endorsement.transfers.find(t => t.candidate_id === bestId);
-                if (t) t.votes += rem;
-            }
-
-            runoffTotalVotes += transferableVotes;
-            runoffAbstentions += abstainVotes;
-            endorsements.push(endorsement);
-        }
-
-        // Build runoff results
-        runoffResults = runoffParties.map(p => {
-            const votes = runoffTally[p.id] || 0;
-            return {
-                candidate_id: p.id,
-                candidate_name: p.faction_name,
-                party_name: p.party_name,
-                faction_id: p.faction_id,
-                ideology: p.ideology,
-                trait_key: p.trait_key,
-                votes,
-                vote_percentage: runoffTotalVotes > 0
-                    ? Math.round((votes / runoffTotalVotes) * 10000) / 100
-                    : 0
-            };
-        }).sort((a, b) => b.votes - a.votes);
-
-        round2Details = [];
-        winner = runoffResults[0];
-        winner.winner = true;
-
-        runoffMeta = {
-            endorsements,
-            total_transferred: endorsements.reduce((s, e) => s + e.transfers.reduce((ts, t) => ts + t.votes, 0), 0),
-            total_abstain: runoffAbstentions,
-            runoff_total_votes: runoffTotalVotes,
-            endorsed_party_name: endorsements.length > 0
-                ? endorsements.sort((a, b) => b.round1_votes - a.round1_votes)[0]
-                    ?.transfers.sort((a, b) => b.votes - a.votes)[0]?.candidate_name || null
-                : null,
-            abstain_votes: runoffAbstentions,
-            protest_votes: 0
-        };
-    }
-
-    // Build candidate name lookup
-    const candidateNames = {};
-    for (const p of allCandidateParties) candidateNames[p.id] = p.faction_name;
-
     return {
-        nation: nation.name,
-        eligible_voters: eligibleVoters,
-        total_votes_cast: round1.totalVotesCast,
-        total_abstentions: round1.totalAbstentions,
-        turnout_pct: eligibleVoters
-            ? Math.round((round1.totalVotesCast / eligibleVoters) * 10000) / 100
-            : 0,
-        round_1_results: round1Results,
-        round_1_details: round1.details,
-        was_runoff: wasRunoff,
-        runoff_results: runoffResults,
-        runoff_details: round2Details,
-        runoff_meta: runoffMeta,
-        winner,
-        candidateNames
+        nation: nationStub?.name || 'Unknown',
+        candidates: [],
+        was_runoff: false,
+        notice: 'Presidential preview is being rebuilt for the sector-based engine.',
     };
 }
 
@@ -38320,14 +34929,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Admin safety net failed for ${nation.name} (non-fatal):`, adminSafetyErr);
         }
 
-        // Caucus system: activate/deactivate internal factions based on seat share
-        try {
-            await evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS);
-            await decayCaucusRelationships(supabase, nation.id);
-            await processCaucusDefections(supabase, nation.id, newTick);
-        } catch (caucusErr) {
-            console.error(`[advanceTick] Caucus processing failed for ${nation.name} (non-fatal):`, caucusErr);
-        }
+        // Phase 5b: caucus system removed.
 
         // Fail committee bills that have sat without being sent to the floor
         // for COMMITTEE_EXPIRY_TICKS (6) ticks. The function was defined but
@@ -38595,27 +35197,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
         await processIncumbentCampaignBonuses(supabase, nation, newTick);
 
-        // Ideology shifts from resolved bills
-        try {
-            await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
-        } catch (ideoErr) {
-            console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
-        }
-
-        // Phase 2: sector popularity shifts from resolved bills (vote-aligned).
-        // Runs alongside ideology shifts during the transition; sectors are
-        // shadow-tracked until Phase 3 swaps the election engine over.
+        // Phase 5: sector popularity shifts from resolved bills (vote-aligned).
+        // The ideology shift / decay pipelines were removed in Phase 5b along
+        // with the rest of the ideology system.
         try {
             await processSectorShifts(supabase, nation.id, resolutions);
         } catch (sectorErr) {
             console.error(`[advanceTick] Sector shifts failed for ${nation.name} (non-fatal):`, sectorErr);
-        }
-
-        // Natural ideology decay toward center (extremism erodes over time)
-        try {
-            await processIdeologyDecay(supabase, nation.id, newTick);
-        } catch (decayErr) {
-            console.error(`[advanceTick] Ideology decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
         // Purge approval decay (autocracy scapegoat mechanic)

@@ -83,40 +83,6 @@ body {
   line-height: 1.5;
 }
 
-/* Ideology summary bar */
-.ideo-bar {
-  width: 100%;
-  max-width: 560px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-0);
-  padding: 10px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-.ideo-bar .label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.ideo-bar .tags {
-  display: flex;
-  gap: 6px;
-}
-.ideo-tag {
-  font-family: var(--font-mono);
-  font-size: 8.5px;
-  font-weight: 700;
-  padding: 2px 8px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border: 1px solid currentColor;
-}
-
 /* Form panel */
 .form-panel {
   width: 100%;
@@ -241,6 +207,50 @@ textarea {
   height: 18px;
   border: 1px solid var(--border-1);
 }
+
+/* Archetype grid */
+.cp-archetype-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+@media (max-width: 600px) { .cp-archetype-grid { grid-template-columns: 1fr; } }
+.cp-archetype-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.cp-archetype-card:hover { border-color: var(--border-2); }
+.cp-archetype-card.active {
+  border-color: var(--purple, #b794f6);
+  background: rgba(183, 148, 246, 0.06);
+}
+.cp-archetype-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-bright);
+  margin-bottom: 4px;
+}
+.cp-archetype-card.active .cp-archetype-name { color: var(--purple, #b794f6); }
+.cp-archetype-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 6px;
+}
+.cp-archetype-strongholds {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.cp-archetype-strongholds strong { color: var(--text-secondary); font-weight: 600; }
 
 /* Logo grid */
 .cp-logo-grid {
@@ -424,11 +434,6 @@ textarea {
     <div class="subtitle">Name your political party, choose a color and logo. This is how other players will see you.</div>
   </div>
 
-  <div class="ideo-bar">
-    <span class="label">Ideology</span>
-    <div class="tags" id="ideo-tags"></div>
-  </div>
-
   <div id="error-message" class="error-msg"></div>
 
   <!-- Name + Abbreviation -->
@@ -472,6 +477,18 @@ textarea {
     </div>
   </div>
 
+  <!-- Archetype -->
+  <div class="form-panel">
+    <div class="form-panel__header">
+      <div class="form-panel__dot" style="background:var(--purple)"></div>
+      <span class="form-panel__title">Archetype</span>
+      <span class="form-panel__hint" style="margin-left:auto;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Pick one — sets your starting strongholds</span>
+    </div>
+    <div class="form-panel__body">
+      <div id="cp-archetype-grid" class="cp-archetype-grid"></div>
+    </div>
+  </div>
+
   <!-- Logo -->
   <div class="form-panel">
     <div class="form-panel__header">
@@ -509,10 +526,9 @@ textarea {
 import { _supabase } from './js/supabase-client.js';
 import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor } from './js/party-icons.js';
 import { escapeHtml } from './js/utils.js';
+import { ARCHETYPES, STRONGHOLD_POPULARITY } from './js/game/archetypes.js';
 
-const urlParams = new URLSearchParams(window.location.search);
-const ideology1 = urlParams.get('ideology1');
-const ideology2 = urlParams.get('ideology2');
+let selectedArchetype = null; // archetype object from ARCHETYPES, or null
 
 // Leader name pools (default: Crucera / Spanish)
 const CRUCERA_FIRST_NAMES = [
@@ -673,20 +689,6 @@ function getNamePool(nationName) {
   return pool || { first: CRUCERA_FIRST_NAMES, last: CRUCERA_LAST_NAMES };
 }
 
-// Ideology axis mapping
-const IDEOLOGY_AXIS_MAP = {
-  'Liberty':       { axis: 'liberty_equality',           dir: -1 },
-  'Equality':      { axis: 'liberty_equality',           dir:  1 },
-  'Tradition':     { axis: 'tradition_progress',         dir: -1 },
-  'Progress':      { axis: 'tradition_progress',         dir:  1 },
-  'Security':      { axis: 'security_freedom',           dir: -1 },
-  'Freedom':       { axis: 'security_freedom',           dir:  1 },
-  'Globalism':     { axis: 'globalism_nationalism',      dir: -1 },
-  'Nationalism':   { axis: 'globalism_nationalism',      dir:  1 },
-  'Individualism': { axis: 'individualism_collectivism', dir: -1 },
-  'Collectivism':  { axis: 'individualism_collectivism', dir:  1 }
-};
-
 let currentUser = null;
 let nationData = null;
 let _cpSelectedColor = null;
@@ -720,27 +722,9 @@ async function init() {
     return;
   }
 
-  if (!ideology1 || !ideology2) {
-    window.location.href = 'faction-select.html';
-    return;
-  }
-
-  // Show ideology tags with per-ideology colors
-  const IDEOLOGY_COLORS = {
-    'Liberty': '#3b82f6', 'Equality': '#ef4444',
-    'Tradition': '#a855f7', 'Progress': '#22c55e',
-    'Security': '#f59e0b', 'Freedom': '#06b6d4',
-    'Globalism': '#14b8a6', 'Nationalism': '#f97316',
-    'Individualism': '#eab308', 'Collectivism': '#ec4899'
-  };
-  function ideoTagHtml(label) {
-    const c = IDEOLOGY_COLORS[label] || 'var(--purple)';
-    return `<span class="ideo-tag" style="color:${c};border-color:${c};background:${c}18">${escapeHtml(label)}</span>`;
-  }
-  document.getElementById('ideo-tags').innerHTML = ideoTagHtml(ideology1) + ideoTagHtml(ideology2);
-
   setupColorPicker();
   setupLogoPicker();
+  setupArchetypePicker();
   setupValidation();
 
   document.getElementById('loading').style.display = 'none';
@@ -803,9 +787,30 @@ function validateForm() {
   const name = document.getElementById('party-name').value.trim();
   const abbr = document.getElementById('party-abbr').value.trim();
   const btn = document.getElementById('btn-next');
-  const valid = name.length > 0 && abbr.length >= 2 && abbr.length <= 4;
+  const valid = name.length > 0 && abbr.length >= 2 && abbr.length <= 4 && selectedArchetype != null;
   btn.disabled = !valid;
   btn.classList.toggle('ready', valid);
+}
+
+function setupArchetypePicker() {
+  const grid = document.getElementById('cp-archetype-grid');
+  if (!grid) return;
+  grid.innerHTML = ARCHETYPES.map(a => {
+    const strongholdLabels = a.strongholds.map(k => k.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())).join(', ');
+    return `<div class="cp-archetype-card" data-archetype="${escapeHtml(a.key)}">
+      <div class="cp-archetype-name">${escapeHtml(a.name)}</div>
+      <div class="cp-archetype-desc">${escapeHtml(a.description)}</div>
+      <div class="cp-archetype-strongholds"><strong>Strongholds:</strong> ${escapeHtml(strongholdLabels)}</div>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.cp-archetype-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const key = card.dataset.archetype;
+      selectedArchetype = ARCHETYPES.find(a => a.key === key) || null;
+      grid.querySelectorAll('.cp-archetype-card').forEach(c => c.classList.toggle('active', c === card));
+      validateForm();
+    });
+  });
 }
 
 function updatePreview() {
@@ -944,8 +949,6 @@ async function proceed() {
         nation_id: nationData.id,
         nation: nationData.name,
         abbreviation: abbr,
-        ideology_value_1: ideology1,
-        ideology_value_2: ideology2,
         seats: 0,
         needs_rebuild: false,
         party_color: _cpSelectedColor || null,
@@ -983,36 +986,28 @@ async function proceed() {
         if (upsertError) throw upsertError;
     }
 
-    // Initialize ideology spectrum
-    const m1 = IDEOLOGY_AXIS_MAP[ideology1];
-    const m2 = IDEOLOGY_AXIS_MAP[ideology2];
-
-    if (m1 && m2) {
-      const { error: rpcError } = await _supabase.rpc('initialize_faction_ideology', {
-        p_faction_id: partyId,
-        p_ideology_1: ideology1,
-        p_ideology_2: ideology2
-      });
-
-      if (rpcError) {
-        const row = {
-          faction_id: partyId,
-          liberty_equality: 0,
-          tradition_progress: 0,
-          security_freedom: 0,
-          globalism_nationalism: 0,
-          individualism_collectivism: 0,
-          declared_axis_1: m1.axis,
-          declared_direction_1: m1.dir,
-          declared_axis_2: m2.axis,
-          declared_direction_2: m2.dir
-        };
-        row[m1.axis] = 20 * m1.dir;
-        row[m2.axis] = 20 * m2.dir;
-
-        const { error: ideoErr } = await _supabase.from('faction_ideology').upsert(row, { onConflict: 'faction_id' });
-        if (ideoErr) console.error('Ideology upsert failed:', ideoErr);
-      }
+    // Apply archetype: sets factions.archetype + boosts initial sector popularity.
+    // The faction insert above triggered trg_backfill_faction_popularity which
+    // already created 0-popularity rows for every active sector; this RPC
+    // raises three of them to STRONGHOLD_POPULARITY (= 3.0 displayed).
+    if (selectedArchetype) {
+        const { error: archetypeErr } = await _supabase.rpc('apply_party_archetype', {
+            p_faction_id:     partyId,
+            p_archetype_name: selectedArchetype.name,
+            p_sector_keys:    selectedArchetype.strongholds,
+            p_popularity:     STRONGHOLD_POPULARITY,
+        });
+        if (archetypeErr) {
+            console.error('[CreateParty] apply_party_archetype failed:', archetypeErr.message);
+            // Non-fatal: party exists, but stronghold seeding failed. Player
+            // can still play; admin can manually set strongholds. We surface
+            // a soft warning via the error panel rather than aborting.
+            const errEl = document.getElementById('error-message');
+            if (errEl) {
+                errEl.style.display = 'block';
+                errEl.textContent = `Party created, but archetype seeding failed (${archetypeErr.message}). Contact an admin if your strongholds aren't set.`;
+            }
+        }
     }
 
     // Reset electoral standing for fresh party — momentum, credibility, governance all start at zero
@@ -1027,23 +1022,6 @@ async function proceed() {
         gov_approval_events: 0
       }, { onConflict: 'faction_id' });
     } catch (e) { console.warn('Electoral standing reset failed (non-blocking):', e); }
-
-    // Reset ideology axes to zero except declared positions at +20
-    if (m1 && m2) {
-      try {
-        const ideoReset = {
-          faction_id: partyId,
-          liberty_equality: 0,
-          tradition_progress: 0,
-          security_freedom: 0,
-          globalism_nationalism: 0,
-          individualism_collectivism: 0
-        };
-        ideoReset[m1.axis] = 20 * m1.dir;
-        ideoReset[m2.axis] = 20 * m2.dir;
-        await _supabase.from('faction_ideology').upsert(ideoReset, { onConflict: 'faction_id' });
-      } catch (e) { console.warn('Ideology reset failed (non-blocking):', e); }
-    }
 
     // Clean slate: remove any leftover IPO memberships from a previous party
     try {

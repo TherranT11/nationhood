@@ -17,7 +17,6 @@ import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
 import { callEarlyElectionsAction } from './game/elections.js';
-import { IDEOLOGY_AXES } from './game/ideology.js';
 
 let _supabase = null;
 let _state = null;
@@ -354,7 +353,7 @@ export async function initPartyActions(supabase, state) {
         fetchActiveAgitator(_supabase, faction.id),
         getGoverningStatus(_supabase, state.nation?.id, faction.id),
         _supabase.from('faction_electoral_standing')
-            .select('ideological_alignment, visibility, raw_appeal')
+            .select('visibility, raw_appeal')
             .eq('faction_id', faction.id)
             .eq('nation_id', state.nation?.id)
             .maybeSingle(),
@@ -616,24 +615,6 @@ async function triggerLeaveBloc(root) {
 }
 
 /**
- * Top 2 ideologies of a faction, by absolute axis value. Uses the shared
- * IDEOLOGY_AXES definition from ./game/ideology.js so labels stay consistent
- * with the Politics page. Each entry returns { label, magnitude }.
- */
-function topTwoIdeologies(ideologyRow) {
-    if (!ideologyRow) return [];
-    const scored = IDEOLOGY_AXES.map(a => {
-        const raw = Number(ideologyRow[a.key] || 0);
-        return {
-            label: raw < 0 ? a.leftLabel : a.rightLabel,
-            magnitude: Math.abs(raw)
-        };
-    });
-    scored.sort((a, b) => b.magnitude - a.magnitude);
-    return scored.slice(0, 2).filter(s => s.magnitude > 0);
-}
-
-/**
  * Create Bloc modal — name input + selectable list of eligible parties with
  * leader / seats / top 2 ideologies / eligibility badge. At least one invitee
  * must be selected; $100k is charged on Create.
@@ -704,14 +685,9 @@ async function openCreateBlocModal(root) {
             .is('abandoned_at', null);
         const partyList = (parties || []).filter(p => p.id !== faction.id);
 
-        // Ideology rows for every other party in the modal (used only for the
-        // top-2-ideologies display; no longer gates invitations).
-        const partyIds = partyList.map(p => p.id);
-        const { data: idoRows } = partyIds.length > 0
-            ? await _supabase.from('faction_ideology').select('*').in('faction_id', partyIds)
-            : { data: [] };
-        const idoByFaction = new Map((idoRows || []).map(r => [r.faction_id, r]));
-
+        // Phase 5b: bloc-creation modal no longer displays per-party
+        // ideology axes. Phase 5c will repurpose this row for sector
+        // strongholds; for now the row shows leader + seats only.
         eligibleParties = partyList;
 
         const listEl = document.getElementById('pa-bloc-party-list');
@@ -722,11 +698,6 @@ async function openCreateBlocModal(root) {
         }
 
         listEl.innerHTML = partyList.map(p => {
-            const ido = idoByFaction.get(p.id);
-            const top2 = topTwoIdeologies(ido);
-            const top2Html = top2.length > 0
-                ? top2.map(t => `<span style="padding:1px 6px;background:var(--bg-card);border:1px solid var(--border-mid);font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);">${esc(t.label)}</span>`).join(' ')
-                : `<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No ideology data</span>`;
             const pColor = p.party_color || '#7a7a7a';
             const leaderName = (p.leader_first_name && p.leader_last_name)
                 ? `${p.leader_first_name} ${p.leader_last_name}` : 'Party Leader';
@@ -744,7 +715,6 @@ async function openCreateBlocModal(root) {
                         <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${p.seats || 0} seats</span>
                     </div>
                     <div style="font-size:9px;color:var(--text-secondary);">${esc(leaderName)}</div>
-                    <div style="display:flex;gap:4px;align-items:center;margin-top:2px;">${top2Html}</div>
                     ${ineligible ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--orange);margin-top:3px;">${ineligible}</div>` : ''}
                 </div>
             </label>`;

@@ -48,8 +48,7 @@ import { FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, c
 import { processElections, processGovernmentVacancy, resolveNoConfidence, runManualElectionByGovernmentType } from './js/game/elections.js';
 import { processEvents, processCrises, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, processPMTraitEffects, formatStatName } from './js/game/political-actions.js';
 import { processPresidentDesk, processPresidentialTermEnd, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates } from './js/game/presidential.js';
-import { processIdeologyShifts, recalcDerivedApproval, resolveExpiredVotes } from './js/game/bills.js';
-import { IDEOLOGY_AXES } from './js/game/ideology.js';
+import { recalcDerivedApproval, resolveExpiredVotes } from './js/game/bills.js';
 import { NATION_STAT_COLUMNS, STAT_DECAY_CONFIG, normalizeNationStatKey, buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { runElectionPreview, runPresidentialElectionPreview } from './js/game/election-simulation.js';
 import { SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS } from './js/game/valdorian-templates.js';
@@ -523,65 +522,85 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     }
 
     async function previewParliamentaryElection(status, previewDiv, previewContent, previewSummary, previewBlocs) {
-            document.getElementById('election-preview-header').textContent = '🔍 Parliamentary Election Preview (Client-Side Simulation)';
+            document.getElementById('election-preview-header').textContent = '🔍 Parliamentary Election Preview (Sector Engine)';
             const result = await runElectionPreview(_supabase, selectedElectionNation.id);
-            const totalSeats = result.total_seats;
+            if (result?.error) {
+                previewSummary.innerHTML = '';
+                previewBlocs.innerHTML = '';
+                previewContent.innerHTML = `<div style="padding:20px;color:#c25450;font-family:'JetBrains Mono',monospace;font-size:11px;">${escHtml(result.error)}</div>`;
+                previewDiv.classList.remove('hidden');
+                status.className = 'status error'; status.textContent = `❌ ${result.error}`;
+                return;
+            }
+
+            const parliamentSize = result.parliament_size;
+            const indep = result.independent_seats || 0;
+            const available = result.available_seats;
 
             previewSummary.innerHTML = `
                 <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:12px; font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#8a8778;">
-                    <span>Eligible <strong style="color:#c8c4b8;">${result.eligible_voters.toLocaleString()}</strong></span>
-                    <span>Cast <strong style="color:#c8c4b8;">${result.total_votes_cast.toLocaleString()}</strong></span>
-                    <span>Abstain <strong style="color:#c8c4b8;">${result.total_abstentions.toLocaleString()}</strong></span>
-                    <span>Turnout <strong style="color:${result.turnout_pct > 60 ? '#5aafa5' : result.turnout_pct > 40 ? '#d4a843' : '#c25450'};">${result.turnout_pct}%</strong></span>
+                    <span>Parliament <strong style="color:#c8c4b8;">${parliamentSize}</strong></span>
+                    <span>Independents <strong style="color:#c8c4b8;">${indep}</strong></span>
+                    <span>Available <strong style="color:#c8c4b8;">${available}</strong></span>
+                    <span>Total TWP <strong style="color:#c8c4b8;">${(result.total_twp || 0).toLocaleString()}</strong></span>
+                    <span style="color:#5c5a50;font-style:italic;">Deterministic preview — no random rolls applied.</span>
                 </div>
-                <div style="display:grid; grid-template-columns:minmax(140px,1.5fr) repeat(4,55px) 50px 80px; gap:0; font-family:'JetBrains Mono',monospace; font-size:8.5px; text-transform:uppercase; letter-spacing:0.06em; color:#5c5a50; padding:6px 10px; background:#1e1e1c; border-bottom:1px solid #2a2a26;">
+                <div style="display:grid; grid-template-columns:minmax(140px,1.6fr) 70px minmax(160px,2fr) 60px 60px 70px; gap:0; font-family:'JetBrains Mono',monospace; font-size:8.5px; text-transform:uppercase; letter-spacing:0.06em; color:#5c5a50; padding:6px 10px; background:#1e1e1c; border-bottom:1px solid #2a2a26;">
                     <span>Party</span>
-                    <span style="text-align:right;">Gov</span>
-                    <span style="text-align:right;">Mom</span>
-                    <span style="text-align:right;">Ideo</span>
-                    <span style="text-align:right;">Score</span>
+                    <span style="text-align:right;">TWP</span>
+                    <span>Strongholds</span>
+                    <span style="text-align:right;">Δ</span>
                     <span style="text-align:right;">Seats</span>
-                    <span style="text-align:right;">Vote %</span>
+                    <span style="text-align:right;">Seat %</span>
                 </div>
             `;
 
             previewContent.innerHTML = result.results.map(r => {
-                const barPct = totalSeats > 0 ? (r.seats / totalSeats) * 100 : 0;
-                const govColor = r.is_governing ? '#5aafa5' : '#d4a843';
-                const govLabel = r.is_governing ? 'GOV' : 'OPP';
-                const scoreColor = r.raw_appeal >= 40 ? '#5aafa5' : r.raw_appeal >= 25 ? '#d4a843' : '#c25450';
+                const barPct = parliamentSize > 0 ? (r.seats / parliamentSize) * 100 : 0;
+                const color = r.color || '#d4a843';
+                const delta = r.seats - r.current_seats;
+                const deltaColor = delta > 0 ? '#5aafa5' : delta < 0 ? '#c25450' : '#8a8778';
+                const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
+                const strongholdsHtml = (r.strongholds || []).slice(0, 3).map(s =>
+                    `<span style="font-family:'JetBrains Mono',monospace; font-size:9px; padding:1px 6px; margin-right:4px; border:1px solid ${color}44; background:${color}10; color:#c8c4b8; white-space:nowrap;">${escHtml(s.name || s.sector_key)}</span>`
+                ).join('') || '<span style="font-size:10px; color:#5c5a50; font-style:italic;">unaligned</span>';
                 return `
-                <div style="display:grid; grid-template-columns:minmax(140px,1.5fr) repeat(4,55px) 50px 80px; gap:0; align-items:center; padding:8px 10px; background:#1a1a18; border-bottom:1px solid #242420; font-family:'IBM Plex Sans',sans-serif; font-size:12px;">
+                <div style="display:grid; grid-template-columns:minmax(140px,1.6fr) 70px minmax(160px,2fr) 60px 60px 70px; gap:0; align-items:center; padding:8px 10px; background:#1a1a18; border-bottom:1px solid #242420; font-family:'IBM Plex Sans',sans-serif; font-size:12px;">
                     <div>
                         <div style="font-weight:600; color:#c8c4b8; font-size:12px; display:flex; align-items:center; gap:6px;">
+                            <span style="display:inline-block; width:10px; height:10px; background:${color}; border-radius:2px;"></span>
                             ${escHtml(r.party_name)}
-                            <span style="font-family:'JetBrains Mono',monospace; font-size:7.5px; font-weight:700; padding:1px 5px; border-radius:2px; color:${govColor}; background:${govColor}15; border:1px solid ${govColor}30;">${govLabel}</span>
                         </div>
                         <div style="height:3px; width:100%; max-width:160px; background:#242420; border-radius:2px; margin-top:4px;">
-                            <div style="height:3px; width:${barPct}%; background:${scoreColor}; border-radius:2px;"></div>
+                            <div style="height:3px; width:${barPct}%; background:${color}; border-radius:2px;"></div>
                         </div>
                     </div>
-                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; color:${r.governance > 40 ? '#5aafa5' : r.governance > 20 ? '#d4a843' : '#c25450'};">${r.governance}</span>
-                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; color:${r.momentum > 40 ? '#5aafa5' : r.momentum > 15 ? '#d4a843' : '#8a8778'};">${r.momentum}</span>
-                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; color:${r.ideology > 50 ? '#5aafa5' : r.ideology > 30 ? '#d4a843' : '#c25450'};">${r.ideology}%</span>
-                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; color:${scoreColor};">${r.raw_appeal}</span>
+                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; color:#c8c4b8;">${r.twp.toLocaleString()}</span>
+                    <div style="display:flex; flex-wrap:wrap; gap:2px;">${strongholdsHtml}</div>
+                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; color:${deltaColor};">${deltaStr}</span>
                     <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; color:#d4a843;">${r.seats}</span>
-                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:10px; color:#8a8778;">${r.vote_percentage}%<br><span style="font-size:8px; color:#5c5a50;">${r.votes.toLocaleString()}</span></span>
+                    <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:10px; color:#8a8778;">${r.seat_pct}%</span>
                 </div>`;
             }).join('');
 
-            // Bloc breakdown (collapsible) with per-party vote detail
-            const blocDetails = result.bloc_details || [];
-            const pNames = result.partyNames || {};
-            renderBlocBreakdown(previewBlocs, blocDetails, pNames);
+            // No bloc breakdown in the sector engine; clear the legacy panel.
+            previewBlocs.innerHTML = '';
 
             previewDiv.classList.remove('hidden');
             status.className = 'status success'; status.textContent = `✅ Preview complete for ${selectedElectionNation.name} (no data written)`;
     }
 
     async function previewPresidentialElection(status, previewDiv, previewContent, previewSummary, previewBlocs) {
-            document.getElementById('election-preview-header').textContent = '🔍 General Election Preview (Client-Side Simulation)';
+            document.getElementById('election-preview-header').textContent = '🔍 General Election Preview (Sector Engine)';
             const result = await runPresidentialElectionPreview(_supabase, selectedElectionNation.id);
+            if (result?.error) {
+                previewSummary.innerHTML = '';
+                if (previewBlocs) previewBlocs.innerHTML = '';
+                previewContent.innerHTML = `<div style="padding:20px;color:#c25450;font-family:'JetBrains Mono',monospace;font-size:11px;">${escHtml(result.error)}</div>`;
+                previewDiv.classList.remove('hidden');
+                status.className = 'status error'; status.textContent = `❌ ${result.error}`;
+                return;
+            }
 
             // Summary stats
             previewSummary.innerHTML = `
@@ -601,7 +620,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                     🏆 Projected Winner${result.was_runoff ? ' (Runoff)' : ''}: ${escHtml(w.candidate_name)}
                 </div>
                 <div style="color:#aaa; font-size:0.8rem;">
-                    ${escHtml(w.party_name)} · ${w.ideology || ''} · ${w.vote_percentage}% (${w.votes.toLocaleString()} votes)
+                    ${escHtml(w.party_name)}${w.ideology ? ' · ' + escHtml(w.ideology) : ''} · ${w.vote_percentage}% (${w.votes.toLocaleString()} votes)
                 </div>
             </div>`;
 
@@ -620,7 +639,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 for (const e of result.runoff_meta.endorsements) {
                     const endorseBadge = e.has_player_endorsement
                         ? `<span style="color:#c8a64e;font-size:0.72rem;font-weight:bold;margin-left:4px;">★ ENDORSED ${escHtml(e.endorsed_faction_name || '')}</span>`
-                        : '<span style="color:#555;font-size:0.72rem;margin-left:4px;">auto (ideology)</span>';
+                        : '<span style="color:#555;font-size:0.72rem;margin-left:4px;">auto (sector affinity)</span>';
                     const transferList = e.transfers.map(t =>
                         `<span style="color:#ccc;">${escHtml(t.candidate_name)}: <strong style="color:#5cb85c;">+${t.votes.toLocaleString()}</strong> (${t.affinity_pct}% affinity)</span>`
                     ).join(' &middot; ');
@@ -678,7 +697,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                     <div class="result-party-name">
                         ${isWinner ? '&#x2713; ' : ''}${escHtml(c.candidate_name)}
                         <span style="color:#888; font-size:0.75rem;">(${escHtml(c.party_name)})</span>
-                        <span style="background:#333; color:#ddd; font-size:0.65rem; padding:1px 5px; border-radius:8px; margin-left:4px;">${c.ideology || ''}</span>
+                        ${c.ideology ? `<span style="background:#333; color:#ddd; font-size:0.65rem; padding:1px 5px; border-radius:8px; margin-left:4px;">${escHtml(c.ideology)}</span>` : ''}
                     </div>
                     <div class="result-bar" style="width:200px;">
                         <div class="result-bar-fill" style="width:${barW}%"></div>

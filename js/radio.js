@@ -7,7 +7,6 @@ let _stations = [];
 let _selectedStationId = null;
 let _broadcasts = [];
 let _personalities = [];
-let _factionIdeology = null; // cached faction_ideology row for political station gating
 let _myGoodListens = new Set(); // broadcast IDs the current faction has good-listened
 let _expandedBroadcastId = null; // currently expanded broadcast in the feed
 let _allGlobalStations = [];    // all stations across all nations (for global feed)
@@ -70,42 +69,12 @@ function initials(name) {
     return (name || '??').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
-// Ideology tag → axis key + direction mapping (matches ideology.js)
-const IDEOLOGY_AXIS_MAP = {
-    'LIBERTY': { axis: 'liberty_equality', dir: -1 },
-    'EQUALITY': { axis: 'liberty_equality', dir: 1 },
-    'TRADITION': { axis: 'tradition_progress', dir: -1 },
-    'PROGRESS': { axis: 'tradition_progress', dir: 1 },
-    'SECURITY': { axis: 'security_freedom', dir: -1 },
-    'FREEDOM': { axis: 'security_freedom', dir: 1 },
-    'GLOBALISM': { axis: 'globalism_nationalism', dir: -1 },
-    'NATIONALISM': { axis: 'globalism_nationalism', dir: 1 },
-    'INDIVIDUALISM': { axis: 'individualism_collectivism', dir: -1 },
-    'COLLECTIVISM': { axis: 'individualism_collectivism', dir: 1 },
-};
-
-// Check if the current faction has 20+ toward a given ideology tag
-function hasIdeologyAccess(ideologyTag, station) {
-    if (!ideologyTag) return true;
-    // Station creator always has access
-    if (station && station.creator_faction_id === _state.faction?.id) return true;
-    if (!_factionIdeology) return false;
-    const mapping = IDEOLOGY_AXIS_MAP[ideologyTag];
-    if (!mapping) return false;
-    const score = Number(_factionIdeology[mapping.axis] || 0);
-    // Score is negative for "left" ideologies, positive for "right"
-    // dir=-1 means left, so we need score <= -20; dir=1 means right, so score >= 20
-    return (score * mapping.dir) >= 20;
-}
-
-// Check if the current faction can create a personality on this station
+// Phase 5b: political-station gating used to require the joining faction
+// to have 20+ on the station's labeled ideology axis. With ideology gone,
+// the gate is open. Personality cap (max 3 per party per station) stays.
 function canCreatePersonality(station) {
     const myCount = _personalities.filter(p => p.faction_id === _state.faction?.id && p.station_id === station.id).length;
     if (myCount >= 3) return { allowed: false, reason: 'Maximum 3 personalities per party per station.' };
-    if (station.station_type === 'political' && !hasIdeologyAccess(station.ideology, station)) {
-        const tag = IDEOLOGY_TAGS.find(i => i.tag === station.ideology);
-        return { allowed: false, reason: `Requires 20+ ${tag?.label || station.ideology} ideology to join this station.` };
-    }
     return { allowed: true, reason: null };
 }
 
@@ -125,12 +94,11 @@ export async function initRadio(supabase, state) {
         return;
     }
 
-    // Fetch stations + faction ideology in parallel
-    const [stationsResult, ideoResult] = await Promise.all([
+    // Phase 5a: faction_ideology fetch removed; political-station gating
+    // is opened until Phase 5c rewrites it on sector strongholds.
+    const [stationsResult] = await Promise.all([
         _supabase.from('radio_stations').select('*').eq('nation_id', nationId).order('created_at', { ascending: true }),
-        _supabase.from('faction_ideology').select('*').eq('faction_id', state.faction?.id).maybeSingle(),
     ]);
-
     if (stationsResult.error) {
         console.error('[Radio] Failed to load stations:', stationsResult.error.message);
         root.innerHTML = '<div class="radio-empty"><div class="radio-empty-title">Error loading stations</div></div>';
@@ -138,7 +106,6 @@ export async function initRadio(supabase, state) {
     }
 
     _stations = stationsResult.data || [];
-    _factionIdeology = ideoResult.data || null;
 
     // Attach event listeners ONCE via delegation — survives innerHTML rebuilds
     attachRadioListeners(root);

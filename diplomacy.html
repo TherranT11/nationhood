@@ -3415,11 +3415,6 @@ window.switchDiploView = switchDiploView;
 // ==================== WORLD NATIONS RENDER ====================
 
 const WN_FALLBACK_COLORS = ['#5b9bd5','#d48a3c','#5aafa5','#8b7ec8','#5cb85c','#d9534f','#c8a64e'];
-const WN_IDEOLOGY_COLORS = {
-    'Liberty':'#3b82f6','Equality':'#ef4444','Tradition':'#a855f7','Progress':'#22c55e',
-    'Security':'#f59e0b','Freedom':'#06b6d4','Globalism':'#14b8a6','Nationalism':'#f97316',
-    'Individualism':'#eab308','Collectivism':'#ec4899'
-};
 
 async function renderDiploHeader() {
     const header = document.getElementById('diplo-header');
@@ -14468,7 +14463,6 @@ async function openIPOInviteModal() {
     if (!currentFaction || !ipoSelectedOrgId) return;
     const membership = ipoMemberships.find(m => m.org.id === ipoSelectedOrgId);
     if (!membership || membership.role === 'observer') return;
-    _ipoIdeoFilters = new Set();
 
     // Fetch all factions not already members or with pending invites
     const { data: existingMembers, error: memErr } = await _supabase
@@ -14499,7 +14493,7 @@ async function openIPOInviteModal() {
 
     const { data: allFactions, error: facErr } = await _supabase
         .from('factions')
-        .select('id, faction_name, nation_id, ideology_value_1, ideology_value_2')
+        .select('id, faction_name, nation_id')
         .eq('faction_type', 'party')
         .is('abandoned_at', null)
         .order('faction_name');
@@ -14511,12 +14505,6 @@ async function openIPOInviteModal() {
     if (nationIds.length > 0) {
         const { data: nations } = await _supabase.from('nations').select('id, name').in('id', nationIds);
         (nations || []).forEach(n => { nationMap[n.id] = n.name; });
-    }
-
-    function ideoTag(name) {
-        const c = WN_IDEOLOGY_COLORS[name];
-        if (!c) return '';
-        return '<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;line-height:16px;background:' + c + '22;color:' + c + ';border:1px solid ' + c + '55;">' + escapeHtml(name) + '</span>';
     }
 
     function statusBadge(f) {
@@ -14555,30 +14543,18 @@ async function openIPOInviteModal() {
 
     const listItems = allFactionsList.map(f => {
         const nation = nationMap[f.nation_id] ? ' <span style="color:var(--text-dim);font-size:12px;">· ' + escapeHtml(nationMap[f.nation_id]) + '</span>' : '';
-        const ideo1 = f.ideology_value_1 ? ideoTag(f.ideology_value_1) : '';
-        const ideo2 = f.ideology_value_2 ? ideoTag(f.ideology_value_2) : '';
-        const ideoHtml = (ideo1 || ideo2) ? '<div style="display:flex;gap:4px;margin-top:2px;">' + ideo1 + ideo2 + '</div>' : '';
         const badge = statusBadge(f);
         const disabled = isDisabled(f);
         const selectedClass = (!disabled && firstSelectable && f.id === firstSelectable.id) ? ' selected' : '';
         const disabledClass = disabled ? ' disabled' : '';
-        const ideos = [f.ideology_value_1, f.ideology_value_2].filter(Boolean).join(',');
-        return '<div class="ipo-invite-item' + selectedClass + disabledClass + '" data-faction-id="' + f.id + '" data-ideologies="' + ideos + '"'
+        return '<div class="ipo-invite-item' + selectedClass + disabledClass + '" data-faction-id="' + f.id + '"'
             + (disabled ? '' : ' onclick="selectIPOInviteTarget(this)"')
             + '>'
             + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
             + '<span style="font-size:13px;">' + escapeHtml(f.faction_name) + nation + '</span>'
             + badge
             + '</div>'
-            + ideoHtml
             + '</div>';
-    }).join('');
-
-    // Build ideology filter bar
-    const ideoNames = Object.keys(WN_IDEOLOGY_COLORS);
-    const ideoFilterBtns = ideoNames.map(name => {
-        const c = WN_IDEOLOGY_COLORS[name];
-        return '<button class="ipo-ideo-filter-btn" data-ideology="' + name + '" onclick="toggleIPOIdeoFilter(this)" style="background:' + c + '18;color:' + c + ';border:1px solid ' + c + '44;">' + name + '</button>';
     }).join('');
 
     const inner = document.getElementById('ipo-create-modal-inner');
@@ -14590,7 +14566,6 @@ async function openIPOInviteModal() {
         </div>
         <div class="ipo-modal-body">
             <label class="ipo-vote-form-label">Party to Invite</label>
-            <div id="ipo-ideo-filter-bar" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">${ideoFilterBtns}</div>
             <input type="hidden" id="ipo-invite-target" value="${firstSelectable?.id || ''}">
             <div id="ipo-invite-list" style="max-height:260px;overflow-y:auto;border:1px solid var(--border-color, rgba(255,255,255,0.12));border-radius:6px;background:var(--bg-darker, rgba(0,0,0,0.2));">${listItems}</div>
             <label class="ipo-vote-form-label">Role</label>
@@ -14611,28 +14586,6 @@ function selectIPOInviteTarget(el) {
     document.querySelectorAll('#ipo-invite-list .ipo-invite-item.selected').forEach(item => item.classList.remove('selected'));
     el.classList.add('selected');
     document.getElementById('ipo-invite-target').value = el.dataset.factionId;
-}
-
-let _ipoIdeoFilters = new Set();
-function toggleIPOIdeoFilter(btn) {
-    const ideo = btn.dataset.ideology;
-    if (_ipoIdeoFilters.has(ideo)) {
-        _ipoIdeoFilters.delete(ideo);
-        btn.classList.remove('active');
-    } else {
-        _ipoIdeoFilters.add(ideo);
-        btn.classList.add('active');
-    }
-    // Filter the list
-    document.querySelectorAll('#ipo-invite-list .ipo-invite-item').forEach(item => {
-        if (_ipoIdeoFilters.size === 0) {
-            item.style.display = '';
-            return;
-        }
-        const ideos = (item.dataset.ideologies || '').split(',');
-        const match = ideos.some(i => _ipoIdeoFilters.has(i));
-        item.style.display = match ? '' : 'none';
-    });
 }
 
 /**
@@ -18834,7 +18787,6 @@ window.closeIPOActionModal = closeIPOActionModal;
 window.confirmHoldRally = confirmHoldRally;
 // IPO invite & expulsion exports
 window.selectIPOInviteTarget = selectIPOInviteTarget;
-window.toggleIPOIdeoFilter = toggleIPOIdeoFilter;
 window.submitIPOInvite = submitIPOInvite;
 window.previewIPOInviteOrg = previewIPOInviteOrg;
 window.previewExistingOrg = previewExistingOrg;

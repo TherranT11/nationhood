@@ -778,21 +778,12 @@ const NATION_DESCRIPTIONS = {
 
 const FALLBACK_COLORS = ['#5b9bd5','#d48a3c','#5aafa5','#8b7ec8','#5cb85c','#d9534f','#c8a64e'];
 
-const IDEOLOGY_COLORS = {
-  'Liberty': '#3b82f6', 'Equality': '#ef4444',
-  'Tradition': '#a855f7', 'Progress': '#22c55e',
-  'Security': '#f59e0b', 'Freedom': '#06b6d4',
-  'Globalism': '#14b8a6', 'Nationalism': '#f97316',
-  'Individualism': '#eab308', 'Collectivism': '#ec4899'
-};
-
 let currentUser = null;
 let allNations = [];
 let selectedNationId = null;
 let activeContinent = 'Crucera';
 let cachedPartiesByNation = {};
 let cachedCrisesByNation = {};
-let cachedIdeoByFaction = {};
 
 // Nations that require an alpha tester code to join
 const ALPHA_CODE_NATIONS = new Set();
@@ -835,25 +826,22 @@ function switchContinent(continent) {
   document.querySelectorAll('.continent-tab').forEach(tab => {
     tab.classList.toggle('active', tab.dataset.continent === continent);
   });
-  renderNations(allNations, cachedPartiesByNation, cachedCrisesByNation, cachedIdeoByFaction);
+  renderNations(allNations, cachedPartiesByNation, cachedCrisesByNation);
 }
 
 async function loadNations() {
-  const [nationsRes, partiesRes, crisesRes, ideologiesRes] = await Promise.all([
+  const [nationsRes, partiesRes, crisesRes] = await Promise.all([
     _supabase.from('nations').select('*, nation_profiles(flag_url)'),
-    _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color, ideology_value_1, ideology_value_2').eq('faction_type', 'party'),
+    _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color').eq('faction_type', 'party'),
     _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
-    _supabase.from('faction_ideology').select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
   ]);
 
   const nations = nationsRes.data || [];
   const parties = partiesRes.data || [];
   const crises = crisesRes.data || [];
-  const ideologies = ideologiesRes.data || [];
 
   cachedPartiesByNation = {};
   cachedCrisesByNation = {};
-  cachedIdeoByFaction = {};
 
   for (const p of parties) {
     if (!cachedPartiesByNation[p.nation_id]) cachedPartiesByNation[p.nation_id] = [];
@@ -863,12 +851,9 @@ async function loadNations() {
     if (!cachedCrisesByNation[c.nation_id]) cachedCrisesByNation[c.nation_id] = [];
     cachedCrisesByNation[c.nation_id].push(c);
   }
-  for (const i of ideologies) {
-    cachedIdeoByFaction[i.faction_id] = i;
-  }
 
   allNations = nations;
-  renderNations(nations, cachedPartiesByNation, cachedCrisesByNation, cachedIdeoByFaction);
+  renderNations(nations, cachedPartiesByNation, cachedCrisesByNation);
 }
 
 function getGovTypeClass(govType) {
@@ -885,34 +870,7 @@ function getGovTypeLabel(govTypeOrNation) {
   return 'PARLIAMENTARY';
 }
 
-function getIdeologyLabel(ideo) {
-  if (!ideo) return '';
-  const axes = [
-    { key: 'liberty_equality', neg: 'Liberty', pos: 'Equality' },
-    { key: 'tradition_progress', neg: 'Tradition', pos: 'Progress' },
-    { key: 'security_freedom', neg: 'Security', pos: 'Freedom' },
-    { key: 'globalism_nationalism', neg: 'Globalism', pos: 'Nationalism' },
-    { key: 'individualism_collectivism', neg: 'Individualism', pos: 'Collectivism' }
-  ];
-  const labels = [];
-  for (const ax of axes) {
-    const val = ideo[ax.key] || 0;
-    if (Math.abs(val) >= 20) {
-      labels.push(val < 0 ? ax.neg : ax.pos);
-    }
-  }
-  return labels.slice(0, 2).join(', ');
-}
-
-function colorizeIdeology(text) {
-  if (!text) return '';
-  return text.split(', ').map(w => {
-    const color = IDEOLOGY_COLORS[w];
-    return color ? `<span style="color:${color}">${escapeHtml(w)}</span>` : escapeHtml(w);
-  }).join('<span style="color:var(--text-dim)">, </span>');
-}
-
-function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) {
+function renderNations(nations, partiesByNation, crisesByNation) {
   const grid = document.getElementById('nations-grid');
   const filtered = nations.filter(n => (n.continent || 'Crucera') === activeContinent);
 
@@ -961,16 +919,11 @@ function renderNations(nations, partiesByNation, crisesByNation, ideoByFaction) 
 
     const partyRows = sortedParties.map((p, i) => {
       const color = p.party_color || FALLBACK_COLORS[i % FALLBACK_COLORS.length];
-      const ideo = ideoByFaction[p.id];
-      const ideoLabel = p.ideology_value_1 && p.ideology_value_2
-        ? `${p.ideology_value_1}, ${p.ideology_value_2}`
-        : getIdeologyLabel(ideo);
       return `
         <div class="party-row">
           <span class="party-row__dot" style="background:${color};"></span>
           <span class="party-row__name">${escapeHtml(p.faction_name)}</span>
           <span class="party-row__abbr">${escapeHtml(p.abbreviation || '?')}</span>
-          ${ideoLabel ? `<span class="party-row__ideo">${colorizeIdeology(ideoLabel)}</span>` : ''}
           <span class="party-row__seats">${p.seats || 0}</span>
         </div>
       `;

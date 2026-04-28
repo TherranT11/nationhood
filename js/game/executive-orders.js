@@ -972,12 +972,6 @@ export async function advanceBillEmergency(supabase, nationId, factionId, billId
         if (billErr) return { success: false, error: billErr.message };
         advancedTo = 'floor';
 
-        // Calculate caucus dispositions
-        try {
-            const { error: caucusErr } = await supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
-            if (caucusErr) console.warn(`[EmergencyAdvance] Caucus RPC error for ${billId} (non-fatal):`, caucusErr.message);
-        } catch (e) { /* non-fatal */ }
-
     } else if (bill.status === 'floor' && isPresidential && bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
         // Minister confirmation bills are resolved directly — they don't go to president's desk.
         // Seat the minister immediately, matching the logic in resolveExpiredVotes (bills.js).

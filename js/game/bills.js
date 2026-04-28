@@ -6,7 +6,6 @@
 import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { hasElectedPresident, getCurrentConstitutionalSystem, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './diplomacy-constants.js';
-import { IDEOLOGY_AXES, IDEOLOGY_TO_AXIS, extractAxisScores, loadFactionIdeology, loadNationIdeologies } from './ideology.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
 import { computeCorpValuation } from './corp-valuation.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
@@ -19,7 +18,6 @@ import { getNationNames, isFemaleName, installHOG } from './political-actions.js
 import { allocateSeatsByVotes } from './election-simulation.js';
 import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
-import { calculateCaucusDispositions, calculateCaucusVoteAdjustment, updateCaucusRelationships } from './caucus.js';
 import { computeSectorShifts, sumSectorEffects } from './sectors.js';
 
 const _BILL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -174,103 +172,6 @@ export async function syncVoteTallies(supabase, billId) {
 }
 
 
-// ==================== ENACTMENT APPROVAL IMPACT ====================
-
-export function calculateEnactmentApproval(articles, billSupport, sponsorId, factionIdeologies) {
-    const APPROVAL_CAP_POSITIVE = 4;
-    const APPROVAL_CAP_NEGATIVE = -10;
-    const OPPOSITION_KICKER = -2;
-
-    // Collect all ideology tags from bill articles
-    const allTags = [];
-    for (const art of articles) {
-        const p = art.policies || art;
-        if (!p) continue;
-        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-            ? p.ideologies.map(i => i.toUpperCase())
-            : (p.ideology ? [p.ideology.toUpperCase()] : []);
-        allTags.push(...ideos);
-    }
-
-    if (allTags.length === 0) return {};
-
-    // Calculate net direction per axis from all article tags
-    const axisNetScores = {};
-    for (const tag of allTags) {
-        const mapping = IDEOLOGY_TO_AXIS[tag];
-        if (!mapping) continue;
-        axisNetScores[mapping.axisKey] = (axisNetScores[mapping.axisKey] || 0) + mapping.direction;
-    }
-
-    if (Object.keys(axisNetScores).length === 0) return {};
-
-    // Build voter map: factionId -> normalized stance
-    const votes = {};
-    votes[sponsorId] = 'yes';
-    for (const s of (billSupport || [])) {
-        if (s.faction_id !== sponsorId) {
-            // Normalize: 'accept' → 'yes', 'reject' → 'no'
-            const normalized = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
-            votes[s.faction_id] = normalized;
-        }
-    }
-
-    const approvalDeltas = {};
-
-    for (const [factionId, stance] of Object.entries(votes)) {
-        if (stance !== 'yes' && stance !== 'no') continue;
-
-        const factionAxes = factionIdeologies[factionId];
-        if (!factionAxes) continue;
-
-        // Sum net alignment: positive = bill aligns with faction, negative = opposes
-        let netAlignment = 0;
-        for (const [axisKey, netDirection] of Object.entries(axisNetScores)) {
-            const factionScore = factionAxes[axisKey] || 0;
-            // factionScore > 0 means faction leans "right" on this axis
-            // netDirection > 0 means bill pushes "right" on this axis
-            // Same sign = aligned
-            if (factionScore !== 0 && netDirection !== 0) {
-                netAlignment += Math.sign(factionScore) === Math.sign(netDirection)
-                    ? Math.abs(netDirection)
-                    : -Math.abs(netDirection);
-            }
-        }
-
-        // YES vote: aligned bill = positive, opposed bill = negative
-        // NO vote: inverted — opposed bill = positive, aligned bill = negative
-        let delta = stance === 'yes' ? netAlignment : -netAlignment;
-
-        // Apply opposition kicker: extra -1 when the result is negative
-        if (delta < 0) {
-            delta += OPPOSITION_KICKER;
-        }
-
-        // Cap the final value
-        delta = Math.max(APPROVAL_CAP_NEGATIVE, Math.min(APPROVAL_CAP_POSITIVE, delta));
-        approvalDeltas[factionId] = Math.round(delta * 10) / 10;
-    }
-
-    return approvalDeltas;
-}
-
-// No-op: enactment no longer awards momentum.
-export async function applyEnactmentApproval() { }
-
-
-// ==================== SPONSOR BLOC PREFERENCE ON BILL PASSAGE ====================
-// Legacy — now a no-op; electorate engine handles vote share effects.
-
-/**
- * @deprecated Removed — electorate engine handles vote share now.
- * @param {object} supabase
- * @param {object} bill - Full bill row with bill_articles (with policies)
- * @param {string} nationId
- */
-export async function applyBlocPreferenceOnPassage(supabase, bill, nationId) {
-    // Legacy faction_bloc_approval writes removed — electorate engine handles approval now.
-    return;
-}
 
 
 // ==================== NO-VOTE PENALTY ====================
@@ -376,186 +277,6 @@ export async function ensureBlocApprovals(supabase, factionId, nationId) {
 }
 
 
-// ==================== IDEOLOGY SHIFT PROCESSOR ====================
-
-export async function processIdeologyShifts(supabase, nationId, resolutions, currentTick) {
-    // Phase 4: ideology cascade redirect. Sectors now drive bill outcomes via
-    // processSectorShifts. Ideology data is frozen — the historical values
-    // remain in the DB for replay / archaeology, but no new writes happen
-    // here. Phase 5 will delete the columns and this function entirely.
-    return;
-    // eslint-disable-next-line no-unreachable
-    if (!resolutions || resolutions.length === 0) return;
-
-    // Only process bills with terminal resolutions — skip deferred bills
-    // to avoid double-counting when they resolve on a subsequent tick.
-    const terminalResolutions = resolutions.filter(r => r.result !== 'deferred');
-    if (terminalResolutions.length === 0) return;
-
-    const billIds = terminalResolutions.map(r => r.billId);
-
-    const { data: bills } = await supabase
-        .from('bills')
-        .select('id, proposed_by, bill_type, bill_articles(*, policies(*)), bill_support(faction_id, stance)')
-        .in('id', billIds);
-
-    if (!bills || bills.length === 0) return;
-
-    // Only legislative bills affect ideology
-    const legislativeBills = bills.filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
-    );
-    if (legislativeBills.length === 0) return;
-
-    // Accumulate shifts: { factionId: { axisKey: totalShift } }
-    const factionShifts = {};
-
-    function addShift(factionId, axisKey, amount) {
-        if (!factionShifts[factionId]) factionShifts[factionId] = {};
-        factionShifts[factionId][axisKey] = (factionShifts[factionId][axisKey] || 0) + amount;
-    }
-
-    for (const bill of legislativeBills) {
-        // Collect ideology tags from articles (per-article, with duplicates)
-        const tags = [];
-        for (const art of (bill.bill_articles || [])) {
-            const p = art.policies || art;
-            if (!p) continue;
-            const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-                ? p.ideologies.map(i => i.toUpperCase())
-                : (p.ideology ? [p.ideology.toUpperCase()] : []);
-            tags.push(...ideos);
-        }
-        if (tags.length === 0) continue;
-
-        // Build YES and NO voter sets (normalize committee stances)
-        const yesVoters = new Set();
-        const noVoters = new Set();
-        for (const s of (bill.bill_support || [])) {
-            const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
-            if (stance === 'yes') yesVoters.add(s.faction_id);
-            else if (stance === 'no') noVoters.add(s.faction_id);
-        }
-        // Sponsor always counts as YES
-        if (bill.proposed_by) yesVoters.add(bill.proposed_by);
-
-        // Track how many times each (axis, direction) pair appears in this bill
-        // for diminishing returns: 1st = full, 2nd = 50%, 3rd = 25%, 4th+ = 12.5%
-        const axisTagCounts = {};
-
-        for (const tag of tags) {
-            const mapping = IDEOLOGY_TO_AXIS[tag];
-            if (!mapping) continue;
-
-            const key = `${mapping.axisKey}:${mapping.direction}`;
-            const count = (axisTagCounts[key] || 0) + 1;
-            axisTagCounts[key] = count;
-
-            const diminish = count <= 3 ? (1 / Math.pow(2, count - 1)) : 0.125;
-
-            // +2 for proposing (sponsor only)
-            if (bill.proposed_by) {
-                addShift(bill.proposed_by, mapping.axisKey, 2 * mapping.direction * diminish);
-            }
-
-            // +4 for voting YES (all YES voters including sponsor)
-            for (const factionId of yesVoters) {
-                addShift(factionId, mapping.axisKey, 4 * mapping.direction * diminish);
-            }
-
-            // -4 for voting NO (opposite direction)
-            for (const factionId of noVoters) {
-                addShift(factionId, mapping.axisKey, -4 * mapping.direction * diminish);
-            }
-        }
-    }
-
-    // Apply accumulated shifts to faction_ideology
-    const historyRows = [];
-
-    for (const [factionId, axisShifts] of Object.entries(factionShifts)) {
-        let ideologyRow = await loadFactionIdeology(supabase, factionId);
-        if (ideologyRow?._error || !ideologyRow) {
-            console.warn(`[processIdeologyShifts] Skipping faction ${factionId}: ${ideologyRow?._error ? 'DB error' : 'no ideology row'}`);
-            continue;
-        }
-
-        const currentScores = extractAxisScores(ideologyRow);
-        const updateObj = {};
-        let hasChanges = false;
-
-        for (const [axisKey, shift] of Object.entries(axisShifts)) {
-            const oldScore = currentScores[axisKey] || 0;
-            const normalizedScore = Math.round(oldScore + shift);
-            const newScore = Math.max(-100, Math.min(100, normalizedScore));
-            if (newScore !== oldScore) {
-                updateObj[axisKey] = newScore;
-                hasChanges = true;
-            }
-        }
-
-        if (hasChanges) {
-            try {
-                const { error: updateErr } = await supabase
-                    .from('faction_ideology')
-                    .update(updateObj)
-                    .eq('faction_id', factionId);
-
-                if (updateErr) {
-                    console.error('[processIdeologyShifts] faction_ideology update failed', {
-                        factionId,
-                        nationId,
-                        currentTick,
-                        attemptedAxisUpdates: updateObj,
-                        error: updateErr.message
-                    });
-                    continue;
-                }
-            } catch (err) {
-                console.error('[processIdeologyShifts] faction_ideology update threw', {
-                    factionId,
-                    nationId,
-                    currentTick,
-                    attemptedAxisUpdates: updateObj,
-                    error: err?.message || String(err)
-                });
-                continue;
-            }
-
-            // Record snapshot for ideology_history
-            if (typeof currentTick === 'number') {
-                const finalScores = { ...currentScores, ...updateObj };
-                historyRows.push({
-                    faction_id: factionId,
-                    nation_id: nationId,
-                    tick: currentTick,
-                    liberty_equality: finalScores.liberty_equality || 0,
-                    tradition_progress: finalScores.tradition_progress || 0,
-                    security_freedom: finalScores.security_freedom || 0,
-                    globalism_nationalism: finalScores.globalism_nationalism || 0,
-                    individualism_collectivism: finalScores.individualism_collectivism || 0
-                });
-            }
-        }
-    }
-
-    // Batch insert ideology history snapshots
-    if (historyRows.length > 0) {
-        const { error: histErr } = await supabase
-            .from('ideology_history')
-            .insert(historyRows);
-        if (histErr) {
-            console.warn('[processIdeologyShifts] ideology_history insert failed (table may not exist yet)', {
-                nationId,
-                currentTick,
-                affectedFactionIds: historyRows.map(row => row.faction_id),
-                error: histErr.message
-            });
-        }
-    }
-}
-
-// ==================== SECTOR POPULARITY SHIFTS (Phase 2) ====================
 
 /**
  * Apply per-faction sector popularity changes from terminal bill resolutions.
@@ -721,77 +442,6 @@ export async function processSectorShifts(supabase, nationId, resolutions) {
     }
 }
 
-
-// ==================== IDEOLOGY DECAY ====================
-
-const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
-/**
- * Per-tick ideology decay toward center (0).
- *   ±11–49 → 0.5/tick, ±50–100 → 1/tick
- * Dead zone: scores within ±10 don't decay.
- */
-export async function processIdeologyDecay(supabase, nationId, currentTick) {
-    // Phase 4: ideology cascade redirect. Decay-toward-center kept faction
-    // ideology drifting tick-by-tick; with sectors driving gameplay, that
-    // drift is invisible noise. No-op pending Phase 5 deletion.
-    return;
-    // eslint-disable-next-line no-unreachable
-    const ideologies = await loadNationIdeologies(supabase, nationId);
-    if (!ideologies || ideologies.length === 0) return;
-
-    const historyRows = [];
-
-    for (const ideo of ideologies) {
-        const updateObj = {};
-
-        for (const axis of IDEOLOGY_AXES) {
-            const score = ideo[axis.key] || 0;
-            if (Math.abs(score) <= IDEOLOGY_DECAY_DEAD_ZONE) continue;
-
-            const absDecay = Math.abs(score) >= 50 ? 1 : 0.5;
-            // Round to int — smallint columns reject decimals like 28.5
-            const newScore = Math.round(score > 0
-                ? Math.max(0, score - absDecay)
-                : Math.min(0, score + absDecay));
-
-            if (newScore !== score) updateObj[axis.key] = newScore;
-        }
-
-        if (Object.keys(updateObj).length === 0) continue;
-
-        const { error: updateErr } = await supabase
-            .from('faction_ideology')
-            .update(updateObj)
-            .eq('faction_id', ideo.faction_id);
-
-        if (updateErr) {
-            console.error(`[processIdeologyDecay] update failed for faction ${ideo.faction_id}:`, updateErr.message);
-            continue;
-        }
-
-        if (typeof currentTick === 'number') {
-            historyRows.push({
-                faction_id: ideo.faction_id,
-                nation_id: nationId,
-                tick: currentTick,
-                liberty_equality: updateObj.liberty_equality ?? ideo.liberty_equality ?? 0,
-                tradition_progress: updateObj.tradition_progress ?? ideo.tradition_progress ?? 0,
-                security_freedom: updateObj.security_freedom ?? ideo.security_freedom ?? 0,
-                globalism_nationalism: updateObj.globalism_nationalism ?? ideo.globalism_nationalism ?? 0,
-                individualism_collectivism: updateObj.individualism_collectivism ?? ideo.individualism_collectivism ?? 0,
-            });
-        }
-    }
-
-    if (historyRows.length > 0) {
-        const { error: histErr } = await supabase
-            .from('ideology_history')
-            .insert(historyRows);
-        if (histErr) {
-            console.warn('[processIdeologyDecay] ideology_history insert failed:', histErr.message);
-        }
-    }
-}
 
 // ==================== BILL RESOLUTION ENGINE ====================
 
@@ -2550,7 +2200,7 @@ export async function resolveVetoOverrideBill(supabase, bill, ctx) {
         await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
         // Enact the ORIGINAL vetoed bill — bypasses president's desk.
         const { data: originalBill } = await supabase.from('bills')
-            .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+            .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
             .eq('id', bill.original_bill_id).single();
         if (originalBill) {
             await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
@@ -2762,7 +2412,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
         // Simplified query: bill_support only needs faction_id/stance/seat_count for vote
         // tallying. Nesting factions() inside bill_support adds a FK join that can cause
         // the entire query to fail silently in PostgREST, leaving all bills stuck on floor.
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+        .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
@@ -2824,27 +2474,8 @@ export async function resolveExpiredVotes(supabase, nationId) {
             console.log(`[MinorityPenalty] ${bill.bill_name}: votesFor ${votesFor} → ${effectiveVotesFor} (emergency minority -20%)`);
         }
 
-        // Caucus system: read existing dispositions (created when bill entered floor)
-        // and recalculate vote adjustment to account for any whipping during voting window.
-        // Fallback: if no dispositions exist yet (legacy bills), calculate them now.
-        try {
-            const { data: existingDisp } = await supabase
-                .from('caucus_dispositions')
-                .select('id')
-                .eq('bill_id', bill.id)
-                .limit(1);
-            if (!existingDisp || existingDisp.length === 0) {
-                // Legacy fallback: dispositions weren't created at floor entry
-                await calculateCaucusDispositions(supabase, bill.id, bill.nation_id, bill.bill_articles || []);
-            }
-            const caucusAdj = await calculateCaucusVoteAdjustment(supabase, bill.id);
-            if (caucusAdj.withheld > 0) {
-                effectiveVotesFor = Math.max(0, effectiveVotesFor - caucusAdj.withheld);
-                console.log(`[CaucusVote] ${bill.bill_name}: ${caucusAdj.withheld} votes withheld by opposed caucuses (effective YES: ${effectiveVotesFor})`);
-            }
-        } catch (caucusErr) {
-            console.error(`[CaucusVote] Failed for bill ${bill.id} (non-fatal):`, caucusErr);
-        }
+        // Phase 5b: caucus system removed. Vote adjustment by opposed-caucus
+        // whipping is gone with the caucus_factions / caucus_dispositions tables.
 
         // Determine pass/fail using new quorum + majority system
         // Build a bill-like object with effective votes for the resolve function
@@ -3050,13 +2681,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
             console.error(`[resolveExpiredVotes] No-vote penalty failed for bill ${bill.id}:`, penaltyErr.message);
         }
 
-        // Caucus relationship updates after bill resolution
-        try {
-            const outcome = passed ? 'passed' : 'failed';
-            await updateCaucusRelationships(supabase, bill.id, outcome, bill.bill_articles || [], bill.bill_support || []);
-        } catch (caucusRelErr) {
-            console.error(`[resolveExpiredVotes] Caucus relationship update failed for bill ${bill.id}:`, caucusRelErr.message);
-        }
+        // Phase 5b: caucus relationship updates removed (caucus tables gone).
       } catch (billErr) {
         // Per-bill error handler: prevents one bill's failure from blocking all others
         console.error(`[resolveExpiredVotes] UNHANDLED error processing bill ${bill.id} ("${bill.bill_name}"):`, billErr);
@@ -3314,7 +2939,7 @@ export async function resolveStuckFloorBills(supabase, nationId) {
                 // Load full bill data for enactment — use simplified join (no nested factions in bill_support)
                 const { data: fullBill } = await supabase
                     .from('bills')
-                    .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+                    .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
                     .eq('id', bill.id)
                     .single();
 
@@ -3942,30 +3567,6 @@ export async function enactBill(supabase, bill, currentTick) {
             }
         }
     }
-
-    // Load ideology axes for all voting factions (sponsor + voters)
-    const voterFactionIds = [bill.proposed_by, ...(bill.bill_support || []).map(s => s.faction_id)];
-    const uniqueFactionIds = [...new Set(voterFactionIds.filter(Boolean))];
-    const { data: ideoRows } = await supabase
-        .from('faction_ideology')
-        .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-        .in('faction_id', uniqueFactionIds);
-
-    const factionIdeologies = {};
-    for (const row of (ideoRows || [])) {
-        factionIdeologies[row.faction_id] = row;
-    }
-
-    const approvalDeltas = calculateEnactmentApproval(
-        bill.bill_articles || [],
-        bill.bill_support || [],
-        bill.proposed_by,
-        factionIdeologies
-    );
-    await applyEnactmentApproval(supabase, bill.nation_id, approvalDeltas, currentTick);
-
-    // Sponsor gains/loses preference with voter blocs based on bill ideology alignment
-    await applyBlocPreferenceOnPassage(supabase, bill, bill.nation_id);
 
     console.log('[enactBill] stage=update_bill_status attempt', logContext);
     const { error: billUpdateErr } = await supabase.from('bills').update({

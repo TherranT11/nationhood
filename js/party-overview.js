@@ -156,7 +156,9 @@ export async function initPartyOverview(supabase, state, containerId) {
                 .eq('is_active', true)
                 .order('display_order'),
             supabase.from('campaign_actions').select('*').eq('party_id', factionId).order('tick_performed', { ascending: false }).limit(20),
-            supabase.from('caucus_factions').select('*').eq('party_id', factionId).eq('is_active', true),
+            // Phase 5b: caucus_factions table dropped. Empty result preserves
+            // the renderCaucuses path (shows "None" when array is empty).
+            Promise.resolve({ data: [], error: null }),
             supabase.from('elections').select('*').eq('nation_id', nationId).eq('status', 'scheduled').order('election_tick', { ascending: true }).limit(5),
             supabase.from('ministries').select('party_id').eq('nation_id', nationId).eq('is_active', true),
             loadBlocMap(nationId),

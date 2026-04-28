@@ -240,13 +240,11 @@ import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/util
 import { GAME_CONFIG, initGameConfigForNation, deductAP } from './js/game/config.js';
 import { isGovernmentPresidential, hasElectedPresident } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
-import { loadFactionIdeology, IDEOLOGY_TO_AXIS, IDEOLOGY_AXES, getIdeologyChipClass, calculateBillDynamicPenalty } from './js/game/ideology.js';
 import { calculateBillSupport, syncVoteTallies, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, computeBillCostTotals } from './js/game/bills.js';
 import { POLICY_STANCES, MAJOR_SECTORS, RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, INITIATIVE_ARTICLE_TYPES, MAJOR_INITIATIVE_ARTICLE_TYPES } from './js/game/diplomacy-constants.js';
 import { signPresidentialBill, vetoPresidentialBill, rejectOwnNomination } from './js/game/presidential.js';
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost } from './js/game/budget.js';
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
-import { executeWhipCaucus } from './js/game/caucus.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 import { computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_EFFECT_LABELS } from './js/game/tax-articles.js';
 /** Scale a policy cost by its scaling stat (e.g., population). */
@@ -271,11 +269,32 @@ function billHasCosponsor(bill) {
 }
 
 let currentBill = null, currentFaction = null, currentNation = null, currentSeats = 0;
+let nationSectors = []; // [{ sector_key, name, ... }] — for sector_effects display
+
+function _sectorName(key) {
+    const hit = nationSectors.find(s => s.sector_key === key);
+    if (hit?.name) return hit.name;
+    return String(key || '').toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function renderSectorEffects(effects, { reverse = false } = {}) {
+    if (!Array.isArray(effects) || effects.length === 0) return '';
+    const sign = reverse ? -1 : 1;
+    const chips = effects.map(e => {
+        const change = (Number(e?.change_tenths) || 0) * sign;
+        if (change === 0) return '';
+        const cls = change > 0 ? 'stat-up' : 'stat-down';
+        const arrow = change > 0 ? '↑' : '↓';
+        const display = (Math.abs(change) / 10).toFixed(1);
+        return `<span class="${cls}">${arrow} ${escapeHtml(_sectorName(e.sector_key))} ${change > 0 ? '+' : '−'}${display}</span>`;
+    }).filter(Boolean).join(', ');
+    if (!chips) return '';
+    return `<div class="article-stat-effect" style="margin-top:4px;">Sectors: ${chips}</div>`;
+}
 let institutionConfig = [];
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
-let factionIdeology = null; // Dynamic ideology scores for current player
 let nationActiveLaws = []; // Active laws in the nation (for repeal articles)
 let currentShardTick = 0; // Current shard tick for deadline proximity checks
 let isNoGovernment = false;
@@ -313,6 +332,13 @@ initPage('laws', async (state) => {
     currentNation = nation;
     currentFaction = faction;
     initGameConfigForNation(nation);
+    if (nation) {
+        const { data: sects } = await _supabase.from('sectors')
+            .select('sector_key, name')
+            .eq('nation_id', nation.id)
+            .eq('is_active', true);
+        nationSectors = sects || [];
+    }
     isPresidential = isGovernmentPresidential(nation);
     if (isPresidential && nation) {
         const { data: activePresident } = await _supabase.from('presidents')
@@ -435,12 +461,6 @@ async function loadBillData() {
             .eq('nation_id', bill.nation_id)
             .eq('is_reversal', false);
         nationActiveLaws = (activeLawRows || []).filter(l => l.policies);
-
-        // Load dynamic ideology scores for current player
-        if (currentFaction) {
-            factionIdeology = await loadFactionIdeology(_supabase, currentFaction.id);
-            if (factionIdeology?._error) factionIdeology = null;
-        }
 
         if (bill.status === 'committee') {
             const { data: amendments } = await _supabase
@@ -745,7 +765,6 @@ function renderBill() {
     }
 
     renderArticles();
-    renderIdeologyWarning();
     renderSidebar();
 
     // ── Referendum pending banner (awaiting results) ──
@@ -1570,14 +1589,6 @@ function renderArticles() {
                 // helper so no accumulation is needed here.
                 const onCost = scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
 
-                const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
-                const ideoHTML = ideos.map(i => {
-                    // Invert alignment for repeals: repealing an opposed policy is good
-                    const rawClass = getIdeologyChipClass(i, factionIdeology);
-                    const colorClass = rawClass === 'aligned' ? 'opposed' : rawClass === 'opposed' ? 'aligned' : rawClass;
-                    return '<span class="article-ideology ' + colorClass + '">' + i + '</span>';
-                }).join(' ');
-
                 // Reversed stat effects
                 let effectsHTML = '';
                 if (p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
@@ -1601,9 +1612,10 @@ function renderArticles() {
 
                 return '<div class="article" style="border-left:3px solid var(--orange);">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="background:var(--orange);color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">REPEAL</span></div>' +
-                    '<div class="article-title">Repeal: ' + (p.policy_name || '') + ' ' + ideoHTML + '</div>' +
+                    '<div class="article-title">Repeal: ' + (p.policy_name || '') + '</div>' +
                     '<div class="article-description">This article repeals the active policy "' + (p.policy_name || '') + '", reversing its effects.</div>' +
                     (effectsHTML ? '<div class="article-stat-effect">Reverses: ' + effectsHTML + '</div>' : '') +
+                    renderSectorEffects(p.sector_effects, { reverse: true }) +
                     (savingsDisplay ? '<div class="article-costs"><div class="cost-item">' + savingsDisplay + '</div></div>' : '') +
                     '<div class="article-author">Added by ' + (art.factions?.faction_name || 'Unknown') + '</div>' +
                     repealActions +
@@ -1613,13 +1625,6 @@ function renderArticles() {
             // Totals accumulation lives in computeBillCostTotals (see top of
             // this function). Per-article upfront/ongoing chips below still
             // compute their own scaled numbers for display.
-
-            // Ideology tags — support new ideologies array and legacy single ideology
-            const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
-            const ideoHTML = ideos.map(i => {
-                const colorClass = getIdeologyChipClass(i, factionIdeology);
-                return '<span class="article-ideology ' + colorClass + '">' + i + '</span>';
-            }).join(' ');
 
             // Stat effects — support new stat_effects array and legacy single stat
             let effectsHTML = '';
@@ -1647,9 +1652,10 @@ function renderArticles() {
             return '<div class="article">' +
                 pTypeBadge +
                 '<div class="article-number">Article ' + art.article_number + '</div>' +
-                '<div class="article-title">' + (p.policy_name || '') + ' ' + ideoHTML + '</div>' +
+                '<div class="article-title">' + (p.policy_name || '') + '</div>' +
                 '<div class="article-description">' + (p.description || '') + '</div>' +
                 (effectsHTML ? '<div class="article-stat-effect">Effect: ' + effectsHTML + '</div>' : '') +
+                renderSectorEffects(p.sector_effects) +
                 '<div class="article-costs">' +
                     (upCost > 0 ? '<div class="cost-item">' + formatBillCost(upCost, 'Upfront Cost') + '</div>' : '') +
                     (onCost > 0 ? '<div class="cost-item">' + formatBillCost(onCost, 'Cost') + '</div>' : '') +
@@ -2150,111 +2156,6 @@ function renderRatificationBill() {
  * voting section. Shows how this bill aligns or conflicts with the player's
  * dynamic ideology position.
  */
-function renderIdeologyWarning() {
-    const container = document.getElementById('ideology-warning-container');
-    if (!container) return;
-    container.innerHTML = '';
-
-    // No ideology warning for special bill types
-    if (currentBill.bill_type === 'no_confidence') return;
-    if (currentBill.bill_type === 'foundational') return;
-    if (currentBill.bill_type === 'minister_confirmation') return;
-    if (currentBill.bill_type === 'veto_override') return;
-
-    if (!factionIdeology || !currentBill) return;
-
-    const isRepeal = currentBill.bill_type === 'repeal';
-    const articles = currentBill.bill_articles || [];
-    if (articles.length === 0) return;
-
-    // Gather all ideology tags and compute per-axis alignment
-    const axisAlignments = {}; // axisKey → { aligned: N, opposed: N, tags: [] }
-
-    for (const art of articles) {
-        const p = art.policies || art;
-        if (!p) continue;
-        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0)
-            ? p.ideologies.map(i => i.toUpperCase())
-            : (p.ideology ? [p.ideology.toUpperCase()] : []);
-
-        const artIsRepeal = isRepeal || !!art.repeal_active_law_id;
-
-        for (const tag of ideos) {
-            const mapping = IDEOLOGY_TO_AXIS[tag];
-            if (!mapping) continue;
-            const score = factionIdeology[mapping.axisKey] || 0;
-            const alignment = score * mapping.direction;
-
-            if (!axisAlignments[mapping.axisKey]) {
-                axisAlignments[mapping.axisKey] = { aligned: 0, opposed: 0, tags: [] };
-            }
-            // Invert alignment for repeals: repealing an opposed policy benefits you
-            if (artIsRepeal) {
-                if (alignment > 10) axisAlignments[mapping.axisKey].opposed++;
-                else if (alignment < -10) axisAlignments[mapping.axisKey].aligned++;
-            } else {
-                if (alignment > 10) axisAlignments[mapping.axisKey].aligned++;
-                else if (alignment < -10) axisAlignments[mapping.axisKey].opposed++;
-            }
-            axisAlignments[mapping.axisKey].tags.push(tag);
-        }
-    }
-
-    const entries = Object.entries(axisAlignments);
-    if (entries.length === 0) return;
-
-    let totalAligned = 0, totalOpposed = 0;
-    const conflictDetails = [];
-    const alignDetails = [];
-
-    for (const [axisKey, data] of entries) {
-        totalAligned += data.aligned;
-        totalOpposed += data.opposed;
-        const axisDef = IDEOLOGY_AXES.find(a => a.key === axisKey);
-        if (data.opposed > 0 && axisDef) {
-            const score = factionIdeology[axisKey] || 0;
-            const yourSide = score < 0 ? axisDef.leftLabel : axisDef.rightLabel;
-            conflictDetails.push(`${data.opposed} article${data.opposed > 1 ? 's' : ''} push against your ${yourSide} stance`);
-        }
-        if (data.aligned > 0 && axisDef) {
-            alignDetails.push(`${data.aligned} aligned`);
-        }
-    }
-
-    // Also compute dynamic penalty for context
-    const dynamicPenalty = calculateBillDynamicPenalty(factionIdeology, articles, 2, isRepeal);
-
-    let bannerClass, icon, mainText, detailText;
-
-    if (totalOpposed > 0 && totalAligned === 0) {
-        bannerClass = 'conflict';
-        icon = '⚠️';
-        mainText = isRepeal ? 'Repealing this law conflicts with your party\'s values' : 'This bill conflicts with your party\'s values';
-        detailText = conflictDetails.join('. ') + (dynamicPenalty < 0 ? `. Voting YES risks ~${Math.abs(dynamicPenalty).toFixed(1)} approval penalty.` : '');
-    } else if (totalOpposed > 0 && totalAligned > 0) {
-        bannerClass = 'mixed';
-        icon = '⚖️';
-        mainText = isRepeal ? 'Repealing this law has mixed ideological alignment' : 'This bill has mixed ideological alignment';
-        detailText = conflictDetails.join('. ') + ` (${totalAligned} article${totalAligned > 1 ? 's' : ''} aligned)` + (dynamicPenalty < 0 ? `. Net approval risk: ~${Math.abs(dynamicPenalty).toFixed(1)}.` : '');
-    } else if (totalAligned > 0) {
-        bannerClass = 'aligned';
-        icon = '✅';
-        mainText = isRepeal ? 'Repealing this law aligns with your party\'s values' : 'This bill aligns with your party\'s values';
-        detailText = `${totalAligned} article${totalAligned > 1 ? 's' : ''} match your ideological position.` + (dynamicPenalty > 0 ? ` Estimated approval bonus: +${dynamicPenalty.toFixed(1)}.` : '');
-    } else {
-        return; // All neutral — no banner needed
-    }
-
-    container.innerHTML = `
-        <div class="ideology-warning ${bannerClass}">
-            <span class="ideology-warning-icon">${icon}</span>
-            <div class="ideology-warning-text">
-                <div>${mainText}</div>
-                <div class="ideology-warning-detail">${detailText}</div>
-            </div>
-        </div>`;
-}
-
 
 async function renderSidebar() {
     const bill = currentBill, isCommittee = bill.status === 'committee', isFloor = bill.status === 'floor';
@@ -2524,109 +2425,6 @@ async function renderSidebar() {
         </div>`;
     }
     document.getElementById('sidebar-top').innerHTML = html;
-
-    // Render caucus dispositions for floor bills
-    if (currentBill && currentBill.status === 'floor') {
-        await renderCaucusDispositions();
-    }
-}
-
-// ==================== CAUCUS DISPOSITION PANEL ====================
-
-async function renderCaucusDispositions() {
-    if (!currentBill || !currentNation) return;
-
-    const { data: dispositions, error } = await _supabase
-        .from('caucus_dispositions')
-        .select('id, disposition, votes_affected, whipped, caucus_factions(id, name, dominant_axis, wing_end, party_id, seat_share, relationship_score)')
-        .eq('bill_id', billId);
-
-    if (error || !dispositions || dispositions.length === 0) return;
-
-    // Only show if there are any triggered or relevant dispositions
-    const relevant = dispositions.filter(d => d.disposition !== 'not_triggered');
-    if (relevant.length === 0 && dispositions.every(d => d.disposition === 'not_triggered')) return;
-
-    const DISP_ICONS = {
-        aligned: { icon: '✓', color: 'var(--green)', label: 'ALIGNED' },
-        nervous: { icon: '⚠', color: 'var(--amber)', label: 'NERVOUS' },
-        opposed: { icon: '✗', color: 'var(--red)', label: 'OPPOSED' },
-        not_triggered: { icon: '—', color: 'var(--text-muted)', label: 'NOT TRIGGERED' },
-    };
-
-    let rows = '';
-    for (const d of dispositions) {
-        const cf = d.caucus_factions;
-        if (!cf) continue;
-        const disp = DISP_ICONS[d.disposition] || DISP_ICONS.not_triggered;
-        const dimStyle = d.disposition === 'not_triggered' ? 'opacity:0.4;' : '';
-
-        let voteText = '';
-        if (d.disposition === 'aligned' || d.disposition === 'not_triggered') {
-            voteText = 'votes with party';
-        } else if (d.disposition === 'nervous' && d.whipped) {
-            voteText = `<span style="color:var(--green);">whipped ✓</span>`;
-        } else if (d.disposition === 'nervous') {
-            voteText = `${d.votes_affected} votes soft`;
-        } else if (d.disposition === 'opposed') {
-            voteText = `<span style="color:var(--red);">${d.votes_affected} votes withheld</span>`;
-        }
-
-        // Whip button for NERVOUS + not yet whipped + belongs to current faction
-        let whipBtn = '';
-        if (d.disposition === 'nervous' && !d.whipped && currentFaction && cf.party_id === currentFaction.id) {
-            const apCost = cf.seat_share > 0.20 ? 2 : 1;
-            whipBtn = `<button class="btn-whip-caucus" data-caucus-id="${cf.id}" data-bill-id="${billId}" data-ap-cost="${apCost}" style="margin-left:8px;padding:2px 8px;font-size:0.75rem;background:var(--amber);color:#000;border:none;border-radius:4px;cursor:pointer;" title="Spend ${apCost} AP to whip this caucus">Whip (${apCost} AP)</button>`;
-        }
-
-        rows += `<div class="caucus-disp-row" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;${dimStyle}">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span style="color:${disp.color};font-weight:600;">${disp.icon}</span>
-                <span style="font-size:0.85rem;">${escapeHtml(cf.name)}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:4px;font-size:0.8rem;color:var(--text-secondary);">
-                <span class="vote-status-chip" style="background:${disp.color};color:${d.disposition === 'nervous' ? '#000' : '#fff'};font-size:0.7rem;padding:1px 6px;">${disp.label}</span>
-                <span>${voteText}</span>
-                ${whipBtn}
-            </div>
-        </div>`;
-    }
-
-    const panel = document.createElement('div');
-    panel.className = 'caucus-dispositions-panel';
-    panel.style.cssText = 'margin-top:12px;padding:10px 12px;background:var(--surface-dark);border:1px solid var(--border-main);border-radius:8px;';
-    panel.innerHTML = `
-        <div style="font-weight:600;font-size:0.85rem;margin-bottom:8px;color:var(--text-primary);">Caucus Dispositions</div>
-        ${rows}
-    `;
-
-    // Add whip button handlers
-    const sidebarTop = document.getElementById('sidebar-top');
-    sidebarTop.appendChild(panel);
-
-    panel.querySelectorAll('.btn-whip-caucus').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            if (this.disabled) return;
-            this.disabled = true;
-            this.textContent = 'Whipping...';
-            try {
-                const result = await executeWhipCaucus(_supabase, currentFaction.id, this.dataset.caucusId, this.dataset.billId);
-                if (result.success) {
-                    await loadBillData();
-                } else {
-                    alert(result.error || 'Failed to whip caucus');
-                    this.disabled = false;
-                    const apCost = this.dataset.apCost || '1';
-                    this.textContent = `Whip (${apCost} AP)`;
-                }
-            } catch (e) {
-                alert('Error: ' + e.message);
-                this.disabled = false;
-                const apCost = this.dataset.apCost || '1';
-                this.textContent = `Whip (${apCost} AP)`;
-            }
-        });
-    });
 }
 
 // ==================== COMMITTEE STANCE (NEW) ====================
@@ -2847,12 +2645,6 @@ async function sendToFloor() {
             if (momErr) console.warn('[sendToFloor] Solo-send momentum penalty failed (non-fatal):', momErr.message);
         }
 
-        // Calculate caucus dispositions via server-side RPC (RLS blocks client writes)
-        try {
-            const { error: caucusErr } = await _supabase.rpc('calculate_caucus_dispositions', { p_bill_id: billId });
-            if (caucusErr) console.warn('[sendToFloor] Caucus RPC error (non-fatal):', caucusErr.message);
-        } catch (e) { /* non-fatal */ }
-
         alert('Bill sent to the floor!');
         window.location.reload();
     } catch (e) {
@@ -2966,13 +2758,6 @@ function onAmendmentSectorChange() {
     if (!sector) { document.getElementById('amendment-policy-group').style.display = 'none'; return; }
     const policies = _getCompatiblePolicies(sector);
    document.getElementById('amendment-policies').innerHTML = policies.map(p => {
-        const opposedClass = p.isOpposed ? ' opposed' : '';
-        const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:var(--red);color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚠ Opposed</span>' : '';
-        const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
-        const ideoHTML = ideos.map(i => {
-            const colorClass = getIdeologyChipClass(i, factionIdeology);
-            return `<span class="article-ideology ${colorClass}">${i}</span>`;
-        }).join(' ');
         // Stat effects — match active law style (arrows + stat names, no numbers)
         const amEffects = (p.stat_effects || []).filter(e => e.stat_key);
         const amEffectsHTML = amEffects.length > 0 ? '<div style="margin-top:4px;font-size:0.75rem;color:var(--text-primary);">' +
@@ -2991,7 +2776,7 @@ function onAmendmentSectorChange() {
         if (amUpfront > 0) amCostParts.push(`Upfront: $${amUpfront}M${amUpScale}`);
         if (amOngoing > 0) amCostParts.push(`Ongoing: $${amOngoing}M${amOnScale}/mo`);
         const amCostHTML = amCostParts.length > 0 ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.03em;">${amCostParts.join(' &nbsp;&middot;&nbsp; ')}</div>` : '';
-        return `<div class="policy-option${opposedClass}" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div>${amEffectsHTML}${amCostHTML}</div>`;
+        return `<div class="policy-option" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name}</div><div class="policy-option-desc">${p.description || ''}</div>${amEffectsHTML}${amCostHTML}</div>`;
     }).join('');
     document.getElementById('amendment-policy-group').style.display = 'block';
 }
@@ -3352,11 +3137,6 @@ function onSponsorAddSectorChange() {
                 const p = law.policies;
                 const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
                 const costLabel = onCost > 0 ? ` <span style="color:var(--green);font-weight:bold;">Relief: ${formatCurrency(onCost)} / mo</span>` : '';
-                const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
-                const ideoHTML = ideos.map(i => {
-                    const colorClass = getIdeologyChipClass(i, factionIdeology);
-                    return `<span class="article-ideology ${colorClass}">${i}</span>`;
-                }).join(' ');
                 // Show stat effects that would be reversed
                 let effectsHTML = '';
                 const effects = p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0
@@ -3370,7 +3150,7 @@ function onSponsorAddSectorChange() {
                             return `<span class="${cls}">${revDir} ${(e.stat_key || '').replace(/_/g, ' ')}</span>`;
                         }).join(', ') + '</div>';
                 }
-                return `<div class="policy-option" style="border-left:3px solid var(--orange);" data-repeal-law-id="${law.id}" onclick="selectRepealLaw('${law.id}')"><div class="policy-option-name"><span style="background:var(--orange);color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-right:6px;">ACTIVE</span>${p.policy_name} ${ideoHTML}${costLabel}</div><div class="policy-option-desc">${p.description || ''}${effectsHTML}</div><div style="margin-top:6px;font-size:0.7rem;color:var(--orange);font-weight:bold;">Click to Repeal</div></div>`;
+                return `<div class="policy-option" style="border-left:3px solid var(--orange);" data-repeal-law-id="${law.id}" onclick="selectRepealLaw('${law.id}')"><div class="policy-option-name"><span style="background:var(--orange);color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-right:6px;">ACTIVE</span>${p.policy_name}${costLabel}</div><div class="policy-option-desc">${p.description || ''}${effectsHTML}</div><div style="margin-top:6px;font-size:0.7rem;color:var(--orange);font-weight:bold;">Click to Repeal</div></div>`;
             }).join('') + '</div>';
     }
 
@@ -3380,13 +3160,6 @@ function onSponsorAddSectorChange() {
     if (policies.length > 0) {
         newPoliciesHTML = (sectorActiveLaws.length > 0 ? '<div style="color:var(--green);font-size:0.8rem;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">New Policies</div>' : '') +
             policies.map(p => {
-                const ideos = (p.ideologies && Array.isArray(p.ideologies) && p.ideologies.length > 0) ? p.ideologies : (p.ideology ? [p.ideology] : []);
-                const ideoHTML = ideos.map(i => {
-                    const colorClass = getIdeologyChipClass(i, factionIdeology);
-                    return `<span class="article-ideology ${colorClass}">${i}</span>`;
-                }).join(' ');
-                const opposedClass = p.isOpposed ? ' opposed' : '';
-                const opposedBadge = p.isOpposed ? ' <span style="display:inline-block;background:var(--red);color:#fff;padding:2px 7px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Opposed</span>' : '';
                 const pTypeBadge = p.policy_type === 'structural' ? '<span class="policy-type-badge structural">Structural</span>' : p.policy_type === 'lever' ? '<span class="policy-type-badge lever">Lever</span>' : '';
                 // Stat effects — match active law style (arrows + stat names, no numbers)
                 const effects = (p.stat_effects || []).filter(e => e.stat_key);
@@ -3406,7 +3179,7 @@ function onSponsorAddSectorChange() {
                 if (upfront > 0) costParts.push(`Upfront: $${upfront}M${upScaling}`);
                 if (ongoing > 0) costParts.push(`Ongoing: $${ongoing}M${onScaling}/mo`);
                 const costHTML = costParts.length > 0 ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.03em;">${costParts.join(' &nbsp;&middot;&nbsp; ')}</div>` : '';
-                return `<div class="policy-option${opposedClass}" data-sponsor-policy-id="${p.id}" onclick="selectSponsorPolicy('${p.id}')">${pTypeBadge}<div class="policy-option-name">${p.policy_name} ${ideoHTML}${opposedBadge}</div><div class="policy-option-desc">${p.description || ''}</div>${effectsHTML}${costHTML}</div>`;
+                return `<div class="policy-option" data-sponsor-policy-id="${p.id}" onclick="selectSponsorPolicy('${p.id}')">${pTypeBadge}<div class="policy-option-name">${p.policy_name}</div><div class="policy-option-desc">${p.description || ''}</div>${effectsHTML}${costHTML}</div>`;
             }).join('');
     }
 
@@ -3868,9 +3641,6 @@ async function sendApprovedToFloor() {
             voting_ends_tick: tick + GAME_CONFIG.VOTING_WINDOW_TICKS
         }).eq('id', bill.id);
         if (error) throw error;
-        try {
-            await _supabase.rpc('calculate_caucus_dispositions', { p_bill_id: bill.id });
-        } catch (_) {}
         alert('Bill sent to the floor. The legislature will now vote.');
         window.location.reload();
     } catch (err) {
@@ -3937,12 +3707,7 @@ async function overrideReferendum() {
             referendum_status: 'skipped'
         }).eq('id', bill.id);
 
-        // 5. Calculate caucus dispositions
-        try {
-            await _supabase.rpc('calculate_caucus_dispositions', { p_bill_id: bill.id });
-        } catch (_) {}
-
-        // 6. Fire news event
+        // 5. Fire news event
         await _supabase.from('events').insert({
             nation_id: bill.nation_id,
             event_type: 'referendum_overridden',
