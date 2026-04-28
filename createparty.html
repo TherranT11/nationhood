@@ -425,6 +425,8 @@ textarea {
 </head>
 <body>
 
+<button id="cp-logout-btn" onclick="logoutUser()" style="position:fixed;top:16px;right:16px;z-index:100;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;background:transparent;color:var(--text-muted);border:1px solid var(--border-1);padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s;" onmouseover="this.style.color='var(--red)';this.style.borderColor='var(--red)'" onmouseout="this.style.color='var(--text-muted)';this.style.borderColor='var(--border-1)'">Logout</button>
+
 <div id="loading" class="loading-msg">AUTHENTICATING...</div>
 
 <div id="page-content" style="display:none;">
@@ -1070,12 +1072,18 @@ async function proceed() {
 // Add oninput handler for custom hex
 document.getElementById('cp-custom-hex').addEventListener('input', function() { onCpHexInput(this); });
 
+async function logoutUser() {
+    await _supabase.auth.signOut();
+    window.location.href = 'login.html';
+}
+
 init();
 
 window.goBack = goBack;
 window.proceed = proceed;
 window.onCpSelectColor = onCpSelectColor;
 window.onCpSelectLogo = onCpSelectLogo;
+window.logoutUser = logoutUser;
 </script>
 </body>
 </html>
