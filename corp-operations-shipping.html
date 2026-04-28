@@ -4253,7 +4253,11 @@ function renderActiveProjects() {
         const isLate = effectiveProgress > totalTicks;
         const isStalled = stalledTicks > 0;
 
-        // Diagnose stall reason
+        // Diagnose stall reason. Three real stall paths exist on the backend:
+        // (1) missing permits at award time, (2) understaffed workers,
+        // (3) materials not allocated for a phase that needs them. Materials
+        // aren't consumed during Permits/Planning, so default to a phase-aware
+        // message when workforce is fully assigned.
         let stallReason = '';
         if (isStalled) {
             const reqWf = p.required_workforce || {};
@@ -4262,8 +4266,14 @@ function renderActiveProjects() {
             if ((Number(assignedWf.general) || 0) < (Number(reqWf.general) || 0)) wfShort.push('General: ' + (Number(assignedWf.general) || 0) + '/' + (Number(reqWf.general) || 0));
             if ((Number(assignedWf.skilled) || 0) < (Number(reqWf.skilled) || 0)) wfShort.push('Skilled: ' + (Number(assignedWf.skilled) || 0) + '/' + (Number(reqWf.skilled) || 0));
             if ((Number(assignedWf.innovative) || 0) < (Number(reqWf.innovative) || 0)) wfShort.push('Innovative: ' + (Number(assignedWf.innovative) || 0) + '/' + (Number(reqWf.innovative) || 0));
-            if (wfShort.length > 0) stallReason = 'Workers needed — ' + wfShort.join(', ');
-            else stallReason = 'Materials needed — allocate from warehouse';
+            if (wfShort.length > 0) {
+                stallReason = 'Workers needed — ' + wfShort.join(', ');
+            } else {
+                const _phase = p.current_phase || (PM_PHASES[Math.min(PM_PHASES.length - 1, Math.floor((effectiveProgress / Math.max(1, totalTicks)) * PM_PHASES.length))]);
+                if (_phase === 'Permits') stallReason = 'Awaiting permit approval';
+                else if (_phase === 'Planning') stallReason = 'Planning phase — no materials yet';
+                else stallReason = 'Materials needed — allocate from warehouse';
+            }
         }
 
         const specCls = sectorClass(p.sector);
