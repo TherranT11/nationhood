@@ -3327,7 +3327,12 @@ const DIPLOMACY_CONFIG = {
  * callsite has different idempotency rules.
  */
 function resolveTransferEndpoints(article, agreement) {
-    if (!article || article.type !== 'transfer') return null;
+    if (!article) return null;
+    // The diplomacy modal saves articles with `article_type` (line 20006);
+    // legacy/embargo paths use `type`. Accept either so transfer execution
+    // doesn't silently skip articles authored via the structured wizard.
+    var artType = article.type || article.article_type;
+    if (artType !== 'transfer') return null;
     if (!agreement || !agreement.nation_a_id || !agreement.nation_b_id) return null;
 
     var data = article.data || {};
@@ -9878,25 +9883,32 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         // (see js/game/diplomacy-constants.js).
                         const endpoints = resolveTransferEndpoints(article, agreementForResolve);
                         if (!endpoints) {
-                            if (article?.type === 'transfer') {
+                            if (article?.type === 'transfer' || article?.article_type === 'transfer') {
                                 console.error('[resolveTradeRatification] transfer article malformed; skipping', article);
                             }
                             continue;
                         }
                         const { fromNation, toNation, amount } = endpoints;
 
-                        // Read current reserves of both nations, deduct from sender,
-                        // credit receiver. Floor sender at 0 (no negative reserves).
+                        // The agreement is binding: receiver always gets the full
+                        // amount. Sender pays from reserves first; any shortfall
+                        // becomes debt (matches the discretionary-grant pattern at
+                        // bills.js#3543 — money has to come from somewhere).
                         const { data: rows } = await supabase.from('nations')
-                            .select('id, budget_reserves').in('id', [fromNation, toNation]);
+                            .select('id, budget_reserves, debt').in('id', [fromNation, toNation]);
                         const reserves = {};
-                        for (const r of (rows || [])) reserves[r.id] = Number(r.budget_reserves || 0);
-                        const fromAfter = Math.max(0, (reserves[fromNation] ?? 0) - amount);
-                        const toAfter   = (reserves[toNation] ?? 0) + amount;
-                        const actualDebit = (reserves[fromNation] ?? 0) - fromAfter; // capped by available
+                        const debts = {};
+                        for (const r of (rows || [])) {
+                            reserves[r.id] = Number(r.budget_reserves || 0);
+                            debts[r.id]    = Number(r.debt || 0);
+                        }
+                        const fromAfter  = Math.max(0, (reserves[fromNation] ?? 0) - amount);
+                        const shortfall  = Math.max(0, amount - (reserves[fromNation] ?? 0));
+                        const toAfter    = (reserves[toNation] ?? 0) + amount;
+                        const fromDebtAfter = (debts[fromNation] ?? 0) + shortfall;
 
                         const { error: fromErr } = await supabase.from('nations')
-                            .update({ budget_reserves: fromAfter }).eq('id', fromNation);
+                            .update({ budget_reserves: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);
                         if (fromErr) {
                             console.error('[resolveTradeRatification] transfer debit failed for', fromNation, fromErr.message);
                             continue;
@@ -9905,15 +9917,18 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                             .update({ budget_reserves: toAfter }).eq('id', toNation);
                         if (toErr) {
                             console.error('[resolveTradeRatification] transfer credit failed for', toNation, toErr.message);
-                            // Best-effort rollback of the debit so reserves don't vanish.
-                            await supabase.from('nations').update({ budget_reserves: reserves[fromNation] ?? 0 }).eq('id', fromNation);
+                            // Best-effort rollback so the sender doesn't eat the debt without the receiver getting paid.
+                            await supabase.from('nations').update({
+                                budget_reserves: reserves[fromNation] ?? 0,
+                                debt: debts[fromNation] ?? 0
+                            }).eq('id', fromNation);
                             continue;
                         }
 
                         // Mark as executed in the article so this never fires twice.
-                        article.data = { ...data, executed_at_tick: currentTick, executed_amount: actualDebit };
+                        article.data = { ...data, executed_at_tick: currentTick, executed_amount: amount, executed_via_debt: shortfall };
                         articlesMutated = true;
-                        console.log(`[resolveTradeRatification] transfer executed: ${fromNation} → ${toNation}, $${(actualDebit/1e9).toFixed(2)}B (requested $${(amount/1e9).toFixed(2)}B)`);
+                        console.log(`[resolveTradeRatification] transfer executed: ${fromNation} → ${toNation}, $${(amount/1e9).toFixed(2)}B (debt portion: $${(shortfall/1e9).toFixed(2)}B)`);
                     }
                     if (articlesMutated) {
                         await supabase.from('trade_agreements').update({ articles }).eq('id', newAgreement.id);
@@ -34229,19 +34244,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // (see js/game/diplomacy-constants.js → resolveTransferEndpoints).
                 const endpoints = resolveTransferEndpoints(art, agreement);
                 if (!endpoints) {
-                    if (art?.type === 'transfer') {
+                    if (art?.type === 'transfer' || art?.article_type === 'transfer') {
                         console.error('[recurring transfer] transfer article malformed on agreement', agreement.id);
                     }
                     continue;
                 }
                 const { fromNation, toNation, amount } = endpoints;
 
-                // Atomic per-pair: read both, debit (floor 0), credit, write.
-                // Skip on read failure or incomplete result — without correct
-                // baselines the UPDATE below would overwrite reserves with
-                // garbage (sender → 0, receiver → just `amount`).
+                // Atomic per-pair: read reserves+debt, debit reserves (floor 0)
+                // with shortfall absorbed as debt, credit receiver in full.
+                // Skip on read failure — without correct baselines the UPDATEs
+                // below would overwrite values with garbage.
                 const { data: rows, error: readErr } = await supabase.from('nations')
-                    .select('id, budget_reserves')
+                    .select('id, budget_reserves, debt')
                     .in('id', [fromNation, toNation]);
                 if (readErr || !rows || rows.length < 2) {
                     console.error('[recurring transfer] reserves read failed/incomplete; skipping agreement',
@@ -34249,12 +34264,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     continue;
                 }
                 const reserves: Record<string, number> = {};
-                for (const r of rows) reserves[r.id] = Number(r.budget_reserves || 0);
-                const fromAfter = Math.max(0, (reserves[fromNation] ?? 0) - amount);
-                const toAfter   = (reserves[toNation] ?? 0) + amount;
+                const debts: Record<string, number> = {};
+                for (const r of rows) {
+                    reserves[r.id] = Number(r.budget_reserves || 0);
+                    debts[r.id]    = Number(r.debt || 0);
+                }
+                const fromAfter     = Math.max(0, (reserves[fromNation] ?? 0) - amount);
+                const shortfall     = Math.max(0, amount - (reserves[fromNation] ?? 0));
+                const toAfter       = (reserves[toNation] ?? 0) + amount;
+                const fromDebtAfter = (debts[fromNation] ?? 0) + shortfall;
 
                 const { error: fromErr } = await supabase.from('nations')
-                    .update({ budget_reserves: fromAfter }).eq('id', fromNation);
+                    .update({ budget_reserves: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);
                 if (fromErr) {
                     console.error('[recurring transfer] debit failed for', fromNation, fromErr.message);
                     continue;
@@ -34263,14 +34284,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     .update({ budget_reserves: toAfter }).eq('id', toNation);
                 if (toErr) {
                     console.error('[recurring transfer] credit failed for', toNation, toErr.message);
-                    // Best-effort rollback so reserves don't vanish.
-                    await supabase.from('nations').update({ budget_reserves: reserves[fromNation] ?? 0 }).eq('id', fromNation);
+                    // Best-effort rollback so sender doesn't eat the debt without receiver getting paid.
+                    await supabase.from('nations').update({
+                        budget_reserves: reserves[fromNation] ?? 0,
+                        debt: debts[fromNation] ?? 0
+                    }).eq('id', fromNation);
                     continue;
                 }
 
                 art.data = { ...d, last_paid_at_tick: newTick };
                 mutated = true;
-                console.log(`[recurring transfer] paid: ${fromNation} → ${toNation}, $${(amount/1e9).toFixed(2)}B (agreement ${agreement.id})`);
+                console.log(`[recurring transfer] paid: ${fromNation} → ${toNation}, $${(amount/1e9).toFixed(2)}B (debt portion: $${(shortfall/1e9).toFixed(2)}B, agreement ${agreement.id})`);
             }
 
             if (mutated) {
