@@ -4776,7 +4776,8 @@ async function loadActiveProjects() {
 
     // For any awarded-but-stalled project, the start gate is blocked on missing
     // permits. Source of truth: the get_project_permit_requirements RPC, which
-    // diffs nation-required permits against the corp's held permits.
+    // diffs nation-required permits against the corp's held permits. Per-RPC
+    // failures are isolated so one bad response can't break the whole load.
     const stalledAwarded = activeProjects.filter(p => p.status === 'awarded' && (p.stalled_ticks || 0) > 0);
     if (stalledAwarded.length > 0) {
         const results = await Promise.all(stalledAwarded.map(p =>
@@ -4784,11 +4785,20 @@ async function loadActiveProjects() {
                 p_contract_id: p.id,
                 p_faction_id: faction.id,
                 p_nation_id: p.nation_id,
-            })
+            }).catch(err => ({ data: null, error: err }))
         ));
         for (let i = 0; i < stalledAwarded.length; i++) {
-            const reqs = Array.isArray(results[i].data) ? results[i].data : [];
-            stalledAwarded[i]._missingPermits = reqs.filter(r => !r.has_permit).map(r => r.permit_name || r.permit_key);
+            const { data, error } = results[i] || {};
+            if (error) {
+                console.warn('[ActiveProjects] permit-requirements RPC failed for', stalledAwarded[i].id, error.message || error);
+                stalledAwarded[i]._missingPermits = [];
+                continue;
+            }
+            const reqs = Array.isArray(data) ? data : [];
+            stalledAwarded[i]._missingPermits = reqs
+                .filter(r => !r.has_permit)
+                .map(r => r.permit_name || r.permit_key)
+                .filter(Boolean);
         }
     }
 
