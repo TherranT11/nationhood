@@ -354,9 +354,22 @@ async function loadSectorOptions() {
 }
 
 async function loadPolicies() {
-    const { data, error } = await _supabase.from('policies').select('*').order('major_sector, minor_sector, policy_name');
+    // Phase 2.7: include policy_options so the list view can read costs /
+    // stat_effects / sector_effects / fiscal_category from the option rather
+    // than the legacy policies columns. PostgREST embeds the related rows
+    // under `policy_options` (sorted by option_order so the first entry is
+    // the canonical option for single-option policies).
+    const { data, error } = await _supabase
+        .from('policies')
+        .select('*, policy_options(id, option_name, option_description, option_order, is_active, sector_effects, stat_effects, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat, fiscal_category)')
+        .order('major_sector, minor_sector, policy_name');
     if (error) { console.error(error); return; }
-    allPolicies = data || [];
+    allPolicies = (data || []).map(p => ({
+        ...p,
+        policy_options: Array.isArray(p.policy_options)
+            ? [...p.policy_options].sort((a, b) => (a.option_order || 0) - (b.option_order || 0))
+            : []
+    }));
     filteredPolicies = [...allPolicies];
 }
 
@@ -422,6 +435,19 @@ function renderPolicyTable() {
     }
 
     tbody.innerHTML = filteredPolicies.map(p => {
+        // Phase 2.7: per-option data lives on policy_options[0]. Fall back
+        // to legacy columns on the policies row so policies that pre-date
+        // multi-option still render (orphaned data only — Phase 2.5 onward
+        // always writes an option).
+        const opt = (p.policy_options && p.policy_options[0]) || null;
+        const upfrontCost   = opt?.upfront_cost          ?? p.upfront_cost          ?? 0;
+        const upScalingStat = opt?.upfront_scaling_stat  || p.upfront_scaling_stat;
+        const onBase        = opt?.ongoing_base_cost     ?? p.ongoing_base_cost     ?? p.ongoing_cost_per_tick ?? 0;
+        const onScalingStat = opt?.ongoing_scaling_stat  || p.ongoing_scaling_stat;
+        const statEffectsList   = (opt?.stat_effects   && Array.isArray(opt.stat_effects))   ? opt.stat_effects   : p.stat_effects;
+        // sector_effects intentionally not surfaced in the table today; left
+        // for Phase 2.10 list polish.
+
         // Ideologies
         const ideos = p.ideologies || (p.ideology ? [p.ideology] : []);
         const ideoHTML = ideos.length > 0
@@ -430,8 +456,8 @@ function renderPolicyTable() {
 
         // Stat effects
         let effectsHTML = '—';
-        if (p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
-            effectsHTML = p.stat_effects.map(e => {
+        if (statEffectsList && Array.isArray(statEffectsList) && statEffectsList.length > 0) {
+            effectsHTML = statEffectsList.map(e => {
                 const dir = normalizeEffectDirection(e.direction);
                 const arrow = dir === 'up' ? '▲' : '▼';
                 const cls = dir === 'up' ? 'tag-up' : 'tag-down';
@@ -445,22 +471,17 @@ function renderPolicyTable() {
         }
 
         // Costs (negative = revenue/relief)
-      const costs = [];
-        if (p.upfront_cost > 0) {
-            const upScaling = p.upfront_scaling_stat;
-            costs.push(upScaling ? `${fmtCost(p.upfront_cost)}×${fmtStat(upScaling)} up` : `${fmtCost(p.upfront_cost)} up`);
-        } else if (p.upfront_cost < 0) {
-            const upScaling = p.upfront_scaling_stat;
-            const revLabel = upScaling ? `<span style="color:#5cb85c">${fmtCost(Math.abs(p.upfront_cost))}×${fmtStat(upScaling)} rev</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(p.upfront_cost))} rev</span>`;
+        const costs = [];
+        if (upfrontCost > 0) {
+            costs.push(upScalingStat ? `${fmtCost(upfrontCost)}×${fmtStat(upScalingStat)} up` : `${fmtCost(upfrontCost)} up`);
+        } else if (upfrontCost < 0) {
+            const revLabel = upScalingStat ? `<span style="color:#5cb85c">${fmtCost(Math.abs(upfrontCost))}×${fmtStat(upScalingStat)} rev</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(upfrontCost))} rev</span>`;
             costs.push(revLabel);
         }
-        const onBase = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
         if (onBase > 0) {
-            const scaling = p.ongoing_scaling_stat;
-            costs.push(scaling ? `${fmtCost(onBase)}×${fmtStat(scaling)}/t` : `${fmtCost(onBase)}/t`);
+            costs.push(onScalingStat ? `${fmtCost(onBase)}×${fmtStat(onScalingStat)}/t` : `${fmtCost(onBase)}/t`);
         } else if (onBase < 0) {
-            const scaling = p.ongoing_scaling_stat;
-            const relLabel = scaling ? `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}×${fmtStat(scaling)}/t relief</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}/t relief</span>`;
+            const relLabel = onScalingStat ? `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}×${fmtStat(onScalingStat)}/t relief</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}/t relief</span>`;
             costs.push(relLabel);
         }
         const costHTML = costs.length > 0 ? costs.join('<br>') : '—';
