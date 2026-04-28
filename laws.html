@@ -363,6 +363,7 @@ import { loadFactionIdeology, IDEOLOGY_TO_AXIS, getIdeologyChipClass, calculateB
 import { calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, getRequiredSeats, evaluateBillVote, calculateIdeologyPenalty } from './js/game/bills.js';
 import { formatStatName, formatMinorSector } from './js/game/political-actions.js';
 import { MAJOR_SECTORS, RAW_SCALING_DIVISORS, checkSovereigntyConstraints } from './js/game/diplomacy-constants.js';
+import { getTariffDampener } from './js/game/trade-constants.js';
 import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidential.js';
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
@@ -1949,15 +1950,20 @@ function onTariffRateChange() {
     document.getElementById('tariff-rate-display').style.color = rate >= 80 ? '#d9534f' : rate >= 50 ? '#c84' : rate >= 20 ? '#ca5' : '#5cb85c';
     document.getElementById('add-tariff-btn').disabled = !sector;
 
-    // Preview
+    // Preview — actual reduction comes from the trade engine's dampener (single
+    // source of truth). At rate=100 (slider max) the dampener caps imports at
+    // ~50% of demand; an outright embargo would require rate=200, which the
+    // slider intentionally doesn't reach.
+    const reductionPct = Math.round((1 - getTariffDampener({ sector_tariffs: { [sector]: rate } }, sector)) * 100);
+    const reductionTxt = ' Reduces ' + label + ' import volume by ~' + reductionPct + '%.';
     const preview = document.getElementById('tariff-preview');
     let desc = '';
-    if (rate === 0) desc = 'Free trade — no tariff on ' + label + ' imports. Maximum import flow.';
-    else if (rate <= 15) desc = 'Low tariff (' + rate + '%) on ' + label + '. Minor revenue, minimal trade disruption.';
-    else if (rate <= 35) desc = 'Moderate tariff (' + rate + '%) on ' + label + '. Protects domestic producers. Import costs rise.';
-    else if (rate <= 60) desc = 'High tariff (' + rate + '%) on ' + label + '. Significant trade barrier. Trading partners may retaliate.';
-    else if (rate <= 85) desc = 'Severe tariff (' + rate + '%) on ' + label + '. Near-prohibitive. Expect diplomatic consequences.';
-    else desc = 'Embargo-level tariff (' + rate + '%) on ' + label + '. Effectively blocks all imports in this sector.';
+    if (rate === 0) desc = 'Free trade — no tariff on ' + label + ' imports.';
+    else if (rate <= 15) desc = 'Low tariff (' + rate + '%) on ' + label + '.' + reductionTxt + ' Minor revenue, minimal disruption.';
+    else if (rate <= 35) desc = 'Moderate tariff (' + rate + '%) on ' + label + '.' + reductionTxt + ' Protects domestic producers.';
+    else if (rate <= 60) desc = 'High tariff (' + rate + '%) on ' + label + '.' + reductionTxt + ' Significant trade barrier; partners may retaliate.';
+    else if (rate <= 85) desc = 'Severe tariff (' + rate + '%) on ' + label + '.' + reductionTxt + ' Expect diplomatic consequences.';
+    else desc = 'Maximum slider tariff (' + rate + '%) on ' + label + '.' + reductionTxt + ' Imports are dampened, not blocked — a full embargo is a separate policy.';
 
     preview.innerHTML = '<div style="margin-bottom:6px;">' + desc + '</div>' +
         '<div style="display:flex;gap:16px;font-family:var(--font-mono);font-size:0.7rem;">' +

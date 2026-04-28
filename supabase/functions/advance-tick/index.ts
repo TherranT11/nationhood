@@ -8181,6 +8181,715 @@ function validateTaxArticlePayload(taxKey, oldRate, newRate) {
     return { valid: true, direction, steps };
 }
 
+// ────────── sectors ──────────
+
+/**
+ * sectors.js — pure calculation module for the per-nation voter sector system
+ *
+ * Phase 1 of the sectors rollout. Every function in this file is a pure JS
+ * function: it operates on plain data and returns plain data. No DB calls,
+ * no DOM, no side effects. The admin Sectors tab and (eventually) the election
+ * resolver call into this module.
+ *
+ * Storage convention (matches sql/migrations/20260426_sectors_phase0.sql):
+ *   * `sectors.weight`        — smallint 1..3
+ *   * `sectors.base_turnout`  — numeric(3,2) 0.50..1.30
+ *   * `faction_sector_popularity.popularity` — smallint 0..100 (integer tenths)
+ *
+ * All math in this file operates on integer tenths to avoid the float drift
+ * the original V3 spec warned about. The display layer divides by 10.
+ */
+
+// ─── Lead-to-seats curve constants ──────────────────────────────────────────
+// V3 piecewise-linear curve, calibrated for a 100-seat parliament. Returns
+// the leading party's share of seats given a popularity lead. Values <= 0
+// return 50 (a tie at the top of the curve).
+const LEAD_CURVE_BREAKPOINTS = [
+    { lead:   0, seats: 50 },
+    { lead:  10, seats: 55 },
+    { lead:  20, seats: 58 },
+    { lead:  50, seats: 67 },
+    { lead: 100, seats: 78 },
+    { lead: 200, seats: 92 },
+];
+const LEAD_CURVE_TAIL_SLOPE = 0.14; // seats gained per +1 lead beyond 200
+
+// ─── Total Weighted Popularity ──────────────────────────────────────────────
+
+/**
+ * Per-sector contribution breakdown for one faction. Used by the diagnostics
+ * panel so admins can see exactly which sectors are pulling weight, and as
+ * the single source of truth that calculateTotalWeightedPopularity sums over.
+ *
+ * Returns an array, one entry per ACTIVE sector (preserving the input order):
+ *   { sector_id, sector_key, name, popularity, weight, base_turnout, contribution }
+ *
+ *   contribution = popularity * weight * base_turnout
+ *
+ * Inputs are arrays straight from the DB:
+ *   sectors[i]         = { id, sector_key, weight, base_turnout, is_active, ... }
+ *   popularityRows[i]  = { faction_id, sector_id, popularity }   (0..100)
+ *
+ * Inactive sectors are skipped. Missing popularity rows are treated as 0.
+ */
+function calculateSectorContributions(factionId, sectors, popularityRows) {
+    const popBySector = indexPopularityByFactionAndSector(popularityRows);
+    const factionPop = popBySector.get(factionId) || new Map();
+
+    const out = [];
+    for (const s of sectors) {
+        if (!s.is_active) continue;
+        const pop = factionPop.get(s.id) ?? 0;
+        const weight = Number(s.weight) || 0;
+        const turnout = Number(s.base_turnout) || 0;
+        out.push({
+            sector_id: s.id,
+            sector_key: s.sector_key,
+            name: s.name,
+            popularity: pop,
+            weight,
+            base_turnout: turnout,
+            contribution: pop * weight * turnout,
+        });
+    }
+    return out;
+}
+
+/**
+ * Computes one faction's Total Weighted Popularity for a nation.
+ *
+ *   TWP = Σ over active sectors of (popularity * weight * base_turnout)
+ *
+ * Implemented as a sum over calculateSectorContributions so the math has a
+ * single source of truth. The array allocation is fine for Phase 1's admin
+ * use case; if Phase 3's election hot path needs a fast path, add one then.
+ */
+function calculateTotalWeightedPopularity(factionId, sectors, popularityRows) {
+    if (!factionId) return 0;
+    return calculateSectorContributions(factionId, sectors, popularityRows)
+        .reduce((sum, c) => sum + c.contribution, 0);
+}
+
+// ─── Lead-to-seats curve ────────────────────────────────────────────────────
+
+/**
+ * Translates a popularity lead between two parties into the leading party's
+ * seat share, scaled to the given parliament size. Mirrors V3's piecewise
+ * curve: 0→50, +10→55, +20→58, +50→67, +100→78, +200→92, then linear at
+ * +0.14 seats per +1 lead.
+ *
+ * Lead values <= 0 always return 50 seats per 100 (a tie or negative lead
+ * means the function isn't being asked about the leader).
+ *
+ * Returns a non-rounded number (caller decides how to round/distribute).
+ */
+function leadToSeatsCurve(lead, parliamentSize = 100) {
+    const seatsPer100 = leadToSeatsPer100(lead);
+    return seatsPer100 * (parliamentSize / 100);
+}
+
+function leadToSeatsPer100(lead) {
+    if (!Number.isFinite(lead) || lead <= 0) return 50;
+
+    for (let i = 0; i < LEAD_CURVE_BREAKPOINTS.length - 1; i++) {
+        const lo = LEAD_CURVE_BREAKPOINTS[i];
+        const hi = LEAD_CURVE_BREAKPOINTS[i + 1];
+        if (lead <= hi.lead) {
+            const t = (lead - lo.lead) / (hi.lead - lo.lead);
+            return lo.seats + t * (hi.seats - lo.seats);
+        }
+    }
+    const last = LEAD_CURVE_BREAKPOINTS[LEAD_CURVE_BREAKPOINTS.length - 1];
+    return last.seats + (lead - last.lead) * LEAD_CURVE_TAIL_SLOPE;
+}
+
+// ─── Tie detection and resolution ───────────────────────────────────────────
+
+/**
+ * For each active sector, finds the set of factions tied at the highest
+ * popularity. Storage is already at display precision (integer tenths), so
+ * a tie means equal stored values: 73 and 73 tie ("7.3" each); 73 and 74
+ * do not ("7.3" vs "7.4").
+ *
+ * Returns an array of { sector_id, sector_key, name, tied_faction_ids: [...] }
+ * for sectors where 2+ factions share the top value. Sectors with a unique
+ * leader, or with all factions at 0, are omitted (a tie at "no support" is
+ * meaningless for spatial-competition purposes — V3 §3.3).
+ */
+function findTiedSectors(factions, sectors, popularityRows) {
+    const popBySector = indexPopularityBySector(popularityRows);
+    const factionIds = new Set(factions.map(f => f.id));
+    const out = [];
+
+    for (const s of sectors) {
+        if (!s.is_active) continue;
+        const rows = popBySector.get(s.id) || [];
+        const eligible = rows.filter(r => factionIds.has(r.faction_id));
+        if (eligible.length < 2) continue;
+
+        const pops = eligible.map(r => Number(r.popularity) || 0);
+        const top = Math.max(...pops);
+        if (top <= 0) continue;
+
+        const tied = eligible.filter((_, i) => pops[i] === top).map(r => r.faction_id);
+        if (tied.length >= 2) {
+            out.push({
+                sector_id: s.id,
+                sector_key: s.sector_key,
+                name: s.name,
+                tied_faction_ids: tied,
+            });
+        }
+    }
+    return out;
+}
+
+/**
+ * Picks one winner from a tied set using the supplied RNG. RNG must be a
+ * function returning a float in [0, 1) — `Math.random` works in production,
+ * tests pass a deterministic generator.
+ *
+ * Throws if `tiedFactionIds` has fewer than 2 entries (callers should only
+ * invoke this for actual ties).
+ */
+function resolveTie(tiedFactionIds, rng = Math.random) {
+    if (!Array.isArray(tiedFactionIds) || tiedFactionIds.length < 2) {
+        throw new Error('resolveTie requires at least 2 tied factions');
+    }
+    const idx = Math.floor(rng() * tiedFactionIds.length);
+    // Defensive clamp: rng() === 1.0 (rare but possible with bad RNGs) would
+    // otherwise overshoot the array.
+    return tiedFactionIds[Math.min(idx, tiedFactionIds.length - 1)];
+}
+
+// ─── Bill resolution: vote-aligned sector shifts (Phase 2) ──────────────────
+
+/**
+ * Translate one bill's sector_effects + per-faction votes into the list of
+ * popularity deltas to apply on resolution. Pure function — caller does the
+ * DB upsert + 0..100 clamp.
+ *
+ * Inputs:
+ *   effects   = [{ sector_key: string, change_tenths: number }, ...]
+ *               Signed; positive = popularity gain on pass. Caller is
+ *               responsible for summing across articles before invoking.
+ *   voters    = Map<factionId, 'yes' | 'no' | 'abstain'>
+ *               Normalized stances from bill_support. Sponsor is auto-merged
+ *               internally as 'yes' regardless of whether they cast a vote.
+ *   sponsorId = string | null   The proposing faction.
+ *   result    = 'passed' | 'failed' | 'withdrawn'
+ *
+ * Output:
+ *   [{ factionId, sector_key, delta_tenths }, ...]
+ *
+ * Effect model (Phase 2 design — vote-aligned pass / asymmetric fail):
+ *   * passed:    sponsor + YES voters get +change_tenths;
+ *                NO voters get -change_tenths;
+ *                abstain unaffected.
+ *   * failed:    sponsor gets -change_tenths (full inverse); other voters
+ *                unaffected. The proposer "owns" the failed bill alone.
+ *   * withdrawn: no effect for anyone.
+ *
+ * Effects with non-numeric or zero change_tenths are skipped so callers can
+ * pass raw arrays without pre-filtering.
+ */
+function computeSectorShifts({ effects, voters, sponsorId, result }) {
+    if (result !== 'passed' && result !== 'failed') return [];
+    if (!Array.isArray(effects) || effects.length === 0) return [];
+
+    const cleanEffects = effects.filter(e =>
+        e
+        && typeof e.sector_key === 'string' && e.sector_key.length > 0
+        && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0
+    );
+    if (cleanEffects.length === 0) return [];
+
+    const out = [];
+
+    if (result === 'passed') {
+        // Snapshot voters and force the sponsor to YES so callers don't have
+        // to remember to pre-merge. Matches the existing processIdeologyShifts
+        // pattern (bills.js:432-433).
+        const stances = new Map(voters || []);
+        if (sponsorId) stances.set(sponsorId, 'yes');
+
+        for (const eff of cleanEffects) {
+            const change = Number(eff.change_tenths);
+            for (const [factionId, stance] of stances) {
+                if (stance === 'yes') {
+                    out.push({ factionId, sector_key: eff.sector_key, delta_tenths:  change });
+                } else if (stance === 'no') {
+                    out.push({ factionId, sector_key: eff.sector_key, delta_tenths: -change });
+                }
+                // abstain or unknown stance => no row
+            }
+        }
+        return out;
+    }
+
+    // result === 'failed': only the sponsor takes the hit, full inverse magnitude.
+    if (!sponsorId) return [];
+    for (const eff of cleanEffects) {
+        out.push({
+            factionId: sponsorId,
+            sector_key: eff.sector_key,
+            delta_tenths: -Number(eff.change_tenths),
+        });
+    }
+    return out;
+}
+
+/**
+ * Sum sector_effects arrays across multiple articles of one bill into a
+ * single deduplicated list, grouping by sector_key. Skips malformed entries
+ * silently so downstream calc stays defensive.
+ *
+ * Inputs:
+ *   effectsArrays = [[{sector_key, change_tenths}, ...], [...], ...]
+ *
+ * Output:
+ *   [{ sector_key, change_tenths }, ...]
+ */
+function sumSectorEffects(effectsArrays) {
+    const totals = new Map();
+    for (const arr of effectsArrays || []) {
+        if (!Array.isArray(arr)) continue;
+        for (const e of arr) {
+            if (!e || typeof e.sector_key !== 'string' || e.sector_key.length === 0) continue;
+            const change = Number(e.change_tenths);
+            if (!Number.isFinite(change) || change === 0) continue;
+            totals.set(e.sector_key, (totals.get(e.sector_key) || 0) + change);
+        }
+    }
+    // Drop net-zero totals (e.g., +10 then -10) so downstream code never has
+    // to filter them — they're equivalent to "no effect on this sector".
+    const out = [];
+    for (const [sector_key, change_tenths] of totals) {
+        if (change_tenths !== 0) out.push({ sector_key, change_tenths });
+    }
+    return out;
+}
+
+// ─── Election: independents roll (Phase 3) ──────────────────────────────────
+
+// Lookup table mapping a 1D10 roll (1..10) to the delta applied to a nation's
+// independent_seats count on each election. Negative on rolls 1-6, positive
+// on rolls 7-10 — biased toward decay so independents fade absent disruption.
+const INDEPENDENT_ROLL_TABLE = {
+    1: -6, 2: -5, 3: -4, 4: -3, 5: -2, 6: -1,
+    7: +1, 8: +2, 9: +3, 10: +4,
+};
+const INDEPENDENT_CAP_FRACTION = 0.08; // max 8% of parliament_size, floored
+
+/**
+ * Roll the per-election delta on a nation's independent seat count and
+ * clamp the result to [0, floor(parliamentSize * 0.08)].
+ *
+ *   roll: 1  2  3  4  5  6  7  8  9  10
+ *   Δ:   -6 -5 -4 -3 -2 -1 +1 +2 +3 +4
+ *
+ * Returns { roll, delta, next, cap } where:
+ *   roll  = the 1D10 result (1..10)
+ *   delta = the table delta for that roll
+ *   next  = the new independent_seats value after applying delta + clamp
+ *   cap   = floor(parliamentSize * 0.08)
+ *
+ * RNG is injectable for deterministic tests; defaults to Math.random.
+ */
+function rollIndependents(currentCount, parliamentSize, rng = Math.random) {
+    const ps = Number(parliamentSize) || 0;
+    const cap = Math.max(0, Math.floor(ps * INDEPENDENT_CAP_FRACTION));
+    const current = Math.max(0, Math.min(cap, Number(currentCount) || 0));
+
+    const roll = 1 + Math.floor(rng() * 10);
+    const safeRoll = Math.min(10, Math.max(1, roll));   // defensive clamp on bad RNGs
+    const delta = INDEPENDENT_ROLL_TABLE[safeRoll];
+    const next = Math.max(0, Math.min(cap, current + delta));
+
+    return { roll: safeRoll, delta, next, cap };
+}
+
+// ─── Election: seat allocation (Phase 3) ────────────────────────────────────
+
+const DEFAULT_FRINGE_THRESHOLD = 30;
+
+/**
+ * Allocate seats to factions by Total Weighted Popularity using the Largest
+ * Remainder method (same algorithm as the legacy allocateSeatsByVotes —
+ * proven proportional allocation). Wraps the math with two Phase 3 rules:
+ *
+ *   1. Fringe threshold — factions with TWP below `fringeThreshold` get 0
+ *      seats. Below-threshold parties are excluded from the divisor; their
+ *      voters effectively don't count for seat math.
+ *   2. Zero-fallback — if NO faction qualifies (every TWP is 0 or below the
+ *      threshold, common in early Phase 3 before sector data is seeded),
+ *      seats are split evenly across all input factions. Predictable, no
+ *      division-by-zero, gives a working election when there's no signal.
+ *
+ * Inputs:
+ *   twpByFaction    = { factionId: twp, ... }
+ *   totalSeats      = available seats (parliament_size - independent_seats)
+ *   fringeThreshold = below-this TWP gets zero seats (default 30)
+ *
+ * Output:
+ *   { factionId: seats, ... } summing to exactly totalSeats.
+ */
+function allocateSeatsByTwp(twpByFaction, totalSeats, fringeThreshold = DEFAULT_FRINGE_THRESHOLD) {
+    const ids = Object.keys(twpByFaction || {});
+    if (ids.length === 0 || totalSeats <= 0) {
+        const empty = {};
+        for (const id of ids) empty[id] = 0;
+        return empty;
+    }
+
+    const qualifying = ids.filter(id => Number(twpByFaction[id]) >= fringeThreshold);
+
+    // Zero-fallback: nobody qualifies → split evenly across ALL inputs.
+    if (qualifying.length === 0) {
+        return distributeEvenly(ids, totalSeats);
+    }
+
+    // Build a weights map containing only the qualifying parties. Below-fringe
+    // parties stay in the result with seats: 0.
+    const weights = {};
+    let totalQualifying = 0;
+    for (const id of qualifying) {
+        const w = Number(twpByFaction[id]);
+        weights[id] = w;
+        totalQualifying += w;
+    }
+
+    // Edge: every qualifying party at TWP=0 (only happens when fringe=0).
+    // Treat as zero-fallback within the qualifying set.
+    if (totalQualifying === 0) {
+        const seats = {};
+        for (const id of ids) seats[id] = 0;
+        return { ...seats, ...distributeEvenly(qualifying, totalSeats) };
+    }
+
+    // Delegate the Largest Remainder math to the shared internal helper.
+    const allocated = allocateByLargestRemainder(weights, totalSeats);
+    const seats = {};
+    for (const id of ids) seats[id] = allocated[id] ?? 0;
+    return seats;
+}
+
+function distributeEvenly(ids, totalSeats) {
+    const out = {};
+    if (ids.length === 0) return out;
+    const base = Math.floor(totalSeats / ids.length);
+    const remainder = totalSeats - (base * ids.length);
+    // Stable order: input order, first N factions get the +1.
+    ids.forEach((id, i) => { out[id] = base + (i < remainder ? 1 : 0); });
+    return out;
+}
+
+// ─── Election: post-allocation modifiers (Phase 3) ──────────────────────────
+
+const ELECTABILITY_MODIFIER = {
+    Low:      -0.02,
+    Moderate:  0.00,
+    High:     +0.02,
+};
+
+/**
+ * Bucket a numeric electability score (factions.electability is 10..60 from
+ * _seed_electability) into V3's three-tier modifier categories.
+ *
+ *   < 30  → Low      (-2%)
+ *   30-50 → Moderate ( 0%)
+ *   > 50  → High     (+2%)
+ *
+ * Non-numeric / null inputs default to 'Moderate'.
+ */
+function electabilityBucket(score) {
+    const s = Number(score);
+    if (!Number.isFinite(s)) return 'Moderate';
+    if (s < 30) return 'Low';
+    if (s > 50) return 'High';
+    return 'Moderate';
+}
+
+/**
+ * Apply the leader Electability modifier to each faction's seat count.
+ * Modifier table per V3 §4.5: Low = -2%, Moderate = 0%, High = +2%.
+ *
+ * Inputs are integer seat counts. The modifier produces fractional results;
+ * the caller normalizes back to integers (uses Largest Remainder again to
+ * ensure the total still equals the input total).
+ *
+ *   seatsByFaction        = { factionId: seats, ... }
+ *   electabilityByFaction = { factionId: 'Low'|'Moderate'|'High', ... }
+ *   totalSeats            = expected sum (caller passes parliament_size - independents)
+ *
+ * Returns adjusted integer seat counts that still sum to totalSeats.
+ * Factions with no electability entry get the Moderate (0%) modifier.
+ */
+function applyElectabilityModifier(seatsByFaction, electabilityByFaction, totalSeats) {
+    const ids = Object.keys(seatsByFaction || {});
+    if (ids.length === 0) return {};
+
+    // Step 1: scale each faction's seats by (1 + modifier).
+    const scaled = {};
+    for (const id of ids) {
+        const seats = Number(seatsByFaction[id]) || 0;
+        const electability = electabilityByFaction?.[id] ?? 'Moderate';
+        const mod = ELECTABILITY_MODIFIER[electability] ?? 0;
+        scaled[id] = seats * (1 + mod);
+    }
+
+    // Step 2: re-normalize to integers summing to totalSeats via Largest Remainder.
+    const total = Object.values(scaled).reduce((s, v) => s + v, 0);
+    if (total <= 0) {
+        // All zeros after scaling — return zeros.
+        const zeros = {};
+        for (const id of ids) zeros[id] = 0;
+        return zeros;
+    }
+    return allocateByLargestRemainder(scaled, totalSeats);
+}
+
+/**
+ * Apply the ±5% uncertainty roll (V3 §4.4) to the leading party's seat count,
+ * then re-normalize so the total still equals totalSeats. Other parties absorb
+ * the swing proportionally to their existing seat share.
+ *
+ * If there's no clear leader (no one above 0 seats), the function is a no-op.
+ *
+ * RNG is injectable for tests; defaults to Math.random.
+ */
+function applyUncertaintyRoll(seatsByFaction, totalSeats, rng = Math.random) {
+    const ids = Object.keys(seatsByFaction || {});
+    if (ids.length === 0) return {};
+
+    let leaderId = null;
+    let leaderSeats = -1;
+    for (const id of ids) {
+        const seats = Number(seatsByFaction[id]) || 0;
+        if (seats > leaderSeats) { leaderSeats = seats; leaderId = id; }
+    }
+    if (!leaderId || leaderSeats <= 0) return { ...seatsByFaction };
+
+    // ±5% of parliament_size. (rng() * 2 - 1) ∈ [-1, 1).
+    const swing = Math.round((rng() * 2 - 1) * 0.05 * totalSeats);
+    if (swing === 0) return { ...seatsByFaction };
+
+    // Apply swing to leader, absorb the inverse proportionally across others.
+    const adjusted = { ...seatsByFaction };
+    adjusted[leaderId] = Math.max(0, leaderSeats + swing);
+
+    const otherIds = ids.filter(id => id !== leaderId);
+    const otherTotal = otherIds.reduce((s, id) => s + (Number(seatsByFaction[id]) || 0), 0);
+    if (otherTotal > 0) {
+        const others = {};
+        for (const id of otherIds) others[id] = (Number(seatsByFaction[id]) || 0) - swing * (Number(seatsByFaction[id]) || 0) / otherTotal;
+        const normalized = allocateByLargestRemainder(others, totalSeats - adjusted[leaderId]);
+        for (const id of otherIds) adjusted[id] = normalized[id];
+    }
+    // Final defensive normalize: if rounding put us off by 1, give/take from leader.
+    const sum = ids.reduce((s, id) => s + adjusted[id], 0);
+    if (sum !== totalSeats) adjusted[leaderId] = Math.max(0, adjusted[leaderId] + (totalSeats - sum));
+    return adjusted;
+}
+
+// ─── Election: tie-breaker bonuses (Phase 3) ────────────────────────────────
+
+/**
+ * For each sector where 2+ factions are tied at the highest popularity,
+ * roll a die to pick the winner and assign them a virtual +10 popularity
+ * (== +1.0 displayed) for THIS election only. The caller layers the bonus
+ * map on top of stored popularity when computing TWP.
+ *
+ * Returns: Map<factionId, Map<sectorKey, bonusTenths>>
+ *
+ * RNG is injectable for tests.
+ */
+function applyTieBreakerBonuses(factions, sectors, popularityRows, rng = Math.random) {
+    const tied = findTiedSectors(factions, sectors, popularityRows);
+    const bonuses = new Map();
+    for (const t of tied) {
+        const winner = resolveTie(t.tied_faction_ids, rng);
+        if (!bonuses.has(winner)) bonuses.set(winner, new Map());
+        // V3 §3.2 specifies +1 displayed popularity = +10 in integer tenths.
+        bonuses.get(winner).set(t.sector_key, 10);
+    }
+    return bonuses;
+}
+
+// ─── Internal: Largest Remainder (DRY across the new helpers) ───────────────
+
+function allocateByLargestRemainder(weightsByFaction, totalSeats) {
+    const ids = Object.keys(weightsByFaction);
+    const out = {};
+    for (const id of ids) out[id] = 0;
+    const total = ids.reduce((s, id) => s + Math.max(0, Number(weightsByFaction[id]) || 0), 0);
+    if (total <= 0 || totalSeats <= 0) return out;
+
+    const quota = total / totalSeats;
+    const fractionals = [];
+    let allocated = 0;
+    for (const id of ids) {
+        const w = Math.max(0, Number(weightsByFaction[id]) || 0);
+        const raw = w / quota;
+        const floor = Math.floor(raw);
+        out[id] = floor;
+        allocated += floor;
+        fractionals.push({ id, fractional: raw - floor });
+    }
+    fractionals.sort((a, b) => b.fractional - a.fractional);
+    for (let i = 0; i < (totalSeats - allocated); i++) {
+        out[fractionals[i].id] += 1;
+    }
+    return out;
+}
+
+
+// ─── Phase 4: stronghold helpers (cascade redirect) ─────────────────────────
+
+/**
+ * Return the faction's top-N sectors by contribution to TWP. The "stronghold"
+ * concept replaces ideology-axis lookups: instead of "this party leans Left",
+ * downstream code asks "this party's strongholds are RETIREES, RURAL, and
+ * RELIGIOUS_CONSERVATIVES" and reasons about overlap / alignment from there.
+ *
+ * Returns array of length <= topN, ordered by contribution descending. Each
+ * entry is { sector_key, name, contribution }. Sectors with contribution = 0
+ * are excluded (a party with no popularity has no strongholds).
+ *
+ * topN defaults to 3 (V3 §6 uses a 3-sector stronghold concept).
+ */
+function getStrongholdSectors(factionId, sectors, popularityRows, topN = 3) {
+    const all = calculateSectorContributions(factionId, sectors, popularityRows);
+    return all
+        .filter(c => c.contribution > 0)
+        .sort((a, b) => b.contribution - a.contribution)
+        .slice(0, Math.max(0, topN))
+        .map(c => ({ sector_key: c.sector_key, name: c.name, contribution: c.contribution }));
+}
+
+/**
+ * Compute the "stronghold score" of a bill against a faction's strongholds.
+ * Replaces the V3 §15.2 calculate_stronghold_score and the ideology-axis
+ * alignment math used in calculateBillSponsorApprovalDelta.
+ *
+ *   score = Σ over strongholds of bill.sector_effects[stronghold].change_tenths
+ *
+ * Positive = bill helps strongholds (faction likely votes YES); negative =
+ * hurts (likely NO); zero = neutral.
+ *
+ * Inputs:
+ *   billSectorEffects   = [{ sector_key, change_tenths }]  (from policies.sector_effects)
+ *   factionStrongholds  = [{ sector_key, ... }]            (from getStrongholdSectors)
+ */
+function computeStrongholdScore(billSectorEffects, factionStrongholds) {
+    if (!Array.isArray(billSectorEffects) || billSectorEffects.length === 0) return 0;
+    if (!Array.isArray(factionStrongholds) || factionStrongholds.length === 0) return 0;
+    const strongholdKeys = new Set(factionStrongholds.map(s => s.sector_key));
+    let score = 0;
+    for (const eff of billSectorEffects) {
+        if (!eff || typeof eff.sector_key !== 'string') continue;
+        if (!strongholdKeys.has(eff.sector_key)) continue;
+        const change = Number(eff.change_tenths);
+        if (Number.isFinite(change)) score += change;
+    }
+    return score;
+}
+
+/**
+ * Coalition affinity between two factions, computed as the Jaccard-style
+ * overlap of their stronghold sets weighted by combined contribution. High
+ * score = they appeal to the same voter base (good coalition partners);
+ * low / zero = they compete for different voters (forced coalition).
+ *
+ * Replaces the ideology-distance score that previously drove coalition
+ * formation logic.
+ *
+ *   affinity = Σ over shared strongholds of min(contribA, contribB)
+ *            / max(1, Σ over union of strongholds of max(contribA, contribB))
+ *
+ * Range: [0, 1]. 0 = no overlap; 1 = identical strongholds with identical
+ * weights. Symmetric: affinity(A, B) === affinity(B, A).
+ */
+function coalitionAffinity(factionAStrongholds, factionBStrongholds) {
+    const a = new Map((factionAStrongholds || []).map(s => [s.sector_key, Number(s.contribution) || 0]));
+    const b = new Map((factionBStrongholds || []).map(s => [s.sector_key, Number(s.contribution) || 0]));
+    if (a.size === 0 || b.size === 0) return 0;
+
+    let intersection = 0;
+    let union = 0;
+    const keys = new Set([...a.keys(), ...b.keys()]);
+    for (const key of keys) {
+        const av = a.get(key) || 0;
+        const bv = b.get(key) || 0;
+        intersection += Math.min(av, bv);
+        union += Math.max(av, bv);
+    }
+    if (union <= 0) return 0;
+    return intersection / union;
+}
+
+/**
+ * Return the human-readable name of the faction's #1 stronghold sector,
+ * or a fallback string if the faction has no popularity. Used for news
+ * copy, party badges, and any UI that previously showed a single-word
+ * ideology label.
+ *
+ * Caller passes the strongholds array (from getStrongholdSectors) so
+ * we don't re-compute. Pass `fallback` to control what shows when the
+ * faction has zero strongholds (default: 'Unaligned').
+ */
+function dominantSectorLabel(strongholds, fallback = 'Unaligned') {
+    if (!Array.isArray(strongholds) || strongholds.length === 0) return fallback;
+    const top = strongholds[0];
+    if (!top || !top.name) return fallback;
+    return top.name;
+}
+
+// ─── Display helpers ────────────────────────────────────────────────────────
+
+/**
+ * Convert integer-tenths storage (0..100) to displayed popularity ("0.0".."10.0").
+ */
+function formatPopularity(tenths) {
+    const n = Number(tenths);
+    if (!Number.isFinite(n)) return '0.0';
+    return (n / 10).toFixed(1);
+}
+
+/**
+ * Convert a displayed popularity string ("7.3", "10", "0") to integer tenths
+ * (73, 100, 0). Out-of-range or non-numeric inputs return null so callers can
+ * surface a validation error.
+ */
+function parsePopularity(displayValue) {
+    const n = Number(displayValue);
+    if (!Number.isFinite(n)) return null;
+    if (n < 0 || n > 10) return null;
+    return Math.round(n * 10);
+}
+
+// ─── Internal helpers ───────────────────────────────────────────────────────
+
+function indexPopularityByFactionAndSector(popularityRows) {
+    const m = new Map();
+    for (const r of popularityRows || []) {
+        let inner = m.get(r.faction_id);
+        if (!inner) { inner = new Map(); m.set(r.faction_id, inner); }
+        inner.set(r.sector_id, Number(r.popularity) || 0);
+    }
+    return m;
+}
+
+function indexPopularityBySector(popularityRows) {
+    const m = new Map();
+    for (const r of popularityRows || []) {
+        let arr = m.get(r.sector_id);
+        if (!arr) { arr = []; m.set(r.sector_id, arr); }
+        arr.push(r);
+    }
+    return m;
+}
+
 // ────────── bills ──────────
 
 
@@ -8541,6 +9250,12 @@ async function ensureBlocApprovals(supabase, factionId, nationId) {
 // ==================== IDEOLOGY SHIFT PROCESSOR ====================
 
 async function processIdeologyShifts(supabase, nationId, resolutions, currentTick) {
+    // Phase 4: ideology cascade redirect. Sectors now drive bill outcomes via
+    // processSectorShifts. Ideology data is frozen — the historical values
+    // remain in the DB for replay / archaeology, but no new writes happen
+    // here. Phase 5 will delete the columns and this function entirely.
+    return;
+    // eslint-disable-next-line no-unreachable
     if (!resolutions || resolutions.length === 0) return;
 
     // Only process bills with terminal resolutions — skip deferred bills
@@ -8711,6 +9426,172 @@ async function processIdeologyShifts(supabase, nationId, resolutions, currentTic
     }
 }
 
+// ==================== SECTOR POPULARITY SHIFTS (Phase 2) ====================
+
+/**
+ * Apply per-faction sector popularity changes from terminal bill resolutions.
+ *
+ * Vote-aligned model (Phase 2 design):
+ *   * passed:  sponsor + YES voters get +change_tenths per sector;
+ *              NO voters get -change_tenths; abstain unaffected.
+ *   * failed:  sponsor takes -change_tenths (full inverse); other voters
+ *              unaffected — proposer "owns" the failed bill alone.
+ *   * Other terminal states (expired_committee, withdrawn,
+ *     failed_proposer_disbanded, etc.) are administrative outcomes, not
+ *     political defeats, so they skip — no popularity moves.
+ *
+ * Mirrors processIdeologyShifts in shape: load bills with bill_articles,
+ * policies, and bill_support; build voter stance map; delegate the math to
+ * the pure helpers in sectors.js (computeSectorShifts + sumSectorEffects);
+ * aggregate per (faction, sector); upsert with 0..100 clamp.
+ *
+ * Sector lookup is per-nation: a bill's effects reference sector_key, but
+ * popularity rows reference sector_id. Effects naming a sector_key the
+ * nation doesn't have silently no-op (forward-compatible with custom
+ * per-nation sectors).
+ */
+async function processSectorShifts(supabase, nationId, resolutions) {
+    if (!resolutions || resolutions.length === 0) return;
+
+    // Map every resolution to passed/failed/skip. Only passed and failed
+    // move popularity; everything else (deferred, withdrawn, committee
+    // expirations, proposer-disbanded) is administrative.
+    function normalizeResult(r) {
+        if (r === 'passed' || r === 'approved') return 'passed';
+        if (r === 'failed' || r === 'rejected') return 'failed';
+        return null;
+    }
+    const actionable = resolutions
+        .map(r => ({ billId: r.billId, result: normalizeResult(r.result) }))
+        .filter(r => r.billId && r.result);
+    if (actionable.length === 0) return;
+
+    const billIds = actionable.map(r => r.billId);
+    const { data: bills, error: billErr } = await supabase
+        .from('bills')
+        .select('id, nation_id, proposed_by, bill_type, bill_articles(*, policies(sector_effects)), bill_support(faction_id, stance)')
+        .in('id', billIds);
+    if (billErr) {
+        console.error('[processSectorShifts] failed to load bills', { nationId, error: billErr.message });
+        return;
+    }
+    if (!bills || bills.length === 0) return;
+
+    // Match the legislative-bills filter from processIdeologyShifts. Non-
+    // legislative bills (no_confidence, confirmations, foundational, veto
+    // override) are political-process votes, not policy outcomes — they
+    // don't carry sector effects.
+    const legislative = bills.filter(b =>
+        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
+    );
+    if (legislative.length === 0) return;
+
+    const resultByBill = new Map(actionable.map(r => [r.billId, r.result]));
+
+    // Load active sectors for this nation once so we can translate
+    // sector_key (in policies) to sector_id (in faction_sector_popularity).
+    const { data: sectors, error: secErr } = await supabase
+        .from('sectors')
+        .select('id, sector_key')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (secErr) {
+        console.error('[processSectorShifts] failed to load sectors', { nationId, error: secErr.message });
+        return;
+    }
+    const sectorIdByKey = new Map((sectors || []).map(s => [s.sector_key, s.id]));
+    if (sectorIdByKey.size === 0) return; // nation has no sectors yet
+
+    // Aggregate deltas across every bill in this batch. A faction can be
+    // shifted multiple times in one tick if multiple bills affect them.
+    const aggregatedDeltas = new Map(); // key: `${factionId}:${sectorId}` -> total delta
+    for (const bill of legislative) {
+        const result = resultByBill.get(bill.id);
+        if (!result) continue;
+
+        const articleEffects = (bill.bill_articles || [])
+            .map(art => art?.policies?.sector_effects)
+            .filter(e => Array.isArray(e) && e.length > 0);
+        if (articleEffects.length === 0) continue;
+        const summed = sumSectorEffects(articleEffects);
+        if (summed.length === 0) continue;
+
+        // Build voter stance map (normalize committee 'accept'/'reject').
+        const voters = new Map();
+        for (const s of (bill.bill_support || [])) {
+            const stance = s.stance === 'accept' ? 'yes'
+                         : s.stance === 'reject' ? 'no'
+                         : s.stance;
+            if (stance === 'yes' || stance === 'no' || stance === 'abstain') {
+                voters.set(s.faction_id, stance);
+            }
+        }
+
+        const shiftRows = computeSectorShifts({
+            effects: summed,
+            voters,
+            sponsorId: bill.proposed_by,
+            result,
+        });
+        for (const row of shiftRows) {
+            const sectorId = sectorIdByKey.get(row.sector_key);
+            if (!sectorId) continue; // sector not present in this nation
+            const key = `${row.factionId}:${sectorId}`;
+            aggregatedDeltas.set(key, (aggregatedDeltas.get(key) || 0) + row.delta_tenths);
+        }
+    }
+    if (aggregatedDeltas.size === 0) return;
+
+    // Fetch current popularity for every (faction, sector) pair we'll write.
+    const factionIds = new Set();
+    const sectorIds  = new Set();
+    for (const key of aggregatedDeltas.keys()) {
+        const [fid, sid] = key.split(':');
+        factionIds.add(fid);
+        sectorIds.add(sid);
+    }
+    const { data: currentRows, error: curErr } = await supabase
+        .from('faction_sector_popularity')
+        .select('faction_id, sector_id, popularity')
+        .in('faction_id', [...factionIds])
+        .in('sector_id',  [...sectorIds]);
+    if (curErr) {
+        console.error('[processSectorShifts] failed to load current popularities', { nationId, error: curErr.message });
+        return;
+    }
+    const currentByKey = new Map();
+    for (const r of (currentRows || [])) {
+        currentByKey.set(`${r.faction_id}:${r.sector_id}`, Number(r.popularity) || 0);
+    }
+
+    // Build clamped upserts. Skip rows where the clamp produces no change
+    // (e.g., already at 100 with a positive delta) so the network round-trip
+    // only carries actual writes. Math.round defends against fractional
+    // change_tenths slipping in from a malformed policy: the CHECK constraint
+    // requires change_tenths to be a JSON number but doesn't enforce integer,
+    // and faction_sector_popularity.popularity is smallint.
+    const upserts = [];
+    for (const [key, delta] of aggregatedDeltas) {
+        const [factionId, sectorId] = key.split(':');
+        const current = currentByKey.get(key) ?? 0;
+        const next = Math.max(0, Math.min(100, Math.round(current + delta)));
+        if (next === current) continue;
+        upserts.push({ faction_id: factionId, sector_id: sectorId, popularity: next });
+    }
+    if (upserts.length === 0) return;
+
+    const { error: upsertErr } = await supabase
+        .from('faction_sector_popularity')
+        .upsert(upserts, { onConflict: 'faction_id,sector_id' });
+    if (upsertErr) {
+        console.error('[processSectorShifts] upsert failed', {
+            nationId,
+            count: upserts.length,
+            error: upsertErr.message,
+        });
+    }
+}
+
 
 // ==================== IDEOLOGY DECAY ====================
 
@@ -8721,6 +9602,11 @@ const IDEOLOGY_DECAY_DEAD_ZONE = 10; // no decay within ±10 of center
  * Dead zone: scores within ±10 don't decay.
  */
 async function processIdeologyDecay(supabase, nationId, currentTick) {
+    // Phase 4: ideology cascade redirect. Decay-toward-center kept faction
+    // ideology drifting tick-by-tick; with sectors driving gameplay, that
+    // drift is invisible noise. No-op pending Phase 5 deletion.
+    return;
+    // eslint-disable-next-line no-unreachable
     const ideologies = await loadNationIdeologies(supabase, nationId);
     if (!ideologies || ideologies.length === 0) return;
 
@@ -15324,53 +16210,53 @@ async function processPartialElection(supabase, nation, election, currentTick) {
     const deltaSeats = election.partial_seats;
     console.log(`Processing partial election for ${nation.name}: +${deltaSeats} new seats`);
 
-    // voter_blocs table removed — pass empty array to simulation
-    const blocs = [];
+    // 1. Load parties + sectors + popularity. Phase 3: partial elections use
+    //    the same sector engine as full elections, but skip the independents
+    //    roll (these are delta seats added to an existing parliament, not a
+    //    fresh contest) and skip the uncertainty roll (deltas should be a
+    //    direct read of current standings). Existing seats are needed for
+    //    the delta-add at step 4, so includeCurrentSeats: true.
+    const { factions: factionList, sectors: sectorList, popularity } =
+        await loadSectorElectionInputs(supabase, nation.id, { includeCurrentSeats: true });
 
-    // 1. Load parties with ideology axes
-    const { data: factions } = await supabase
-        .from('factions').select('id, faction_name, seats, electability')
-        .eq('nation_id', nation.id).eq('faction_type', 'party');
-
-    if (!factions || factions.length === 0) {
+    if (factionList.length === 0) {
         console.warn('No parties found for partial election');
-        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_parties', bloc_details: [] }, election_tick: currentTick }).eq('id', election.id);
+        await supabase.from('elections')
+            .update({ status: 'completed', results: { partial: true, error: 'no_parties', bloc_details: [] }, election_tick: currentTick })
+            .eq('id', election.id);
         return;
     }
 
-    const factionIds = factions.map(f => f.id);
-    const { data: ideologies } = await supabase
-        .from('faction_ideology').select('*').in('faction_id', factionIds);
-    const ideoMap = {};
-    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
-
-    const parties = factions.map(f => ({
-        id: f.id, faction_name: f.faction_name,
-        electability: f.electability ?? 50,
-        axes: ideoMap[f.id] || {
-            liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
-            globalism_nationalism: 0, individualism_collectivism: 0
-        }
-    }));
-
-    // 2. Run election simulation for ONLY the delta seats
-    const result = runElectionSimulation(blocs, parties, deltaSeats, null);
-
-    // 3. ADD delta seats to each party's existing seats
-    for (const faction of factions) {
-        const deltaForParty = result.seats[faction.id] || 0;
-        const newTotal = (faction.seats || 0) + deltaForParty;
-        await supabase.from('factions').update({ seats: newTotal }).eq('id', faction.id);
+    // 2. Tie-breakers + TWP per faction.
+    const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
+    const augmentedPop = layerBonusesIntoPopularity(popularity, sectorList, bonuses);
+    const twpByFaction = {};
+    for (const f of factionList) {
+        twpByFaction[f.id] = calculateTotalWeightedPopularity(f.id, sectorList, augmentedPop);
     }
 
-    // 4. Build results and mark election as completed
-    const seatResults = factions.map(f => ({
+    // 3. Allocate ONLY the delta via TWP. No uncertainty roll on partials.
+    let deltaAllocation = allocateSeatsByTwp(twpByFaction, deltaSeats);
+    const electabilityByFaction = {};
+    for (const f of factionList) electabilityByFaction[f.id] = electabilityBucket(f.electability);
+    deltaAllocation = applyElectabilityModifier(deltaAllocation, electabilityByFaction, deltaSeats);
+
+    // 4. ADD delta to each faction's existing seats.
+    for (const f of factionList) {
+        const deltaForParty = deltaAllocation[f.id] ?? 0;
+        const newTotal = (f.seats || 0) + deltaForParty;
+        await supabase.from('factions').update({ seats: newTotal }).eq('id', f.id);
+    }
+
+    // 5. Build results in the legacy partial-election shape so the UI doesn't
+    //    need plumbing changes.
+    const seatResults = factionList.map(f => ({
         party_id: f.id,
         party_name: f.faction_name,
         existing_seats: f.seats || 0,
-        new_seats: result.seats[f.id] || 0,
-        total_seats: (f.seats || 0) + (result.seats[f.id] || 0),
-        votes: result.votes[f.id] || 0
+        new_seats: deltaAllocation[f.id] ?? 0,
+        total_seats: (f.seats || 0) + (deltaAllocation[f.id] ?? 0),
+        votes: Math.round(twpByFaction[f.id] || 0),
     }));
 
     await supabase.from('elections').update({
@@ -15380,13 +16266,22 @@ async function processPartialElection(supabase, nation, election, currentTick) {
             delta_seats: deltaSeats,
             votes: seatResults,
             seats: seatResults,
-            bloc_details: result.details,
-            total_votes_cast: result.totalVotesCast,
-            total_abstentions: result.totalAbstentions
+            bloc_details: [],
+            total_votes_cast: Math.round(Object.values(twpByFaction).reduce((s, v) => s + v, 0)),
+            total_abstentions: 0,
+            sector_breakdown: {
+                independent_seats_unchanged: true,
+                factions: factionList.map(f => ({
+                    faction_id: f.id,
+                    faction_name: f.faction_name,
+                    twp: twpByFaction[f.id] || 0,
+                    delta_seats: deltaAllocation[f.id] ?? 0,
+                })),
+            },
         }
     }).eq('id', election.id);
 
-    console.log(`Partial election completed: ${deltaSeats} new seats allocated across ${factions.length} parties`);
+    console.log(`Partial election completed: ${deltaSeats} new seats allocated across ${factionList.length} parties via sector engine`);
 }
 
 /**
@@ -15513,8 +16408,8 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
     let electionResults;
     if (isPresidential && normalizedElectionType === 'presidential') {
         // General Election: run parliamentary (seats) first, then presidential (candidates)
-        const { data: parlData, error: parlError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: 'parliamentary' });
-        if (parlError) throw parlError;
+        // Phase 3: parliamentary sub-election uses the sector engine.
+        const parlData = await runSectorElection(supabase, nation);
 
         // Sync seats and create a completed parliamentary election record for the UI
         await recordParliamentarySubElection(supabase, nation.id, parlData, currentTick);
@@ -15536,9 +16431,15 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         // Merge parliamentary seat results into the presidential election results
         electionResults = { ...data, seats: parlData?.seats || [] };
     } else {
-        const { data, error: runError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: normalizedElectionType });
-        if (runError) throw runError;
-        electionResults = data;
+        // Phase 3: parliamentary uses the sector engine; presidential still
+        // uses the legacy SQL RPC (different model, out of scope for now).
+        if (normalizedElectionType === 'parliamentary') {
+            electionResults = await runSectorElection(supabase, nation);
+        } else {
+            const { data, error: runError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: normalizedElectionType });
+            if (runError) throw runError;
+            electionResults = data;
+        }
     }
 
     // Create the election record (SQL RPCs no longer insert their own)
@@ -15675,6 +16576,277 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
     };
 }
 
+// ==================== SECTOR-BASED ELECTION (Phase 3) ====================
+
+/**
+ * Run a parliamentary election using the Phase 3 sector-popularity engine.
+ *
+ * Replaces the legacy SQL run_election RPC for parliamentary elections.
+ * Pipeline matches V3 §4.6:
+ *
+ *   1. Roll independents — 1D10 delta from nations.independent_seats,
+ *      clamped to [0, floor(parliament_size * 0.08)]. Persist immediately.
+ *   2. Compute available_seats = parliament_size - independent_seats.
+ *   3. Load active sectors + per-faction popularity.
+ *   4. Apply tie-breaker bonuses for sectors where 2+ factions are tied at
+ *      the highest popularity (virtual +1.0 to one randomly-chosen winner;
+ *      not persisted, election-scope only).
+ *   5. Compute TWP per faction with bonuses layered on.
+ *   6. Allocate available_seats by TWP (Largest Remainder + fringe threshold;
+ *      zero-fallback splits evenly when no party meets fringe).
+ *   7. Apply Electability modifier (Low/Moderate/High → -2%/0%/+2%).
+ *   8. Apply ±5% uncertainty roll on the leader's seat count.
+ *   9. Sync factions.seats and return a result blob matching the legacy
+ *      RPC's shape, with sector_breakdown nested for replay/diagnostics.
+ *
+ * Presidential elections still use the legacy SQL RPC (different model).
+ *
+ * Returns a JSONB-compatible object identical in shape to run_election so
+ * the existing JS post-processing in processElections / runManualElection
+ * doesn't need other changes.
+ */
+async function runSectorElection(supabase, nation) {
+    const nationId = nation.id;
+    const totalSeats = Number(nation.total_seats) || 120;
+    const currentIndependents = Number(nation.independent_seats) || 0;
+
+    // 1. Roll independents and persist immediately. Do this BEFORE seat math
+    //    so a partial failure leaves the nation in a coherent state.
+    const indep = rollIndependents(currentIndependents, totalSeats);
+    const { error: indepErr } = await supabase
+        .from('nations')
+        .update({ independent_seats: indep.next })
+        .eq('id', nationId);
+    if (indepErr) {
+        console.error(`[runSectorElection] failed to persist independent_seats for ${nation.name}:`, indepErr.message);
+        // Continue anyway — seat math is the priority; admin can reconcile.
+    }
+    const availableSeats = Math.max(0, totalSeats - indep.next);
+
+    // 2. Load factions + sectors + popularity (shared with processPartialElection).
+    const { factions: factionList, sectors: sectorList, popularity } =
+        await loadSectorElectionInputs(supabase, nationId, { includeCurrentSeats: false });
+
+    if (factionList.length === 0) {
+        // Nation has no parties — return an empty result.
+        return buildEmptySectorElectionResult(indep, totalSeats);
+    }
+
+    // 3. Tie-breaker bonuses (election-scope, not persisted).
+    const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
+
+    // 4. Layer bonuses onto popularity rows for TWP computation. We clone the
+    //    rows so we don't mutate the cached query result.
+    const augmentedPop = layerBonusesIntoPopularity(popularity, sectorList, bonuses);
+
+    // 5. Compute TWP per faction.
+    const twpByFaction = {};
+    const contribByFaction = {};
+    for (const f of factionList) {
+        twpByFaction[f.id] = calculateTotalWeightedPopularity(f.id, sectorList, augmentedPop);
+        contribByFaction[f.id] = calculateSectorContributions(f.id, sectorList, augmentedPop);
+    }
+
+    // 6. Allocate seats by TWP (Largest Remainder + fringe + zero-fallback).
+    let seats = allocateSeatsByTwp(twpByFaction, availableSeats);
+
+    // 7. Electability modifier.
+    const electabilityByFaction = {};
+    for (const f of factionList) {
+        electabilityByFaction[f.id] = electabilityBucket(f.electability);
+    }
+    seats = applyElectabilityModifier(seats, electabilityByFaction, availableSeats);
+
+    // 8. ±5% uncertainty roll on the leader.
+    seats = applyUncertaintyRoll(seats, availableSeats);
+
+    // 9. Sync factions.seats. Zero out parties that received no seats so the
+    //    state is clean (matches the legacy SQL RPC's behavior).
+    for (const f of factionList) {
+        const newSeats = seats[f.id] ?? 0;
+        const { error: seatErr } = await supabase
+            .from('factions')
+            .update({ seats: newSeats })
+            .eq('id', f.id);
+        if (seatErr) {
+            console.error(`[runSectorElection] failed to update seats for ${f.faction_name}:`, seatErr.message);
+            // Continue — partial sync is recoverable; total failure is not.
+        }
+    }
+
+    // Build the result blob in the legacy shape so existing callers don't
+    // need plumbing changes. sector_breakdown is the new replay payload.
+    return buildSectorElectionResult({
+        factions: factionList,
+        seats,
+        twpByFaction,
+        contribByFaction,
+        bonuses,
+        indep,
+        totalSeats,
+    });
+}
+
+/**
+ * Shared loader for the sector-election inputs (factions, sectors, popularity).
+ * Used by both runSectorElection (full election) and processPartialElection
+ * (foundational-bill delta seats). Set includeCurrentSeats=true if the caller
+ * needs to read existing factions.seats — runSectorElection only writes seats
+ * so it skips that column.
+ */
+async function loadSectorElectionInputs(supabase, nationId, { includeCurrentSeats = false } = {}) {
+    const factionColumns = includeCurrentSeats
+        ? 'id, faction_name, electability, seats'
+        : 'id, faction_name, electability';
+
+    const [
+        { data: factions, error: factErr },
+        { data: sectors,  error: secErr  },
+    ] = await Promise.all([
+        supabase.from('factions')
+            .select(factionColumns)
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .is('abandoned_at', null),
+        supabase.from('sectors')
+            .select('id, sector_key, name, weight, base_turnout, is_active')
+            .eq('nation_id', nationId)
+            .eq('is_active', true)
+            .order('display_order'),
+    ]);
+    if (factErr) throw new Error(`load factions: ${factErr.message}`);
+    if (secErr)  throw new Error(`load sectors: ${secErr.message}`);
+
+    const factionList = factions || [];
+    const sectorList  = sectors  || [];
+    let popularity = [];
+    if (factionList.length > 0 && sectorList.length > 0) {
+        const { data: pop, error: popErr } = await supabase
+            .from('faction_sector_popularity')
+            .select('faction_id, sector_id, popularity')
+            .in('faction_id', factionList.map(f => f.id));
+        if (popErr) throw new Error(`load faction_sector_popularity: ${popErr.message}`);
+        popularity = pop || [];
+    }
+    return { factions: factionList, sectors: sectorList, popularity };
+}
+
+function layerBonusesIntoPopularity(popularity, sectors, bonuses) {
+    if (!bonuses || bonuses.size === 0) return popularity;
+    const sectorIdByKey = new Map(sectors.map(s => [s.sector_key, s.id]));
+    // Index existing rows for fast lookup.
+    const indexed = new Map();
+    const out = [];
+    for (const r of popularity) {
+        const clone = { ...r };
+        indexed.set(`${r.faction_id}:${r.sector_id}`, clone);
+        out.push(clone);
+    }
+    for (const [factionId, sectorBonuses] of bonuses) {
+        for (const [sectorKey, bonusTenths] of sectorBonuses) {
+            const sectorId = sectorIdByKey.get(sectorKey);
+            if (!sectorId) continue;
+            const key = `${factionId}:${sectorId}`;
+            const existing = indexed.get(key);
+            if (existing) {
+                existing.popularity = (Number(existing.popularity) || 0) + bonusTenths;
+            } else {
+                const fresh = { faction_id: factionId, sector_id: sectorId, popularity: bonusTenths };
+                indexed.set(key, fresh);
+                out.push(fresh);
+            }
+        }
+    }
+    return out;
+}
+
+function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFaction, bonuses, indep, totalSeats }) {
+    const seatRows = [];
+    const voteRows = [];
+    const breakdown = [];
+    let totalTwp = 0;
+    for (const f of factions) totalTwp += Number(twpByFaction[f.id]) || 0;
+
+    for (const f of factions) {
+        const fSeats = seats[f.id] ?? 0;
+        const fTwp   = Number(twpByFaction[f.id]) || 0;
+        const sharePct = totalTwp > 0 ? Math.round((fTwp / totalTwp) * 10000) / 100 : 0;
+
+        seatRows.push({ party_id: f.id, party_name: f.faction_name, seats: fSeats });
+        // 'votes' in the legacy shape is total votes cast for the party. We
+        // expose TWP here as the closest analog so the existing UI columns
+        // light up; a future pass can rename the field.
+        voteRows.push({
+            party_id: f.id,
+            party_name: f.faction_name,
+            votes: Math.round(fTwp),
+            vote_percentage: sharePct,
+            seats: fSeats,
+        });
+        breakdown.push({
+            faction_id: f.id,
+            faction_name: f.faction_name,
+            twp: fTwp,
+            top_contributions: (contribByFaction[f.id] || [])
+                .filter(c => c.contribution > 0)
+                .sort((a, b) => b.contribution - a.contribution)
+                .slice(0, 3)
+                .map(c => ({ sector_key: c.sector_key, name: c.name, contribution: c.contribution })),
+        });
+    }
+
+    const tieBreaks = [];
+    for (const [winnerId, sectorMap] of (bonuses || new Map())) {
+        for (const [sectorKey] of sectorMap) {
+            tieBreaks.push({ winner_faction_id: winnerId, sector_key: sectorKey });
+        }
+    }
+
+    return {
+        votes: voteRows,
+        seats: seatRows,
+        bloc_details: [],
+        // Legacy fields kept for the existing UI; values mean less in the
+        // sector engine but need to be present so the result page doesn't
+        // crash on missing keys.
+        total_votes_cast: Math.round(totalTwp),
+        total_abstentions: 0,
+        turnout_pct: null,
+        // Phase 3 additions.
+        sector_breakdown: {
+            independent_seats: indep.next,
+            independent_roll:  indep.roll,
+            independent_delta: indep.delta,
+            independent_cap:   indep.cap,
+            parliament_size:   totalSeats,
+            available_seats:   totalSeats - indep.next,
+            factions: breakdown,
+            tie_breaks: tieBreaks,
+        },
+    };
+}
+
+function buildEmptySectorElectionResult(indep, totalSeats) {
+    return {
+        votes: [],
+        seats: [],
+        bloc_details: [],
+        total_votes_cast: 0,
+        total_abstentions: 0,
+        turnout_pct: null,
+        sector_breakdown: {
+            independent_seats: indep.next,
+            independent_roll:  indep.roll,
+            independent_delta: indep.delta,
+            independent_cap:   indep.cap,
+            parliament_size:   totalSeats,
+            available_seats:   totalSeats - indep.next,
+            factions: [],
+            tie_breaks: [],
+        },
+    };
+}
+
 async function processElections(supabase, nation, currentTick) {
     const isPresidential = hasElectedPresident(nation);
     const results = [];
@@ -15755,13 +16927,14 @@ async function processElections(supabase, nation, currentTick) {
                 .maybeSingle();
 
             if (!parlAlreadyRan) {
-                const { data: parlData, error: parlError } = await supabase.rpc('run_election', {
-                    p_nation_id: nation.id,
-                    p_election_type: 'parliamentary'
-                });
-                if (parlError) {
+                // Phase 3: parliamentary sub-election uses the sector engine.
+                let parlData = null;
+                try {
+                    parlData = await runSectorElection(supabase, nation);
+                } catch (parlError) {
                     console.error(`Parliamentary sub-election failed for presidential election in ${nation.name}:`, parlError);
-                } else {
+                }
+                if (parlData) {
                     await recordParliamentarySubElection(supabase, nation.id, parlData, currentTick);
                     console.log(`Parliamentary seats synced alongside presidential election for ${nation.name}`);
                 }
@@ -15783,7 +16956,16 @@ async function processElections(supabase, nation, currentTick) {
                 p_election_id: election.id
             }));
         } else {
-            ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
+            // Phase 3: parliamentary uses the sector engine. Wrap in try/catch
+            // and shape the response as { data, error } to match the legacy
+            // RPC contract this code path expects.
+            try {
+                data = await runSectorElection(supabase, nation);
+                error = null;
+            } catch (e) {
+                data = null;
+                error = e;
+            }
         }
 
         if (error) {
@@ -15795,7 +16977,13 @@ async function processElections(supabase, nation, currentTick) {
                     p_election_id: election.id
                 }));
             } else {
-                ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
+                try {
+                    data = await runSectorElection(supabase, nation);
+                    error = null;
+                } catch (e) {
+                    data = null;
+                    error = e;
+                }
             }
 
             if (error) {
@@ -37412,6 +38600,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
         } catch (ideoErr) {
             console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
+        }
+
+        // Phase 2: sector popularity shifts from resolved bills (vote-aligned).
+        // Runs alongside ideology shifts during the transition; sectors are
+        // shadow-tracked until Phase 3 swaps the election engine over.
+        try {
+            await processSectorShifts(supabase, nation.id, resolutions);
+        } catch (sectorErr) {
+            console.error(`[advanceTick] Sector shifts failed for ${nation.name} (non-fatal):`, sectorErr);
         }
 
         // Natural ideology decay toward center (extremism erodes over time)
