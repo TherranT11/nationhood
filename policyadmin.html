@@ -193,27 +193,6 @@
                 </div>
 
                 <!-- Submit -->
-                <!-- Section 7: Prerequisite -->
-<div class="builder-section">
-    <div class="builder-section-title">🔗 7. Prerequisite Policy</div>
-    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-        Does this policy require another policy to be active first?
-        <span style="color:#5b9bd5;">e.g., Central Bank policies require "Establish Central Bank"</span>
-    </p>
-    <div class="prereq-toggle">
-        <input type="checkbox" id="b-has-prereq" onchange="togglePrereq()">
-        <label for="b-has-prereq">This policy requires a prerequisite law</label>
-    </div>
-    <div class="prereq-select-area" id="prereq-select-area" style="display:none;">
-        <div class="form-field">
-            <label>Select Prerequisite Policy</label>
-            <select class="form-field select" id="b-prereq-policy" style="width:100%;padding:10px 14px;background:#252525;border:1px solid #333;border-radius:5px;color:#e0e0e0;font-size:0.9rem;">
-                <option value="">-- Select policy --</option>
-            </select>
-        </div>
-        <div id="prereq-preview" style="display:none; margin-top:10px;"></div>
-    </div>
-</div>
                 <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:10px; margin-bottom:40px;">
                     <button class="btn-dim" onclick="resetBuilder()">Clear Form</button>
                     <button class="btn-gold" id="submit-btn" onclick="savePolicy()">✅ Create Policy</button>
@@ -301,7 +280,6 @@ let editingPolicyId = null;
 // Builder state
 let statEffects = []; // array of { stat_key, direction, rate, delay_ticks, duration_ticks }
 let startingNations = new Set(); // nation IDs
-let selectedPrereqId = null; // requires_policy_id
 let sectorEffects = []; // [{ sector_key, change_tenths }] — Phase 2 sector deltas
 let sectorOptions = []; // [{ sector_key, name }] — default sectors loaded once on init
 // Preserved ideology data — Phase 2 stops authoring new ideology, but
@@ -481,7 +459,7 @@ function renderPolicyTable() {
             <td><span class="tag tag-sector">${p.major_sector || '—'}</span><br><span style="font-size:0.75rem;color:#888;">${law}</span></td>
             <td>${effectsHTML}</td>
             <td>${ideoHTML}</td>
-           <td style="font-size:0.8rem; font-family:monospace;">${costHTML}${p.requires_policy_id ? '<br><span class="prereq-badge">🔗 Requires Prereq</span>' : ''}</td>
+           <td style="font-size:0.8rem; font-family:monospace;">${costHTML}</td>
             <td><div class="action-btns">
                 <button class="action-btn action-btn-edit" onclick="editPolicy('${p.id}')">Edit</button>
                 <button class="action-btn action-btn-dup" onclick="duplicatePolicy('${p.id}')">Dup</button>
@@ -606,12 +584,6 @@ function loadPolicyIntoBuilder(p) {
         : [];
     renderSectorEffects();
 
-    // Prerequisite
-    selectedPrereqId = p.requires_policy_id || null;
-    const hasPrereq = !!selectedPrereqId;
-    document.getElementById('b-has-prereq').checked = hasPrereq;
-    document.getElementById('prereq-select-area').style.display = hasPrereq ? 'block' : 'none';
-    if (hasPrereq) populatePrereqDropdown();
 }
 
 // ==================== NATION CHECKS ====================
@@ -966,63 +938,6 @@ function onSectorOrLawChange() {
     // sector/law-category change handlers don't break, but no longer fans
     // out to other UI.
 }
-// ==================== PREREQUISITE ====================
-function togglePrereq() {
-    const checked = document.getElementById('b-has-prereq').checked;
-    document.getElementById('prereq-select-area').style.display = checked ? 'block' : 'none';
-    if (checked) {
-        populatePrereqDropdown();
-    } else {
-        selectedPrereqId = null;
-        document.getElementById('prereq-preview').style.display = 'none';
-    }
-}
-
-function populatePrereqDropdown() {
-    const select = document.getElementById('b-prereq-policy');
-    // Group by sector > law category
-    const grouped = {};
-    allPolicies.forEach(p => {
-        if (editingPolicyId && p.id === editingPolicyId) return; // Can't require itself
-        const key = (p.major_sector || 'Other') + ' › ' + (p.law_category || p.minor_sector || 'General');
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(p);
-    });
-
-    select.innerHTML = '<option value="">-- Select prerequisite policy --</option>';
-    Object.keys(grouped).sort().forEach(key => {
-        const group = document.createElement('optgroup');
-        group.label = key;
-        grouped[key].forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p.id;
-            opt.textContent = p.policy_name;
-            if (p.id === selectedPrereqId) opt.selected = true;
-            group.appendChild(opt);
-        });
-        select.appendChild(group);
-    });
-
-    select.onchange = function() {
-        selectedPrereqId = this.value || null;
-        updatePrereqPreview();
-    };
-
-    updatePrereqPreview();
-}
-
-function updatePrereqPreview() {
-    const preview = document.getElementById('prereq-preview');
-    if (!selectedPrereqId) { preview.style.display = 'none'; return; }
-    const p = allPolicies.find(x => x.id === selectedPrereqId);
-    if (!p) { preview.style.display = 'none'; return; }
-    preview.style.display = 'block';
-    preview.innerHTML = `<div class="formula-preview">
-        🔗 <strong>Requires:</strong> "${escapeHtml(p.policy_name)}" (${p.major_sector} › ${p.law_category || p.minor_sector || '—'})<br>
-        <span style="color:#888;">Players must have this law active before they can include this policy in a bill.</span>
-    </div>`;
-}
-
 // ==================== SAVE POLICY ====================
 async function savePolicy() {
     const name = document.getElementById('b-name').value.trim();
@@ -1097,7 +1012,7 @@ async function savePolicy() {
         stat_floor: 0,
         stat_ceiling: 100,
         ongoing_cost_per_tick: parseFloat(document.getElementById('b-ongoing-base').value) || 0,
-        requires_policy_id: selectedPrereqId || null,
+        requires_policy_id: null,
         is_active: true
     };
 
@@ -1181,10 +1096,6 @@ function resetBuilder() {
     renderStatEffects();
     sectorEffects = [];
     renderSectorEffects();
-    selectedPrereqId = null;
-    document.getElementById('b-has-prereq').checked = false;
-    document.getElementById('prereq-select-area').style.display = 'none';
-    document.getElementById('prereq-preview').style.display = 'none';
     document.getElementById('submit-btn').textContent = '✅ Create Policy';
 }
 
@@ -1222,7 +1133,6 @@ window.duplicatePolicy = duplicatePolicy;
 window.deletePolicy = deletePolicy;
 window.toggleStartingNation = toggleStartingNation;
 window.removeStatEffect = removeStatEffect;
-window.togglePrereq = togglePrereq;
 window.updateEffect = updateEffect;
 window.addSectorEffect = addSectorEffect;
 window.removeSectorEffect = removeSectorEffect;
