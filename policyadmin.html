@@ -160,7 +160,7 @@
                 <!-- Submit -->
                 <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:10px; margin-bottom:40px;">
                     <button class="btn-dim" onclick="resetBuilder()">Clear Form</button>
-                    <button class="btn-gold" id="submit-btn" disabled title="Save lands in Phase 2B-iii" style="opacity:0.4;cursor:not-allowed;">✅ Create Policy</button>
+                    <button class="btn-gold" id="submit-btn" onclick="savePolicy()">✅ Create Policy</button>
                 </div>
             </div>
         </div>
@@ -188,6 +188,8 @@ let filteredPolicies = [];
 // until 2B-ii adds per-option editing.
 let editingPolicyId = null;
 let policyDraft = newPolicyDraft();
+// Save lock — prevents double-clicks on Create from racing two inserts.
+let isSaving = false;
 
 function newPolicyDraft() {
     return {
@@ -1089,6 +1091,178 @@ function resetBuilder() {
     renderOptions();
 }
 
+// ==================== BUILDER — SAVE (CREATE) ====================
+// Phase 2B-iii: create-only. Phase 2C adds the update branch (and
+// duplicate / starting-status writes). The submit button stays mapped to
+// this function across phases; we just branch on editingPolicyId later.
+async function savePolicy() {
+    if (isSaving) return;
+
+    // Phase 2B-iii is create-only. The list view's Edit button is still
+    // disabled, so editingPolicyId can't actually be set here, but the
+    // guard documents intent and stays in place once 2C lands the branch.
+    if (editingPolicyId) {
+        alert('Editing existing policies lands in Phase 2C.');
+        return;
+    }
+
+    // ---- Validation ----------------------------------------------------
+    const name = (policyDraft.policy_name || '').trim();
+    if (!name) { alert('Enter a policy name.'); return; }
+
+    if (!policyDraft.major_sector) { alert('Select a sector.'); return; }
+
+    const lawCategory = getLawCategoryValue();
+    if (!lawCategory) { alert('Select or create a law category.'); return; }
+
+    const isLever  = policyDraft.policy_type === 'lever';
+    const optCount = policyDraft.options.length;
+    if (isLever && optCount !== 1) {
+        alert('A Lever must have exactly 1 option.');
+        return;
+    }
+    if (!isLever && (optCount < OPTIONS_MIN_STRUCTURAL || optCount > OPTIONS_MAX)) {
+        alert(`A Structural policy must have ${OPTIONS_MIN_STRUCTURAL}–${OPTIONS_MAX} options.`);
+        return;
+    }
+
+    for (let i = 0; i < policyDraft.options.length; i++) {
+        const o = policyDraft.options[i];
+        if (!(o.option_label || '').trim()) {
+            alert(`Option ${i + 1} needs a label.`);
+            return;
+        }
+        const validStats = (o.stat_effects || []).filter(e => e.stat_key);
+        if (validStats.length === 0) {
+            alert(`Option ${i + 1} needs at least 1 stat effect with a stat selected.`);
+            return;
+        }
+        // Catch sector rows the user added but never picked a sector for —
+        // the save filter further down silently drops them, and without
+        // this alert the user thinks the effect was saved.
+        const incompleteSectors = (o.sector_effects || []).filter(e => !e.sector_key);
+        if (incompleteSectors.length > 0) {
+            alert(`Option ${i + 1} has ${incompleteSectors.length} sector effect row${incompleteSectors.length === 1 ? '' : 's'} without a sector picked. Pick a sector or remove the row.`);
+            return;
+        }
+    }
+
+    // ---- Build payload ------------------------------------------------
+    const opposedIds = (policyDraft.opposed_policy_ids || []).filter(Boolean);
+    const policyRow = {
+        // policy_key: stable slug + per-millisecond suffix. The DB has a
+        // UNIQUE constraint on policy_key; if two saves collide in the same
+        // millisecond the second will surface as a clear duplicate-key error.
+        policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') + '_' + Date.now().toString(36),
+        policy_name: name,
+        description: (policyDraft.description || '').trim() || null,
+        major_sector: policyDraft.major_sector,
+        // minor_sector: legacy mirror of law_category. Phase 5 cleanup
+        // drops the column; until then, write the same value to both so
+        // any code still reading minor_sector keeps working.
+        minor_sector: lawCategory,
+        law_category: lawCategory,
+        fiscal_category: policyDraft.fiscal_category || null,
+        policy_type: policyDraft.policy_type,
+        opposed_policy_ids: opposedIds.length > 0 ? opposedIds : null,
+        is_active: true
+    };
+
+    const optionRows = policyDraft.options.map((o, idx) => ({
+        sort_order: idx + 1,
+        option_label: o.option_label.trim(),
+        description: (o.description || '').trim() || null,
+        // Drop incomplete or zero-magnitude sector rows. Validation above
+        // already errored on missing sector_key; this strips any zero rows
+        // (which the magnitude clamp normally prevents but we filter anyway).
+        sector_effects: (o.sector_effects || [])
+            .filter(e => e.sector_key && Number(e.change_tenths) !== 0)
+            .map(e => ({
+                sector_key: e.sector_key,
+                change_tenths: parseInt(e.change_tenths, 10)
+            })),
+        stat_effects: (o.stat_effects || [])
+            .filter(e => e.stat_key)
+            .map(e => ({
+                stat_key: e.stat_key,
+                direction: e.direction === 'down' ? 'down' : 'up',
+                rate: Number(e.rate) || 0,
+                delay_ticks: Number(e.delay_ticks) || 0,
+                duration_ticks: Number(e.duration_ticks) || 12,
+                adjust_type: e.adjust_type || null,
+                adjust_value: e.adjust_type ? (Number(e.adjust_value) || 0) : 0
+            })),
+        upfront_cost: Number(o.upfront_cost) || 0,
+        upfront_scaling_stat: o.upfront_scaling_stat || null,
+        ongoing_base_cost: Number(o.ongoing_base_cost) || 0,
+        ongoing_scaling_stat: o.ongoing_scaling_stat || null
+    }));
+
+    // ---- Insert ---------------------------------------------------------
+    isSaving = true;
+    const submitBtn = document.getElementById('submit-btn');
+    if (submitBtn) submitBtn.disabled = true;
+
+    let parentId = null;
+    try {
+        // Step 1: insert the parent policy.
+        const { data: inserted, error: parentErr } = await _supabase
+            .from('policies')
+            .insert(policyRow)
+            .select()
+            .single();
+        if (parentErr) throw new Error('policies insert: ' + parentErr.message);
+        parentId = inserted.id;
+
+        // Step 2: insert all option rows with the parent id baked in.
+        const childRows = optionRows.map(r => ({ ...r, policy_id: parentId }));
+        const { error: childErr } = await _supabase.from('policy_options').insert(childRows);
+        if (childErr) {
+            // Roll back the parent so we don't leave a policy without options.
+            // Best-effort — if the rollback itself fails the original error
+            // is still what the user needs to see, so we swallow rollback
+            // exceptions and re-throw the child-insert error below.
+            try { await _supabase.from('policies').delete().eq('id', parentId); } catch (_) { /* ignore */ }
+            throw new Error('policy_options insert: ' + childErr.message);
+        }
+
+        // Step 3: write two-way opposed back-references. Best-effort —
+        // a failure here doesn't invalidate the policy itself, so we log
+        // and surface a partial-success status instead of rolling back.
+        const backRefErrors = [];
+        for (const oppId of opposedIds) {
+            const opp = allPolicies.find(p => p.id === oppId);
+            if (!opp) continue;
+            const existing = opp.opposed_policy_ids || [];
+            if (existing.includes(parentId)) continue;
+            const { error: refErr } = await _supabase
+                .from('policies')
+                .update({ opposed_policy_ids: [...existing, parentId] })
+                .eq('id', oppId);
+            if (refErr) backRefErrors.push(`${oppId}: ${refErr.message}`);
+        }
+
+        if (backRefErrors.length > 0) {
+            console.error('opposed back-ref writes failed:', backRefErrors);
+            showStatus(`"${name}" created, but ${backRefErrors.length} opposed back-reference(s) failed. Check console.`, 'error');
+        } else {
+            showStatus(`"${name}" created.`, 'success');
+        }
+
+        resetBuilder();
+        await loadPolicies();
+        populateFilterDropdowns();
+        filterPolicies();
+        switchView('list');
+    } catch (err) {
+        showStatus('Error: ' + err.message, 'error');
+        console.error('savePolicy failed:', err);
+    } finally {
+        isSaving = false;
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
 // ==================== UTILITIES ====================
 function fmtStat(s) {
     if (!s) return '—';
@@ -1143,6 +1317,8 @@ window.updateSectorMagnitude = updateSectorMagnitude;
 window.addStatEffect         = addStatEffect;
 window.removeStatEffect      = removeStatEffect;
 window.updateStatEffect      = updateStatEffect;
+// Builder — Phase 2B-iii (save flow)
+window.savePolicy            = savePolicy;
 </script>
 </body>
 </html>
