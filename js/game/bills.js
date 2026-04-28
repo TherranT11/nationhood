@@ -1875,11 +1875,19 @@ export async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         // amount. Sender pays from reserves first; any shortfall
                         // becomes debt (matches the discretionary-grant pattern at
                         // bills.js#3543 — money has to come from somewhere).
-                        const { data: rows } = await supabase.from('nations')
+                        // Skip on read failure or partial rows — without correct
+                        // baselines the UPDATEs below would overwrite values with
+                        // garbage (sender → 0/amount, receiver → just `amount`).
+                        const { data: rows, error: readErr } = await supabase.from('nations')
                             .select('id, budget_reserves, debt').in('id', [fromNation, toNation]);
+                        if (readErr || !rows || rows.length < 2) {
+                            console.error('[resolveTradeRatification] reserves read failed/incomplete; skipping article on agreement',
+                                newAgreement.id, readErr?.message || `got ${rows?.length || 0}/2 rows`);
+                            continue;
+                        }
                         const reserves = {};
                         const debts = {};
-                        for (const r of (rows || [])) {
+                        for (const r of rows) {
                             reserves[r.id] = Number(r.budget_reserves || 0);
                             debts[r.id]    = Number(r.debt || 0);
                         }
@@ -1912,7 +1920,17 @@ export async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         console.log(`[resolveTradeRatification] transfer executed: ${fromNation} → ${toNation}, $${(amount/1e9).toFixed(2)}B (debt portion: $${(shortfall/1e9).toFixed(2)}B)`);
                     }
                     if (articlesMutated) {
-                        await supabase.from('trade_agreements').update({ articles }).eq('id', newAgreement.id);
+                        // If this update fails AFTER money moved, executed_at_tick
+                        // doesn't land — but the bill is already 'passed' and
+                        // ratification doesn't re-run, so no double-pay risk; the
+                        // article just won't carry the audit trail. Surface loudly.
+                        const { error: markErr } = await supabase.from('trade_agreements')
+                            .update({ articles }).eq('id', newAgreement.id);
+                        if (markErr) {
+                            console.error('[resolveTradeRatification] failed to mark articles executed for agreement',
+                                newAgreement.id, markErr.message,
+                                "— money moved but executed_at_tick mark didn't land");
+                        }
                     }
                 }
 
