@@ -2132,6 +2132,22 @@ function parseRequiredForSectors(rawRequiredFor) {
     return [];
 }
 
+// Idempotent stall increment. Each gate (start permit, workforce, materials)
+// previously did its own update — under the per-minute cron + background-tasks
+// pattern, processActiveProjects can run multiple times against the same shard
+// tick, double-counting stalls. Routing every increment through this helper
+// guarantees one bump per (contract, currentTick) pair.
+async function bumpStalledTickOnce(supabase, contract, currentTick) {
+    if (contract.last_stalled_tick === currentTick) return;
+    await supabase.from('construction_contracts')
+        .update({
+            stalled_ticks: Number(contract.stalled_ticks || 0) + 1,
+            last_stalled_tick: currentTick,
+        })
+        .eq('id', contract.id);
+    contract.last_stalled_tick = currentTick;
+}
+
 function permitAppliesToSector(requiredFor, sector) {
     if (!sector) return true;
     const allowed = parseRequiredForSectors(requiredFor);
@@ -2348,17 +2364,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             cache: permitScopeCache,
         });
         if (startPermitSnapshot.missingPermitKeys.length > 0) {
-            // Idempotent: only increment once per shard tick. processActiveProjects
-            // can run multiple times per shard tick under the background-tasks
-            // pattern and the per-minute cron poll.
-            if (contract.last_stalled_tick !== currentTick) {
-                await supabase.from('construction_contracts')
-                    .update({
-                        stalled_ticks: Number(contract.stalled_ticks || 0) + 1,
-                        last_stalled_tick: currentTick,
-                    })
-                    .eq('id', contract.id);
-            }
+            await bumpStalledTickOnce(supabase, contract, currentTick);
             console.log(`[Projects] ${contract.name}: START BLOCKED — missing required permits ${startPermitSnapshot.missingPermitKeys.join(', ')}`);
             continue;
         }
@@ -2448,14 +2454,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
         const wfHasInnovative = Number(assignedWf.innovative || 0);
         const workersStaffed = wfHasGeneral >= wfReqGeneral && wfHasSkilled >= wfReqSkilled && wfHasInnovative >= wfReqInnovative;
         if (!workersStaffed) {
-            if (contract.last_stalled_tick !== currentTick) {
-                await supabase.from('construction_contracts')
-                    .update({
-                        stalled_ticks: stalledTicks + 1,
-                        last_stalled_tick: currentTick,
-                    })
-                    .eq('id', contract.id);
-            }
+            await bumpStalledTickOnce(supabase, contract, currentTick);
             console.log(`[Projects] ${contract.name}: STALLED — understaffed (need G${wfReqGeneral}/S${wfReqSkilled}/I${wfReqInnovative}, assigned G${wfHasGeneral}/S${wfHasSkilled}/I${wfHasInnovative})`);
             continue;
         }
@@ -2487,14 +2486,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             }
         }
         if (!materialsReady) {
-            if (contract.last_stalled_tick !== currentTick) {
-                await supabase.from('construction_contracts')
-                    .update({
-                        stalled_ticks: stalledTicks + 1,
-                        last_stalled_tick: currentTick,
-                    })
-                    .eq('id', contract.id);
-            }
+            await bumpStalledTickOnce(supabase, contract, currentTick);
             console.log(`[Projects] ${contract.name}: STALLED — insufficient materials allocated (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
             continue;
         }
