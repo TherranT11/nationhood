@@ -3327,7 +3327,12 @@ const DIPLOMACY_CONFIG = {
  * callsite has different idempotency rules.
  */
 function resolveTransferEndpoints(article, agreement) {
-    if (!article || article.type !== 'transfer') return null;
+    if (!article) return null;
+    // The diplomacy modal saves articles with `article_type` (line 20006);
+    // legacy/embargo paths use `type`. Accept either so transfer execution
+    // doesn't silently skip articles authored via the structured wizard.
+    var artType = article.type || article.article_type;
+    if (artType !== 'transfer') return null;
     if (!agreement || !agreement.nation_a_id || !agreement.nation_b_id) return null;
 
     var data = article.data || {};
@@ -9878,7 +9883,7 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         // (see js/game/diplomacy-constants.js).
                         const endpoints = resolveTransferEndpoints(article, agreementForResolve);
                         if (!endpoints) {
-                            if (article?.type === 'transfer') {
+                            if (article?.type === 'transfer' || article?.article_type === 'transfer') {
                                 console.error('[resolveTradeRatification] transfer article malformed; skipping', article);
                             }
                             continue;
@@ -34229,7 +34234,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // (see js/game/diplomacy-constants.js → resolveTransferEndpoints).
                 const endpoints = resolveTransferEndpoints(art, agreement);
                 if (!endpoints) {
-                    if (art?.type === 'transfer') {
+                    if (art?.type === 'transfer' || art?.article_type === 'transfer') {
                         console.error('[recurring transfer] transfer article malformed on agreement', agreement.id);
                     }
                     continue;

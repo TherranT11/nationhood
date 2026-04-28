@@ -1864,7 +1864,7 @@ export async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         // (see js/game/diplomacy-constants.js).
                         const endpoints = resolveTransferEndpoints(article, agreementForResolve);
                         if (!endpoints) {
-                            if (article?.type === 'transfer') {
+                            if (article?.type === 'transfer' || article?.article_type === 'transfer') {
                                 console.error('[resolveTradeRatification] transfer article malformed; skipping', article);
                             }
                             continue;

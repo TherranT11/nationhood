@@ -1675,7 +1675,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // (see js/game/diplomacy-constants.js → resolveTransferEndpoints).
                 const endpoints = resolveTransferEndpoints(art, agreement);
                 if (!endpoints) {
-                    if (art?.type === 'transfer') {
+                    if (art?.type === 'transfer' || art?.article_type === 'transfer') {
                         console.error('[recurring transfer] transfer article malformed on agreement', agreement.id);
                     }
                     continue;

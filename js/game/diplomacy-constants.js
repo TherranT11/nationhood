@@ -113,7 +113,12 @@ export const DIPLOMACY_CONFIG = {
  * callsite has different idempotency rules.
  */
 export function resolveTransferEndpoints(article, agreement) {
-    if (!article || article.type !== 'transfer') return null;
+    if (!article) return null;
+    // The diplomacy modal saves articles with `article_type` (line 20006);
+    // legacy/embargo paths use `type`. Accept either so transfer execution
+    // doesn't silently skip articles authored via the structured wizard.
+    var artType = article.type || article.article_type;
+    if (artType !== 'transfer') return null;
     if (!agreement || !agreement.nation_a_id || !agreement.nation_b_id) return null;
 
     var data = article.data || {};
