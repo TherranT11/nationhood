@@ -258,7 +258,8 @@ function statCard(label, key, val, desc, format, inverted, displayVal) {
     if (format === 'currency' || format === 'gdp') {
         assertRawEconomicValue(dv, key);
     }
-    if ((format === 'currency' || format === 'gdp') && isMisscaledMonetary(key, dv)) {
+    if (typeof dv === 'string') shown = dv;
+    else if ((format === 'currency' || format === 'gdp') && isMisscaledMonetary(key, dv)) {
         shown = '$' + Math.round(Number(dv));
     } else if (format === 'currency' || format === 'gdp') shown = fmtCur(dv);
     else if (format === 'years') shown = (dv != null ? (Math.round(dv * 10) / 10) + ' yrs' : 'N/A');
