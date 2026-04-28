@@ -675,62 +675,9 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
             ? `${nation.head_of_state_last_name} Administration`
             : `${pmPartyName} Administration`);
 
-    // ──────────────────────────────────────────────────────────────────
-    // Continuity rule: if the incoming coalition keeps the same Prime
-    // Minister, this is ONE administration continuing across a coalition
-    // change — not two separate administrations. Resume the most recent
-    // row in place rather than close-and-create.
-    //
-    // The incoming PM name is derived from the lead party's leader (this
-    // is what autoAppointPartyLeaderAsPM will install after rollover). If
-    // the HOG row is already active (edge case), prefer that.
-    // ──────────────────────────────────────────────────────────────────
-    let incomingPmName = activeHOG ? `${activeHOG.first_name} ${activeHOG.last_name}`.trim() : '';
-    if (!incomingPmName && leadPartyId) {
-        const { data: leadFaction } = await supabase
-            .from('factions')
-            .select('leader_first_name, leader_last_name')
-            .eq('id', leadPartyId)
-            .maybeSingle();
-        if (leadFaction?.leader_first_name) {
-            incomingPmName = `${leadFaction.leader_first_name} ${leadFaction.leader_last_name || ''}`.trim();
-        }
-    }
-
-    if (incomingPmName) {
-        const { data: lastAdmin } = await supabase
-            .from('administrations')
-            .select('id, prime_minister, started_at_tick')
-            .eq('nation_id', nationId)
-            .order('started_at_tick', { ascending: false })
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-        if (lastAdmin && lastAdmin.prime_minister === incomingPmName) {
-            // Same PM continues — update coalition composition in place.
-            // Preserve started_at_tick, stats_at_start, approval_at_start,
-            // and accumulated records (bills_passed, laws_repealed, etc.).
-            const { error: updErr } = await supabase
-                .from('administrations')
-                .update({
-                    ended_at_tick: null,
-                    ended_at_date: null,
-                    end_reason: null,
-                    coalition_parties: coalitionParties,
-                    total_seats: totalSeats,
-                    pm_party_id: leadPartyId,
-                    pm_party_name: pmPartyName,
-                    admin_name: adminName,
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('id', lastAdmin.id);
-            if (updErr) throw updErr;
-            console.log(`Administration continued (same PM "${incomingPmName}") across coalition change at tick ${currentTick}`);
-            await _verifyAdministrationIntegrity(supabase, nationId, 'rolloverAdministration_same_pm_continuation');
-            return;
-        }
-    }
+        // Always roll over administrations on new coalition formation.
+    // Design decision: no same-PM continuity shortcut; every new coalition
+    // closes the previous administration and opens a new one.
 
     const payload = {
         nation_id: nationId,
@@ -1340,10 +1287,10 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
  *     - Snap election scheduled for next tick
  *     - failed_formation_attempts set to 1
  *
- *   Stage 2 — Minority government (FORMATION_DEADLINE_TICKS after snap, failed_formation_attempts >= 1):
- *     - Largest party auto-installed as minority government
- *     - formation_type = 'emergency_minority' (permanent -20% legislative penalty)
- *     - failed_formation_attempts reset to 0
+ *   Stage 2 — Continued deadlock (FORMATION_DEADLINE_TICKS after snap, failed_formation_attempts >= 1):
+ *     - Never auto-installs a government
+ *     - Schedules another snap election for the next tick
+ *     - Keeps vacancy pressure active until players form a coalition
  *
  * @param {object} supabase    - Supabase client
  * @param {object} nation      - Full nation row
@@ -1455,7 +1402,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         });
     } else if (ticksElapsed === deadline - 1) {
         const warningMsg = failedAttempts >= 1
-            ? `1 tick remaining before emergency minority government in ${nation.name}. Form a coalition now.`
+            ? `1 tick remaining before another snap election in ${nation.name}. Form a coalition now.`
             : `1 tick remaining before snap elections in ${nation.name}. Form a coalition now or face snap elections.`;
         await supabase.from('event_log').insert({
             nation_id: nation.id,
@@ -1570,102 +1517,47 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         return result;
     }
 
-    // ===== STAGE 2: EMERGENCY MINORITY GOVERNMENT =====
-    // After snap election, parties get a fresh FORMATION_DEADLINE_TICKS window to form
-    // a coalition. Stage 2 only fires when that window also expires without a formation.
-    console.log(`STAGE 2: EMERGENCY MINORITY GOVERNMENT for ${nation.name} — ${FORMATION_DEADLINE_TICKS} ticks after snap election without government`);
+    // ===== STAGE 2: NO AUTO-FORMATION =====
+    // Design rule: never auto-form or auto-accept a government.
+    // Keep the nation in vacancy and force another snap election cycle.
+    console.log(`STAGE 2: formation still failed for ${nation.name} — scheduling another snap election (no auto-formation)`);
 
-    // Identify largest party (tiebreak: higher total votes from election, then lower faction_id)
-    const electionVotes = election.results?.votes || [];
-    let largestParty = null;
-    if (allParties && allParties.length > 0) {
-        // Sort by seats DESC, then total_votes DESC, then faction_id ASC
-        const partiesWithVotes = allParties.map(p => {
-            const voteRecord = electionVotes.find(v => v.party_id === p.id);
-            return { ...p, total_votes: voteRecord?.total_votes || 0 };
-        });
-        partiesWithVotes.sort((a, b) => {
-            if (b.seats !== a.seats) return b.seats - a.seats;
-            if (b.total_votes !== a.total_votes) return b.total_votes - a.total_votes;
-            return a.id < b.id ? -1 : 1; // lower UUID first
-        });
-        largestParty = partiesWithVotes[0];
-    }
+    const { data: existingScheduledStage2 } = await supabase
+        .from('elections')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('status', 'scheduled')
+        .limit(1)
+        .maybeSingle();
 
-    if (!largestParty) {
-        console.error(`EMERGENCY MINORITY: No parties found for ${nation.name} — cannot form government`);
-        return result;
-    }
-
-    console.log(`  Installing ${largestParty.faction_name} as emergency minority government`);
-
-    // Create government_formations record
-    const { data: emergencyGov, error: govError } = await supabase
-        .from('government_formations')
-        .insert({
+    if (existingScheduledStage2) {
+        await supabase.from('elections')
+            .update({ election_tick: currentTick + 1 })
+            .eq('id', existingScheduledStage2.id);
+    } else {
+        await supabase.from('elections').insert({
             nation_id: nation.id,
-            election_id: election.id,
-            proposed_by: largestParty.id,
-            party_ids: [largestParty.id],
-            status: 'formed',
-            formation_type: 'emergency_minority',
-            formed_at: new Date().toISOString(),
-            ministry_assignments: { prime_minister: largestParty.id }
-        })
-        .select()
-        .single();
-
-    if (govError) {
-        console.error(`EMERGENCY MINORITY: Failed to create government formation for ${nation.name}:`, govError.message);
-        return result;
+            election_tick: currentTick + 1,
+            status: 'scheduled',
+            election_type: 'parliamentary'
+        });
     }
 
-    // Set ruling faction
-    await supabase.from('nations')
-        .update({
-            ruling_faction_id: largestParty.id,
-            failed_formation_attempts: 0
-        })
-        .eq('id', nation.id);
-    nation.failed_formation_attempts = 0;
-
-    // Create administration record
-    try {
-        const coalitionObj = {
-            id: emergencyGov.id,
-            party_ids: [largestParty.id],
-            lead_party_id: largestParty.id,
-            ministry_allocations: { prime_minister: largestParty.id },
-            status: 'formed',
-            formation_type: 'emergency_minority'
-        };
-        await createAdministration(supabase, nation.id, nation, coalitionObj, allParties || [], currentTick, null, null);
-    } catch (adminErr) {
-        console.warn(`EMERGENCY MINORITY: Administration creation failed for ${nation.name}:`, adminErr.message);
-    }
-
-    // Log event
     await supabase.from('event_log').insert({
         nation_id: nation.id,
-        event_name: 'EMERGENCY_MINORITY_GOVERNMENT',
-        trigger_key: 'minority_government_formed',
-        description_used: `${largestParty.faction_name} installed as minority government in ${nation.name} after failing to form a coalition following snap elections. Legislative effectiveness reduced by 20%.`,
+        event_name: 'FORMATION_FAILED_CONTINUED',
+        trigger_key: 'formation_failed_continued',
+        description_used: `Coalition formation still unresolved in ${nation.name}. A new snap election has been scheduled.`,
         category: 'POLITICAL',
-        effects_applied: {
-            stage: 2,
-            ruling_party: largestParty.faction_name,
-            ruling_party_id: largestParty.id,
-            formation_type: 'emergency_minority',
-            legislative_penalty: '-20%'
-        },
+        effects_applied: { stage: 2, auto_formation: false, next_snap_tick: currentTick + 1 },
         fired_at_tick: currentTick
     }).then(({ error }) => {
-        if (error) console.warn('Emergency minority government event log failed:', error.message);
+        if (error) console.warn('Formation failed continued event log failed:', error.message);
     });
 
-    result.emergencyMinority = true;
-    result.rulingParty = largestParty.faction_name;
     result.stage = 2;
+    result.snapElection = true;
+    result.snapTick = currentTick + 1;
     return result;
 }
 

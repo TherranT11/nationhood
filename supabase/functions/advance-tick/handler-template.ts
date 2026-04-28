@@ -2962,13 +2962,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                                 hogUpdate.last_name = pmFaction.leader_last_name;
                                 console.log(`[PMSync] Updating PM name: ${activeHog.first_name} ${activeHog.last_name} → ${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`);
 
-                                const pmFullName = `${pmFaction.leader_first_name} ${pmFaction.leader_last_name}`;
-                                const { error: adminErr } = await supabase.from('administrations').update({
-                                    prime_minister: pmFullName,
-                                    admin_name: `${pmFaction.leader_last_name} Administration`,
-                                    updated_at: new Date().toISOString()
-                                }).eq('nation_id', nation.id).is('ended_at_tick', null);
-                                if (adminErr) console.warn('[PMSync] administrations update failed:', adminErr.message);
+                                // Do NOT mutate administrations here.
+                                // Administration rows are historical snapshots that must
+                                // only change during explicit rollover/close flows.
 
                                 const { error: minErr } = await supabase.from('ministries').update({
                                     minister_first_name: pmFaction.leader_first_name,

@@ -56,13 +56,9 @@ export async function initCoalitionFormation(supabase, state) {
     const faction = state.faction;
     if (!nation || !faction) return { needed: false };
 
-    // Fetch latest election, current tick, active coalition, all parties, and
-    // the canonical "is there a sitting PM" check (head_of_government). The
-    // Administrative tab treats an active head_of_government row + populated
-    // ministries as "government exists", so the Election tab must agree —
-    // otherwise we'd flash "No Government — Snap Election Imminent" while a
-    // full cabinet is live one tab over.
-    const [electionResult, shardResult, activeCoalition, partiesResult, hogResult, scheduledResult, platformsResult] = await Promise.all([
+    // Fetch latest election, current tick, active coalition, all parties,
+    // scheduled elections, and active platforms used by coalition matching.
+    const [electionResult, shardResult, activeCoalition, partiesResult, scheduledResult, platformsResult] = await Promise.all([
         supabase.from('elections')
             .select('id, election_type, election_tick, status')
             .eq('nation_id', nation.id)
@@ -85,12 +81,6 @@ export async function initCoalitionFormation(supabase, state) {
             .eq('faction_type', 'party')
             .is('abandoned_at', null)
             .order('seats', { ascending: false }),
-        supabase.from('head_of_government')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('active', true)
-            .limit(1)
-            .maybeSingle(),
         supabase.from('elections')
             .select('election_tick, election_type')
             .eq('nation_id', nation.id)
@@ -119,15 +109,12 @@ export async function initCoalitionFormation(supabase, state) {
 
     const election = electionResult.data;
     const formedGov = activeCoalition || null;
-    const hasActiveHoG = !!hogResult.data;
 
-    // fetchActiveCoalition is cycle-anchored — it only returns formations tied
-    // to the latest completed election. A government effectively exists if the
-    // SSoT returned a coalition, or an active head_of_government row exists as
-    // a fallback for legacy nations that never wrote a formation row. The HoG
-    // invariant "active=true ⇒ current sitting PM" is enforced at the write
-    // site (elections.js unconditionally deactivates on election completion).
-    const hasFormedGov = !!formedGov || hasActiveHoG;
+    // Parliamentary coalition state must come only from the election-cycle
+    // formation source of truth. Do NOT treat an active HoG row as equivalent
+    // to a formed government, otherwise a stale PM row can mask a post-election
+    // vacancy and make a new snap-election parliament look auto-formed.
+    const hasFormedGov = !!formedGov;
 
     // Presidential / semi-presidential systems don't use coalition formation —
     // the president governs (or nominates the PM). The Election tab renders a
@@ -686,6 +673,13 @@ async function handleFormGovernment(formation, root) {
             formed_at: new Date().toISOString(),
         }).eq('id', formation.id);
 
+        // Enforce single-source government row: dissolve every other
+        // active/caretaker/formed formation for this nation.
+        await _supabase.from('government_formations').update({ status: 'dissolved' })
+            .eq('nation_id', nationId)
+            .neq('id', formation.id)
+            .in('status', ['active', 'caretaker', 'formed']);
+
         // Ensure ministries are populated regardless of RPC path
         // Validate both active row count and vacant row count.
         const expectedCabinetKeys = getExpectedCabinetMinistryKeys(nation);
@@ -709,21 +703,17 @@ async function handleFormGovernment(formation, root) {
         // close it and insert a new one (different PM). Skipping when an open
         // admin exists left that row with stale coalition/pm_party data after
         // a reshuffle.
-        try {
-            const coalition = {
-                id: formation.id,
-                party_ids: formation.party_ids || [],
-                lead_party_id: _ministryAssignments.prime_minister,
-            };
-            await rolloverAdministration(
-                _supabase, nationId, _state.nation,
-                'election', coalition, _allParties,
-                _currentTick, _state.shard?.current_date || '',
-                Number(_state.nation?.gov_approval ?? 50)
-            );
-        } catch (adminErr) {
-            console.warn('[Coalition] Post-finalization administration rollover failed (non-fatal):', adminErr.message);
-        }
+        const coalition = {
+            id: formation.id,
+            party_ids: formation.party_ids || [],
+            lead_party_id: _ministryAssignments.prime_minister,
+        };
+        await rolloverAdministration(
+            _supabase, nationId, _state.nation,
+            'election', coalition, _allParties,
+            _currentTick, _state.shard?.current_date || '',
+            Number(_state.nation?.gov_approval ?? 50)
+        );
 
         // Auto-appoint PM's party leader (skip coalition check — we just formed it)
         await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick, { skipCoalitionCheck: true });
@@ -762,21 +752,17 @@ async function formGovernmentFallback(formation) {
     await createMinistriesFromAssignments(nationId);
 
     // Create new administration record
-    try {
-        const coalition = {
-            id: formation.id,
-            party_ids: formation.party_ids || [],
-            lead_party_id: _ministryAssignments.prime_minister,
-        };
-        await rolloverAdministration(
-            _supabase, nationId, _state.nation,
-            'election', coalition, _allParties,
-            _currentTick, _state.shard?.current_date || '',
-            Number(_state.nation?.gov_approval ?? 50)
-        );
-    } catch (adminErr) {
-        console.warn('[Coalition] Administration rollover failed (non-fatal):', adminErr.message);
-    }
+    const coalition = {
+        id: formation.id,
+        party_ids: formation.party_ids || [],
+        lead_party_id: _ministryAssignments.prime_minister,
+    };
+    await rolloverAdministration(
+        _supabase, nationId, _state.nation,
+        'election', coalition, _allParties,
+        _currentTick, _state.shard?.current_date || '',
+        Number(_state.nation?.gov_approval ?? 50)
+    );
 
     // Log to event_log so it appears in the Executive Timeline
     try {
