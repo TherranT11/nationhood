@@ -187,7 +187,7 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
     // ~15 places), hydrate the admin row in-place from the coalition before
     // the governing check runs. Every caller of getGoverningStatus (and
     // every reader of its .administration) then sees a consistent view.
-    var [coalitionResult, adminResult] = await Promise.all([
+    var [coalitionResult, adminResult, hogResult] = await Promise.all([
         fetchActiveCoalition(supabase, nationId).catch(function(e) {
             console.warn('[Agitator] fetchActiveCoalition failed:', e?.message || e);
             return null;
@@ -200,6 +200,12 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
             .order('started_at_tick', { ascending: false })
             .limit(1)
             .maybeSingle(),
+        supabase
+            .from('head_of_government')
+            .select('faction_id')
+            .eq('nation_id', nationId)
+            .eq('active', true)
+            .maybeSingle()
     ]);
 
     if (adminResult.error) {
@@ -210,6 +216,7 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
     var admin = adminResult.data;
     var coalition = coalitionResult;
     var presidential = hasElectedPresident(nation);
+    var hogPartyId = hogResult?.data?.faction_id || null;
 
     // Hydrate the lead-party field that matches this nation's government
     // type — pm_party_id for parliamentary, president_party_id for
@@ -220,6 +227,10 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
     var coalitionPartyObjs = Array.isArray(coalition?.party_ids)
         ? coalition.party_ids.map(function(id) { return { party_id: id }; })
         : [];
+
+    if (admin && !presidential && hogPartyId) {
+        admin.pm_party_id = hogPartyId;
+    }
 
     if (admin && coalition) {
         if (!admin[leadPartyField] && coalition.lead_party_id) {
