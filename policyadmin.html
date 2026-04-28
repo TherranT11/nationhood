@@ -117,93 +117,16 @@
                     </div>
                 </div>
 
-                <!-- Section 2: Option (wraps sector effects, starting status, costs, stat effects) -->
-                <div class="builder-section">
-                    <div class="builder-section-title">🎚️ 2. Option</div>
-                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                        A multi-option policy is built from one or more <strong>options</strong>. Each option is a complete configuration — its own sector effects, costs, and stat effects — that nations can switch between. Phase 2.4 lays in a single-option scaffold; multi-option support arrives in Phase 2.9.
+                <!-- Section 2: Options (programmatically rendered cards in Phase 2.9) -->
+                <div style="margin-bottom:14px;">
+                    <div style="font-size:0.85rem; color:#ffcc00; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px; font-weight:bold;">🎚️ 2. Options</div>
+                    <p style="color:#888; font-size:0.82rem; margin-bottom:0;">
+                        A multi-option policy is built from one or more <strong>options</strong>. Each option is a complete configuration — its own sector effects, costs, and stat effects — that nations can switch between via bills. A nation always has exactly one option active at a time.
                     </p>
-                    <div class="form-field">
-                        <label>Option Name</label>
-                        <input type="text" id="b-option-name" placeholder="e.g. Birthright Citizenship (Jus Soli)" oninput="syncOptionField(0, 'option_name', this.value)">
-                    </div>
-                    <div class="form-field">
-                        <label>Option Description</label>
-                        <textarea id="b-option-desc" placeholder="Anyone born within the nation's borders is automatically a citizen, regardless of parents' status..." oninput="syncOptionField(0, 'option_description', this.value)"></textarea>
-                    </div>
-
-                    <!-- Sub: Sector Effects -->
-                    <div style="border-top:1px solid #2a2a2a; padding-top:18px; margin-top:18px;">
-                        <div style="font-size:0.78rem; color:#d48a3c; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:10px; font-weight:bold;">🗳️ Sector Effects (up to 5)</div>
-                        <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                            Per-sector popularity shift on resolution. <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected. <strong>Fail:</strong> sponsor takes the inverse alone.<br>
-                            Magnitude is 0.1 to 2.0 in 0.1 steps.
-                        </p>
-                        <div id="sector-effects-container"></div>
-                        <button class="add-btn" id="add-sector-effect-btn" onclick="addSectorEffect(0)">+ Add Sector</button>
-                    </div>
-
-                    <!-- Sub: Starting Status -->
-                    <div style="border-top:1px solid #2a2a2a; padding-top:18px; margin-top:18px;">
-                        <div style="font-size:0.78rem; color:#d48a3c; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:10px; font-weight:bold;">🌍 Starting Status</div>
-                        <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                            Which nations have this option active at game start?
-                            <span style="color:#d48a3c;">Active = ongoing cost runs, stat effects do NOT fire (stats are pre-set).</span>
-                        </p>
-                        <div class="nation-checks" id="nation-checks">Loading nations...</div>
-                    </div>
-
-                    <!-- Sub: Costs -->
-                    <div style="border-top:1px solid #2a2a2a; padding-top:18px; margin-top:18px;">
-                        <div style="font-size:0.78rem; color:#d48a3c; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:10px; font-weight:bold;">💰 Costs</div>
-                        <div class="form-field">
-                            <label>Fiscal Category <span style="font-size:0.7rem;color:var(--text-dim);">which budget bucket these costs fall under</span></label>
-                            <select id="b-fiscal-category" onchange="syncOptionField(0, 'fiscal_category', this.value)">
-                                <option value="">-- None (no budget impact) --</option>
-                                <option value="Interior">🏛️ Interior</option>
-                                <option value="Labor">👷 Labor</option>
-                                <option value="Healthcare">🏥 Healthcare</option>
-                                <option value="Education">📚 Education</option>
-                                <option value="Transportation">🚄 Transportation</option>
-                                <option value="Justice">⚖️ Justice</option>
-                                <option value="Foreign Ministry">🌐 Foreign Ministry</option>
-                                <option value="Finance">💰 Finance</option>
-                                <option value="Defense">🛡️ Defense</option>
-                                <option value="Energy">⚡ Energy</option>
-                            </select>
-                        </div>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-                            <div class="form-field">
-                                <label>Upfront Base Cost ($M) <span style="font-size:0.7rem;color:var(--text-dim);">negative = revenue</span></label>
-                                <input type="number" id="b-upfront" value="0" step="1" oninput="syncOptionField(0, 'upfront_cost', parseFloat(this.value) || 0); updateCostPreview()">
-                            </div>
-                            <div class="form-field">
-                                <label>Upfront Scaling Stat (or None)</label>
-                                <select id="b-upfront-scaling" onchange="syncOptionField(0, 'upfront_scaling_stat', this.value); updateCostPreview()">
-                                    <option value="">None (flat cost)</option>
-                                </select>
-                            </div>
-                            <div class="form-field">
-                                <label>Ongoing Base Cost ($M/tick) <span style="font-size:0.7rem;color:var(--text-dim);">negative = relief</span></label>
-                                <input type="number" id="b-ongoing-base" value="0" step="0.1" oninput="syncOptionField(0, 'ongoing_base_cost', parseFloat(this.value) || 0); updateCostPreview()">
-                            </div>
-                            <div class="form-field">
-                                <label>Ongoing Scaling Stat (or None)</label>
-                                <select id="b-scaling-stat" onchange="syncOptionField(0, 'ongoing_scaling_stat', this.value); updateCostPreview()">
-                                    <option value="">None (flat cost)</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="formula-preview" id="cost-preview" style="display:none;"></div>
-                    </div>
-
-                    <!-- Sub: Stat Effects -->
-                    <div style="border-top:1px solid #2a2a2a; padding-top:18px; margin-top:18px;">
-                        <div style="font-size:0.78rem; color:#d48a3c; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:10px; font-weight:bold;">📊 Stat Effects (up to 10)</div>
-                        <div id="stat-effects-container"></div>
-                        <button class="add-btn" id="add-effect-btn" onclick="addStatEffect(0)">+ Add Stat Effect</button>
-                        <div class="effect-preview" id="effect-preview" style="display:none;"></div>
-                    </div>
+                </div>
+                <div id="options-container"></div>
+                <div style="margin-bottom:20px;">
+                    <button class="add-btn" id="add-option-btn" onclick="addOption()">+ Add Option</button>
                 </div>
 
                 <!-- Submit -->
@@ -318,16 +241,33 @@ let sectorOptions = []; // [{ sector_key, name }] — default sectors loaded onc
 let preservedIdeology = null;
 let preservedIdeologies = [];
 
-// Phase 2.8: tiny helper used by inline oninput/onchange handlers on the
-// static option-level inputs (name, description, costs, fiscal_category).
-// They aren't programmatically rendered yet, so the DOM is the source of
-// truth as the user types — this just mirrors each change into state so
-// savePolicy can read everything from `options[idx]` instead of the DOM.
+// Tiny helper used by inline oninput/onchange handlers on every per-option
+// input. Renderers fill the inputs from state, and these handlers mirror
+// the user's edits back into state, so savePolicy reads exclusively from
+// `options[idx]` and never re-reads the DOM.
 function syncOptionField(optIdx, field, value) {
     const opt = options[optIdx];
     if (!opt) return;
     opt[field] = value;
 }
+
+// Fiscal-category options shared by every option card. Centralised here so
+// renderOptionCard can build the dropdown without duplicating the list.
+const FISCAL_CATEGORY_OPTIONS = [
+    { value: '',                  label: '-- None (no budget impact) --' },
+    { value: 'Interior',          label: '🏛️ Interior' },
+    { value: 'Labor',             label: '👷 Labor' },
+    { value: 'Healthcare',        label: '🏥 Healthcare' },
+    { value: 'Education',         label: '📚 Education' },
+    { value: 'Transportation',    label: '🚄 Transportation' },
+    { value: 'Justice',           label: '⚖️ Justice' },
+    { value: 'Foreign Ministry',  label: '🌐 Foreign Ministry' },
+    { value: 'Finance',           label: '💰 Finance' },
+    { value: 'Defense',           label: '🛡️ Defense' },
+    { value: 'Energy',            label: '⚡ Energy' },
+];
+
+const MAX_OPTIONS_PER_POLICY = 10;
 
 function normalizeEffectDirection(direction) {
     const dir = String(direction || '').toLowerCase();
@@ -347,8 +287,7 @@ async function checkAuth() {
 async function init() {
     await Promise.all([loadPolicies(), loadNations(), loadSectorOptions()]);
     populateFilterDropdowns();
-    populateScalingStatDropdown();
-    renderNationChecks(0);
+    renderAllOptions();
     renderPolicyTable();
 }
 
@@ -570,20 +509,13 @@ async function editPolicy(id) {
 }
 
 // ==================== LOAD INTO BUILDER ====================
-// Phase 2.6: option-level fields (name, description, sector_effects,
-// stat_effects, costs, fiscal_category) live on policy_options. Fetch
-// the policy's first option, fall back to legacy columns on the
-// policies row for orphaned data, and hydrate the option's
-// starting_nations from nation_policies filtered by that option.
-// Phase 2.8: option fields land in `options[0]`; the option-level DOM
-// inputs are mirrored from state by this function so the form reads
-// what the user just opened.
+// Phase 2.9: hydrate `options[]` from every policy_options row for this
+// policy (ordered by option_order). Each option carries its DB id so save
+// can update vs insert correctly. Each option's starting_nations Set is
+// populated from nation_policies filtered by both policy_id and that
+// option's id. Falls back to legacy columns on the policies row when no
+// policy_options exist (orphaned pre-Phase-2.5 data).
 async function loadPolicyIntoBuilder(p) {
-    // Reset option state to a single empty option that we'll fill below.
-    options = [createEmptyOption()];
-    const optIdx = 0;
-    const opt = options[optIdx];
-
     document.getElementById('b-name').value = p.policy_name || '';
     document.getElementById('b-desc').value = p.description || '';
     document.getElementById('b-sector').value = p.major_sector || '';
@@ -594,9 +526,8 @@ async function loadPolicyIntoBuilder(p) {
     const select = document.getElementById('b-law-category-select');
     const wrapper = document.getElementById('new-category-wrapper');
     const newInput = document.getElementById('b-law-category-new');
-    // Check if the value exists in the dropdown
-    const optionExists = [...select.options].some(o => o.value === lawCatVal);
-    if (optionExists) {
+    const lawOptionExists = [...select.options].some(o => o.value === lawCatVal);
+    if (lawOptionExists) {
         select.value = lawCatVal;
         wrapper.style.display = 'none';
     } else if (lawCatVal) {
@@ -613,106 +544,255 @@ async function loadPolicyIntoBuilder(p) {
         ? [...p.ideologies]
         : (p.ideology ? [p.ideology] : []);
 
-    // Fetch the policy's first option (single-option in Phase 2.5/2.6)
-    let row = null;
+    // Fetch every policy_option for this policy.
+    let optionRows = [];
     try {
-        const { data: optionRows } = await _supabase
+        const { data, error } = await _supabase
             .from('policy_options')
             .select('*')
             .eq('policy_id', p.id)
-            .order('option_order', { ascending: true })
-            .limit(1);
-        row = (optionRows && optionRows[0]) || null;
+            .order('option_order', { ascending: true });
+        if (error) throw error;
+        optionRows = data || [];
     } catch (err) {
         console.warn('Failed to load policy_options for edit; falling back to legacy fields:', err.message);
     }
 
-    // Hydrate state — option_name / option_description with no legacy fallback;
-    // costs and fiscal_category prefer the option row, falling back to legacy
-    // columns on the policies row only when the option is missing (orphaned).
-    opt.option_name          = row?.option_name           || '';
-    opt.option_description   = row?.option_description    || '';
-    opt.fiscal_category      = row?.fiscal_category       || p.fiscal_category       || '';
-    opt.upfront_cost         = row?.upfront_cost          ?? p.upfront_cost          ?? 0;
-    opt.upfront_scaling_stat = row?.upfront_scaling_stat  || p.upfront_scaling_stat  || '';
-    opt.ongoing_base_cost    = row?.ongoing_base_cost     ?? p.ongoing_base_cost     ?? p.ongoing_cost_per_tick ?? 0;
-    opt.ongoing_scaling_stat = row?.ongoing_scaling_stat  || p.ongoing_scaling_stat  || '';
-
-    // Stat effects — option first, then legacy policies.stat_effects, then legacy single-stat
-    const rawStatEffects = (row?.stat_effects && Array.isArray(row.stat_effects))
-        ? row.stat_effects
-        : (Array.isArray(p.stat_effects) ? p.stat_effects : null);
-    if (rawStatEffects) {
-        opt.stat_effects = rawStatEffects.map(e => ({
-            ...e,
-            stat_key: normalizePolicyStatKey(e.stat_key),
-            direction: normalizeEffectDirection(e.direction) || 'up',
-            adjust_type: e.adjust_type || null,
-            adjust_value: e.adjust_value || 0
-        }));
-    } else if (p.target_stat) {
-        opt.stat_effects = [{
-            stat_key: normalizePolicyStatKey(p.target_stat),
-            direction: normalizeEffectDirection(p.stat_direction) || 'up',
-            rate: p.stat_change_per_tick || 1,
-            delay_ticks: 0,
-            duration_ticks: p.duration_months || 12,
-            adjust_type: null,
-            adjust_value: 0
-        }];
-    }
-
-    // Sector effects — option first, then legacy
-    const rawSectorEffects = (row?.sector_effects && Array.isArray(row.sector_effects))
-        ? row.sector_effects
-        : (Array.isArray(p.sector_effects) ? p.sector_effects : []);
-    opt.sector_effects = rawSectorEffects
-        .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
-        .slice(0, SECTOR_EFFECT_MAX)
-        .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }));
-
-    // Starting nations — pulled from nation_policies for this policy + option
-    if (row?.id) {
+    // Fetch starting nations grouped by selected_option_id so we can bucket
+    // them per option below.
+    const startingByOption = new Map();
+    if (optionRows.length > 0) {
         try {
-            const { data: npRows } = await _supabase
+            const { data: npRows, error: npErr } = await _supabase
                 .from('nation_policies')
-                .select('nation_id')
-                .eq('policy_id', p.id)
-                .eq('selected_option_id', row.id);
+                .select('nation_id, selected_option_id')
+                .eq('policy_id', p.id);
+            if (npErr) throw npErr;
             for (const np of (npRows || [])) {
-                if (np.nation_id) opt.starting_nations.add(np.nation_id);
+                if (!np.selected_option_id || !np.nation_id) continue;
+                if (!startingByOption.has(np.selected_option_id)) {
+                    startingByOption.set(np.selected_option_id, new Set());
+                }
+                startingByOption.get(np.selected_option_id).add(np.nation_id);
             }
         } catch (err) {
             console.warn('Failed to load starting nations:', err.message);
         }
     }
 
-    // Mirror the option-level state into the static DOM inputs (the dynamic
-    // sub-sections render directly from state below).
-    document.getElementById('b-option-name').value      = opt.option_name;
-    document.getElementById('b-option-desc').value      = opt.option_description;
-    document.getElementById('b-fiscal-category').value  = opt.fiscal_category;
-    document.getElementById('b-upfront').value          = opt.upfront_cost;
-    document.getElementById('b-upfront-scaling').value  = opt.upfront_scaling_stat;
-    document.getElementById('b-ongoing-base').value     = opt.ongoing_base_cost;
-    document.getElementById('b-scaling-stat').value     = opt.ongoing_scaling_stat;
-    updateCostPreview();
+    if (optionRows.length === 0) {
+        // Orphaned policy — no options yet. Build a single option from the
+        // legacy columns on the policies row so the admin can re-save it.
+        const opt = createEmptyOption();
+        opt.upfront_cost         = p.upfront_cost          ?? 0;
+        opt.upfront_scaling_stat = p.upfront_scaling_stat  || '';
+        opt.ongoing_base_cost    = p.ongoing_base_cost     ?? p.ongoing_cost_per_tick ?? 0;
+        opt.ongoing_scaling_stat = p.ongoing_scaling_stat  || '';
+        opt.fiscal_category      = p.fiscal_category       || '';
+        if (Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
+            opt.stat_effects = p.stat_effects.map(e => ({
+                ...e,
+                stat_key: normalizePolicyStatKey(e.stat_key),
+                direction: normalizeEffectDirection(e.direction) || 'up',
+                adjust_type: e.adjust_type || null,
+                adjust_value: e.adjust_value || 0
+            }));
+        } else if (p.target_stat) {
+            opt.stat_effects = [{
+                stat_key: normalizePolicyStatKey(p.target_stat),
+                direction: normalizeEffectDirection(p.stat_direction) || 'up',
+                rate: p.stat_change_per_tick || 1,
+                delay_ticks: 0,
+                duration_ticks: p.duration_months || 12,
+                adjust_type: null,
+                adjust_value: 0
+            }];
+        }
+        if (Array.isArray(p.sector_effects)) {
+            opt.sector_effects = p.sector_effects
+                .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
+                .slice(0, SECTOR_EFFECT_MAX)
+                .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }));
+        }
+        options = [opt];
+    } else {
+        options = optionRows.map(row => {
+            const opt = createEmptyOption();
+            opt.id                   = row.id;
+            opt.option_name          = row.option_name        || '';
+            opt.option_description   = row.option_description || '';
+            opt.fiscal_category      = row.fiscal_category    || '';
+            opt.upfront_cost         = row.upfront_cost       ?? 0;
+            opt.upfront_scaling_stat = row.upfront_scaling_stat || '';
+            opt.ongoing_base_cost    = row.ongoing_base_cost  ?? 0;
+            opt.ongoing_scaling_stat = row.ongoing_scaling_stat || '';
 
-    renderStatEffects(optIdx);
-    renderSectorEffects(optIdx);
-    renderNationChecks(optIdx);
+            const rawStat = Array.isArray(row.stat_effects) ? row.stat_effects : [];
+            opt.stat_effects = rawStat.map(e => ({
+                ...e,
+                stat_key: normalizePolicyStatKey(e.stat_key),
+                direction: normalizeEffectDirection(e.direction) || 'up',
+                adjust_type: e.adjust_type || null,
+                adjust_value: e.adjust_value || 0
+            }));
+
+            const rawSector = Array.isArray(row.sector_effects) ? row.sector_effects : [];
+            opt.sector_effects = rawSector
+                .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
+                .slice(0, SECTOR_EFFECT_MAX)
+                .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }));
+
+            const startingSet = startingByOption.get(row.id);
+            if (startingSet) opt.starting_nations = startingSet;
+
+            return opt;
+        });
+    }
+
+    renderAllOptions();
+}
+
+// ==================== OPTION CARDS (Phase 2.9) ====================
+// Top-level renderer: rebuild every option card from `options[]`. Called on
+// init, reset, edit-load, add-option, remove-option. The dynamic
+// sub-sections (sector / stat effects, nation checks) are seeded by
+// re-rendering each one after the cards are in the DOM, so each card's
+// sub-section reads its own scoped containers.
+function renderAllOptions() {
+    const container = document.getElementById('options-container');
+    if (!container) return;
+    container.innerHTML = options.map((_, idx) => renderOptionCard(idx)).join('');
+    document.getElementById('add-option-btn').disabled = options.length >= MAX_OPTIONS_PER_POLICY;
+
+    options.forEach((_, idx) => {
+        renderSectorEffects(idx);
+        renderNationChecks(idx);
+        renderStatEffects(idx);
+        updateCostPreview(idx);
+    });
+}
+
+// Build a single option card's HTML. All inputs carry scoped IDs (`-${idx}`)
+// and inline handlers thread `idx` through to every state mutator.
+function renderOptionCard(idx) {
+    const opt = options[idx];
+    if (!opt) return '';
+
+    const removeBtn = options.length > 1
+        ? `<button class="se-remove" onclick="removeOption(${idx})">✕ Remove</button>`
+        : '';
+
+    const fiscalSelect = FISCAL_CATEGORY_OPTIONS.map(o =>
+        `<option value="${escapeHtml(o.value)}"${o.value === opt.fiscal_category ? ' selected' : ''}>${escapeHtml(o.label)}</option>`
+    ).join('');
+
+    const scalingStatSelect = (selectedStat) =>
+        '<option value="">None (flat cost)</option>' +
+        STAT_OPTIONS_HTML.replace(`value="${selectedStat}"`, `value="${selectedStat}" selected`);
+
+    const subTitle = (emoji, text) =>
+        `<div style="font-size:0.78rem; color:#d48a3c; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:10px; font-weight:bold;">${emoji} ${text}</div>`;
+    const subDivider = 'border-top:1px solid #2a2a2a; padding-top:18px; margin-top:18px;';
+
+    return `
+        <div class="builder-section">
+            <div class="builder-section-title" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>🎚️ Option ${idx + 1}</span>
+                ${removeBtn}
+            </div>
+            <div class="form-field">
+                <label>Option Name</label>
+                <input type="text" id="b-option-name-${idx}" placeholder="e.g. Birthright Citizenship (Jus Soli)" value="${escapeHtml(opt.option_name || '')}" oninput="syncOptionField(${idx}, 'option_name', this.value)">
+            </div>
+            <div class="form-field">
+                <label>Option Description</label>
+                <textarea id="b-option-desc-${idx}" placeholder="Anyone born within the nation's borders is automatically a citizen..." oninput="syncOptionField(${idx}, 'option_description', this.value)">${escapeHtml(opt.option_description || '')}</textarea>
+            </div>
+
+            <div style="${subDivider}">
+                ${subTitle('🗳️', 'Sector Effects (up to 5)')}
+                <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                    Per-sector popularity shift on resolution. <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected. <strong>Fail:</strong> sponsor takes the inverse alone.<br>
+                    Magnitude is 0.1 to 2.0 in 0.1 steps.
+                </p>
+                <div id="sector-effects-container-${idx}"></div>
+                <button class="add-btn" id="add-sector-effect-btn-${idx}" onclick="addSectorEffect(${idx})">+ Add Sector</button>
+            </div>
+
+            <div style="${subDivider}">
+                ${subTitle('🌍', 'Starting Status')}
+                <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                    Which nations have this option active at game start?
+                    <span style="color:#d48a3c;">Active = ongoing cost runs, stat effects do NOT fire (stats are pre-set).</span>
+                </p>
+                <div class="nation-checks" id="nation-checks-${idx}">Loading nations...</div>
+            </div>
+
+            <div style="${subDivider}">
+                ${subTitle('💰', 'Costs')}
+                <div class="form-field">
+                    <label>Fiscal Category <span style="font-size:0.7rem;color:var(--text-dim);">which budget bucket these costs fall under</span></label>
+                    <select id="b-fiscal-category-${idx}" onchange="syncOptionField(${idx}, 'fiscal_category', this.value)">${fiscalSelect}</select>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+                    <div class="form-field">
+                        <label>Upfront Base Cost ($M) <span style="font-size:0.7rem;color:var(--text-dim);">negative = revenue</span></label>
+                        <input type="number" id="b-upfront-${idx}" value="${Number(opt.upfront_cost) || 0}" step="1" oninput="syncOptionField(${idx}, 'upfront_cost', parseFloat(this.value) || 0); updateCostPreview(${idx})">
+                    </div>
+                    <div class="form-field">
+                        <label>Upfront Scaling Stat (or None)</label>
+                        <select id="b-upfront-scaling-${idx}" onchange="syncOptionField(${idx}, 'upfront_scaling_stat', this.value); updateCostPreview(${idx})">${scalingStatSelect(opt.upfront_scaling_stat || '')}</select>
+                    </div>
+                    <div class="form-field">
+                        <label>Ongoing Base Cost ($M/tick) <span style="font-size:0.7rem;color:var(--text-dim);">negative = relief</span></label>
+                        <input type="number" id="b-ongoing-base-${idx}" value="${Number(opt.ongoing_base_cost) || 0}" step="0.1" oninput="syncOptionField(${idx}, 'ongoing_base_cost', parseFloat(this.value) || 0); updateCostPreview(${idx})">
+                    </div>
+                    <div class="form-field">
+                        <label>Ongoing Scaling Stat (or None)</label>
+                        <select id="b-scaling-stat-${idx}" onchange="syncOptionField(${idx}, 'ongoing_scaling_stat', this.value); updateCostPreview(${idx})">${scalingStatSelect(opt.ongoing_scaling_stat || '')}</select>
+                    </div>
+                </div>
+                <div class="formula-preview" id="cost-preview-${idx}" style="display:none;"></div>
+            </div>
+
+            <div style="${subDivider}">
+                ${subTitle('📊', 'Stat Effects (up to 10)')}
+                <div id="stat-effects-container-${idx}"></div>
+                <button class="add-btn" id="add-effect-btn-${idx}" onclick="addStatEffect(${idx})">+ Add Stat Effect</button>
+                <div class="effect-preview" id="effect-preview-${idx}" style="display:none;"></div>
+            </div>
+        </div>
+    `;
+}
+
+function addOption() {
+    if (options.length >= MAX_OPTIONS_PER_POLICY) return;
+    options.push(createEmptyOption());
+    renderAllOptions();
+}
+
+// Removing an option also drops its in-memory starting_nations Set; on save
+// the corresponding nation_policies rows are deleted because the option no
+// longer exists in state. Block removing the only option (a policy must
+// have at least one).
+function removeOption(idx) {
+    if (options.length <= 1) return;
+    if (!confirm(`Remove Option ${idx + 1}? This option's sector effects, stat effects, costs, and starting nations will be deleted on save.`)) return;
+    options.splice(idx, 1);
+    renderAllOptions();
 }
 
 // ==================== NATION CHECKS ====================
 function renderNationChecks(optIdx) {
     const opt = options[optIdx];
-    const container = document.getElementById('nation-checks');
+    const container = document.getElementById(`nation-checks-${optIdx}`);
+    if (!container) return;
     if (allNations.length === 0) { container.innerHTML = '<span style="color:#666;">No nations found.</span>'; return; }
     if (!opt) { container.innerHTML = ''; return; }
     container.innerHTML = allNations.map(n => `
         <label class="nation-check-item">
             <input type="checkbox" value="${n.id}" ${opt.starting_nations.has(n.id) ? 'checked' : ''} onchange="toggleStartingNation(${optIdx}, '${n.id}', this.checked)">
-            <span>${n.name}</span>
+            <span>${escapeHtml(n.name)}</span>
         </label>
     `).join('');
 }
@@ -725,18 +805,16 @@ function toggleStartingNation(optIdx, id, checked) {
 }
 
 // ==================== COSTS ====================
-function populateScalingStatDropdown() {
-    const optionsHTML = '<option value="">None (flat cost)</option>' + STAT_OPTIONS_HTML;
-    document.getElementById('b-scaling-stat').innerHTML = optionsHTML;
-    document.getElementById('b-upfront-scaling').innerHTML = optionsHTML;
-}
+function updateCostPreview(optIdx) {
+    const opt = options[optIdx];
+    const preview = document.getElementById(`cost-preview-${optIdx}`);
+    if (!preview) return;
+    if (!opt) { preview.style.display = 'none'; return; }
 
-function updateCostPreview() {
-    const upBase = parseFloat(document.getElementById('b-upfront').value) || 0;
-    const upStat = document.getElementById('b-upfront-scaling').value;
-    const onBase = parseFloat(document.getElementById('b-ongoing-base').value) || 0;
-    const onStat = document.getElementById('b-scaling-stat').value;
-    const preview = document.getElementById('cost-preview');
+    const upBase = Number(opt.upfront_cost) || 0;
+    const upStat = opt.upfront_scaling_stat || '';
+    const onBase = Number(opt.ongoing_base_cost) || 0;
+    const onStat = opt.ongoing_scaling_stat || '';
 
     const lines = [];
     if (upBase > 0) {
@@ -789,8 +867,10 @@ function removeStatEffect(optIdx, idx) {
 function renderStatEffects(optIdx) {
     const opt = options[optIdx];
     if (!opt) return;
-    const container = document.getElementById('stat-effects-container');
-    document.getElementById('add-effect-btn').disabled = opt.stat_effects.length >= 10;
+    const container = document.getElementById(`stat-effects-container-${optIdx}`);
+    const addBtn = document.getElementById(`add-effect-btn-${optIdx}`);
+    if (!container) return;
+    if (addBtn) addBtn.disabled = opt.stat_effects.length >= 10;
 
     container.innerHTML = opt.stat_effects.map((e, idx) => `
         <div class="stat-effect-card">
@@ -924,8 +1004,8 @@ function updateSectorMagnitude(optIdx, idx, value) {
 function renderSectorEffects(optIdx) {
     const opt = options[optIdx];
     if (!opt) return;
-    const container = document.getElementById('sector-effects-container');
-    const addBtn = document.getElementById('add-sector-effect-btn');
+    const container = document.getElementById(`sector-effects-container-${optIdx}`);
+    const addBtn = document.getElementById(`add-sector-effect-btn-${optIdx}`);
     if (!container) return;
     if (addBtn) addBtn.disabled = opt.sector_effects.length >= SECTOR_EFFECT_MAX;
 
@@ -981,7 +1061,8 @@ function escapePolicyHtml(s) {
 
 function updateEffectPreview(optIdx) {
     const opt = options[optIdx];
-    const preview = document.getElementById('effect-preview');
+    const preview = document.getElementById(`effect-preview-${optIdx}`);
+    if (!preview) return;
     if (!opt) { preview.style.display = 'none'; return; }
     const valid = opt.stat_effects.filter(e => e.stat_key);
     if (valid.length === 0) { preview.style.display = 'none'; return; }
@@ -1087,43 +1168,66 @@ async function savePolicy() {
     const lawCategory = getLawCategoryValue();
     if (!lawCategory) { alert('Select or create a law category.'); return; }
 
-    // Phase 2.8: read all option-level data from `options[0]` instead of the
-    // DOM. Inline oninput/onchange handlers keep the state in sync with the
-    // user's typing, and renderers write into state too.
-    const opt = options[0];
-    if (!opt) { alert('Internal error: option state missing.'); return; }
+    // Phase 2.9: validate and build a payload for every option in `options[]`.
+    if (options.length === 0) { alert('Add at least 1 option.'); return; }
 
-    const optionName = (opt.option_name || '').trim();
-    if (!optionName) { alert('Enter an option name.'); return; }
+    const optionPayloads = []; // [{ stateRef, normalizedEffects, optionData }]
+    for (let i = 0; i < options.length; i++) {
+        const o = options[i];
+        const optionName = (o.option_name || '').trim();
+        if (!optionName) { alert(`Option ${i + 1}: enter an option name.`); return; }
 
-    const validEffects = opt.stat_effects.filter(e => e.stat_key);
-    if (validEffects.length === 0) { alert('Add at least 1 stat effect.'); return; }
+        const validEffects = o.stat_effects.filter(e => e.stat_key);
+        if (validEffects.length === 0) { alert(`Option ${i + 1} ("${optionName}"): add at least 1 stat effect.`); return; }
 
-    // Phase 2: catch sector rows the user added but never picked a sector for.
-    // Without this alert, the save filter further down silently drops them
-    // and the user thinks the effect was saved.
-    const incompleteSectorRows = opt.sector_effects.filter(e => !e.sector_key);
-    if (incompleteSectorRows.length > 0) {
-        alert(`${incompleteSectorRows.length} sector effect row${incompleteSectorRows.length === 1 ? '' : 's'} ${incompleteSectorRows.length === 1 ? 'has' : 'have'} no sector picked. Pick a sector or remove the row.`);
-        return;
+        const incompleteSectorRows = o.sector_effects.filter(e => !e.sector_key);
+        if (incompleteSectorRows.length > 0) {
+            alert(`Option ${i + 1} ("${optionName}"): ${incompleteSectorRows.length} sector effect row${incompleteSectorRows.length === 1 ? '' : 's'} with no sector picked. Pick a sector or remove the row.`);
+            return;
+        }
+
+        const normalized = validEffects.map(e => ({ ...e, stat_key: normalizePolicyStatKey(e.stat_key) }));
+        const unknown = [...new Set(normalized.map(e => e.stat_key).filter(k => !k || !CANONICAL_STAT_KEYS.has(k)))];
+        if (unknown.length > 0) {
+            alert(`Option ${i + 1} ("${optionName}"): unknown stat key(s): ${unknown.join(', ')}.`);
+            return;
+        }
+
+        optionPayloads.push({
+            stateRef: o,
+            normalizedEffects: normalized,
+            optionData: {
+                option_name: optionName,
+                option_description: (o.option_description || '').trim() || null,
+                option_order: i,
+                is_active: true,
+                upfront_cost: Number.isFinite(Number(o.upfront_cost)) ? Number(o.upfront_cost) : 0,
+                upfront_scaling_stat: o.upfront_scaling_stat || null,
+                ongoing_base_cost: Number.isFinite(Number(o.ongoing_base_cost)) ? Number(o.ongoing_base_cost) : 0,
+                ongoing_scaling_stat: o.ongoing_scaling_stat || null,
+                fiscal_category: o.fiscal_category || null,
+                sector_effects: o.sector_effects
+                    .filter(e => e.sector_key && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0)
+                    .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) })),
+                stat_effects: normalized.map(e => ({
+                    stat_key: e.stat_key,
+                    direction: normalizeEffectDirection(e.direction) || 'up',
+                    rate: e.rate,
+                    delay_ticks: e.delay_ticks || 0,
+                    duration_ticks: e.duration_ticks || 12,
+                    adjust_type: e.adjust_type || null,
+                    adjust_value: e.adjust_type ? (e.adjust_value || 0) : 0
+                }))
+            }
+        });
     }
 
-    const normalizedEffects = validEffects.map(e => ({ ...e, stat_key: normalizePolicyStatKey(e.stat_key) }));
-    const unknownStatKeys = [...new Set(
-        normalizedEffects
-            .map(e => e.stat_key)
-            .filter(statKey => !statKey || !CANONICAL_STAT_KEYS.has(statKey))
-    )];
-
-    if (unknownStatKeys.length > 0) {
-        alert('Unknown stat key(s): ' + unknownStatKeys.join(', ') + '. Please choose supported nation stats only.');
-        return;
-    }
-
-    // Phase 2.5: identity-only — sector_effects, stat_effects, costs, fiscal_category move to policy_options.
-    // Legacy NOT NULL columns (target_stat, stat_direction, ...) are filled from the first stat_effect so
-    // the schema's pre-multi-option constraints stay satisfied. The engine no longer reads them on
-    // multi-option policies; per-option data on policy_options is the source of truth from Phase 4 onward.
+    // Identity-only policies row. Legacy NOT NULL columns get placeholders
+    // from the first option's first stat_effect so the schema's pre-multi-
+    // option constraints stay satisfied. The engine no longer reads them on
+    // multi-option policies — per-option data on policy_options is the
+    // source of truth from Phase 4 onward.
+    const firstNormalized = optionPayloads[0].normalizedEffects[0];
     const policyData = {
         policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') + '_' + Date.now().toString(36),
         policy_name: name,
@@ -1138,42 +1242,14 @@ async function savePolicy() {
         ideology: preservedIdeology || 'Agnostic', // column is NOT NULL
         ideologies: preservedIdeologies,
         opposed_policy_ids: null,
-        // Legacy NOT NULL placeholders
-        target_stat: normalizedEffects[0]?.stat_key || 'stability',
-        stat_direction: (normalizeEffectDirection(normalizedEffects[0]?.direction) || 'up').toUpperCase(),
-        stat_change_per_tick: normalizedEffects[0]?.rate || 1,
-        duration_months: normalizedEffects[0]?.duration_ticks || 12,
+        target_stat: firstNormalized?.stat_key || 'stability',
+        stat_direction: (normalizeEffectDirection(firstNormalized?.direction) || 'up').toUpperCase(),
+        stat_change_per_tick: firstNormalized?.rate || 1,
+        duration_months: firstNormalized?.duration_ticks || 12,
         stat_floor: 0,
         stat_ceiling: 100,
         requires_policy_id: null,
         is_active: true
-    };
-
-    // Phase 2.5: option-level data lives on policy_options. Single option for now;
-    // Phase 2.9 introduces N options per policy.
-    const fiscalCat = opt.fiscal_category || null;
-    const optionData = {
-        option_name: optionName,
-        option_description: (opt.option_description || '').trim() || null,
-        option_order: 0,
-        is_active: true,
-        upfront_cost: Number.isFinite(Number(opt.upfront_cost)) ? Number(opt.upfront_cost) : 0,
-        upfront_scaling_stat: opt.upfront_scaling_stat || null,
-        ongoing_base_cost: Number.isFinite(Number(opt.ongoing_base_cost)) ? Number(opt.ongoing_base_cost) : 0,
-        ongoing_scaling_stat: opt.ongoing_scaling_stat || null,
-        fiscal_category: fiscalCat,
-        sector_effects: opt.sector_effects
-            .filter(e => e.sector_key && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0)
-            .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) })),
-        stat_effects: normalizedEffects.map(e => ({
-            stat_key: e.stat_key,
-            direction: normalizeEffectDirection(e.direction) || 'up',
-            rate: e.rate,
-            delay_ticks: e.delay_ticks || 0,
-            duration_ticks: e.duration_ticks || 12,
-            adjust_type: e.adjust_type || null,
-            adjust_value: e.adjust_type ? (e.adjust_value || 0) : 0
-        }))
     };
 
     try {
@@ -1190,73 +1266,86 @@ async function savePolicy() {
             showStatus(`"${name}" created.`, 'success');
         }
 
-        // Upsert the single policy_options row. On edit, look up any existing
-        // option for this policy and update it; if there are extra options
-        // (left over from a future multi-option phase or a stale state) we
-        // delete them so Phase 2.5 stays single-option.
-        let optionId;
+        // Diff existing policy_options rows against the in-memory state,
+        // matching by id where possible. Options without an id are new
+        // inserts; options whose id is no longer in state get deleted (and
+        // their nation_policies rows go with them via the FK SET NULL —
+        // but we wipe them explicitly first so we don't leave orphans
+        // pointing at a dead option).
         const { data: existingOptions, error: existingErr } = await _supabase
             .from('policy_options')
             .select('id')
-            .eq('policy_id', policyId)
-            .order('option_order', { ascending: true });
+            .eq('policy_id', policyId);
         if (existingErr) throw existingErr;
 
-        if (existingOptions && existingOptions.length > 0) {
-            optionId = existingOptions[0].id;
-            const { error: optErr } = await _supabase
+        const stateOptionIds = new Set(optionPayloads.map(p => p.stateRef.id).filter(Boolean));
+        const toDelete = (existingOptions || [])
+            .map(o => o.id)
+            .filter(id => !stateOptionIds.has(id));
+        if (toDelete.length > 0) {
+            const { error: delNpErr } = await _supabase
+                .from('nation_policies')
+                .delete()
+                .in('selected_option_id', toDelete);
+            if (delNpErr) throw delNpErr;
+            const { error: delOptErr } = await _supabase
                 .from('policy_options')
-                .update(optionData)
-                .eq('id', optionId);
-            if (optErr) throw optErr;
-            if (existingOptions.length > 1) {
-                const extras = existingOptions.slice(1).map(o => o.id);
-                await _supabase.from('policy_options').delete().in('id', extras);
-            }
-        } else {
-            const { data: optInserted, error: optErr } = await _supabase
-                .from('policy_options')
-                .insert({ ...optionData, policy_id: policyId })
-                .select()
-                .single();
-            if (optErr) throw optErr;
-            optionId = optInserted.id;
+                .delete()
+                .in('id', toDelete);
+            if (delOptErr) throw delOptErr;
         }
 
-        // Sync nation_policies to the current startingNations selection for
-        // both create and edit. On edit we wipe the rows for this policy +
-        // option first so the user's checkbox changes (including unchecks
-        // that take the count to zero) actually persist. The active_laws
-        // fallback that lived here previously was a defense against an old
-        // schema where nation_policies didn't exist; the Phase 1 migration
-        // guarantees the table now, so a failure here should surface
-        // loudly rather than silently route into a different table.
-        if (editingPolicyId) {
+        // Update existing options, insert new ones; capture the resulting id
+        // back onto the state object so subsequent saves treat it as an
+        // existing row.
+        for (const payload of optionPayloads) {
+            if (payload.stateRef.id) {
+                const { error: updErr } = await _supabase
+                    .from('policy_options')
+                    .update(payload.optionData)
+                    .eq('id', payload.stateRef.id);
+                if (updErr) throw updErr;
+            } else {
+                const { data: inserted, error: insErr } = await _supabase
+                    .from('policy_options')
+                    .insert({ ...payload.optionData, policy_id: policyId })
+                    .select()
+                    .single();
+                if (insErr) throw insErr;
+                payload.stateRef.id = inserted.id;
+            }
+        }
+
+        // Sync nation_policies for every option: wipe existing rows for
+        // this option, then re-insert from the option's starting_nations
+        // Set. A failure here surfaces to the surrounding catch.
+        for (const payload of optionPayloads) {
+            const optId = payload.stateRef.id;
             const { error: delErr } = await _supabase
                 .from('nation_policies')
                 .delete()
                 .eq('policy_id', policyId)
-                .eq('selected_option_id', optionId);
+                .eq('selected_option_id', optId);
             if (delErr) throw delErr;
-        }
-        if (opt.starting_nations.size > 0) {
-            const totalDuration = Math.max(...normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
-            const records = [...opt.starting_nations].map(nationId => ({
+
+            if (payload.stateRef.starting_nations.size === 0) continue;
+
+            const totalDuration = Math.max(...payload.normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
+            const records = [...payload.stateRef.starting_nations].map(nationId => ({
                 nation_id: nationId,
                 policy_id: policyId,
-                selected_option_id: optionId,
+                selected_option_id: optId,
                 major_sector: sector,
                 law_category: lawCategory,
-                fiscal_category: fiscalCat,
+                fiscal_category: payload.optionData.fiscal_category,
                 status: 'active',
                 activated_at_tick: 0,
                 effects_started: true,
                 effects_completed: true,
                 ticks_elapsed: totalDuration
             }));
-
-            const { error: npError } = await _supabase.from('nation_policies').insert(records);
-            if (npError) throw npError;
+            const { error: insErr } = await _supabase.from('nation_policies').insert(records);
+            if (insErr) throw insErr;
         }
 
         editingPolicyId = null;
@@ -1287,19 +1376,8 @@ function resetBuilder() {
     document.getElementById('b-law-category-select').innerHTML = '<option value="">-- Select sector first --</option>';
     document.getElementById('b-law-category-new').value = '';
     document.getElementById('new-category-wrapper').style.display = 'none';
-    // Mirror the cleared option into the static option-level inputs.
-    document.getElementById('b-option-name').value = '';
-    document.getElementById('b-option-desc').value = '';
-    document.getElementById('b-fiscal-category').value = '';
-    document.getElementById('b-upfront').value = 0;
-    document.getElementById('b-upfront-scaling').value = '';
-    document.getElementById('b-ongoing-base').value = 0;
-    document.getElementById('b-scaling-stat').value = '';
-    updateCostPreview();
 
-    renderStatEffects(0);
-    renderSectorEffects(0);
-    renderNationChecks(0);
+    renderAllOptions();
     document.getElementById('submit-btn').textContent = '✅ Create Policy';
 }
 
@@ -1331,6 +1409,8 @@ window.onSectorOrLawChange = onSectorOrLawChange;
 window.onLawCategorySelect = onLawCategorySelect;
 window.updateCostPreview = updateCostPreview;
 window.addStatEffect = addStatEffect;
+window.addOption = addOption;
+window.removeOption = removeOption;
 window.resetBuilder = resetBuilder;
 window.savePolicy = savePolicy;
 window.editPolicy = editPolicy;
