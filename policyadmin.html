@@ -502,27 +502,32 @@ async function deletePolicy(id, name) {
     await loadPolicies(); populateFilterDropdowns(); filterPolicies();
 }
 
-function duplicatePolicy(id) {
+async function duplicatePolicy(id) {
     const p = allPolicies.find(x => x.id === id);
     if (!p) return;
     editingPolicyId = null;
-    loadPolicyIntoBuilder(p);
+    await loadPolicyIntoBuilder(p);
     document.getElementById('b-name').value = p.policy_name + ' (Copy)';
     document.getElementById('submit-btn').textContent = '✅ Create Policy';
     switchView('builder');
 }
 
-function editPolicy(id) {
+async function editPolicy(id) {
     const p = allPolicies.find(x => x.id === id);
     if (!p) return;
     editingPolicyId = id;
-    loadPolicyIntoBuilder(p);
+    await loadPolicyIntoBuilder(p);
     document.getElementById('submit-btn').textContent = '💾 Update Policy';
     switchView('builder');
 }
 
 // ==================== LOAD INTO BUILDER ====================
-function loadPolicyIntoBuilder(p) {
+// Phase 2.6: option-level fields (name, description, sector_effects,
+// stat_effects, costs, fiscal_category) live on policy_options. Fetch
+// the policy's first option, fall back to legacy columns on the
+// policies row for orphaned data, and hydrate startingNations from
+// nation_policies filtered by that option.
+async function loadPolicyIntoBuilder(p) {
     document.getElementById('b-name').value = p.policy_name || '';
     document.getElementById('b-desc').value = p.description || '';
     document.getElementById('b-sector').value = p.major_sector || '';
@@ -544,31 +549,48 @@ function loadPolicyIntoBuilder(p) {
         newInput.value = lawCatVal;
     }
 
-    // Fiscal category
-    document.getElementById('b-fiscal-category').value = p.fiscal_category || '';
-
-    // Ideologies
-    // Preserve any existing ideology data so re-saving this policy doesn't
-    // destroy it. Phase 2 deprecates authoring; Phase 5 removes the columns.
+    // Ideologies — preserve existing ideology data so re-saving this
+    // policy doesn't destroy it. Phase 2 deprecates authoring;
+    // Phase 5 removes the columns.
     preservedIdeology   = p.ideology || null;
     preservedIdeologies = Array.isArray(p.ideologies)
         ? [...p.ideologies]
         : (p.ideology ? [p.ideology] : []);
 
-    // Starting nations (we'll need to look up nation_policies or active_laws — for now just clear)
-    startingNations = new Set();
-    renderNationChecks();
+    // Fetch the policy's first option (single-option in Phase 2.5/2.6)
+    let option = null;
+    try {
+        const { data: optionRows } = await _supabase
+            .from('policy_options')
+            .select('*')
+            .eq('policy_id', p.id)
+            .order('option_order', { ascending: true })
+            .limit(1);
+        option = (optionRows && optionRows[0]) || null;
+    } catch (err) {
+        console.warn('Failed to load policy_options for edit; falling back to legacy fields:', err.message);
+    }
 
-    // Costs
-    document.getElementById('b-upfront').value = p.upfront_cost || 0;
-    document.getElementById('b-upfront-scaling').value = p.upfront_scaling_stat || '';
-    document.getElementById('b-ongoing-base').value = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
-    document.getElementById('b-scaling-stat').value = p.ongoing_scaling_stat || '';
+    // Option name / description (Phase 2.5 fields, no legacy fallback)
+    document.getElementById('b-option-name').value = option?.option_name || '';
+    document.getElementById('b-option-desc').value = option?.option_description || '';
+
+    // Fiscal category — option first, then legacy
+    document.getElementById('b-fiscal-category').value = option?.fiscal_category || p.fiscal_category || '';
+
+    // Costs — option first, then legacy
+    document.getElementById('b-upfront').value = option?.upfront_cost ?? p.upfront_cost ?? 0;
+    document.getElementById('b-upfront-scaling').value = option?.upfront_scaling_stat || p.upfront_scaling_stat || '';
+    document.getElementById('b-ongoing-base').value = option?.ongoing_base_cost ?? p.ongoing_base_cost ?? p.ongoing_cost_per_tick ?? 0;
+    document.getElementById('b-scaling-stat').value = option?.ongoing_scaling_stat || p.ongoing_scaling_stat || '';
     updateCostPreview();
 
-    // Stat effects
-    if (p.stat_effects && Array.isArray(p.stat_effects)) {
-        statEffects = p.stat_effects.map(e => ({
+    // Stat effects — option first, then legacy policies.stat_effects, then legacy single-stat
+    const rawStatEffects = (option?.stat_effects && Array.isArray(option.stat_effects))
+        ? option.stat_effects
+        : (Array.isArray(p.stat_effects) ? p.stat_effects : null);
+    if (rawStatEffects) {
+        statEffects = rawStatEffects.map(e => ({
             ...e,
             stat_key: normalizePolicyStatKey(e.stat_key),
             direction: normalizeEffectDirection(e.direction) || 'up',
@@ -589,15 +611,33 @@ function loadPolicyIntoBuilder(p) {
     }
     renderStatEffects();
 
-    // Sector effects (Phase 2): coerce to the {sector_key, change_tenths} shape
-    sectorEffects = Array.isArray(p.sector_effects)
-        ? p.sector_effects
-            .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
-            .slice(0, SECTOR_EFFECT_MAX)
-            .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }))
-        : [];
+    // Sector effects — option first, then legacy
+    const rawSectorEffects = (option?.sector_effects && Array.isArray(option.sector_effects))
+        ? option.sector_effects
+        : (Array.isArray(p.sector_effects) ? p.sector_effects : []);
+    sectorEffects = rawSectorEffects
+        .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
+        .slice(0, SECTOR_EFFECT_MAX)
+        .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }));
     renderSectorEffects();
 
+    // Starting nations — pulled from nation_policies for this policy + option
+    startingNations = new Set();
+    if (option?.id) {
+        try {
+            const { data: npRows } = await _supabase
+                .from('nation_policies')
+                .select('nation_id')
+                .eq('policy_id', p.id)
+                .eq('selected_option_id', option.id);
+            for (const row of (npRows || [])) {
+                if (row.nation_id) startingNations.add(row.nation_id);
+            }
+        } catch (err) {
+            console.warn('Failed to load starting nations:', err.message);
+        }
+    }
+    renderNationChecks();
 }
 
 // ==================== NATION CHECKS ====================
