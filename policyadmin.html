@@ -192,19 +192,6 @@
                     <div class="effect-preview" id="effect-preview" style="display:none;"></div>
                 </div>
 
-                <!-- Section 6: Opposed Policies -->
-                <div class="builder-section">
-                    <div class="builder-section-title">⚔️ 6. Opposed Policies (up to 3, same law category)</div>
-                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                        Policies that cannot coexist. Activating this policy will auto-rescind any opposed active policy.
-                    </p>
-                    <div id="opposed-container"></div>
-                    <button class="add-btn" id="add-opposed-btn" onclick="addOpposedSlot()">+ Add Opposed Policy</button>
-                    <div id="opposed-note" style="color:#666; font-size:0.8rem; margin-top:8px; display:none;">
-                        Select a sector and law category first to see available policies.
-                    </div>
-                </div>
-
                 <!-- Submit -->
                 <!-- Section 7: Prerequisite -->
 <div class="builder-section">
@@ -313,7 +300,6 @@ let editingPolicyId = null;
 
 // Builder state
 let statEffects = []; // array of { stat_key, direction, rate, delay_ticks, duration_ticks }
-let opposedSlots = []; // array of policy UUIDs or ''
 let startingNations = new Set(); // nation IDs
 let selectedPrereqId = null; // requires_policy_id
 let sectorEffects = []; // [{ sector_key, change_tenths }] — Phase 2 sector deltas
@@ -514,13 +500,6 @@ async function deletePolicy(id, name) {
         await _supabase.from('active_laws').delete().eq('policy_id', id);
         try { await _supabase.from('nation_policies').delete().eq('policy_id', id); } catch {}
 
-        // Clean up opposed_policy_ids references in other policies
-        const refs = allPolicies.filter(p => (p.opposed_policy_ids || []).includes(id));
-        for (const ref of refs) {
-            const cleaned = (ref.opposed_policy_ids || []).filter(x => x !== id);
-            await _supabase.from('policies').update({ opposed_policy_ids: cleaned.length > 0 ? cleaned : null }).eq('id', ref.id);
-        }
-
         const { error } = await _supabase.from('policies').delete().eq('id', id);
         if (error) throw error;
         showStatus(`"${name}" deleted.`, 'success');
@@ -627,9 +606,6 @@ function loadPolicyIntoBuilder(p) {
         : [];
     renderSectorEffects();
 
-    // Opposed
-    opposedSlots = (p.opposed_policy_ids || []).filter(Boolean);
-    renderOpposedSlots();
     // Prerequisite
     selectedPrereqId = p.requires_policy_id || null;
     const hasPrereq = !!selectedPrereqId;
@@ -895,10 +871,6 @@ function escapePolicyHtml(s) {
     return d.innerHTML;
 }
 
-function updateOpposed(idx, value) {
-    opposedSlots[idx] = value;
-}
-
 function updateEffectPreview() {
     const preview = document.getElementById('effect-preview');
     const valid = statEffects.filter(e => e.stat_key);
@@ -933,59 +905,6 @@ function updateEffectPreview() {
         });
     }
     preview.innerHTML = html;
-}
-
-// ==================== OPPOSED POLICIES ====================
-function addOpposedSlot() {
-    if (opposedSlots.length >= 3) return;
-    opposedSlots.push('');
-    renderOpposedSlots();
-}
-
-function removeOpposedSlot(idx) {
-    opposedSlots.splice(idx, 1);
-    renderOpposedSlots();
-}
-
-function renderOpposedSlots() {
-    const container = document.getElementById('opposed-container');
-    document.getElementById('add-opposed-btn').disabled = opposedSlots.length >= 3;
-
-    const sector = document.getElementById('b-sector').value;
-    const lawCat = getLawCategoryValue().toLowerCase();
-
-    // Find policies in same sector + law category
-    const candidates = allPolicies.filter(p => {
-        if (editingPolicyId && p.id === editingPolicyId) return false;
-        const pSector = (p.major_sector || '').toUpperCase();
-        const pLaw = (p.law_category || p.minor_sector || '').trim().toLowerCase();
-        return pSector === sector && pLaw === lawCat && lawCat !== '';
-    });
-
-    if (opposedSlots.length === 0) { container.innerHTML = ''; return; }
-
-    const note = document.getElementById('opposed-note');
-    if (!sector || !lawCat) {
-        note.style.display = 'block';
-        container.innerHTML = opposedSlots.map((_, idx) => `
-            <div class="opposed-row">
-                <select disabled><option>— Set sector & law category first —</option></select>
-                <button class="se-remove" onclick="removeOpposedSlot(${idx})">✕</button>
-            </div>
-        `).join('');
-        return;
-    }
-    note.style.display = 'none';
-
-    container.innerHTML = opposedSlots.map((val, idx) => `
-        <div class="opposed-row">
-            <select onchange="updateOpposed(${idx},this.value)">
-                <option value="">-- Select policy --</option>
-                ${candidates.map(c => `<option value="${c.id}" ${val === c.id ? 'selected' : ''}>${c.policy_name}</option>`).join('')}
-            </select>
-            <button class="se-remove" onclick="removeOpposedSlot(${idx})">✕</button>
-        </div>
-    `).join('');
 }
 
 function populateLawCategories() {
@@ -1043,7 +962,9 @@ function getLawCategoryValue() {
 }
 
 function onSectorOrLawChange() {
-    renderOpposedSlots();
+    // Phase 2.1: opposed-policy logic removed; this hook is kept so the
+    // sector/law-category change handlers don't break, but no longer fans
+    // out to other UI.
 }
 // ==================== PREREQUISITE ====================
 function togglePrereq() {
@@ -1137,8 +1058,6 @@ async function savePolicy() {
         return;
     }
 
-    const opposedIds = opposedSlots.filter(Boolean);
-
     const policyData = {
         policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') + '_' + Date.now().toString(36),
         policy_name: name,
@@ -1166,7 +1085,7 @@ async function savePolicy() {
             adjust_type: e.adjust_type || null,
             adjust_value: e.adjust_type ? (e.adjust_value || 0) : 0
         })),
-        opposed_policy_ids: opposedIds.length > 0 ? opposedIds : null,
+        opposed_policy_ids: null,
         sector_effects: sectorEffects
             .filter(e => e.sector_key && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0)
             .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) })),
@@ -1222,18 +1141,6 @@ async function savePolicy() {
                 }
             }
 
-            // Update opposed policies — make the relationship two-way
-            if (opposedIds.length > 0 && inserted) {
-                for (const oppId of opposedIds) {
-                    const opp = allPolicies.find(p => p.id === oppId);
-                    if (!opp) continue;
-                    const existing = opp.opposed_policy_ids || [];
-                    if (!existing.includes(inserted.id)) {
-                        existing.push(inserted.id);
-                        await _supabase.from('policies').update({ opposed_policy_ids: existing }).eq('id', oppId);
-                    }
-                }
-            }
         }
 
         editingPolicyId = null;
@@ -1274,8 +1181,6 @@ function resetBuilder() {
     renderStatEffects();
     sectorEffects = [];
     renderSectorEffects();
-    opposedSlots = [];
-    renderOpposedSlots();
     selectedPrereqId = null;
     document.getElementById('b-has-prereq').checked = false;
     document.getElementById('prereq-select-area').style.display = 'none';
@@ -1310,7 +1215,6 @@ window.onSectorOrLawChange = onSectorOrLawChange;
 window.onLawCategorySelect = onLawCategorySelect;
 window.updateCostPreview = updateCostPreview;
 window.addStatEffect = addStatEffect;
-window.addOpposedSlot = addOpposedSlot;
 window.resetBuilder = resetBuilder;
 window.savePolicy = savePolicy;
 window.editPolicy = editPolicy;
@@ -1318,10 +1222,8 @@ window.duplicatePolicy = duplicatePolicy;
 window.deletePolicy = deletePolicy;
 window.toggleStartingNation = toggleStartingNation;
 window.removeStatEffect = removeStatEffect;
-window.removeOpposedSlot = removeOpposedSlot;
 window.togglePrereq = togglePrereq;
 window.updateEffect = updateEffect;
-window.updateOpposed = updateOpposed;
 window.addSectorEffect = addSectorEffect;
 window.removeSectorEffect = removeSectorEffect;
 window.updateSectorEffect = updateSectorEffect;
