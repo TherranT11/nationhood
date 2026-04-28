@@ -5797,11 +5797,13 @@ function setPmTab(tab) {
     document.querySelectorAll('.pm-tab').forEach(t => t.classList.toggle('active', t.dataset.pmTab === tab));
     renderPermits();
 }
+window.setPmTab = setPmTab;
 
 function togglePmExpand(idx) {
     pmExpanded = pmExpanded === idx ? -1 : idx;
     renderPermits();
 }
+window.togglePmExpand = togglePmExpand;
 
 function fmtPermitCost(n) {
     if (Math.abs(n) >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
