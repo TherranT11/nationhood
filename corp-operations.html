@@ -4273,6 +4273,27 @@ async function deliverProject(contractId, contractName, bidPrice, estCost, estQu
             .eq('id', contractId);
         if (compErr) { alert('Failed to mark project completed: ' + compErr.message); return; }
 
+        // Release equipment that was deployed to this contract. Matches the
+        // backend auto-completion path (advance-corp-tick): without this,
+        // assigned_projects entries linger and units stay "deployed" on a
+        // project that no longer exists — blocking redeployment.
+        try {
+            const { data: eqRows } = await _supabase.from('corp_equipment')
+                .select('id, equipment_key, deployed, assigned_projects')
+                .eq('faction_id', faction.id);
+            for (const eq of (eqRows || [])) {
+                const assignments = Array.isArray(eq.assigned_projects) ? eq.assigned_projects : [];
+                const thisContractAssignment = assignments.find(a => a?.contract_id === contractId);
+                if (!thisContractAssignment) continue;
+                const unitsToRelease = Number(thisContractAssignment.units) || 0;
+                const newAssignments = assignments.filter(a => a?.contract_id !== contractId);
+                const newDeployed = Math.max(0, Number(eq.deployed || 0) - unitsToRelease);
+                await _supabase.from('corp_equipment')
+                    .update({ deployed: newDeployed, assigned_projects: newAssignments })
+                    .eq('id', eq.id);
+            }
+        } catch (_eqErr) { /* non-fatal: backend cleanup migration will catch any stragglers */ }
+
         // Pay the construction corp
         if (actualPayment > 0) {
             const { data: corpData } = await _supabase.from('factions').select('corp_cash_reserves').eq('id', faction.id).single();
