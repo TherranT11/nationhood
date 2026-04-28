@@ -2460,12 +2460,19 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             continue;
         }
 
-        // Material gate: check if allocated materials meet requirements for next tick of progress
+        // Material gate: check if allocated materials meet requirements for next tick of progress.
+        //
+        // Materials are only physically consumed once construction begins.
+        // Permits and Planning are administrative phases — no concrete poured,
+        // no steel erected — so the material allocation requirement is
+        // suppressed until the project enters the Foundation phase.
+        const _projectPhase = contract.current_phase || getPhaseForProgress(effectiveProgress / Math.max(1, totalTicks));
+        const _phaseNeedsMaterials = _projectPhase !== 'Permits' && _projectPhase !== 'Planning';
         const reqMaterials = contract.required_materials || {};
         const contractAllocs = allocMap[contract.id] || {};
         const matKeys = Object.keys(reqMaterials);
         let materialsReady = true;
-        if (matKeys.length > 0) {
+        if (_phaseNeedsMaterials && matKeys.length > 0) {
             // Calculate how many units should be consumed by next tick
             const nextProgressPct = Math.min(1, (effectiveProgress + 1) / totalTicks);
             for (const mat of matKeys) {
