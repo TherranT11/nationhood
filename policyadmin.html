@@ -309,7 +309,7 @@ function renderPolicyTable() {
     }
 
     tbody.innerHTML = filteredPolicies.map(p => {
-        const law       = p.law_category || p.minor_sector || '';
+        const law       = getPolicyLawCategory(p);
         const opts      = p.options || [];
         const optCount  = opts.length;
         const typeLabel = formatPolicyType(p.policy_type);
@@ -363,6 +363,13 @@ function formatPolicyType(t) {
     if (t === 'lever')      return '🔄 Lever';
     if (t === 'structural') return '🏗️ Structural';
     return t || '—';
+}
+
+// Resolve a policy row's law category, falling back to legacy minor_sector
+// for rows authored before law_category was the canonical column. Phase 5
+// drops minor_sector for good and this helper collapses to a one-liner.
+function getPolicyLawCategory(p) {
+    return (p.law_category || p.minor_sector || '').trim();
 }
 
 // ==================== DELETE ====================
@@ -443,13 +450,11 @@ function populateLawCategories() {
         return;
     }
 
-    // Existing categories used in this sector. minor_sector falls back here
-    // because some legacy rows wrote to it instead of law_category; Phase 5
-    // cleanup drops minor_sector for good.
+    // Existing categories used in this sector.
     const cats = [...new Set(
         allPolicies
             .filter(p => (p.major_sector || '').toUpperCase() === sector)
-            .map(p => p.law_category || p.minor_sector || '')
+            .map(getPolicyLawCategory)
             .filter(Boolean)
     )].sort();
 
@@ -530,21 +535,30 @@ function renderOpposedSlots() {
     const sector = policyDraft.major_sector;
     const lawCat = getLawCategoryValue().toLowerCase();
 
-    // Candidates: same sector + same law category. We exclude the policy
-    // currently being edited so it can't oppose itself (editingPolicyId
-    // is null in 2B-i but the guard is harmless and ready for 2C).
-    const candidates = allPolicies.filter(p => {
+    // Two reasons we may not have selectable candidates:
+    //   (a) sector or law category isn't picked yet
+    //   (b) sector + law are picked, but no other policies share the scope
+    // Both render the slots disabled with a context-aware hint, otherwise
+    // the user sees an active-but-empty dropdown they can't interact with.
+    const noScope = !sector || !lawCat;
+    const candidates = noScope ? [] : allPolicies.filter(p => {
         if (editingPolicyId && p.id === editingPolicyId) return false;
         const pSector = (p.major_sector || '').toUpperCase();
-        const pLaw    = (p.law_category || p.minor_sector || '').trim().toLowerCase();
-        return pSector === sector && pLaw === lawCat && lawCat !== '';
+        const pLaw    = getPolicyLawCategory(p).toLowerCase();
+        return pSector === sector && pLaw === lawCat;
     });
 
-    if (!sector || !lawCat) {
+    if (noScope || candidates.length === 0) {
         note.style.display = 'block';
+        note.textContent = noScope
+            ? 'Select a sector and law category first to see available policies.'
+            : 'No other policies in this sector + law category yet — author them before opposing.';
+        const placeholder = noScope
+            ? '— Set sector & law category first —'
+            : '— No candidates available —';
         container.innerHTML = policyDraft.opposed_policy_ids.map((_, idx) => `
             <div class="opposed-row">
-                <select disabled><option>— Set sector &amp; law category first —</option></select>
+                <select disabled><option>${escapeHtml(placeholder)}</option></select>
                 <button class="se-remove" onclick="removeOpposedSlot(${idx})">✕</button>
             </div>
         `).join('');
