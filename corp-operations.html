@@ -4646,14 +4646,21 @@ function renderActiveProjects() {
         // Diagnose stall reason
         let stallReason = '';
         if (isStalled) {
-            const reqWf = p.required_workforce || {};
-            const assignedWf = p.workers_assigned || {};
-            const wfShort = [];
-            if ((Number(assignedWf.general) || 0) < (Number(reqWf.general) || 0)) wfShort.push('General: ' + (Number(assignedWf.general) || 0) + '/' + (Number(reqWf.general) || 0));
-            if ((Number(assignedWf.skilled) || 0) < (Number(reqWf.skilled) || 0)) wfShort.push('Skilled: ' + (Number(assignedWf.skilled) || 0) + '/' + (Number(reqWf.skilled) || 0));
-            if ((Number(assignedWf.innovative) || 0) < (Number(reqWf.innovative) || 0)) wfShort.push('Innovative: ' + (Number(assignedWf.innovative) || 0) + '/' + (Number(reqWf.innovative) || 0));
-            if (wfShort.length > 0) stallReason = 'Workers needed — ' + wfShort.join(', ');
-            else stallReason = 'Materials needed — allocate from warehouse';
+            // Awarded-but-stalled = start gate blocked on missing permits.
+            // _missingPermits is filled by loadActiveProjects via the
+            // get_project_permit_requirements RPC.
+            if (p.status === 'awarded' && Array.isArray(p._missingPermits) && p._missingPermits.length > 0) {
+                stallReason = 'Awaiting permits — apply via Permits → Apply: ' + p._missingPermits.join(', ');
+            } else {
+                const reqWf = p.required_workforce || {};
+                const assignedWf = p.workers_assigned || {};
+                const wfShort = [];
+                if ((Number(assignedWf.general) || 0) < (Number(reqWf.general) || 0)) wfShort.push('General: ' + (Number(assignedWf.general) || 0) + '/' + (Number(reqWf.general) || 0));
+                if ((Number(assignedWf.skilled) || 0) < (Number(reqWf.skilled) || 0)) wfShort.push('Skilled: ' + (Number(assignedWf.skilled) || 0) + '/' + (Number(reqWf.skilled) || 0));
+                if ((Number(assignedWf.innovative) || 0) < (Number(reqWf.innovative) || 0)) wfShort.push('Innovative: ' + (Number(assignedWf.innovative) || 0) + '/' + (Number(reqWf.innovative) || 0));
+                if (wfShort.length > 0) stallReason = 'Workers needed — ' + wfShort.join(', ');
+                else stallReason = 'Materials needed — allocate from warehouse';
+            }
         }
 
         const specCls = sectorClass(p.sector);
@@ -4764,6 +4771,24 @@ async function loadActiveProjects() {
         for (const p of activeProjects) {
             p._hasInsurance = insuredSet.has(p.id);
             p._insurancePending = pendingSet.has(p.id);
+        }
+    }
+
+    // For any awarded-but-stalled project, the start gate is blocked on missing
+    // permits. Source of truth: the get_project_permit_requirements RPC, which
+    // diffs nation-required permits against the corp's held permits.
+    const stalledAwarded = activeProjects.filter(p => p.status === 'awarded' && (p.stalled_ticks || 0) > 0);
+    if (stalledAwarded.length > 0) {
+        const results = await Promise.all(stalledAwarded.map(p =>
+            _supabase.rpc('get_project_permit_requirements', {
+                p_contract_id: p.id,
+                p_faction_id: faction.id,
+                p_nation_id: p.nation_id,
+            })
+        ));
+        for (let i = 0; i < stalledAwarded.length; i++) {
+            const reqs = Array.isArray(results[i].data) ? results[i].data : [];
+            stalledAwarded[i]._missingPermits = reqs.filter(r => !r.has_permit).map(r => r.permit_name || r.permit_key);
         }
     }
 
