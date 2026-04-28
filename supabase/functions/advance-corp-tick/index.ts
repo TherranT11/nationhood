@@ -914,9 +914,12 @@ async function generateConstructionContracts(supabase, nation, currentTick) {
             for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 10);
         }
 
-        // Generate workforce (100x template ranges)
+        // Generate workforce — template ranges are realistic counts (e.g. 500-700
+        // for a mega project). Earlier code multiplied by 100 which produced
+        // 50,000-70,000 worker requirements, blowing budgets into the hundreds
+        // of billions and leaving contracts unbiddable.
         const requiredWf = reqs?.wf
-            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]) * 100, skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) * 100 }
+            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]), skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) }
             : {};
 
         // Budget: range from [all LOW materials, 0% markup] to [all HIGH materials, 40% markup]
@@ -1099,8 +1102,10 @@ async function generateInfraRenewalContracts(supabase, nation, currentTick) {
         if (reqs?.mat) {
             for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 10);
         }
+        // Workforce uses template ranges directly; the ×100 from the legacy
+        // generator was a bug (see ContractGen path above for context).
         const requiredWf = reqs?.wf
-            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]) * 100, skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) * 100 }
+            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]), skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) }
             : {};
 
         // Budget calculation (same as regular generation)
