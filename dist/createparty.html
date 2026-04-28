@@ -83,40 +83,6 @@ body {
   line-height: 1.5;
 }
 
-/* Ideology summary bar */
-.ideo-bar {
-  width: 100%;
-  max-width: 560px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-0);
-  padding: 10px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-.ideo-bar .label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.ideo-bar .tags {
-  display: flex;
-  gap: 6px;
-}
-.ideo-tag {
-  font-family: var(--font-mono);
-  font-size: 8.5px;
-  font-weight: 700;
-  padding: 2px 8px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border: 1px solid currentColor;
-}
-
 /* Form panel */
 .form-panel {
   width: 100%;
@@ -241,6 +207,50 @@ textarea {
   height: 18px;
   border: 1px solid var(--border-1);
 }
+
+/* Archetype grid */
+.cp-archetype-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+@media (max-width: 600px) { .cp-archetype-grid { grid-template-columns: 1fr; } }
+.cp-archetype-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.cp-archetype-card:hover { border-color: var(--border-2); }
+.cp-archetype-card.active {
+  border-color: var(--purple, #b794f6);
+  background: rgba(183, 148, 246, 0.06);
+}
+.cp-archetype-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-bright);
+  margin-bottom: 4px;
+}
+.cp-archetype-card.active .cp-archetype-name { color: var(--purple, #b794f6); }
+.cp-archetype-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 6px;
+}
+.cp-archetype-strongholds {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.cp-archetype-strongholds strong { color: var(--text-secondary); font-weight: 600; }
 
 /* Logo grid */
 .cp-logo-grid {
@@ -412,12 +422,14 @@ textarea {
   .cp-swatch { width: 20px; height: 20px; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/createparty-QEo4tPY7.js"></script>
+  <script type="module" crossorigin src="/assets/createparty-ajIMwq8v.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
   <link rel="modulepreload" crossorigin href="/assets/party-icons-CJ7uQoDE.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
 </head>
 <body>
+
+<button id="cp-logout-btn" onclick="logoutUser()" style="position:fixed;top:16px;right:16px;z-index:100;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;background:transparent;color:var(--text-muted);border:1px solid var(--border-1);padding:6px 16px;cursor:pointer;transition:color 0.15s,border-color 0.15s;" onmouseover="this.style.color='var(--red)';this.style.borderColor='var(--red)'" onmouseout="this.style.color='var(--text-muted)';this.style.borderColor='var(--border-1)'">Logout</button>
 
 <div id="loading" class="loading-msg">AUTHENTICATING...</div>
 
@@ -426,11 +438,6 @@ textarea {
     <h1>Step 3 of 3</h1>
     <div class="title">Build Your Party</div>
     <div class="subtitle">Name your political party, choose a color and logo. This is how other players will see you.</div>
-  </div>
-
-  <div class="ideo-bar">
-    <span class="label">Ideology</span>
-    <div class="tags" id="ideo-tags"></div>
   </div>
 
   <div id="error-message" class="error-msg"></div>
@@ -473,6 +480,18 @@ textarea {
         <input type="text" id="cp-custom-hex" class="cp-hex-input" maxlength="7" placeholder="#E63946">
         <div id="cp-color-preview" class="cp-color-preview"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Archetype -->
+  <div class="form-panel">
+    <div class="form-panel__header">
+      <div class="form-panel__dot" style="background:var(--purple)"></div>
+      <span class="form-panel__title">Archetype</span>
+      <span class="form-panel__hint" style="margin-left:auto;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">Pick one — sets your starting strongholds</span>
+    </div>
+    <div class="form-panel__body">
+      <div id="cp-archetype-grid" class="cp-archetype-grid"></div>
     </div>
   </div>
 
