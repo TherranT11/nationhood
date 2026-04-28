@@ -2,12 +2,15 @@
 -- skipped at ratification because resolveTransferEndpoints checked
 -- `article.type` while the diplomacy modal saves `article_type`.
 --
--- Affected agreements: every active goods_trade (or any other type) that
--- contains a transfer article authored via the structured wizard. The
--- code fix in this same commit makes the resolver accept either field
--- going forward; this script clears the existing backlog.
+-- A transfer article is a binding obligation: the receiver always gets
+-- the full agreed amount. The sender pays from budget_reserves first;
+-- any shortfall becomes nation debt (matches the discretionary-grant
+-- pattern at bills.js#3543 — money has to come from somewhere).
 --
--- Idempotent — guarded by data.executed_at_tick. Safe to re-run.
+-- Idempotent. Handles both:
+--   - never-fired transfers (executed_at_tick IS NULL)
+--   - partially-fired transfers from the earlier floor-at-zero recovery
+--     (executed_amount < amount — top up the difference via debt)
 
 DO $$
 DECLARE
@@ -19,14 +22,18 @@ DECLARE
     art_data    JSONB;
     transfer_kind TEXT;
     amount      NUMERIC;
+    paid_so_far NUMERIC;
+    payable     NUMERIC;
     direction   TEXT;
     author_id   UUID;
     counterparty UUID;
     from_nation UUID;
     to_nation   UUID;
     from_reserves NUMERIC;
+    from_debt   NUMERIC;
     to_reserves NUMERIC;
-    actual_debit NUMERIC;
+    debit_from_reserves NUMERIC;
+    shortfall   NUMERIC;
     new_articles JSONB;
     rows_changed INT := 0;
 BEGIN
@@ -56,14 +63,17 @@ BEGIN
                 art_idx := art_idx + 1; CONTINUE;
             END IF;
 
-            -- Already executed: skip.
-            IF (art_data->>'executed_at_tick') IS NOT NULL THEN
-                art_idx := art_idx + 1; CONTINUE;
-            END IF;
-
             amount := COALESCE((art_data->>'amount')::NUMERIC, 0);
             IF amount <= 0 THEN
                 art_idx := art_idx + 1; CONTINUE;
+            END IF;
+
+            -- Compute remaining payable: full amount for never-fired,
+            -- (amount - executed_amount) for partial-fired.
+            paid_so_far := COALESCE((art_data->>'executed_amount')::NUMERIC, 0);
+            payable := amount - paid_so_far;
+            IF payable <= 0 THEN
+                art_idx := art_idx + 1; CONTINUE;  -- already fully paid
             END IF;
 
             author_id := NULLIF(art->>'author_nation_id', '')::UUID;
@@ -85,8 +95,8 @@ BEGIN
                 to_nation   := author_id;
             END IF;
 
-            -- Read both reserves under a row-level lock to avoid concurrent drift.
-            SELECT budget_reserves INTO from_reserves
+            -- Lock both rows; pay reserves first, push remainder to debt.
+            SELECT budget_reserves, debt INTO from_reserves, from_debt
               FROM nations WHERE id = from_nation FOR UPDATE;
             SELECT budget_reserves INTO to_reserves
               FROM nations WHERE id = to_nation FOR UPDATE;
@@ -95,26 +105,32 @@ BEGIN
                 art_idx := art_idx + 1; CONTINUE;
             END IF;
 
-            actual_debit := LEAST(amount, GREATEST(0, from_reserves));
-            UPDATE nations SET budget_reserves = GREATEST(0, from_reserves - amount)
+            debit_from_reserves := LEAST(payable, GREATEST(0, from_reserves));
+            shortfall           := payable - debit_from_reserves;
+
+            UPDATE nations
+               SET budget_reserves = from_reserves - debit_from_reserves,
+                   debt            = COALESCE(from_debt, 0) + shortfall
              WHERE id = from_nation;
-            UPDATE nations SET budget_reserves = to_reserves + actual_debit
+            UPDATE nations
+               SET budget_reserves = to_reserves + payable
              WHERE id = to_nation;
 
-            -- Mark the article executed so a re-run is a no-op.
+            -- Mark the article as fully paid so a re-run is a no-op.
             new_articles := jsonb_set(
                 new_articles,
                 ARRAY[art_idx::TEXT, 'data'],
                 COALESCE(new_articles->art_idx->'data', '{}'::jsonb)
                     || jsonb_build_object(
-                        'executed_at_tick', cur_tick,
-                        'executed_amount',  actual_debit
+                        'executed_at_tick',  cur_tick,
+                        'executed_amount',   amount,
+                        'executed_via_debt', COALESCE((art_data->>'executed_via_debt')::NUMERIC, 0) + shortfall
                     )
             );
 
             rows_changed := rows_changed + 1;
-            RAISE NOTICE 'Executed % transfer: % -> %, $% (agreement %)',
-                'one-time', from_nation, to_nation, actual_debit, agreement.id;
+            RAISE NOTICE 'Paid transfer: % -> %, payable $%, debt portion $% (agreement %)',
+                from_nation, to_nation, payable, shortfall, agreement.id;
 
             art_idx := art_idx + 1;
         END LOOP;
@@ -126,15 +142,17 @@ BEGIN
         END IF;
     END LOOP;
 
-    RAISE NOTICE 'Total transfers executed: %', rows_changed;
+    RAISE NOTICE 'Total transfers paid: %', rows_changed;
 END $$;
 
 -- ═══════════════════════════════════════════════════════════════════════
--- VERIFY — Dravka should show the $5B credit on its budget_reserves
+-- VERIFY — Dravka should show the credit on budget_reserves;
+-- Vostia/Hajjara should show the shortfall added to debt.
 -- ═══════════════════════════════════════════════════════════════════════
 SELECT
     n.name,
-    n.budget_reserves
+    n.budget_reserves,
+    n.debt
 FROM nations n
 WHERE n.name IN ('Dravka', 'Vostia', 'Hajjara')
 ORDER BY n.name;
