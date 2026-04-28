@@ -55,8 +55,6 @@ body { overflow: auto !important; height: auto !important; }
         .tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
         .tag-up { background: #1a2a1a; color: var(--green); border: 1px solid var(--green); }
         .tag-down { background: #2a1a1a; color: var(--red); border: 1px solid var(--red); }
-        .tag-ideology { background: #1a1a2a; color: #bb86fc; border: 1px solid #9b59b6; margin: 1px 2px; }
-        .tag-agnostic { background: #2a2a2a; color: #aaa; border: 1px solid #666; }
         .tag-sector { background: #2a2a1a; color: var(--orange); border: 1px solid var(--orange); }
 
         /* Actions */
@@ -93,22 +91,6 @@ body { overflow: auto !important; height: auto !important; }
         }
         .form-field textarea { min-height: 70px; resize: vertical; line-height: 1.5; }
         .form-field input:focus, .form-field select:focus, .form-field textarea:focus { outline: none; border-color: #ffcc00; }
-
-        /* Ideology chips */
-        .ideology-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-        .ideology-chip {
-            padding: 8px 16px; background: #252525; border: 2px solid #333; border-radius: 20px;
-            color: #888; font-weight: 700; cursor: pointer; transition: all 0.2s;
-            font-size: 0.82rem; user-select: none;
-        }
-        .ideology-chip:hover { border-color: #bb86fc; color: #e0e0e0; }
-        .ideology-chip.selected { background: #2a1a3a; border-color: #bb86fc; color: #bb86fc; }
-        .ideology-chip.disabled { opacity: 0.3; cursor: not-allowed; }
-        .ideology-chip.disabled:hover { border-color: #333; color: #888; }
-        .ideology-chip-agnostic { border-color: #555; color: #aaa; }
-        .ideology-chip-agnostic:hover { border-color: var(--orange); color: var(--orange); }
-        .ideology-chip-agnostic.selected { background: #2a2a1a; border-color: var(--orange); color: var(--orange); }
-        .ideology-divider { color: #333; font-size: 1.2rem; display: flex; align-items: center; user-select: none; }
 
         /* Nation checkboxes */
         .nation-checks { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -214,14 +196,6 @@ body { overflow: auto !important; height: auto !important; }
             .filter-bar { flex-direction: column; }
             .policy-count { margin-left: 0; }
         }
-        /* Prerequisite */
-.prereq-toggle { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-.prereq-toggle label { font-size: 0.85rem; color: #e0e0e0; cursor: pointer; }
-.prereq-toggle input { width: 20px; height: 20px; accent-color: #ffcc00; cursor: pointer; }
-.prereq-select-area { margin-top: 10px; }
-.prereq-badge { display: inline-block; background: #1a2a2a; border: 1px solid var(--blue); color: #64B5F6; padding: 2px 8px; border-radius: 3px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-.prereq-lock-badge { display: inline-block; background: #2a2a1a; border: 1px solid var(--orange); color: var(--orange); padding: 2px 8px; border-radius: 3px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-
 /* ───────────────────────────────────────────────────────────────────── */
 /* Phase 2A: list view badges + option preview                           */
 /* ───────────────────────────────────────────────────────────────────── */
