@@ -68,15 +68,103 @@
             </div>
 
             <!-- ============ BUILDER VIEW ============ -->
-            <!-- Phase 2A: builder is a placeholder. The new option-aware builder lands in Phase 2B. -->
+            <!-- Phase 2B-i: Identity + Opposed wired. Options section + save flow follow in 2B-ii / 2B-iii. -->
             <div class="view-panel" id="view-builder">
-                <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:32px 28px;text-align:center;color:#888;">
-                    <div style="font-size:1.1rem;color:#ffcc00;margin-bottom:10px;letter-spacing:1px;">🚧 Builder under construction</div>
-                    <div style="font-size:0.9rem;line-height:1.7;max-width:520px;margin:0 auto;">
-                        Phase 1 wiped policies and reshaped the schema (one policy → many options).
-                        The new option-aware builder lands in <strong style="color:#ffcc00;">Phase 2B</strong>.<br><br>
-                        For now the list view is read-only — you can browse policies and delete them.
+
+                <!-- Section 1: Policy Identity -->
+                <div class="builder-section">
+                    <div class="builder-section-title">📝 1. Policy Identity</div>
+                    <div class="form-field">
+                        <label>Policy Name</label>
+                        <input type="text" id="b-name" placeholder="e.g. Property Rights Framework Act" oninput="updateDraft('policy_name', this.value)">
                     </div>
+                    <div class="form-field">
+                        <label>Description (umbrella — shown above the option list)</label>
+                        <textarea id="b-desc" placeholder="Establishes the nation's fundamental framework for property ownership, use, and seizure..." oninput="updateDraft('description', this.value)"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Sector</label>
+                            <select id="b-sector" onchange="updateSector(this.value)">
+                                <option value="">-- Select --</option>
+                                <option value="ECONOMICS">💰 Economics</option>
+                                <option value="LABOR">👷 Labor</option>
+                                <option value="EDUCATION">📚 Education</option>
+                                <option value="ENERGY">⚡ Energy</option>
+                                <option value="SOCIAL">🏥 Social</option>
+                                <option value="MILITARY">🛡️ Military &amp; Security</option>
+                                <option value="GOVERNANCE">🏛️ Governance</option>
+                                <option value="IMMIGRATION">🌍 Immigration</option>
+                                <option value="INTERNATIONAL">🌐 International</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label>Law Category</label>
+                            <select id="b-law-category-select" onchange="onLawCategorySelect(this.value)">
+                                <option value="">-- Select sector first --</option>
+                            </select>
+                            <div id="new-category-wrapper" style="display:none;margin-top:8px;">
+                                <label style="display:block;font-size:0.72rem;color:#ffcc00;margin-bottom:4px;">NEW CATEGORY NAME</label>
+                                <input type="text" id="b-law-category-new" placeholder="e.g. Property Rights" oninput="updateLawCategoryNew(this.value)">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Policy Type</label>
+                            <select id="b-policy-type" onchange="updatePolicyType(this.value)">
+                                <option value="structural">🏗️ Structural — 2..7 options, persistent slot</option>
+                                <option value="lever">🔄 Lever — 1 option, fire-and-forget</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label>Fiscal Category</label>
+                            <select id="b-fiscal-category" onchange="updateDraft('fiscal_category', this.value)">
+                                <option value="">-- None (no budget impact) --</option>
+                                <option value="Interior">🏛️ Interior</option>
+                                <option value="Labor">👷 Labor</option>
+                                <option value="Healthcare">🏥 Healthcare</option>
+                                <option value="Education">📚 Education</option>
+                                <option value="Transportation">🚄 Transportation</option>
+                                <option value="Justice">⚖️ Justice</option>
+                                <option value="Foreign Ministry">🌐 Foreign Ministry</option>
+                                <option value="Finance">💰 Finance</option>
+                                <option value="Defense">🛡️ Defense</option>
+                                <option value="Energy">⚡ Energy</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Opposed Policies -->
+                <div class="builder-section">
+                    <div class="builder-section-title">⚔️ 2. Opposed Policies (up to 3, same sector + law category)</div>
+                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                        Policies that cannot coexist. Activating any option of this policy will auto-rescind any opposed active policy on the nation.
+                    </p>
+                    <div id="opposed-container"></div>
+                    <button class="add-btn" id="add-opposed-btn" onclick="addOpposedSlot()">+ Add Opposed Policy</button>
+                    <div id="opposed-note" style="color:#666; font-size:0.8rem; margin-top:8px; display:none;">
+                        Select a sector and law category first to see available policies.
+                    </div>
+                </div>
+
+                <!-- Section 3: Options (placeholder until 2B-ii) -->
+                <div class="builder-section">
+                    <div class="builder-section-title">🗳️ 3. Options</div>
+                    <div style="background:#161616;border:1px dashed #333;border-radius:6px;padding:24px;text-align:center;color:#888;">
+                        <div style="font-size:0.95rem;color:#ffcc00;margin-bottom:6px;">Per-option editors land in <strong>Phase 2B-ii</strong></div>
+                        <div style="font-size:0.82rem;line-height:1.6;max-width:480px;margin:0 auto;">
+                            Sector effects, costs, and stat effects will be authored per option here, with add/remove/reorder.
+                            Save flow lands in <strong style="color:#ffcc00;">Phase 2B-iii</strong>.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit -->
+                <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:10px; margin-bottom:40px;">
+                    <button class="btn-dim" onclick="resetBuilder()">Clear Form</button>
+                    <button class="btn-gold" id="submit-btn" disabled title="Save lands in Phase 2B-iii" style="opacity:0.4;cursor:not-allowed;">✅ Create Policy</button>
                 </div>
             </div>
         </div>
@@ -97,11 +185,38 @@ async function hashPassword(pw) {
 }
 
 // ==================== STATE ====================
-// Phase 2A: builder is placeholdered, so the only state we need is the
-// joined policy list. Phase 2B will reintroduce policyDraft, statEffects,
-// sectorEffects, etc. — keep this file lean for now.
 let allPolicies = [];      // [{ ...policy, options: [...] }]
 let filteredPolicies = [];
+
+// Builder draft. 2B-i wires identity + opposed; options[] stays empty
+// until 2B-ii adds per-option editing.
+let editingPolicyId = null;
+let policyDraft = newPolicyDraft();
+
+function newPolicyDraft() {
+    return {
+        policy_name: '',
+        description: '',
+        major_sector: '',
+        // law_category_mode tracks whether the user is picking an existing
+        // category, creating a new one, or hasn't picked yet. The resolved
+        // string value (whether existing or typed-new) is computed on demand
+        // via getLawCategoryValue().
+        law_category_mode: '',     // '' | <existing-name> | '__new__'
+        law_category_new: '',      // raw input when mode === '__new__'
+        fiscal_category: '',
+        policy_type: 'structural',
+        opposed_policy_ids: [],
+        options: []                // populated in 2B-ii
+    };
+}
+
+function getLawCategoryValue() {
+    if (policyDraft.law_category_mode === '__new__') {
+        return (policyDraft.law_category_new || '').trim();
+    }
+    return policyDraft.law_category_mode || '';
+}
 
 // ==================== AUTH ====================
 async function checkAuth() {
@@ -117,6 +232,10 @@ async function init() {
     await loadPolicies();
     populateFilterDropdowns();
     renderPolicyTable();
+    // Initialize the builder section to its empty state. This populates the
+    // opposed-slot container and primes the law-category dropdown logic so
+    // switching to the builder tab doesn't show stale or undefined markup.
+    renderOpposedSlots();
 }
 
 // Phase 2A: pull policies along with their child policy_options in one
@@ -288,6 +407,180 @@ async function deletePolicy(id, name) {
     filterPolicies();
 }
 
+// ==================== BUILDER — IDENTITY ====================
+// Generic setter for top-level scalar fields on policyDraft.
+function updateDraft(field, value) {
+    policyDraft[field] = value;
+}
+
+// Sector change → rebuild law-category dropdown and clear stale opposed
+// slots (opposed candidates are scoped to sector + law category, so a
+// previous selection is no longer guaranteed to match).
+function updateSector(value) {
+    policyDraft.major_sector = value;
+    populateLawCategories();
+    policyDraft.opposed_policy_ids = [];
+    renderOpposedSlots();
+}
+
+// Build the law-category dropdown from existing policies in the chosen
+// sector. Always offers a "+ Create New" option at the top so brand new
+// categories can be authored without leaving the form.
+function populateLawCategories() {
+    const sector = policyDraft.major_sector;
+    const select = document.getElementById('b-law-category-select');
+    const wrapper = document.getElementById('new-category-wrapper');
+    const newInput = document.getElementById('b-law-category-new');
+
+    // Reset both DOM and state for the new-category branch.
+    wrapper.style.display = 'none';
+    newInput.value = '';
+    policyDraft.law_category_mode = '';
+    policyDraft.law_category_new = '';
+
+    if (!sector) {
+        select.innerHTML = '<option value="">-- Select sector first --</option>';
+        return;
+    }
+
+    // Existing categories used in this sector. minor_sector falls back here
+    // because some legacy rows wrote to it instead of law_category; Phase 5
+    // cleanup drops minor_sector for good.
+    const cats = [...new Set(
+        allPolicies
+            .filter(p => (p.major_sector || '').toUpperCase() === sector)
+            .map(p => p.law_category || p.minor_sector || '')
+            .filter(Boolean)
+    )].sort();
+
+    let html = '<option value="">-- Select --</option>';
+    html += '<option value="__new__">＋ Create New Category</option>';
+    if (cats.length > 0) {
+        html += '<option disabled>──────────────</option>';
+        cats.forEach(c => { html += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`; });
+    }
+    select.innerHTML = html;
+}
+
+// Law-category select handler. Toggles the new-category text input and
+// re-renders opposed slots (their candidate list depends on the resolved
+// law category).
+function onLawCategorySelect(value) {
+    const wrapper = document.getElementById('new-category-wrapper');
+    const newInput = document.getElementById('b-law-category-new');
+
+    policyDraft.law_category_mode = value;
+
+    if (value === '__new__') {
+        wrapper.style.display = 'block';
+        newInput.focus();
+    } else {
+        wrapper.style.display = 'none';
+        newInput.value = '';
+        policyDraft.law_category_new = '';
+    }
+    renderOpposedSlots();
+}
+
+// Typed-new-category input handler. We re-render opposed slots in case the
+// typed value happens to match an existing category (unlikely but cheap).
+function updateLawCategoryNew(value) {
+    policyDraft.law_category_new = value;
+    renderOpposedSlots();
+}
+
+// Policy type change. 2B-ii adjusts the option list (lever=1, structural>=2);
+// 2B-i just stores the value.
+function updatePolicyType(value) {
+    policyDraft.policy_type = value;
+}
+
+// ==================== BUILDER — OPPOSED POLICIES ====================
+const OPPOSED_MAX = 3;
+
+function addOpposedSlot() {
+    if (policyDraft.opposed_policy_ids.length >= OPPOSED_MAX) return;
+    policyDraft.opposed_policy_ids.push('');
+    renderOpposedSlots();
+}
+
+function removeOpposedSlot(idx) {
+    policyDraft.opposed_policy_ids.splice(idx, 1);
+    renderOpposedSlots();
+}
+
+function updateOpposed(idx, value) {
+    policyDraft.opposed_policy_ids[idx] = value;
+}
+
+function renderOpposedSlots() {
+    const container = document.getElementById('opposed-container');
+    const addBtn    = document.getElementById('add-opposed-btn');
+    const note      = document.getElementById('opposed-note');
+    if (!container || !addBtn || !note) return;
+
+    addBtn.disabled = policyDraft.opposed_policy_ids.length >= OPPOSED_MAX;
+
+    if (policyDraft.opposed_policy_ids.length === 0) {
+        container.innerHTML = '';
+        note.style.display = 'none';
+        return;
+    }
+
+    const sector = policyDraft.major_sector;
+    const lawCat = getLawCategoryValue().toLowerCase();
+
+    // Candidates: same sector + same law category. We exclude the policy
+    // currently being edited so it can't oppose itself (editingPolicyId
+    // is null in 2B-i but the guard is harmless and ready for 2C).
+    const candidates = allPolicies.filter(p => {
+        if (editingPolicyId && p.id === editingPolicyId) return false;
+        const pSector = (p.major_sector || '').toUpperCase();
+        const pLaw    = (p.law_category || p.minor_sector || '').trim().toLowerCase();
+        return pSector === sector && pLaw === lawCat && lawCat !== '';
+    });
+
+    if (!sector || !lawCat) {
+        note.style.display = 'block';
+        container.innerHTML = policyDraft.opposed_policy_ids.map((_, idx) => `
+            <div class="opposed-row">
+                <select disabled><option>— Set sector &amp; law category first —</option></select>
+                <button class="se-remove" onclick="removeOpposedSlot(${idx})">✕</button>
+            </div>
+        `).join('');
+        return;
+    }
+    note.style.display = 'none';
+
+    container.innerHTML = policyDraft.opposed_policy_ids.map((val, idx) => `
+        <div class="opposed-row">
+            <select onchange="updateOpposed(${idx}, this.value)">
+                <option value="">-- Select policy --</option>
+                ${candidates.map(c => `<option value="${c.id}"${val === c.id ? ' selected' : ''}>${escapeHtml(c.policy_name)}</option>`).join('')}
+            </select>
+            <button class="se-remove" onclick="removeOpposedSlot(${idx})">✕</button>
+        </div>
+    `).join('');
+}
+
+// ==================== BUILDER — RESET ====================
+function resetBuilder() {
+    editingPolicyId = null;
+    policyDraft = newPolicyDraft();
+
+    // Sync the DOM. Section 3 (Options) has no inputs to clear in 2B-i.
+    document.getElementById('b-name').value = '';
+    document.getElementById('b-desc').value = '';
+    document.getElementById('b-sector').value = '';
+    document.getElementById('b-law-category-select').innerHTML = '<option value="">-- Select sector first --</option>';
+    document.getElementById('b-law-category-new').value = '';
+    document.getElementById('new-category-wrapper').style.display = 'none';
+    document.getElementById('b-policy-type').value = 'structural';
+    document.getElementById('b-fiscal-category').value = '';
+
+    renderOpposedSlots();
+}
+
 // ==================== UTILITIES ====================
 function fmtCost(m) {
     const n = Number(m) || 0;
@@ -310,10 +603,20 @@ function showStatus(msg, type) {
 }
 
 // Expose handlers used from inline onclick / onchange.
-window.checkAuth      = checkAuth;
-window.switchView     = switchView;
-window.filterPolicies = filterPolicies;
-window.deletePolicy   = deletePolicy;
+window.checkAuth            = checkAuth;
+window.switchView           = switchView;
+window.filterPolicies       = filterPolicies;
+window.deletePolicy         = deletePolicy;
+// Builder — Phase 2B-i
+window.updateDraft          = updateDraft;
+window.updateSector         = updateSector;
+window.onLawCategorySelect  = onLawCategorySelect;
+window.updateLawCategoryNew = updateLawCategoryNew;
+window.updatePolicyType     = updatePolicyType;
+window.addOpposedSlot       = addOpposedSlot;
+window.removeOpposedSlot    = removeOpposedSlot;
+window.updateOpposed        = updateOpposed;
+window.resetBuilder         = resetBuilder;
 </script>
 </body>
 </html>
