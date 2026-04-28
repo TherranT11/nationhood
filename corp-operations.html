@@ -4811,13 +4811,17 @@ async function loadActiveProjects() {
     // failures are isolated so one bad response can't break the whole load.
     const stalledAwarded = activeProjects.filter(p => p.status === 'awarded' && (p.stalled_ticks || 0) > 0);
     if (stalledAwarded.length > 0) {
-        const results = await Promise.all(stalledAwarded.map(p =>
-            _supabase.rpc('get_project_permit_requirements', {
-                p_contract_id: p.id,
-                p_faction_id: faction.id,
-                p_nation_id: p.nation_id,
-            }).catch(err => ({ data: null, error: err }))
-        ));
+        const results = await Promise.all(stalledAwarded.map(async (p) => {
+            try {
+                return await _supabase.rpc('get_project_permit_requirements', {
+                    p_contract_id: p.id,
+                    p_faction_id: faction.id,
+                    p_nation_id: p.nation_id,
+                });
+            } catch (err) {
+                return { data: null, error: err };
+            }
+        }));
         for (let i = 0; i < stalledAwarded.length; i++) {
             const { data, error } = results[i] || {};
             if (error) {
