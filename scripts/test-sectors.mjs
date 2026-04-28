@@ -17,6 +17,15 @@ import {
     parsePopularity,
     computeSectorShifts,
     sumSectorEffects,
+    rollIndependents,
+    allocateSeatsByTwp,
+    applyElectabilityModifier,
+    applyUncertaintyRoll,
+    applyTieBreakerBonuses,
+    getStrongholdSectors,
+    computeStrongholdScore,
+    coalitionAffinity,
+    dominantSectorLabel,
 } from '../js/game/sectors.js';
 
 // ─── Tiny test runner ───────────────────────────────────────────────────────
@@ -545,6 +554,364 @@ suite('sumSectorEffects', () => {
             ],
         ]);
         assert.deepEqual(got, [{ sector_key: 'RETIREES', change_tenths: 12 }]);
+    });
+});
+
+// ─── rollIndependents (Phase 3) ─────────────────────────────────────────────
+suite('rollIndependents', () => {
+    // RNG returning v will produce roll = floor(v * 10) + 1.
+    // v=0   → 1, v=0.1 → 2, v=0.5 → 6, v=0.99 → 10, v=1.0 → clamp to 10.
+    test('roll = 1 → delta -6', () => {
+        const r = rollIndependents(8, 100, () => 0);
+        assert.equal(r.roll, 1);
+        assert.equal(r.delta, -6);
+        assert.equal(r.next, 2);   // 8 - 6 = 2, within [0, 8]
+    });
+
+    test('roll = 10 → delta +4', () => {
+        const r = rollIndependents(0, 100, () => 0.99);
+        assert.equal(r.roll, 10);
+        assert.equal(r.delta, 4);
+        assert.equal(r.next, 4);
+    });
+
+    test('clamp to floor: -6 from current=2 → 0', () => {
+        const r = rollIndependents(2, 100, () => 0); // roll 1, delta -6 → -4 clamped 0
+        assert.equal(r.next, 0);
+    });
+
+    test('clamp to ceiling: +4 from current=8 in 100-seat → 8 (cap)', () => {
+        const r = rollIndependents(8, 100, () => 0.99); // roll 10, +4 → 12 clamped 8
+        assert.equal(r.cap, 8);
+        assert.equal(r.next, 8);
+    });
+
+    test('cap = floor(parliament_size * 0.08): 50-seat → 4', () => {
+        const r = rollIndependents(0, 50, () => 0.99); // +4, cap 4
+        assert.equal(r.cap, 4);
+        assert.equal(r.next, 4);
+    });
+
+    test('cap = floor(parliament_size * 0.08): 60-seat → 4 (4.8 floored)', () => {
+        const r = rollIndependents(0, 60, () => 0.99);
+        assert.equal(r.cap, 4);
+    });
+
+    test('current count above cap is clamped to cap before applying delta', () => {
+        // 100-seat, cap 8, current 12 (somehow). Roll +1 from clamped-to-8 → 9 → re-clamped to 8.
+        const r = rollIndependents(12, 100, () => 0.6); // roll 7, delta +1
+        assert.equal(r.next, 8);
+    });
+
+    test('rng returning 1.0 (bad RNG) does not overshoot to roll 11', () => {
+        const r = rollIndependents(0, 100, () => 1.0);
+        assert.equal(r.roll, 10);
+    });
+
+    test('NaN parliament_size → cap 0, all rolls clamp to 0', () => {
+        const r = rollIndependents(5, NaN, () => 0.5);
+        assert.equal(r.cap, 0);
+        assert.equal(r.next, 0);
+    });
+});
+
+// ─── allocateSeatsByTwp (Phase 3) ───────────────────────────────────────────
+suite('allocateSeatsByTwp', () => {
+    test('empty input → empty', () => {
+        assert.deepEqual(allocateSeatsByTwp({}, 100), {});
+    });
+
+    test('zero seats → all zero', () => {
+        assert.deepEqual(allocateSeatsByTwp({ a: 100, b: 50 }, 0), { a: 0, b: 0 });
+    });
+
+    test('single qualifying party gets all seats', () => {
+        assert.deepEqual(allocateSeatsByTwp({ a: 100 }, 50, 30), { a: 50 });
+    });
+
+    test('two qualifying parties split proportionally to TWP', () => {
+        // a:300, b:100, total 400, 100 seats → quota 4, a=75, b=25
+        assert.deepEqual(allocateSeatsByTwp({ a: 300, b: 100 }, 100, 30), { a: 75, b: 25 });
+    });
+
+    test('below-fringe party gets zero seats; above-fringe gets all', () => {
+        // a:100 (qualifies), b:20 (below fringe 30) → b=0, a=50
+        assert.deepEqual(allocateSeatsByTwp({ a: 100, b: 20 }, 50, 30), { a: 50, b: 0 });
+    });
+
+    test('zero-fallback: no party qualifies → equal split across ALL inputs', () => {
+        // All below fringe — split evenly among all 3
+        const got = allocateSeatsByTwp({ a: 0, b: 0, c: 0 }, 99, 30);
+        assert.deepEqual(got, { a: 33, b: 33, c: 33 });
+    });
+
+    test('zero-fallback with remainder distributes to first N inputs', () => {
+        // 100 / 3 = 33 base + 1 remainder → first input gets 34
+        const got = allocateSeatsByTwp({ a: 0, b: 0, c: 0 }, 100, 30);
+        assert.deepEqual(got, { a: 34, b: 33, c: 33 });
+    });
+
+    test('seats sum to totalSeats (proportional case)', () => {
+        const got = allocateSeatsByTwp({ a: 300, b: 200, c: 100 }, 47, 30);
+        assert.equal(Object.values(got).reduce((s, v) => s + v, 0), 47);
+    });
+
+    test('seats sum to totalSeats (zero-fallback case)', () => {
+        const got = allocateSeatsByTwp({ a: 0, b: 0, c: 0, d: 0 }, 47, 30);
+        assert.equal(Object.values(got).reduce((s, v) => s + v, 0), 47);
+    });
+});
+
+// ─── applyElectabilityModifier (Phase 3) ────────────────────────────────────
+suite('applyElectabilityModifier', () => {
+    test('all Moderate → identity', () => {
+        const got = applyElectabilityModifier(
+            { a: 50, b: 50 },
+            { a: 'Moderate', b: 'Moderate' },
+            100
+        );
+        assert.deepEqual(got, { a: 50, b: 50 });
+    });
+
+    test('High vs Low: High gains, Low loses, sum preserved', () => {
+        const got = applyElectabilityModifier(
+            { a: 50, b: 50 },
+            { a: 'High', b: 'Low' },
+            100
+        );
+        // 50*1.02=51, 50*0.98=49 → sums to 100 already, no rounding needed.
+        assert.equal(got.a + got.b, 100);
+        assert.ok(got.a > got.b);
+    });
+
+    test('missing electability defaults to Moderate', () => {
+        const got = applyElectabilityModifier({ a: 50, b: 50 }, {}, 100);
+        assert.deepEqual(got, { a: 50, b: 50 });
+    });
+
+    test('total seats preserved with rounding', () => {
+        const got = applyElectabilityModifier(
+            { a: 33, b: 33, c: 34 },
+            { a: 'High', b: 'Low', c: 'High' },
+            100
+        );
+        assert.equal(Object.values(got).reduce((s, v) => s + v, 0), 100);
+    });
+
+    test('all zero seats → all zero', () => {
+        assert.deepEqual(
+            applyElectabilityModifier({ a: 0, b: 0 }, { a: 'High', b: 'Low' }, 0),
+            { a: 0, b: 0 }
+        );
+    });
+});
+
+// ─── applyUncertaintyRoll (Phase 3) ─────────────────────────────────────────
+suite('applyUncertaintyRoll', () => {
+    test('rng = 0.5 → swing 0 → no change', () => {
+        const got = applyUncertaintyRoll({ a: 60, b: 40 }, 100, () => 0.5);
+        assert.deepEqual(got, { a: 60, b: 40 });
+    });
+
+    test('rng = 1 → +5% swing to leader (here cap to 0.99 for safety)', () => {
+        // (rng*2 - 1) = 0.98 → swing = round(0.98 * 0.05 * 100) = 5
+        // a (leader): 60 + 5 = 65, b absorbs -5 → 35.
+        const got = applyUncertaintyRoll({ a: 60, b: 40 }, 100, () => 0.99);
+        assert.equal(got.a + got.b, 100);
+        assert.ok(got.a > 60);
+    });
+
+    test('rng = 0 → -5% swing from leader', () => {
+        // (0*2 - 1) = -1 → swing = round(-1 * 0.05 * 100) = -5
+        const got = applyUncertaintyRoll({ a: 60, b: 40 }, 100, () => 0);
+        assert.equal(got.a + got.b, 100);
+        assert.ok(got.a < 60);
+    });
+
+    test('no leader (all zeros) → no change', () => {
+        const got = applyUncertaintyRoll({ a: 0, b: 0 }, 100, () => 0);
+        assert.deepEqual(got, { a: 0, b: 0 });
+    });
+
+    test('three-party: swing on leader, others absorb proportionally', () => {
+        // a:50, b:30, c:20, totalSeats=100, swing -5 → a=45, others split +5 in ratio 30:20
+        const got = applyUncertaintyRoll({ a: 50, b: 30, c: 20 }, 100, () => 0);
+        assert.equal(got.a + got.b + got.c, 100);
+        assert.equal(got.a, 45);
+    });
+});
+
+// ─── applyTieBreakerBonuses (Phase 3) ───────────────────────────────────────
+suite('applyTieBreakerBonuses', () => {
+    const FACTIONS = [{ id: 'fac-a' }, { id: 'fac-b' }];
+    const SECTORS  = [
+        { id: 's1', sector_key: 'RETIREES', name: 'Retirees', weight: 1, base_turnout: 1.00, is_active: true },
+    ];
+
+    test('no ties → empty bonus map', () => {
+        const pop = [
+            { faction_id: 'fac-a', sector_id: 's1', popularity: 80 },
+            { faction_id: 'fac-b', sector_id: 's1', popularity: 50 },
+        ];
+        const got = applyTieBreakerBonuses(FACTIONS, SECTORS, pop, () => 0);
+        assert.equal(got.size, 0);
+    });
+
+    test('two-way tie: rng=0 picks first → +10 bonus on RETIREES', () => {
+        const pop = [
+            { faction_id: 'fac-a', sector_id: 's1', popularity: 73 },
+            { faction_id: 'fac-b', sector_id: 's1', popularity: 73 },
+        ];
+        const got = applyTieBreakerBonuses(FACTIONS, SECTORS, pop, () => 0);
+        // resolveTie picks tied[0] when rng=0. tied is built from popularityRows in
+        // order, so the first row's faction wins.
+        assert.equal(got.size, 1);
+        const winnerId = got.keys().next().value;
+        assert.equal(got.get(winnerId).get('RETIREES'), 10);
+    });
+
+    test('three-way tie: only one bonus emitted (one winner per sector)', () => {
+        const factions = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+        const pop = [
+            { faction_id: 'a', sector_id: 's1', popularity: 60 },
+            { faction_id: 'b', sector_id: 's1', popularity: 60 },
+            { faction_id: 'c', sector_id: 's1', popularity: 60 },
+        ];
+        const got = applyTieBreakerBonuses(factions, SECTORS, pop, () => 0);
+        let totalBonuses = 0;
+        for (const m of got.values()) totalBonuses += m.size;
+        assert.equal(totalBonuses, 1);
+    });
+});
+
+// ─── Phase 4 stronghold helpers ─────────────────────────────────────────────
+suite('getStrongholdSectors', () => {
+    test('zero popularity → no strongholds', () => {
+        assert.deepEqual(getStrongholdSectors(FACTION_A, SECTORS_BASIC, []), []);
+    });
+
+    test('returns top contributors sorted descending', () => {
+        // POP_BASIC for A: s1 contrib=30, s2 contrib=192, s3 contrib=96
+        const got = getStrongholdSectors(FACTION_A, SECTORS_BASIC, POP_BASIC, 3);
+        assert.equal(got.length, 3);
+        assert.deepEqual(got.map(s => s.sector_key), ['URBAN_PROFS', 'TRADES', 'RETIREES']);
+        assert.equal(got[0].contribution, 192);
+    });
+
+    test('topN limits the list', () => {
+        const got = getStrongholdSectors(FACTION_A, SECTORS_BASIC, POP_BASIC, 1);
+        assert.equal(got.length, 1);
+        assert.equal(got[0].sector_key, 'URBAN_PROFS');
+    });
+
+    test('topN=0 returns empty', () => {
+        assert.deepEqual(getStrongholdSectors(FACTION_A, SECTORS_BASIC, POP_BASIC, 0), []);
+    });
+
+    test('sector with zero contribution is excluded', () => {
+        const pop = [
+            { faction_id: FACTION_A, sector_id: 's1', popularity: 50 },
+            { faction_id: FACTION_A, sector_id: 's2', popularity: 0  },
+            { faction_id: FACTION_A, sector_id: 's3', popularity: 0  },
+        ];
+        const got = getStrongholdSectors(FACTION_A, SECTORS_BASIC, pop, 3);
+        assert.equal(got.length, 1);
+        assert.equal(got[0].sector_key, 'RETIREES');
+    });
+});
+
+suite('computeStrongholdScore', () => {
+    const strongholds = [
+        { sector_key: 'URBAN_PROFS', contribution: 192 },
+        { sector_key: 'TRADES',      contribution:  96 },
+    ];
+
+    test('empty bill effects → 0', () => {
+        assert.equal(computeStrongholdScore([], strongholds), 0);
+    });
+
+    test('empty strongholds → 0', () => {
+        assert.equal(computeStrongholdScore([{ sector_key: 'URBAN_PROFS', change_tenths: 20 }], []), 0);
+    });
+
+    test('positive effect on stronghold → positive score', () => {
+        const effects = [{ sector_key: 'URBAN_PROFS', change_tenths: 20 }];
+        assert.equal(computeStrongholdScore(effects, strongholds), 20);
+    });
+
+    test('effect on non-stronghold sector is ignored', () => {
+        const effects = [{ sector_key: 'RETIREES', change_tenths: 20 }];
+        assert.equal(computeStrongholdScore(effects, strongholds), 0);
+    });
+
+    test('mix of stronghold + non-stronghold sums only strongholds', () => {
+        const effects = [
+            { sector_key: 'URBAN_PROFS', change_tenths:  15 },
+            { sector_key: 'TRADES',      change_tenths: -10 },
+            { sector_key: 'RETIREES',    change_tenths:  99 },  // non-stronghold, ignored
+        ];
+        assert.equal(computeStrongholdScore(effects, strongholds), 5);
+    });
+
+    test('non-numeric change_tenths is skipped', () => {
+        const effects = [{ sector_key: 'URBAN_PROFS', change_tenths: 'bad' }];
+        assert.equal(computeStrongholdScore(effects, strongholds), 0);
+    });
+});
+
+suite('coalitionAffinity', () => {
+    test('empty inputs → 0', () => {
+        assert.equal(coalitionAffinity([], []), 0);
+        assert.equal(coalitionAffinity(null, [{ sector_key: 'X', contribution: 10 }]), 0);
+    });
+
+    test('disjoint strongholds → 0', () => {
+        const a = [{ sector_key: 'X', contribution: 100 }];
+        const b = [{ sector_key: 'Y', contribution: 100 }];
+        assert.equal(coalitionAffinity(a, b), 0);
+    });
+
+    test('identical strongholds → 1', () => {
+        const a = [{ sector_key: 'X', contribution: 100 }, { sector_key: 'Y', contribution: 50 }];
+        const b = [{ sector_key: 'X', contribution: 100 }, { sector_key: 'Y', contribution: 50 }];
+        assert.equal(coalitionAffinity(a, b), 1);
+    });
+
+    test('partial overlap produces fractional score', () => {
+        const a = [{ sector_key: 'X', contribution: 100 }, { sector_key: 'Y', contribution: 50 }];
+        const b = [{ sector_key: 'X', contribution:  50 }, { sector_key: 'Z', contribution: 50 }];
+        // intersection: min(100,50)=50 on X, 0 on Y, 0 on Z → 50
+        // union: max(100,50)=100 on X, max(50,0)=50 on Y, max(0,50)=50 on Z → 200
+        // 50/200 = 0.25
+        assert.equal(coalitionAffinity(a, b), 0.25);
+    });
+
+    test('symmetric: affinity(A,B) === affinity(B,A)', () => {
+        const a = [{ sector_key: 'X', contribution: 30 }, { sector_key: 'Y', contribution: 70 }];
+        const b = [{ sector_key: 'X', contribution: 90 }, { sector_key: 'Z', contribution: 10 }];
+        assert.equal(coalitionAffinity(a, b), coalitionAffinity(b, a));
+    });
+});
+
+suite('dominantSectorLabel', () => {
+    test('empty → fallback', () => {
+        assert.equal(dominantSectorLabel([]), 'Unaligned');
+    });
+
+    test('null → fallback', () => {
+        assert.equal(dominantSectorLabel(null), 'Unaligned');
+    });
+
+    test('custom fallback', () => {
+        assert.equal(dominantSectorLabel([], 'Centrist'), 'Centrist');
+    });
+
+    test('returns top entry name', () => {
+        const sh = [
+            { sector_key: 'URBAN_PROFS', name: 'Urban Professionals', contribution: 192 },
+            { sector_key: 'TRADES',      name: 'Trades',              contribution:  96 },
+        ];
+        assert.equal(dominantSectorLabel(sh), 'Urban Professionals');
     });
 });
 

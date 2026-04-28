@@ -12,6 +12,16 @@ import { fetchActiveCoalition } from './government-structure.js';
 import { syncAmbassadorsForFailedConfirmationBills, syncMinistriesForFailedConfirmationBills } from './bills.js';
 import { autoSelectPresidentialCandidates, registerPartyLeaderAsCandidate } from './presidential.js';
 import { runElectionSimulation } from './election-simulation.js';
+import {
+    rollIndependents,
+    applyTieBreakerBonuses,
+    calculateTotalWeightedPopularity,
+    calculateSectorContributions,
+    allocateSeatsByTwp,
+    applyElectabilityModifier,
+    applyUncertaintyRoll,
+    electabilityBucket,
+} from './sectors.js';
 
 /**
  * Close the current administration for a nation.
@@ -1668,53 +1678,53 @@ export async function processPartialElection(supabase, nation, election, current
     const deltaSeats = election.partial_seats;
     console.log(`Processing partial election for ${nation.name}: +${deltaSeats} new seats`);
 
-    // voter_blocs table removed — pass empty array to simulation
-    const blocs = [];
+    // 1. Load parties + sectors + popularity. Phase 3: partial elections use
+    //    the same sector engine as full elections, but skip the independents
+    //    roll (these are delta seats added to an existing parliament, not a
+    //    fresh contest) and skip the uncertainty roll (deltas should be a
+    //    direct read of current standings). Existing seats are needed for
+    //    the delta-add at step 4, so includeCurrentSeats: true.
+    const { factions: factionList, sectors: sectorList, popularity } =
+        await loadSectorElectionInputs(supabase, nation.id, { includeCurrentSeats: true });
 
-    // 1. Load parties with ideology axes
-    const { data: factions } = await supabase
-        .from('factions').select('id, faction_name, seats, electability')
-        .eq('nation_id', nation.id).eq('faction_type', 'party');
-
-    if (!factions || factions.length === 0) {
+    if (factionList.length === 0) {
         console.warn('No parties found for partial election');
-        await supabase.from('elections').update({ status: 'completed', results: { partial: true, error: 'no_parties', bloc_details: [] }, election_tick: currentTick }).eq('id', election.id);
+        await supabase.from('elections')
+            .update({ status: 'completed', results: { partial: true, error: 'no_parties', bloc_details: [] }, election_tick: currentTick })
+            .eq('id', election.id);
         return;
     }
 
-    const factionIds = factions.map(f => f.id);
-    const { data: ideologies } = await supabase
-        .from('faction_ideology').select('*').in('faction_id', factionIds);
-    const ideoMap = {};
-    for (const row of (ideologies || [])) ideoMap[row.faction_id] = row;
-
-    const parties = factions.map(f => ({
-        id: f.id, faction_name: f.faction_name,
-        electability: f.electability ?? 50,
-        axes: ideoMap[f.id] || {
-            liberty_equality: 0, tradition_progress: 0, security_freedom: 0,
-            globalism_nationalism: 0, individualism_collectivism: 0
-        }
-    }));
-
-    // 2. Run election simulation for ONLY the delta seats
-    const result = runElectionSimulation(blocs, parties, deltaSeats, null);
-
-    // 3. ADD delta seats to each party's existing seats
-    for (const faction of factions) {
-        const deltaForParty = result.seats[faction.id] || 0;
-        const newTotal = (faction.seats || 0) + deltaForParty;
-        await supabase.from('factions').update({ seats: newTotal }).eq('id', faction.id);
+    // 2. Tie-breakers + TWP per faction.
+    const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
+    const augmentedPop = layerBonusesIntoPopularity(popularity, sectorList, bonuses);
+    const twpByFaction = {};
+    for (const f of factionList) {
+        twpByFaction[f.id] = calculateTotalWeightedPopularity(f.id, sectorList, augmentedPop);
     }
 
-    // 4. Build results and mark election as completed
-    const seatResults = factions.map(f => ({
+    // 3. Allocate ONLY the delta via TWP. No uncertainty roll on partials.
+    let deltaAllocation = allocateSeatsByTwp(twpByFaction, deltaSeats);
+    const electabilityByFaction = {};
+    for (const f of factionList) electabilityByFaction[f.id] = electabilityBucket(f.electability);
+    deltaAllocation = applyElectabilityModifier(deltaAllocation, electabilityByFaction, deltaSeats);
+
+    // 4. ADD delta to each faction's existing seats.
+    for (const f of factionList) {
+        const deltaForParty = deltaAllocation[f.id] ?? 0;
+        const newTotal = (f.seats || 0) + deltaForParty;
+        await supabase.from('factions').update({ seats: newTotal }).eq('id', f.id);
+    }
+
+    // 5. Build results in the legacy partial-election shape so the UI doesn't
+    //    need plumbing changes.
+    const seatResults = factionList.map(f => ({
         party_id: f.id,
         party_name: f.faction_name,
         existing_seats: f.seats || 0,
-        new_seats: result.seats[f.id] || 0,
-        total_seats: (f.seats || 0) + (result.seats[f.id] || 0),
-        votes: result.votes[f.id] || 0
+        new_seats: deltaAllocation[f.id] ?? 0,
+        total_seats: (f.seats || 0) + (deltaAllocation[f.id] ?? 0),
+        votes: Math.round(twpByFaction[f.id] || 0),
     }));
 
     await supabase.from('elections').update({
@@ -1724,13 +1734,22 @@ export async function processPartialElection(supabase, nation, election, current
             delta_seats: deltaSeats,
             votes: seatResults,
             seats: seatResults,
-            bloc_details: result.details,
-            total_votes_cast: result.totalVotesCast,
-            total_abstentions: result.totalAbstentions
+            bloc_details: [],
+            total_votes_cast: Math.round(Object.values(twpByFaction).reduce((s, v) => s + v, 0)),
+            total_abstentions: 0,
+            sector_breakdown: {
+                independent_seats_unchanged: true,
+                factions: factionList.map(f => ({
+                    faction_id: f.id,
+                    faction_name: f.faction_name,
+                    twp: twpByFaction[f.id] || 0,
+                    delta_seats: deltaAllocation[f.id] ?? 0,
+                })),
+            },
         }
     }).eq('id', election.id);
 
-    console.log(`Partial election completed: ${deltaSeats} new seats allocated across ${factions.length} parties`);
+    console.log(`Partial election completed: ${deltaSeats} new seats allocated across ${factionList.length} parties via sector engine`);
 }
 
 /**
@@ -1857,8 +1876,8 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
     let electionResults;
     if (isPresidential && normalizedElectionType === 'presidential') {
         // General Election: run parliamentary (seats) first, then presidential (candidates)
-        const { data: parlData, error: parlError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: 'parliamentary' });
-        if (parlError) throw parlError;
+        // Phase 3: parliamentary sub-election uses the sector engine.
+        const parlData = await runSectorElection(supabase, nation);
 
         // Sync seats and create a completed parliamentary election record for the UI
         await recordParliamentarySubElection(supabase, nation.id, parlData, currentTick);
@@ -1880,9 +1899,15 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         // Merge parliamentary seat results into the presidential election results
         electionResults = { ...data, seats: parlData?.seats || [] };
     } else {
-        const { data, error: runError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: normalizedElectionType });
-        if (runError) throw runError;
-        electionResults = data;
+        // Phase 3: parliamentary uses the sector engine; presidential still
+        // uses the legacy SQL RPC (different model, out of scope for now).
+        if (normalizedElectionType === 'parliamentary') {
+            electionResults = await runSectorElection(supabase, nation);
+        } else {
+            const { data, error: runError } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: normalizedElectionType });
+            if (runError) throw runError;
+            electionResults = data;
+        }
     }
 
     // Create the election record (SQL RPCs no longer insert their own)
@@ -2019,6 +2044,277 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
     };
 }
 
+// ==================== SECTOR-BASED ELECTION (Phase 3) ====================
+
+/**
+ * Run a parliamentary election using the Phase 3 sector-popularity engine.
+ *
+ * Replaces the legacy SQL run_election RPC for parliamentary elections.
+ * Pipeline matches V3 §4.6:
+ *
+ *   1. Roll independents — 1D10 delta from nations.independent_seats,
+ *      clamped to [0, floor(parliament_size * 0.08)]. Persist immediately.
+ *   2. Compute available_seats = parliament_size - independent_seats.
+ *   3. Load active sectors + per-faction popularity.
+ *   4. Apply tie-breaker bonuses for sectors where 2+ factions are tied at
+ *      the highest popularity (virtual +1.0 to one randomly-chosen winner;
+ *      not persisted, election-scope only).
+ *   5. Compute TWP per faction with bonuses layered on.
+ *   6. Allocate available_seats by TWP (Largest Remainder + fringe threshold;
+ *      zero-fallback splits evenly when no party meets fringe).
+ *   7. Apply Electability modifier (Low/Moderate/High → -2%/0%/+2%).
+ *   8. Apply ±5% uncertainty roll on the leader's seat count.
+ *   9. Sync factions.seats and return a result blob matching the legacy
+ *      RPC's shape, with sector_breakdown nested for replay/diagnostics.
+ *
+ * Presidential elections still use the legacy SQL RPC (different model).
+ *
+ * Returns a JSONB-compatible object identical in shape to run_election so
+ * the existing JS post-processing in processElections / runManualElection
+ * doesn't need other changes.
+ */
+async function runSectorElection(supabase, nation) {
+    const nationId = nation.id;
+    const totalSeats = Number(nation.total_seats) || 120;
+    const currentIndependents = Number(nation.independent_seats) || 0;
+
+    // 1. Roll independents and persist immediately. Do this BEFORE seat math
+    //    so a partial failure leaves the nation in a coherent state.
+    const indep = rollIndependents(currentIndependents, totalSeats);
+    const { error: indepErr } = await supabase
+        .from('nations')
+        .update({ independent_seats: indep.next })
+        .eq('id', nationId);
+    if (indepErr) {
+        console.error(`[runSectorElection] failed to persist independent_seats for ${nation.name}:`, indepErr.message);
+        // Continue anyway — seat math is the priority; admin can reconcile.
+    }
+    const availableSeats = Math.max(0, totalSeats - indep.next);
+
+    // 2. Load factions + sectors + popularity (shared with processPartialElection).
+    const { factions: factionList, sectors: sectorList, popularity } =
+        await loadSectorElectionInputs(supabase, nationId, { includeCurrentSeats: false });
+
+    if (factionList.length === 0) {
+        // Nation has no parties — return an empty result.
+        return buildEmptySectorElectionResult(indep, totalSeats);
+    }
+
+    // 3. Tie-breaker bonuses (election-scope, not persisted).
+    const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
+
+    // 4. Layer bonuses onto popularity rows for TWP computation. We clone the
+    //    rows so we don't mutate the cached query result.
+    const augmentedPop = layerBonusesIntoPopularity(popularity, sectorList, bonuses);
+
+    // 5. Compute TWP per faction.
+    const twpByFaction = {};
+    const contribByFaction = {};
+    for (const f of factionList) {
+        twpByFaction[f.id] = calculateTotalWeightedPopularity(f.id, sectorList, augmentedPop);
+        contribByFaction[f.id] = calculateSectorContributions(f.id, sectorList, augmentedPop);
+    }
+
+    // 6. Allocate seats by TWP (Largest Remainder + fringe + zero-fallback).
+    let seats = allocateSeatsByTwp(twpByFaction, availableSeats);
+
+    // 7. Electability modifier.
+    const electabilityByFaction = {};
+    for (const f of factionList) {
+        electabilityByFaction[f.id] = electabilityBucket(f.electability);
+    }
+    seats = applyElectabilityModifier(seats, electabilityByFaction, availableSeats);
+
+    // 8. ±5% uncertainty roll on the leader.
+    seats = applyUncertaintyRoll(seats, availableSeats);
+
+    // 9. Sync factions.seats. Zero out parties that received no seats so the
+    //    state is clean (matches the legacy SQL RPC's behavior).
+    for (const f of factionList) {
+        const newSeats = seats[f.id] ?? 0;
+        const { error: seatErr } = await supabase
+            .from('factions')
+            .update({ seats: newSeats })
+            .eq('id', f.id);
+        if (seatErr) {
+            console.error(`[runSectorElection] failed to update seats for ${f.faction_name}:`, seatErr.message);
+            // Continue — partial sync is recoverable; total failure is not.
+        }
+    }
+
+    // Build the result blob in the legacy shape so existing callers don't
+    // need plumbing changes. sector_breakdown is the new replay payload.
+    return buildSectorElectionResult({
+        factions: factionList,
+        seats,
+        twpByFaction,
+        contribByFaction,
+        bonuses,
+        indep,
+        totalSeats,
+    });
+}
+
+/**
+ * Shared loader for the sector-election inputs (factions, sectors, popularity).
+ * Used by both runSectorElection (full election) and processPartialElection
+ * (foundational-bill delta seats). Set includeCurrentSeats=true if the caller
+ * needs to read existing factions.seats — runSectorElection only writes seats
+ * so it skips that column.
+ */
+async function loadSectorElectionInputs(supabase, nationId, { includeCurrentSeats = false } = {}) {
+    const factionColumns = includeCurrentSeats
+        ? 'id, faction_name, electability, seats'
+        : 'id, faction_name, electability';
+
+    const [
+        { data: factions, error: factErr },
+        { data: sectors,  error: secErr  },
+    ] = await Promise.all([
+        supabase.from('factions')
+            .select(factionColumns)
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .is('abandoned_at', null),
+        supabase.from('sectors')
+            .select('id, sector_key, name, weight, base_turnout, is_active')
+            .eq('nation_id', nationId)
+            .eq('is_active', true)
+            .order('display_order'),
+    ]);
+    if (factErr) throw new Error(`load factions: ${factErr.message}`);
+    if (secErr)  throw new Error(`load sectors: ${secErr.message}`);
+
+    const factionList = factions || [];
+    const sectorList  = sectors  || [];
+    let popularity = [];
+    if (factionList.length > 0 && sectorList.length > 0) {
+        const { data: pop, error: popErr } = await supabase
+            .from('faction_sector_popularity')
+            .select('faction_id, sector_id, popularity')
+            .in('faction_id', factionList.map(f => f.id));
+        if (popErr) throw new Error(`load faction_sector_popularity: ${popErr.message}`);
+        popularity = pop || [];
+    }
+    return { factions: factionList, sectors: sectorList, popularity };
+}
+
+function layerBonusesIntoPopularity(popularity, sectors, bonuses) {
+    if (!bonuses || bonuses.size === 0) return popularity;
+    const sectorIdByKey = new Map(sectors.map(s => [s.sector_key, s.id]));
+    // Index existing rows for fast lookup.
+    const indexed = new Map();
+    const out = [];
+    for (const r of popularity) {
+        const clone = { ...r };
+        indexed.set(`${r.faction_id}:${r.sector_id}`, clone);
+        out.push(clone);
+    }
+    for (const [factionId, sectorBonuses] of bonuses) {
+        for (const [sectorKey, bonusTenths] of sectorBonuses) {
+            const sectorId = sectorIdByKey.get(sectorKey);
+            if (!sectorId) continue;
+            const key = `${factionId}:${sectorId}`;
+            const existing = indexed.get(key);
+            if (existing) {
+                existing.popularity = (Number(existing.popularity) || 0) + bonusTenths;
+            } else {
+                const fresh = { faction_id: factionId, sector_id: sectorId, popularity: bonusTenths };
+                indexed.set(key, fresh);
+                out.push(fresh);
+            }
+        }
+    }
+    return out;
+}
+
+function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFaction, bonuses, indep, totalSeats }) {
+    const seatRows = [];
+    const voteRows = [];
+    const breakdown = [];
+    let totalTwp = 0;
+    for (const f of factions) totalTwp += Number(twpByFaction[f.id]) || 0;
+
+    for (const f of factions) {
+        const fSeats = seats[f.id] ?? 0;
+        const fTwp   = Number(twpByFaction[f.id]) || 0;
+        const sharePct = totalTwp > 0 ? Math.round((fTwp / totalTwp) * 10000) / 100 : 0;
+
+        seatRows.push({ party_id: f.id, party_name: f.faction_name, seats: fSeats });
+        // 'votes' in the legacy shape is total votes cast for the party. We
+        // expose TWP here as the closest analog so the existing UI columns
+        // light up; a future pass can rename the field.
+        voteRows.push({
+            party_id: f.id,
+            party_name: f.faction_name,
+            votes: Math.round(fTwp),
+            vote_percentage: sharePct,
+            seats: fSeats,
+        });
+        breakdown.push({
+            faction_id: f.id,
+            faction_name: f.faction_name,
+            twp: fTwp,
+            top_contributions: (contribByFaction[f.id] || [])
+                .filter(c => c.contribution > 0)
+                .sort((a, b) => b.contribution - a.contribution)
+                .slice(0, 3)
+                .map(c => ({ sector_key: c.sector_key, name: c.name, contribution: c.contribution })),
+        });
+    }
+
+    const tieBreaks = [];
+    for (const [winnerId, sectorMap] of (bonuses || new Map())) {
+        for (const [sectorKey] of sectorMap) {
+            tieBreaks.push({ winner_faction_id: winnerId, sector_key: sectorKey });
+        }
+    }
+
+    return {
+        votes: voteRows,
+        seats: seatRows,
+        bloc_details: [],
+        // Legacy fields kept for the existing UI; values mean less in the
+        // sector engine but need to be present so the result page doesn't
+        // crash on missing keys.
+        total_votes_cast: Math.round(totalTwp),
+        total_abstentions: 0,
+        turnout_pct: null,
+        // Phase 3 additions.
+        sector_breakdown: {
+            independent_seats: indep.next,
+            independent_roll:  indep.roll,
+            independent_delta: indep.delta,
+            independent_cap:   indep.cap,
+            parliament_size:   totalSeats,
+            available_seats:   totalSeats - indep.next,
+            factions: breakdown,
+            tie_breaks: tieBreaks,
+        },
+    };
+}
+
+function buildEmptySectorElectionResult(indep, totalSeats) {
+    return {
+        votes: [],
+        seats: [],
+        bloc_details: [],
+        total_votes_cast: 0,
+        total_abstentions: 0,
+        turnout_pct: null,
+        sector_breakdown: {
+            independent_seats: indep.next,
+            independent_roll:  indep.roll,
+            independent_delta: indep.delta,
+            independent_cap:   indep.cap,
+            parliament_size:   totalSeats,
+            available_seats:   totalSeats - indep.next,
+            factions: [],
+            tie_breaks: [],
+        },
+    };
+}
+
 export async function processElections(supabase, nation, currentTick) {
     const isPresidential = hasElectedPresident(nation);
     const results = [];
@@ -2099,13 +2395,14 @@ export async function processElections(supabase, nation, currentTick) {
                 .maybeSingle();
 
             if (!parlAlreadyRan) {
-                const { data: parlData, error: parlError } = await supabase.rpc('run_election', {
-                    p_nation_id: nation.id,
-                    p_election_type: 'parliamentary'
-                });
-                if (parlError) {
+                // Phase 3: parliamentary sub-election uses the sector engine.
+                let parlData = null;
+                try {
+                    parlData = await runSectorElection(supabase, nation);
+                } catch (parlError) {
                     console.error(`Parliamentary sub-election failed for presidential election in ${nation.name}:`, parlError);
-                } else {
+                }
+                if (parlData) {
                     await recordParliamentarySubElection(supabase, nation.id, parlData, currentTick);
                     console.log(`Parliamentary seats synced alongside presidential election for ${nation.name}`);
                 }
@@ -2127,7 +2424,16 @@ export async function processElections(supabase, nation, currentTick) {
                 p_election_id: election.id
             }));
         } else {
-            ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
+            // Phase 3: parliamentary uses the sector engine. Wrap in try/catch
+            // and shape the response as { data, error } to match the legacy
+            // RPC contract this code path expects.
+            try {
+                data = await runSectorElection(supabase, nation);
+                error = null;
+            } catch (e) {
+                data = null;
+                error = e;
+            }
         }
 
         if (error) {
@@ -2139,7 +2445,13 @@ export async function processElections(supabase, nation, currentTick) {
                     p_election_id: election.id
                 }));
             } else {
-                ({ data, error } = await supabase.rpc('run_election', { p_nation_id: nation.id, p_election_type: electionType }));
+                try {
+                    data = await runSectorElection(supabase, nation);
+                    error = null;
+                } catch (e) {
+                    data = null;
+                    error = e;
+                }
             }
 
             if (error) {
