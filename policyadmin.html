@@ -68,7 +68,6 @@
             </div>
 
             <!-- ============ BUILDER VIEW ============ -->
-            <!-- Phase 2B-i: Identity + Opposed wired. Options section + save flow follow in 2B-ii / 2B-iii. -->
             <div class="view-panel" id="view-builder">
 
                 <!-- Section 1: Policy Identity -->
@@ -184,11 +183,13 @@ async function hashPassword(pw) {
 let allPolicies = [];      // [{ ...policy, options: [...] }]
 let filteredPolicies = [];
 
-// Builder draft. 2B-i wires identity + opposed; options[] stays empty
-// until 2B-ii adds per-option editing.
+// Builder draft. editingPolicyId stays null until Phase 2C wires Edit;
+// the savePolicy guard already branches on it for the future update path.
 let editingPolicyId = null;
 let policyDraft = newPolicyDraft();
 // Save lock — prevents double-clicks on Create from racing two inserts.
+// Set before the first `await` in savePolicy so a second click arriving
+// during the await hits the early-return at the top of the function.
 let isSaving = false;
 
 function newPolicyDraft() {
@@ -205,7 +206,7 @@ function newPolicyDraft() {
         fiscal_category: '',
         policy_type: 'structural',
         opposed_policy_ids: [],
-        options: []                // populated in 2B-ii
+        options: []
     };
 }
 
@@ -343,10 +344,20 @@ async function init() {
     renderOptions();
 }
 
-// Phase 2A: pull policies along with their child policy_options in one
-// query. Children come back as `options`; we sort them by sort_order so
-// the list view's option preview matches the builder's display order
-// (which Phase 2B will own).
+// Reload policies and re-render the list view, preserving any active
+// filter selections. Used by mutation handlers (delete, save) so the
+// catalog stays in sync without a manual refresh. init() doesn't use
+// this helper — it loads sectors in parallel with policies and then
+// renders directly.
+async function refreshList() {
+    await loadPolicies();
+    populateFilterDropdowns();
+    filterPolicies();
+}
+
+// Pull policies along with their child policy_options in one query.
+// Children come back as `options`; we sort them by sort_order so the
+// list view's option preview matches the builder's display order.
 async function loadPolicies() {
     const { data, error } = await _supabase
         .from('policies')
@@ -514,9 +525,7 @@ async function deletePolicy(id, name) {
         showStatus('Error: ' + err.message, 'error');
         console.error('deletePolicy failed:', err);
     }
-    await loadPolicies();
-    populateFilterDropdowns();
-    filterPolicies();
+    await refreshList();
 }
 
 // ==================== BUILDER — IDENTITY ====================
@@ -1250,9 +1259,7 @@ async function savePolicy() {
         }
 
         resetBuilder();
-        await loadPolicies();
-        populateFilterDropdowns();
-        filterPolicies();
+        await refreshList();
         switchView('list');
     } catch (err) {
         showStatus('Error: ' + err.message, 'error');
