@@ -56,7 +56,7 @@
                             <tr>
                                 <th>Policy Name</th>
                                 <th>Sector / Law</th>
-                                <th>Stat Effects</th>
+                                <th>Options</th>
                                 <th>Ideologies</th>
                                 <th>Costs</th>
                                 <th>Actions</th>
@@ -401,42 +401,38 @@ function renderPolicyTable() {
     }
 
     tbody.innerHTML = filteredPolicies.map(p => {
-        // Phase 2.7: per-option data lives on policy_options[0]. Fall back
-        // to legacy columns on the policies row so policies that pre-date
-        // multi-option still render (orphaned data only — Phase 2.5 onward
-        // always writes an option).
-        const opt = (p.policy_options && p.policy_options[0]) || null;
-        const upfrontCost   = opt?.upfront_cost          ?? p.upfront_cost          ?? 0;
-        const upScalingStat = opt?.upfront_scaling_stat  || p.upfront_scaling_stat;
-        const onBase        = opt?.ongoing_base_cost     ?? p.ongoing_base_cost     ?? p.ongoing_cost_per_tick ?? 0;
-        const onScalingStat = opt?.ongoing_scaling_stat  || p.ongoing_scaling_stat;
-        const statEffectsList   = (opt?.stat_effects   && Array.isArray(opt.stat_effects))   ? opt.stat_effects   : p.stat_effects;
-        // sector_effects intentionally not surfaced in the table today; left
-        // for Phase 2.10 list polish.
+        // Phase 2.10: surface the option count + names in place of the
+        // single stat-effects column. Costs come from the first option as a
+        // representative value (multi-option policies typically vary, but
+        // the list view stays scannable).
+        const polOptions = Array.isArray(p.policy_options) ? p.policy_options : [];
+        const firstOpt   = polOptions[0] || null;
+        const upfrontCost   = firstOpt?.upfront_cost          ?? p.upfront_cost          ?? 0;
+        const upScalingStat = firstOpt?.upfront_scaling_stat  || p.upfront_scaling_stat;
+        const onBase        = firstOpt?.ongoing_base_cost     ?? p.ongoing_base_cost     ?? p.ongoing_cost_per_tick ?? 0;
+        const onScalingStat = firstOpt?.ongoing_scaling_stat  || p.ongoing_scaling_stat;
 
         // Ideologies
         const ideos = p.ideologies || (p.ideology ? [p.ideology] : []);
         const ideoHTML = ideos.length > 0
-            ? ideos.map(i => `<span class="tag tag-ideology">${i}</span>`).join(' ')
+            ? ideos.map(i => `<span class="tag tag-ideology">${escapeHtml(i)}</span>`).join(' ')
             : '<span class="tag tag-agnostic">Agnostic</span>';
 
-        // Stat effects
-        let effectsHTML = '—';
-        if (statEffectsList && Array.isArray(statEffectsList) && statEffectsList.length > 0) {
-            effectsHTML = statEffectsList.map(e => {
-                const dir = normalizeEffectDirection(e.direction);
-                const arrow = dir === 'up' ? '▲' : '▼';
-                const cls = dir === 'up' ? 'tag-up' : 'tag-down';
-                return `<span class="tag ${cls}">${fmtStat(e.stat_key)} ${arrow} ${e.rate}/t</span>`;
-            }).join(' ');
-        } else if (p.target_stat) {
-            // Legacy single stat
-            const arrow = p.stat_direction === 'UP' ? '▲' : '▼';
-            const cls = p.stat_direction === 'UP' ? 'tag-up' : 'tag-down';
-            effectsHTML = `<span class="tag ${cls}">${fmtStat(p.target_stat)} ${arrow} ${p.stat_change_per_tick || '?'}/t</span>`;
+        // Options summary: count + first few names (truncated)
+        let optionsHTML = '<span style="color:#888;">— no options —</span>';
+        if (polOptions.length > 0) {
+            const names = polOptions
+                .slice(0, 5)
+                .map(o => escapeHtml(o.option_name || 'Untitled'))
+                .join('<br>');
+            const more = polOptions.length > 5 ? `<br><span style="color:#888;">…and ${polOptions.length - 5} more</span>` : '';
+            optionsHTML = `<span class="tag tag-sector">${polOptions.length} option${polOptions.length === 1 ? '' : 's'}</span>` +
+                `<div style="font-size:0.75rem; color:#aaa; margin-top:4px;">${names}${more}</div>`;
         }
 
-        // Costs (negative = revenue/relief)
+        // Costs (negative = revenue/relief). Prefixed with "Opt 1:" when
+        // multi-option to remind the reader they're seeing the first option's
+        // costs only.
         const costs = [];
         if (upfrontCost > 0) {
             costs.push(upScalingStat ? `${fmtCost(upfrontCost)}×${fmtStat(upScalingStat)} up` : `${fmtCost(upfrontCost)} up`);
@@ -450,17 +446,20 @@ function renderPolicyTable() {
             const relLabel = onScalingStat ? `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}×${fmtStat(onScalingStat)}/t relief</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}/t relief</span>`;
             costs.push(relLabel);
         }
-        const costHTML = costs.length > 0 ? costs.join('<br>') : '—';
+        let costHTML = costs.length > 0 ? costs.join('<br>') : '—';
+        if (polOptions.length > 1 && costs.length > 0) {
+            costHTML = `<span style="color:#888; font-size:0.7rem;">Opt 1:</span> ` + costHTML;
+        }
 
         // Law category
         const law = p.law_category || p.minor_sector || '';
 
         return `<tr>
             <td class="policy-name-cell">${escapeHtml(p.policy_name || '—')}</td>
-            <td><span class="tag tag-sector">${p.major_sector || '—'}</span><br><span style="font-size:0.75rem;color:#888;">${law}</span></td>
-            <td>${effectsHTML}</td>
+            <td><span class="tag tag-sector">${escapeHtml(p.major_sector || '—')}</span><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(law)}</span></td>
+            <td>${optionsHTML}</td>
             <td>${ideoHTML}</td>
-           <td style="font-size:0.8rem; font-family:monospace;">${costHTML}</td>
+            <td style="font-size:0.8rem; font-family:monospace;">${costHTML}</td>
             <td><div class="action-btns">
                 <button class="action-btn action-btn-edit" onclick="editPolicy('${p.id}')">Edit</button>
                 <button class="action-btn action-btn-dup" onclick="duplicatePolicy('${p.id}')">Dup</button>
@@ -783,25 +782,55 @@ function removeOption(idx) {
 }
 
 // ==================== NATION CHECKS ====================
+// Phase 2.10: a nation can only belong to one option of a given policy.
+// Build a Map<nationId, ownerOptIdx> so each option's nation-checks panel
+// can grey out nations claimed by another option (the user must uncheck
+// it there before re-assigning).
+function getNationOwnership() {
+    const ownership = new Map();
+    options.forEach((o, i) => {
+        for (const nid of o.starting_nations) ownership.set(nid, i);
+    });
+    return ownership;
+}
+
 function renderNationChecks(optIdx) {
     const opt = options[optIdx];
     const container = document.getElementById(`nation-checks-${optIdx}`);
     if (!container) return;
     if (allNations.length === 0) { container.innerHTML = '<span style="color:#666;">No nations found.</span>'; return; }
     if (!opt) { container.innerHTML = ''; return; }
-    container.innerHTML = allNations.map(n => `
-        <label class="nation-check-item">
-            <input type="checkbox" value="${n.id}" ${opt.starting_nations.has(n.id) ? 'checked' : ''} onchange="toggleStartingNation(${optIdx}, '${n.id}', this.checked)">
-            <span>${escapeHtml(n.name)}</span>
-        </label>
-    `).join('');
+
+    const ownership = getNationOwnership();
+    container.innerHTML = allNations.map(n => {
+        const isMine = opt.starting_nations.has(n.id);
+        const ownerIdx = ownership.get(n.id);
+        const claimedByOther = ownerIdx !== undefined && ownerIdx !== optIdx;
+        const ownerName = claimedByOther ? (options[ownerIdx]?.option_name || '').trim() : '';
+        const tooltip = claimedByOther
+            ? `Claimed by Option ${ownerIdx + 1}${ownerName ? ': ' + ownerName : ''}`
+            : '';
+        const itemStyle = claimedByOther ? 'opacity:0.45; cursor:not-allowed;' : '';
+        const hint = claimedByOther
+            ? `<span style="font-size:0.7rem; color:#888; margin-left:6px;">(Option ${ownerIdx + 1})</span>`
+            : '';
+        return `
+            <label class="nation-check-item" style="${itemStyle}"${tooltip ? ` title="${escapeHtml(tooltip)}"` : ''}>
+                <input type="checkbox" value="${n.id}" ${isMine ? 'checked' : ''} ${claimedByOther ? 'disabled' : ''} onchange="toggleStartingNation(${optIdx}, '${n.id}', this.checked)">
+                <span>${escapeHtml(n.name)}${hint}</span>
+            </label>
+        `;
+    }).join('');
 }
 
+// Toggling a nation in one option flips the grey-out state for the same
+// nation in every other option, so we re-render every nation-checks panel.
 function toggleStartingNation(optIdx, id, checked) {
     const opt = options[optIdx];
     if (!opt) return;
     if (checked) opt.starting_nations.add(id);
     else opt.starting_nations.delete(id);
+    options.forEach((_, i) => renderNationChecks(i));
 }
 
 // ==================== COSTS ====================
@@ -1170,6 +1199,28 @@ async function savePolicy() {
 
     // Phase 2.9: validate and build a payload for every option in `options[]`.
     if (options.length === 0) { alert('Add at least 1 option.'); return; }
+
+    // Phase 2.10: every nation must be assigned to exactly one option.
+    // Belt-and-suspenders even with the cross-option grey-out: a paranoid
+    // duplicate check covers any bypass (e.g. state mutation via devtools)
+    // and an unassigned check catches nations the admin simply forgot.
+    const assignedCount = new Map();
+    for (const o of options) {
+        for (const nid of o.starting_nations) {
+            assignedCount.set(nid, (assignedCount.get(nid) || 0) + 1);
+        }
+    }
+    const duplicates = [...assignedCount.entries()].filter(([, c]) => c > 1).map(([nid]) => nid);
+    if (duplicates.length > 0) {
+        const names = duplicates.map(nid => allNations.find(n => n.id === nid)?.name || nid).join(', ');
+        alert(`Each nation can be a starting nation of only one option, but the following appear in multiple: ${names}. Uncheck one before saving.`);
+        return;
+    }
+    const unassigned = allNations.filter(n => !assignedCount.has(n.id));
+    if (unassigned.length > 0) {
+        alert(`Every nation must be assigned to exactly one option's Starting Status. Missing: ${unassigned.map(n => n.name).join(', ')}.`);
+        return;
+    }
 
     const optionPayloads = []; // [{ stateRef, normalizedEffects, optionData }]
     for (let i = 0; i < options.length; i++) {
