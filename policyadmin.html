@@ -47,7 +47,7 @@
                 <div class="filter-bar">
                     <input type="text" id="search-input" placeholder="Search policies..." oninput="filterPolicies()">
                     <select id="filter-sector" onchange="filterPolicies()"><option value="">All Sectors</option></select>
-                    <select id="filter-ideology" onchange="filterPolicies()"><option value="">All Ideologies</option></select>
+                    <select id="filter-type" onchange="filterPolicies()"><option value="">All Types</option></select>
                     <span class="policy-count" id="policy-count">— policies</span>
                 </div>
                 <div style="overflow-x:auto;">
@@ -56,8 +56,8 @@
                             <tr>
                                 <th>Policy Name</th>
                                 <th>Sector / Law</th>
-                                <th>Stat Effects</th>
-                                <th>Ideologies</th>
+                                <th>Type</th>
+                                <th>Options</th>
                                 <th>Costs</th>
                                 <th>Actions</th>
                             </tr>
@@ -68,168 +68,15 @@
             </div>
 
             <!-- ============ BUILDER VIEW ============ -->
+            <!-- Phase 2A: builder is a placeholder. The new option-aware builder lands in Phase 2B. -->
             <div class="view-panel" id="view-builder">
-
-                <!-- Section 1: Identity -->
-                <div class="builder-section">
-                    <div class="builder-section-title">📝 1. Policy Identity</div>
-                    <div class="form-field">
-                        <label>Policy Name</label>
-                        <input type="text" id="b-name" placeholder="e.g. Vocational-Technical Tracking">
+                <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:32px 28px;text-align:center;color:#888;">
+                    <div style="font-size:1.1rem;color:#ffcc00;margin-bottom:10px;letter-spacing:1px;">🚧 Builder under construction</div>
+                    <div style="font-size:0.9rem;line-height:1.7;max-width:520px;margin:0 auto;">
+                        Phase 1 wiped policies and reshaped the schema (one policy → many options).
+                        The new option-aware builder lands in <strong style="color:#ffcc00;">Phase 2B</strong>.<br><br>
+                        For now the list view is read-only — you can browse policies and delete them.
                     </div>
-                    <div class="form-field">
-                        <label>Description</label>
-                        <textarea id="b-desc" placeholder="At age 14, students are sorted into trade-based education..."></textarea>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-field">
-                            <label>Sector</label>
-                            <select id="b-sector" onchange="populateLawCategories(); onSectorOrLawChange()">
-                                <option value="">-- Select --</option>
-                                <option value="ECONOMICS">💰 Economics</option>
-                                <option value="LABOR">👷 Labor</option>
-                                <option value="EDUCATION">📚 Education</option>
-                                <option value="ENERGY">⚡ Energy</option>
-                                <option value="SOCIAL">🏥 Social</option>
-                                <option value="MILITARY">🛡️ Military & Security</option>
-                                <option value="GOVERNANCE">🏛️ Governance</option>
-                                <option value="IMMIGRATION">🌍 Immigration</option>
-                                <option value="INTERNATIONAL">🌐 International</option>
-                            </select>
-                        </div>
-                        <div class="form-field">
-                            <label>Law Category</label>
-                            <select id="b-law-category-select" onchange="onLawCategorySelect()">
-                                <option value="">-- Select sector first --</option>
-                            </select>
-                            <div id="new-category-wrapper" style="display:none;margin-top:8px;">
-                                <label style="display:block;font-size:0.72rem;color:#ffcc00;margin-bottom:4px;">NEW CATEGORY NAME</label>
-                                <input type="text" id="b-law-category-new" placeholder="e.g. Secondary Education" oninput="onSectorOrLawChange()">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-row">
-    <div class="form-field">
-        <label>Policy Type</label>
-        <select id="b-policy-type">
-            <option value="structural">🏗️ Structural — Activate once, stays on, rescind to remove</option>
-            <option value="lever">🔄 Lever — Toggle on/off, pays upfront each activation</option>
-        </select>
-    </div>
-    <div class="form-field">
-        <label>Fiscal Category</label>
-        <select id="b-fiscal-category">
-            <option value="">-- None (no budget impact) --</option>
-            <option value="Interior">🏛️ Interior</option>
-            <option value="Labor">👷 Labor</option>
-            <option value="Healthcare">🏥 Healthcare</option>
-            <option value="Education">📚 Education</option>
-            <option value="Transportation">🚄 Transportation</option>
-            <option value="Justice">⚖️ Justice</option>
-            <option value="Foreign Ministry">🌐 Foreign Ministry</option>
-            <option value="Finance">💰 Finance</option>
-            <option value="Defense">🛡️ Defense</option>
-            <option value="Energy">⚡ Energy</option>
-        </select>
-    </div>
-</div>
-                </div>
-
-                <!-- Section 2: Sector Effects (Phase 2 — replaces ideology authoring) -->
-                <div class="builder-section">
-                    <div class="builder-section-title">🗳️ 2. Sector Effects (up to 5)</div>
-                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                        Per-sector popularity shift on resolution. <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected. <strong>Fail:</strong> sponsor takes the inverse alone.<br>
-                        Magnitude is 0.1 to 2.0 in 0.1 steps.
-                    </p>
-                    <div id="sector-effects-container"></div>
-                    <button class="add-btn" id="add-sector-effect-btn" onclick="addSectorEffect()">+ Add Sector</button>
-                </div>
-
-                <!-- Section 3: Starting Status -->
-                <div class="builder-section">
-                    <div class="builder-section-title">🌍 3. Starting Status</div>
-                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                        Which nations have this policy active at game start?
-                        <span style="color:#d48a3c;">Active = ongoing cost runs, stat effects do NOT fire (stats are pre-set).</span>
-                    </p>
-                    <div class="nation-checks" id="nation-checks">Loading nations...</div>
-                </div>
-
-                <!-- Section 4: Costs -->
-                <div class="builder-section">
-                    <div class="builder-section-title">💰 4. Costs</div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-                        <div class="form-field">
-                            <label>Upfront Base Cost ($M) <span style="font-size:0.7rem;color:var(--text-dim);">negative = revenue</span></label>
-                            <input type="number" id="b-upfront" value="0" step="1" oninput="updateCostPreview()">
-                        </div>
-                        <div class="form-field">
-                            <label>Upfront Scaling Stat (or None)</label>
-                            <select id="b-upfront-scaling" onchange="updateCostPreview()">
-                                <option value="">None (flat cost)</option>
-                            </select>
-                        </div>
-                        <div class="form-field">
-                            <label>Ongoing Base Cost ($M/tick) <span style="font-size:0.7rem;color:var(--text-dim);">negative = relief</span></label>
-                            <input type="number" id="b-ongoing-base" value="0" step="0.1" oninput="updateCostPreview()">
-                        </div>
-                        <div class="form-field">
-                            <label>Ongoing Scaling Stat (or None)</label>
-                            <select id="b-scaling-stat" onchange="updateCostPreview()">
-                                <option value="">None (flat cost)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="formula-preview" id="cost-preview" style="display:none;"></div>
-                </div>
-
-                <!-- Section 5: Stat Effects -->
-                <div class="builder-section">
-                    <div class="builder-section-title">📊 5. Stat Effects (up to 10)</div>
-                    <div id="stat-effects-container"></div>
-                    <button class="add-btn" id="add-effect-btn" onclick="addStatEffect()">+ Add Stat Effect</button>
-                    <div class="effect-preview" id="effect-preview" style="display:none;"></div>
-                </div>
-
-                <!-- Section 6: Opposed Policies -->
-                <div class="builder-section">
-                    <div class="builder-section-title">⚔️ 6. Opposed Policies (up to 3, same law category)</div>
-                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                        Policies that cannot coexist. Activating this policy will auto-rescind any opposed active policy.
-                    </p>
-                    <div id="opposed-container"></div>
-                    <button class="add-btn" id="add-opposed-btn" onclick="addOpposedSlot()">+ Add Opposed Policy</button>
-                    <div id="opposed-note" style="color:#666; font-size:0.8rem; margin-top:8px; display:none;">
-                        Select a sector and law category first to see available policies.
-                    </div>
-                </div>
-
-                <!-- Submit -->
-                <!-- Section 7: Prerequisite -->
-<div class="builder-section">
-    <div class="builder-section-title">🔗 7. Prerequisite Policy</div>
-    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-        Does this policy require another policy to be active first?
-        <span style="color:#5b9bd5;">e.g., Central Bank policies require "Establish Central Bank"</span>
-    </p>
-    <div class="prereq-toggle">
-        <input type="checkbox" id="b-has-prereq" onchange="togglePrereq()">
-        <label for="b-has-prereq">This policy requires a prerequisite law</label>
-    </div>
-    <div class="prereq-select-area" id="prereq-select-area" style="display:none;">
-        <div class="form-field">
-            <label>Select Prerequisite Policy</label>
-            <select class="form-field select" id="b-prereq-policy" style="width:100%;padding:10px 14px;background:#252525;border:1px solid #333;border-radius:5px;color:#e0e0e0;font-size:0.9rem;">
-                <option value="">-- Select policy --</option>
-            </select>
-        </div>
-        <div id="prereq-preview" style="display:none; margin-top:10px;"></div>
-    </div>
-</div>
-                <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:10px; margin-bottom:40px;">
-                    <button class="btn-dim" onclick="resetBuilder()">Clear Form</button>
-                    <button class="btn-gold" id="submit-btn" onclick="savePolicy()">✅ Create Policy</button>
                 </div>
             </div>
         </div>
@@ -239,95 +86,22 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
+
 // ==================== CONFIG ====================
 const ADMIN_PW_HASH = 'dd5e5d55d1f108d2d4706f35672acf7eef98156c70101dd07279c1aa436de3b4';
+
 async function hashPassword(pw) {
     const encoded = new TextEncoder().encode(pw);
     const buf = await crypto.subtle.digest('SHA-256', encoded);
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Phase 2: ideology authoring removed; existing policy ideology data is
-// preserved on edit but no longer editable through this UI.
-
-const RAW_SCALING_INFO = {
-    population: { divisor: 1_000_000, unit: 'per million people', example: '10M', exampleVal: 10_000_000 },
-    gdp: { divisor: 1_000_000_000, unit: 'per $1B GDP', example: '$500B', exampleVal: 500_000_000_000 },
-    debt: { divisor: 1_000_000_000, unit: 'per $1B debt', example: '$200B', exampleVal: 200_000_000_000 }
-};
-
-const STAT_GROUPS = [
-    { label: '💰 Economic', stats: ['gdp','gdp_growth','debt','debt_growth','inflation','interest_rates','trade_balance','currency_strength','foreign_investment','credit'] },
-    { label: '📋 Taxation', stats: ['income_tax','corporate_tax','sales_tax','tariffs'] },
-    { label: '👷 Labor & Employment', stats: ['unemployment','labor_force_participation','minimum_wage','union_strength','poverty_rate','income_inequality'] },
-    { label: '👥 Demographics', stats: ['population','eligible_voters','population_growth','median_age','ethnic_diversity'] },
-    { label: '🏥 Healthcare', stats: ['healthcare_quality','healthcare_accessibility','beds_per_100k','lifespan','drug_use'] },
-    { label: '📚 Education', stats: ['literacy','higher_education','education_accessibility','academic_immigration'] },
-    { label: '🏗️ Infrastructure', stats: ['physical_infrastructure','digital_infrastructure','rail_network','urbanization','energy_generation','renewable_energy_percentage'] },
-    { label: '⛏️ Resources', stats: ['arable_land','rare_minerals','oil_and_gas','fuel_prices'] },
-    { label: '🌿 Environment', stats: ['pollution','carbon_emissions'] },
-    { label: '🏠 Social', stats: ['standard_of_living','happiness','social_mobility','benefits','crime_rate','incarceration_rate'] },
-    { label: '⛪ Religion', stats: ['religiosity'] },
-    { label: '🏛️ Governance', stats: ['stability','legitimacy','efficiency','corruption','press_freedom','judicial_independence','freedom_index','polarization'] },
-    { label: '🔒 Security', stats: ['civil_unrest','terrorism','political_violence'] },
-    { label: '🌍 Immigration', stats: ['immigration','illegal_immigration','emigration'] },
-    { label: '🏭 Industry', stats: ['manufacturing_output','service_output','cost_of_living','housing_affordability'] },
-    { label: '🌐 International', stats: ['international_reputation'] }
-];
-
-// Flatten for dropdown building
-function buildStatOptions() {
-    return STAT_GROUPS.map(g =>
-        `<optgroup label="${g.label}">${g.stats.map(s => `<option value="${s}">${fmtStat(s)}</option>`).join('')}</optgroup>`
-    ).join('');
-}
-const STAT_OPTIONS_HTML = buildStatOptions();
-const CANONICAL_STAT_KEYS = new Set(STAT_GROUPS.flatMap(group => group.stats));
-const POLICY_STAT_KEY_ALIASES = {
-    intl_reputation: 'international_reputation',
-    diplomatic_standing: 'international_reputation',
-    credit_rating: 'credit',
-    credit_score: 'credit',
-    trade: 'trade_balance',
-    trade_volume: 'trade_balance',
-    education: 'higher_education',
-    education_quality: 'higher_education',
-    military_strength: 'stability',
-    literacy_rate: 'literacy',
-    hospital_beds: 'beds_per_100k',
-    technology: 'digital_infrastructure',
-    infrastructure: 'physical_infrastructure',
-    tourism: 'international_reputation'
-};
-
-function normalizePolicyStatKey(statKey) {
-    if (!statKey || typeof statKey !== 'string') return null;
-    return POLICY_STAT_KEY_ALIASES[statKey] || statKey;
-}
-
 // ==================== STATE ====================
-let allPolicies = [];
+// Phase 2A: builder is placeholdered, so the only state we need is the
+// joined policy list. Phase 2B will reintroduce policyDraft, statEffects,
+// sectorEffects, etc. — keep this file lean for now.
+let allPolicies = [];      // [{ ...policy, options: [...] }]
 let filteredPolicies = [];
-let allNations = [];
-let editingPolicyId = null;
-
-// Builder state
-let statEffects = []; // array of { stat_key, direction, rate, delay_ticks, duration_ticks }
-let opposedSlots = []; // array of policy UUIDs or ''
-let startingNations = new Set(); // nation IDs
-let selectedPrereqId = null; // requires_policy_id
-let sectorEffects = []; // [{ sector_key, change_tenths }] — Phase 2 sector deltas
-let sectorOptions = []; // [{ sector_key, name }] — default sectors loaded once on init
-// Preserved ideology data — Phase 2 stops authoring new ideology, but
-// existing policies' ideology must not be destroyed when an admin edits
-// other fields. Captured in editPolicy, written back in savePolicy.
-let preservedIdeology = null;
-let preservedIdeologies = [];
-
-function normalizeEffectDirection(direction) {
-    const dir = String(direction || '').toLowerCase();
-    return dir === 'up' ? 'up' : (dir === 'down' ? 'down' : null);
-}
 
 // ==================== AUTH ====================
 async function checkAuth() {
@@ -340,51 +114,32 @@ async function checkAuth() {
 
 // ==================== INIT ====================
 async function init() {
-    await Promise.all([loadPolicies(), loadNations(), loadSectorOptions()]);
+    await loadPolicies();
     populateFilterDropdowns();
-    populateScalingStatDropdown();
-    renderNationChecks();
     renderPolicyTable();
 }
 
-// Load the canonical default sectors once. Bills are template-level (the
-// policies table has no nation_id), so we only expose the 12 default
-// sector_keys that exist in every nation. Custom per-nation sectors are
-// out of scope for bill effects — they'd silently no-op for nations that
-// don't have them, which is forward-compatible if we ever scope bills.
-async function loadSectorOptions() {
-    try {
-        const { data, error } = await _supabase
-            .from('sectors')
-            .select('sector_key, name, display_order')
-            .eq('is_default', true)
-            .order('display_order');
-        if (error) throw error;
-        // Dedupe by sector_key — every nation has the same 12 defaults so
-        // the first occurrence per key (in display_order) wins. Names can
-        // differ per nation if an admin renamed locally; the policy admin
-        // is template-level, so we just pick one canonical label.
-        const seen = new Map();
-        for (const row of (data || [])) {
-            if (!seen.has(row.sector_key)) seen.set(row.sector_key, row.name);
-        }
-        sectorOptions = [...seen].map(([sector_key, name]) => ({ sector_key, name }));
-    } catch (e) {
-        console.error('loadSectorOptions failed', e);
-        sectorOptions = [];
-    }
-}
-
+// Phase 2A: pull policies along with their child policy_options in one
+// query. Children come back as `options`; we sort them by sort_order so
+// the list view's option preview matches the builder's display order
+// (which Phase 2B will own).
 async function loadPolicies() {
-    const { data, error } = await _supabase.from('policies').select('*').order('major_sector, minor_sector, policy_name');
-    if (error) { console.error(error); return; }
-    allPolicies = data || [];
+    const { data, error } = await _supabase
+        .from('policies')
+        .select('*, options:policy_options(*)')
+        .order('major_sector', { ascending: true })
+        .order('policy_name', { ascending: true });
+    if (error) {
+        console.error('loadPolicies', error);
+        allPolicies = [];
+        filteredPolicies = [];
+        return;
+    }
+    allPolicies = (data || []).map(p => ({
+        ...p,
+        options: (p.options || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    }));
     filteredPolicies = [...allPolicies];
-}
-
-async function loadNations() {
-    const { data } = await _supabase.from('nations').select('id, name').order('name');
-    allNations = data || [];
 }
 
 // ==================== VIEW SWITCHING ====================
@@ -398,37 +153,28 @@ function switchView(view) {
 // ==================== LIST VIEW ====================
 function populateFilterDropdowns() {
     const sectors = [...new Set(allPolicies.map(p => p.major_sector).filter(Boolean))].sort();
-    const ideologies = new Set();
-    let hasAgnostic = false;
-    allPolicies.forEach(p => {
-        if (p.ideologies && Array.isArray(p.ideologies)) {
-            if (p.ideologies.length === 0) hasAgnostic = true;
-            else p.ideologies.forEach(i => ideologies.add(i));
-        } else if (p.ideology) ideologies.add(p.ideology);
-        else hasAgnostic = true;
-    });
+    document.getElementById('filter-sector').innerHTML =
+        '<option value="">All Sectors</option>' +
+        sectors.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
 
-    document.getElementById('filter-sector').innerHTML = '<option value="">All Sectors</option>' +
-        sectors.map(s => `<option value="${s}">${s}</option>`).join('');
-    document.getElementById('filter-ideology').innerHTML = '<option value="">All Ideologies</option>' +
-        (hasAgnostic ? '<option value="__agnostic__">Agnostic</option>' : '') +
-        [...ideologies].sort().map(i => `<option value="${i}">${i}</option>`).join('');
+    const types = [...new Set(allPolicies.map(p => p.policy_type).filter(Boolean))].sort();
+    document.getElementById('filter-type').innerHTML =
+        '<option value="">All Types</option>' +
+        types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(formatPolicyType(t))}</option>`).join('');
 }
 
 function filterPolicies() {
     const search = document.getElementById('search-input').value.toLowerCase();
     const sector = document.getElementById('filter-sector').value;
-    const ideology = document.getElementById('filter-ideology').value;
+    const ptype  = document.getElementById('filter-type').value;
 
     filteredPolicies = allPolicies.filter(p => {
-        if (search && !(p.policy_name || '').toLowerCase().includes(search) && !(p.description || '').toLowerCase().includes(search)) return false;
-        if (sector && p.major_sector !== sector) return false;
-        if (ideology) {
-            const pIdeos = p.ideologies || (p.ideology ? [p.ideology] : []);
-            if (ideology === '__agnostic__') {
-                if (pIdeos.length > 0) return false;
-            } else if (!pIdeos.includes(ideology)) return false;
+        if (search) {
+            const hay = (p.policy_name || '').toLowerCase() + ' ' + (p.description || '').toLowerCase();
+            if (!hay.includes(search)) return false;
         }
+        if (sector && p.major_sector !== sector) return false;
+        if (ptype  && p.policy_type  !== ptype)  return false;
         return true;
     });
     renderPolicyTable();
@@ -444,81 +190,82 @@ function renderPolicyTable() {
     }
 
     tbody.innerHTML = filteredPolicies.map(p => {
-        // Ideologies
-        const ideos = p.ideologies || (p.ideology ? [p.ideology] : []);
-        const ideoHTML = ideos.length > 0
-            ? ideos.map(i => `<span class="tag tag-ideology">${i}</span>`).join(' ')
-            : '<span class="tag tag-agnostic">Agnostic</span>';
+        const law       = p.law_category || p.minor_sector || '';
+        const opts      = p.options || [];
+        const optCount  = opts.length;
+        const typeLabel = formatPolicyType(p.policy_type);
 
-        // Stat effects
-        let effectsHTML = '—';
-        if (p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
-            effectsHTML = p.stat_effects.map(e => {
-                const dir = normalizeEffectDirection(e.direction);
-                const arrow = dir === 'up' ? '▲' : '▼';
-                const cls = dir === 'up' ? 'tag-up' : 'tag-down';
-                return `<span class="tag ${cls}">${fmtStat(e.stat_key)} ${arrow} ${e.rate}/t</span>`;
-            }).join(' ');
-        } else if (p.target_stat) {
-            // Legacy single stat
-            const arrow = p.stat_direction === 'UP' ? '▲' : '▼';
-            const cls = p.stat_direction === 'UP' ? 'tag-up' : 'tag-down';
-            effectsHTML = `<span class="tag ${cls}">${fmtStat(p.target_stat)} ${arrow} ${p.stat_change_per_tick || '?'}/t</span>`;
-        }
+        const optionsHTML = optCount === 0
+            ? '<span style="color:#888;font-size:0.78rem;">no options yet</span>'
+            : `<span class="tag tag-option-count">${optCount} option${optCount === 1 ? '' : 's'}</span>` +
+              `<ul class="option-summary-list">${
+                  opts.slice(0, 3).map(o =>
+                      `<li>• ${escapeHtml(o.option_label || '(unnamed)')}</li>`
+                  ).join('')
+              }${ optCount > 3 ? `<li>… +${optCount - 3} more</li>` : '' }</ul>`;
 
-        // Costs (negative = revenue/relief)
-      const costs = [];
-        if (p.upfront_cost > 0) {
-            const upScaling = p.upfront_scaling_stat;
-            costs.push(upScaling ? `${fmtCost(p.upfront_cost)}×${fmtStat(upScaling)} up` : `${fmtCost(p.upfront_cost)} up`);
-        } else if (p.upfront_cost < 0) {
-            const upScaling = p.upfront_scaling_stat;
-            const revLabel = upScaling ? `<span style="color:#5cb85c">${fmtCost(Math.abs(p.upfront_cost))}×${fmtStat(upScaling)} rev</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(p.upfront_cost))} rev</span>`;
-            costs.push(revLabel);
-        }
-        const onBase = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
-        if (onBase > 0) {
-            const scaling = p.ongoing_scaling_stat;
-            costs.push(scaling ? `${fmtCost(onBase)}×${fmtStat(scaling)}/t` : `${fmtCost(onBase)}/t`);
-        } else if (onBase < 0) {
-            const scaling = p.ongoing_scaling_stat;
-            const relLabel = scaling ? `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}×${fmtStat(scaling)}/t relief</span>` : `<span style="color:#5cb85c">${fmtCost(Math.abs(onBase))}/t relief</span>`;
-            costs.push(relLabel);
-        }
-        const costHTML = costs.length > 0 ? costs.join('<br>') : '—';
-
-        // Law category
-        const law = p.law_category || p.minor_sector || '';
+        const costSummary = summarizeOptionCosts(opts);
+        const safeName    = (p.policy_name || '').replace(/'/g, "\\'");
 
         return `<tr>
             <td class="policy-name-cell">${escapeHtml(p.policy_name || '—')}</td>
-            <td><span class="tag tag-sector">${p.major_sector || '—'}</span><br><span style="font-size:0.75rem;color:#888;">${law}</span></td>
-            <td>${effectsHTML}</td>
-            <td>${ideoHTML}</td>
-           <td style="font-size:0.8rem; font-family:monospace;">${costHTML}${p.requires_policy_id ? '<br><span class="prereq-badge">🔗 Requires Prereq</span>' : ''}</td>
+            <td><span class="tag tag-sector">${escapeHtml(p.major_sector || '—')}</span><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(law)}</span></td>
+            <td><span class="tag tag-policy-type">${escapeHtml(typeLabel)}</span></td>
+            <td>${optionsHTML}</td>
+            <td style="font-size:0.78rem;color:#aaa;font-family:monospace;">${costSummary}</td>
             <td><div class="action-btns">
-                <button class="action-btn action-btn-edit" onclick="editPolicy('${p.id}')">Edit</button>
-                <button class="action-btn action-btn-dup" onclick="duplicatePolicy('${p.id}')">Dup</button>
-                <button class="action-btn action-btn-del" onclick="deletePolicy('${p.id}', '${(p.policy_name || '').replace(/'/g, "\\'")}')">Del</button>
+                <button class="action-btn action-btn-edit" disabled title="Edit lands in Phase 2C" style="opacity:0.4;cursor:not-allowed;">Edit</button>
+                <button class="action-btn action-btn-dup"  disabled title="Duplicate lands in Phase 2C" style="opacity:0.4;cursor:not-allowed;">Dup</button>
+                <button class="action-btn action-btn-del" onclick="deletePolicy('${p.id}', '${safeName}')">Del</button>
             </div></td>
         </tr>`;
     }).join('');
 }
 
-// ==================== DELETE / DUPLICATE ====================
+// Cost summary across a policy's options: collapses to a single value if
+// every option costs the same, otherwise shows the min–max range.
+function summarizeOptionCosts(options) {
+    if (!options || options.length === 0) return '—';
+    const upfronts = options.map(o => Number(o.upfront_cost) || 0);
+    const ongoings = options.map(o => Number(o.ongoing_base_cost) || 0);
+    const upMin = Math.min(...upfronts), upMax = Math.max(...upfronts);
+    const onMin = Math.min(...ongoings), onMax = Math.max(...ongoings);
+    const lines = [];
+    if (upMin !== 0 || upMax !== 0) {
+        lines.push(upMin === upMax ? `Up: ${fmtCost(upMin)}` : `Up: ${fmtCost(upMin)}–${fmtCost(upMax)}`);
+    }
+    if (onMin !== 0 || onMax !== 0) {
+        lines.push(onMin === onMax ? `On: ${fmtCost(onMin)}/t` : `On: ${fmtCost(onMin)}–${fmtCost(onMax)}/t`);
+    }
+    return lines.length > 0 ? lines.join('<br>') : '—';
+}
+
+function formatPolicyType(t) {
+    if (t === 'lever')      return '🔄 Lever';
+    if (t === 'structural') return '🏗️ Structural';
+    return t || '—';
+}
+
+// ==================== DELETE ====================
 async function deletePolicy(id, name) {
-    if (!confirm(`Delete policy "${name}"?\n\nThis will also remove any bill articles and active laws referencing it.`)) return;
+    if (!confirm(`Delete policy "${name}"?\n\nThis also drops its options (cascade) and any nation_policies / active_laws / bill_articles that reference it.`)) return;
     try {
-        // Cascade: delete child rows that hold a foreign key to this policy
+        // policy_options cascade-delete via FK. The other three tables hold
+        // loose policy_id refs (FK-light schema), so we clear them by
+        // policy_id — that also clears the matching policy_option_id rows
+        // since option ids are bound to the policy.
         await _supabase.from('bill_articles').delete().eq('policy_id', id);
         await _supabase.from('active_laws').delete().eq('policy_id', id);
-        try { await _supabase.from('nation_policies').delete().eq('policy_id', id); } catch {}
+        await _supabase.from('nation_policies').delete().eq('policy_id', id);
 
-        // Clean up opposed_policy_ids references in other policies
+        // Clean up opposed_policy_ids back-references in other policies.
         const refs = allPolicies.filter(p => (p.opposed_policy_ids || []).includes(id));
         for (const ref of refs) {
             const cleaned = (ref.opposed_policy_ids || []).filter(x => x !== id);
-            await _supabase.from('policies').update({ opposed_policy_ids: cleaned.length > 0 ? cleaned : null }).eq('id', ref.id);
+            await _supabase
+                .from('policies')
+                .update({ opposed_policy_ids: cleaned.length > 0 ? cleaned : null })
+                .eq('id', ref.id);
         }
 
         const { error } = await _supabase.from('policies').delete().eq('id', id);
@@ -526,771 +273,19 @@ async function deletePolicy(id, name) {
         showStatus(`"${name}" deleted.`, 'success');
     } catch (err) {
         showStatus('Error: ' + err.message, 'error');
-        console.error('Cascade delete failed:', err);
+        console.error('deletePolicy failed:', err);
     }
-    await loadPolicies(); populateFilterDropdowns(); filterPolicies();
-}
-
-function duplicatePolicy(id) {
-    const p = allPolicies.find(x => x.id === id);
-    if (!p) return;
-    editingPolicyId = null;
-    loadPolicyIntoBuilder(p);
-    document.getElementById('b-name').value = p.policy_name + ' (Copy)';
-    document.getElementById('submit-btn').textContent = '✅ Create Policy';
-    switchView('builder');
-}
-
-function editPolicy(id) {
-    const p = allPolicies.find(x => x.id === id);
-    if (!p) return;
-    editingPolicyId = id;
-    loadPolicyIntoBuilder(p);
-    document.getElementById('submit-btn').textContent = '💾 Update Policy';
-    switchView('builder');
-}
-
-// ==================== LOAD INTO BUILDER ====================
-function loadPolicyIntoBuilder(p) {
-    document.getElementById('b-name').value = p.policy_name || '';
-    document.getElementById('b-desc').value = p.description || '';
-    document.getElementById('b-sector').value = p.major_sector || '';
-    // Policy type (lever vs structural) — must be set here or edits silently reset to structural
-    document.getElementById('b-policy-type').value = p.policy_type || 'structural';
-    populateLawCategories();
-    const lawCatVal = p.law_category || p.minor_sector || '';
-    const select = document.getElementById('b-law-category-select');
-    const wrapper = document.getElementById('new-category-wrapper');
-    const newInput = document.getElementById('b-law-category-new');
-    // Check if the value exists in the dropdown
-    const optionExists = [...select.options].some(o => o.value === lawCatVal);
-    if (optionExists) {
-        select.value = lawCatVal;
-        wrapper.style.display = 'none';
-    } else if (lawCatVal) {
-        select.value = '__new__';
-        wrapper.style.display = 'block';
-        newInput.value = lawCatVal;
-    }
-
-    // Fiscal category
-    document.getElementById('b-fiscal-category').value = p.fiscal_category || '';
-
-    // Ideologies
-    // Preserve any existing ideology data so re-saving this policy doesn't
-    // destroy it. Phase 2 deprecates authoring; Phase 5 removes the columns.
-    preservedIdeology   = p.ideology || null;
-    preservedIdeologies = Array.isArray(p.ideologies)
-        ? [...p.ideologies]
-        : (p.ideology ? [p.ideology] : []);
-
-    // Starting nations (we'll need to look up nation_policies or active_laws — for now just clear)
-    startingNations = new Set();
-    renderNationChecks();
-
-    // Costs
-    document.getElementById('b-upfront').value = p.upfront_cost || 0;
-    document.getElementById('b-upfront-scaling').value = p.upfront_scaling_stat || '';
-    document.getElementById('b-ongoing-base').value = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
-    document.getElementById('b-scaling-stat').value = p.ongoing_scaling_stat || '';
-    updateCostPreview();
-
-    // Stat effects
-    if (p.stat_effects && Array.isArray(p.stat_effects)) {
-        statEffects = p.stat_effects.map(e => ({
-            ...e,
-            stat_key: normalizePolicyStatKey(e.stat_key),
-            direction: normalizeEffectDirection(e.direction) || 'up',
-            adjust_type: e.adjust_type || null,
-            adjust_value: e.adjust_value || 0
-        }));
-    } else if (p.target_stat) {
-        // Legacy: convert single stat to new format
-        statEffects = [{
-            stat_key: normalizePolicyStatKey(p.target_stat),
-            direction: normalizeEffectDirection(p.stat_direction) || 'up',
-            rate: p.stat_change_per_tick || 1,
-            delay_ticks: 0,
-            duration_ticks: p.duration_months || 12
-        }];
-    } else {
-        statEffects = [];
-    }
-    renderStatEffects();
-
-    // Sector effects (Phase 2): coerce to the {sector_key, change_tenths} shape
-    sectorEffects = Array.isArray(p.sector_effects)
-        ? p.sector_effects
-            .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
-            .slice(0, SECTOR_EFFECT_MAX)
-            .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }))
-        : [];
-    renderSectorEffects();
-
-    // Opposed
-    opposedSlots = (p.opposed_policy_ids || []).filter(Boolean);
-    renderOpposedSlots();
-    // Prerequisite
-    selectedPrereqId = p.requires_policy_id || null;
-    const hasPrereq = !!selectedPrereqId;
-    document.getElementById('b-has-prereq').checked = hasPrereq;
-    document.getElementById('prereq-select-area').style.display = hasPrereq ? 'block' : 'none';
-    if (hasPrereq) populatePrereqDropdown();
-}
-
-// ==================== NATION CHECKS ====================
-function renderNationChecks() {
-    const container = document.getElementById('nation-checks');
-    if (allNations.length === 0) { container.innerHTML = '<span style="color:#666;">No nations found.</span>'; return; }
-    container.innerHTML = allNations.map(n => `
-        <label class="nation-check-item">
-            <input type="checkbox" value="${n.id}" ${startingNations.has(n.id) ? 'checked' : ''} onchange="toggleStartingNation('${n.id}', this.checked)">
-            <span>${n.name}</span>
-        </label>
-    `).join('');
-}
-
-function toggleStartingNation(id, checked) {
-    if (checked) startingNations.add(id); else startingNations.delete(id);
-}
-
-// ==================== COSTS ====================
-function populateScalingStatDropdown() {
-    const optionsHTML = '<option value="">None (flat cost)</option>' + STAT_OPTIONS_HTML;
-    document.getElementById('b-scaling-stat').innerHTML = optionsHTML;
-    document.getElementById('b-upfront-scaling').innerHTML = optionsHTML;
-}
-
-function updateCostPreview() {
-    const upBase = parseFloat(document.getElementById('b-upfront').value) || 0;
-    const upStat = document.getElementById('b-upfront-scaling').value;
-    const onBase = parseFloat(document.getElementById('b-ongoing-base').value) || 0;
-    const onStat = document.getElementById('b-scaling-stat').value;
-    const preview = document.getElementById('cost-preview');
-
-    const lines = [];
-    if (upBase > 0) {
-        if (upStat) {
-            const info = RAW_SCALING_INFO[upStat];
-            if (info) {
-                const ex = upBase * (info.exampleVal / info.divisor);
-                lines.push(`💲 Upfront: ${fmtCost(upBase)} ${info.unit} (e.g., if ${fmtStat(upStat)} = ${info.example} → ${fmtCost(ex)})`);
-            } else {
-                lines.push(`💲 Upfront: ${fmtCost(upBase)} × ${fmtStat(upStat)}/50 (e.g., if ${fmtStat(upStat)} = 50 → ${fmtCost(upBase)})`);
-            }
-        } else {
-           lines.push(`💲 Upfront: Flat ${fmtCost(upBase)}`);
-        }
-    }
-    if (onBase > 0) {
-        if (onStat) {
-            const info = RAW_SCALING_INFO[onStat];
-            if (info) {
-                const ex = onBase * (info.exampleVal / info.divisor);
-                lines.push(`💲 Ongoing: ${fmtCost(onBase)} ${info.unit} per tick (e.g., if ${fmtStat(onStat)} = ${info.example} → ${fmtCost(ex)}/tick)`);
-            } else {
-                lines.push(`💲 Ongoing: ${fmtCost(onBase)} × ${fmtStat(onStat)}/50 per tick (e.g., if ${fmtStat(onStat)} = 50 → ${fmtCost(onBase)}/tick)`);
-            }
-        } else {
-            lines.push(`💲 Ongoing: Flat ${fmtCost(onBase)} per tick`);
-        }
-    }
-
-    if (lines.length === 0) { preview.style.display = 'none'; return; }
-    preview.style.display = 'block';
-    preview.innerHTML = lines.join('<br>');
-}
-
-// ==================== STAT EFFECTS ====================
-function addStatEffect() {
-    if (statEffects.length >= 10) return;
-    statEffects.push({ stat_key: '', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 12, adjust_type: null, adjust_value: 0 });
-    renderStatEffects();
-}
-
-function removeStatEffect(idx) {
-    statEffects.splice(idx, 1);
-    renderStatEffects();
-}
-
-function renderStatEffects() {
-    const container = document.getElementById('stat-effects-container');
-    document.getElementById('add-effect-btn').disabled = statEffects.length >= 10;
-
-    container.innerHTML = statEffects.map((e, idx) => `
-        <div class="stat-effect-card">
-            <div class="se-header">
-                <span class="se-label">Effect ${idx + 1}</span>
-                <button class="se-remove" onclick="removeStatEffect(${idx})">✕ Remove</button>
-            </div>
-            <div class="se-fields">
-                <div class="form-field">
-                    <label>Stat</label>
-                    <select onchange="updateEffect(${idx},'stat_key',this.value)">
-                        <option value="">-- Select --</option>
-                        ${STAT_OPTIONS_HTML.replace(`value="${e.stat_key}"`, `value="${e.stat_key}" selected`)}
-                    </select>
-                </div>
-                <div class="form-field">
-                    <label>Dir</label>
-                    <div class="dir-toggle">
-                        <button type="button" class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'up' ? 'sel-up' : ''}" onclick="updateEffect(${idx},'direction','up')">▲</button>
-                        <button type="button" class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'down' ? 'sel-down' : ''}" onclick="updateEffect(${idx},'direction','down')">▼</button>
-                    </div>
-                </div>
-                <div class="form-field">
-                    <label>Rate/tick</label>
-                    <input type="number" value="${e.rate}" min="0.1" max="5" step="0.1" onchange="updateEffect(${idx},'rate',parseFloat(this.value))">
-                </div>
-                <div class="form-field">
-                    <label>Delay</label>
-                    <input type="number" value="${e.delay_ticks}" min="0" max="24" step="1" onchange="updateEffect(${idx},'delay_ticks',parseInt(this.value))">
-                </div>
-                <div class="form-field">
-                    <label>Duration</label>
-                    <input type="number" value="${e.duration_ticks}" min="1" max="60" step="1" onchange="updateEffect(${idx},'duration_ticks',parseInt(this.value))">
-                </div>
-            </div>
-            <div class="se-fields se-floor-ceiling-row">
-                <div class="form-field">
-                    <label>Decay Adjust</label>
-                    <select onchange="updateEffect(${idx},'adjust_type',this.value || null)">
-                        <option value="">None</option>
-                        <option value="floor" ${e.adjust_type === 'floor' ? 'selected' : ''}>Add to Floor</option>
-                        <option value="ceiling" ${e.adjust_type === 'ceiling' ? 'selected' : ''}>Lower Ceiling</option>
-                    </select>
-                </div>
-                <div class="form-field" style="${e.adjust_type ? '' : 'display:none'}">
-                    <label>± Value</label>
-                    <input type="number" value="${e.adjust_value || 0}" min="1" max="50" step="1" onchange="updateEffect(${idx},'adjust_value',parseInt(this.value))">
-                </div>
-                <div class="form-field se-floor-hint" style="${e.adjust_type ? '' : 'display:none'}">
-                    <small>${e.adjust_type === 'floor' ? '↑ Raises decay floor by this amount' : e.adjust_type === 'ceiling' ? '↓ Lowers decay ceiling by this amount' : ''}</small>
-                </div>
-            </div>
-        </div>
-    `).join('');
-
-    // Fix selected values for stat dropdowns (the replace trick doesn't always work)
-    container.querySelectorAll('.stat-effect-card').forEach((card, idx) => {
-        const statSelect = card.querySelector('.se-fields select');
-        if (statSelect && statEffects[idx]?.stat_key) statSelect.value = statEffects[idx].stat_key;
-    });
-
-    updateEffectPreview();
-}
-
-function updateEffect(idx, field, value) {
-    if (!statEffects[idx]) return;
-    statEffects[idx][field] = value;
-    if (field === 'direction' || field === 'adjust_type') renderStatEffects();
-    else updateEffectPreview();
-}
-
-// ==================== SECTOR EFFECTS (Phase 2) ====================
-const SECTOR_EFFECT_MAX = 5;
-// Display range: 0.1–2.0 (= 1–20 tenths). Sign comes from the +/− toggle,
-// not from the magnitude input itself.
-const SECTOR_EFFECT_MIN_MAGNITUDE_TENTHS = 1;
-const SECTOR_EFFECT_MAX_MAGNITUDE_TENTHS = 20;
-
-function addSectorEffect() {
-    if (sectorEffects.length >= SECTOR_EFFECT_MAX) return;
-    // Default new rows to +1.0 — a typical Moderate-tier shift; admin can
-    // dial it down or flip the sign with the +/− toggle.
-    sectorEffects.push({ sector_key: '', change_tenths: 10 });
-    renderSectorEffects();
-}
-
-function removeSectorEffect(idx) {
-    sectorEffects.splice(idx, 1);
-    renderSectorEffects();
-}
-
-// Update sector_key only — the dropdown change handler.
-function updateSectorEffect(idx, field, value) {
-    if (!sectorEffects[idx]) return;
-    sectorEffects[idx][field] = value;
-    renderSectorEffects();
-}
-
-// Flip the sign of an effect, preserving its magnitude. Called by the
-// +/− toggle. A row at 0 (rare — usually only seen mid-edit) flips to +1.
-function setSectorSign(idx, sign) {
-    if (!sectorEffects[idx]) return;
-    const current = Number(sectorEffects[idx].change_tenths) || 0;
-    const magnitude = Math.abs(current) || 1;
-    sectorEffects[idx].change_tenths = sign < 0 ? -magnitude : magnitude;
-    renderSectorEffects();
-}
-
-// Update the magnitude (0.1–2.0). Sign is preserved from the existing
-// change_tenths so the +/− toggle isn't fought.
-function updateSectorMagnitude(idx, value) {
-    if (!sectorEffects[idx]) return;
-    const tenths = Math.round(parseFloat(value) * 10);
-    if (!Number.isFinite(tenths)) return;
-    const clamped = Math.max(
-        SECTOR_EFFECT_MIN_MAGNITUDE_TENTHS,
-        Math.min(SECTOR_EFFECT_MAX_MAGNITUDE_TENTHS, tenths)
-    );
-    const sign = (Number(sectorEffects[idx].change_tenths) || 0) < 0 ? -1 : 1;
-    sectorEffects[idx].change_tenths = sign * clamped;
-    renderSectorEffects();
-}
-
-function renderSectorEffects() {
-    const container = document.getElementById('sector-effects-container');
-    const addBtn = document.getElementById('add-sector-effect-btn');
-    if (!container) return;
-    if (addBtn) addBtn.disabled = sectorEffects.length >= SECTOR_EFFECT_MAX;
-
-    if (sectorEffects.length === 0) {
-        container.innerHTML = '<div style="color:#666; font-size:0.85rem; padding:8px 0;">No sector effects. Bills without sector effects shift no popularity on resolution.</div>';
-        return;
-    }
-    if (sectorOptions.length === 0) {
-        container.innerHTML = '<div style="color:#e57373; font-size:0.85rem;">No sectors loaded — make sure the Phase 0 sectors migration has run.</div>';
-        return;
-    }
-
-    const rowStyle  = 'display:flex; gap:10px; align-items:center; padding:10px 12px; background:#1a1a1a; border:1px solid #333; margin-bottom:8px; border-radius:4px;';
-    const selStyle  = 'flex:1; min-width:220px; background:#0f0f0f; border:1px solid #333; color:#eee; padding:6px 8px; border-radius:3px;';
-    const numStyle  = 'width:78px; background:#0f0f0f; border:1px solid #333; color:#eee; padding:6px 8px; border-radius:3px; text-align:center;';
-    const signGroup = 'display:inline-flex; border:1px solid #333; border-radius:3px; overflow:hidden;';
-    const signBase  = 'background:#0f0f0f; color:#888; border:none; padding:6px 12px; cursor:pointer; font-weight:bold; font-size:0.95rem;';
-    const signPosOn = 'background:#1f3a1f; color:#81c784;';
-    const signNegOn = 'background:#3a1d1d; color:#e57373;';
-    const xBtnStyle = 'background:transparent; color:#666; border:1px solid #333; padding:5px 9px; cursor:pointer; border-radius:3px; font-size:0.85rem;';
-
-    container.innerHTML = sectorEffects.map((e, idx) => {
-        const optionsHtml = sectorOptions.map(s =>
-            `<option value="${s.sector_key}"${s.sector_key === e.sector_key ? ' selected' : ''}>${escapePolicyHtml(s.name)}</option>`
-        ).join('');
-        const change = Number(e.change_tenths) || 0;
-        const isPositive = change >= 0;
-        const magnitude = (Math.abs(change) / 10).toFixed(1);
-        return `
-            <div style="${rowStyle}">
-                <select style="${selStyle}" onchange="updateSectorEffect(${idx},'sector_key',this.value)">
-                    <option value="">-- Select sector --</option>
-                    ${optionsHtml}
-                </select>
-                <div style="${signGroup}" title="Direction: + = popularity gain on pass, − = loss">
-                    <button type="button" style="${signBase}${isPositive  ? signPosOn : ''}" onclick="setSectorSign(${idx},  1)">+</button>
-                    <button type="button" style="${signBase}${!isPositive ? signNegOn : ''}" onclick="setSectorSign(${idx}, -1)">−</button>
-                </div>
-                <input type="number" min="0.1" max="2.0" step="0.1" value="${magnitude}" style="${numStyle}" onchange="updateSectorMagnitude(${idx}, this.value)" title="Magnitude (0.1 to 2.0)">
-                <button type="button" style="${xBtnStyle}" onclick="removeSectorEffect(${idx})" title="Remove">✕</button>
-            </div>
-        `;
-    }).join('');
-}
-
-// Tiny HTML-escape helper local to the policy admin page (it doesn't import
-// utils.js, and the existing renderStatEffects relies on safe stat keys).
-function escapePolicyHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-}
-
-function updateOpposed(idx, value) {
-    opposedSlots[idx] = value;
-}
-
-function updateEffectPreview() {
-    const preview = document.getElementById('effect-preview');
-    const valid = statEffects.filter(e => e.stat_key);
-    if (valid.length === 0) { preview.style.display = 'none'; return; }
-    preview.style.display = 'block';
-
-    let html = '<strong>Timeline Preview:</strong><br>';
-    html += 'Tick 0: Policy activated. Upfront cost deducted. Ongoing cost begins.<br>';
-
-    valid.forEach((e, i) => {
-        const arrow = (normalizeEffectDirection(e.direction) || 'up') === 'up' ? '▲ +' : '▼ -';
-        const start = e.delay_ticks + 1;
-        const end = e.delay_ticks + e.duration_ticks;
-        if (e.delay_ticks > 0) {
-            html += `Tick 1–${e.delay_ticks}: ${fmtStat(e.stat_key)} in delay (no change)<br>`;
-        }
-        html += `Tick ${start}–${end}: ${fmtStat(e.stat_key)} ${arrow}${e.rate}/tick (${e.duration_ticks} ticks)<br>`;
-    });
-
-    const maxTick = Math.max(...valid.map(e => e.delay_ticks + e.duration_ticks));
-    html += `Tick ${maxTick + 1}+: All effects complete. Changes baked in. Ongoing cost continues.<br>`;
-
-    const floorCeilingEffects = valid.filter(e => e.adjust_type && e.adjust_value);
-    if (floorCeilingEffects.length > 0) {
-        html += '<br><strong>Decay Adjustments (while policy active):</strong><br>';
-        floorCeilingEffects.forEach(e => {
-            if (e.adjust_type === 'floor') {
-                html += `${fmtStat(e.stat_key)}: Floor raised by +${e.adjust_value} (stat won't decay below new floor)<br>`;
-            } else if (e.adjust_type === 'ceiling') {
-                html += `${fmtStat(e.stat_key)}: Ceiling lowered by -${e.adjust_value} (stat will decay down to new ceiling)<br>`;
-            }
-        });
-    }
-    preview.innerHTML = html;
-}
-
-// ==================== OPPOSED POLICIES ====================
-function addOpposedSlot() {
-    if (opposedSlots.length >= 3) return;
-    opposedSlots.push('');
-    renderOpposedSlots();
-}
-
-function removeOpposedSlot(idx) {
-    opposedSlots.splice(idx, 1);
-    renderOpposedSlots();
-}
-
-function renderOpposedSlots() {
-    const container = document.getElementById('opposed-container');
-    document.getElementById('add-opposed-btn').disabled = opposedSlots.length >= 3;
-
-    const sector = document.getElementById('b-sector').value;
-    const lawCat = getLawCategoryValue().toLowerCase();
-
-    // Find policies in same sector + law category
-    const candidates = allPolicies.filter(p => {
-        if (editingPolicyId && p.id === editingPolicyId) return false;
-        const pSector = (p.major_sector || '').toUpperCase();
-        const pLaw = (p.law_category || p.minor_sector || '').trim().toLowerCase();
-        return pSector === sector && pLaw === lawCat && lawCat !== '';
-    });
-
-    if (opposedSlots.length === 0) { container.innerHTML = ''; return; }
-
-    const note = document.getElementById('opposed-note');
-    if (!sector || !lawCat) {
-        note.style.display = 'block';
-        container.innerHTML = opposedSlots.map((_, idx) => `
-            <div class="opposed-row">
-                <select disabled><option>— Set sector & law category first —</option></select>
-                <button class="se-remove" onclick="removeOpposedSlot(${idx})">✕</button>
-            </div>
-        `).join('');
-        return;
-    }
-    note.style.display = 'none';
-
-    container.innerHTML = opposedSlots.map((val, idx) => `
-        <div class="opposed-row">
-            <select onchange="updateOpposed(${idx},this.value)">
-                <option value="">-- Select policy --</option>
-                ${candidates.map(c => `<option value="${c.id}" ${val === c.id ? 'selected' : ''}>${c.policy_name}</option>`).join('')}
-            </select>
-            <button class="se-remove" onclick="removeOpposedSlot(${idx})">✕</button>
-        </div>
-    `).join('');
-}
-
-function populateLawCategories() {
-    const sector = document.getElementById('b-sector').value;
-    const select = document.getElementById('b-law-category-select');
-    const wrapper = document.getElementById('new-category-wrapper');
-    const newInput = document.getElementById('b-law-category-new');
-    wrapper.style.display = 'none';
-    newInput.value = '';
-
-    if (!sector) {
-        select.innerHTML = '<option value="">-- Select sector first --</option>';
-        return;
-    }
-
-    // Get unique law categories from existing policies in this sector
-    const cats = [...new Set(
-        allPolicies
-            .filter(p => (p.major_sector || '').toUpperCase() === sector)
-            .map(p => p.law_category || p.minor_sector || '')
-            .filter(Boolean)
-    )].sort();
-
-    // Build full HTML in one shot; put "+ Create New" at top so it's always visible
-    const esc = s => s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    let html = '<option value="">-- Select --</option>';
-    html += '<option value="__new__">＋ Create New Category</option>';
-    if (cats.length > 0) {
-        html += '<option disabled>──────────────</option>';
-        cats.forEach(c => { html += '<option value="' + esc(c) + '">' + esc(c) + '</option>'; });
-    }
-    select.innerHTML = html;
-}
-
-function onLawCategorySelect() {
-    const select = document.getElementById('b-law-category-select');
-    const wrapper = document.getElementById('new-category-wrapper');
-    const newInput = document.getElementById('b-law-category-new');
-    if (select.value === '__new__') {
-        wrapper.style.display = 'block';
-        newInput.focus();
-    } else {
-        wrapper.style.display = 'none';
-        newInput.value = '';
-    }
-    onSectorOrLawChange();
-}
-
-function getLawCategoryValue() {
-    const select = document.getElementById('b-law-category-select');
-    if (select.value === '__new__') {
-        return document.getElementById('b-law-category-new').value.trim();
-    }
-    return select.value || '';
-}
-
-function onSectorOrLawChange() {
-    renderOpposedSlots();
-}
-// ==================== PREREQUISITE ====================
-function togglePrereq() {
-    const checked = document.getElementById('b-has-prereq').checked;
-    document.getElementById('prereq-select-area').style.display = checked ? 'block' : 'none';
-    if (checked) {
-        populatePrereqDropdown();
-    } else {
-        selectedPrereqId = null;
-        document.getElementById('prereq-preview').style.display = 'none';
-    }
-}
-
-function populatePrereqDropdown() {
-    const select = document.getElementById('b-prereq-policy');
-    // Group by sector > law category
-    const grouped = {};
-    allPolicies.forEach(p => {
-        if (editingPolicyId && p.id === editingPolicyId) return; // Can't require itself
-        const key = (p.major_sector || 'Other') + ' › ' + (p.law_category || p.minor_sector || 'General');
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(p);
-    });
-
-    select.innerHTML = '<option value="">-- Select prerequisite policy --</option>';
-    Object.keys(grouped).sort().forEach(key => {
-        const group = document.createElement('optgroup');
-        group.label = key;
-        grouped[key].forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p.id;
-            opt.textContent = p.policy_name;
-            if (p.id === selectedPrereqId) opt.selected = true;
-            group.appendChild(opt);
-        });
-        select.appendChild(group);
-    });
-
-    select.onchange = function() {
-        selectedPrereqId = this.value || null;
-        updatePrereqPreview();
-    };
-
-    updatePrereqPreview();
-}
-
-function updatePrereqPreview() {
-    const preview = document.getElementById('prereq-preview');
-    if (!selectedPrereqId) { preview.style.display = 'none'; return; }
-    const p = allPolicies.find(x => x.id === selectedPrereqId);
-    if (!p) { preview.style.display = 'none'; return; }
-    preview.style.display = 'block';
-    preview.innerHTML = `<div class="formula-preview">
-        🔗 <strong>Requires:</strong> "${escapeHtml(p.policy_name)}" (${p.major_sector} › ${p.law_category || p.minor_sector || '—'})<br>
-        <span style="color:#888;">Players must have this law active before they can include this policy in a bill.</span>
-    </div>`;
-}
-
-// ==================== SAVE POLICY ====================
-async function savePolicy() {
-    const name = document.getElementById('b-name').value.trim();
-    if (!name) { alert('Enter a policy name.'); return; }
-
-    const sector = document.getElementById('b-sector').value;
-    if (!sector) { alert('Select a sector.'); return; }
-
-    const lawCategory = getLawCategoryValue();
-    if (!lawCategory) { alert('Select or create a law category.'); return; }
-
-    const validEffects = statEffects.filter(e => e.stat_key);
-    if (validEffects.length === 0) { alert('Add at least 1 stat effect.'); return; }
-
-    // Phase 2: catch sector rows the user added but never picked a sector for.
-    // Without this alert, the save filter further down silently drops them
-    // and the user thinks the effect was saved.
-    const incompleteSectorRows = sectorEffects.filter(e => !e.sector_key);
-    if (incompleteSectorRows.length > 0) {
-        alert(`${incompleteSectorRows.length} sector effect row${incompleteSectorRows.length === 1 ? '' : 's'} ${incompleteSectorRows.length === 1 ? 'has' : 'have'} no sector picked. Pick a sector or remove the row.`);
-        return;
-    }
-
-    const normalizedEffects = validEffects.map(e => ({ ...e, stat_key: normalizePolicyStatKey(e.stat_key) }));
-    const unknownStatKeys = [...new Set(
-        normalizedEffects
-            .map(e => e.stat_key)
-            .filter(statKey => !statKey || !CANONICAL_STAT_KEYS.has(statKey))
-    )];
-
-    if (unknownStatKeys.length > 0) {
-        alert('Unknown stat key(s): ' + unknownStatKeys.join(', ') + '. Please choose supported nation stats only.');
-        return;
-    }
-
-    const opposedIds = opposedSlots.filter(Boolean);
-
-    const policyData = {
-        policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') + '_' + Date.now().toString(36),
-        policy_name: name,
-        policy_type: document.getElementById('b-policy-type').value,
-        description: document.getElementById('b-desc').value.trim() || null,
-        major_sector: sector,
-        minor_sector: lawCategory, // keep for backward compat
-        law_category: lawCategory,
-        fiscal_category: document.getElementById('b-fiscal-category').value || null,
-        // Phase 2: ideology authoring is deprecated. Preserve whatever the
-        // policy already had (or 'Agnostic' / [] for newly-created bills) so
-        // the existing engine still has data while sectors run shadow-mode.
-        ideology: preservedIdeology || 'Agnostic', // column is NOT NULL
-        ideologies: preservedIdeologies,
-        upfront_cost: parseFloat(document.getElementById('b-upfront').value) || 0,
-        upfront_scaling_stat: document.getElementById('b-upfront-scaling').value || null,
-        ongoing_base_cost: parseFloat(document.getElementById('b-ongoing-base').value) || 0,
-        ongoing_scaling_stat: document.getElementById('b-scaling-stat').value || null,
-        stat_effects: normalizedEffects.map(e => ({
-            stat_key: e.stat_key,
-            direction: normalizeEffectDirection(e.direction) || 'up',
-            rate: e.rate,
-            delay_ticks: e.delay_ticks || 0,
-            duration_ticks: e.duration_ticks || 12,
-            adjust_type: e.adjust_type || null,
-            adjust_value: e.adjust_type ? (e.adjust_value || 0) : 0
-        })),
-        opposed_policy_ids: opposedIds.length > 0 ? opposedIds : null,
-        sector_effects: sectorEffects
-            .filter(e => e.sector_key && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0)
-            .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) })),
-        // Legacy fields — write defaults so old code doesn't break
-        target_stat: normalizedEffects[0]?.stat_key || null,
-        stat_direction: (normalizeEffectDirection(normalizedEffects[0]?.direction) || 'up').toUpperCase(),
-        stat_change_per_tick: normalizedEffects[0]?.rate || 1,
-        duration_months: normalizedEffects[0]?.duration_ticks || 12,
-        stat_floor: 0,
-        stat_ceiling: 100,
-        ongoing_cost_per_tick: parseFloat(document.getElementById('b-ongoing-base').value) || 0,
-        requires_policy_id: selectedPrereqId || null,
-        is_active: true
-    };
-
-    try {
-        if (editingPolicyId) {
-            const { error } = await _supabase.from('policies').update(policyData).eq('id', editingPolicyId);
-            if (error) throw error;
-            showStatus(`"${name}" updated.`, 'success');
-        } else {
-            const { data: inserted, error } = await _supabase.from('policies').insert(policyData).select().single();
-            if (error) throw error;
-            showStatus(`"${name}" created.`, 'success');
-
-            // Create nation_policies records for starting nations
-            if (startingNations.size > 0 && inserted) {
-                const totalDuration = Math.max(...normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
-                const fiscalCat = document.getElementById('b-fiscal-category').value || null;
-                const records = [...startingNations].map(nationId => ({
-                    nation_id: nationId,
-                    policy_id: inserted.id,
-                    major_sector: sector,
-                    law_category: lawCategory,
-                    fiscal_category: fiscalCat,
-                    status: 'active',
-                    activated_at_tick: 0,
-                    effects_started: true,
-                    effects_completed: true,
-                    ticks_elapsed: totalDuration
-                }));
-
-                const { error: npError } = await _supabase.from('nation_policies').insert(records);
-                if (npError) {
-                    console.warn('nation_policies insert failed (table may not exist yet):', npError.message);
-                    // Also try active_laws as fallback
-                    const alRecords = [...startingNations].map(nationId => ({
-                        nation_id: nationId,
-                        policy_id: inserted.id,
-                        passed_tick: 0
-                    }));
-                    await _supabase.from('active_laws').insert(alRecords).catch(() => {});
-                }
-            }
-
-            // Update opposed policies — make the relationship two-way
-            if (opposedIds.length > 0 && inserted) {
-                for (const oppId of opposedIds) {
-                    const opp = allPolicies.find(p => p.id === oppId);
-                    if (!opp) continue;
-                    const existing = opp.opposed_policy_ids || [];
-                    if (!existing.includes(inserted.id)) {
-                        existing.push(inserted.id);
-                        await _supabase.from('policies').update({ opposed_policy_ids: existing }).eq('id', oppId);
-                    }
-                }
-            }
-        }
-
-        editingPolicyId = null;
-        document.getElementById('submit-btn').textContent = '✅ Create Policy';
-        await loadPolicies();
-        populateFilterDropdowns();
-        filterPolicies();
-        switchView('list');
-    } catch (error) {
-        showStatus('Error: ' + error.message, 'error');
-        console.error(error);
-    }
-}
-
-// ==================== RESET ====================
-function resetBuilder() {
-    editingPolicyId = null;
-    document.getElementById('b-policy-type').value = 'structural';
-    document.getElementById('b-name').value = '';
-    document.getElementById('b-desc').value = '';
-    document.getElementById('b-sector').value = '';
-    document.getElementById('b-law-category-select').innerHTML = '<option value="">-- Select sector first --</option>';
-    document.getElementById('b-law-category-new').value = '';
-    document.getElementById('new-category-wrapper').style.display = 'none';
-    document.getElementById('b-fiscal-category').value = '';
-    // Phase 2: a new bill starts with no preserved ideology — it will save
-    // as Agnostic / [] without going through the deprecated chip UI.
-    preservedIdeology = null;
-    preservedIdeologies = [];
-    startingNations = new Set();
-    renderNationChecks();
-    document.getElementById('b-upfront').value = 0;
-    document.getElementById('b-upfront-scaling').value = '';
-    document.getElementById('b-ongoing-base').value = 0;
-    document.getElementById('b-scaling-stat').value = '';
-    updateCostPreview();
-    statEffects = [];
-    renderStatEffects();
-    sectorEffects = [];
-    renderSectorEffects();
-    opposedSlots = [];
-    renderOpposedSlots();
-    selectedPrereqId = null;
-    document.getElementById('b-has-prereq').checked = false;
-    document.getElementById('prereq-select-area').style.display = 'none';
-    document.getElementById('prereq-preview').style.display = 'none';
-    document.getElementById('submit-btn').textContent = '✅ Create Policy';
+    await loadPolicies();
+    populateFilterDropdowns();
+    filterPolicies();
 }
 
 // ==================== UTILITIES ====================
-function fmtStat(stat) {
-    if (!stat) return '—';
-    return stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-}
-    function fmtCost(m) {
-    if (m >= 1000) return '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B';
-    return '$' + m + 'M';
+function fmtCost(m) {
+    const n = Number(m) || 0;
+    if (n === 0) return '$0';
+    if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(Math.abs(n) % 1000 === 0 ? 0 : 1) + 'B';
+    return '$' + n + 'M';
 }
 
 function showStatus(msg, type) {
@@ -1301,32 +296,11 @@ function showStatus(msg, type) {
     setTimeout(() => { bar.style.display = 'none'; bar.className = 'status-bar'; }, 5000);
 }
 
-// Expose functions for HTML onclick/onchange handlers
-window.checkAuth = checkAuth;
-window.switchView = switchView;
+// Expose handlers used from inline onclick / onchange.
+window.checkAuth      = checkAuth;
+window.switchView     = switchView;
 window.filterPolicies = filterPolicies;
-window.populateLawCategories = populateLawCategories;
-window.onSectorOrLawChange = onSectorOrLawChange;
-window.onLawCategorySelect = onLawCategorySelect;
-window.updateCostPreview = updateCostPreview;
-window.addStatEffect = addStatEffect;
-window.addOpposedSlot = addOpposedSlot;
-window.resetBuilder = resetBuilder;
-window.savePolicy = savePolicy;
-window.editPolicy = editPolicy;
-window.duplicatePolicy = duplicatePolicy;
-window.deletePolicy = deletePolicy;
-window.toggleStartingNation = toggleStartingNation;
-window.removeStatEffect = removeStatEffect;
-window.removeOpposedSlot = removeOpposedSlot;
-window.togglePrereq = togglePrereq;
-window.updateEffect = updateEffect;
-window.updateOpposed = updateOpposed;
-window.addSectorEffect = addSectorEffect;
-window.removeSectorEffect = removeSectorEffect;
-window.updateSectorEffect = updateSectorEffect;
-window.setSectorSign = setSectorSign;
-window.updateSectorMagnitude = updateSectorMagnitude;
+window.deletePolicy   = deletePolicy;
 </script>
 </body>
 </html>
