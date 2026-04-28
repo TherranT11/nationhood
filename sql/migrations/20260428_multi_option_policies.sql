@@ -23,22 +23,26 @@
 BEGIN;
 
 -- 1. policy_options table -------------------------------------------------
+-- Defensive: a previous run may have created the table with a different
+-- column set. CREATE TABLE IF NOT EXISTS would skip recreating it, so we
+-- explicitly ADD COLUMN IF NOT EXISTS for every column afterwards.
 CREATE TABLE IF NOT EXISTS policy_options (
     id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
     policy_id uuid NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
-    option_name text NOT NULL,
-    option_description text,
-    option_order integer NOT NULL DEFAULT 0,
-    is_active boolean NOT NULL DEFAULT true,
-    sector_effects jsonb DEFAULT '[]'::jsonb,
-    stat_effects jsonb DEFAULT '[]'::jsonb,
-    upfront_cost numeric DEFAULT 0,
-    upfront_scaling_stat text,
-    ongoing_base_cost numeric DEFAULT 0,
-    ongoing_scaling_stat text,
-    fiscal_category text,
-    created_at timestamp with time zone DEFAULT now()
+    option_name text NOT NULL
 );
+
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS option_description text;
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS option_order integer NOT NULL DEFAULT 0;
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS sector_effects jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS stat_effects jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS upfront_cost numeric DEFAULT 0;
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS upfront_scaling_stat text;
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS ongoing_base_cost numeric DEFAULT 0;
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS ongoing_scaling_stat text;
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS fiscal_category text;
+ALTER TABLE policy_options ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS idx_policy_options_policy_id ON policy_options(policy_id);
 CREATE INDEX IF NOT EXISTS idx_policy_options_order ON policy_options(policy_id, option_order);
