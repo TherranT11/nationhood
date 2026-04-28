@@ -2333,7 +2333,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 1. Move newly awarded contracts to in_progress
     const { data: newlyAwarded } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, stalled_ticks, sector')
+        .select('id, name, awarded_to_faction, awarded_at_tick, stalled_ticks, last_stalled_tick, sector')
         .eq('nation_id', nationId)
         .eq('status', 'awarded');
 
@@ -2348,9 +2348,17 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             cache: permitScopeCache,
         });
         if (startPermitSnapshot.missingPermitKeys.length > 0) {
-            await supabase.from('construction_contracts')
-                .update({ stalled_ticks: Number(contract.stalled_ticks || 0) + 1 })
-                .eq('id', contract.id);
+            // Idempotent: only increment once per shard tick. processActiveProjects
+            // can run multiple times per shard tick under the background-tasks
+            // pattern and the per-minute cron poll.
+            if (contract.last_stalled_tick !== currentTick) {
+                await supabase.from('construction_contracts')
+                    .update({
+                        stalled_ticks: Number(contract.stalled_ticks || 0) + 1,
+                        last_stalled_tick: currentTick,
+                    })
+                    .eq('id', contract.id);
+            }
             console.log(`[Projects] ${contract.name}: START BLOCKED — missing required permits ${startPermitSnapshot.missingPermitKeys.join(', ')}`);
             continue;
         }
@@ -2364,7 +2372,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
     // 2. Process in_progress contracts
     const { data: activeContracts } = await supabase
         .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned, modifiers, template_key, project_subtype, issuer_faction_id')
+        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, last_stalled_tick, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned, modifiers, template_key, project_subtype, issuer_faction_id')
         .eq('nation_id', nationId)
         .eq('status', 'in_progress');
 
@@ -2440,9 +2448,14 @@ async function processActiveProjects(supabase, nationId, currentTick) {
         const wfHasInnovative = Number(assignedWf.innovative || 0);
         const workersStaffed = wfHasGeneral >= wfReqGeneral && wfHasSkilled >= wfReqSkilled && wfHasInnovative >= wfReqInnovative;
         if (!workersStaffed) {
-            await supabase.from('construction_contracts')
-                .update({ stalled_ticks: stalledTicks + 1 })
-                .eq('id', contract.id);
+            if (contract.last_stalled_tick !== currentTick) {
+                await supabase.from('construction_contracts')
+                    .update({
+                        stalled_ticks: stalledTicks + 1,
+                        last_stalled_tick: currentTick,
+                    })
+                    .eq('id', contract.id);
+            }
             console.log(`[Projects] ${contract.name}: STALLED — understaffed (need G${wfReqGeneral}/S${wfReqSkilled}/I${wfReqInnovative}, assigned G${wfHasGeneral}/S${wfHasSkilled}/I${wfHasInnovative})`);
             continue;
         }
@@ -2474,9 +2487,14 @@ async function processActiveProjects(supabase, nationId, currentTick) {
             }
         }
         if (!materialsReady) {
-            await supabase.from('construction_contracts')
-                .update({ stalled_ticks: stalledTicks + 1 })
-                .eq('id', contract.id);
+            if (contract.last_stalled_tick !== currentTick) {
+                await supabase.from('construction_contracts')
+                    .update({
+                        stalled_ticks: stalledTicks + 1,
+                        last_stalled_tick: currentTick,
+                    })
+                    .eq('id', contract.id);
+            }
             console.log(`[Projects] ${contract.name}: STALLED — insufficient materials allocated (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
             continue;
         }

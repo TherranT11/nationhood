@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nationhood | Policy Builder</title>
-  <script type="module" crossorigin src="/assets/policyadmin-BMjrylUv.js"></script>
+  <script type="module" crossorigin src="/assets/policyadmin-BL4GMJtC.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
   <link rel="stylesheet" crossorigin href="/assets/policyadmin-DC2qTpUn.css">
@@ -138,14 +138,15 @@
 </div>
                 </div>
 
-                <!-- Section 2: Ideologies -->
+                <!-- Section 2: Sector Effects (Phase 2 — replaces ideology authoring) -->
                 <div class="builder-section">
-                    <div class="builder-section-title">🗳️ 2. Ideologies (select 1–3)</div>
-                    <div class="ideology-chips" id="ideology-chips"></div>
-                    <div style="color:#888; font-size:0.8rem; margin-top:10px;">
-                        Selected: <strong style="color:#ffcc00;" id="ideo-count">0</strong> / 3 —
-                        <span id="ideo-list" style="color:#bb86fc;">None</span>
-                    </div>
+                    <div class="builder-section-title">🗳️ 2. Sector Effects (up to 5)</div>
+                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                        Per-sector popularity shift on resolution. <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected. <strong>Fail:</strong> sponsor takes the inverse alone.<br>
+                        Magnitude is 0.1 to 2.0 in 0.1 steps.
+                    </p>
+                    <div id="sector-effects-container"></div>
+                    <button class="add-btn" id="add-sector-effect-btn" onclick="addSectorEffect()">+ Add Sector</button>
                 </div>
 
                 <!-- Section 3: Starting Status -->
