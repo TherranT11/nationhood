@@ -1196,6 +1196,27 @@ export function calculateDomesticManufDemand(nation) {
     return computeManufDemand(nation).gross;
 }
 
+export function deriveFuelTradeFlowMetrics(nation, sector, opts) {
+    const domesticProduction = calculateDomesticProduction(nation, sector, opts);
+    const domesticDemand = calculateDomesticFuelDemand(nation);
+    const importDemand = Math.max(0, Math.round(domesticDemand - domesticProduction));
+    const exportCapacityRaw = Math.max(0, Math.round(domesticProduction - domesticDemand));
+
+    let exportCapacity = exportCapacityRaw;
+    const exportCaps = nation.export_caps;
+    if (exportCaps && exportCaps[sector.key] != null) {
+        exportCapacity = Math.round(exportCapacity * (exportCaps[sector.key] / 100));
+    }
+
+    return {
+        domesticProduction,
+        domesticDemand,
+        importDemand,
+        exportCapacityRaw,
+        exportCapacity
+    };
+}
+
 export function calculateImportDemand(nation, sector, opts) {
     // Export-only sectors have no import demand
     if (sector.export_only) return 0;
@@ -2404,15 +2425,51 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             if (expVol > topExpVal) { topExpVal = expVol; topExpSector = sKey; }
             if (impVol > topImpVal) { topImpVal = impVol; topImpSector = sKey; }
 
+            const flow = nationFlows[n.id][sKey];
+            const domesticProduction = flow.domesticProduction;
+            const domesticDemand = flow.domesticDemand || 0;
+            const exportCapacity = flow.exportCapacity;
+            const importDemand = flow.importDemand;
+
+            if (sKey === 'fuel_energy') {
+                const expected = deriveFuelTradeFlowMetrics(n, sectors[si], null);
+                const tolerance = 5;
+                const demandDelta = Math.abs(domesticDemand - expected.domesticDemand);
+                const importDelta = Math.abs(importDemand - expected.importDemand);
+                const exportDelta = Math.abs(exportCapacity - expected.exportCapacity);
+
+                if (demandDelta > tolerance || importDelta > tolerance || exportDelta > tolerance) {
+                    console.warn('[processTradeFlows] fuel_energy flow mismatch', {
+                        nation_id: n.id,
+                        nation_name: n.name,
+                        tick: currentTick,
+                        tolerance,
+                        actual: {
+                            domestic_production: domesticProduction,
+                            domestic_demand: domesticDemand,
+                            import_demand: importDemand,
+                            export_capacity: exportCapacity
+                        },
+                        expected: {
+                            domestic_production: expected.domesticProduction,
+                            domestic_demand: expected.domesticDemand,
+                            import_demand: expected.importDemand,
+                            export_capacity: expected.exportCapacity,
+                            export_capacity_before_caps: expected.exportCapacityRaw
+                        }
+                    });
+                }
+            }
+
             flowRows.push({
                 nation_id: n.id,
                 tick: currentTick,
                 sector: sKey,
-                domestic_production: nationFlows[n.id][sKey].domesticProduction,
-                domestic_demand: nationFlows[n.id][sKey].domesticDemand || 0,
-                export_capacity: nationFlows[n.id][sKey].exportCapacity,
+                domestic_production: domesticProduction,
+                domestic_demand: domesticDemand,
+                export_capacity: exportCapacity,
                 export_volume: expVol,
-                import_demand: nationFlows[n.id][sKey].importDemand,
+                import_demand: importDemand,
                 import_volume: impVol,
                 net_flow: expVol - impVol,
                 price_modifier: priceModifiers[sKey]
