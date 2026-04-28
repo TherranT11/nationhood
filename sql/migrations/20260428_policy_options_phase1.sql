@@ -143,17 +143,13 @@ CREATE TABLE IF NOT EXISTS policy_options (
     UNIQUE (policy_id, sort_order)
 );
 
+-- Top-level array guards only. Per-element shape (sector_key string,
+-- change_tenths number, stat_effects fields) is enforced by the authoring
+-- UI and save handlers — Postgres rejects iterating subqueries inside
+-- CHECK constraints, so we don't try to do it at the DB layer.
 ALTER TABLE policy_options
-    ADD CONSTRAINT policy_options_sector_effects_shape
-    CHECK (
-        jsonb_typeof(sector_effects) = 'array'
-        AND NOT EXISTS (
-            SELECT 1
-            FROM jsonb_array_elements(sector_effects) AS e
-            WHERE jsonb_typeof(e->'sector_key')    IS DISTINCT FROM 'string'
-               OR jsonb_typeof(e->'change_tenths') IS DISTINCT FROM 'number'
-        )
-    );
+    ADD CONSTRAINT policy_options_sector_effects_array
+    CHECK (jsonb_typeof(sector_effects) = 'array');
 
 ALTER TABLE policy_options
     ADD CONSTRAINT policy_options_stat_effects_array
