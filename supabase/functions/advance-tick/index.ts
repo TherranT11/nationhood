@@ -14635,10 +14635,10 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
  *     - Snap election scheduled for next tick
  *     - failed_formation_attempts set to 1
  *
- *   Stage 2 — Minority government (FORMATION_DEADLINE_TICKS after snap, failed_formation_attempts >= 1):
- *     - Largest party auto-installed as minority government
- *     - formation_type = 'emergency_minority' (permanent -20% legislative penalty)
- *     - failed_formation_attempts reset to 0
+ *   Stage 2 — Continued deadlock (FORMATION_DEADLINE_TICKS after snap, failed_formation_attempts >= 1):
+ *     - Never auto-installs a government
+ *     - Schedules another snap election for the next tick
+ *     - Keeps vacancy pressure active until players form a coalition
  *
  * @param {object} supabase    - Supabase client
  * @param {object} nation      - Full nation row
@@ -14750,7 +14750,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         });
     } else if (ticksElapsed === deadline - 1) {
         const warningMsg = failedAttempts >= 1
-            ? `1 tick remaining before emergency minority government in ${nation.name}. Form a coalition now.`
+            ? `1 tick remaining before another snap election in ${nation.name}. Form a coalition now.`
             : `1 tick remaining before snap elections in ${nation.name}. Form a coalition now or face snap elections.`;
         await supabase.from('event_log').insert({
             nation_id: nation.id,
