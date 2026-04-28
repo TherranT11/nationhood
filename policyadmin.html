@@ -149,16 +149,12 @@
                     </div>
                 </div>
 
-                <!-- Section 3: Options (placeholder until 2B-ii) -->
+                <!-- Section 3: Options -->
                 <div class="builder-section">
                     <div class="builder-section-title">🗳️ 3. Options</div>
-                    <div style="background:#161616;border:1px dashed #333;border-radius:6px;padding:24px;text-align:center;color:#888;">
-                        <div style="font-size:0.95rem;color:#ffcc00;margin-bottom:6px;">Per-option editors land in <strong>Phase 2B-ii</strong></div>
-                        <div style="font-size:0.82rem;line-height:1.6;max-width:480px;margin:0 auto;">
-                            Sector effects, costs, and stat effects will be authored per option here, with add/remove/reorder.
-                            Save flow lands in <strong style="color:#ffcc00;">Phase 2B-iii</strong>.
-                        </div>
-                    </div>
+                    <div class="policy-type-banner" id="options-banner"></div>
+                    <div class="options-list" id="options-list"></div>
+                    <button class="add-btn" id="add-option-btn" onclick="addOption()">+ Add Option</button>
                 </div>
 
                 <!-- Submit -->
@@ -218,6 +214,108 @@ function getLawCategoryValue() {
     return policyDraft.law_category_mode || '';
 }
 
+// ==================== CONSTANTS — OPTIONS / EFFECTS ====================
+const OPTIONS_MAX               = 7;
+const OPTIONS_MIN_STRUCTURAL    = 2;
+
+const STAT_EFFECT_MAX           = 10;
+const SECTOR_EFFECT_MAX         = 5;
+// Magnitude is stored in tenths so the UI input (0.1–3.0) maps to integer
+// change_tenths values 1..30 in the DB. The original Phase 2 spec capped at
+// 2.0; the new option-aware design widens the cap to 3.0 per Property Rights
+// Framework example (Capital Owners +3.0 on the Full Private branch).
+const SECTOR_EFFECT_MIN_MAGNITUDE_TENTHS = 1;
+const SECTOR_EFFECT_MAX_MAGNITUDE_TENTHS = 30;
+
+// Stat groups drive both the per-effect stat dropdown and the cost
+// scaling-stat dropdown. The set is the canonical engine vocabulary
+// (mirrors STAT_GROUPS from earlier policyadmin iterations).
+const STAT_GROUPS = [
+    { label: '💰 Economic',          stats: ['gdp','gdp_growth','debt','debt_growth','inflation','interest_rates','trade_balance','currency_strength','foreign_investment','credit'] },
+    { label: '📋 Taxation',          stats: ['income_tax','corporate_tax','sales_tax','tariffs'] },
+    { label: '👷 Labor & Employment',stats: ['unemployment','labor_force_participation','minimum_wage','union_strength','poverty_rate','income_inequality'] },
+    { label: '👥 Demographics',      stats: ['population','eligible_voters','population_growth','median_age','ethnic_diversity'] },
+    { label: '🏥 Healthcare',        stats: ['healthcare_quality','healthcare_accessibility','beds_per_100k','lifespan','drug_use'] },
+    { label: '📚 Education',         stats: ['literacy','higher_education','education_accessibility','academic_immigration'] },
+    { label: '🏗️ Infrastructure',    stats: ['physical_infrastructure','digital_infrastructure','rail_network','urbanization','energy_generation','renewable_energy_percentage'] },
+    { label: '⛏️ Resources',          stats: ['arable_land','rare_minerals','oil_and_gas','fuel_prices'] },
+    { label: '🌿 Environment',       stats: ['pollution','carbon_emissions'] },
+    { label: '🏠 Social',            stats: ['standard_of_living','happiness','social_mobility','benefits','crime_rate','incarceration_rate'] },
+    { label: '⛪ Religion',           stats: ['religiosity'] },
+    { label: '🏛️ Governance',        stats: ['stability','legitimacy','efficiency','corruption','press_freedom','judicial_independence','freedom_index','polarization'] },
+    { label: '🔒 Security',          stats: ['civil_unrest','terrorism','political_violence'] },
+    { label: '🌍 Immigration',       stats: ['immigration','illegal_immigration','emigration'] },
+    { label: '🏭 Industry',          stats: ['manufacturing_output','service_output','cost_of_living','housing_affordability'] },
+    { label: '🌐 International',     stats: ['international_reputation'] }
+];
+const STAT_OPTIONS_HTML = STAT_GROUPS.map(g =>
+    `<optgroup label="${g.label}">${g.stats.map(s => `<option value="${s}">${fmtStat(s)}</option>`).join('')}</optgroup>`
+).join('');
+
+// Per-option default. options[] starts empty in the draft; updatePolicyType
+// (or the user's first Add Option click) seeds it.
+function newOption() {
+    return {
+        option_label: '',
+        description: '',
+        sector_effects: [],   // [{ sector_key, change_tenths }]
+        stat_effects: [],     // [{ stat_key, direction, rate, delay_ticks, duration_ticks, adjust_type, adjust_value }]
+        upfront_cost: 0,
+        upfront_scaling_stat: '',
+        ongoing_base_cost: 0,
+        ongoing_scaling_stat: ''
+    };
+}
+
+// Default stat effect. New stat_effects rows start as a 12-tick +1.0/tick
+// shift on no-stat-yet (the user picks the stat next).
+function newStatEffect() {
+    return {
+        stat_key: '',
+        direction: 'up',
+        rate: 1,
+        delay_ticks: 0,
+        duration_ticks: 12,
+        adjust_type: null,
+        adjust_value: 0
+    };
+}
+
+// Default sector effect: +1.0 on no-sector-yet (user picks the sector
+// next). +1 corresponds to a typical Moderate-tier shift.
+function newSectorEffect() {
+    return { sector_key: '', change_tenths: 10 };
+}
+
+// ==================== SECTOR OPTIONS LOADER ====================
+let sectorOptions = [];   // [{ sector_key, name }]
+
+// Load the canonical default sectors once at init. Bills are template-level
+// (the policies table has no nation_id), so we only expose the default
+// sector_keys that exist in every nation. Custom per-nation sectors silently
+// no-op for nations missing them — out of scope for templates.
+async function loadSectorOptions() {
+    try {
+        const { data, error } = await _supabase
+            .from('sectors')
+            .select('sector_key, name, display_order')
+            .eq('is_default', true)
+            .order('display_order');
+        if (error) throw error;
+        // Dedupe by sector_key — every nation has the same defaults; first
+        // occurrence per key (in display_order) wins. Names can differ per
+        // nation if an admin renamed locally; templates use one canonical.
+        const seen = new Map();
+        for (const row of (data || [])) {
+            if (!seen.has(row.sector_key)) seen.set(row.sector_key, row.name);
+        }
+        sectorOptions = [...seen].map(([sector_key, name]) => ({ sector_key, name }));
+    } catch (e) {
+        console.error('loadSectorOptions failed', e);
+        sectorOptions = [];
+    }
+}
+
 // ==================== AUTH ====================
 async function checkAuth() {
     if (await hashPassword(document.getElementById('auth-pw').value) === ADMIN_PW_HASH) {
@@ -229,13 +327,18 @@ async function checkAuth() {
 
 // ==================== INIT ====================
 async function init() {
-    await loadPolicies();
+    // Load sectors in parallel with policies — they're independent queries
+    // and the option-card sector dropdowns need both before they can render.
+    await Promise.all([loadPolicies(), loadSectorOptions()]);
     populateFilterDropdowns();
     renderPolicyTable();
-    // Initialize the builder section to its empty state. This populates the
-    // opposed-slot container and primes the law-category dropdown logic so
-    // switching to the builder tab doesn't show stale or undefined markup.
+    // Seed the builder so opening the tab shows a real form (with default
+    // OPTIONS_MIN_STRUCTURAL option cards) rather than empty containers.
+    while (policyDraft.options.length < OPTIONS_MIN_STRUCTURAL) {
+        policyDraft.options.push(newOption());
+    }
     renderOpposedSlots();
+    renderOptions();
 }
 
 // Phase 2A: pull policies along with their child policy_options in one
@@ -494,10 +597,52 @@ function updateLawCategoryNew(value) {
     renderOpposedSlots();
 }
 
-// Policy type change. 2B-ii adjusts the option list (lever=1, structural>=2);
-// 2B-i just stores the value.
+// True when an option has any authored content. Used by updatePolicyType
+// before we silently drop options on a structural→lever switch.
+function optionHasContent(o) {
+    if (!o) return false;
+    return Boolean(
+        (o.option_label || '').trim() ||
+        (o.description  || '').trim() ||
+        (o.sector_effects || []).length ||
+        (o.stat_effects   || []).length ||
+        (Number(o.upfront_cost)       || 0) !== 0 ||
+        (Number(o.ongoing_base_cost)  || 0) !== 0 ||
+        o.upfront_scaling_stat ||
+        o.ongoing_scaling_stat
+    );
+}
+
+// Policy type change. Lever requires exactly 1 option; structural needs at
+// least OPTIONS_MIN_STRUCTURAL. Switching trims (lever) or grows (structural)
+// the existing list — but if the trim would discard authored content, we
+// confirm first and revert the dropdown if the user cancels.
 function updatePolicyType(value) {
+    if (value === 'lever' && policyDraft.options.length > 1) {
+        const dropping = policyDraft.options.slice(1);
+        if (dropping.some(optionHasContent)) {
+            const ok = confirm(`Switching to Lever drops ${dropping.length} option${dropping.length === 1 ? '' : 's'} with authored content. Continue?`);
+            if (!ok) {
+                // User cancelled — revert the dropdown's visible state.
+                document.getElementById('b-policy-type').value = policyDraft.policy_type;
+                return;
+            }
+        }
+    }
+
     policyDraft.policy_type = value;
+    if (value === 'lever') {
+        if (policyDraft.options.length === 0) {
+            policyDraft.options = [newOption()];
+        } else if (policyDraft.options.length > 1) {
+            policyDraft.options = [policyDraft.options[0]];
+        }
+    } else { // structural
+        while (policyDraft.options.length < OPTIONS_MIN_STRUCTURAL) {
+            policyDraft.options.push(newOption());
+        }
+    }
+    renderOptions();
 }
 
 // ==================== BUILDER — OPPOSED POLICIES ====================
@@ -577,12 +722,360 @@ function renderOpposedSlots() {
     `).join('');
 }
 
+// ==================== BUILDER — OPTIONS ====================
+// Generic per-option setter — used for option_label, description, costs,
+// scaling stats. No re-render: text inputs would lose focus/cursor on every
+// keystroke. Structural changes (add/remove/move, sign/direction toggles,
+// adjust_type changes) trigger renderOptions() explicitly.
+function updateOption(idx, field, value) {
+    if (!policyDraft.options[idx]) return;
+    policyDraft.options[idx][field] = value;
+}
+
+function addOption() {
+    if (policyDraft.options.length >= OPTIONS_MAX) return;
+    if (policyDraft.policy_type === 'lever' && policyDraft.options.length >= 1) return;
+    policyDraft.options.push(newOption());
+    renderOptions();
+}
+
+function removeOption(idx) {
+    const min = policyDraft.policy_type === 'lever' ? 1 : OPTIONS_MIN_STRUCTURAL;
+    if (policyDraft.options.length <= min) return;
+    policyDraft.options.splice(idx, 1);
+    renderOptions();
+}
+
+function moveOption(idx, dir) {
+    const target = idx + dir;
+    if (target < 0 || target >= policyDraft.options.length) return;
+    const list = policyDraft.options;
+    [list[idx], list[target]] = [list[target], list[idx]];
+    renderOptions();
+}
+
+// ==================== BUILDER — SECTOR EFFECTS (per option) ====================
+function addSectorEffect(optIdx) {
+    const opt = policyDraft.options[optIdx];
+    if (!opt || opt.sector_effects.length >= SECTOR_EFFECT_MAX) return;
+    opt.sector_effects.push(newSectorEffect());
+    renderOptions();
+}
+
+function removeSectorEffect(optIdx, effIdx) {
+    const opt = policyDraft.options[optIdx];
+    if (!opt) return;
+    opt.sector_effects.splice(effIdx, 1);
+    renderOptions();
+}
+
+// Sector_key dropdown change. No re-render — only the selected value
+// changes, no other UI state depends on it.
+function updateSectorEffectKey(optIdx, effIdx, value) {
+    const opt = policyDraft.options[optIdx];
+    if (!opt || !opt.sector_effects[effIdx]) return;
+    opt.sector_effects[effIdx].sector_key = value;
+}
+
+// Flip sign while preserving magnitude. A row sitting at 0 (rare, only seen
+// mid-edit) flips to ±1 so the sign toggle doesn't silently no-op.
+function setSectorSign(optIdx, effIdx, sign) {
+    const opt = policyDraft.options[optIdx];
+    if (!opt || !opt.sector_effects[effIdx]) return;
+    const current = Number(opt.sector_effects[effIdx].change_tenths) || 0;
+    const magnitude = Math.abs(current) || 1;
+    opt.sector_effects[effIdx].change_tenths = sign < 0 ? -magnitude : magnitude;
+    renderOptions();
+}
+
+function updateSectorMagnitude(optIdx, effIdx, value) {
+    const opt = policyDraft.options[optIdx];
+    if (!opt || !opt.sector_effects[effIdx]) return;
+    const tenths = Math.round(parseFloat(value) * 10);
+    if (!Number.isFinite(tenths)) return;
+    const clamped = Math.max(
+        SECTOR_EFFECT_MIN_MAGNITUDE_TENTHS,
+        Math.min(SECTOR_EFFECT_MAX_MAGNITUDE_TENTHS, tenths)
+    );
+    const sign = (Number(opt.sector_effects[effIdx].change_tenths) || 0) < 0 ? -1 : 1;
+    opt.sector_effects[effIdx].change_tenths = sign * clamped;
+    // No re-render: the input already shows the typed value; clamping on
+    // blur would surprise the user mid-typing. Sign toggle / save flow
+    // surface the clamped result.
+}
+
+// ==================== BUILDER — STAT EFFECTS (per option) ====================
+function addStatEffect(optIdx) {
+    const opt = policyDraft.options[optIdx];
+    if (!opt || opt.stat_effects.length >= STAT_EFFECT_MAX) return;
+    opt.stat_effects.push(newStatEffect());
+    renderOptions();
+}
+
+function removeStatEffect(optIdx, effIdx) {
+    const opt = policyDraft.options[optIdx];
+    if (!opt) return;
+    opt.stat_effects.splice(effIdx, 1);
+    renderOptions();
+}
+
+// Generic stat-effect updater. Some fields trigger re-render (direction
+// toggle changes the highlight; adjust_type shows/hides the value input);
+// numeric and stat_key changes are write-only.
+function updateStatEffect(optIdx, effIdx, field, value) {
+    const opt = policyDraft.options[optIdx];
+    if (!opt || !opt.stat_effects[effIdx]) return;
+    opt.stat_effects[effIdx][field] = value;
+    if (field === 'direction' || field === 'adjust_type') {
+        renderOptions();
+    }
+}
+
+// ==================== BUILDER — OPTIONS RENDER ====================
+function renderOptions() {
+    const banner = document.getElementById('options-banner');
+    const list   = document.getElementById('options-list');
+    const addBtn = document.getElementById('add-option-btn');
+    if (!banner || !list || !addBtn) return;
+
+    // Banner copy reflects whichever mode is active and what the cap is.
+    if (policyDraft.policy_type === 'lever') {
+        banner.innerHTML = `<strong>Lever</strong> &nbsp;Exactly 1 option. Pass-and-forget: effects tick through their duration, costs run, then it ends. Re-pass to fire again.`;
+    } else {
+        banner.innerHTML = `<strong>Structural</strong> &nbsp;${OPTIONS_MIN_STRUCTURAL}–${OPTIONS_MAX} options. One is active per nation at a time; switching to a different option stops the previous one's effects and starts the new one.`;
+    }
+
+    // Add button: capped by mode (lever=1, structural=OPTIONS_MAX).
+    const cap = policyDraft.policy_type === 'lever' ? 1 : OPTIONS_MAX;
+    addBtn.disabled = policyDraft.options.length >= cap;
+
+    if (policyDraft.options.length === 0) {
+        list.innerHTML = `<div style="color:#666; font-size:0.85rem; padding:8px 0;">No options yet. Click <strong>+ Add Option</strong> to start.</div>`;
+        return;
+    }
+
+    list.innerHTML = policyDraft.options.map((o, idx) => renderOption(o, idx, policyDraft.options.length)).join('');
+}
+
+function renderOption(o, idx, total) {
+    const isFirst = idx === 0;
+    const isLast  = idx === total - 1;
+    const min     = policyDraft.policy_type === 'lever' ? 1 : OPTIONS_MIN_STRUCTURAL;
+    const canRemove = total > min;
+    const removeTitle = canRemove
+        ? 'Remove option'
+        : (policyDraft.policy_type === 'lever' ? 'Levers must have exactly 1 option' : `Structural policies need at least ${OPTIONS_MIN_STRUCTURAL} options`);
+
+    return `
+        <div class="option-card">
+            <div class="option-card-header">
+                <span class="option-number-badge">Option ${idx + 1}</span>
+                <input type="text" class="option-label-input" placeholder="e.g. Full Private Property Rights"
+                    value="${escapeHtml(o.option_label || '')}"
+                    oninput="updateOption(${idx}, 'option_label', this.value)">
+                <div class="option-reorder-btns">
+                    <button class="option-reorder-btn" onclick="moveOption(${idx}, -1)" ${isFirst ? 'disabled' : ''} title="Move up">↑</button>
+                    <button class="option-reorder-btn" onclick="moveOption(${idx},  1)" ${isLast  ? 'disabled' : ''} title="Move down">↓</button>
+                </div>
+                <button class="option-remove-btn" onclick="removeOption(${idx})" ${canRemove ? '' : 'disabled'} title="${removeTitle}">✕ Remove</button>
+            </div>
+
+            <div class="form-field">
+                <label>Description</label>
+                <textarea placeholder="What this option does, who it favors, what it changes..."
+                    oninput="updateOption(${idx}, 'description', this.value)">${escapeHtml(o.description || '')}</textarea>
+            </div>
+
+            <div class="option-subsection">
+                <div class="option-subsection-title">🗳️ Sector Effects (up to ${SECTOR_EFFECT_MAX})</div>
+                <div class="option-subsection-hint">
+                    Per-sector popularity shift on resolution.
+                    <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected.
+                    <strong>Fail:</strong> sponsor takes the inverse alone.
+                    Magnitude 0.1 to 3.0 in 0.1 steps; sign toggle controls + / −.
+                </div>
+                ${renderSectorEffectsForOption(idx, o.sector_effects)}
+                <button class="add-btn" onclick="addSectorEffect(${idx})" ${o.sector_effects.length >= SECTOR_EFFECT_MAX ? 'disabled' : ''}>+ Add Sector</button>
+            </div>
+
+            <div class="option-subsection">
+                <div class="option-subsection-title">💰 Costs</div>
+                <div class="option-cost-grid">
+                    <div class="form-field">
+                        <label>Upfront Base ($M) <span style="font-size:0.7rem;color:#666;">negative = revenue</span></label>
+                        <input type="number" step="1" value="${o.upfront_cost}"
+                            oninput="updateOption(${idx}, 'upfront_cost', parseFloat(this.value) || 0)">
+                    </div>
+                    <div class="form-field">
+                        <label>Upfront Scaling Stat (or None)</label>
+                        <select onchange="updateOption(${idx}, 'upfront_scaling_stat', this.value)">
+                            <option value="">None (flat cost)</option>
+                            ${STAT_OPTIONS_HTML}
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Ongoing Base ($M/tick) <span style="font-size:0.7rem;color:#666;">negative = relief</span></label>
+                        <input type="number" step="0.1" value="${o.ongoing_base_cost}"
+                            oninput="updateOption(${idx}, 'ongoing_base_cost', parseFloat(this.value) || 0)">
+                    </div>
+                    <div class="form-field">
+                        <label>Ongoing Scaling Stat (or None)</label>
+                        <select onchange="updateOption(${idx}, 'ongoing_scaling_stat', this.value)">
+                            <option value="">None (flat cost)</option>
+                            ${STAT_OPTIONS_HTML}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="option-subsection">
+                <div class="option-subsection-title">📊 Stat Effects (up to ${STAT_EFFECT_MAX})</div>
+                ${renderStatEffectsForOption(idx, o.stat_effects)}
+                <button class="add-btn" onclick="addStatEffect(${idx})" ${o.stat_effects.length >= STAT_EFFECT_MAX ? 'disabled' : ''}>+ Add Stat Effect</button>
+            </div>
+        </div>
+    `;
+}
+
+function renderSectorEffectsForOption(optIdx, effects) {
+    if (!effects || effects.length === 0) {
+        return `<div style="color:#666; font-size:0.82rem; padding:6px 0;">No sector effects. This option won't shift any popularity on resolution.</div>`;
+    }
+    if (sectorOptions.length === 0) {
+        return `<div style="color:#e57373; font-size:0.82rem;">No sectors loaded — make sure the sectors-phase0 migration has run.</div>`;
+    }
+
+    const rowStyle  = 'display:flex; gap:10px; align-items:center; padding:10px 12px; background:#161616; border:1px solid #2a2a2a; margin-bottom:8px; border-radius:4px;';
+    const selStyle  = 'flex:1; min-width:200px; background:#0f0f0f; border:1px solid #333; color:#eee; padding:6px 8px; border-radius:3px;';
+    const numStyle  = 'width:78px; background:#0f0f0f; border:1px solid #333; color:#eee; padding:6px 8px; border-radius:3px; text-align:center;';
+    const signGroup = 'display:inline-flex; border:1px solid #333; border-radius:3px; overflow:hidden;';
+    const signBase  = 'background:#0f0f0f; color:#888; border:none; padding:6px 12px; cursor:pointer; font-weight:bold; font-size:0.95rem;';
+    const signPosOn = 'background:#1f3a1f; color:#81c784;';
+    const signNegOn = 'background:#3a1d1d; color:#e57373;';
+    const xBtnStyle = 'background:transparent; color:#666; border:1px solid #333; padding:5px 9px; cursor:pointer; border-radius:3px; font-size:0.85rem;';
+
+    return effects.map((e, effIdx) => {
+        const optionsHtml = sectorOptions.map(s =>
+            `<option value="${s.sector_key}"${s.sector_key === e.sector_key ? ' selected' : ''}>${escapeHtml(s.name)}</option>`
+        ).join('');
+        const change = Number(e.change_tenths) || 0;
+        const isPositive = change >= 0;
+        const magnitude = (Math.abs(change) / 10).toFixed(1);
+        return `
+            <div style="${rowStyle}">
+                <select style="${selStyle}" onchange="updateSectorEffectKey(${optIdx}, ${effIdx}, this.value)">
+                    <option value="">-- Select sector --</option>
+                    ${optionsHtml}
+                </select>
+                <div style="${signGroup}" title="Direction: + = popularity gain on pass, − = loss">
+                    <button type="button" style="${signBase}${isPositive  ? signPosOn : ''}" onclick="setSectorSign(${optIdx}, ${effIdx},  1)">+</button>
+                    <button type="button" style="${signBase}${!isPositive ? signNegOn : ''}" onclick="setSectorSign(${optIdx}, ${effIdx}, -1)">−</button>
+                </div>
+                <input type="number" min="0.1" max="3.0" step="0.1" value="${magnitude}" style="${numStyle}"
+                    oninput="updateSectorMagnitude(${optIdx}, ${effIdx}, this.value)" title="Magnitude (0.1 to 3.0)">
+                <button type="button" style="${xBtnStyle}" onclick="removeSectorEffect(${optIdx}, ${effIdx})" title="Remove">✕</button>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderStatEffectsForOption(optIdx, effects) {
+    if (!effects || effects.length === 0) {
+        return `<div style="color:#666; font-size:0.82rem; padding:6px 0;">No stat effects yet. At least one is required to save.</div>`;
+    }
+
+    return effects.map((e, effIdx) => {
+        // Selected-stat dropdown. Inject `selected` on the matching option
+        // so the right one shows on render — string replace is brittle if
+        // the same value appears in two optgroups, so we re-build with the
+        // selected attribute baked in.
+        const statSelect = STAT_GROUPS.map(g =>
+            `<optgroup label="${g.label}">${g.stats.map(s =>
+                `<option value="${s}"${s === e.stat_key ? ' selected' : ''}>${fmtStat(s)}</option>`
+            ).join('')}</optgroup>`
+        ).join('');
+
+        const dir = e.direction === 'down' ? 'down' : 'up';
+        const adjustType = e.adjust_type || '';
+        const adjustValueVisible = adjustType === 'floor' || adjustType === 'ceiling';
+        const adjustHint = adjustType === 'floor'
+            ? '↑ Raises decay floor by this amount'
+            : adjustType === 'ceiling'
+                ? '↓ Lowers decay ceiling by this amount'
+                : '';
+
+        return `
+            <div class="stat-effect-card">
+                <div class="se-header">
+                    <span class="se-label">Effect ${effIdx + 1}</span>
+                    <button class="se-remove" onclick="removeStatEffect(${optIdx}, ${effIdx})">✕ Remove</button>
+                </div>
+                <div class="se-fields">
+                    <div class="form-field">
+                        <label>Stat</label>
+                        <select onchange="updateStatEffect(${optIdx}, ${effIdx}, 'stat_key', this.value)">
+                            <option value="">-- Select --</option>
+                            ${statSelect}
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Dir</label>
+                        <div class="dir-toggle">
+                            <button type="button" class="dir-btn ${dir === 'up'   ? 'sel-up'   : ''}" onclick="updateStatEffect(${optIdx}, ${effIdx}, 'direction', 'up')">▲</button>
+                            <button type="button" class="dir-btn ${dir === 'down' ? 'sel-down' : ''}" onclick="updateStatEffect(${optIdx}, ${effIdx}, 'direction', 'down')">▼</button>
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <label>Rate/tick</label>
+                        <input type="number" value="${e.rate}" min="0.1" max="5" step="0.1"
+                            oninput="updateStatEffect(${optIdx}, ${effIdx}, 'rate', parseFloat(this.value) || 0)">
+                    </div>
+                    <div class="form-field">
+                        <label>Delay</label>
+                        <input type="number" value="${e.delay_ticks}" min="0" max="24" step="1"
+                            oninput="updateStatEffect(${optIdx}, ${effIdx}, 'delay_ticks', parseInt(this.value) || 0)">
+                    </div>
+                    <div class="form-field">
+                        <label>Duration</label>
+                        <input type="number" value="${e.duration_ticks}" min="1" max="60" step="1"
+                            oninput="updateStatEffect(${optIdx}, ${effIdx}, 'duration_ticks', parseInt(this.value) || 1)">
+                    </div>
+                </div>
+                <div class="se-fields se-floor-ceiling-row">
+                    <div class="form-field">
+                        <label>Decay Adjust</label>
+                        <select onchange="updateStatEffect(${optIdx}, ${effIdx}, 'adjust_type', this.value || null)">
+                            <option value=""        ${adjustType === ''        ? 'selected' : ''}>None</option>
+                            <option value="floor"   ${adjustType === 'floor'   ? 'selected' : ''}>Add to Floor</option>
+                            <option value="ceiling" ${adjustType === 'ceiling' ? 'selected' : ''}>Lower Ceiling</option>
+                        </select>
+                    </div>
+                    <div class="form-field" style="${adjustValueVisible ? '' : 'display:none'}">
+                        <label>± Value</label>
+                        <input type="number" value="${e.adjust_value || 0}" min="1" max="50" step="1"
+                            oninput="updateStatEffect(${optIdx}, ${effIdx}, 'adjust_value', parseInt(this.value) || 0)">
+                    </div>
+                    <div class="form-field se-floor-hint" style="${adjustValueVisible ? '' : 'display:none'}">
+                        <small>${adjustHint}</small>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
 // ==================== BUILDER — RESET ====================
 function resetBuilder() {
     editingPolicyId = null;
     policyDraft = newPolicyDraft();
+    // Default a fresh structural draft to OPTIONS_MIN_STRUCTURAL empty option
+    // cards so the user has somewhere to type immediately. Lever drafts get
+    // their single option seeded here too on a type switch.
+    while (policyDraft.options.length < OPTIONS_MIN_STRUCTURAL) {
+        policyDraft.options.push(newOption());
+    }
 
-    // Sync the DOM. Section 3 (Options) has no inputs to clear in 2B-i.
+    // Sync the DOM.
     document.getElementById('b-name').value = '';
     document.getElementById('b-desc').value = '';
     document.getElementById('b-sector').value = '';
@@ -593,9 +1086,15 @@ function resetBuilder() {
     document.getElementById('b-fiscal-category').value = '';
 
     renderOpposedSlots();
+    renderOptions();
 }
 
 // ==================== UTILITIES ====================
+function fmtStat(s) {
+    if (!s) return '—';
+    return s.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
 function fmtCost(m) {
     const n = Number(m) || 0;
     if (n === 0) return '$0';
@@ -631,6 +1130,19 @@ window.addOpposedSlot       = addOpposedSlot;
 window.removeOpposedSlot    = removeOpposedSlot;
 window.updateOpposed        = updateOpposed;
 window.resetBuilder         = resetBuilder;
+// Builder — Phase 2B-ii (option cards)
+window.addOption             = addOption;
+window.removeOption          = removeOption;
+window.moveOption            = moveOption;
+window.updateOption          = updateOption;
+window.addSectorEffect       = addSectorEffect;
+window.removeSectorEffect    = removeSectorEffect;
+window.updateSectorEffectKey = updateSectorEffectKey;
+window.setSectorSign         = setSectorSign;
+window.updateSectorMagnitude = updateSectorMagnitude;
+window.addStatEffect         = addStatEffect;
+window.removeStatEffect      = removeStatEffect;
+window.updateStatEffect      = updateStatEffect;
 </script>
 </body>
 </html>
