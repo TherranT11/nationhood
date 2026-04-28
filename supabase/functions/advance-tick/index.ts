@@ -7866,6 +7866,120 @@ function coalitionAffinity(factionAStrongholds, factionBStrongholds) {
 }
 
 /**
+ * Distribute eliminated presidential-runoff candidates' votes to the
+ * surviving candidates by sector-stronghold affinity, with an abstention
+ * rate that scales from 15% (perfect overlap) to 50% (no overlap).
+ *
+ * Single source of truth for the runoff vote-redistribution math, used by
+ * both the live runoff orchestrator (processPresidentialElectionResult) and
+ * the preview (runPresidentialElectionPreview).
+ *
+ * Inputs:
+ *   eliminatedCandidates  = [{ candidate_id, candidate_name, faction_id,
+ *                              party_name, votes }]   (round-1 losers)
+ *   runoffCandidates      = [{ candidate_id, candidate_name, faction_id }]
+ *                              (top-2 survivors)
+ *   strongholdsByFaction  = { factionId: [{ sector_key, contribution, ... }] }
+ *
+ * Output:
+ *   {
+ *     transfersByCand: {
+ *       [runoff_candidate_id]: {
+ *         transfer_votes: number,
+ *         from: [{ party_name, faction_id, round1_votes, transferred, abstained }]
+ *       }
+ *     },
+ *     endorsements: [{
+ *       eliminated_candidate: string,
+ *       round1_votes: number,
+ *       abstain_votes: number,
+ *       transfers: [{ candidate_name, votes, affinity_pct }]
+ *     }],
+ *     totalAbstained: number,
+ *     totalTransferred: number,
+ *   }
+ *
+ * The live engine consumes `transfersByCand` + `totalAbstained` (the
+ * `from[].abstained` field is counted once per eliminated candidate so the
+ * legacy result-blob shape is preserved). The preview consumes
+ * `endorsements` for the runoff_meta panel.
+ */
+function redistributeRunoffVotes(eliminatedCandidates, runoffCandidates, strongholdsByFaction) {
+    const transfersByCand = {};
+    for (const rc of (runoffCandidates || [])) {
+        transfersByCand[rc.candidate_id] = { transfer_votes: 0, from: [] };
+    }
+    const endorsements = [];
+    let totalAbstained = 0;
+    let totalTransferred = 0;
+
+    if (!runoffCandidates || runoffCandidates.length === 0) {
+        return { transfersByCand, endorsements, totalAbstained, totalTransferred };
+    }
+
+    for (const elim of (eliminatedCandidates || [])) {
+        const elimVotes = elim.votes || 0;
+        if (elimVotes === 0) continue;
+        const elimStrongholds = strongholdsByFaction[elim.faction_id] || [];
+
+        const affinitiesRaw = runoffCandidates.map(rc => ({
+            candidate_id: rc.candidate_id,
+            candidate_name: rc.candidate_name,
+            affinity: coalitionAffinity(elimStrongholds, strongholdsByFaction[rc.faction_id] || []),
+        }));
+
+        // Normalize. If every affinity is zero (eliminated party has no
+        // strongholds, or no overlap with any runoff candidate), split
+        // transferable votes evenly.
+        const affinitySum = affinitiesRaw.reduce((s, a) => s + a.affinity, 0);
+        const affinities = affinitySum <= 0
+            ? affinitiesRaw.map(a => ({ ...a, affinity: 1 / affinitiesRaw.length }))
+            : affinitiesRaw.map(a => ({ ...a, affinity: a.affinity / affinitySum }));
+
+        // Abstain rate: 15% base, climbs toward 50% as overlap drops.
+        const totalOverlap = Math.min(1, affinitySum / Math.max(1, affinitiesRaw.length));
+        const abstainRate = Math.min(0.50, 0.15 + (1 - totalOverlap) * 0.35);
+        const abstainVotes = Math.round(elimVotes * abstainRate);
+        const transferableVotes = elimVotes - abstainVotes;
+        totalAbstained += abstainVotes;
+
+        const detailTransfers = [];
+        for (let i = 0; i < affinities.length; i++) {
+            const a = affinities[i];
+            const transferred = Math.round(transferableVotes * a.affinity);
+            const acc = transfersByCand[a.candidate_id];
+            if (acc) {
+                acc.transfer_votes += transferred;
+                acc.from.push({
+                    party_name: elim.party_name,
+                    faction_id: elim.faction_id,
+                    round1_votes: elimVotes,
+                    transferred,
+                    // Count abstain once (against the first runoff candidate)
+                    // so the live result blob doesn't double-count it.
+                    abstained: i === 0 ? abstainVotes : 0,
+                });
+            }
+            detailTransfers.push({
+                candidate_name: a.candidate_name,
+                votes: transferred,
+                affinity_pct: Math.round(a.affinity * 100),
+            });
+            totalTransferred += transferred;
+        }
+
+        endorsements.push({
+            eliminated_candidate: elim.candidate_name,
+            round1_votes: elimVotes,
+            abstain_votes: abstainVotes,
+            transfers: detailTransfers,
+        });
+    }
+
+    return { transfersByCand, endorsements, totalAbstained, totalTransferred };
+}
+
+/**
  * Return the human-readable name of the faction's #1 stronghold sector,
  * or a fallback string if the faction has no popularity. Used for news
  * copy, party badges, and any UI that previously showed a single-word
@@ -15063,11 +15177,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         });
         if (snapshotErr) throw snapshotErr;
 
-        const { data, error: runError } = await supabase.rpc('run_presidential_election', {
-            p_nation_id: nation.id,
-            p_election_id: targetElectionId
-        });
-        if (runError) throw runError;
+        const data = await runSectorPresidentialElectionRound(supabase, nation.id);
         // Merge parliamentary seat results into the presidential election results
         electionResults = { ...data, seats: parlData?.seats || [] };
     } else {
@@ -15371,6 +15481,170 @@ async function loadSectorElectionInputs(supabase, nationId, { includeCurrentSeat
     return { factions: factionList, sectors: sectorList, popularity };
 }
 
+/**
+ * Sector-based presidential election — round 1 vote tally.
+ *
+ * Replaces the run_presidential_election SQL RPC. Uses TWP shares instead of
+ * the dropped contested_vote_share × turnout_rate model.
+ *
+ * Vote model:
+ *   total_votes_cast = eligible_voters × sector_weighted_turnout
+ *   sector_weighted_turnout = Σ(base_turnout × weight) / Σ(weight)
+ *   candidate.votes = round((party_TWP / total_party_TWP) × total_votes_cast)
+ *   Multi-candidate-same-party: votes split evenly, remainder to first candidate.
+ *
+ * Returns the same JSONB-compatible shape as the legacy RPC so
+ * processPresidentialElectionResult and admin.html consumers don't need
+ * plumbing changes:
+ *   {
+ *     presidential_candidates: [{ candidate_id, candidate_name, faction_id,
+ *                                  party_name, trait_key, votes,
+ *                                  vote_percentage, winner }],
+ *     bloc_details: [],
+ *     total_votes_cast, total_abstentions, turnout_pct
+ *   }
+ */
+async function runSectorPresidentialElectionRound(supabase, nationId) {
+    // Fetch nation, candidates (joined to factions), sectors, popularity, shard tick
+    const [nationRes, candRes, sectorsRes, shardRes] = await Promise.all([
+        supabase.from('nations')
+            .select('id, name, eligible_voters')
+            .eq('id', nationId)
+            .single(),
+        supabase.from('pm_candidates')
+            .select('id, first_name, last_name, faction_id, trait_key, factions(faction_name, faction_type, abandoned_at, last_seen_tick, founded_tick)')
+            .eq('nation_id', nationId)
+            .eq('candidate_type', 'presidential')
+            .eq('selected', true),
+        supabase.from('sectors')
+            .select('id, sector_key, name, weight, base_turnout, is_active')
+            .eq('nation_id', nationId)
+            .eq('is_active', true),
+        supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+    ]);
+
+    if (nationRes.error) throw new Error(`load nation: ${nationRes.error.message}`);
+    if (candRes.error)   throw new Error(`load candidates: ${candRes.error.message}`);
+    if (sectorsRes.error) throw new Error(`load sectors: ${sectorsRes.error.message}`);
+
+    const nation = nationRes.data;
+    if (!nation) throw new Error(`Nation not found: ${nationId}`);
+
+    const eligible = Number(nation.eligible_voters) || 0;
+    const sectors  = sectorsRes.data || [];
+    const tick     = shardRes.data?.current_tick ?? 0;
+
+    // Filter candidates to active parties (mirrors the RPC's last-seen-tick window)
+    const INACTIVE_GAP = 12;
+    const allCands = (candRes.data || []).filter(c => {
+        const f = c.factions;
+        if (!f) return false;
+        if (f.faction_type !== 'party') return false;
+        if (f.abandoned_at) return false;
+        if (f.last_seen_tick != null) return (tick - f.last_seen_tick) < INACTIVE_GAP;
+        return (tick - (f.founded_tick || 0)) < INACTIVE_GAP;
+    });
+
+    if (allCands.length === 0) {
+        return {
+            presidential_candidates: [],
+            bloc_details: [],
+            total_votes_cast: 0,
+            total_abstentions: eligible,
+            turnout_pct: 0,
+        };
+    }
+
+    // Load popularity for the candidate-backing factions
+    const factionIds = [...new Set(allCands.map(c => c.faction_id).filter(Boolean))];
+    let popularity = [];
+    if (factionIds.length > 0 && sectors.length > 0) {
+        const { data: pop, error: popErr } = await supabase
+            .from('faction_sector_popularity')
+            .select('faction_id, sector_id, popularity')
+            .in('faction_id', factionIds);
+        if (popErr) throw new Error(`load popularity: ${popErr.message}`);
+        popularity = pop || [];
+    }
+
+    // Compute TWP per candidate-backing faction
+    const twpByFaction = {};
+    for (const fid of factionIds) {
+        twpByFaction[fid] = calculateTotalWeightedPopularity(fid, sectors, popularity);
+    }
+    const totalTwp = Object.values(twpByFaction).reduce((s, v) => s + (Number(v) || 0), 0);
+
+    // Sector-weighted turnout average. Falls back to 0.65 if sectors unavailable.
+    let turnout = 0.65;
+    if (sectors.length > 0) {
+        const sumW = sectors.reduce((s, x) => s + (Number(x.weight) || 0), 0);
+        if (sumW > 0) {
+            const sumWT = sectors.reduce((s, x) => s + (Number(x.weight) || 0) * (Number(x.base_turnout) || 0), 0);
+            turnout = sumWT / sumW;
+        }
+    }
+    const totalVotesCast = Math.round(eligible * turnout);
+
+    // Group candidates by faction so multi-candidate-same-party splits evenly
+    const candsByFaction = {};
+    for (const c of allCands) {
+        if (!candsByFaction[c.faction_id]) candsByFaction[c.faction_id] = [];
+        candsByFaction[c.faction_id].push(c);
+    }
+
+    // Build candidate vote rows
+    const candidateRows = [];
+    for (const c of allCands) {
+        const fid = c.faction_id;
+        const partyTwp = Number(twpByFaction[fid]) || 0;
+        const partyShare = totalTwp > 0 ? partyTwp / totalTwp : 0;
+        const partyVotes = Math.round(partyShare * totalVotesCast);
+        const cohort = candsByFaction[fid] || [c];
+        const perCand = Math.floor(partyVotes / cohort.length);
+        // Remainder to the first candidate in the cohort (by id sort for determinism)
+        const sorted = [...cohort].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        const remainder = partyVotes - perCand * cohort.length;
+        const isFirst = sorted[0]?.id === c.id;
+        const votes = perCand + (isFirst ? remainder : 0);
+        candidateRows.push({
+            candidate_id:   c.id,
+            candidate_name: `${c.first_name || ''} ${c.last_name || ''}`.trim(),
+            faction_id:     fid,
+            party_name:     c.factions?.faction_name || 'Unknown',
+            trait_key:      c.trait_key || null,
+            votes,
+        });
+    }
+
+    // Recompute total cast from rounded candidate votes (so percentages align)
+    const actualTotal = candidateRows.reduce((s, c) => s + (c.votes || 0), 0);
+    const abstentions = Math.max(0, eligible - actualTotal);
+    const turnoutPct  = eligible > 0 ? Number(((actualTotal / eligible) * 100).toFixed(2)) : 0;
+
+    // Pick winner (highest votes — runoff orchestrator handles 50% threshold)
+    let winnerId = null;
+    let maxVotes = -1;
+    for (const c of candidateRows) {
+        if (c.votes > maxVotes) { maxVotes = c.votes; winnerId = c.candidate_id; }
+    }
+
+    const finalCandidates = candidateRows.map(c => ({
+        ...c,
+        vote_percentage: actualTotal > 0
+            ? Number(((c.votes / actualTotal) * 100).toFixed(2))
+            : 0,
+        winner: c.candidate_id === winnerId,
+    }));
+
+    return {
+        presidential_candidates: finalCandidates,
+        bloc_details: [],
+        total_votes_cast: actualTotal,
+        total_abstentions: abstentions,
+        turnout_pct: turnoutPct,
+    };
+}
+
 function layerBonusesIntoPopularity(popularity, sectors, bonuses) {
     if (!bonuses || bonuses.size === 0) return popularity;
     const sectorIdByKey = new Map(sectors.map(s => [s.sector_key, s.id]));
@@ -15591,10 +15865,13 @@ async function processElections(supabase, nation, currentTick) {
                 continue;
             }
 
-            ({ data, error } = await supabase.rpc('run_presidential_election', {
-                p_nation_id: nation.id,
-                p_election_id: election.id
-            }));
+            try {
+                data = await runSectorPresidentialElectionRound(supabase, nation.id);
+                error = null;
+            } catch (e) {
+                data = null;
+                error = e;
+            }
         } else {
             // Phase 3: parliamentary uses the sector engine. Wrap in try/catch
             // and shape the response as { data, error } to match the legacy
@@ -15612,10 +15889,13 @@ async function processElections(supabase, nation, currentTick) {
             console.error(`Election RPC failed (attempt 1) for ${nation.name}:`, error);
             // Retry once
             if (electionType === 'presidential') {
-                ({ data, error } = await supabase.rpc('run_presidential_election', {
-                    p_nation_id: nation.id,
-                    p_election_id: election.id
-                }));
+                try {
+                    data = await runSectorPresidentialElectionRound(supabase, nation.id);
+                    error = null;
+                } catch (e) {
+                    data = null;
+                    error = e;
+                }
             } else {
                 try {
                     data = await runSectorElection(supabase, nation);
@@ -15910,14 +16190,17 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             }
         }
 
-        // Run the presidential election RPC again with only the top 2
-        const { data: runoffData, error: runoffErr } = await supabase.rpc('run_presidential_election', {
-            p_nation_id: nation.id,
-            p_election_id: completedElection.id
-        });
+        // Run the presidential election again with only the top 2
+        let runoffData = null;
+        let runoffErr = null;
+        try {
+            runoffData = await runSectorPresidentialElectionRound(supabase, nation.id);
+        } catch (e) {
+            runoffErr = e;
+        }
 
         if (runoffErr) {
-            console.error(`Runoff RPC failed for ${nation.name}:`, runoffErr);
+            console.error(`Runoff failed for ${nation.name}:`, runoffErr);
             // Fallback: use round 1 winner
             winner = topCandidate;
         } else {
@@ -15956,71 +16239,23 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             const popList    = popularityRows || [];
 
             // Pre-compute strongholds per faction so we don't repeat work
-            // inside the eliminated-candidates loop.
+            // inside the redistribution helper.
             const strongholdsByFaction = {};
             for (const fid of allFactionIds) {
                 strongholdsByFaction[fid] = getStrongholdSectors(fid, sectorList, popList, 3);
             }
 
-            // Compute transfers for each eliminated candidate
-            const runoffTransfers = {};
-            for (const rc of runoffResults) {
-                runoffTransfers[rc.candidate_id] = { transfer_votes: 0, from: [] };
-            }
-            let totalAbstained = 0;
-
             // Defensive: if the RPC returned no runoff candidates, skip the
             // redistribution math (avoids 1/0 in the affinity-fallback branch).
             const skipRedistribution = runoffCandidateList.length === 0;
 
-            for (const elim of (skipRedistribution ? [] : eliminatedCandidates)) {
-                const elimVotes = elim.votes || 0;
-                if (elimVotes === 0) continue;
-                const elimStrongholds = strongholdsByFaction[elim.faction_id] || [];
-
-                // Sector affinity (0..1) per runoff candidate. Higher = closer
-                // electoral coalition.
-                const affinitiesRaw = runoffCandidateList.map(rc => ({
-                    candidate_id: rc.candidate_id,
-                    affinity: coalitionAffinity(elimStrongholds, strongholdsByFaction[rc.faction_id] || []),
-                }));
-
-                // Normalize. If every affinity is zero (eliminated party has no
-                // strongholds, or no overlap with any runoff candidate), split
-                // transferable votes evenly — same fallback as the legacy code.
-                const affinitySum = affinitiesRaw.reduce((s, a) => s + a.affinity, 0);
-                let affinities;
-                if (affinitySum <= 0) {
-                    affinities = affinitiesRaw.map(a => ({ ...a, affinity: 1 / affinitiesRaw.length }));
-                } else {
-                    affinities = affinitiesRaw.map(a => ({ ...a, affinity: a.affinity / affinitySum }));
-                }
-
-                // Abstention rate: 15% base, scales with how unaligned the
-                // eliminated party is with the runoff field. With perfect
-                // overlap (max affinitySum across all runoff candidates), 15%
-                // abstain. With zero overlap, abstention climbs toward 50%.
-                const totalOverlap = Math.min(1, affinitySum / Math.max(1, affinitiesRaw.length));
-                const abstainRate = Math.min(0.50, 0.15 + (1 - totalOverlap) * 0.35);
-                const abstainVotes = Math.round(elimVotes * abstainRate);
-                const transferableVotes = elimVotes - abstainVotes;
-                totalAbstained += abstainVotes;
-
-                // Distribute transferable votes proportionally by affinity
-                for (const a of affinities) {
-                    const transferred = Math.round(transferableVotes * a.affinity);
-                    if (runoffTransfers[a.candidate_id]) {
-                        runoffTransfers[a.candidate_id].transfer_votes += transferred;
-                        runoffTransfers[a.candidate_id].from.push({
-                            party_name: elim.party_name,
-                            faction_id: elim.faction_id,
-                            round1_votes: elimVotes,
-                            transferred,
-                            abstained: a === affinities[0] ? abstainVotes : 0  // count abstain once
-                        });
-                    }
-                }
-            }
+            const redistribution = redistributeRunoffVotes(
+                skipRedistribution ? [] : eliminatedCandidates,
+                runoffCandidateList,
+                strongholdsByFaction,
+            );
+            const runoffTransfers = redistribution.transfersByCand;
+            const totalAbstained = redistribution.totalAbstained;
 
             // Apply transfers to runoff results
             runoffResults = runoffResults.map(c => {
@@ -17645,218 +17880,6 @@ const ISSUE_DEFS = {
 
 const ISSUE_IDS = Object.keys(ISSUE_DEFS);
 
-// ============================================================================
-// AXIS HELPERS
-// ============================================================================
-
-
-// ============================================================================
-// BIMODAL ALIGNMENT HELPER
-// ============================================================================
-// When polarization is low the electorate is a single bell curve at the mean.
-// When polarization is high the electorate splits into two humps offset from
-// the mean. This function blends between the two models based on variance.
-
-/**
- * Compute per-axis alignment using a bimodal mixture model.
- *
- * @param {number} partyPos  - Party position on 0-100 scale
- * @param {number} elecMean  - Electorate mean on 0-100 scale
- * @param {number} elecVar   - Electorate variance (5-45, higher = more polarized)
- * @returns {number} 0-1 alignment score for this axis
- */
-function bimodalAxisAlignment(partyPos, elecMean, elecVar) {
-    const gauss = (x, mu, sigma) => Math.exp(-((x - mu) * (x - mu)) / (2 * sigma * sigma));
-
-    const sigma = Math.max(5, elecVar);
-
-    // Unimodal: single Gaussian at the mean (classic model)
-    const unimodal = gauss(partyPos, elecMean, sigma);
-
-    // How bimodal is this electorate? 0 at var<=10, 1 at var>=40
-    const polWeight = Math.min(1, Math.max(0, (elecVar - 10) / 30));
-
-    if (polWeight <= 0) return unimodal;
-
-    // Bimodal: two narrower Gaussians offset from mean
-    // Offset grows with variance (at max var=45, offset=30 from mean)
-    const offset = elecVar * 0.67;
-    // Each hump narrows as polarization deepens — at max polarization the
-    // valley between camps should be deep, punishing centrist positions hard.
-    // Multiplier scales from 0.45 (mild polarization) down to 0.25 (extreme).
-    const humpMult = 0.45 - 0.20 * polWeight;          // 0.45 → 0.25
-    const humpSigma = Math.max(5, sigma * humpMult);
-
-    const leftHump = Math.min(100, Math.max(0, elecMean - offset));
-    const rightHump = Math.min(100, Math.max(0, elecMean + offset));
-
-    // Party alignment = best overlap with either hump
-    const bimodal = Math.max(gauss(partyPos, leftHump, humpSigma), gauss(partyPos, rightHump, humpSigma));
-
-    // Centrist valley penalty: parties near the mean in a polarized electorate
-    // get an additional penalty. The valley between humps should be deep.
-    // Penalty scales with polWeight and proximity to the mean.
-    const distFromMean = Math.abs(partyPos - elecMean);
-    const inValley = distFromMean < offset * 0.6; // within 60% of the offset = in the valley
-    let valleyPenalty = 1.0;
-    if (inValley && polWeight > 0) {
-        // How deep in the valley: 1.0 at the mean, 0.0 at the valley edge
-        const valleyDepth = 1.0 - (distFromMean / (offset * 0.6));
-        // Penalty: up to 70% reduction at max polarization, dead centre
-        valleyPenalty = 1.0 - (valleyDepth * polWeight * 0.70);
-    }
-
-    // Blend: low polarization = unimodal, high polarization = bimodal (with valley penalty)
-    const raw = (1 - polWeight) * unimodal + polWeight * bimodal;
-    return raw * valleyPenalty;
-}
-
-// ============================================================================
-// SPATIAL COMPETITION — per-axis voter allocation
-// ============================================================================
-
-/**
- * Compute each party's share of voters on a single ideology axis using
- * spatial competition. Instead of each party getting an independent alignment
- * score, parties compete for the same voters: if two parties occupy similar
- * positions, they split that region's voters between them.
- *
- * Algorithm:
- * 1. Each party has an alignment score from bimodalAxisAlignment (0-1).
- *    This represents how well-positioned the party is on this axis.
- * 2. We run a local softmax over alignment scores to get vote shares.
- *    A party with alignment 1.0 competing alone gets nearly all the share.
- *    Two parties with alignment 1.0 split that share roughly 50/50.
- * 3. Result is normalized to sum to 1.0 across all parties.
- *
- * This replaces the old model where each party's alignment was independent —
- * now being in a crowded part of the spectrum hurts your per-party share.
- *
- * @param {Array<{factionId: string, partyNorm: number}>} parties - Each party's normalized position (0-100)
- * @param {number} elecMean - Electorate mean on 0-100 scale
- * @param {number} elecVar - Electorate variance (5-45)
- * @param {number} [temperature] - Softmax temperature override (default scales dynamically: 4 at low polarization → 0.75 at max)
- * @returns {Map<string, number>} factionId → share of this axis's voters (0-1, sums to 1)
- */
-function spatialAxisCompetition(parties, elecMean, elecVar, temperature) {
-    // Dynamic temperature: at low polarization (var≤10) use temp=4 (soft competition);
-    // at high polarization (var≥40) use temp=0.75 (sharp competition) so the centrist
-    // valley penalty actually survives the softmax.
-    const polWeight = Math.min(1, Math.max(0, (elecVar - 10) / 30));
-    const dynTemp = temperature ?? (4 - 3.25 * polWeight);
-
-    const result = new Map();
-    if (parties.length === 0) return result;
-    if (parties.length === 1) {
-        // Sole party: share = its alignment score (not auto-100%)
-        // A single party far from voters still shouldn't get full credit
-        const align = bimodalAxisAlignment(parties[0].partyNorm, elecMean, elecVar);
-        result.set(parties[0].factionId, align);
-        return result;
-    }
-
-    // Step 1: Get raw alignment per party
-    const alignments = parties.map(p => ({
-        factionId: p.factionId,
-        alignment: bimodalAxisAlignment(p.partyNorm, elecMean, elecVar),
-    }));
-
-    // Step 2: Softmax over alignment scores
-    const scores = alignments.map(a => a.alignment);
-    const maxScore = Math.max(...scores);
-    const k = Math.max(0.5, dynTemp);
-    const exps = scores.map(s => Math.exp((s - maxScore) / k));
-    const sumExp = exps.reduce((a, b) => a + b, 0);
-
-    // Step 3: Each party's share = their proportion of the softmax
-    // But scale by the best alignment — if ALL parties are far from voters,
-    // the total pool of voters is small (no free votes for being least-bad).
-    //
-    // Crowding penalty: when multiple parties cluster near the same alignment
-    // score, they are all competing for the same voters. The ideological space
-    // becomes saturated — each additional party crowding the same region
-    // shrinks the effective pool available to all of them.
-    // Threshold: parties within 15% of the top alignment count as "clustered".
-    // Divisor: each extra clustered party reduces pool quality by 25%.
-    //   1 party  → divisor 1.00 (no penalty)
-    //   2 parties → divisor 1.25 (−20%)
-    //   3 parties → divisor 1.50 (−33%)
-    //   4 parties → divisor 1.75 (−43%)
-    const clusteredCount = alignments.filter(a => a.alignment >= maxScore * 0.85).length;
-    const crowdingDivisor = 1 + 0.25 * (clusteredCount - 1);
-    const poolQuality = maxScore / crowdingDivisor;
-
-    for (let i = 0; i < alignments.length; i++) {
-        const share = sumExp > 0 ? (exps[i] / sumExp) : (1 / alignments.length);
-        result.set(alignments[i].factionId, round3(share * poolQuality));
-    }
-
-    return result;
-}
-
-// ============================================================================
-// IDEOLOGY ZONE SYSTEM (centrist / moderate / radical)
-// ============================================================================
-
-/**
- * Zone IDs in order from left to right on the 0-100 axis.
- */
-const ZONE_IDS = ['radical-left', 'moderate-left', 'centrist', 'moderate-right', 'radical-right'];
-
-/**
- * Calculate zone boundaries for an axis based on electorate mean and variance.
- * Asymmetric: radical zone grows on the side the mean leans toward + with variance.
- *
- * @param {number} mean - Electorate mean position (0-100)
- * @param {number} variance - Electorate variance (5-45)
- * @returns {{ zones: object[], zoneForPos: function(number): string }}
- */
-function calculateIdeologyZones(mean, variance) {
-    const polarization = Math.min(100, Math.max(0, (variance - 5) / 35 * 100));
-
-    // Centrist zone centered at 50, width shrinks with polarization
-    const centristHalf = Math.max(3, 7 - polarization * 0.04);
-    const centristLeft = 50 - centristHalf;
-    const centristRight = 50 + centristHalf;
-
-    // Radical fraction grows with polarization + mean lean
-    const meanBias = (mean - 50) / 50; // -1 to +1
-    const radicalFraction = 0.15 + polarization * 0.004;
-
-    // Left side: 0 → centristLeft
-    const leftSpace = centristLeft;
-    const leftRadicalBias = Math.max(0, -meanBias);
-    const leftRadicalFrac = Math.min(0.85, radicalFraction + leftRadicalBias * 0.3);
-    const leftRadicalWidth = leftSpace * leftRadicalFrac;
-    const leftModerateWidth = leftSpace - leftRadicalWidth;
-
-    // Right side: centristRight → 100
-    const rightSpace = 100 - centristRight;
-    const rightRadicalBias = Math.max(0, meanBias);
-    const rightRadicalFrac = Math.min(0.85, radicalFraction + rightRadicalBias * 0.3);
-    const rightRadicalWidth = rightSpace * rightRadicalFrac;
-    const rightModerateWidth = rightSpace - rightRadicalWidth;
-
-    const zones = [
-        { id: 'radical-left',   left: 0,                                width: leftRadicalWidth,  label: 'Radical' },
-        { id: 'moderate-left',  left: leftRadicalWidth,                  width: leftModerateWidth, label: 'Moderate' },
-        { id: 'centrist',       left: centristLeft,                       width: centristRight - centristLeft, label: 'Centrist' },
-        { id: 'moderate-right', left: centristRight,                      width: rightModerateWidth, label: 'Moderate' },
-        { id: 'radical-right',  left: centristRight + rightModerateWidth, width: rightRadicalWidth,  label: 'Radical' },
-    ];
-
-    function zoneForPos(pos) {
-        if (pos < leftRadicalWidth) return 'radical-left';
-        if (pos < centristLeft) return 'moderate-left';
-        if (pos < centristRight) return 'centrist';
-        if (pos < centristRight + rightModerateWidth) return 'moderate-right';
-        return 'radical-right';
-    }
-
-    return { zones, zoneForPos };
-}
-
-
 
 // ============================================================================
 // DEMOGRAPHIC ← STAT MAPPING
@@ -17908,29 +17931,6 @@ const DEMOGRAPHIC_STAT_MAP = {
     },
 };
 
-
-
-// ============================================================================
-// SALIENCE ← STAT MAPPING
-// ============================================================================
-// How much the electorate cares about each ideology axis.
-// Issues make axes salient; the axis salience weights determine how much
-// each axis matters in the alignment calculation.
-
-/**
- * Maps issues to their axis weights for salience computation.
- * When an issue is salient, its associated axes get more weight.
- */
-const ISSUE_AXIS_SALIENCE = {
-    cost_of_living:  { liberty_equality: 0.6, individualism_collectivism: 0.4 },
-    immigration:     { globalism_nationalism: 0.6, security_freedom: 0.4 },
-    healthcare:      { liberty_equality: 0.5, individualism_collectivism: 0.5 },
-    unemployment:    { liberty_equality: 0.5, individualism_collectivism: 0.5 },
-    corruption:      { tradition_progress: 0.5, security_freedom: 0.5 },
-    education:       { tradition_progress: 0.6, individualism_collectivism: 0.4 },
-    infrastructure:  { tradition_progress: 0.5, globalism_nationalism: 0.5 },
-    climate:         { tradition_progress: 0.6, globalism_nationalism: 0.4 },
-};
 
 // ============================================================================
 // CONFIGURATION KNOBS
@@ -18502,10 +18502,13 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     // 7. Compute engagement scores (Governance pillar)
     const coalitionPartyIds = new Set(coalitionRow?.party_ids || []);
     const leadPartyId = coalitionRow?.lead_party_id || null;
+    // Phase 5b: issue_state table dropped — engagement scoring no longer
+    // takes per-issue salience as input. Pass an empty array to keep the
+    // public signature stable.
     let engagementResults = {};
     try {
         engagementResults = await computeEngagementScores(
-            supabase, nation, activeFactions, coalitionPartyIds, leadPartyId, issueStates || [], currentTick
+            supabase, nation, activeFactions, coalitionPartyIds, leadPartyId, [], currentTick
         ) || {};
     } catch (engErr) {
         console.warn(`[tickElectorate] Engagement scores failed for ${nation.name}, using defaults:`, engErr.message);
@@ -18608,28 +18611,6 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
  * @param {object} profile - electorate_profile row
  * @param {object} axisSalienceWeights - { axisKey: weight } from issue states
  * @returns {number} 0-100 alignment
- */
-
-/**
- * Compute spatially-competitive alignment for ALL factions simultaneously.
- *
- * Instead of scoring each faction independently against the electorate,
- * this runs per-axis spatial competition: parties near the same position
- * split voters, while a party alone on a flank captures it entirely.
- *
- * @param {object} ideoMap - { factionId: faction_ideology row }
- * @param {object} profile - electorate_profile row
- * @param {object} axisSalienceWeights - { axisKey: weight }
- * @returns {object} { factionId: spatialAlignment (0-100) }
- */
-
-/**
- * Compute axis salience weights from issue_state rows.
- * Each issue's salience is distributed across its axes according to ISSUE_AXIS_SALIENCE.
- * The result is normalized so weights sum to 1.0.
- *
- * @param {object[]} issueStates - Array of issue_state rows
- * @returns {object} { axisKey: weight } normalized to sum to 1.0
  */
 
 // ============================================================================
@@ -19021,47 +19002,6 @@ async function adjustCredibility(supabase, factionId, nationId, delta, suspendRe
 }
 
 // ============================================================================
-// PHASE 4: TAKE A STANCE
-// ============================================================================
-
-/**
- * Configuration for the Take a Stance campaign action.
- */
-const STANCE_CONFIG = {
-    AP_COST: 4,
-    COOLDOWN_WINDOW: 3,        // ticks between stances
-    MAX_STANCES: 5,            // max concurrent stances per faction
-
-    // Intensity → strength, decay & ideology shift
-    INTENSITY: {
-        centrist:  { strength: 60,  decay_rate: 2, ideology_shift: 2 },
-        moderate:  { strength: 80,  decay_rate: 4, ideology_shift: 4 },
-        radical:   { strength: 100, decay_rate: 8, ideology_shift: 7 },
-    },
-
-    // Visibility boost when taking a stance
-    VISIBILITY_BOOST: 4,
-};
-
-/**
- * Execute the "Take a Stance" campaign action.
- *
- * Creates or refreshes a faction_issue_stance row linking a faction to an
- * issue on a specific axis+side. Checks ideological consistency, pioneer
- * status, and enforces the max-stances cap.
- *
- * @param {object} supabase
- * @param {string} factionId
- * @param {string} nationId
- * @param {string} issueId    - One of ISSUE_IDS (e.g., 'cost_of_living')
- * @param {string} axis       - Ideology axis key (e.g., 'liberty_equality')
- * @param {string} side       - 'left' or 'right'
- * @param {string} intensity  - 'centrist', 'moderate', or 'radical'
- * @param {number} currentTick
- * @returns {{ success, message, stance?, effects? }}
- */
-
-// ============================================================================
 // PHASE 4: CAMPAIGN ACTION ELECTORATE HOOKS
 // ============================================================================
 
@@ -19108,33 +19048,6 @@ async function onRally(supabase, factionId, nationId, outcomeId, currentTick) {
     );
 
     return { visBoost, approvalHit };
-}
-
-/**
- * Hook called after executeOutreach() to update electorate tables.
- *
- * Outreach boosts both visibility and approval slightly.
- *
- * @param {object} supabase
- * @param {string} factionId
- * @param {string} nationId
- * @param {number} alignmentScore - 0-100 alignment with target
- * @param {number} diminishedEffect - Final effect after diminishing returns
- * @param {number} currentTick
- */
-async function onOutreach(supabase, factionId, nationId, alignmentScore, diminishedEffect, currentTick) {
-    // Visibility boost scales with alignment
-    const visBoost = Math.max(3, Math.round(diminishedEffect * 1.5));
-    await boostVisibility(supabase, factionId, nationId, visBoost);
-
-    // Approval nudge: small positive based on alignment
-    const approvalNudge = round2(Math.max(0.5, diminishedEffect * 0.3));
-    await supabase.rpc('adjust_momentum', { p_faction_id: factionId, p_delta: approvalNudge, p_label: `Outreach (+${approvalNudge})`, p_tick: currentTick });
-
-    await logActivity(supabase, factionId, nationId, 'outreach',
-        'Outreach', `Outreach — effect: ${diminishedEffect}, alignment: ${alignmentScore}`,
-        'success', 4, currentTick
-    );
 }
 
 /**
@@ -19229,247 +19142,6 @@ async function logActivity(supabase, factionId, nationId, actionType, actionLabe
         console.error(`[Electorate] Failed to log activity (${actionType}):`, error.message);
     }
 }
-
-// ============================================================================
-// PHASE 4: POLL NOW
-// ============================================================================
-
-const POLL_CONFIG = {
-    AP_COST: 2,
-    COOLDOWN_WINDOW: 0,   // no cooldown
-    VISIBILITY_BOOST: 0,
-};
-
-/**
- * Execute "Poll Now" — snapshot current electorate standings into polled_* columns.
- * Gives the player a frozen reading of their pillars, vote share, and limiters
- * so they can compare before/after campaign actions.
- */
-async function executePollNow(supabase, factionId, nationId, currentTick, pollTier = 1) {
-    // ── Cooldown check ──
-    // Cooldown check (skip if cooldown is 0)
-    if (POLL_CONFIG.COOLDOWN_WINDOW > 0) {
-        const { data: recentPolls } = await supabase
-            .from('campaign_actions')
-            .select('id')
-            .eq('party_id', factionId)
-            .eq('action_type', 'poll_now')
-            .gte('tick_performed', currentTick - POLL_CONFIG.COOLDOWN_WINDOW);
-        if (recentPolls && recentPolls.length > 0) {
-            return { success: false, message: `Poll cooldown: wait ${POLL_CONFIG.COOLDOWN_WINDOW} ticks between polls` };
-        }
-    }
-
-    // ── Deduct AP (tiered: 1 AP = ±5%, 3 AP = ±3%) ──
-    const apCost = pollTier === 3 ? 3 : 1;
-    const apResult = await deductAP(supabase, factionId, apCost, { reason: 'poll', detail: `Poll Now (±${pollTier === 3 ? '3' : '5'}%)`, tick: currentTick });
-    if (!apResult.success) {
-        return { success: false, message: apResult.error || 'Insufficient AP' };
-    }
-
-    // ── Load ALL standings for this nation (poll snapshots every faction) ──
-    const { data: allStandings } = await supabase
-        .from('faction_electoral_standing')
-        .select('*')
-        .eq('nation_id', nationId);
-    if (!allStandings || allStandings.length === 0) {
-        return { success: false, message: 'No electorate standing found. Advance a tick first.' };
-    }
-    const standing = allStandings.find(s => s.faction_id === factionId);
-    if (!standing) {
-        return { success: false, message: 'No electorate standing found for your faction.' };
-    }
-
-    // ── Snapshot polled columns for ALL factions in this nation ──
-    // Phase 5b: polled_alignment / polled_alignment_contribution dropped
-    // along with ideological_alignment / alignment_contribution.
-    for (const s of allStandings) {
-        const { error: updErr } = await supabase.from('faction_electoral_standing')
-            .update({
-                last_polled_tick: currentTick,
-                polled_platform_appeal: s.platform_appeal,
-                polled_party_approval: s.party_approval,
-                polled_visibility: s.visibility,
-                polled_credibility: s.credibility_modifier,
-                polled_vote_share: s.realized_vote_share,
-                polled_appeal_contribution: s.appeal_contribution,
-                polled_approval_contribution: s.approval_contribution,
-                polled_vote_left_on_table: s.vote_left_on_table,
-            })
-            .eq('id', s.id);
-        if (updErr) console.error('[Electorate] Poll snapshot failed for', s.faction_id, ':', updErr.message);
-    }
-
-    // ── Visibility + logs ──
-    if (POLL_CONFIG.VISIBILITY_BOOST > 0) {
-        await boostVisibility(supabase, factionId, nationId, POLL_CONFIG.VISIBILITY_BOOST);
-    }
-
-    const pollMargin = pollTier === 3 ? 3 : 5;
-    const { error: insErr } = await supabase.from('campaign_actions').insert({
-        party_id: factionId, nation_id: nationId,
-        action_type: 'poll_now', ap_cost: apCost,
-        money_cost: 0, tick_performed: currentTick,
-        result: { polledTick: currentTick, pollMargin },
-    });
-    if (insErr) console.error('[Electorate] campaign_actions insert failed:', insErr.message);
-
-    await logActivity(supabase, factionId, nationId, 'poll_now',
-        'Poll Now', `Commissioned a poll (±${pollMargin}%)`, 'success',
-        apCost, currentTick);
-
-    const voteSharePct = round2((standing.realized_vote_share || 0) * 100);
-    const pollEffects = [
-        { label: 'Vote share', value: `${voteSharePct}%` },
-        { label: 'Approval', value: `${round2(standing.party_approval || 50)}` },
-    ];
-    if (POLL_CONFIG.VISIBILITY_BOOST > 0) {
-        pollEffects.push({ label: 'Visibility', value: `+${POLL_CONFIG.VISIBILITY_BOOST}` });
-    }
-    return {
-        success: true,
-        message: `Poll complete — you're polling at ${voteSharePct}%`,
-        effects: pollEffects,
-        newAp: apResult.newAp,
-    };
-}
-
-
-// ============================================================================
-// PHASE 4: IDEOLOGY SHIFT ACTIONS (Think Tank, Media Campaign, Grassroots)
-// ============================================================================
-
-const IDEO_SHIFT_CONFIG = {
-    THINK_TANK: {
-        AP_COST: 8,             // upfront launch cost
-        TICK_AP_COST: 1,        // 1 AP per tick while running
-        COOLDOWN_WINDOW: 5,     // ticks between launches
-        MAX_ACTIVE: 1,          // only 1 active think tank per faction
-        DRIFT_MIN: 0.1,         // 1d3: random 0.1, 0.2, or 0.3 per tick
-        DRIFT_MAX: 0.3,
-        DURATION: 50,           // runs for 50 ticks then auto-completes
-        VISIBILITY_BOOST: 0,    // behind the scenes — no visibility
-    },
-    MEDIA_CAMPAIGN: {
-        AP_COST: 6,
-        COOLDOWN_WINDOW: 5,
-        MAX_ACTIVE: 1,
-        VARIANCE_MIN: 0.1,      // 1d5: random 0.1–0.5 per tick
-        VARIANCE_MAX: 0.5,
-        DURATION: 5,            // variance shift for 5 ticks
-        VISIBILITY_TICKS: 5,    // then 1d2 visibility per tick for 5 more ticks
-        VISIBILITY_MIN: 1,
-        VISIBILITY_MAX: 2,
-    },
-    GRASSROOTS: {
-        AP_COST: 3,             // upfront launch cost
-        TICK_AP_COST: 1,        // 1 AP per tick while running
-        COOLDOWN_WINDOW: 5,
-        MAX_ACTIVE: 1,
-        DRIFT_MIN: 0.1,         // 1d2: random 0.1 or 0.2 per tick
-        DRIFT_MAX: 0.2,
-        DURATION: 100,          // runs for 100 ticks — slow burn
-        VISIBILITY_INTERVAL: 10, // +1 visibility every 10 ticks
-    },
-};
-
-/**
- * Launch a Think Tank — drifts electorate ideological mean on a target axis.
- */
-
-
-/**
- * Suspend (pause) an active Think Tank or Grassroots Movement. Costs 1 AP.
- * Sets status to 'paused' (distinct from 'suspended' which auto-resumes on AP availability).
- */
-
-
-/**
- * Continue (resume) a paused Think Tank or Grassroots Movement. Costs 1 AP.
- */
-
-
-/**
- * Cancel a Think Tank or Grassroots Movement. Costs 2 AP.
- * Reverts 75% of cumulative ideological drift applied so far.
- */
-
-
-/**
- * Launch a Media Campaign — shifts electorate ideological variance on a target axis.
- * 'expand' increases variance (makes electorate more polarized),
- * 'narrow' decreases variance (makes electorate more centrist).
- */
-
-
-/**
- * Launch a Grassroots Movement — slow burn ideology shift on a target axis.
- * Cheaper to start than Think Tank but runs for 100 ticks with 1 AP/tick.
- * Weaker per-tick (1d2) but more total drift (~15 vs ~10).
- */
-
-
-
-// ============================================================================
-// PHASE 4: IDEOLOGY SHIFT TICK PROCESSING
-// ============================================================================
-
-/**
- * Process active ideology_shift_actions each tick.
- * - Think Tank: drifts electorate ideo_mean on target axis
- * - Media Campaign: drifts electorate ideo_var on target axis
- * - Grassroots: this shifts a conceptual band — we apply it as a small ideo_mean
- *   nudge weighted by the targeted demographic band's share
- *
- * Also handles sustain cost: every SUSTAIN_INTERVAL ticks, checks if faction
- * has AP. If not, suspends the action.
- *
- * Called from tickElectorate after stance decay, before pillar computation.
- */
-
-
-
-// KNOWN ISSUES:
-// - activity_log and campaign_actions rows accumulate forever. No periodic pruning exists.
-//   TODO: Add a tick-based cleanup (e.g., delete rows older than 100 ticks) or a DB cron job.
-// - Rally/Attack/Make Promise deduct AP after effects are applied. The early AP check prevents
-//   the common case, and the atomic RPC prevents DB over-spending, but a race condition could
-//   let effects apply without AP deduction if two requests pass the early check simultaneously.
-//   Acceptable for alpha; fix by moving deductAP before effects in a future refactor.
-
-// ============================================================================
-// IDEOLOGICAL PIVOT
-// ============================================================================
-
-const PIVOT_CONFIG = {
-    BASE_AP: 1,
-    COOLDOWN: 3,                     // ticks between pivots
-    ESCALATION_RESET: 20,            // pivot_count resets after 20 ticks of no pivots
-    SHIFT_AMOUNT: 5,                 // +5 per pivot on -100 to +100 scale
-    REVERSE_AP_EXTRA: 1,             // extra AP when pivoting against current position
-    REVERSE_CRED_BASE: 2,            // base credibility penalty for reversing
-    REVERSE_CRED_SCALE: 0.05,        // extra cred penalty per point of current position strength
-};
-
-/**
- * Execute an Ideological Pivot — shift the party's ideology on a chosen axis.
- *
- * Rules:
- *   - Base cost: 1 AP + pivotCount (escalating within 20-tick window)
- *   - Cooldown: 3 ticks between pivots
- *   - Pivoting AGAINST current position: +1 AP extra, credibility penalty
- *   - Credibility penalty scales with how far you've gone in the opposite direction
- *   - Updates faction_ideology directly
- *
- * @param {object} supabase
- * @param {string} factionId
- * @param {string} nationId
- * @param {string} targetAxis - e.g. 'security_freedom'
- * @param {string} targetDirection - 'left' or 'right'
- * @param {number} currentTick
- * @returns {{ success, message, effects, newAp, ... }}
- */
-
 
 // ────────── party-leadership ──────────
 
@@ -25595,36 +25267,9 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
 
 // ────────── election-simulation ──────────
 
-
-// ==================== ELECTION SIMULATION ====================
-
 /**
- * Get a party's alignment score toward a specific ideology tag.
- *
- * @param {object} partyAxes  - Row from faction_ideology (keys: liberty_equality, tradition_progress, etc.)
- * @param {string} tag        - Ideology tag (e.g. "PROGRESS", "Liberty") — case-insensitive
- * @returns {number} Alignment value: positive = supports, negative = opposes
- */
-
-// findEligibleParties removed — replaced by weighted competition model
-// where ALL parties compete simultaneously for each bloc's voters.
-
-/**
- * Distribute a voter bloc's votes among ALL parties using the Weighted Competition Model.
- *
- * weight = approval × ideology_multiplier
- * ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
- *
- * No cascade steps. No leakage. All parties compete simultaneously.
- *
- * @param {object[]} parties           - All parties with axes
- * @param {string[]} tags              - Bloc ideology tags (may be empty for Unaligned)
- * @param {number}   blocCount         - Voters in this bloc
- * @param {object}   tally             - Mutable { [partyId]: voteCount } accumulator
- * @param {object}   [blocApprovals]   - { partyId: approval } per-bloc approval map
- * @param {object}   [ideologySaturation] - { tag: partyCount } saturation data
- * @param {number}   [avgSaturation]   - Average saturation across active tags
- * @returns {number} Number of abstentions produced
+ * election-simulation.js — Largest-remainder seat allocation + sector-based
+ * client-side election preview.
  */
 
 /**
@@ -25667,68 +25312,238 @@ function allocateSeatsByVotes(voteTotals, totalSeats = GAME_CONFIG.TOTAL_SEATS) 
 }
 
 /**
- * Run a full election simulation using the Weighted Competition Model.
- *
- * All parties compete simultaneously for each bloc's voters:
- *   weight = approval × ideology_multiplier
- *   ideology_multiplier = clamp(1.0 + avg_alignment × 0.02, 0.2, 2.0)
- *
- * NOTE: The blocs parameter is a legacy holdover; the electorate engine now
- * supplies voter data externally, so callers pass an empty array.
- *
- * @param {object[]} blocs    - Electorate bloc objects (legacy, pass [])
- * @param {object[]} parties  - Array of { id, faction_name, axes: { liberty_equality, ... } }
- * @param {number}   [totalSeats=120]
- * @param {object}   [allBlocApprovals] - Unused legacy parameter (pass null)
- * @returns {{ votes: object, seats: object, totalAbstentions: number, totalVotesCast: number, details: object[] }}
- */
-
-/**
- * High-level helper: load all data from Supabase and run the election preview.
- *
- * @param {object} supabase   - Supabase client
- * @param {string} nationId   - Nation UUID
- * @returns {Promise<object>} Full election result with party names, votes, seats, turnout
+ * Sector-based parliamentary election preview. Mirrors the live
+ * runSectorElection allocation (TWP → Largest Remainder → fringe threshold)
+ * but skips the random independents roll, electability/uncertainty modifiers,
+ * and tie-breaker bonuses so the preview is deterministic against current
+ * sector popularity.
  */
 async function runElectionPreview(supabase, nationId) {
-    // Phase 5a: legacy preview reads ideology + electorate-engine outputs
-    // that are going away in Phase 5b. Stubbed pending the sector-driven
-    // preview (Phase 5c will rebuild on top of runSectorElection).
-    const { data: nation } = await supabase
-        .from('nations')
-        .select('id, name, total_seats')
-        .eq('id', nationId)
-        .single();
+    const [nationRes, partiesRes, sectorsRes, popRes] = await Promise.all([
+        supabase.from('nations')
+            .select('id, name, total_seats, independent_seats')
+            .eq('id', nationId)
+            .single(),
+        supabase.from('factions')
+            .select('id, faction_name, abbreviation, party_color, seats')
+            .eq('nation_id', nationId)
+            .eq('faction_type', 'party')
+            .is('abandoned_at', null),
+        supabase.from('sectors')
+            .select('id, sector_key, name, weight, base_turnout, is_active')
+            .eq('nation_id', nationId)
+            .eq('is_active', true),
+        supabase.from('faction_sector_popularity')
+            .select('faction_id, sector_id, popularity')
+            .eq('nation_id', nationId),
+    ]);
+
+    const nation = nationRes.data;
+    if (!nation) {
+        return { nation: 'Unknown', error: 'Nation not found.' };
+    }
+
+    const parties = partiesRes.data || [];
+    const sectors = sectorsRes.data || [];
+    const popularity = popRes.data || [];
+
+    const parliamentSize = Number(nation.total_seats) || 0;
+    const independentSeats = Number(nation.independent_seats) || 0;
+    const availableSeats = Math.max(0, parliamentSize - independentSeats);
+
+    if (parliamentSize <= 0) {
+        return { engine: 'sectors', nation: nation.name, nation_id: nation.id, error: 'Nation has no parliament size configured.' };
+    }
+    if (parties.length === 0) {
+        return { engine: 'sectors', nation: nation.name, nation_id: nation.id, parliament_size: parliamentSize, independent_seats: independentSeats, available_seats: availableSeats, total_twp: 0, results: [], error: 'No active parties in this nation.' };
+    }
+
+    // Compute TWP per party
+    const twpByFaction = {};
+    for (const p of parties) {
+        twpByFaction[p.id] = calculateTotalWeightedPopularity(p.id, sectors, popularity);
+    }
+
+    // Allocate seats using the live engine's algorithm
+    const seatsByFaction = allocateSeatsByTwp(twpByFaction, availableSeats);
+
+    const totalTwp = Object.values(twpByFaction).reduce((s, v) => s + (Number(v) || 0), 0);
+
+    const results = parties
+        .map(p => {
+            const twp = Number(twpByFaction[p.id]) || 0;
+            const seats = Number(seatsByFaction[p.id]) || 0;
+            const pct = totalTwp > 0 ? (twp / totalTwp) * 100 : 0;
+            return {
+                id: p.id,
+                party_name: p.faction_name,
+                abbreviation: p.abbreviation,
+                color: p.party_color,
+                twp: Math.round(twp),
+                seats,
+                seat_pct: parliamentSize > 0 ? Number(((seats / parliamentSize) * 100).toFixed(1)) : 0,
+                twp_share_pct: Number(pct.toFixed(1)),
+                strongholds: getStrongholdSectors(p.id, sectors, popularity, 3),
+                current_seats: Number(p.seats) || 0,
+            };
+        })
+        .sort((a, b) => b.seats - a.seats || b.twp - a.twp);
+
     return {
-        nation: nation?.name || 'Unknown',
-        total_seats: nation?.total_seats || 0,
-        eligible_voters: 0,
-        total_votes_cast: 0,
-        total_abstentions: 0,
-        parties: [],
-        notice: 'Preview is being rebuilt for the sector-based engine. Use the live election trigger or the Sectors admin tab in the meantime.',
+        engine: 'sectors',
+        nation: nation.name,
+        nation_id: nation.id,
+        parliament_size: parliamentSize,
+        independent_seats: independentSeats,
+        available_seats: availableSeats,
+        total_twp: Math.round(totalTwp),
+        results,
     };
 }
 
 /**
- * Client-side presidential election preview (non-destructive).
- * Loads candidates, builds virtual-party objects, runs the simulation,
- * and checks for runoff (top candidate <=50% with >2 candidates).
- * If a runoff would trigger, re-runs with only the top 2 candidates.
+ * Sector-based presidential election preview. Mirrors the live pipeline:
+ *   1. Round 1 vote tally via runSectorPresidentialElectionRound (TWP shares).
+ *   2. If top candidate > 50% of votes cast or only ≤2 candidates → no runoff.
+ *   3. Otherwise simulate a runoff:
+ *      - Top 2 advance.
+ *      - Eliminated candidates' votes redistribute by coalitionAffinity
+ *        (sector-stronghold overlap), with a base 15% abstain rate that
+ *        scales up to 50% as overlap drops — same model as the live runoff
+ *        in processPresidentialElectionResult.
+ *
+ * Non-destructive: writes nothing to the database.
+ *
+ * Returns a shape compatible with admin.html's previewPresidentialElection
+ * consumer (result.winner, result.was_runoff, result.round_1_results,
+ * result.runoff_results, result.runoff_meta, result.candidateNames).
  */
 async function runPresidentialElectionPreview(supabase, nationId) {
-    // Phase 5a: legacy preview reads ideology + electorate-engine outputs
-    // that go away in Phase 5b. Stubbed pending the sector-driven preview.
-    const { data: nationStub } = await supabase
+    const { data: nation, error: nationErr } = await supabase
         .from('nations')
-        .select('id, name')
+        .select('id, name, eligible_voters')
         .eq('id', nationId)
         .single();
+    if (nationErr || !nation) {
+        return { nation: 'Unknown', error: 'Nation not found.' };
+    }
+
+    let round1;
+    try {
+        round1 = await runSectorPresidentialElectionRound(supabase, nationId);
+    } catch (e) {
+        return { nation: nation.name, error: e.message || 'Round 1 simulation failed.' };
+    }
+
+    const round1Candidates = round1.presidential_candidates || [];
+    if (round1Candidates.length === 0) {
+        return {
+            nation: nation.name,
+            error: 'No active presidential candidates for this nation.',
+        };
+    }
+
+    const totalVotesCast = round1.total_votes_cast || 0;
+    const sortedRound1 = [...round1Candidates].sort((a, b) => b.votes - a.votes);
+    const top = sortedRound1[0];
+    const topPct = totalVotesCast > 0 ? (top.votes / totalVotesCast) * 100 : 0;
+
+    const candidateNames = {};
+    for (const c of round1Candidates) candidateNames[c.candidate_id] = c.candidate_name;
+
+    // No runoff: top has majority OR only ≤2 candidates ran
+    if (topPct > 50 || round1Candidates.length <= 2) {
+        return {
+            engine: 'sectors',
+            nation: nation.name,
+            eligible_voters: Number(nation.eligible_voters) || 0,
+            total_votes_cast: totalVotesCast,
+            total_abstentions: round1.total_abstentions || 0,
+            turnout_pct: round1.turnout_pct || 0,
+            was_runoff: false,
+            winner: { ...top },
+            round_1_results: sortedRound1,
+            round_1_details: [],
+            runoff_results: null,
+            runoff_meta: null,
+            candidateNames,
+        };
+    }
+
+    // === Runoff simulation ===
+    const top2 = sortedRound1.slice(0, 2);
+    const top2Ids = new Set(top2.map(c => c.candidate_id));
+    const eliminated = round1Candidates.filter(c => !top2Ids.has(c.candidate_id));
+
+    // Load sectors + popularity for affinity computation
+    const allFactionIds = round1Candidates.map(c => c.faction_id).filter(Boolean);
+    const [sectorsRes, popRes] = await Promise.all([
+        supabase.from('sectors')
+            .select('id, sector_key, name, weight, base_turnout, is_active')
+            .eq('nation_id', nationId)
+            .eq('is_active', true),
+        allFactionIds.length > 0
+            ? supabase.from('faction_sector_popularity')
+                .select('faction_id, sector_id, popularity')
+                .in('faction_id', allFactionIds)
+            : Promise.resolve({ data: [] }),
+    ]);
+    const sectors  = sectorsRes.data || [];
+    const popList  = popRes.data || [];
+
+    const strongholdsByFaction = {};
+    for (const fid of allFactionIds) {
+        strongholdsByFaction[fid] = getStrongholdSectors(fid, sectors, popList, 3);
+    }
+
+    const redistribution = redistributeRunoffVotes(eliminated, top2, strongholdsByFaction);
+    const transfersByCand = redistribution.transfersByCand;
+    const totalAbstained = redistribution.totalAbstained;
+    const totalTransferred = redistribution.totalTransferred;
+    // Tag each preview endorsement with has_player_endorsement: false (no
+    // player-endorsement state is tracked in the preview path).
+    const endorsements = redistribution.endorsements.map(e => ({ ...e, has_player_endorsement: false }));
+
+    // Build runoff results
+    let runoffResults = top2.map(c => {
+        const t = transfersByCand[c.candidate_id];
+        const added = t ? t.transfer_votes : 0;
+        return {
+            ...c,
+            votes: (c.votes || 0) + added,
+            base_votes: c.votes || 0,
+            transfer_votes: added,
+            transfer_detail: t?.from || [],
+        };
+    });
+    const runoffTotal = runoffResults.reduce((s, c) => s + (c.votes || 0), 0);
+    runoffResults = runoffResults.map(c => ({
+        ...c,
+        vote_percentage: runoffTotal > 0 ? Number(((c.votes / runoffTotal) * 100).toFixed(2)) : 0,
+    }));
+    const runoffSorted = [...runoffResults].sort((a, b) => b.votes - a.votes);
+    runoffResults = runoffResults.map(c => ({ ...c, winner: c.candidate_id === runoffSorted[0]?.candidate_id }));
+    const runoffWinner = runoffSorted[0];
+
     return {
-        nation: nationStub?.name || 'Unknown',
-        candidates: [],
-        was_runoff: false,
-        notice: 'Presidential preview is being rebuilt for the sector-based engine.',
+        engine: 'sectors',
+        nation: nation.name,
+        eligible_voters: Number(nation.eligible_voters) || 0,
+        total_votes_cast: totalVotesCast,
+        total_abstentions: round1.total_abstentions || 0,
+        turnout_pct: round1.turnout_pct || 0,
+        was_runoff: true,
+        winner: { ...runoffWinner },
+        round_1_results: sortedRound1,
+        round_1_details: [],
+        runoff_results: runoffResults,
+        runoff_details: [],
+        runoff_meta: {
+            endorsements,
+            total_transferred: totalTransferred,
+            abstain_votes: totalAbstained,
+        },
+        candidateNames,
     };
 }
 
