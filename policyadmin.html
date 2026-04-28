@@ -449,9 +449,9 @@ function renderPolicyTable() {
             <td>${optionsHTML}</td>
             <td style="font-size:0.78rem;color:#aaa;font-family:monospace;">${costSummary}</td>
             <td><div class="action-btns">
-                <button class="action-btn action-btn-edit" disabled title="Edit lands in Phase 2C" style="opacity:0.4;cursor:not-allowed;">Edit</button>
-                <button class="action-btn action-btn-dup"  disabled title="Duplicate lands in Phase 2C" style="opacity:0.4;cursor:not-allowed;">Dup</button>
-                <button class="action-btn action-btn-del" onclick="deletePolicy('${p.id}', '${safeName}')">Del</button>
+                <button class="action-btn action-btn-edit" onclick="editPolicy('${p.id}')">Edit</button>
+                <button class="action-btn action-btn-dup"  onclick="duplicatePolicy('${p.id}')">Dup</button>
+                <button class="action-btn action-btn-del"  onclick="deletePolicy('${p.id}', '${safeName}')">Del</button>
             </div></td>
         </tr>`;
     }).join('');
@@ -1098,22 +1098,120 @@ function resetBuilder() {
 
     renderOpposedSlots();
     renderOptions();
+    setSubmitButtonText('✅ Create Policy');
 }
 
-// ==================== BUILDER — SAVE (CREATE) ====================
-// Phase 2B-iii: create-only. Phase 2C adds the update branch (and
-// duplicate / starting-status writes). The submit button stays mapped to
-// this function across phases; we just branch on editingPolicyId later.
+// ==================== BUILDER — EDIT / DUPLICATE ====================
+// Rehydrate policyDraft + DOM from a stored policy row. Used by both
+// editPolicy (round-trip update) and duplicatePolicy (clone-then-create).
+function loadPolicyIntoBuilder(p) {
+    policyDraft.policy_name     = p.policy_name || '';
+    policyDraft.description     = p.description || '';
+    policyDraft.major_sector    = (p.major_sector || '').toUpperCase();
+    policyDraft.fiscal_category = p.fiscal_category || '';
+    policyDraft.policy_type     = p.policy_type === 'lever' ? 'lever' : 'structural';
+    policyDraft.opposed_policy_ids = (p.opposed_policy_ids || []).slice();
+
+    // Hydrate options from the joined rows. They come back already sorted
+    // by sort_order (loadPolicies enforces this), so we just deep-copy.
+    policyDraft.options = (p.options || []).map(o => ({
+        option_label: o.option_label || '',
+        description:  o.description || '',
+        sector_effects: (o.sector_effects || []).map(e => ({
+            sector_key: e.sector_key,
+            change_tenths: parseInt(e.change_tenths, 10) || 0
+        })),
+        stat_effects: (o.stat_effects || []).map(e => ({
+            stat_key: e.stat_key,
+            direction: e.direction === 'down' ? 'down' : 'up',
+            rate: Number(e.rate) || 0,
+            delay_ticks: Number(e.delay_ticks) || 0,
+            duration_ticks: Number(e.duration_ticks) || 12,
+            adjust_type: e.adjust_type || null,
+            adjust_value: Number(e.adjust_value) || 0
+        })),
+        upfront_cost:        Number(o.upfront_cost) || 0,
+        upfront_scaling_stat: o.upfront_scaling_stat || '',
+        ongoing_base_cost:   Number(o.ongoing_base_cost) || 0,
+        ongoing_scaling_stat: o.ongoing_scaling_stat || ''
+    }));
+
+    // Sync the static DOM inputs.
+    document.getElementById('b-name').value            = policyDraft.policy_name;
+    document.getElementById('b-desc').value            = policyDraft.description;
+    document.getElementById('b-sector').value          = policyDraft.major_sector;
+    document.getElementById('b-policy-type').value     = policyDraft.policy_type;
+    document.getElementById('b-fiscal-category').value = policyDraft.fiscal_category;
+
+    // Law category: rebuild the dropdown for this sector first, then pick
+    // either the matching existing option or the "+ New" branch with the
+    // typed-in fallback. populateLawCategories also clears mode/new, so
+    // we re-set them after.
+    populateLawCategories();
+    const lawCat   = getPolicyLawCategory(p);
+    const select   = document.getElementById('b-law-category-select');
+    const wrapper  = document.getElementById('new-category-wrapper');
+    const newInput = document.getElementById('b-law-category-new');
+    const optionExists = lawCat && [...select.options].some(o => o.value === lawCat);
+    if (optionExists) {
+        select.value = lawCat;
+        policyDraft.law_category_mode = lawCat;
+        policyDraft.law_category_new  = '';
+        wrapper.style.display = 'none';
+    } else if (lawCat) {
+        select.value = '__new__';
+        policyDraft.law_category_mode = '__new__';
+        policyDraft.law_category_new  = lawCat;
+        newInput.value = lawCat;
+        wrapper.style.display = 'block';
+    } else {
+        select.value = '';
+        policyDraft.law_category_mode = '';
+        policyDraft.law_category_new  = '';
+        wrapper.style.display = 'none';
+    }
+
+    renderOpposedSlots();
+    renderOptions();
+}
+
+function editPolicy(id) {
+    const p = allPolicies.find(x => x.id === id);
+    if (!p) return;
+    editingPolicyId = id;
+    loadPolicyIntoBuilder(p);
+    setSubmitButtonText('💾 Update Policy');
+    switchView('builder');
+}
+
+// Duplicate: clone parent + options into a fresh draft. editingPolicyId
+// stays null because the next save creates a new policy. The original's
+// opposed_policy_ids carry over (they're still valid — same sector + law
+// category); the new policy's own back-refs get written on save.
+function duplicatePolicy(id) {
+    const p = allPolicies.find(x => x.id === id);
+    if (!p) return;
+    editingPolicyId = null;
+    loadPolicyIntoBuilder(p);
+    policyDraft.policy_name = (p.policy_name || '') + ' (Copy)';
+    document.getElementById('b-name').value = policyDraft.policy_name;
+    setSubmitButtonText('✅ Create Policy');
+    switchView('builder');
+}
+
+function setSubmitButtonText(text) {
+    const btn = document.getElementById('submit-btn');
+    if (btn) btn.textContent = text;
+}
+
+// ==================== BUILDER — SAVE (CREATE / UPDATE) ====================
+// Branches on editingPolicyId. Phase 2C-i: create + update. Phase 2C-ii
+// will write nation_policies for starting-status nations after a successful
+// create or update.
 async function savePolicy() {
     if (isSaving) return;
 
-    // Phase 2B-iii is create-only. The list view's Edit button is still
-    // disabled, so editingPolicyId can't actually be set here, but the
-    // guard documents intent and stays in place once 2C lands the branch.
-    if (editingPolicyId) {
-        alert('Editing existing policies lands in Phase 2C.');
-        return;
-    }
+    const isUpdate = !!editingPolicyId;
 
     // ---- Validation ----------------------------------------------------
     const name = (policyDraft.policy_name || '').trim();
@@ -1207,55 +1305,120 @@ async function savePolicy() {
         ongoing_scaling_stat: o.ongoing_scaling_stat || null
     }));
 
-    // ---- Insert ---------------------------------------------------------
+    // ---- Capture pre-edit state for opposed back-ref diff -------------
+    // Only meaningful on update — captures the policy's PRIOR opposed list
+    // so we can add new back-refs and remove ones the user dropped. On
+    // create, oldOpposedIds is empty (no prior state).
+    const cachedExisting = isUpdate ? allPolicies.find(p => p.id === editingPolicyId) : null;
+    const oldOpposedIds = isUpdate ? (cachedExisting?.opposed_policy_ids || []).slice() : [];
+
+    // ---- Write ---------------------------------------------------------
     isSaving = true;
     const submitBtn = document.getElementById('submit-btn');
     if (submitBtn) submitBtn.disabled = true;
 
-    let parentId = null;
+    let savedId = null;
     try {
-        // Step 1: insert the parent policy.
-        const { data: inserted, error: parentErr } = await _supabase
-            .from('policies')
-            .insert(policyRow)
-            .select()
-            .single();
-        if (parentErr) throw new Error('policies insert: ' + parentErr.message);
-        parentId = inserted.id;
+        if (isUpdate) {
+            // -- UPDATE flow ------------------------------------------------
+            // Don't touch policy_key — it's a stable slug used by external
+            // refs (the `_<base36>` suffix would change every edit and
+            // produce a churning identifier).
+            const updateRow = { ...policyRow };
+            delete updateRow.policy_key;
 
-        // Step 2: insert all option rows with the parent id baked in.
-        const childRows = optionRows.map(r => ({ ...r, policy_id: parentId }));
-        const { error: childErr } = await _supabase.from('policy_options').insert(childRows);
-        if (childErr) {
-            // Roll back the parent so we don't leave a policy without options.
-            // Best-effort — if the rollback itself fails the original error
-            // is still what the user needs to see, so we swallow rollback
-            // exceptions and re-throw the child-insert error below.
-            try { await _supabase.from('policies').delete().eq('id', parentId); } catch (_) { /* ignore */ }
-            throw new Error('policy_options insert: ' + childErr.message);
+            const { error: updateErr } = await _supabase
+                .from('policies')
+                .update(updateRow)
+                .eq('id', editingPolicyId);
+            if (updateErr) throw new Error('policies update: ' + updateErr.message);
+
+            // Replace children with delete-then-insert. There is a small
+            // window where the policy has no options if the second step
+            // fails — for an admin tool with low write traffic this is
+            // acceptable; the user sees the error and re-saves.
+            //
+            // Note for Phase 2C-ii: when nation_policies starts pointing
+            // at policy_option_ids, replacing children invalidates those
+            // refs. Either map by sort_order, cascade-delete the
+            // nation_policies rows, or block the update — to be decided
+            // when starting status lands.
+            const { error: delErr } = await _supabase
+                .from('policy_options')
+                .delete()
+                .eq('policy_id', editingPolicyId);
+            if (delErr) throw new Error('policy_options delete: ' + delErr.message);
+
+            const childRows = optionRows.map(r => ({ ...r, policy_id: editingPolicyId }));
+            const { error: insErr } = await _supabase
+                .from('policy_options')
+                .insert(childRows);
+            if (insErr) throw new Error('policy_options insert (post-delete): ' + insErr.message);
+
+            savedId = editingPolicyId;
+        } else {
+            // -- CREATE flow ------------------------------------------------
+            const { data: inserted, error: parentErr } = await _supabase
+                .from('policies')
+                .insert(policyRow)
+                .select()
+                .single();
+            if (parentErr) throw new Error('policies insert: ' + parentErr.message);
+            savedId = inserted.id;
+
+            const childRows = optionRows.map(r => ({ ...r, policy_id: savedId }));
+            const { error: childErr } = await _supabase
+                .from('policy_options')
+                .insert(childRows);
+            if (childErr) {
+                // Roll back the parent so we don't leave a policy without
+                // options. Best-effort — if the rollback itself fails the
+                // original error is still what the user needs to see.
+                try { await _supabase.from('policies').delete().eq('id', savedId); } catch (_) { /* ignore */ }
+                throw new Error('policy_options insert: ' + childErr.message);
+            }
         }
 
-        // Step 3: write two-way opposed back-references. Best-effort —
-        // a failure here doesn't invalidate the policy itself, so we log
-        // and surface a partial-success status instead of rolling back.
+        // ---- Opposed back-refs (diff: add new, remove gone) -----------
+        // Best-effort. A failure here doesn't invalidate the policy itself,
+        // so we collect errors and surface a partial-success status rather
+        // than rolling back.
+        const oldSet = new Set(oldOpposedIds);
+        const newSet = new Set(opposedIds);
+        const addedOpposed   = opposedIds.filter(x => !oldSet.has(x));
+        const removedOpposed = oldOpposedIds.filter(x => !newSet.has(x));
+
         const backRefErrors = [];
-        for (const oppId of opposedIds) {
+        for (const oppId of addedOpposed) {
             const opp = allPolicies.find(p => p.id === oppId);
             if (!opp) continue;
             const existing = opp.opposed_policy_ids || [];
-            if (existing.includes(parentId)) continue;
+            if (existing.includes(savedId)) continue;
             const { error: refErr } = await _supabase
                 .from('policies')
-                .update({ opposed_policy_ids: [...existing, parentId] })
+                .update({ opposed_policy_ids: [...existing, savedId] })
                 .eq('id', oppId);
-            if (refErr) backRefErrors.push(`${oppId}: ${refErr.message}`);
+            if (refErr) backRefErrors.push(`add ${oppId}: ${refErr.message}`);
+        }
+        for (const oppId of removedOpposed) {
+            const opp = allPolicies.find(p => p.id === oppId);
+            if (!opp) continue;
+            const existing = opp.opposed_policy_ids || [];
+            const cleaned = existing.filter(x => x !== savedId);
+            if (cleaned.length === existing.length) continue; // wasn't referenced anyway
+            const { error: refErr } = await _supabase
+                .from('policies')
+                .update({ opposed_policy_ids: cleaned.length > 0 ? cleaned : null })
+                .eq('id', oppId);
+            if (refErr) backRefErrors.push(`remove ${oppId}: ${refErr.message}`);
         }
 
+        const verb = isUpdate ? 'updated' : 'created';
         if (backRefErrors.length > 0) {
             console.error('opposed back-ref writes failed:', backRefErrors);
-            showStatus(`"${name}" created, but ${backRefErrors.length} opposed back-reference(s) failed. Check console.`, 'error');
+            showStatus(`"${name}" ${verb}, but ${backRefErrors.length} opposed back-reference write(s) failed. Check console.`, 'error');
         } else {
-            showStatus(`"${name}" created.`, 'success');
+            showStatus(`"${name}" ${verb}.`, 'success');
         }
 
         resetBuilder();
@@ -1326,6 +1489,9 @@ window.removeStatEffect      = removeStatEffect;
 window.updateStatEffect      = updateStatEffect;
 // Builder — Phase 2B-iii (save flow)
 window.savePolicy            = savePolicy;
+// Builder — Phase 2C-i (edit / duplicate)
+window.editPolicy            = editPolicy;
+window.duplicatePolicy       = duplicatePolicy;
 </script>
 </body>
 </html>
