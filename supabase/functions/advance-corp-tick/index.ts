@@ -322,7 +322,7 @@ function computeFuelCostForTransit({ route, vesselClass, depotTier }) {
 }
 
 function estimateMonthlyClaimMargin({ route, claim, vessel, fuelCostPerTransit }) {
-    const transitTicks = Math.max(1, Number(route?.transit_ticks) || 2);
+    const transitTicks = Math.max(1, Number(route?.transit_ticks));
     // Each claim alternates load + transit; monthly cycle ≈ 2*transit ticks.
     const transitsPerMonth = Math.max(1, 12 / (transitTicks * 2));
     const grossRevenue = Math.round((Number(claim?.revenue_per_transit) || 0) * transitsPerMonth);
@@ -4213,7 +4213,10 @@ function _clampServiceRate(v, ceiling) {
     return Math.round(Math.min(top, Math.max(SHIPPING_MIN_PER_TRIP, n)));
 }
 
-function _shipTransitTicks(prox) { return (Number(prox) || 0) >= 71 ? 1 : 0; }
+// Canonical transit-tick formula — mirror of calculateTransitTicks in
+// js/game/shipping.js. Returns >= 1 always so transit_ticks is never
+// zero on a freshly-written route.
+function _shipTransitTicks(prox) { return (Number(prox) || 0) >= 71 ? 1 : 2; }
 function _shipDemand(vol) { return vol >= 500000000 ? 'CRITICAL' : vol >= 200000000 ? 'HIGH' : vol >= 100000000 ? 'MODERATE' : 'LOW'; }
 function _shipScope(prox, isGov) { return isGov ? 'GOVERNMENT' : (prox <= 15 ? 'COASTAL' : 'INTERNATIONAL'); }
 function _clampGovContractValue(v) {
@@ -4956,7 +4959,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             continue;
                         }
 
-                        const transitTicks = claim.shipping_routes?.transit_ticks || 2;
+                        const transitTicks = Math.max(1, Number(claim.shipping_routes?.transit_ticks));
 
                         // Derive the claim's transit phase from the assigned
                         // vessel's status — corp_vessels.status is now the

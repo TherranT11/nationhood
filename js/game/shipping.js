@@ -104,9 +104,15 @@ export function revenueTierMultiplier(route) {
  * @param {number} proximity - 0 (bordering) to 100 (far)
  * @returns {number} transit ticks (0 or 1)
  */
+// Canonical transit-tick formula. Both the long-haul (>=71 prox) and
+// short-haul branches return what the runtime fallbacks (`|| 2`) used to
+// produce; codifying it here so transit_ticks is always >= 1 and the
+// fallbacks can be stripped. Mirrored verbatim by _shipTransitTicks in
+// supabase/functions/advance-corp-tick/index.ts and the inline literal
+// in generate_organic_shipping_routes — keep all three in sync.
 export function calculateTransitTicks(proximity) {
     var p = Number(proximity) || 0;
-    return p >= 71 ? 1 : 0;
+    return p >= 71 ? 1 : 2;
 }
 
 /**
