@@ -1155,14 +1155,28 @@ async function savePolicy() {
             optionId = optInserted.id;
         }
 
-        // Create nation_policies records for starting nations on initial create.
-        // Edit-time reassignment of starting nations is a Phase 2.6 concern.
-        if (!editingPolicyId && startingNations.size > 0) {
+        // Sync nation_policies to the current startingNations selection for
+        // both create and edit. On edit we wipe the rows for this policy +
+        // option first so the user's checkbox changes (including unchecks
+        // that take the count to zero) actually persist. The active_laws
+        // fallback that lived here previously was a defense against an old
+        // schema where nation_policies didn't exist; the Phase 1 migration
+        // guarantees the table now, so a failure here should surface
+        // loudly rather than silently route into a different table.
+        if (editingPolicyId) {
+            const { error: delErr } = await _supabase
+                .from('nation_policies')
+                .delete()
+                .eq('policy_id', policyId)
+                .eq('selected_option_id', optionId);
+            if (delErr) throw delErr;
+        }
+        if (startingNations.size > 0) {
             const totalDuration = Math.max(...normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
             const records = [...startingNations].map(nationId => ({
                 nation_id: nationId,
                 policy_id: policyId,
-                selected_option_id: optionId, // Phase 2.5
+                selected_option_id: optionId,
                 major_sector: sector,
                 law_category: lawCategory,
                 fiscal_category: fiscalCat,
@@ -1174,17 +1188,7 @@ async function savePolicy() {
             }));
 
             const { error: npError } = await _supabase.from('nation_policies').insert(records);
-            if (npError) {
-                console.warn('nation_policies insert failed (table may not exist yet):', npError.message);
-                // Fallback to active_laws when nation_policies isn't available
-                const alRecords = [...startingNations].map(nationId => ({
-                    nation_id: nationId,
-                    policy_id: policyId,
-                    selected_option_id: optionId, // Phase 2.5
-                    passed_tick: 0
-                }));
-                await _supabase.from('active_laws').insert(alRecords).catch(() => {});
-            }
+            if (npError) throw npError;
         }
 
         editingPolicyId = null;
