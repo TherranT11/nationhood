@@ -322,7 +322,9 @@ function computeFuelCostForTransit({ route, vesselClass, depotTier }) {
 }
 
 function estimateMonthlyClaimMargin({ route, claim, vessel, fuelCostPerTransit }) {
-    const transitTicks = Math.max(1, Number(route?.transit_ticks));
+    // route may be null and transit_ticks may be missing; (Number(undefined)
+    // is NaN and Math.max propagates NaN), so coerce to 0 first then floor at 1.
+    const transitTicks = Math.max(1, Number(route?.transit_ticks) || 0);
     // Each claim alternates load + transit; monthly cycle ≈ 2*transit ticks.
     const transitsPerMonth = Math.max(1, 12 / (transitTicks * 2));
     const grossRevenue = Math.round((Number(claim?.revenue_per_transit) || 0) * transitsPerMonth);
@@ -4959,7 +4961,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                             continue;
                         }
 
-                        const transitTicks = Math.max(1, Number(claim.shipping_routes?.transit_ticks));
+                        const transitTicks = Math.max(1, Number(claim.shipping_routes?.transit_ticks) || 0);
 
                         // Derive the claim's transit phase from the assigned
                         // vessel's status — corp_vessels.status is now the
