@@ -160,11 +160,9 @@ export async function computeEngagementScores(supabase, nation, factions, coalit
     }
 
     // ── 2. Load faction stances for issue positioning ──
-    const { data: allStances } = await supabase
-        .from('faction_issue_stance')
-        .select('faction_id, issue_id, strength')
-        .eq('nation_id', nationId)
-        .in('faction_id', factionIds);
+    // Phase 5b: faction_issue_stance dropped. Empty stance map preserves
+    // the downstream loop without changing engagement scoring outcomes.
+    const allStances = [];
 
     const stancesByFaction = {};
     for (const fId of factionIds) stancesByFaction[fId] = [];

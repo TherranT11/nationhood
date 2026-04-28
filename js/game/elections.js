@@ -5,13 +5,11 @@
 
 import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit, getParliamentaryTermTicks } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, hasElectedPresident, hasParliamentaryPM, isSemiPresidential } from './government-types.js';
-import { loadFactionIdeology } from './ideology.js';
 import { snapshotNationStats } from './stats.js';
 import { adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { syncAmbassadorsForFailedConfirmationBills, syncMinistriesForFailedConfirmationBills } from './bills.js';
 import { autoSelectPresidentialCandidates, registerPartyLeaderAsCandidate } from './presidential.js';
-import { runElectionSimulation } from './election-simulation.js';
 import {
     rollIndependents,
     applyTieBreakerBonuses,
@@ -21,6 +19,8 @@ import {
     applyElectabilityModifier,
     applyUncertaintyRoll,
     electabilityBucket,
+    getStrongholdSectors,
+    redistributeRunoffVotes,
 } from './sectors.js';
 
 /**
@@ -1891,11 +1891,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         });
         if (snapshotErr) throw snapshotErr;
 
-        const { data, error: runError } = await supabase.rpc('run_presidential_election', {
-            p_nation_id: nation.id,
-            p_election_id: targetElectionId
-        });
-        if (runError) throw runError;
+        const data = await runSectorPresidentialElectionRound(supabase, nation.id);
         // Merge parliamentary seat results into the presidential election results
         electionResults = { ...data, seats: parlData?.seats || [] };
     } else {
@@ -2199,6 +2195,170 @@ async function loadSectorElectionInputs(supabase, nationId, { includeCurrentSeat
     return { factions: factionList, sectors: sectorList, popularity };
 }
 
+/**
+ * Sector-based presidential election — round 1 vote tally.
+ *
+ * Replaces the run_presidential_election SQL RPC. Uses TWP shares instead of
+ * the dropped contested_vote_share × turnout_rate model.
+ *
+ * Vote model:
+ *   total_votes_cast = eligible_voters × sector_weighted_turnout
+ *   sector_weighted_turnout = Σ(base_turnout × weight) / Σ(weight)
+ *   candidate.votes = round((party_TWP / total_party_TWP) × total_votes_cast)
+ *   Multi-candidate-same-party: votes split evenly, remainder to first candidate.
+ *
+ * Returns the same JSONB-compatible shape as the legacy RPC so
+ * processPresidentialElectionResult and admin.html consumers don't need
+ * plumbing changes:
+ *   {
+ *     presidential_candidates: [{ candidate_id, candidate_name, faction_id,
+ *                                  party_name, trait_key, votes,
+ *                                  vote_percentage, winner }],
+ *     bloc_details: [],
+ *     total_votes_cast, total_abstentions, turnout_pct
+ *   }
+ */
+export async function runSectorPresidentialElectionRound(supabase, nationId) {
+    // Fetch nation, candidates (joined to factions), sectors, popularity, shard tick
+    const [nationRes, candRes, sectorsRes, shardRes] = await Promise.all([
+        supabase.from('nations')
+            .select('id, name, eligible_voters')
+            .eq('id', nationId)
+            .single(),
+        supabase.from('pm_candidates')
+            .select('id, first_name, last_name, faction_id, trait_key, factions(faction_name, faction_type, abandoned_at, last_seen_tick, founded_tick)')
+            .eq('nation_id', nationId)
+            .eq('candidate_type', 'presidential')
+            .eq('selected', true),
+        supabase.from('sectors')
+            .select('id, sector_key, name, weight, base_turnout, is_active')
+            .eq('nation_id', nationId)
+            .eq('is_active', true),
+        supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+    ]);
+
+    if (nationRes.error) throw new Error(`load nation: ${nationRes.error.message}`);
+    if (candRes.error)   throw new Error(`load candidates: ${candRes.error.message}`);
+    if (sectorsRes.error) throw new Error(`load sectors: ${sectorsRes.error.message}`);
+
+    const nation = nationRes.data;
+    if (!nation) throw new Error(`Nation not found: ${nationId}`);
+
+    const eligible = Number(nation.eligible_voters) || 0;
+    const sectors  = sectorsRes.data || [];
+    const tick     = shardRes.data?.current_tick ?? 0;
+
+    // Filter candidates to active parties (mirrors the RPC's last-seen-tick window)
+    const INACTIVE_GAP = 12;
+    const allCands = (candRes.data || []).filter(c => {
+        const f = c.factions;
+        if (!f) return false;
+        if (f.faction_type !== 'party') return false;
+        if (f.abandoned_at) return false;
+        if (f.last_seen_tick != null) return (tick - f.last_seen_tick) < INACTIVE_GAP;
+        return (tick - (f.founded_tick || 0)) < INACTIVE_GAP;
+    });
+
+    if (allCands.length === 0) {
+        return {
+            presidential_candidates: [],
+            bloc_details: [],
+            total_votes_cast: 0,
+            total_abstentions: eligible,
+            turnout_pct: 0,
+        };
+    }
+
+    // Load popularity for the candidate-backing factions
+    const factionIds = [...new Set(allCands.map(c => c.faction_id).filter(Boolean))];
+    let popularity = [];
+    if (factionIds.length > 0 && sectors.length > 0) {
+        const { data: pop, error: popErr } = await supabase
+            .from('faction_sector_popularity')
+            .select('faction_id, sector_id, popularity')
+            .in('faction_id', factionIds);
+        if (popErr) throw new Error(`load popularity: ${popErr.message}`);
+        popularity = pop || [];
+    }
+
+    // Compute TWP per candidate-backing faction
+    const twpByFaction = {};
+    for (const fid of factionIds) {
+        twpByFaction[fid] = calculateTotalWeightedPopularity(fid, sectors, popularity);
+    }
+    const totalTwp = Object.values(twpByFaction).reduce((s, v) => s + (Number(v) || 0), 0);
+
+    // Sector-weighted turnout average. Falls back to 0.65 if sectors unavailable.
+    let turnout = 0.65;
+    if (sectors.length > 0) {
+        const sumW = sectors.reduce((s, x) => s + (Number(x.weight) || 0), 0);
+        if (sumW > 0) {
+            const sumWT = sectors.reduce((s, x) => s + (Number(x.weight) || 0) * (Number(x.base_turnout) || 0), 0);
+            turnout = sumWT / sumW;
+        }
+    }
+    const totalVotesCast = Math.round(eligible * turnout);
+
+    // Group candidates by faction so multi-candidate-same-party splits evenly
+    const candsByFaction = {};
+    for (const c of allCands) {
+        if (!candsByFaction[c.faction_id]) candsByFaction[c.faction_id] = [];
+        candsByFaction[c.faction_id].push(c);
+    }
+
+    // Build candidate vote rows
+    const candidateRows = [];
+    for (const c of allCands) {
+        const fid = c.faction_id;
+        const partyTwp = Number(twpByFaction[fid]) || 0;
+        const partyShare = totalTwp > 0 ? partyTwp / totalTwp : 0;
+        const partyVotes = Math.round(partyShare * totalVotesCast);
+        const cohort = candsByFaction[fid] || [c];
+        const perCand = Math.floor(partyVotes / cohort.length);
+        // Remainder to the first candidate in the cohort (by id sort for determinism)
+        const sorted = [...cohort].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        const remainder = partyVotes - perCand * cohort.length;
+        const isFirst = sorted[0]?.id === c.id;
+        const votes = perCand + (isFirst ? remainder : 0);
+        candidateRows.push({
+            candidate_id:   c.id,
+            candidate_name: `${c.first_name || ''} ${c.last_name || ''}`.trim(),
+            faction_id:     fid,
+            party_name:     c.factions?.faction_name || 'Unknown',
+            trait_key:      c.trait_key || null,
+            votes,
+        });
+    }
+
+    // Recompute total cast from rounded candidate votes (so percentages align)
+    const actualTotal = candidateRows.reduce((s, c) => s + (c.votes || 0), 0);
+    const abstentions = Math.max(0, eligible - actualTotal);
+    const turnoutPct  = eligible > 0 ? Number(((actualTotal / eligible) * 100).toFixed(2)) : 0;
+
+    // Pick winner (highest votes — runoff orchestrator handles 50% threshold)
+    let winnerId = null;
+    let maxVotes = -1;
+    for (const c of candidateRows) {
+        if (c.votes > maxVotes) { maxVotes = c.votes; winnerId = c.candidate_id; }
+    }
+
+    const finalCandidates = candidateRows.map(c => ({
+        ...c,
+        vote_percentage: actualTotal > 0
+            ? Number(((c.votes / actualTotal) * 100).toFixed(2))
+            : 0,
+        winner: c.candidate_id === winnerId,
+    }));
+
+    return {
+        presidential_candidates: finalCandidates,
+        bloc_details: [],
+        total_votes_cast: actualTotal,
+        total_abstentions: abstentions,
+        turnout_pct: turnoutPct,
+    };
+}
+
 function layerBonusesIntoPopularity(popularity, sectors, bonuses) {
     if (!bonuses || bonuses.size === 0) return popularity;
     const sectorIdByKey = new Map(sectors.map(s => [s.sector_key, s.id]));
@@ -2419,10 +2579,13 @@ export async function processElections(supabase, nation, currentTick) {
                 continue;
             }
 
-            ({ data, error } = await supabase.rpc('run_presidential_election', {
-                p_nation_id: nation.id,
-                p_election_id: election.id
-            }));
+            try {
+                data = await runSectorPresidentialElectionRound(supabase, nation.id);
+                error = null;
+            } catch (e) {
+                data = null;
+                error = e;
+            }
         } else {
             // Phase 3: parliamentary uses the sector engine. Wrap in try/catch
             // and shape the response as { data, error } to match the legacy
@@ -2440,10 +2603,13 @@ export async function processElections(supabase, nation, currentTick) {
             console.error(`Election RPC failed (attempt 1) for ${nation.name}:`, error);
             // Retry once
             if (electionType === 'presidential') {
-                ({ data, error } = await supabase.rpc('run_presidential_election', {
-                    p_nation_id: nation.id,
-                    p_election_id: election.id
-                }));
+                try {
+                    data = await runSectorPresidentialElectionRound(supabase, nation.id);
+                    error = null;
+                } catch (e) {
+                    data = null;
+                    error = e;
+                }
             } else {
                 try {
                     data = await runSectorElection(supabase, nation);
@@ -2738,95 +2904,72 @@ export async function processPresidentialElectionResult(supabase, nation, comple
             }
         }
 
-        // Run the presidential election RPC again with only the top 2
-        const { data: runoffData, error: runoffErr } = await supabase.rpc('run_presidential_election', {
-            p_nation_id: nation.id,
-            p_election_id: completedElection.id
-        });
+        // Run the presidential election again with only the top 2
+        let runoffData = null;
+        let runoffErr = null;
+        try {
+            runoffData = await runSectorPresidentialElectionRound(supabase, nation.id);
+        } catch (e) {
+            runoffErr = e;
+        }
 
         if (runoffErr) {
-            console.error(`Runoff RPC failed for ${nation.name}:`, runoffErr);
+            console.error(`Runoff failed for ${nation.name}:`, runoffErr);
             // Fallback: use round 1 winner
             winner = topCandidate;
         } else {
             runoffResults = runoffData?.presidential_candidates || [];
 
-            // === Redistribute eliminated candidates' votes based on ideology ===
+            // === Redistribute eliminated candidates' votes by sector affinity (Phase 5a) ===
             // The RPC only gives each runoff candidate their base faction votes.
-            // Eliminated candidates' voters must be redistributed proportionally
-            // based on ideological proximity to the two remaining candidates.
-            const AXES = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
+            // Eliminated candidates' voters redistribute proportionally based on
+            // sector-stronghold overlap between their party and each surviving
+            // runoff candidate's party. coalitionAffinity returns a [0,1] score
+            // from shared / overlapping strongholds.
             const eliminatedCandidates = candidateResults.filter(c => !runoffCandidateIds.has(c.candidate_id));
             const runoffCandidateList = candidateResults.filter(c => runoffCandidateIds.has(c.candidate_id));
 
-            // Fetch ideology axis scores for all involved factions
+            // Load sectors + popularity for every involved faction so we can
+            // compute strongholds. One round trip each.
             const allFactionIds = candidateResults.map(c => c.faction_id).filter(Boolean);
-            const { data: ideologyRows, error: ideologyErr } = await supabase
-                .from('faction_ideology')
-                .select('faction_id, liberty_equality, tradition_progress, security_freedom, globalism_nationalism, individualism_collectivism')
-                .in('faction_id', allFactionIds);
-            if (ideologyErr) console.error(`Failed to fetch ideology data for runoff redistribution (${nation.name}):`, ideologyErr.message);
-            const ideologyByFaction = {};
-            for (const row of (ideologyRows || [])) {
-                ideologyByFaction[row.faction_id] = row;
+            const [
+                { data: sectorRows,     error: sectorErr },
+                { data: popularityRows, error: popErr   },
+            ] = await Promise.all([
+                supabase.from('sectors')
+                    .select('id, sector_key, name, weight, base_turnout, is_active')
+                    .eq('nation_id', nation.id)
+                    .eq('is_active', true)
+                    .order('display_order'),
+                allFactionIds.length > 0
+                    ? supabase.from('faction_sector_popularity')
+                        .select('faction_id, sector_id, popularity')
+                        .in('faction_id', allFactionIds)
+                    : Promise.resolve({ data: [], error: null }),
+            ]);
+            if (sectorErr) console.error(`Failed to fetch sectors for runoff redistribution (${nation.name}):`, sectorErr.message);
+            if (popErr)    console.error(`Failed to fetch popularity for runoff redistribution (${nation.name}):`, popErr.message);
+            const sectorList = sectorRows || [];
+            const popList    = popularityRows || [];
+
+            // Pre-compute strongholds per faction so we don't repeat work
+            // inside the redistribution helper.
+            const strongholdsByFaction = {};
+            for (const fid of allFactionIds) {
+                strongholdsByFaction[fid] = getStrongholdSectors(fid, sectorList, popList, 3);
             }
 
-            // Compute transfers for each eliminated candidate
-            const runoffTransfers = {};
-            for (const rc of runoffResults) {
-                runoffTransfers[rc.candidate_id] = { transfer_votes: 0, from: [] };
-            }
-            let totalAbstained = 0;
+            // Defensive: if the RPC returned no runoff candidates, skip the
+            // redistribution math (avoids 1/0 in the affinity-fallback branch).
+            const skipRedistribution = runoffCandidateList.length === 0;
 
-            for (const elim of eliminatedCandidates) {
-                const elimVotes = elim.votes || 0;
-                if (elimVotes === 0) continue;
-                const elimIdeology = ideologyByFaction[elim.faction_id] || {};
-
-                // Compute ideological distance to each runoff candidate
-                const distances = runoffCandidateList.map(rc => {
-                    const rcIdeology = ideologyByFaction[rc.faction_id] || {};
-                    let distSq = 0;
-                    for (const axis of AXES) {
-                        const diff = (elimIdeology[axis] || 0) - (rcIdeology[axis] || 0);
-                        distSq += diff * diff;
-                    }
-                    return { candidate_id: rc.candidate_id, dist: Math.sqrt(distSq) };
-                });
-
-                // Convert distances to affinities (inverse distance = more affinity)
-                const totalDist = distances.reduce((s, d) => s + d.dist, 0);
-                let affinities;
-                if (totalDist === 0) {
-                    affinities = distances.map(d => ({ ...d, affinity: 1 / distances.length }));
-                } else {
-                    affinities = distances.map(d => ({ ...d, affinity: 1 - (d.dist / totalDist) }));
-                    const affinitySum = affinities.reduce((s, a) => s + a.affinity, 0);
-                    for (const a of affinities) a.affinity = a.affinity / affinitySum;
-                }
-
-                // Abstention rate: 15% base, increases with ideological distance to nearest candidate
-                const minDist = Math.min(...distances.map(d => d.dist));
-                const abstainRate = Math.min(0.50, 0.15 + (minDist / 1000));
-                const abstainVotes = Math.round(elimVotes * abstainRate);
-                const transferableVotes = elimVotes - abstainVotes;
-                totalAbstained += abstainVotes;
-
-                // Distribute transferable votes proportionally by affinity
-                for (const a of affinities) {
-                    const transferred = Math.round(transferableVotes * a.affinity);
-                    if (runoffTransfers[a.candidate_id]) {
-                        runoffTransfers[a.candidate_id].transfer_votes += transferred;
-                        runoffTransfers[a.candidate_id].from.push({
-                            party_name: elim.party_name,
-                            faction_id: elim.faction_id,
-                            round1_votes: elimVotes,
-                            transferred,
-                            abstained: a === affinities[0] ? abstainVotes : 0  // count abstain once
-                        });
-                    }
-                }
-            }
+            const redistribution = redistributeRunoffVotes(
+                skipRedistribution ? [] : eliminatedCandidates,
+                runoffCandidateList,
+                strongholdsByFaction,
+            );
+            const runoffTransfers = redistribution.transfersByCand;
+            const totalAbstained = redistribution.totalAbstained;
 
             // Apply transfers to runoff results
             runoffResults = runoffResults.map(c => {
@@ -2950,10 +3093,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
                     first_name: winner.candidate_name?.split(' ')[0] || 'Unknown',
                     last_name: winner.candidate_name?.split(' ').slice(1).join(' ') || 'President',
                     age: 50,
-                    ideology: winner.ideology || 'PROGRESS',
                     trait_key: winner.trait_key || null,
-                    ideology_axis: 'tradition_progress',
-                    ideology_direction: 1
                 };
                 await inauguratePresident(supabase, directCandidate, nation.id, winner.faction_id, currentTick, outgoingPresident, endReason);
                 console.log(`Direct president inaugurated from election data: ${directCandidate.first_name} ${directCandidate.last_name}`);
@@ -3122,13 +3262,13 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     }
 
     // Insert president record (trait resolved at display time, not stored)
+    // Phase 5b: presidents.ideology column dropped.
     const { error: presErr } = await supabase.from('presidents').insert({
         nation_id: nationId,
         faction_id: factionId,
         first_name: candidate.first_name,
         last_name: candidate.last_name,
         age: candidate.age,
-        ideology: candidate.ideology,
         trait: candidate.trait_key,
         trait_upside: null,
         trait_downside: null,
@@ -3139,20 +3279,11 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
     });
     if (presErr) throw presErr;
 
-    // Apply ideology shift (+15 on candidate's axis)
-    const axisKey = candidate.ideology_axis;
-    const direction = candidate.ideology_direction;
-    if (axisKey && typeof direction === 'number') {
-        const shift = 15 * direction;
-        let factionIdeology = await loadFactionIdeology(supabase, factionId);
-        if (factionIdeology?._error) factionIdeology = null;
-        if (factionIdeology) {
-            const currentVal = factionIdeology[axisKey] || 0;
-            const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-            await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
-            console.log(`President ideology shift: ${axisKey} ${currentVal} → ${newVal} (${shift > 0 ? '+' : ''}${shift})`);
-        }
-    }
+    // Phase 5a: presidential ideology shift removed. The legacy mechanic
+    // wrote a +15 shift on the winning candidate's ideology axis to faction_
+    // ideology. With sectors as the live political dimension, ideology data
+    // is frozen (Phase 4) and slated for deletion (Phase 5b), so this write
+    // path is gone.
 
     // Old leader_traits effect system removed — trait is display-only now
 

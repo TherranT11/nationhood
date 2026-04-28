@@ -6,13 +6,12 @@
 import { deductAP, GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
-import { IDEOLOGY_OPPOSITES, IDEOLOGY_TO_AXIS, loadFactionIdeology } from './ideology.js';
 import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
 import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition, POSITIVE_TRAITS } from './party-leadership.js';
-import { onRally, onOutreach, onAttack } from './electorate.js';
+import { onRally, onAttack } from './electorate.js';
 
 const _PA_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -2000,8 +1999,11 @@ export async function processOngoingCosts(supabase, nation, currentTick) {
 export const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
     'gov_approval',
-    'competition_voters', 'liberty_voters', 'security_voters', 'globalism_voters',
-    'progressive_voters', 'liberal_voters', 'moderate_voters', 'conservative_voters', 'nationalist_voters'
+    // Phase 5b: ideology axis voter columns dropped from nations.
+    // The progressive_/liberal_/moderate_/conservative_/nationalist_voters
+    // entries never existed on nations to begin with — pre-existing dead
+    // config that the snapshot loop was silently skipping via the
+    // `nation[key] !== undefined` guard.
 ];
 
 export async function snapshotNationHistory(supabase, nation, currentTick) {
@@ -3001,59 +3003,6 @@ export function getNationNames(nationName) {
     return { firstNames: PM_FIRST_NAMES, lastNames: PM_LAST_NAMES };
 }
 
-export const IDEOLOGY_OPTIONS = [
-    { tag: 'LIBERTY',         axisKey: 'liberty_equality',             direction: -1 },
-    { tag: 'EQUALITY',        axisKey: 'liberty_equality',             direction: 1 },
-    { tag: 'TRADITION',       axisKey: 'tradition_progress',           direction: -1 },
-    { tag: 'PROGRESS',        axisKey: 'tradition_progress',           direction: 1 },
-    { tag: 'SECURITY',        axisKey: 'security_freedom',             direction: -1 },
-    { tag: 'FREEDOM',         axisKey: 'security_freedom',             direction: 1 },
-    { tag: 'NATIONALISM',     axisKey: 'globalism_nationalism',        direction: -1 },
-    { tag: 'GLOBALISM',       axisKey: 'globalism_nationalism',        direction: 1 },
-    { tag: 'INDIVIDUALISM',   axisKey: 'individualism_collectivism',   direction: -1 },
-    { tag: 'COLLECTIVISM',    axisKey: 'individualism_collectivism',   direction: 1 }
-];
-
-// PM_TRAIT_KEYS removed — PM/President trait now comes from party leader's first positive trait
-
-
-export function getWeightedIdeologies(factionIdeology) {
-    if (!factionIdeology) {
-        return IDEOLOGY_OPTIONS.map(opt => ({ item: opt, weight: 10 }));
-    }
-
-    return IDEOLOGY_OPTIONS.map(opt => {
-        const score = factionIdeology[opt.axisKey] || 0;
-        const alignment = score * opt.direction;
-
-        let weight;
-        if (alignment > 40) {
-            weight = 2;
-        } else if (alignment > 15) {
-            weight = 5;
-        } else if (alignment > -15) {
-            weight = 12;
-        } else if (alignment > -40) {
-            weight = 10;
-        } else {
-            weight = 8;
-        }
-
-        return { item: opt, weight };
-    });
-}
-
-export function weightedRandomPick(weightedItems) {
-    const totalWeight = weightedItems.reduce((sum, wi) => sum + wi.weight, 0);
-    let random = Math.random() * totalWeight;
-
-    for (const wi of weightedItems) {
-        random -= wi.weight;
-        if (random <= 0) return wi;
-    }
-    return weightedItems[weightedItems.length - 1];
-}
-
 
 /**
  * Single source of truth for installing a Head of Government row.
@@ -3087,19 +3036,6 @@ export async function installHOG(supabase, opts) {
         currentTick, traitKey = null, candidateId = null,
     } = opts;
 
-    let ideologyTag = opts.ideology;
-    if (!ideologyTag) {
-        try {
-            const { data: f } = await supabase
-                .from('factions')
-                .select('leader_ideology')
-                .eq('id', factionId)
-                .maybeSingle();
-            if (f?.leader_ideology) ideologyTag = String(f.leader_ideology).toUpperCase();
-        } catch (_) { /* fall through to CENTRIST */ }
-    }
-    if (!ideologyTag) ideologyTag = 'CENTRIST';
-
     // head_of_government has UNIQUE(nation_id), so a stale inactive row from
     // a previous PM would block a plain insert. Deactivate first, then upsert
     // — the upsert overwrites the just-deactivated row in the same tx.
@@ -3117,14 +3053,13 @@ export async function installHOG(supabase, opts) {
             first_name: firstName,
             last_name: lastName,
             age: age || 50,
-            ideology: ideologyTag,
             trait_key: traitKey,
             appointed_tick: currentTick,
             active: true,
         }, { onConflict: 'nation_id' });
 
     if (hogErr) throw hogErr;
-    return { ideologyTag };
+    return { };
 }
 
 
@@ -3180,23 +3115,6 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         throw new Error('Party leader data is incomplete — cannot auto-appoint PM.');
     }
 
-    // Use the leader's existing ideology as single source of truth.
-    // Only fall back to a weighted random pick if leader_ideology is unset.
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) {
-        console.error(`[autoAppointPartyLeaderAsPM] DB error loading ideology for ${factionId}, using neutral weights`);
-        factionIdeology = null;
-    }
-
-    let ideology;
-    if (faction.leader_ideology) {
-        ideology = IDEOLOGY_OPTIONS.find(o => o.tag === faction.leader_ideology.toUpperCase())
-            || IDEOLOGY_OPTIONS[0];
-    } else {
-        const weightedIdeologies = getWeightedIdeologies(factionIdeology);
-        ideology = weightedRandomPick(weightedIdeologies).item;
-    }
-
     // Use the leader's first positive trait (from party leadership system)
     const traitKey = (faction.leader_positive_traits && faction.leader_positive_traits.length > 0)
         ? faction.leader_positive_traits[0]
@@ -3213,7 +3131,6 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         age: leaderAge,
         currentTick,
         traitKey,
-        ideology: ideology.tag,
     });
 
     // Update administration record
@@ -3255,16 +3172,6 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
             minister_approval: MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL,
             stat_baselines: pmBaselines
         });
-    }
-
-    // Apply ideology shift (+5 for PM)
-    const axisKey = ideology.axisKey;
-    const shift = 5 * ideology.direction;
-
-    if (factionIdeology) {
-        const currentVal = factionIdeology[axisKey] || 0;
-        const newVal = Math.max(-100, Math.min(100, currentVal + shift));
-        await supabase.from('faction_ideology').update({ [axisKey]: newVal }).eq('faction_id', factionId);
     }
 
     // Fire system event
@@ -3838,9 +3745,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     ];
     for (const fn of ipoCleanup) { try { await fn(); } catch (_) { /* table may not exist */ } }
 
-    await supabase.from('faction_ideology').delete().eq('faction_id', factionId);
-    await supabase.from('ideology_history').delete().eq('faction_id', factionId);
-    // momentum_log table dropped — no cleanup needed
+    // Phase 5b: faction_ideology / ideology_history / momentum_log tables dropped — no cleanup needed
     await supabase.from('bill_support').delete().eq('faction_id', factionId);
     await supabase.from('campaign_actions').delete().eq('party_id', factionId).neq('action_type', 'party_disbanded');
     await supabase.from('faction_coalitions').delete().eq('faction_a_id', factionId);

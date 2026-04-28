@@ -181,13 +181,7 @@ BEGIN
     result := result || jsonb_build_object('faction_disbanded', true);
 
     -- ---- 8. Clean up child records ----
-    DELETE FROM faction_ideology WHERE faction_id = p_faction_id;
-    GET DIAGNOSTICS cnt = ROW_COUNT;
-    IF cnt > 0 THEN result := result || jsonb_build_object('faction_ideology', cnt); END IF;
-
-    DELETE FROM ideology_history WHERE faction_id = p_faction_id;
-    GET DIAGNOSTICS cnt = ROW_COUNT;
-    IF cnt > 0 THEN result := result || jsonb_build_object('ideology_history', cnt); END IF;
+    -- Phase 5b: faction_ideology / ideology_history tables dropped — no cleanup needed.
 
     DELETE FROM bill_comments WHERE faction_id = p_faction_id;
     GET DIAGNOSTICS cnt = ROW_COUNT;

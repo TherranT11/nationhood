@@ -849,13 +849,6 @@ async function confirmNation() {
                 : corpSetup.subsector === 'Industrial Construction' ? 50
                 : 65,
             abandoned_at: null,
-            // Explicit nulls so an upsert into a row that was previously a
-            // party (same auth UID before the user switched faction type)
-            // can't carry party-only fields forward into the corp.
-            ideology_value_1: null,
-            ideology_value_2: null,
-            ideology_value_3: null,
-            ideology_value_4: null,
             custom_logo_url: null,
         };
 

@@ -8,7 +8,6 @@
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
-import { loadFactionIdeology } from './ideology.js';
 import { nudgeEnthusiasm } from './electorate.js';
 
 // ==================== PROTEST LOG UPDATE RPC ====================

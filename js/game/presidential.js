@@ -5,9 +5,7 @@
 
 import { GAME_CONFIG, getPresidentialTermLimit } from './config.js';
 import { hasElectedPresident, isSemiPresidential, isPresidentialDomainMinistry, MINISTRY_OFFICE_NAMES, MINISTER_TITLES } from './government-types.js';
-import { loadFactionIdeology } from './ideology.js';
 import { enactBill, failBill } from './bills.js';
-import { getWeightedIdeologies, weightedRandomPick } from './political-actions.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fireBillEvent } from './event-helpers.js';
 
@@ -42,14 +40,6 @@ export async function registerPartyLeaderAsCandidate(supabase, nationId, faction
         return null;
     }
 
-    // Load faction ideology to determine candidate's ideology axis
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
-
-    const weightedIdeologies = getWeightedIdeologies(factionIdeology);
-    const ideologyPick = weightedRandomPick(weightedIdeologies);
-    const ideology = ideologyPick.item;
-
     // Use the leader's first positive trait
     const traitKey = (faction.leader_positive_traits && faction.leader_positive_traits.length > 0)
         ? faction.leader_positive_traits[0]
@@ -69,9 +59,6 @@ export async function registerPartyLeaderAsCandidate(supabase, nationId, faction
         first_name: faction.leader_first_name,
         last_name: faction.leader_last_name,
         age: faction.leader_age || (35 + Math.floor(Math.random() * 16)),
-        ideology: ideology.tag,
-        ideology_axis: ideology.axisKey,
-        ideology_direction: ideology.direction,
         trait_key: traitKey,
         created_at_tick: currentTick,
         candidate_type: 'presidential',
@@ -86,24 +73,6 @@ export async function registerPartyLeaderAsCandidate(supabase, nationId, faction
     console.log(`Registered party leader ${faction.leader_first_name} ${faction.leader_last_name} as presidential candidate for ${faction.faction_name}`);
     return data;
 }
-
-/** Compute the dominant ideology axis and direction for a faction. */
-async function computeDominantIdeologyAxis(supabase, factionId) {
-    let factionIdeology = await loadFactionIdeology(supabase, factionId);
-    if (factionIdeology?._error) factionIdeology = null;
-    let ideologyAxis = 'tradition_progress';
-    let ideologyDirection = 1;
-    if (factionIdeology) {
-        const axes = ['liberty_equality', 'tradition_progress', 'security_freedom', 'globalism_nationalism', 'individualism_collectivism'];
-        let maxAbs = 0;
-        for (const axis of axes) {
-            const val = Math.abs(factionIdeology[axis] || 0);
-            if (val > maxAbs) { maxAbs = val; ideologyAxis = axis; ideologyDirection = (factionIdeology[axis] || 0) >= 0 ? 1 : -1; }
-        }
-    }
-    return { ideologyAxis, ideologyDirection };
-}
-
 
 // ==================== PRESIDENTIAL MINISTER NOMINATION ====================
 
@@ -272,7 +241,7 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
 
     // Reload the full bill with articles and policies for enactBill()
     const { data: signedBill, error: signedBillErr } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+        .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
         .eq('id', billId)
         .single();
 
@@ -361,7 +330,7 @@ export async function processPresidentDesk(supabase, nation, currentTick) {
     if (!hasElectedPresident(nation)) return [];
 
     const { data: expiredDesks, error: deskErr } = await supabase.from('bills')
-        .select('*, factions(faction_name, ideology_value_1, ideology_value_2), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+        .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
         .eq('nation_id', nation.id)
         .eq('status', 'president_desk')
         .lte('president_desk_deadline', currentTick);
@@ -467,8 +436,6 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
 
             if (isIncumbentParty && !isTermLimited) {
                 // === INCUMBENT LOCK-IN: use incumbent president's data ===
-                const { ideologyAxis, ideologyDirection } = await computeDominantIdeologyAxis(supabase, incumbentPresident.faction_id);
-
                 await supabase.from('pm_candidates').delete()
                     .eq('nation_id', nation.id)
                     .eq('faction_id', incumbentPresident.faction_id)
@@ -480,9 +447,6 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
                     first_name: incumbentPresident.first_name,
                     last_name: incumbentPresident.last_name,
                     age: incumbentPresident.age,
-                    ideology: incumbentPresident.ideology || 'PROGRESS',
-                    ideology_axis: ideologyAxis,
-                    ideology_direction: ideologyDirection,
                     trait_key: incumbentPresident.trait || null,
                     created_at_tick: currentTick,
                     candidate_type: 'presidential',
@@ -616,7 +580,6 @@ export async function autoSelectPresidentialCandidates(supabase, nation, current
             if (isIncumbentParty && !isTermLimited) {
                 // Incumbent lock-in: use incumbent president's data, not party leader
                 console.log(`Auto-registering INCUMBENT ${incumbentPresident.first_name} ${incumbentPresident.last_name} as candidate for ${party.faction_name} in ${nation.name}`);
-                const { ideologyAxis, ideologyDirection } = await computeDominantIdeologyAxis(supabase, incumbentPresident.faction_id);
                 const { error: delErr } = await supabase.from('pm_candidates').delete()
                     .eq('nation_id', nation.id).eq('faction_id', party.id).eq('candidate_type', 'presidential');
                 if (delErr) console.warn(`[autoSelect] delete error for incumbent party ${party.faction_name}:`, delErr.message);
@@ -624,8 +587,7 @@ export async function autoSelectPresidentialCandidates(supabase, nation, current
                 const { error: insErr } = await supabase.from('pm_candidates').insert({
                     nation_id: nation.id, faction_id: party.id,
                     first_name: incumbentPresident.first_name, last_name: incumbentPresident.last_name,
-                    age: incumbentPresident.age, ideology: incumbentPresident.ideology || 'PROGRESS',
-                    ideology_axis: ideologyAxis, ideology_direction: ideologyDirection,
+                    age: incumbentPresident.age,
                     trait_key: incumbentPresident.trait || null,
                     created_at_tick: currentTick, candidate_type: 'presidential', selected: true
                 });

@@ -2180,14 +2180,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Admin safety net failed for ${nation.name} (non-fatal):`, adminSafetyErr);
         }
 
-        // Caucus system: activate/deactivate internal factions based on seat share
-        try {
-            await evaluateCaucusActivation(supabase, nation.id, GAME_CONFIG.TOTAL_SEATS);
-            await decayCaucusRelationships(supabase, nation.id);
-            await processCaucusDefections(supabase, nation.id, newTick);
-        } catch (caucusErr) {
-            console.error(`[advanceTick] Caucus processing failed for ${nation.name} (non-fatal):`, caucusErr);
-        }
+        // Phase 5b: caucus system removed.
 
         // Fail committee bills that have sat without being sent to the floor
         // for COMMITTEE_EXPIRY_TICKS (6) ticks. The function was defined but
@@ -2455,27 +2448,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Incumbent campaign bonuses (+2 approval/tick during pre-election window)
         await processIncumbentCampaignBonuses(supabase, nation, newTick);
 
-        // Ideology shifts from resolved bills
-        try {
-            await processIdeologyShifts(supabase, nation.id, resolutions, newTick);
-        } catch (ideoErr) {
-            console.error(`[advanceTick] Ideology shifts failed for ${nation.name} (non-fatal):`, ideoErr);
-        }
-
-        // Phase 2: sector popularity shifts from resolved bills (vote-aligned).
-        // Runs alongside ideology shifts during the transition; sectors are
-        // shadow-tracked until Phase 3 swaps the election engine over.
+        // Phase 5: sector popularity shifts from resolved bills (vote-aligned).
+        // The ideology shift / decay pipelines were removed in Phase 5b along
+        // with the rest of the ideology system.
         try {
             await processSectorShifts(supabase, nation.id, resolutions);
         } catch (sectorErr) {
             console.error(`[advanceTick] Sector shifts failed for ${nation.name} (non-fatal):`, sectorErr);
-        }
-
-        // Natural ideology decay toward center (extremism erodes over time)
-        try {
-            await processIdeologyDecay(supabase, nation.id, newTick);
-        } catch (decayErr) {
-            console.error(`[advanceTick] Ideology decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
         // Purge approval decay (autocracy scapegoat mechanic)

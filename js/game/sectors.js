@@ -644,6 +644,120 @@ export function coalitionAffinity(factionAStrongholds, factionBStrongholds) {
 }
 
 /**
+ * Distribute eliminated presidential-runoff candidates' votes to the
+ * surviving candidates by sector-stronghold affinity, with an abstention
+ * rate that scales from 15% (perfect overlap) to 50% (no overlap).
+ *
+ * Single source of truth for the runoff vote-redistribution math, used by
+ * both the live runoff orchestrator (processPresidentialElectionResult) and
+ * the preview (runPresidentialElectionPreview).
+ *
+ * Inputs:
+ *   eliminatedCandidates  = [{ candidate_id, candidate_name, faction_id,
+ *                              party_name, votes }]   (round-1 losers)
+ *   runoffCandidates      = [{ candidate_id, candidate_name, faction_id }]
+ *                              (top-2 survivors)
+ *   strongholdsByFaction  = { factionId: [{ sector_key, contribution, ... }] }
+ *
+ * Output:
+ *   {
+ *     transfersByCand: {
+ *       [runoff_candidate_id]: {
+ *         transfer_votes: number,
+ *         from: [{ party_name, faction_id, round1_votes, transferred, abstained }]
+ *       }
+ *     },
+ *     endorsements: [{
+ *       eliminated_candidate: string,
+ *       round1_votes: number,
+ *       abstain_votes: number,
+ *       transfers: [{ candidate_name, votes, affinity_pct }]
+ *     }],
+ *     totalAbstained: number,
+ *     totalTransferred: number,
+ *   }
+ *
+ * The live engine consumes `transfersByCand` + `totalAbstained` (the
+ * `from[].abstained` field is counted once per eliminated candidate so the
+ * legacy result-blob shape is preserved). The preview consumes
+ * `endorsements` for the runoff_meta panel.
+ */
+export function redistributeRunoffVotes(eliminatedCandidates, runoffCandidates, strongholdsByFaction) {
+    const transfersByCand = {};
+    for (const rc of (runoffCandidates || [])) {
+        transfersByCand[rc.candidate_id] = { transfer_votes: 0, from: [] };
+    }
+    const endorsements = [];
+    let totalAbstained = 0;
+    let totalTransferred = 0;
+
+    if (!runoffCandidates || runoffCandidates.length === 0) {
+        return { transfersByCand, endorsements, totalAbstained, totalTransferred };
+    }
+
+    for (const elim of (eliminatedCandidates || [])) {
+        const elimVotes = elim.votes || 0;
+        if (elimVotes === 0) continue;
+        const elimStrongholds = strongholdsByFaction[elim.faction_id] || [];
+
+        const affinitiesRaw = runoffCandidates.map(rc => ({
+            candidate_id: rc.candidate_id,
+            candidate_name: rc.candidate_name,
+            affinity: coalitionAffinity(elimStrongholds, strongholdsByFaction[rc.faction_id] || []),
+        }));
+
+        // Normalize. If every affinity is zero (eliminated party has no
+        // strongholds, or no overlap with any runoff candidate), split
+        // transferable votes evenly.
+        const affinitySum = affinitiesRaw.reduce((s, a) => s + a.affinity, 0);
+        const affinities = affinitySum <= 0
+            ? affinitiesRaw.map(a => ({ ...a, affinity: 1 / affinitiesRaw.length }))
+            : affinitiesRaw.map(a => ({ ...a, affinity: a.affinity / affinitySum }));
+
+        // Abstain rate: 15% base, climbs toward 50% as overlap drops.
+        const totalOverlap = Math.min(1, affinitySum / Math.max(1, affinitiesRaw.length));
+        const abstainRate = Math.min(0.50, 0.15 + (1 - totalOverlap) * 0.35);
+        const abstainVotes = Math.round(elimVotes * abstainRate);
+        const transferableVotes = elimVotes - abstainVotes;
+        totalAbstained += abstainVotes;
+
+        const detailTransfers = [];
+        for (let i = 0; i < affinities.length; i++) {
+            const a = affinities[i];
+            const transferred = Math.round(transferableVotes * a.affinity);
+            const acc = transfersByCand[a.candidate_id];
+            if (acc) {
+                acc.transfer_votes += transferred;
+                acc.from.push({
+                    party_name: elim.party_name,
+                    faction_id: elim.faction_id,
+                    round1_votes: elimVotes,
+                    transferred,
+                    // Count abstain once (against the first runoff candidate)
+                    // so the live result blob doesn't double-count it.
+                    abstained: i === 0 ? abstainVotes : 0,
+                });
+            }
+            detailTransfers.push({
+                candidate_name: a.candidate_name,
+                votes: transferred,
+                affinity_pct: Math.round(a.affinity * 100),
+            });
+            totalTransferred += transferred;
+        }
+
+        endorsements.push({
+            eliminated_candidate: elim.candidate_name,
+            round1_votes: elimVotes,
+            abstain_votes: abstainVotes,
+            transfers: detailTransfers,
+        });
+    }
+
+    return { transfersByCand, endorsements, totalAbstained, totalTransferred };
+}
+
+/**
  * Return the human-readable name of the faction's #1 stronghold sector,
  * or a fallback string if the faction has no popularity. Used for news
  * copy, party badges, and any UI that previously showed a single-word

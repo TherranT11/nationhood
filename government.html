@@ -5106,25 +5106,6 @@ function getCoalitionSeatPct(partyIds) {
     return Math.round((getCoalitionSeats(partyIds) / totalLegislatureSeats) * 100);
 }
 
-function getCoalitionIdeologies(partyIds) {
-    const ideologies = new Set();
-    partyIds.forEach(pid => {
-        const p = allParties.find(x => x.id === pid);
-        if (p?.ideology_value_1) ideologies.add(p.ideology_value_1);
-        if (p?.ideology_value_2) ideologies.add(p.ideology_value_2);
-    });
-    return [...ideologies];
-}
-
-function renderIdeologyChips(ideologies) {
-    return ideologies.map(i => {
-        if (i === 'Corporations Affected') {
-            return `<span class="ideology-chip" style="background:rgba(200,168,50,0.10);color:#c8a832;border:1px solid rgba(200,168,50,0.30);">${i}</span>`;
-        }
-        return `<span class="ideology-chip ${i.toLowerCase()}">${i}</span>`;
-    }).join('');
-}
-
 // ===== Formation Proposals List =====
 
 async function loadFormationsList() {
@@ -5212,7 +5193,6 @@ async function loadFormationsList() {
                     const coalitionSeats = getCoalitionSeats(partyIds);
                     const coalitionPct = getCoalitionSeatPct(partyIds);
                     const meetsThreshold = coalitionSeats >= GAME_CONFIG.MAJORITY_SEATS;
-                    const ideologies = getCoalitionIdeologies(partyIds);
                     const partyChips = partyIds.map((pid, pIdx) => {
                         const p = allParties.find(x => x.id === pid);
                         const seats = getFormationPartySeats(pid);
@@ -5235,7 +5215,6 @@ async function loadFormationsList() {
                                 <span>Seats: <span class="stat-val ${meetsThreshold ? 'meets' : 'below'}">${coalitionSeats}</span> (${coalitionPct}%)</span>
                             </div>
                             <div class="proposal-card-parties">${partyChips}</div>
-                            ${ideologies.length > 0 ? `<div class="proposal-card-ideologies">${renderIdeologyChips(ideologies)}</div>` : ''}
                             <div class="proposal-card-support">Support: <span class="count">${f.supportCount}</span> / ${f.coalitionSize} coalition members</div>
                         </div>`;
                 }).join('')}
@@ -5419,7 +5398,6 @@ function renderFormationDetail(formation) {
     const coalitionSeats = getCoalitionSeats(partyIds);
     const coalitionPct = getCoalitionSeatPct(partyIds);
     const meetsThreshold = coalitionSeats >= GAME_CONFIG.MAJORITY_SEATS;
-    const ideologies = getCoalitionIdeologies(partyIds);
     const iAmInCoalition = partyIds.includes(currentFaction.id);
 
     const partyChipsHTML = partyIds.map((pid, pIdx) => {
@@ -5543,7 +5521,6 @@ function renderFormationDetail(formation) {
                 <span class="formation-stat">Seats: <span class="stat-highlight ${meetsThreshold ? '' : 'below-threshold'}">${coalitionSeats} (${coalitionPct}%)</span></span>
                 <span class="formation-stat">Threshold: <span class="stat-highlight">${meetsThreshold ? `✓ Meets ${GAME_CONFIG.MAJORITY_SEATS} seats` : `✗ Below ${GAME_CONFIG.MAJORITY_SEATS} seats`}</span></span>
             </div>
-            ${ideologies.length > 0 ? `<div class="formation-ideologies">${renderIdeologyChips(ideologies)}</div>` : ''}
             ${isProposer ? `
             <div id="edit-coalition-panel" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid #333;">
                 <div style="font-size: 0.82rem; color: #888; margin-bottom: 10px;">Add or remove parties from this coalition:</div>
