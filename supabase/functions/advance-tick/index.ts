@@ -1566,9 +1566,7 @@ function calculateDomesticProduction(nation, sector, opts) {
         totalProduction *= 0.167;  // tighter supply (equivalent to /30 normalization)
     }
     if (sector.key === 'arms') {
-        var defensePct = (opts && opts.defense_pct) || 0;
-        if (defensePct <= 8) return 0;
-        totalProduction *= (defensePct / 15);  // 15% defense spending = 1.0 multiplier
+        return 0;  // Arms production disabled across all nations.
     }
     if (sector.key === 'tourism') {
         totalProduction *= 0.5;
@@ -1803,16 +1801,8 @@ function calculateImportDemand(nation, sector, opts) {
         domesticCoverage = Math.min(0.60, (edu + digiProd) / 2 * 0.7);
     }
 
-    // ── ARMS & MILITARY EQUIPMENT ──
-    // Demand: defense budget + instability premium (unstable nations arm up).
-    // Domestic offset: nations with arms exports cover 60% internally.
     else if (sector.key === 'arms') {
-        var defenseBudget = (opts && opts.defense_budget) || 0;
-        var stability = Number(nation.stability ?? 50);
-        var instabilityPremium = Math.max(0, (50 - stability) / 50) * 0.3;
-        grossDemand = defenseBudget * (0.15 + instabilityPremium);
-
-        domesticCoverage = (opts && opts.has_arms_exports) ? 0.60 : 0;
+        return 0;  // Arms demand disabled across all nations.
     }
 
     // Apply domestic coverage: domestic production offsets demand but never fully
