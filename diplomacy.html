@@ -523,10 +523,13 @@ function renderTradeEconomy() {
             domesticDemand: Number(flow.domestic_demand) || 0,
             demand: Number(flow.import_demand) || 0,
             // netFlow = export_volume − import_volume, computed once by the
-            // trade engine and stored on trade_flows.net_flow. Drives BAL,
-            // the surplus/deficit classification, and the bottom panels —
-            // single source of truth so all three can't disagree.
+            // trade engine and stored on trade_flows.net_flow.
             netFlow: Number(flow.net_flow) || 0,
+            // selfSufficiencyBalance = domestic_production − domestic_demand.
+            // Only meaningful where domestic demand is populated.
+            selfSufficiencyBalance: (Number(flow.domestic_demand) || 0) > 0
+                ? (Number(flow.domestic_production) || 0) - (Number(flow.domestic_demand) || 0)
+                : null,
         });
     }
     // Sort by total volume descending
@@ -551,12 +554,12 @@ function renderTradeEconomy() {
             <span style="width:75px;text-align:right;">PROD /MO</span>
             <span style="width:75px;text-align:right;">DOM DEMAND /MO</span>
             <span style="width:75px;text-align:right;">IMP DEMAND /MO</span>
-            <span style="width:75px;text-align:right;">BAL /MO</span>
+            <span style="width:75px;text-align:right;">SELF-SUFF /MO</span>
         </div>`;
 
     const nationId = _worldState?.nation?.id;
     for (const c of commodities) {
-        const bal = c.netFlow;
+        const bal = c.selfSufficiencyBalance !== null ? c.selfSufficiencyBalance : c.netFlow;
         const isExp = _expandedCommodity === c.key;
         const isSelected = _tradeCommodityFilter === c.key;
         const bgStyle = isExp ? 'background:var(--bg-card);' : isSelected ? (bal > 0 ? 'background:rgba(92,204,92,0.04);' : 'background:rgba(204,85,85,0.04);') : '';
@@ -585,6 +588,9 @@ function renderTradeEconomy() {
             const impDem = Number(flow.import_demand) || 0;
             const expVol = Number(flow.export_volume) || 0;
             const impVol = Number(flow.import_volume) || 0;
+            const selfSuffBal = domDem > 0 ? (domProd - domDem) : null;
+            const tradeCashflow = expVol - impVol;
+
             // Unmet demand = import gap not satisfied by actual imports + any
             // un-exported surplus the nation could self-supply if redirected.
             const unmetDemand = Math.max(0, impDem - expCap - impVol);
@@ -640,6 +646,18 @@ function renderTradeEconomy() {
             html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
                 <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">IMPORT DEMAND</span>
                 <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--amber);">${fmtBudgetCurrency(impDem)}${unitDem ? ' <span style="font-weight:400;color:var(--text-dim);font-size:10px;">(' + unitDem + ')</span>' : ''}</span>
+            </div>`;
+
+            // Self-sufficiency balance
+            html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
+                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">SELF-SUFFICIENCY BALANCE</span>
+                <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${selfSuffBal === null ? 'var(--text-dim)' : selfSuffBal > 0 ? 'var(--green)' : selfSuffBal < 0 ? 'var(--red)' : 'var(--text-dim)'};">${selfSuffBal === null ? '—' : (selfSuffBal > 0 ? '+' : '') + fmtBudgetCurrency(selfSuffBal)}</span>
+            </div>`;
+
+            // Trade cashflow (actual exports − imports)
+            html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.2);">
+                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0.5px;">TRADE CASHFLOW</span>
+                <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${tradeCashflow > 0 ? 'var(--green)' : tradeCashflow < 0 ? 'var(--red)' : 'var(--text-dim)'};">${tradeCashflow === 0 ? '—' : (tradeCashflow > 0 ? '+' : '') + fmtBudgetCurrency(tradeCashflow)}</span>
             </div>`;
 
             // Importing
