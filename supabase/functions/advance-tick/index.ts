@@ -24767,42 +24767,62 @@ async function installHOG(supabase, opts) {
         const { data: nation } = await supabase.from('nations')
             .select('government_type').eq('id', nationId).single();
         if (isSemiPresidential(nation)) {
-            const { data: openAdmin } = await supabase.from('administrations')
-                .select('id, leader_changes')
-                .eq('nation_id', nationId)
-                .is('ended_at_tick', null)
-                .order('started_at_tick', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-            if (openAdmin) {
-                const newPmName = [firstName, lastName].filter(Boolean).join(' ').trim();
-                const oldPmName = outgoingHog
-                    ? [outgoingHog.first_name, outgoingHog.last_name].filter(Boolean).join(' ').trim()
-                    : null;
-                const event = {
-                    tick: currentTick ?? null,
-                    role: 'prime_minister',
-                    reason,
-                    old_name: oldPmName || null,
-                    new_name: newPmName || null,
-                    old_party_id: outgoingHog?.faction_id || null,
-                    new_party_id: factionId,
-                };
-                const existing = Array.isArray(openAdmin.leader_changes) ? openAdmin.leader_changes : [];
-                await supabase.from('administrations')
-                    .update({ leader_changes: [...existing, event] })
-                    .eq('id', openAdmin.id);
-            } else {
-                console.warn(`[installHOG] semi-pres ${nationId} has no open admin row to append leader_changes`);
-            }
+            const newPmName = [firstName, lastName].filter(Boolean).join(' ').trim() || null;
+            const oldPmName = outgoingHog
+                ? [outgoingHog.first_name, outgoingHog.last_name].filter(Boolean).join(' ').trim() || null
+                : null;
+            await appendAdminLeaderChange(supabase, nationId, {
+                tick: currentTick ?? null,
+                role: 'prime_minister',
+                reason,
+                old_name: oldPmName,
+                new_name: newPmName,
+                old_party_id: outgoingHog?.faction_id || null,
+                new_party_id: factionId,
+            });
         }
     } catch (err) {
-        // Non-blocking — the PM is installed; failing to log the event
-        // shouldn't roll back the install. Log so we can spot drift.
         console.warn('[installHOG] leader_changes write failed:', err?.message || err);
     }
 
     return { };
+}
+
+/**
+ * Append a leader_changes event to the open administration row.
+ * Used by both server-side installHOG (semi-pres PM rotation within a
+ * presidential term) and the browser party-leadership UI (mid-term ruling-
+ * party leader change). Non-blocking: SELECT/UPDATE failures log to console
+ * but do not throw — the calling action has already mutated primary state
+ * (head_of_government, factions) and shouldn't be rolled back over an
+ * audit-trail write.
+ */
+async function appendAdminLeaderChange(supabase, nationId, event) {
+    try {
+        const { data: openAdmin, error: selErr } = await supabase
+            .from('administrations')
+            .select('id, leader_changes')
+            .eq('nation_id', nationId)
+            .is('ended_at_tick', null)
+            .order('started_at_tick', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (selErr) {
+            console.warn('[appendAdminLeaderChange] select failed:', selErr.message);
+            return;
+        }
+        if (!openAdmin) {
+            console.warn(`[appendAdminLeaderChange] no open admin row for nation ${nationId}`);
+            return;
+        }
+        const existing = Array.isArray(openAdmin.leader_changes) ? openAdmin.leader_changes : [];
+        const { error: updErr } = await supabase.from('administrations')
+            .update({ leader_changes: [...existing, event] })
+            .eq('id', openAdmin.id);
+        if (updErr) console.warn('[appendAdminLeaderChange] update failed:', updErr.message);
+    } catch (err) {
+        console.warn('[appendAdminLeaderChange] failed:', err?.message || err);
+    }
 }
 
 

@@ -24,7 +24,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
 import { deductAP } from './js/game/config.js';
-import { getNationNames } from './js/game/political-actions.js';
+import { getNationNames, appendAdminLeaderChange } from './js/game/political-actions.js';
 import {
     POSITIVE_MAP, NEGATIVE_MAP,
     IDEOLOGY_COLORS, CATEGORY_COLORS,
@@ -592,35 +592,19 @@ window._appointLeader = async function() {
             if (minErr) console.warn('Failed to update PM ministry (non-blocking):', minErr.message);
 
             // Tier 2 Phase 5: admin row identity is immutable post-INSERT.
-            // The display reads pull current PM from head_of_government, so
-            // we don't rewrite prime_minister / admin_name here. Instead
-            // append a leader_changes event so the row records the rotation.
-            try {
-                const { data: openAdmin } = await _supabase.from('administrations')
-                    .select('id, leader_changes')
-                    .eq('nation_id', currentNation.id)
-                    .is('ended_at_tick', null)
-                    .order('started_at_tick', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                if (openAdmin) {
-                    const oldPmName = [currentFaction.leader_first_name, currentFaction.leader_last_name].filter(Boolean).join(' ').trim() || null;
-                    const event = {
-                        tick: currentTick ?? null,
-                        role: 'prime_minister',
-                        reason: 'party_leadership_change',
-                        old_name: oldPmName,
-                        new_name: pmFullName,
-                        old_party_id: currentFaction.id,
-                        new_party_id: currentFaction.id,
-                    };
-                    const existing = Array.isArray(openAdmin.leader_changes) ? openAdmin.leader_changes : [];
-                    const { error: lcErr } = await _supabase.from('administrations')
-                        .update({ leader_changes: [...existing, event] })
-                        .eq('id', openAdmin.id);
-                    if (lcErr) console.warn('leader_changes append failed (non-blocking):', lcErr.message);
-                }
-            } catch (e) { console.warn('leader_changes append failed (non-blocking):', e); }
+            // Display reads resolve the current PM from head_of_government,
+            // so the rotation is recorded as a leader_changes event instead
+            // of rewriting prime_minister / admin_name on the row.
+            const oldPmName = [currentFaction.leader_first_name, currentFaction.leader_last_name].filter(Boolean).join(' ').trim() || null;
+            await appendAdminLeaderChange(_supabase, currentNation.id, {
+                tick: currentTick ?? null,
+                role: 'prime_minister',
+                reason: 'party_leadership_change',
+                old_name: oldPmName,
+                new_name: pmFullName,
+                old_party_id: currentFaction.id,
+                new_party_id: currentFaction.id,
+            });
 
             // Fire pm_appointed system event so other players see the PM change
             try {
