@@ -187,14 +187,14 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
     // ~15 places), hydrate the admin row in-place from the coalition before
     // the governing check runs. Every caller of getGoverningStatus (and
     // every reader of its .administration) then sees a consistent view.
-    var [coalitionResult, adminResult, hogResult] = await Promise.all([
+    var [coalitionResult, adminResult, hogResult, presResult] = await Promise.all([
         fetchActiveCoalition(supabase, nationId).catch(function(e) {
             console.warn('[Agitator] fetchActiveCoalition failed:', e?.message || e);
             return null;
         }),
         supabase
             .from('administrations')
-            .select('id, coalition_parties, stats_at_start, started_at_tick, pm_party_id, pm_party_name, president_party_id')
+            .select('id, coalition_parties, stats_at_start, started_at_tick')
             .eq('nation_id', nationId)
             .is('ended_at_tick', null)
             .order('started_at_tick', { ascending: false })
@@ -205,6 +205,12 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
             .select('faction_id')
             .eq('nation_id', nationId)
             .eq('active', true)
+            .maybeSingle(),
+        supabase
+            .from('presidents')
+            .select('faction_id')
+            .eq('nation_id', nationId)
+            .eq('is_active', true)
             .maybeSingle()
     ]);
 
@@ -217,38 +223,32 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
     var coalition = coalitionResult;
     var presidential = hasElectedPresident(nation);
     var hogPartyId = hogResult?.data?.faction_id || null;
-
-    // Hydrate the lead-party field that matches this nation's government
-    // type — pm_party_id for parliamentary, president_party_id for
-    // presidential / semi-presidential. Setting the wrong one breaks the
-    // isPM / isPresident labels downstream (party-actions.js) even when
-    // the governing flag itself would still be correct via OR.
-    var leadPartyField = presidential ? 'president_party_id' : 'pm_party_id';
+    var presPartyId = presResult?.data?.faction_id || null;
     var coalitionPartyObjs = Array.isArray(coalition?.party_ids)
         ? coalition.party_ids.map(function(id) { return { party_id: id }; })
         : [];
 
-    if (admin && !presidential && hogPartyId) {
+    // Identity fields come from primary tables (presidents.is_active,
+    // head_of_government.active). The administrations row is a historical
+    // snapshot whose pm_party_id / president_party_id columns can drift
+    // from live state — we no longer SELECT them above. Coalition member
+    // parties come from government_formations (canonical post-parliamentary
+    // refactor) when the admin's stored snapshot is empty or stale.
+    if (admin) {
         admin.pm_party_id = hogPartyId;
-    }
-
-    if (admin && coalition) {
-        if (!admin[leadPartyField] && coalition.lead_party_id) {
-            admin[leadPartyField] = coalition.lead_party_id;
-        }
+        admin.president_party_id = presPartyId;
         var adminCoalition = Array.isArray(admin.coalition_parties) ? admin.coalition_parties : [];
         if (adminCoalition.length === 0 && coalitionPartyObjs.length > 0) {
             admin.coalition_parties = coalitionPartyObjs;
         }
-    } else if (!admin && coalition) {
-        // No admin row but a formed coalition exists — synthesize a minimal
-        // admin so the governing check below sees the coalition's truth.
+    } else if (coalition || hogPartyId || presPartyId) {
+        // No admin row but live state exists — synthesize a minimal
+        // admin so the governing check below sees the live truth.
         admin = {
-            pm_party_id: null,
-            president_party_id: null,
+            pm_party_id: hogPartyId,
+            president_party_id: presPartyId,
             coalition_parties: coalitionPartyObjs,
         };
-        admin[leadPartyField] = coalition.lead_party_id || null;
     }
 
     // Presidential / Semi-Presidential also need a cabinet-held check.
