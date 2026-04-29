@@ -341,8 +341,8 @@
     margin-top: 1px;
 }
 .adm2-coal-row {
-    display: flex; align-items: baseline; gap: 8px;
-    padding: 3px 8px;
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 4px 8px;
     background: var(--bg-card);
     border: 1px solid var(--border-main);
     border-left: 3px solid var(--text-muted);
@@ -353,12 +353,14 @@
     letter-spacing: 0.08em;
     width: 44px; flex-shrink: 0;
     text-transform: uppercase;
+    padding-top: 1px;
 }
 .adm2-coal-name {
     font-family: var(--font-mono); font-size: 11px;
     color: var(--text-primary);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     flex: 1; min-width: 0;
+    line-height: 1.4;
+    word-break: break-word;
 }
 
 .adm2-approval-strip {
