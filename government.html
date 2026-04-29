@@ -12486,9 +12486,11 @@ async function renderPastAdministrationsTab(container, nationIdOverride) {
     container.innerHTML = `<div style="padding:16px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;">Loading…</div>`;
 
     try {
-        // Parallel fetch: admins + the nation's full gov_approval_log + ALL
-        // nations (for the selector dropdown). nations is the single source
-        // of truth for name + flag — no hardcoded maps.
+        // Parallel fetch: admins + the nation's gov_approval_log + ALL nations
+        // (for the selector dropdown). nations is the single source of truth
+        // for name / flag / total_seats — no hardcoded maps. Including
+        // total_seats here so the renderer can use the SELECTED nation's
+        // seat denominator instead of the player's own.
         const [adminsRes, logRes, nationsRes] = await Promise.all([
             _supabase.from('administrations')
                 .select('*')
@@ -12499,7 +12501,7 @@ async function renderPastAdministrationsTab(container, nationIdOverride) {
                 .eq('nation_id', selectedNationId)
                 .order('tick', { ascending: true }),
             _supabase.from('nations')
-                .select('id, name, flag_url')
+                .select('id, name, flag_url, total_seats')
                 .order('name', { ascending: true }),
         ]);
 
@@ -12516,15 +12518,23 @@ async function renderPastAdministrationsTab(container, nationIdOverride) {
         const logs = (logRes && !logRes.error) ? (logRes.data || []) : [];
         const nations = (nationsRes && !nationsRes.error) ? (nationsRes.data || []) : [];
         const selectedNation = nations.find(n => n.id === selectedNationId)
-            || { id: selectedNationId, name: currentNation?.name || 'Unknown', flag_url: currentNation?.flag_url };
+            || {
+                id: selectedNationId,
+                name: currentNation?.name || 'Unknown',
+                flag_url: currentNation?.flag_url,
+                total_seats: currentNation?.total_seats,
+            };
 
         const list = adminsRes.data || [];
-        console.debug('[PastAdministrations] loaded', list.length, 'admin row(s) for nation', selectedNationId);
         const pastAdmins = list.filter(a => a.ended_at_tick != null);
         const currentAdmin = list.find(a => a.ended_at_tick == null);
         const totalCount = pastAdmins.length + (currentAdmin ? 1 : 0);
 
-        const openEndTick = _govData?.shard?.current_tick ?? Number.POSITIVE_INFINITY;
+        // Open admins (ended_at_tick null) need an upper bound for the approval
+        // arc — clamp to the live current tick. The previous code reached for
+        // _govData.shard.current_tick which never existed on the _govData
+        // shape, silently defaulting to Infinity.
+        const openEndTick = (typeof currentTick === 'number') ? currentTick : Number.POSITIVE_INFINITY;
         for (const a of list) {
             const end = a.ended_at_tick ?? openEndTick;
             a._approvalArc = computeApprovalArc(logs, a.started_at_tick, end, a.approval_at_start);
@@ -12543,11 +12553,15 @@ async function renderPastAdministrationsTab(container, nationIdOverride) {
             return;
         }
 
+        // Total-seats denominator. Falls back to the GAME_CONFIG default
+        // only if a nation truly has no per-nation override (legacy data).
+        const denomSeats = selectedNation.total_seats || GAME_CONFIG.TOTAL_SEATS;
+
         container.innerHTML = `
             ${selector}
             <div class="past-admins-list" style="padding:8px 12px;">
-                ${currentAdmin ? renderAdminCard(currentAdmin, true) : ''}
-                ${pastAdmins.map(a => renderAdminCard(a, false)).join('')}
+                ${currentAdmin ? renderAdminCard(currentAdmin, true, denomSeats) : ''}
+                ${pastAdmins.map(a => renderAdminCard(a, false, denomSeats)).join('')}
             </div>
         `;
     } catch (err) {
@@ -12590,15 +12604,23 @@ function toggleAdminCard(id) {
     if (card) card.classList.toggle('open');
 }
 
-function toggleStatTable(id) {
+function toggleStatTable(id, event) {
     const table = document.getElementById('stat-table-' + id);
     if (table) {
         table.classList.toggle('open');
-        event.stopPropagation();
+        // Prevent the click from bubbling to the card-toggle handler. Caller
+        // passes the event explicitly via the inline onclick; the previous
+        // version relied on the deprecated implicit window.event global which
+        // breaks under strict mode + non-Chromium browsers.
+        if (event && typeof event.stopPropagation === 'function') {
+            event.stopPropagation();
+        }
     }
 }
 
-function renderAdminCard(admin, isCurrent) {
+function renderAdminCard(admin, isCurrent, denomSeats) {
+    // denomSeats falls back if the caller (e.g. an upgraded path) doesn't pass it.
+    const totalSeatsDenom = denomSeats || currentNation?.total_seats || GAME_CONFIG.TOTAL_SEATS;
     const endClass = isCurrent ? 'current-admin' : ('end-' + (admin.end_reason || 'dissolved'));
 
     // Summary info (use in-game tick dates, not real-world timestamps)
@@ -12609,9 +12631,10 @@ function renderAdminCard(admin, isCurrent) {
     const coalitionParties = (() => {
         const fromAdmin = admin.coalition_parties || [];
         if (fromAdmin.length > 0) return fromAdmin;
-        // Fallback for the CURRENT admin only: the row may have been created
-        // before coalition_parties was populated (older finalize_government_formation
-        // RPC missed some fields). Rebuild from _govData.coalition + _govData.parties.
+        // Fallback for the CURRENT admin only — for newly-created rows that
+        // haven't had coalition_parties populated yet, rebuild from
+        // _govData.coalition + _govData.parties so the player's own card
+        // shows up correctly mid-session.
         if (!isCurrent) return [];
         const coalitionPartyIds = _govData?.coalition?.party_ids || [];
         const livePartyMap = new Map((_govData?.parties || []).map(p => [p.id, p]));
@@ -12702,8 +12725,11 @@ function renderAdminCard(admin, isCurrent) {
         govLeaderName = admin.president_party_name || admin.pm_party_name || '—';
         govLeaderSub = '';
     } else {
+        // For non-presidential systems the player's own current admin can
+        // legitimately fall back to live nation fields (head_of_state title,
+        // names, hos_election_method) for display continuity. For OTHER
+        // nations we only show what's recorded on the admin row.
         hogLabel = escapeHtml(admin.head_of_state_title || (isCurrent ? (currentNation.head_of_state_title || 'Head of State') : 'Head of State'));
-        // Fallback for current admin: row may be missing head_of_state — read from live nation row.
         const liveHos = isCurrent
             ? [currentNation.head_of_state_first_name, currentNation.head_of_state_last_name].filter(Boolean).join(' ').trim()
             : '';
@@ -12714,7 +12740,6 @@ function renderAdminCard(admin, isCurrent) {
             : '';
         govLeaderLabel = 'Prime Minister';
         govLeaderName = admin.prime_minister || 'Not yet selected';
-        // Fallback for current admin: pull the PM's party name from _govData if the admin row is blank.
         const livePmPartyName = isCurrent
             ? (_govData?.parties || []).find(p => p.id === _govData?.hog?.faction_id)?.faction_name || ''
             : '';
@@ -12734,7 +12759,7 @@ function renderAdminCard(admin, isCurrent) {
         </div>
         <div class="pad-info-box">
             <div class="pad-info-label">${isPres ? 'Party Seats' : 'Coalition'}</div>
-            <div class="pad-info-value">${seatCount} / ${currentNation.total_seats || GAME_CONFIG.TOTAL_SEATS} seats</div>
+            <div class="pad-info-value">${seatCount} / ${totalSeatsDenom} seats</div>
             <div class="pad-info-sub">${durationText}${admin.end_reason ? ' &middot; Ended: ' + (END_REASON_LABELS[admin.end_reason] || admin.end_reason) : ''}</div>
         </div>
     </div>`;
@@ -12894,7 +12919,7 @@ function renderAdminCard(admin, isCurrent) {
     // All stat changes table (expandable)
     if (!isCurrent && allChanges.length > 0) {
         detailHTML += `
-            <div class="pad-stat-table-toggle" onclick="toggleStatTable('${admin.id}')">
+            <div class="pad-stat-table-toggle" onclick="toggleStatTable('${admin.id}', event)">
                 <span>All Stat Changes (${allChanges.length})</span>
                 <span class="chevron">&#9660;</span>
             </div>
@@ -12917,22 +12942,33 @@ function renderAdminCard(admin, isCurrent) {
             </div>`;
     }
 
+    // Build the meta line incrementally so we don't end up with stray
+    // " · · " sequences when one of the segments is empty.
+    const metaParts = [];
+    if (isPres) {
+        const presName = escapeHtml(admin.president_name || admin.head_of_state || 'TBD');
+        metaParts.push(`<span class="pm-name">${presName}</span>`);
+        const presParty = escapeHtml(admin.president_party_name || admin.pm_party_name || '');
+        if (presParty) metaParts.push(presParty);
+    } else {
+        const pmName = admin.prime_minister || 'TBD';
+        metaParts.push(`PM: <span class="pm-name">${escapeHtml(pmName)}</span>`);
+        if (admin.pm_party_name) metaParts.push(escapeHtml(admin.pm_party_name));
+    }
+    if (partyList) metaParts.push(escapeHtml(partyList));
+    if (seatCount) metaParts.push(`${seatCount}/${totalSeatsDenom} seats`);
+    const metaHtml = metaParts.join(' &middot; ');
+
     return `
         <div class="past-admin-card ${endClass}" id="admin-card-${admin.id}">
             <div class="past-admin-summary" onclick="toggleAdminCard('${admin.id}')">
                 <div class="past-admin-summary-left">
                     <div class="past-admin-name">
-                        ${admin.admin_name || 'Unknown Administration'}
+                        ${escapeHtml(admin.admin_name || 'Unknown Administration')}
                         ${reasonBadge}
                         <span class="past-admin-date">${dateRange}</span>
                     </div>
-                    <div class="past-admin-meta">
-                        ${isPres
-                                ? `<span class="pm-name">${escapeHtml(admin.president_name || admin.head_of_state || 'TBD')}</span> &middot; ${escapeHtml(admin.president_party_name || admin.pm_party_name || '')}`
-                                : `PM: <span class="pm-name">${admin.prime_minister || 'TBD'}</span> &middot; ${admin.pm_party_name || ''}`}
-                        ${partyList ? ` &middot; ${partyList}` : ''}
-                        ${seatCount ? ` &middot; ${seatCount}/${GAME_CONFIG.TOTAL_SEATS} seats` : ''}
-                    </div>
+                    <div class="past-admin-meta">${metaHtml}</div>
                 </div>
                 <div class="past-admin-approval">
                     <div class="past-admin-approval-label">Approval</div>
