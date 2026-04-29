@@ -3161,16 +3161,13 @@ function onTargetOptionChange() {
 function renderOptionDetails(option) {
     const sectorChips = (Array.isArray(option.sector_effects) ? option.sector_effects : [])
         // Number.isFinite guards against NaN / null / strings that happen to
-        // pass !== 0 — corrupted rows would otherwise render with NaN
-        // magnitudes in the picker.
+        // pass !== 0 — corrupted rows would otherwise pass the !== 0 check.
         .filter(s => s && s.sector_key && Number.isFinite(Number(s.change_tenths)) && Number(s.change_tenths) !== 0)
         .map(s => {
-            const tenths = Number(s.change_tenths);
-            const up = tenths > 0;
+            const up = Number(s.change_tenths) > 0;
             const arrow = up ? '↑' : '↓';
             const cls = up ? 'effect-up' : 'effect-down';
-            const mag = (Math.abs(tenths) / 10).toFixed(1);
-            return '<span class="opt-effect ' + cls + '">' + arrow + ' ' + escapeHtml(formatSectorKey(s.sector_key)) + ' (' + mag + ')</span>';
+            return '<span class="opt-effect ' + cls + '">' + arrow + ' ' + escapeHtml(formatSectorKey(s.sector_key)) + '</span>';
         }).join('');
 
     const statChips = (Array.isArray(option.stat_effects) ? option.stat_effects : [])
@@ -3179,8 +3176,7 @@ function renderOptionDetails(option) {
             const up = (e.direction || '').toLowerCase() === 'up';
             const arrow = up ? '↑' : '↓';
             const cls = up ? 'effect-up' : 'effect-down';
-            const rate = e.rate != null ? e.rate : '?';
-            return '<span class="opt-effect ' + cls + '">' + arrow + ' ' + escapeHtml(formatStatName(e.stat_key)) + ' (' + rate + '/t)</span>';
+            return '<span class="opt-effect ' + cls + '">' + arrow + ' ' + escapeHtml(formatStatName(e.stat_key)) + '</span>';
         }).join('');
 
     return '<div class="option-details-card">' +
