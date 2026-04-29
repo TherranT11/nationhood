@@ -2047,144 +2047,12 @@ window.selectSubsidiary = function(i) { _mSubSelected = i; renderManageSubsidiar
 // ==================== BUILD REGIONAL HQ ====================
 
 let _subNations = [];
-let _subNationCorpCounts = {}; // nation_id -> number of active corps
-let _subSelectedNation = null;
 let _subCreating = false;
-let _subCustomName = '';
-let _subCustomAbbr = '';
-let _subSelectedSector = ''; // defaults to parent's sector, can be changed
-let _subSelectedSubsector = ''; // defaults to parent's subsector
-
-// Cross-sector subsidiary cost multipliers (relative to same-sector base)
-const SUB_SECTOR_MULTIPLIERS = {
-    'Construction': 4,
-    'Finance': 5,
-    'Shipping': 4,
-};
-const SUB_AVAILABLE_SECTORS = ['Construction', 'Shipping', 'Finance'];
-
-// Subsector definitions with cost modifiers (relative to parent subsector)
-const SUB_SUBSECTORS = {
-    'Construction': [
-        { id: 'civil', name: 'Civil Engineering', mod: 0 },
-        { id: 'industrial', name: 'Industrial Construction', mod: 0.25 },
-        { id: 'mega', name: 'Megaprojects', mod: 0.40 },
-    ],
-    'Shipping': [
-        { id: 'bulk_cargo', name: 'Bulk Cargo', mod: 0 },
-        { id: 'container_freight', name: 'Container Freight', mod: 0.20 },
-        { id: 'specialized_transport', name: 'Specialized Transport', mod: 0.35 },
-    ],
-    'Finance': [
-        { id: 'banking', name: 'Banking', mod: 0 },
-        { id: 'insurance', name: 'Insurance', mod: 0.15 },
-        { id: 'investment', name: 'Investment Management', mod: 0.30 },
-    ],
-    'Technology': [
-        { id: 'software', name: 'Software Development', mod: 0 },
-        { id: 'hardware', name: 'Hardware Manufacturing', mod: 0.20 },
-        { id: 'telecom', name: 'Telecommunications', mod: 0.35 },
-    ],
-    'Energy': [
-        { id: 'oil_gas', name: 'Oil & Gas', mod: 0 },
-        { id: 'renewables', name: 'Renewables', mod: 0.20 },
-        { id: 'mining', name: 'Mining', mod: 0.30 },
-    ],
-    'Healthcare': [
-        { id: 'pharma', name: 'Pharmaceuticals', mod: 0 },
-        { id: 'hospitals', name: 'Hospital Systems', mod: 0.20 },
-        { id: 'biotech', name: 'Biotechnology', mod: 0.35 },
-    ],
-};
 
 async function loadNationsForSubsidiary() {
     const { data, error } = await _supabase.from('nations').select('*').order('name');
-    if (error) { console.warn('[Subsidiary] Failed to load nations:', error.message); }
+    if (error) { console.warn('[RegionalHQ] Failed to load nations:', error.message); }
     _subNations = (data || []).filter(n => n.id !== faction?.nation_id);
-
-    // Count active corps per nation for demand indicator
-    const { data: corps } = await _supabase.from('factions')
-        .select('nation_id')
-        .eq('faction_type', 'corporation')
-        .is('abandoned_at', null);
-    _subNationCorpCounts = {};
-    for (const c of (corps || [])) {
-        if (c.nation_id) _subNationCorpCounts[c.nation_id] = (_subNationCorpCounts[c.nation_id] || 0) + 1;
-    }
-
-    // Default sector and subsector to parent's
-    _subSelectedSector = faction?.corp_sector || '';
-    _subSelectedSubsector = faction?.corp_subsector || '';
-}
-
-function subGetSubsectors() {
-    const sector = _subSelectedSector || faction?.corp_sector || '';
-    return SUB_SUBSECTORS[sector] || [{ id: 'general', name: sector || 'General', mod: 0 }];
-}
-
-function subSetSector(sector) {
-    _subSelectedSector = sector;
-    // Reset subsector to first option of new sector
-    const subs = SUB_SUBSECTORS[sector];
-    _subSelectedSubsector = subs ? subs[0].name : '';
-    renderCreateSubsidiaryCard();
-}
-
-function subGetSectorMultiplier() {
-    const parentSector = faction?.corp_sector || '';
-    if (_subSelectedSector === parentSector) return 1;
-    return SUB_SECTOR_MULTIPLIERS[_subSelectedSector] || 4;
-}
-
-function subGetSubsectorMod() {
-    const subsectors = subGetSubsectors();
-    const sel = subsectors.find(s => s.name === _subSelectedSubsector);
-    return sel ? sel.mod : 0;
-}
-
-function subCalcNationMultiplier(n) {
-    const sol = Number(n.standard_of_living ?? 50);
-    // Multiplier based on standard of living: higher SoL = more expensive
-    return Math.max(0.5, Math.round((sol / 50) * 100) / 100);
-}
-
-function subCalcEntryCost(n) {
-    const BASE = 50000000;
-    const sectorMult = subGetSectorMultiplier();
-    const subsectorMod = 1 + subGetSubsectorMod();
-    const nationMult = subCalcNationMultiplier(n);
-    return Math.round(Math.max(10000000, BASE * sectorMult * subsectorMod * nationMult));
-}
-
-function subGetDemand(nationId) {
-    const count = _subNationCorpCounts[nationId] || 0;
-    if (count <= 1) return { label: 'HIGH', color: '#5c5' };
-    if (count <= 3) return { label: 'MODERATE', color: '#ca5' };
-    return { label: 'LOW', color: '#c55' };
-}
-
-function subSelectNation(nationId) {
-    _subSelectedNation = _subSelectedNation === nationId ? null : nationId;
-    if (_subSelectedNation) {
-        const n = _subNations.find(x => x.id === _subSelectedNation);
-        _subCustomName = (faction?.faction_name || 'Subsidiary') + ' ' + (n?.name || '');
-    } else {
-        _subCustomName = '';
-    }
-    renderCreateSubsidiaryCard();
-}
-
-function subSetSubsector(name) {
-    _subSelectedSubsector = name;
-    renderCreateSubsidiaryCard();
-}
-
-function subSetName(val) {
-    _subCustomName = val;
-}
-
-function subSetAbbr(val) {
-    _subCustomAbbr = val.toUpperCase().slice(0, 4);
 }
 
 // Regional HQ replaces the old "Establish Subsidiary" flow. A Regional HQ
@@ -2235,11 +2103,27 @@ async function buildRegionalHQ(nationId) {
 
     _subCreating = true;
     try {
-        const shardRes = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const currentTick = shardRes.data?.current_tick || 0;
+        const { data: shardData } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardData?.current_tick || 0;
         const condition = 85 + Math.floor(Math.random() * 16);
         const maint = Math.round(cost * 0.005);
         const hqName = (faction.faction_name || 'Corp') + ' — ' + nation.name + ' HQ';
+
+        // Deduct cash first. If the property INSERT fails afterwards, we
+        // refund. This ordering avoids the failure mode where the property
+        // exists but cash never gets debited (free HQ).
+        // KNOWN ISSUE: cross-tab stale-cash race — local `cash` could be
+        // out of date if another tab spent money. Same pattern as the
+        // rest of expansion.html; a server-side RPC would close it.
+        const newCash = Math.max(0, cash - cost);
+        const { error: cashErr } = await _supabase.from('factions')
+            .update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        if (cashErr) {
+            alert('Failed to deduct cash: ' + cashErr.message);
+            return;
+        }
+        faction.corp_cash_reserves = newCash;
+        subUpdateTopbarCash(newCash);
 
         const { error: propErr } = await _supabase.from('corp_properties').insert({
             faction_id: faction.id,
@@ -2256,12 +2140,15 @@ async function buildRegionalHQ(nationId) {
             purchased_at_tick: currentTick,
             is_active: true,
         });
-        if (propErr) throw propErr;
-
-        const newCash = Math.max(0, cash - cost);
-        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
-        faction.corp_cash_reserves = newCash;
-        subUpdateTopbarCash(newCash);
+        if (propErr) {
+            // Refund the cash we just deducted.
+            await _supabase.from('factions')
+                .update({ corp_cash_reserves: cash }).eq('id', faction.id);
+            faction.corp_cash_reserves = cash;
+            subUpdateTopbarCash(cash);
+            alert('Failed to create property: ' + propErr.message + '\nCash refunded.');
+            return;
+        }
 
         try {
             await _supabase.from('event_log').insert({
@@ -2283,100 +2170,9 @@ async function buildRegionalHQ(nationId) {
 }
 window.buildRegionalHQ = buildRegionalHQ;
 
-// Legacy `subCreate` is now a no-op that nudges callers to the new flow.
-// Kept to avoid undefined-reference errors from any cached UI fragment.
+// Legacy global retained against any stale UI fragment that still references it.
 async function subCreate() {
     alert('Subsidiary establishment has been replaced with Regional HQs. Pick a nation from the list below.');
-    return;
-    /* legacy body retained below for refactor-archaeology — never runs */
-    if (_subCreating || !_subSelectedNation) return;
-    const nation = _subNations.find(n => n.id === _subSelectedNation);
-    if (!nation) return;
-
-    const subName = (_subCustomName || '').trim();
-    const subAbbr = (_subCustomAbbr || '').trim();
-    if (!subName) { alert('Please enter a corporation name for the subsidiary.'); return; }
-    if (subAbbr.length < 2) { alert('Please enter an abbreviation (2-4 chars).'); return; }
-
-    // Check if already have subsidiary there (marketplace HQs don't count — they have role='regional_hq')
-    const existing = _ownedProperties.find(p => p.nation_id === nation.id && p.role === 'subsidiary');
-    if (existing) { alert('You already have a subsidiary in ' + nation.name); return; }
-
-    const cost = subCalcEntryCost(nation);
-    const cash = Number(faction?.corp_cash_reserves ?? 0);
-    if (cost > cash) {
-        alert('Insufficient cash. Entry cost: ' + hfFmtBig(cost) + ', available: ' + hfFmtBig(cash));
-        return;
-    }
-
-    if (!confirm('Establish subsidiary in ' + nation.name + '?\n\nName: ' + subName + ' (' + subAbbr + ')\nSubsector: ' + (_subSelectedSubsector || 'General') + '\nEntry cost: ' + hfFmtBig(cost) + '\nCreates a Regional HQ (500 capacity)\nUnlocks ' + nation.name + ' for operations\n\nDeducted from cash reserves.')) return;
-
-    _subCreating = true;
-    try {
-        const shardRes = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-        const currentTick = shardRes.data?.current_tick || 0;
-        const condition = 85 + Math.floor(Math.random() * 16); // 85-100% new build
-        const maint = Math.round(cost * 0.005);
-
-        // Create subsidiary (stored as type='regional_hq' for legacy compat,
-        // distinguished from marketplace HQs by role='subsidiary').
-        const { error: propErr } = await _supabase.from('corp_properties').insert({
-            faction_id: faction.id,
-            nation_id: nation.id,
-            name: subName,
-            type: 'regional_hq',
-            role: 'subsidiary',
-            style: 'Modern',
-            capacity: 500,
-            purchase_price: cost,
-            monthly_maintenance: maint,
-            condition: condition,
-            city: nation.capital || nation.name,
-            purchased_at_tick: currentTick,
-            is_active: true,
-            subsector: _subSelectedSubsector || faction?.corp_subsector || null,
-        });
-        if (propErr) throw propErr;
-
-        // Deduct cash
-        const newCash = Math.max(0, cash - cost);
-        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
-        faction.corp_cash_reserves = newCash;
-
-        subUpdateTopbarCash(newCash);
-
-        // Log corporate event for news ticker + world events
-        const selectedSector = _subSelectedSector || faction?.corp_sector || 'Unknown';
-        try {
-            await _supabase.from('event_log').insert({
-                nation_id: nation.id,
-                event_name: 'New Subsidiary Established',
-                category: 'corporate',
-                description_chosen: `${faction.faction_name} has invested ${hfFmtBig(cost)} to establish ${subName}, a new ${selectedSector} corporation in ${nation.name}.`,
-                fired_at_tick: shard?.current_tick || 0,
-            });
-        } catch (_) { /* non-blocking */ }
-
-        // One-time GDP growth nudge (+0.2) for the subsidiary nation
-        try {
-            const { data: subNation } = await _supabase.from('nations').select('gdp_growth').eq('id', nation.id).single();
-            if (subNation) {
-                await _supabase.from('nations').update({
-                    gdp_growth: Math.min(100, Number(subNation.gdp_growth || 50) + 0.2)
-                }).eq('id', nation.id);
-            }
-        } catch (_) { /* non-blocking */ }
-
-        _subSelectedNation = null;
-        _subCustomName = '';
-        _subCustomAbbr = '';
-        await subReloadCards();
-        alert('Subsidiary "' + subName + '" established in ' + nation.name + '!\n\nCost: ' + hfFmtBig(cost) + '\nRegional HQ created with ' + condition + '% condition.');
-    } catch (err) {
-        alert('Failed: ' + err.message);
-    } finally {
-        _subCreating = false;
-    }
 }
 
 function renderCreateSubsidiaryCard() {
@@ -2431,12 +2227,7 @@ function renderCreateSubsidiaryCard() {
     `;
 }
 
-window.subSelectNation = subSelectNation;
 window.subCreate = subCreate;
-window.subSetName = subSetName;
-window.subSetAbbr = subSetAbbr;
-window.subSetSector = subSetSector;
-window.subSetSubsector = subSetSubsector;
 
 // ==================== CORPORATIONS CARD (760×450) ====================
 
