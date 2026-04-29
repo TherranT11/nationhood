@@ -221,6 +221,7 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
 
     var admin = adminResult.data;
     var coalition = coalitionResult;
+    var presidential = hasElectedPresident(nation);
     var hogPartyId = hogResult?.data?.faction_id || null;
     var presPartyId = presResult?.data?.faction_id || null;
     var coalitionPartyObjs = Array.isArray(coalition?.party_ids)
