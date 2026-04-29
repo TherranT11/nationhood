@@ -387,7 +387,7 @@ async function loadStatEffectSources(nationId, nation) {
         // any selected column is missing, which would silently empty the
         // per-stat panel for option-bearing laws too.
         _supabase.from('active_laws')
-            .select('is_reversal, passed_tick, effects_applied_through_tick, policies(policy_name, stat_effects), selected_option:policy_options!selected_option_id(option_name, stat_effects)')
+            .select('is_reversal, passed_tick, effects_applied_through_tick, policies(policy_name), selected_option:policy_options!selected_option_id(option_name, stat_effects)')
             .eq('nation_id', nationId),
         _supabase.from('active_crises')
             .select('crisis_id, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')

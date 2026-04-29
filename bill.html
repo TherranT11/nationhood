@@ -497,7 +497,7 @@ async function loadBillData() {
         // PostgREST rejects the whole query when any selected column is
         // missing.
         const { data: activeLawRows } = await _supabase.from('active_laws')
-            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, stat_effects, policy_type), selected_option:policy_options!selected_option_id(option_name, option_description)')
+            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, policy_type), selected_option:policy_options!selected_option_id(option_name, option_description, stat_effects)')
             .eq('nation_id', bill.nation_id)
             .eq('is_reversal', false);
         nationActiveLaws = (activeLawRows || []).filter(l => l.policies);

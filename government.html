@@ -1877,7 +1877,7 @@ async function loadLawsData() {
         const [policiesRes, activeLawsRes] = await Promise.all([
             _supabase
                 .from('policies')
-                .select('id, policy_name, description, major_sector, minor_sector, law_category, stat_effects, policy_options(id, option_name, option_order, stat_effects, sector_effects)')
+                .select('id, policy_name, description, major_sector, minor_sector, law_category, policy_options(id, option_name, option_order, stat_effects, sector_effects)')
                 .eq('is_active', true),
             _supabase.from('active_laws').select('policy_id').eq('nation_id', currentNation.id),
         ]);
@@ -1895,11 +1895,12 @@ async function loadLawsData() {
                 : [];
             // Surface the first option's stat_effects on the policy object so
             // the existing effect-tag renderer keeps working for multi-option
-            // policies. Falls back to whatever's on policies.stat_effects for
-            // orphaned legacy data.
+            // policies. policies.stat_effects column is gone from the live
+            // schema; the renderer's legacy single-stat fallback short-
+            // circuits cleanly when the field is undefined.
             const effective = (opts[0]?.stat_effects && Array.isArray(opts[0].stat_effects) && opts[0].stat_effects.length > 0)
                 ? opts[0].stat_effects
-                : p.stat_effects;
+                : null;
             return {
                 policies: { ...p, stat_effects: effective },
                 _isEnacted: activeIds.has(p.id),
