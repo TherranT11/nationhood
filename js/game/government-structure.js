@@ -79,6 +79,23 @@ export async function hasActiveGovernment(supabase, nation) {
     return !!coalition && (coalition.status === 'formed' || coalition.status === 'caretaker');
 }
 
+/**
+ * Derive the lead (PM) party id from a government_formations row.
+ *
+ * lead_party_id isn't a real column on government_formations — it's only on
+ * the legacy active_coalitions table. Callers that previously SELECTed
+ * lead_party_id from government_formations got a silent PostgREST 42703
+ * and fell through to wrong branches. This helper is the single source of
+ * truth for that derivation across the codebase.
+ *
+ * @param {Object|null} formation – a government_formations row (or null)
+ * @returns {string|null} the lead party's faction id, or null when undeterminable
+ */
+export function deriveLeadPartyId(formation) {
+    if (!formation) return null;
+    return formation.ministry_assignments?.prime_minister || formation.proposed_by || null;
+}
+
 export async function fetchActiveCoalition(supabase, nationId) {
     const cacheKey = 'coalition_' + nationId;
     if (typeof qCache === 'function') {
@@ -172,7 +189,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
         .maybeSingle();
 
     if (newGov) {
-        const pmPartyId = newGov.ministry_assignments?.prime_minister || newGov.proposed_by;
+        const pmPartyId = deriveLeadPartyId(newGov);
         const result = {
             id: newGov.id,
             nation_id: newGov.nation_id,

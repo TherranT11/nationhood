@@ -8,7 +8,7 @@ import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM } from './government-typ
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
-import { fetchActiveCoalition } from './government-structure.js';
+import { fetchActiveCoalition, deriveLeadPartyId } from './government-structure.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
 import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition, POSITIVE_TRAITS } from './party-leadership.js';
 import { onRally, onAttack } from './electorate.js';
@@ -3524,11 +3524,10 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     }
 
     // 4. Coalition check — handle if in coalition but not PM (or PM resignation didn't dissolve).
-    // lead_party_id isn't a real column on government_formations — derive
-    // from ministry_assignments['prime_minister'] (with proposed_by as
-    // fallback). The previous query selected lead_party_id directly,
-    // 42703'd silently, and always routed the disbanding party through
-    // the junior-partner branch even when they were the PM.
+    // Lead-party detection routes through deriveLeadPartyId; the previous
+    // direct lead_party_id select silently 42703'd against
+    // government_formations and always sent the disbanding party through
+    // the junior-partner branch.
     if (!pmResigned) {
         const { data: formations } = await supabase
             .from('government_formations')
@@ -3541,8 +3540,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         );
 
         if (myFormation) {
-            const formationLeadPartyId = myFormation.ministry_assignments?.prime_minister || myFormation.proposed_by;
-            if (formationLeadPartyId === factionId) {
+            if (deriveLeadPartyId(myFormation) === factionId) {
                 // Lead party disbanding — dissolve entire coalition
                 await dissolveCoalition(supabase, nationId);
             } else {

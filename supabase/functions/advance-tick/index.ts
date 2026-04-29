@@ -6492,6 +6492,23 @@ async function hasActiveGovernment(supabase, nation) {
     return !!coalition && (coalition.status === 'formed' || coalition.status === 'caretaker');
 }
 
+/**
+ * Derive the lead (PM) party id from a government_formations row.
+ *
+ * lead_party_id isn't a real column on government_formations — it's only on
+ * the legacy active_coalitions table. Callers that previously SELECTed
+ * lead_party_id from government_formations got a silent PostgREST 42703
+ * and fell through to wrong branches. This helper is the single source of
+ * truth for that derivation across the codebase.
+ *
+ * @param {Object|null} formation – a government_formations row (or null)
+ * @returns {string|null} the lead party's faction id, or null when undeterminable
+ */
+function deriveLeadPartyId(formation) {
+    if (!formation) return null;
+    return formation.ministry_assignments?.prime_minister || formation.proposed_by || null;
+}
+
 async function fetchActiveCoalition(supabase, nationId) {
     const cacheKey = 'coalition_' + nationId;
     if (typeof qCache === 'function') {
@@ -6585,7 +6602,7 @@ async function fetchActiveCoalition(supabase, nationId) {
         .maybeSingle();
 
     if (newGov) {
-        const pmPartyId = newGov.ministry_assignments?.prime_minister || newGov.proposed_by;
+        const pmPartyId = deriveLeadPartyId(newGov);
         const result = {
             id: newGov.id,
             nation_id: newGov.nation_id,
@@ -18381,11 +18398,8 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
     // electorate_profile — the pillar weight is zero, the column is going
     // away in Phase 5b, and the work was a tick-time hot path.
 
-    // Determine governing faction IDs. lead_party_id isn't a real column
-    // on government_formations — derive it from ministry_assignments
-    // (PM's party) with proposed_by as a fallback. The earlier query
-    // selected lead_party_id directly which silently 42703'd in PostgREST
-    // and collapsed governingIds to whatever party_ids contained.
+    // Governing factions = party_ids[] + the PM's party. lead_party_id isn't
+    // on government_formations; deriveLeadPartyId is the canonical helper.
     const { data: coalitionRow } = await supabase
         .from('government_formations')
         .select('party_ids, ministry_assignments, proposed_by')
@@ -18393,7 +18407,7 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
         .eq('status', 'active')
         .single();
     const governingIds = new Set(coalitionRow?.party_ids || []);
-    const leadPartyId = coalitionRow?.ministry_assignments?.prime_minister || coalitionRow?.proposed_by;
+    const leadPartyId = deriveLeadPartyId(coalitionRow);
     if (leadPartyId) governingIds.add(leadPartyId);
 
     const govApproval = Number(nation.gov_approval ?? 50);
@@ -18591,10 +18605,8 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     const standingMap = {};
     for (const s of (existingStandings || [])) standingMap[s.faction_id] = s;
 
-    // 6. Determine governing faction IDs + incumbency tenure. lead_party_id
-    // isn't a real column on government_formations — derive from
-    // ministry_assignments['prime_minister'] / proposed_by. See sibling
-    // call site at the top of this file for the same pattern.
+    // 6. Governing factions + incumbency tenure. Same derivation as the
+    // approval site above — see deriveLeadPartyId.
     const { data: coalitionRow } = await supabase
         .from('government_formations')
         .select('party_ids, ministry_assignments, proposed_by')
@@ -18604,7 +18616,7 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         .limit(1)
         .maybeSingle();
     const governingIds = new Set(coalitionRow?.party_ids || []);
-    const leadPartyId = coalitionRow?.ministry_assignments?.prime_minister || coalitionRow?.proposed_by;
+    const leadPartyId = deriveLeadPartyId(coalitionRow);
     if (leadPartyId) governingIds.add(leadPartyId);
 
     // Incumbency tenure: ticks since current administration started
@@ -25149,11 +25161,10 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
     }
 
     // 4. Coalition check — handle if in coalition but not PM (or PM resignation didn't dissolve).
-    // lead_party_id isn't a real column on government_formations — derive
-    // from ministry_assignments['prime_minister'] (with proposed_by as
-    // fallback). The previous query selected lead_party_id directly,
-    // 42703'd silently, and always routed the disbanding party through
-    // the junior-partner branch even when they were the PM.
+    // Lead-party detection routes through deriveLeadPartyId; the previous
+    // direct lead_party_id select silently 42703'd against
+    // government_formations and always sent the disbanding party through
+    // the junior-partner branch.
     if (!pmResigned) {
         const { data: formations } = await supabase
             .from('government_formations')
@@ -25166,8 +25177,7 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         );
 
         if (myFormation) {
-            const formationLeadPartyId = myFormation.ministry_assignments?.prime_minister || myFormation.proposed_by;
-            if (formationLeadPartyId === factionId) {
+            if (deriveLeadPartyId(myFormation) === factionId) {
                 // Lead party disbanding — dissolve entire coalition
                 await dissolveCoalition(supabase, nationId);
             } else {

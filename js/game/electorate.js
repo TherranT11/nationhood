@@ -18,7 +18,7 @@
  */
 
 import { statDirectionSign } from './stats.js';
-import { fetchActiveCoalition } from './government-structure.js';
+import { fetchActiveCoalition, deriveLeadPartyId } from './government-structure.js';
 import { deductAP } from './config.js';
 import { computeEngagementScores } from './engagement.js';
 
@@ -464,11 +464,8 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
     // electorate_profile — the pillar weight is zero, the column is going
     // away in Phase 5b, and the work was a tick-time hot path.
 
-    // Determine governing faction IDs. lead_party_id isn't a real column
-    // on government_formations — derive it from ministry_assignments
-    // (PM's party) with proposed_by as a fallback. The earlier query
-    // selected lead_party_id directly which silently 42703'd in PostgREST
-    // and collapsed governingIds to whatever party_ids contained.
+    // Governing factions = party_ids[] + the PM's party. lead_party_id isn't
+    // on government_formations; deriveLeadPartyId is the canonical helper.
     const { data: coalitionRow } = await supabase
         .from('government_formations')
         .select('party_ids, ministry_assignments, proposed_by')
@@ -476,7 +473,7 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
         .eq('status', 'active')
         .single();
     const governingIds = new Set(coalitionRow?.party_ids || []);
-    const leadPartyId = coalitionRow?.ministry_assignments?.prime_minister || coalitionRow?.proposed_by;
+    const leadPartyId = deriveLeadPartyId(coalitionRow);
     if (leadPartyId) governingIds.add(leadPartyId);
 
     const govApproval = Number(nation.gov_approval ?? 50);
@@ -674,10 +671,8 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     const standingMap = {};
     for (const s of (existingStandings || [])) standingMap[s.faction_id] = s;
 
-    // 6. Determine governing faction IDs + incumbency tenure. lead_party_id
-    // isn't a real column on government_formations — derive from
-    // ministry_assignments['prime_minister'] / proposed_by. See sibling
-    // call site at the top of this file for the same pattern.
+    // 6. Governing factions + incumbency tenure. Same derivation as the
+    // approval site above — see deriveLeadPartyId.
     const { data: coalitionRow } = await supabase
         .from('government_formations')
         .select('party_ids, ministry_assignments, proposed_by')
@@ -687,7 +682,7 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         .limit(1)
         .maybeSingle();
     const governingIds = new Set(coalitionRow?.party_ids || []);
-    const leadPartyId = coalitionRow?.ministry_assignments?.prime_minister || coalitionRow?.proposed_by;
+    const leadPartyId = deriveLeadPartyId(coalitionRow);
     if (leadPartyId) governingIds.add(leadPartyId);
 
     // Incumbency tenure: ticks since current administration started
