@@ -82,11 +82,10 @@ export async function hasActiveGovernment(supabase, nation) {
 /**
  * Derive the lead (PM) party id from a government_formations row.
  *
- * lead_party_id isn't a real column on government_formations — it's only on
- * the legacy active_coalitions table. Callers that previously SELECTed
- * lead_party_id from government_formations got a silent PostgREST 42703
- * and fell through to wrong branches. This helper is the single source of
- * truth for that derivation across the codebase.
+ * lead_party_id isn't a real column on government_formations. Callers that
+ * SELECTed it directly used to silently 42703 in PostgREST and fall through
+ * to wrong branches. This helper is the single source of truth for the
+ * derivation across the codebase.
  *
  * @param {Object|null} formation – a government_formations row (or null)
  * @returns {string|null} the lead party's faction id, or null when undeterminable
