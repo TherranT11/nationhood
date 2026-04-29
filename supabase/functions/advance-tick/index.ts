@@ -14750,13 +14750,28 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
         .update({ active: false })
         .eq('nation_id', nationId).eq('active', true);
 
-    // 5. Freeze all pending bills
+    // 5. Orphan the cabinet — clear minister names + party assignments so
+    // the new PM re-confirms them post-election. Mirrors the same block in
+    // runManualElectionByGovernmentType so dissolution and election-driven
+    // turnover produce the same end-state. Without this, ministers survived
+    // dissolution intact and the next PM inherited a stale cabinet.
+    await supabase.from('ministries')
+        .update({
+            minister_first_name: null,
+            minister_last_name: null,
+            minister_age: null,
+            party_id: null
+        })
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+
+    // 6. Freeze all pending bills
     await supabase.from('bills')
         .update({ status: 'frozen' })
         .eq('nation_id', nationId)
         .in('status', ['committee', 'floor']);
 
-    // 6. Schedule snap election
+    // 7. Schedule snap election
     const EARLY_ELECTION_TICKS = 2;
     await supabase.from('elections').insert({
         nation_id: nationId,
@@ -14765,7 +14780,7 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
         status: 'scheduled'
     });
 
-    // 7. Fire event
+    // 8. Fire event
     try {
         await supabase.rpc('fire_system_event', {
             p_trigger_key: 'parliament_dissolved',
@@ -14775,7 +14790,7 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
         });
     } catch (e) { /* non-blocking */ }
 
-    // 8. If dissolving after a vonc, fire additional legitimacy penalty event
+    // 9. If dissolving after a vonc, fire additional legitimacy penalty event
     if (voncPenalty) {
         await supabase.from('event_log').insert({
             nation_id: nationId,
