@@ -183,6 +183,14 @@
             <label class="form-label">Select Policy</label>
             <div id="sponsor-add-policies"></div>
         </div>
+        <div class="form-group" id="sponsor-add-option-selector-group" style="display: none;">
+            <div id="sponsor-add-option-selector-active"></div>
+            <label class="form-label" id="sponsor-add-option-selector-label" style="display: none;">Change to</label>
+            <select class="form-select" id="sponsor-add-option-selector-select" style="display: none;" onchange="onSponsorAddTargetOptionChange()">
+                <option value="">-- Choose new option --</option>
+            </select>
+            <div id="sponsor-add-option-selector-details"></div>
+        </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeSponsorAddModal()">Cancel</button>
             <button class="btn-submit" id="sponsor-add-btn" disabled onclick="submitSponsorAddArticle()">Add Article</button>
@@ -3307,6 +3315,12 @@ function openSponsorAddModal() {
 
 function closeSponsorAddModal() {
     document.getElementById('sponsor-add-article-modal').classList.remove('active');
+    // Phase 5.5: reset option-selector state so a stale picker panel
+    // doesn't leak into the next session.
+    sponsorSelectedPolicy = null;
+    selectedRepealLaw = null;
+    sponsorAddSelectedTargetOptionId = null;
+    _hideSponsorAddOptionSelector();
 }
 
 function onSponsorAddSectorChange() {
@@ -3327,13 +3341,23 @@ function onSponsorAddSectorChange() {
         activeLawsHTML = '<div style="margin-bottom:12px;"><div style="color:var(--orange);font-size:0.8rem;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Active Policies</div>' +
             sectorActiveLaws.map(law => {
                 const p = law.policies;
-                const onCost = p.ongoing_cost_per_tick || p.ongoing_base_cost || 0;
+                // Phase 5.5: pull cost / effects / display from the active option
+                // first so multi-option laws show the option that's actually
+                // being torn down. Falls back to legacy policies columns for
+                // orphaned data.
+                const opt = law.selected_option || null;
+                const onCost = (opt?.ongoing_base_cost ?? p.ongoing_cost_per_tick ?? p.ongoing_base_cost) || 0;
                 const costLabel = onCost > 0 ? ` <span style="color:var(--green);font-weight:bold;">Relief: ${formatCurrency(onCost)} / mo</span>` : '';
+                const lawDisplayName = opt?.option_name
+                    ? `${p.policy_name} — ${opt.option_name}`
+                    : p.policy_name;
+                const lawDesc = opt?.option_description || p.description || '';
                 // Show stat effects that would be reversed
                 let effectsHTML = '';
-                const effects = p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0
-                    ? p.stat_effects
-                    : (p.target_stat ? [{ stat_key: p.target_stat, direction: (p.stat_direction || 'UP').toLowerCase() }] : []);
+                const optionStatEffects = (Array.isArray(opt?.stat_effects) && opt.stat_effects.length > 0) ? opt.stat_effects : null;
+                const effects = optionStatEffects
+                    || (p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0 ? p.stat_effects : null)
+                    || (p.target_stat ? [{ stat_key: p.target_stat, direction: (p.stat_direction || 'UP').toLowerCase() }] : []);
                 if (effects.length > 0) {
                     effectsHTML = '<div style="margin-top:4px;font-size:0.75rem;color:var(--text-primary);">Reverses: ' +
                         effects.map(e => {
@@ -3342,7 +3366,7 @@ function onSponsorAddSectorChange() {
                             return `<span class="${cls}">${revDir} ${(e.stat_key || '').replace(/_/g, ' ')}</span>`;
                         }).join(', ') + '</div>';
                 }
-                return `<div class="policy-option" style="border-left:3px solid var(--orange);" data-repeal-law-id="${law.id}" onclick="selectRepealLaw('${law.id}')"><div class="policy-option-name"><span style="background:var(--orange);color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-right:6px;">ACTIVE</span>${p.policy_name}${costLabel}</div><div class="policy-option-desc">${p.description || ''}${effectsHTML}</div><div style="margin-top:6px;font-size:0.7rem;color:var(--orange);font-weight:bold;">Click to Repeal</div></div>`;
+                return `<div class="policy-option" style="border-left:3px solid var(--orange);" data-repeal-law-id="${law.id}" onclick="selectRepealLaw('${law.id}')"><div class="policy-option-name"><span style="background:var(--orange);color:#000;padding:2px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-right:6px;">ACTIVE</span>${lawDisplayName}${costLabel}</div><div class="policy-option-desc">${lawDesc}${effectsHTML}</div><div style="margin-top:6px;font-size:0.7rem;color:var(--orange);font-weight:bold;">Click to Repeal</div></div>`;
             }).join('') + '</div>';
     }
 
@@ -3379,19 +3403,136 @@ function onSponsorAddSectorChange() {
     document.getElementById('sponsor-add-policy-group').style.display = 'block';
 }
 
+// Phase 5.5: target option for the sponsor-add picker, parallel to the
+// amendment-picker state added in Phase 3.5.
+let sponsorAddSelectedTargetOptionId = null;
+
+function _hideSponsorAddOptionSelector() {
+    const group = document.getElementById('sponsor-add-option-selector-group');
+    if (group) group.style.display = 'none';
+    const sel = document.getElementById('sponsor-add-option-selector-select');
+    if (sel) sel.value = '';
+    const details = document.getElementById('sponsor-add-option-selector-details');
+    if (details) details.innerHTML = '';
+}
+
 function selectSponsorPolicy(id) {
     sponsorSelectedPolicy = allPolicies.find(p => p.id === id);
     selectedRepealLaw = null;
+    sponsorAddSelectedTargetOptionId = null;
     document.querySelectorAll('#sponsor-add-policies .policy-option').forEach(e => e.classList.remove('selected'));
     document.querySelector(`[data-sponsor-policy-id="${id}"]`)?.classList.add('selected');
+    // Phase 5.5: option-based policies require a target option just like
+    // the main draft picker (Phase 3.2) and the amendment picker (Phase
+    // 3.5). Add stays disabled until the user picks a target.
+    document.getElementById('sponsor-add-btn').disabled = true;
+    renderSponsorAddOptionSelector(id);
+}
+
+// Phase 5.5: render the Active + dropdown panel for the sponsor-add modal.
+// Mirrors renderAmendmentOptionSelector but scoped to the sponsor-add
+// container ids. Re-enables the Add button for orphaned legacy policies
+// that have no policy_options (matches Phase 3.5-fix).
+function renderSponsorAddOptionSelector(policyId) {
+    const group = document.getElementById('sponsor-add-option-selector-group');
+    const activeBox = document.getElementById('sponsor-add-option-selector-active');
+    const label = document.getElementById('sponsor-add-option-selector-label');
+    const select = document.getElementById('sponsor-add-option-selector-select');
+    const details = document.getElementById('sponsor-add-option-selector-details');
+    if (!group) return;
+
+    const policy = allPolicies.find(p => p.id === policyId);
+    const options = policy?.policy_options || [];
+
+    details.innerHTML = '';
+    if (!policy || options.length === 0) {
+        // Orphaned legacy policy with no options — re-enable Add since
+        // there's nothing to wait for.
+        group.style.display = 'none';
+        document.getElementById('sponsor-add-btn').disabled = false;
+        return;
+    }
+
+    const current = getCurrentOptionForPolicy(policyId);
+    const activeName = current?.option_name || 'None';
+    activeBox.innerHTML =
+        '<div style="background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 14px;margin-bottom:10px;font-size:0.85rem;">' +
+            '<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;">Active</div>' +
+            '<div style="font-weight:bold;color:#5cb85c;margin-top:2px;">' + escapeHtml(activeName) + '</div>' +
+        '</div>';
+
+    const selectableOptions = options.filter(o => !current || o.id !== current.id);
+    if (selectableOptions.length === 0) {
+        select.style.display = 'none';
+        label.style.display = 'none';
+        details.innerHTML = '<div style="color:#888;font-size:0.8rem;margin-top:6px;">This policy has only one option and it is already active.</div>';
+        group.style.display = 'block';
+        return;
+    }
+
+    label.style.display = 'block';
+    select.style.display = 'block';
+    select.innerHTML = '<option value="">-- Choose new option --</option>' +
+        selectableOptions.map(o => '<option value="' + o.id + '">' + escapeHtml(o.option_name || 'Untitled') + '</option>').join('');
+    select.value = '';
+    group.style.display = 'block';
+}
+
+function onSponsorAddTargetOptionChange() {
+    const select = document.getElementById('sponsor-add-option-selector-select');
+    const details = document.getElementById('sponsor-add-option-selector-details');
+    const optionId = select.value || null;
+    sponsorAddSelectedTargetOptionId = optionId;
+
+    if (!optionId || !sponsorSelectedPolicy) {
+        details.innerHTML = '';
+        document.getElementById('sponsor-add-btn').disabled = true;
+        return;
+    }
+
+    const option = (sponsorSelectedPolicy.policy_options || []).find(o => o.id === optionId);
+    if (!option) { details.innerHTML = ''; return; }
+
+    const sectorChips = (Array.isArray(option.sector_effects) ? option.sector_effects : [])
+        .filter(s => s && s.sector_key && Number.isFinite(Number(s.change_tenths)) && Number(s.change_tenths) !== 0)
+        .map(s => {
+            const tenths = Number(s.change_tenths);
+            const up = tenths > 0;
+            const arrow = up ? '↑' : '↓';
+            const colour = up ? '#5cb85c' : '#d9534f';
+            const mag = (Math.abs(tenths) / 10).toFixed(1);
+            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(s.sector_key).replace(/_/g, ' ')) + ' (' + mag + ')</span>';
+        }).join('');
+    const statChips = (Array.isArray(option.stat_effects) ? option.stat_effects : [])
+        .filter(e => e && e.stat_key)
+        .map(e => {
+            const up = (e.direction || '').toLowerCase() === 'up';
+            const arrow = up ? '↑' : '↓';
+            const colour = up ? '#5cb85c' : '#d9534f';
+            const rate = e.rate != null ? e.rate : '?';
+            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(e.stat_key).replace(/_/g, ' ')) + ' (' + rate + '/t)</span>';
+        }).join('');
+    details.innerHTML =
+        '<div style="background:#1a1a1a;border:1px solid #5b9bd5;border-radius:4px;padding:12px 14px;margin-top:10px;">' +
+            '<div style="font-weight:bold;color:#5b9bd5;font-size:0.95rem;margin-bottom:6px;">' + escapeHtml(option.option_name || 'Untitled') + '</div>' +
+            (option.option_description ? '<div style="color:#e0e0e0;font-size:0.82rem;line-height:1.45;margin-bottom:10px;">' + escapeHtml(option.option_description) + '</div>' : '') +
+            '<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;margin-top:8px;margin-bottom:4px;">Sectors Affected</div>' +
+            '<div>' + (sectorChips || '<span style="color:#888;font-size:0.8rem;">None</span>') + '</div>' +
+            '<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;margin-top:8px;margin-bottom:4px;">Stats Affected</div>' +
+            '<div>' + (statChips || '<span style="color:#888;font-size:0.8rem;">None</span>') + '</div>' +
+        '</div>';
     document.getElementById('sponsor-add-btn').disabled = false;
 }
 
 function selectRepealLaw(lawId) {
     selectedRepealLaw = nationActiveLaws.find(l => l.id === lawId);
     sponsorSelectedPolicy = null;
+    sponsorAddSelectedTargetOptionId = null;
     document.querySelectorAll('#sponsor-add-policies .policy-option').forEach(e => e.classList.remove('selected'));
     document.querySelector(`[data-repeal-law-id="${lawId}"]`)?.classList.add('selected');
+    // Repeal articles don't need an option transition — hide the option
+    // selector and enable Add immediately.
+    _hideSponsorAddOptionSelector();
     document.getElementById('sponsor-add-btn').disabled = false;
 }
 
@@ -3409,6 +3550,20 @@ async function submitSponsorAddArticle() {
         }
         if (!isFoundational && sponsorSelectedPolicy.policy_type === 'structural') {
             alert('Structural policies can only be added to foundational bills.'); return;
+        }
+
+        // Phase 5.5: validate option transition for option-based policies,
+        // mirroring Phase 3.3 / 3.5 addArticle / submitAmendment.
+        const policyOptions = Array.isArray(sponsorSelectedPolicy.policy_options) ? sponsorSelectedPolicy.policy_options : [];
+        if (policyOptions.length > 0) {
+            if (!sponsorAddSelectedTargetOptionId) { alert('Pick a target option from the "Change to" dropdown.'); return; }
+            const targetOption = policyOptions.find(o => o.id === sponsorAddSelectedTargetOptionId);
+            if (!targetOption) { alert('Selected option does not belong to this policy.'); return; }
+            const currentOption = getCurrentOptionForPolicy(sponsorSelectedPolicy.id);
+            if (currentOption && currentOption.id === sponsorAddSelectedTargetOptionId) {
+                alert('That option is already active for this nation — pick a different option.');
+                return;
+            }
         }
     }
     _billArticleLock = true;
@@ -3429,10 +3584,18 @@ async function submitSponsorAddArticle() {
             });
             insertErr = error;
         } else {
-            const { error } = await _supabase.from('bill_articles').insert({
+            // Phase 5.5: persist selected_option_id alongside policy_id so
+            // the new article carries the option transition through to
+            // Phase 4's engine. Repeal articles intentionally leave the
+            // column null — they tear the policy down rather than switch.
+            const articleRow = {
                 bill_id: billId, policy_id: sponsorSelectedPolicy.id,
                 article_number: nextNum, added_by: currentFaction.id
-            });
+            };
+            if (sponsorAddSelectedTargetOptionId) {
+                articleRow.selected_option_id = sponsorAddSelectedTargetOptionId;
+            }
+            const { error } = await _supabase.from('bill_articles').insert(articleRow);
             insertErr = error;
         }
         if (insertErr) {
@@ -3936,6 +4099,7 @@ window.closeSponsorAddModal = closeSponsorAddModal;
 window.onSponsorAddSectorChange = onSponsorAddSectorChange;
 window.selectSponsorPolicy = selectSponsorPolicy;
 window.selectRepealLaw = selectRepealLaw;
+window.onSponsorAddTargetOptionChange = onSponsorAddTargetOptionChange;
 window.submitSponsorAddArticle = submitSponsorAddArticle;
 window.openSponsorAddTextModal = openSponsorAddTextModal;
 window.closeSponsorAddTextModal = closeSponsorAddTextModal;
