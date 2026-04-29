@@ -8,7 +8,7 @@ import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM } from './government-typ
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
-import { fetchActiveCoalition } from './government-structure.js';
+import { fetchActiveCoalition, deriveLeadPartyId } from './government-structure.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
 import { getTraitAPModifier, applyRallyTraitModifiers, getTraitApprovalMultiplier, getEffectiveBlocDisposition, POSITIVE_TRAITS } from './party-leadership.js';
 import { onRally, onAttack } from './electorate.js';
@@ -3219,9 +3219,6 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     // excluded.
     if (_isSuccessionInstall) {
         try {
-            await supabase.from('active_coalitions')
-                .update({ status: 'formed' })
-                .eq('id', _coalitionAtEntry.id);
             await supabase.from('government_formations')
                 .update({ status: 'formed' })
                 .eq('nation_id', nationId)
@@ -3425,11 +3422,6 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
     //    a more punitive Call-Early-Elections — the succession path is what
     //    gives the two actions distinct use-cases.)
     await supabase
-        .from('active_coalitions')
-        .update({ status: 'caretaker' })
-        .eq('nation_id', nationId)
-        .is('dissolved_at', null);
-    await supabase
         .from('government_formations')
         .update({ status: 'caretaker' })
         .eq('nation_id', nationId)
@@ -3523,11 +3515,15 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         pmResigned = true;
     }
 
-    // 4. Coalition check — handle if in coalition but not PM (or PM resignation didn't dissolve)
+    // 4. Coalition check — handle if in coalition but not PM (or PM resignation didn't dissolve).
+    // Lead-party detection routes through deriveLeadPartyId; the previous
+    // direct lead_party_id select silently 42703'd against
+    // government_formations and always sent the disbanding party through
+    // the junior-partner branch.
     if (!pmResigned) {
         const { data: formations } = await supabase
             .from('government_formations')
-            .select('id, lead_party_id, party_ids')
+            .select('id, party_ids, ministry_assignments, proposed_by')
             .eq('nation_id', nationId)
             .in('status', ['formed', 'caretaker']);
 
@@ -3536,7 +3532,7 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         );
 
         if (myFormation) {
-            if (myFormation.lead_party_id === factionId) {
+            if (deriveLeadPartyId(myFormation) === factionId) {
                 // Lead party disbanding — dissolve entire coalition
                 await dissolveCoalition(supabase, nationId);
             } else {

@@ -17,19 +17,6 @@ active_parliamentary AS (
     LEFT JOIN elections e ON e.id = gf.election_id
     WHERE gf.status IN ('formed', 'caretaker')
 ),
-active_legacy AS (
-    SELECT
-        ac.nation_id,
-        ac.party_ids,
-        ac.lead_party_id,
-        NULL::uuid AS election_id,
-        NULL::int AS election_tick,
-        3 AS source_priority,
-        'active_coalitions'::text AS source_name
-    FROM active_coalitions ac
-    WHERE ac.dissolved_at IS NULL
-      AND (ac.status IS NULL OR ac.status IN ('formed', 'caretaker'))
-),
 active_presidential AS (
     SELECT
         p.nation_id,
@@ -46,8 +33,6 @@ active_governments AS (
     SELECT * FROM active_presidential
     UNION ALL
     SELECT * FROM active_parliamentary
-    UNION ALL
-    SELECT * FROM active_legacy
 ),
 chosen_government AS (
     SELECT *

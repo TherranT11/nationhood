@@ -79,6 +79,22 @@ export async function hasActiveGovernment(supabase, nation) {
     return !!coalition && (coalition.status === 'formed' || coalition.status === 'caretaker');
 }
 
+/**
+ * Derive the lead (PM) party id from a government_formations row.
+ *
+ * lead_party_id isn't a real column on government_formations. Callers that
+ * SELECTed it directly used to silently 42703 in PostgREST and fall through
+ * to wrong branches. This helper is the single source of truth for the
+ * derivation across the codebase.
+ *
+ * @param {Object|null} formation – a government_formations row (or null)
+ * @returns {string|null} the lead party's faction id, or null when undeterminable
+ */
+export function deriveLeadPartyId(formation) {
+    if (!formation) return null;
+    return formation.ministry_assignments?.prime_minister || formation.proposed_by || null;
+}
+
 export async function fetchActiveCoalition(supabase, nationId) {
     const cacheKey = 'coalition_' + nationId;
     if (typeof qCache === 'function') {
@@ -129,22 +145,15 @@ export async function fetchActiveCoalition(supabase, nationId) {
             ministry_allocations: ministryAllocations,
             formed_at: null,
             status: 'formed',  // Always 'formed' while president is active
-            _source: 'presidential'
         };
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
         return result;
     }
 
-    // === PARLIAMENTARY DEMOCRACY: existing logic ===
-
-    // Caretaker is set EXCLUSIVELY by the explicit writers — Snap Election,
-    // Vote of No Confidence, Presidential parliament dissolution, and PM
-    // resignation — which all UPDATE active_coalitions.status /
-    // government_formations.status to 'caretaker' on the triggering action.
-    // The previous reverse-causal inferCaretakerStatus helper (status flipped
-    // to 'caretaker' whenever frozen bills existed) was removed: frozen
-    // bills are an EFFECT of caretaker, not a cause, and the inference
-    // wrote bad state back to the DB at the reconcile block below.
+    // === PARLIAMENTARY DEMOCRACY ===
+    // Single source of truth: government_formations. Caretaker status is
+    // set EXCLUSIVELY by Snap Election / VoNC / Presidential dissolve / PM
+    // resignation — see js/game/elections.js + political-actions.js.
 
     // Only return formed or caretaker governments — 'active' means a proposal
     // that hasn't been finalized. Returning proposals here causes the UI to
@@ -179,7 +188,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
         .maybeSingle();
 
     if (newGov) {
-        const pmPartyId = newGov.ministry_assignments?.prime_minister || newGov.proposed_by;
+        const pmPartyId = deriveLeadPartyId(newGov);
         const result = {
             id: newGov.id,
             nation_id: newGov.nation_id,
@@ -190,42 +199,14 @@ export async function fetchActiveCoalition(supabase, nationId) {
             formed_at: newGov.formed_at,
             status: newGov.status,
             formation_type: newGov.formation_type || 'coalition',
-            _source: 'government_formations'
         };
-
-        // Reconcile: if government_formations has a definitive status, ensure active_coalitions matches
-        if (result.status === 'dissolved' || result.status === 'caretaker') {
-            try {
-                await supabase.from('active_coalitions')
-                    .update(result.status === 'dissolved'
-                        ? { status: 'dissolved', dissolved_at: new Date().toISOString() }
-                        : { status: 'caretaker' })
-                    .eq('nation_id', nationId)
-                    .is('dissolved_at', null);
-            } catch (e) { console.warn('Coalition table reconciliation failed:', e); }
-        }
-
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
         return result;
     }
 
-    const { data } = await supabase
-        .from('active_coalitions')
-        .select('*')
-        .eq('nation_id', nationId)
-        .is('dissolved_at', null)
-        .order('formed_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (data) {
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 15 * 1000);
-        return data;
-    }
-
     // === ABSOLUTE MONARCHY FALLBACK: synthesize virtual coalition for UI context ===
     const isMonarchyNation = isAbsoluteMonarchy(nationRow) || nationRow?.hos_election_method === 'hereditary';
-    if (!isMonarchyNation) return data;
+    if (!isMonarchyNation) return null;
 
     const { data: ministries } = await supabase
         .from('ministries')
@@ -255,7 +236,6 @@ export async function fetchActiveCoalition(supabase, nationId) {
         ministry_allocations: ministryAllocations,
         formed_at: null,
         status: 'formed',
-        _source: 'absolute_monarchy_virtual'
     };
 
     if (typeof qCacheSet === 'function') qCacheSet(cacheKey, monarchyFallback, 15 * 1000);

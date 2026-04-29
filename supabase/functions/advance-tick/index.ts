@@ -1516,15 +1516,23 @@ function calculateDomesticProduction(nation, sector, opts) {
     // ── MANUFACTURED GOODS ──
     // Population-scaled single-driver model. Manufacturing output IS the
     // composite industrial capability — no secondary stat needed. Pop scales
-    // because more workers = more factory output. Stability degrades below 40.
-    // Max output (manuf=100, pop=100M, stab≥40) = $25B/tick.
+    // because more workers = more factory output. Stability degrades below 55.
+    // Max output (manuf=100, pop=100M, stab≥55) = $22B/tick.
     // No threshold, no GDP modifier, no bonus stats.
+    //
+    // 2025-04-29 rebalance (v2.3.5.2):
+    //   coefficient   $250M → $220M (~12% cut, dial back global supply)
+    //   stability cap   /40 → /55    (penalise unstable producers harder)
+    // Demand-side coefficient in computeManufDemand intentionally stays
+    // at $250M so the world tilts into a small import-demand position
+    // (currently slightly oversupplied at the per-nation level despite a
+    // near-balanced global net).
     if (sector.key === 'manufactured_goods') {
         var manufStat = Number(nation.manufacturing_output) || 0;
         var popMillions = (Number(nation.population) || 0) / 1_000_000;
         var stabMg = Number(nation.stability ?? 50);
         return Math.round(
-            (manufStat / 100) * popMillions * 250_000_000 * Math.min(1.0, stabMg / 40)
+            (manufStat / 100) * popMillions * 220_000_000 * Math.min(1.0, stabMg / 55)
         );
     }
 
@@ -6484,6 +6492,22 @@ async function hasActiveGovernment(supabase, nation) {
     return !!coalition && (coalition.status === 'formed' || coalition.status === 'caretaker');
 }
 
+/**
+ * Derive the lead (PM) party id from a government_formations row.
+ *
+ * lead_party_id isn't a real column on government_formations. Callers that
+ * SELECTed it directly used to silently 42703 in PostgREST and fall through
+ * to wrong branches. This helper is the single source of truth for the
+ * derivation across the codebase.
+ *
+ * @param {Object|null} formation – a government_formations row (or null)
+ * @returns {string|null} the lead party's faction id, or null when undeterminable
+ */
+function deriveLeadPartyId(formation) {
+    if (!formation) return null;
+    return formation.ministry_assignments?.prime_minister || formation.proposed_by || null;
+}
+
 async function fetchActiveCoalition(supabase, nationId) {
     const cacheKey = 'coalition_' + nationId;
     if (typeof qCache === 'function') {
@@ -6534,22 +6558,15 @@ async function fetchActiveCoalition(supabase, nationId) {
             ministry_allocations: ministryAllocations,
             formed_at: null,
             status: 'formed',  // Always 'formed' while president is active
-            _source: 'presidential'
         };
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
         return result;
     }
 
-    // === PARLIAMENTARY DEMOCRACY: existing logic ===
-
-    // Caretaker is set EXCLUSIVELY by the explicit writers — Snap Election,
-    // Vote of No Confidence, Presidential parliament dissolution, and PM
-    // resignation — which all UPDATE active_coalitions.status /
-    // government_formations.status to 'caretaker' on the triggering action.
-    // The previous reverse-causal inferCaretakerStatus helper (status flipped
-    // to 'caretaker' whenever frozen bills existed) was removed: frozen
-    // bills are an EFFECT of caretaker, not a cause, and the inference
-    // wrote bad state back to the DB at the reconcile block below.
+    // === PARLIAMENTARY DEMOCRACY ===
+    // Single source of truth: government_formations. Caretaker status is
+    // set EXCLUSIVELY by Snap Election / VoNC / Presidential dissolve / PM
+    // resignation — see js/game/elections.js + political-actions.js.
 
     // Only return formed or caretaker governments — 'active' means a proposal
     // that hasn't been finalized. Returning proposals here causes the UI to
@@ -6584,7 +6601,7 @@ async function fetchActiveCoalition(supabase, nationId) {
         .maybeSingle();
 
     if (newGov) {
-        const pmPartyId = newGov.ministry_assignments?.prime_minister || newGov.proposed_by;
+        const pmPartyId = deriveLeadPartyId(newGov);
         const result = {
             id: newGov.id,
             nation_id: newGov.nation_id,
@@ -6595,42 +6612,14 @@ async function fetchActiveCoalition(supabase, nationId) {
             formed_at: newGov.formed_at,
             status: newGov.status,
             formation_type: newGov.formation_type || 'coalition',
-            _source: 'government_formations'
         };
-
-        // Reconcile: if government_formations has a definitive status, ensure active_coalitions matches
-        if (result.status === 'dissolved' || result.status === 'caretaker') {
-            try {
-                await supabase.from('active_coalitions')
-                    .update(result.status === 'dissolved'
-                        ? { status: 'dissolved', dissolved_at: new Date().toISOString() }
-                        : { status: 'caretaker' })
-                    .eq('nation_id', nationId)
-                    .is('dissolved_at', null);
-            } catch (e) { console.warn('Coalition table reconciliation failed:', e); }
-        }
-
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, result, 15 * 1000);
         return result;
     }
 
-    const { data } = await supabase
-        .from('active_coalitions')
-        .select('*')
-        .eq('nation_id', nationId)
-        .is('dissolved_at', null)
-        .order('formed_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (data) {
-        if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 15 * 1000);
-        return data;
-    }
-
     // === ABSOLUTE MONARCHY FALLBACK: synthesize virtual coalition for UI context ===
     const isMonarchyNation = isAbsoluteMonarchy(nationRow) || nationRow?.hos_election_method === 'hereditary';
-    if (!isMonarchyNation) return data;
+    if (!isMonarchyNation) return null;
 
     const { data: ministries } = await supabase
         .from('ministries')
@@ -6660,7 +6649,6 @@ async function fetchActiveCoalition(supabase, nationId) {
         ministry_allocations: ministryAllocations,
         formed_at: null,
         status: 'formed',
-        _source: 'absolute_monarchy_virtual'
     };
 
     if (typeof qCacheSet === 'function') qCacheSet(cacheKey, monarchyFallback, 15 * 1000);
@@ -13171,9 +13159,9 @@ async function enactMonarchyReform(supabase, bill, currentTick) {
             p_changes: { legitimacy: 50 - (Number(nation.legitimacy) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
         }).catch(() => {});
 
-        // Dissolve any existing coalition
-        await supabase.from('active_coalitions').update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
-            .eq('nation_id', bill.nation_id).in('status', ['formed', 'active']);
+        // Dissolve any existing coalition (canonical: government_formations).
+        await supabase.from('government_formations').update({ status: 'dissolved' })
+            .eq('nation_id', bill.nation_id).in('status', ['formed', 'active', 'caretaker']);
 
         // Deactivate PM
         await supabase.from('head_of_government').update({ active: false })
@@ -14288,8 +14276,7 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
 
 /**
  * Dissolve the current coalition government.
- * - Sets government_formations status to 'dissolved'
- * - Dissolves legacy active_coalitions
+ * - Sets government_formations status to 'dissolved' (canonical)
  * - Deactivates PM in head_of_government
  * Ministries are NOT cleared — the cabinet persists as caretaker until the
  * next election. Nation enters formation period (processGovernmentVacancy
@@ -14308,14 +14295,6 @@ async function dissolveCoalition(supabase, nationId, excludeFormationId) {
     if (excludeFormationId) dissolveQuery = dissolveQuery.neq('id', excludeFormationId);
     const { error: formErr } = await dissolveQuery;
     if (formErr) console.warn('dissolveCoalition: formations update failed:', formErr);
-
-    // Also dissolve legacy active_coalitions
-    const { error: acErr } = await supabase
-        .from('active_coalitions')
-        .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
-        .eq('nation_id', nationId)
-        .is('dissolved_at', null);
-    if (acErr) console.warn('dissolveCoalition: active_coalitions update failed:', acErr);
 
     // Deactivate PM
     const { error: pmErr } = await supabase
@@ -14545,17 +14524,6 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         .maybeSingle();
     if (activeGov) {
         govStatus = activeGov.status;
-    } else {
-        // Fallback: check legacy active_coalitions
-        const { data: legacyGov } = await supabase
-            .from('active_coalitions')
-            .select('id, status')
-            .eq('nation_id', nationId)
-            .is('dissolved_at', null)
-            .order('formed_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        govStatus = legacyGov?.status || 'formed'; // legacy rows without status default to formed
     }
 
     if (govStatus === 'caretaker') {
@@ -14586,9 +14554,10 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
         throw new Error(`Elections already scheduled in ${nextElection.election_tick - currentTick} tick(s). Too close to call early elections.`);
     }
 
-    // 2. Set government to caretaker (both tables — legacy active_coalitions may be source)
-    // Use status='formed' filter as optimistic lock — only one caller can transition formed→caretaker
-    const { data: updatedGov, count: updatedCount } = await supabase
+    // 2. Flip government to caretaker on the canonical table.
+    // Optimistic lock via status='formed' filter — only one caller can
+    // transition formed→caretaker.
+    const { data: updatedGov } = await supabase
         .from('government_formations')
         .update({ status: 'caretaker' })
         .eq('nation_id', nationId)
@@ -14597,11 +14566,6 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     if (!updatedGov || updatedGov.length === 0) {
         throw new Error('Government was already changed by another action. Please refresh.');
     }
-    await supabase
-        .from('active_coalitions')
-        .update({ status: 'caretaker' })
-        .eq('nation_id', nationId)
-        .is('dissolved_at', null);
 
     // 3. Tiered effects based on gov_approval
     const govApproval = Number(nationCheck?.gov_approval ?? 50);
@@ -15416,17 +15380,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
             .eq('nation_id', nation.id)
             .in('status', ['formed', 'active', 'caretaker'])
             .maybeSingle();
-        if (govFormation) {
-            existingGov = govFormation;
-        } else {
-            const { data: legacyGov } = await supabase
-                .from('active_coalitions')
-                .select('id, status')
-                .eq('nation_id', nation.id)
-                .is('dissolved_at', null)
-                .maybeSingle();
-            if (legacyGov) existingGov = legacyGov;
-        }
+        if (govFormation) existingGov = govFormation;
 
         if (existingGov) {
             console.log(`Dissolving government after manual election for ${nation.name}`);
@@ -15446,12 +15400,6 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
                 .in('status', ['formed', 'active', 'caretaker']);
 
             await supabase
-                .from('active_coalitions')
-                .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
-                .eq('nation_id', nation.id)
-                .is('dissolved_at', null);
-
-            await supabase
                 .from('ministries')
                 .update({
                     minister_first_name: null,
@@ -15464,8 +15412,8 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         }
 
         // HoG deactivation runs UNCONDITIONALLY — even if no government_formations
-        // or active_coalitions row existed. Legacy nations whose PM was auto-
-        // appointed without a formation row must still have their HoG flipped
+        // row existed. Legacy nations whose PM was auto-appointed without a
+        // formation row must still have their HoG flipped
         // to inactive when an election completes, otherwise the stale row
         // suppresses the formation UI across every subsequent cycle (Melizea
         // bug, pre-fix). One source of truth: "election completed" ⇒ "old PM out".
@@ -16183,28 +16131,13 @@ async function processElections(supabase, nation, currentTick) {
             // must be dissolved so that processGovernmentVacancy can apply -2 approval
             // penalties until a new coalition is formed.
             let existingGov = null;
-            let existingGovSource = null;
             const { data: govFormation } = await supabase
                 .from('government_formations')
                 .select('id, status')
                 .eq('nation_id', nation.id)
                 .in('status', ['formed', 'active', 'caretaker'])
                 .maybeSingle();
-            if (govFormation) {
-                existingGov = govFormation;
-                existingGovSource = 'government_formations';
-            } else {
-                const { data: legacyGov } = await supabase
-                    .from('active_coalitions')
-                    .select('id, status')
-                    .eq('nation_id', nation.id)
-                    .is('dissolved_at', null)
-                    .maybeSingle();
-                if (legacyGov) {
-                    existingGov = legacyGov;
-                    existingGovSource = 'active_coalitions';
-                }
-            }
+            if (govFormation) existingGov = govFormation;
 
             // Fail all frozen bills (from caretaker period) regardless of whether
             // an existing government row was found — bills may have been frozen by
@@ -16219,7 +16152,7 @@ async function processElections(supabase, nation, currentTick) {
             await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
             if (existingGov) {
-                console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
+                console.log(`Dissolving ${existingGov.status} government after election for ${nation.name}`);
 
                 // Reset failed_formation_attempts so the new election gets a fresh
                 // Stage 1 window (snap election if formation fails). Without this,
@@ -16252,12 +16185,6 @@ async function processElections(supabase, nation, currentTick) {
                     .update({ status: 'dissolved' })
                     .eq('nation_id', nation.id)
                     .in('status', ['formed', 'active', 'caretaker']);
-
-                await supabase
-                    .from('active_coalitions')
-                    .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
-                    .eq('nation_id', nation.id)
-                    .is('dissolved_at', null);
 
                 // Vacate all ministries
                 await supabase
@@ -18430,15 +18357,17 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
     // electorate_profile — the pillar weight is zero, the column is going
     // away in Phase 5b, and the work was a tick-time hot path.
 
-    // Determine governing faction IDs
+    // Governing factions = party_ids[] + the PM's party. lead_party_id isn't
+    // on government_formations; deriveLeadPartyId is the canonical helper.
     const { data: coalitionRow } = await supabase
         .from('government_formations')
-        .select('lead_party_id, party_ids')
+        .select('party_ids, ministry_assignments, proposed_by')
         .eq('nation_id', nation.id)
         .eq('status', 'active')
         .single();
     const governingIds = new Set(coalitionRow?.party_ids || []);
-    if (coalitionRow?.lead_party_id) governingIds.add(coalitionRow.lead_party_id);
+    const leadPartyId = deriveLeadPartyId(coalitionRow);
+    if (leadPartyId) governingIds.add(leadPartyId);
 
     const govApproval = Number(nation.gov_approval ?? 50);
 
@@ -18635,17 +18564,19 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     const standingMap = {};
     for (const s of (existingStandings || [])) standingMap[s.faction_id] = s;
 
-    // 6. Determine governing faction IDs + incumbency tenure
+    // 6. Governing factions + incumbency tenure. Same derivation as the
+    // approval site above — see deriveLeadPartyId.
     const { data: coalitionRow } = await supabase
         .from('government_formations')
-        .select('lead_party_id, party_ids')
+        .select('party_ids, ministry_assignments, proposed_by')
         .eq('nation_id', nationId)
         .in('status', ['formed', 'active', 'caretaker'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
     const governingIds = new Set(coalitionRow?.party_ids || []);
-    if (coalitionRow?.lead_party_id) governingIds.add(coalitionRow.lead_party_id);
+    const leadPartyId = deriveLeadPartyId(coalitionRow);
+    if (leadPartyId) governingIds.add(leadPartyId);
 
     // Incumbency tenure: ticks since current administration started
     let incumbencyTicks = 0;
@@ -24884,9 +24815,6 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
     // excluded.
     if (_isSuccessionInstall) {
         try {
-            await supabase.from('active_coalitions')
-                .update({ status: 'formed' })
-                .eq('id', _coalitionAtEntry.id);
             await supabase.from('government_formations')
                 .update({ status: 'formed' })
                 .eq('nation_id', nationId)
@@ -25090,11 +25018,6 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
     //    a more punitive Call-Early-Elections — the succession path is what
     //    gives the two actions distinct use-cases.)
     await supabase
-        .from('active_coalitions')
-        .update({ status: 'caretaker' })
-        .eq('nation_id', nationId)
-        .is('dissolved_at', null);
-    await supabase
         .from('government_formations')
         .update({ status: 'caretaker' })
         .eq('nation_id', nationId)
@@ -25188,11 +25111,15 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         pmResigned = true;
     }
 
-    // 4. Coalition check — handle if in coalition but not PM (or PM resignation didn't dissolve)
+    // 4. Coalition check — handle if in coalition but not PM (or PM resignation didn't dissolve).
+    // Lead-party detection routes through deriveLeadPartyId; the previous
+    // direct lead_party_id select silently 42703'd against
+    // government_formations and always sent the disbanding party through
+    // the junior-partner branch.
     if (!pmResigned) {
         const { data: formations } = await supabase
             .from('government_formations')
-            .select('id, lead_party_id, party_ids')
+            .select('id, party_ids, ministry_assignments, proposed_by')
             .eq('nation_id', nationId)
             .in('status', ['formed', 'caretaker']);
 
@@ -25201,7 +25128,7 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         );
 
         if (myFormation) {
-            if (myFormation.lead_party_id === factionId) {
+            if (deriveLeadPartyId(myFormation) === factionId) {
                 // Lead party disbanding — dissolve entire coalition
                 await dissolveCoalition(supabase, nationId);
             } else {

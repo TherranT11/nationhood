@@ -5,6 +5,7 @@
 
 import { _supabase } from './supabase-client.js';
 import { escapeHtml } from './utils.js';
+import { deriveLeadPartyId } from './game/government-structure.js';
 
 let _msgFaction = null;
 let _msgNation = null;
@@ -2291,7 +2292,7 @@ async function loadRolesForNation(nationId) {
                 .in('ministry_key', ['foreign', 'trade', 'prime_minister'])
                 .eq('is_active', true),
             _supabase.from('government_formations')
-                .select('lead_party_id, ministry_assignments')
+                .select('ministry_assignments, proposed_by')
                 .eq('nation_id', nationId)
                 .eq('status', 'formed')
                 .order('created_at', { ascending: false })
@@ -2309,7 +2310,7 @@ async function loadRolesForNation(nationId) {
 
         // Head of Government
         const pmMinistry = (minRes.data || []).find(m => m.ministry_key === 'prime_minister');
-        const hogFactionId = coalRes.data?.lead_party_id || natRes.data?.ruling_faction_id || pmMinistry?.party_id;
+        const hogFactionId = deriveLeadPartyId(coalRes.data) || natRes.data?.ruling_faction_id || pmMinistry?.party_id;
         if (hogFactionId) {
             const f = pmMinistry?.factions || (minRes.data || []).find(m => m.party_id === hogFactionId)?.factions;
             if (f) roles.push({ role: 'Head of Government', faction: f });

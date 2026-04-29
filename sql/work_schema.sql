@@ -12,7 +12,8 @@ CREATE SEQUENCE IF NOT EXISTS momentum_log_id_seq;
 
 -- Tables
 
-CREATE TABLE IF NOT EXISTS active_coalitions (id uuid NOT NULL DEFAULT gen_random_uuid(), nation_id uuid NOT NULL, election_id uuid NOT NULL, party_ids uuid[] NOT NULL, lead_party_id uuid NOT NULL, total_seats integer NOT NULL, stability_penalty integer NOT NULL, formed_at timestamp with time zone DEFAULT now(), dissolved_at timestamp with time zone, ministry_allocations jsonb, status text DEFAULT 'formed'::text);
+-- active_coalitions DROPped in Phase 4 of the parliamentary two-table
+-- refactor (20260429). government_formations is the sole source of truth.
 
 CREATE TABLE IF NOT EXISTS active_crises (id uuid NOT NULL DEFAULT gen_random_uuid(), crisis_id uuid NOT NULL, nation_id uuid NOT NULL, started_at_tick integer NOT NULL, effects_applied_log jsonb DEFAULT '[]'::jsonb);
 

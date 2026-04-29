@@ -18,7 +18,7 @@
  */
 
 import { statDirectionSign } from './stats.js';
-import { fetchActiveCoalition } from './government-structure.js';
+import { fetchActiveCoalition, deriveLeadPartyId } from './government-structure.js';
 import { deductAP } from './config.js';
 import { computeEngagementScores } from './engagement.js';
 
@@ -464,15 +464,17 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
     // electorate_profile — the pillar weight is zero, the column is going
     // away in Phase 5b, and the work was a tick-time hot path.
 
-    // Determine governing faction IDs
+    // Governing factions = party_ids[] + the PM's party. lead_party_id isn't
+    // on government_formations; deriveLeadPartyId is the canonical helper.
     const { data: coalitionRow } = await supabase
         .from('government_formations')
-        .select('lead_party_id, party_ids')
+        .select('party_ids, ministry_assignments, proposed_by')
         .eq('nation_id', nation.id)
         .eq('status', 'active')
         .single();
     const governingIds = new Set(coalitionRow?.party_ids || []);
-    if (coalitionRow?.lead_party_id) governingIds.add(coalitionRow.lead_party_id);
+    const leadPartyId = deriveLeadPartyId(coalitionRow);
+    if (leadPartyId) governingIds.add(leadPartyId);
 
     const govApproval = Number(nation.gov_approval ?? 50);
 
@@ -669,17 +671,19 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     const standingMap = {};
     for (const s of (existingStandings || [])) standingMap[s.faction_id] = s;
 
-    // 6. Determine governing faction IDs + incumbency tenure
+    // 6. Governing factions + incumbency tenure. Same derivation as the
+    // approval site above — see deriveLeadPartyId.
     const { data: coalitionRow } = await supabase
         .from('government_formations')
-        .select('lead_party_id, party_ids')
+        .select('party_ids, ministry_assignments, proposed_by')
         .eq('nation_id', nationId)
         .in('status', ['formed', 'active', 'caretaker'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
     const governingIds = new Set(coalitionRow?.party_ids || []);
-    if (coalitionRow?.lead_party_id) governingIds.add(coalitionRow.lead_party_id);
+    const leadPartyId = deriveLeadPartyId(coalitionRow);
+    if (leadPartyId) governingIds.add(leadPartyId);
 
     // Incumbency tenure: ticks since current administration started
     let incumbencyTicks = 0;

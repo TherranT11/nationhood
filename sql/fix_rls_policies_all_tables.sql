@@ -28,7 +28,6 @@ DECLARE
         'faction_ideology',
         'administrations',
         'government_formations',
-        'active_coalitions',
         'head_of_government',
         'nations_history',
         'active_crises',

@@ -562,11 +562,11 @@ initPage('laws', async (state) => {
     }
 
     // Caretaker is the ONLY suspension state. The single source of truth
-    // is active_coalitions.status === 'caretaker', written explicitly by
-    // the four real triggers: callEarlyElectionsAction (Snap Election),
+    // is government_formations.status === 'caretaker', written explicitly
+    // by the four real triggers: callEarlyElectionsAction (Snap Election),
     // resolveNoConfidence (VoNC), dissolveParliament (Presidential snap),
     // and resignPM (transitional). Presidential republics legitimately
-    // have no active_coalitions row — that is NOT a suspension state.
+    // have no government_formations row — that is NOT a suspension state.
     qCacheBust('coalition_');
     {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);

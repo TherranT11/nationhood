@@ -80,7 +80,6 @@ DECLARE
         'coalition_votes',
         'coalition_messages',
         'coalition_proposals',
-        'active_coalitions',
         'faction_coalitions',
         'loyalty_demands',
 

@@ -69,7 +69,6 @@ DECLARE
         ARRAY['coalition_messages',           $$DELETE FROM coalition_messages WHERE coalition_id IN (SELECT id FROM faction_coalitions WHERE faction_a_id = '%s' OR faction_b_id = '%s')$$],
         ARRAY['faction_coalitions',           $$DELETE FROM faction_coalitions WHERE faction_a_id = '%s' OR faction_b_id = '%s'$$],
         ARRAY['regime_pillars',               $$UPDATE regime_pillars SET steward_faction_id = NULL WHERE steward_faction_id = '%s'$$],
-        ARRAY['active_coalitions',            $$DELETE FROM active_coalitions WHERE lead_party_id = '%s'$$],
         ARRAY['coalition_proposals',          $$DELETE FROM coalition_proposals WHERE faction_id = '%s'$$],
         ARRAY['ideology_history',             $$DELETE FROM ideology_history WHERE faction_id = '%s'$$],
         ARRAY['faction_ideology',             $$DELETE FROM faction_ideology WHERE faction_id = '%s'$$],

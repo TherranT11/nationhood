@@ -317,7 +317,7 @@ let selectedAmendmentTargetOptionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let nationActiveLaws = []; // Active laws in the nation (for repeal articles)
 let currentShardTick = 0; // Current shard tick for deadline proximity checks
-let isCaretaker = false;   // True only when active_coalitions.status === 'caretaker'
+let isCaretaker = false;   // True only when government_formations.status === 'caretaker'
 let coalitionPartyIds = []; // For bill editing permissions
 let coalitionLeadPartyId = null; // PM's party in parliamentary systems
 let ratificationData = null; // Fetched agreement/proposal data for ratification bills

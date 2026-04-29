@@ -4150,7 +4150,9 @@ async function renderGovernmentPage() {
             }
         }
 
-        // Check if coalition formation is in progress for the latest election
+        // Check if coalition formation is in progress for the latest election.
+        // government_formations is the single source of truth — formation is
+        // in progress if no 'formed' row exists for the latest election yet.
         let coalitionFormationInProgress = false;
         if (!isPresidential && electionData?.id && !coalition) {
             const { data: formedGov } = await _supabase
@@ -4160,15 +4162,7 @@ async function renderGovernmentPage() {
                 .eq('status', 'formed')
                 .limit(1)
                 .maybeSingle();
-            if (!formedGov) {
-                const { data: legacyCoal } = await _supabase
-                    .from('active_coalitions')
-                    .select('id')
-                    .eq('election_id', electionData.id)
-                    .limit(1)
-                    .maybeSingle();
-                coalitionFormationInProgress = !legacyCoal;
-            }
+            coalitionFormationInProgress = !formedGov;
         }
 
         // Populate formation state when election data is available
