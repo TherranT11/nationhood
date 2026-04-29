@@ -1,7 +1,7 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, cash, faction switcher, nav tabs
 
-const CORP_VERSION = 'Alpha 2.3.7.1';
+const CORP_VERSION = 'Alpha 3.2.7.2';
 const THEME_STORAGE_KEY = 'corpThemePref';
 
 // Stashed at render time so the CASH-pill dropdown can query cash history

@@ -2943,12 +2943,10 @@ function onAmendmentTargetOptionChange() {
     const sectorChips = (Array.isArray(option.sector_effects) ? option.sector_effects : [])
         .filter(s => s && s.sector_key && Number.isFinite(Number(s.change_tenths)) && Number(s.change_tenths) !== 0)
         .map(s => {
-            const tenths = Number(s.change_tenths);
-            const up = tenths > 0;
+            const up = Number(s.change_tenths) > 0;
             const arrow = up ? '↑' : '↓';
             const colour = up ? '#5cb85c' : '#d9534f';
-            const mag = (Math.abs(tenths) / 10).toFixed(1);
-            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(s.sector_key).replace(/_/g, ' ')) + ' (' + mag + ')</span>';
+            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(s.sector_key).replace(/_/g, ' ')) + '</span>';
         }).join('');
     const statChips = (Array.isArray(option.stat_effects) ? option.stat_effects : [])
         .filter(e => e && e.stat_key)
@@ -2956,8 +2954,7 @@ function onAmendmentTargetOptionChange() {
             const up = (e.direction || '').toLowerCase() === 'up';
             const arrow = up ? '↑' : '↓';
             const colour = up ? '#5cb85c' : '#d9534f';
-            const rate = e.rate != null ? e.rate : '?';
-            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(e.stat_key).replace(/_/g, ' ')) + ' (' + rate + '/t)</span>';
+            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(e.stat_key).replace(/_/g, ' ')) + '</span>';
         }).join('');
     details.innerHTML =
         '<div style="background:#1a1a1a;border:1px solid #5b9bd5;border-radius:4px;padding:12px 14px;margin-top:10px;">' +
@@ -3500,12 +3497,10 @@ function onSponsorAddTargetOptionChange() {
     const sectorChips = (Array.isArray(option.sector_effects) ? option.sector_effects : [])
         .filter(s => s && s.sector_key && Number.isFinite(Number(s.change_tenths)) && Number(s.change_tenths) !== 0)
         .map(s => {
-            const tenths = Number(s.change_tenths);
-            const up = tenths > 0;
+            const up = Number(s.change_tenths) > 0;
             const arrow = up ? '↑' : '↓';
             const colour = up ? '#5cb85c' : '#d9534f';
-            const mag = (Math.abs(tenths) / 10).toFixed(1);
-            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(s.sector_key).replace(/_/g, ' ')) + ' (' + mag + ')</span>';
+            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(s.sector_key).replace(/_/g, ' ')) + '</span>';
         }).join('');
     const statChips = (Array.isArray(option.stat_effects) ? option.stat_effects : [])
         .filter(e => e && e.stat_key)
@@ -3513,8 +3508,7 @@ function onSponsorAddTargetOptionChange() {
             const up = (e.direction || '').toLowerCase() === 'up';
             const arrow = up ? '↑' : '↓';
             const colour = up ? '#5cb85c' : '#d9534f';
-            const rate = e.rate != null ? e.rate : '?';
-            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(e.stat_key).replace(/_/g, ' ')) + ' (' + rate + '/t)</span>';
+            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(e.stat_key).replace(/_/g, ' ')) + '</span>';
         }).join('');
     details.innerHTML =
         '<div style="background:#1a1a1a;border:1px solid #5b9bd5;border-radius:4px;padding:12px 14px;margin-top:10px;">' +
