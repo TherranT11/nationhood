@@ -1041,8 +1041,25 @@ function renderGovSubtabs() {
     container.innerHTML = GOV_SUBTABS.map(tab => `<div class="gov-subtab${_govActiveSubtab === tab.id ? ' active' : ''}" data-tab="${tab.id}">${tab.label}</div>`).join('');
     container.onclick = (e) => {
         const el = e.target.closest('.gov-subtab');
-        if (!el || el.dataset.tab === _govActiveSubtab) return;
-        _govActiveSubtab = el.dataset.tab;
+        if (!el) return;
+        const tab = el.dataset.tab;
+        const sameTab = (tab === _govActiveSubtab);
+        // Invalidate per-subtab caches that benefit from fresh data on every
+        // (re-)open. Clicking the active subtab forces a refresh — handy
+        // after running migrations or after another tab edits state.
+        if (tab === 'laws') {
+            _lawsData = null;
+            _lawsLoaded = false;
+        }
+        if (tab === 'past') {
+            // Past Administrations always re-fetches in its render fn, so no
+            // module-level cache to clear here. Keeping the branch for clarity.
+        }
+        if (sameTab) {
+            renderGovContent();
+            return;
+        }
+        _govActiveSubtab = tab;
         renderGovSubtabs();
         renderGovContent();
     };
