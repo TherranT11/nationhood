@@ -137,25 +137,14 @@ export async function fetchActiveCoalition(supabase, nationId) {
 
     // === PARLIAMENTARY DEMOCRACY: existing logic ===
 
-    // Helper: if status looks active but frozen bills exist, it's actually caretaker.
-    // Skip for emergency_minority governments and explicitly formed governments
-    // (formed_at set) — stale frozen bills from a previous government should not
-    // override a legitimately formed new government.
-    async function inferCaretakerStatus(result) {
-        if (result && (!result.status || result.status === 'formed')
-            && result.formation_type !== 'emergency_minority'
-            && !result.formed_at) {
-            const { count } = await supabase
-                .from('bills')
-                .select('id', { count: 'exact', head: true })
-                .eq('nation_id', nationId)
-                .eq('status', 'frozen');
-            if (count && count > 0) {
-                result.status = 'caretaker';
-            }
-        }
-        return result;
-    }
+    // Caretaker is set EXCLUSIVELY by the explicit writers — Snap Election,
+    // Vote of No Confidence, Presidential parliament dissolution, and PM
+    // resignation — which all UPDATE active_coalitions.status /
+    // government_formations.status to 'caretaker' on the triggering action.
+    // The previous reverse-causal inferCaretakerStatus helper (status flipped
+    // to 'caretaker' whenever frozen bills existed) was removed: frozen
+    // bills are an EFFECT of caretaker, not a cause, and the inference
+    // wrote bad state back to the DB at the reconcile block below.
 
     // Only return formed or caretaker governments — 'active' means a proposal
     // that hasn't been finalized. Returning proposals here causes the UI to
@@ -203,7 +192,6 @@ export async function fetchActiveCoalition(supabase, nationId) {
             formation_type: newGov.formation_type || 'coalition',
             _source: 'government_formations'
         };
-        await inferCaretakerStatus(result);
 
         // Reconcile: if government_formations has a definitive status, ensure active_coalitions matches
         if (result.status === 'dissolved' || result.status === 'caretaker') {
@@ -231,7 +219,6 @@ export async function fetchActiveCoalition(supabase, nationId) {
         .maybeSingle();
 
     if (data) {
-        await inferCaretakerStatus(data);
         if (typeof qCacheSet === 'function') qCacheSet(cacheKey, data, 15 * 1000);
         return data;
     }
