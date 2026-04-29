@@ -172,15 +172,25 @@ export function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
     for (const law of (activeLaws || [])) {
         if (law.is_reversal) continue;
         const policy = law.policies;
-        if (!policy || policy.fiscal_category !== fiscalCategory) continue;
+        if (!policy) continue;
+
+        // Phase 4.4: per-option fiscal_category and ongoing_base_cost take
+        // precedence over the legacy policies columns. Filter the law
+        // against the option's fiscal_category when present so the option's
+        // budget bucket determines which ministry pays.
+        const opt = law.selected_option || null;
+        const fiscalCat = opt?.fiscal_category ?? policy.fiscal_category;
+        if (fiscalCat !== fiscalCategory) continue;
+
+        const ongoingBase = (opt?.ongoing_base_cost ?? policy.ongoing_base_cost ?? policy.ongoing_cost_per_tick) || 0;
+        const scalingStat = opt?.ongoing_scaling_stat || policy.ongoing_scaling_stat;
 
         let annualCost = 0;
-        const ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
         if (ongoingBase > 0) {
             let scaled = ongoingBase;
-            if (policy.ongoing_scaling_stat && nation[policy.ongoing_scaling_stat] !== undefined) {
-                const statVal = Number(nation[policy.ongoing_scaling_stat]) || 1;
-                const divisor = RAW_SCALING_DIVISORS[policy.ongoing_scaling_stat] || 50;
+            if (scalingStat && nation[scalingStat] !== undefined) {
+                const statVal = Number(nation[scalingStat]) || 1;
+                const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
                 scaled = ongoingBase * (statVal / divisor);
             }
             annualCost = scaled * GAME_CONFIG.TICKS_PER_YEAR * 1_000_000;

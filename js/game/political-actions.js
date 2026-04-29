@@ -65,15 +65,18 @@ function _logStatDebug(supabase, nation, tick, statKey, contributorType, contrib
 export async function buildPolicyDecayAdjustments(supabase, nationId) {
     const adjustments = {};
 
+    // Phase 4.4: pull stat_effects from the chosen policy_option first; fall
+    // back to the legacy policies.stat_effects column for orphaned data
+    // that pre-dates the multi-option model.
     const { data: activeLaws, error } = await supabase
         .from('active_laws')
-        .select('policy_id, policies(stat_effects)')
+        .select('policy_id, policies(stat_effects), selected_option:policy_options!selected_option_id(stat_effects)')
         .eq('nation_id', nationId);
 
     if (error || !activeLaws) return adjustments;
 
     for (const law of activeLaws) {
-        const effects = law.policies?.stat_effects;
+        const effects = law.selected_option?.stat_effects ?? law.policies?.stat_effects;
         if (!Array.isArray(effects)) continue;
 
         for (const eff of effects) {
@@ -1154,10 +1157,13 @@ export async function rebalanceVacantSeats(supabase, nation) {
 export async function processStatEffects(supabase, nation, currentTick) {
     let activeLaws;
 
-    // Try join query first; fall back to separate lookup if FK is missing
+    // Try join query first; fall back to separate lookup if FK is missing.
+    // Phase 4.4: also embed the chosen policy_option so per-tick stat effects
+    // come from the option that's actually active for this nation, not the
+    // legacy policies.stat_effects column (which Phase 2.5 stopped writing).
     const { data, error: joinError } = await supabase
         .from('active_laws')
-        .select('*, policies(*)')
+        .select('*, policies(*), selected_option:policy_options!selected_option_id(*)')
         .eq('nation_id', nation.id);
 
     if (joinError) {
@@ -1232,7 +1238,13 @@ export async function processStatEffects(supabase, nation, currentTick) {
         if (isReversal && law.reversal_effects && Array.isArray(law.reversal_effects)) {
             effects = law.reversal_effects;
         } else if (policy) {
-            if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
+            // Phase 4.4: prefer the active option's stat_effects. Fall back
+            // to policies.stat_effects (orphaned data) and finally to the
+            // legacy single-stat columns.
+            const optionEffects = law.selected_option?.stat_effects;
+            if (Array.isArray(optionEffects) && optionEffects.length > 0) {
+                effects.push(...optionEffects);
+            } else if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
                 effects.push(...policy.stat_effects);
             } else if (policy.target_stat) {
                 effects.push({
@@ -1953,9 +1965,13 @@ export async function processGovernmentCollapseCheck(supabase, nation, currentTi
 }
 
 export async function processOngoingCosts(supabase, nation, currentTick) {
+    // Phase 4.4: embed the chosen option so the ongoing-cost loop reads
+    // ongoing_base_cost / ongoing_scaling_stat from the option that's
+    // actually active for this nation, not the legacy policies row
+    // (which Phase 2.5 stopped writing).
     const { data: activeLaws } = await supabase
         .from('active_laws')
-        .select('*, policies(*)')
+        .select('*, policies(*), selected_option:policy_options!selected_option_id(ongoing_base_cost, ongoing_scaling_stat)')
         .eq('nation_id', nation.id);
 
     if (!activeLaws || activeLaws.length === 0) return { totalCost: 0, details: [] };
@@ -1969,14 +1985,16 @@ export async function processOngoingCosts(supabase, nation, currentTick) {
         if (!policy) continue;
         if (policy.policy_type === 'lever') continue; // Levers are one-time — no ongoing cost
 
-        const baseCost = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
+        const opt = law.selected_option || null;
+        const baseCost = (opt?.ongoing_base_cost ?? policy.ongoing_base_cost ?? policy.ongoing_cost_per_tick) || 0;
         if (baseCost === 0) continue;
 
+        const scalingStat = opt?.ongoing_scaling_stat || policy.ongoing_scaling_stat;
         let tickCost = baseCost;
 
-        if (policy.ongoing_scaling_stat && nation[policy.ongoing_scaling_stat] !== undefined) {
-            const scalingVal = Number(nation[policy.ongoing_scaling_stat]) || 1;
-            const divisor = RAW_SCALING_DIVISORS[policy.ongoing_scaling_stat] || 50;
+        if (scalingStat && nation[scalingStat] !== undefined) {
+            const scalingVal = Number(nation[scalingStat]) || 1;
+            const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
             tickCost = baseCost * (scalingVal / divisor);
         }
 

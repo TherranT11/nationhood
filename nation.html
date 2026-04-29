@@ -378,8 +378,11 @@ async function loadStatEffectSources(nationId, nation) {
     var results;
     try {
     results = await Promise.all([
+        // Phase 5.4: also load the chosen option so per-stat "what's
+        // affecting this" surfaces option-specific stat_effects rather
+        // than the legacy policies row (which Phase 2.5 stops writing).
         _supabase.from('active_laws')
-            .select('is_reversal, passed_tick, effects_applied_through_tick, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)')
+            .select('is_reversal, passed_tick, effects_applied_through_tick, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months), selected_option:policy_options!selected_option_id(option_name, stat_effects)')
             .eq('nation_id', nationId),
         _supabase.from('active_crises')
             .select('crisis_id, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
@@ -491,9 +494,20 @@ function parsePolicyEffects(laws, map, currentTick) {
         var policy = law.policies;
         if (!policy) continue;
         var ticksSince = currentTick - (law.passed_tick || 0);
-        var label = law.is_reversal ? policy.policy_name + ' (Repeal)' : policy.policy_name;
+        // Phase 5.4: prefer the chosen option's stat_effects and label the
+        // contribution with "Policy — Option" so the per-stat panel shows
+        // which option of a multi-option policy is currently shifting the
+        // stat. Falls back to the legacy policies columns for orphaned
+        // pre-multi-option laws.
+        var opt = law.selected_option || null;
+        var baseName = (opt && opt.option_name)
+            ? (policy.policy_name + ' — ' + opt.option_name)
+            : policy.policy_name;
+        var label = law.is_reversal ? (baseName + ' (Repeal)') : baseName;
 
-        var effects = policy.stat_effects;
+        var effects = (opt && Array.isArray(opt.stat_effects) && opt.stat_effects.length > 0)
+            ? opt.stat_effects
+            : policy.stat_effects;
         if (effects && Array.isArray(effects) && effects.length > 0) {
             for (var j = 0; j < effects.length; j++) {
                 var eff = effects[j];

@@ -3013,9 +3013,12 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 return;
             }
 
-            // Fetch all active laws with policy data
+            // Fetch all active laws with policy data + the chosen option so
+            // the audit reflects the option's fiscal_category and costs
+            // (Phase 5.2 — Phase 2.5 onward stops writing those columns
+            // on the policies row).
             const { data: allLaws, error: lawErr } = await _supabase.from('active_laws')
-                .select('nation_id, passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat)');
+                .select('nation_id, passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat), selected_option:policy_options!selected_option_id(option_name, fiscal_category, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat)');
 
             if (lawErr) throw lawErr;
 
@@ -3035,30 +3038,33 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 const nation = nationMap[law.nation_id];
                 if (!nation) continue;
 
-                const cat = policy.fiscal_category || 'Uncategorized';
+                const opt = law.selected_option || null;
+                const cat = (opt?.fiscal_category ?? policy.fiscal_category) || 'Uncategorized';
+                const ongoingBase = (opt?.ongoing_base_cost ?? policy.ongoing_base_cost ?? policy.ongoing_cost_per_tick) || 0;
+                const ongoingScaling = opt?.ongoing_scaling_stat || policy.ongoing_scaling_stat;
+                const upfront = (opt?.upfront_cost ?? policy.upfront_cost) || 0;
+                const upfrontScaling = opt?.upfront_scaling_stat || policy.upfront_scaling_stat;
+
                 let cost = 0;
-
                 // Ongoing: annualized
-                const ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
                 if (ongoingBase > 0) {
-                    cost += auditScaleCost(ongoingBase, policy.ongoing_scaling_stat, nation) * GAME_CONFIG.TICKS_PER_YEAR * 1000000;
+                    cost += auditScaleCost(ongoingBase, ongoingScaling, nation) * GAME_CONFIG.TICKS_PER_YEAR * 1000000;
                 }
-
                 // Upfront: only current year
-                if (law.passed_tick >= yearStartTick) {
-                    const upfront = policy.upfront_cost || 0;
-                    if (upfront > 0) {
-                        cost += auditScaleCost(upfront, policy.upfront_scaling_stat, nation) * 1000000;
-                    }
+                if (law.passed_tick >= yearStartTick && upfront > 0) {
+                    cost += auditScaleCost(upfront, upfrontScaling, nation) * 1000000;
                 }
 
                 if (!byNation[nation.name]) byNation[nation.name] = [];
+                const displayName = opt?.option_name
+                    ? `${policy.policy_name} — ${opt.option_name}`
+                    : policy.policy_name;
                 byNation[nation.name].push({
-                    name: policy.policy_name,
+                    name: displayName,
                     category: cat,
                     cost: cost,
                     ongoing: ongoingBase,
-                    upfront: policy.upfront_cost || 0,
+                    upfront: upfront,
                     passedTick: law.passed_tick
                 });
                 grandTotal += cost;
