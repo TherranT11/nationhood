@@ -3631,8 +3631,14 @@ async function loadActivePortfolio() {
         purpose: loan.purpose || '',
         hasAlert: loan.status === 'late' || loan.status === 'delinquent',
         alertLevel: loan.status === 'delinquent' ? 'red' : loan.status === 'late' ? 'orange' : null,
+        // Insurance has no engine-driven default path — the only termination
+        // is manual cancellation by the insurer. Loans escalate to defaulted
+        // automatically at DEFAULT_MISSED_THRESHOLD, so "Default imminent"
+        // is honest there but would be a lie for insurance.
         alertMsg: loan.status === 'delinquent'
-            ? `${loan.payments_missed} missed payments. Default imminent.`
+            ? (isInsurance(loan)
+                ? `${loan.payments_missed} missed premiums. Cancellation recommended.`
+                : `${loan.payments_missed} missed payments. Default imminent.`)
             : loan.status === 'late'
             ? `${loan.payments_missed} missed payment${loan.payments_missed > 1 ? 's' : ''}. Monitor closely.`
             : null,
