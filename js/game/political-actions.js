@@ -3052,7 +3052,17 @@ export async function installHOG(supabase, opts) {
     const {
         nationId, factionId, firstName, lastName, age,
         currentTick, traitKey = null, candidateId = null,
+        reason = 'pm_change',
     } = opts;
+
+    // Snapshot the outgoing PM before deactivation so we can record the
+    // transition in the open admin row's leader_changes log (semi-pres).
+    const { data: outgoingHog } = await supabase
+        .from('head_of_government')
+        .select('faction_id, first_name, last_name')
+        .eq('nation_id', nationId)
+        .eq('active', true)
+        .maybeSingle();
 
     // head_of_government has UNIQUE(nation_id), so a stale inactive row from
     // a previous PM would block a plain insert. Deactivate first, then upsert
@@ -3077,6 +3087,50 @@ export async function installHOG(supabase, opts) {
         }, { onConflict: 'nation_id' });
 
     if (hogErr) throw hogErr;
+
+    // Tier 2 Phase 3: in semi-presidential nations the administration row
+    // is bound to the PRESIDENT'S tenure, not the PM's. PM changes within
+    // a presidential term are sub-events recorded as leader_changes
+    // entries on the open admin row, never as new admin rows.
+    try {
+        const { data: nation } = await supabase.from('nations')
+            .select('government_type').eq('id', nationId).single();
+        if (isSemiPresidential(nation)) {
+            const { data: openAdmin } = await supabase.from('administrations')
+                .select('id, leader_changes')
+                .eq('nation_id', nationId)
+                .is('ended_at_tick', null)
+                .order('started_at_tick', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (openAdmin) {
+                const newPmName = [firstName, lastName].filter(Boolean).join(' ').trim();
+                const oldPmName = outgoingHog
+                    ? [outgoingHog.first_name, outgoingHog.last_name].filter(Boolean).join(' ').trim()
+                    : null;
+                const event = {
+                    tick: currentTick ?? null,
+                    role: 'prime_minister',
+                    reason,
+                    old_name: oldPmName || null,
+                    new_name: newPmName || null,
+                    old_party_id: outgoingHog?.faction_id || null,
+                    new_party_id: factionId,
+                };
+                const existing = Array.isArray(openAdmin.leader_changes) ? openAdmin.leader_changes : [];
+                await supabase.from('administrations')
+                    .update({ leader_changes: [...existing, event] })
+                    .eq('id', openAdmin.id);
+            } else {
+                console.warn(`[installHOG] semi-pres ${nationId} has no open admin row to append leader_changes`);
+            }
+        }
+    } catch (err) {
+        // Non-blocking — the PM is installed; failing to log the event
+        // shouldn't roll back the install. Log so we can spot drift.
+        console.warn('[installHOG] leader_changes write failed:', err?.message || err);
+    }
+
     return { };
 }
 
@@ -3168,13 +3222,12 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         traitKey,
     });
 
-    // Update administration record
+    // Tier 2 Phase 3: removed the mid-life UPDATE that rewrote the open
+    // admin row's `prime_minister` and `admin_name` on every PM swap.
+    // Identity-at-start fields are immutable post-INSERT — the admin row
+    // records who started the administration. installHOG appends a
+    // leader_changes event below for the historical record.
     const pmFullName = `${faction.leader_first_name} ${faction.leader_last_name}`;
-    await supabase.from('administrations').update({
-        prime_minister: pmFullName,
-        admin_name: `${faction.leader_last_name} Administration`,
-        updated_at: new Date().toISOString()
-    }).eq('nation_id', nationId).is('ended_at_tick', null);
 
     // Update/create PM ministry row
     const { data: pmMinistry } = await supabase.from('ministries')
@@ -3628,9 +3681,13 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
     // 6b. Nullify FK references that would block future hard-deletes of the faction
     // Tables removed: election_candidates, presidential_candidates don't exist.
     // protests → protest_log (renamed in migration).
+    // Tier 2 Phase 3: removed the administrations.pm_party_id = null write.
+    // The admin row is a historical ledger — it should preserve who was
+    // PM at the time, even if that party later disbands. The pm_party_id
+    // column is informational (no FK constraint) so a stale value
+    // doesn't block faction hard-delete.
     const fkResults = await Promise.allSettled([
         supabase.from('active_laws').update({ proposed_by: null }).eq('proposed_by', factionId),
-        supabase.from('administrations').update({ pm_party_id: null }).eq('pm_party_id', factionId),
         supabase.from('protest_log').update({ faction_id: null }).eq('faction_id', factionId),
     ]);
     for (const r of fkResults) {

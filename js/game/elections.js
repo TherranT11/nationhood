@@ -307,6 +307,19 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
  */
 export async function createAdministration(supabase, nationId, nation, coalition, allParties, currentTick, currentDate, governmentApproval) {
     try {
+        // Semi-presidential nations: an "administration" is bounded by the
+        // President's tenure, not the PM's. The presidential admin row was
+        // created by inauguratePresident on election; coalition formation
+        // and PM changes within a presidential term are sub-events recorded
+        // via installHOG's leader_changes write (below). Do NOT create a
+        // new admin row or close the existing presidential one — that
+        // would corrupt the historical ledger and replace the President's
+        // record with a PM-centric one.
+        if (isSemiPresidential(nation)) {
+            console.log(`[createAdministration] semi-presidential — skipping (admin = president's tenure)`);
+            return null;
+        }
+
         // Safety net: close any orphaned open administrations before creating a new one
         const { data: orphaned } = await supabase
             .from('administrations')
