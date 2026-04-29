@@ -1516,15 +1516,23 @@ function calculateDomesticProduction(nation, sector, opts) {
     // ── MANUFACTURED GOODS ──
     // Population-scaled single-driver model. Manufacturing output IS the
     // composite industrial capability — no secondary stat needed. Pop scales
-    // because more workers = more factory output. Stability degrades below 40.
-    // Max output (manuf=100, pop=100M, stab≥40) = $25B/tick.
+    // because more workers = more factory output. Stability degrades below 55.
+    // Max output (manuf=100, pop=100M, stab≥55) = $22B/tick.
     // No threshold, no GDP modifier, no bonus stats.
+    //
+    // 2025-04-29 rebalance (v2.3.5.2):
+    //   coefficient   $250M → $220M (~12% cut, dial back global supply)
+    //   stability cap   /40 → /55    (penalise unstable producers harder)
+    // Demand-side coefficient in computeManufDemand intentionally stays
+    // at $250M so the world tilts into a small import-demand position
+    // (currently slightly oversupplied at the per-nation level despite a
+    // near-balanced global net).
     if (sector.key === 'manufactured_goods') {
         var manufStat = Number(nation.manufacturing_output) || 0;
         var popMillions = (Number(nation.population) || 0) / 1_000_000;
         var stabMg = Number(nation.stability ?? 50);
         return Math.round(
-            (manufStat / 100) * popMillions * 250_000_000 * Math.min(1.0, stabMg / 40)
+            (manufStat / 100) * popMillions * 220_000_000 * Math.min(1.0, stabMg / 55)
         );
     }
 
