@@ -700,9 +700,11 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             : 0;
     }
 
-    // 7. Compute engagement scores (Governance pillar)
+    // 7. Compute engagement scores (Governance pillar). Reuses leadPartyId
+    // from the incumbency block above; coalitionPartyIds keeps the raw
+    // party_ids set (without the lead added) since computeEngagementScores
+    // takes them separately.
     const coalitionPartyIds = new Set(coalitionRow?.party_ids || []);
-    const leadPartyId = coalitionRow?.lead_party_id || null;
     // Phase 5b: issue_state table dropped — engagement scoring no longer
     // takes per-issue salience as input. Pass an empty array to keep the
     // public signature stable.

@@ -4,7 +4,7 @@
  */
 
 import { deductAP, GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './config.js';
-import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM } from './government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM, isSemiPresidential } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
@@ -3087,6 +3087,23 @@ export async function installHOG(supabase, opts) {
  * when their party receives the PM role during coalition formation.
  */
 export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick, opts) {
+    // Semi-Presidential cohabitation rule: the President must manually
+    // nominate a PM via nominatePMCandidate. Auto-appointing the party
+    // leader breaks two scenarios:
+    //   1. If the winning party is the President's own party, the party
+    //      leader IS the President — appointing them as PM creates a
+    //      same-person dual-role conflict.
+    //   2. If the winning party is a different party, the President should
+    //      still get to choose who they appoint — that's the whole point
+    //      of semi-presidential constitutional design.
+    // Bail early in semi-pres systems and let the manual flow take over.
+    const { data: nationGovType } = await supabase.from('nations')
+        .select('government_type').eq('id', nationId).single();
+    if (isSemiPresidential(nationGovType)) {
+        console.log('[autoAppointPartyLeaderAsPM] semi-presidential — skipping auto-appoint (President must manually nominate)');
+        return null;
+    }
+
     // When called from coalition formation flow, skip the coalition check
     // (the formation was JUST set to 'formed' and cache may be stale)
     let _coalitionAtEntry = null;

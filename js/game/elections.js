@@ -737,6 +737,33 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
  * next election. Nation enters formation period (processGovernmentVacancy
  * handles penalties).
  */
+/**
+ * Clear minister names + party assignments on every active ministry row
+ * for a nation. Used on every parliamentary turnover that should leave
+ * the new PM re-confirming the cabinet from scratch — manual election,
+ * snap election, presidential dissolution. Variant-callers (e.g. the
+ * post-election partial-vacate that excludes the winning faction; the
+ * acting-minister clear for new presidents) keep their own UPDATE
+ * shapes — this helper covers only the identical "orphan everyone"
+ * pattern.
+ *
+ * Errors are logged but non-blocking, matching the surrounding code
+ * style. A failed clear leaves stale ministers in place for one tick
+ * cycle; the next confirmation flow overwrites them anyway.
+ */
+async function orphanCabinet(supabase, nationId) {
+    const { error } = await supabase.from('ministries')
+        .update({
+            minister_first_name: null,
+            minister_last_name: null,
+            minister_age: null,
+            party_id: null
+        })
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (error) console.warn('orphanCabinet: ministries clear failed:', error.message);
+}
+
 export async function dissolveCoalition(supabase, nationId, excludeFormationId) {
     // Bust coalition cache so pages immediately see the dissolved state
     if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
@@ -1205,13 +1232,16 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
         .update({ active: false })
         .eq('nation_id', nationId).eq('active', true);
 
-    // 5. Freeze all pending bills
+    // 5. Orphan the cabinet — new PM re-confirms post-election.
+    await orphanCabinet(supabase, nationId);
+
+    // 6. Freeze all pending bills
     await supabase.from('bills')
         .update({ status: 'frozen' })
         .eq('nation_id', nationId)
         .in('status', ['committee', 'floor']);
 
-    // 6. Schedule snap election
+    // 7. Schedule snap election
     const EARLY_ELECTION_TICKS = 2;
     await supabase.from('elections').insert({
         nation_id: nationId,
@@ -1220,7 +1250,7 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
         status: 'scheduled'
     });
 
-    // 7. Fire event
+    // 8. Fire event
     try {
         await supabase.rpc('fire_system_event', {
             p_trigger_key: 'parliament_dissolved',
@@ -1230,7 +1260,7 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
         });
     } catch (e) { /* non-blocking */ }
 
-    // 8. If dissolving after a vonc, fire additional legitimacy penalty event
+    // 9. If dissolving after a vonc, fire additional legitimacy penalty event
     if (voncPenalty) {
         await supabase.from('event_log').insert({
             nation_id: nationId,
@@ -1854,16 +1884,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
                 .eq('nation_id', nation.id)
                 .in('status', ['formed', 'active', 'caretaker']);
 
-            await supabase
-                .from('ministries')
-                .update({
-                    minister_first_name: null,
-                    minister_last_name: null,
-                    minister_age: null,
-                    party_id: null
-                })
-                .eq('nation_id', nation.id)
-                .eq('is_active', true);
+            await orphanCabinet(supabase, nation.id);
         }
 
         // HoG deactivation runs UNCONDITIONALLY — even if no government_formations
@@ -2642,16 +2663,7 @@ export async function processElections(supabase, nation, currentTick) {
                     .in('status', ['formed', 'active', 'caretaker']);
 
                 // Vacate all ministries
-                await supabase
-                    .from('ministries')
-                    .update({
-                        minister_first_name: null,
-                        minister_last_name: null,
-                        minister_age: null,
-                        party_id: null
-                    })
-                    .eq('nation_id', nation.id)
-                    .eq('is_active', true);
+                await orphanCabinet(supabase, nation.id);
             }
 
             // HoG deactivation runs UNCONDITIONALLY — see matching comment in
@@ -3067,20 +3079,9 @@ export async function processPresidentialElectionResult(supabase, nation, comple
  * Used by processPresidentialElectionResult (auto-inauguration).
  */
 export async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null, endReason = 'election_loss') {
-    // Deactivate any previous president
-    const { error: deactErr } = await supabase.from('presidents')
-        .update({ is_active: false })
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-    if (deactErr) {
-        console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
-    }
-
     // Fetch nation data early for per-nation term length
     const { data: nationForTerm, error: nationTermErr } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
     if (nationTermErr) console.error(`[inauguratePresident] Failed to fetch nation term data:`, nationTermErr.message);
-
-    // Trait is now resolved from POSITIVE_TRAITS at display time (leader_traits table removed)
 
     // Determine terms_served: if re-elected (same person), increment; otherwise start at 1
     let termsServed = 1;
@@ -3092,9 +3093,15 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         console.log(`President re-elected: ${candidate.first_name} ${candidate.last_name} — term ${termsServed}`);
     }
 
-    // Insert president record (trait resolved at display time, not stored)
+    // Insert NEW president FIRST. The previous order deactivated the
+    // outgoing president before the INSERT, so a transient INSERT failure
+    // left the nation with zero active presidents — the "President left
+    // empty" bug. Inserting first means a failed INSERT still leaves the
+    // outgoing president in office, which is the correct fallback.
     // Phase 5b: presidents.ideology column dropped.
-    const { error: presErr } = await supabase.from('presidents').insert({
+    // Trait is now resolved from POSITIVE_TRAITS at display time
+    // (leader_traits table removed).
+    const { data: newPresident, error: presErr } = await supabase.from('presidents').insert({
         nation_id: nationId,
         faction_id: factionId,
         first_name: candidate.first_name,
@@ -3107,8 +3114,36 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         term_ends_tick: currentTick + getPresidentialTermTicks(nationForTerm),
         is_active: true,
         terms_served: termsServed
-    });
+    }).select('id').single();
     if (presErr) throw presErr;
+    if (!newPresident?.id) throw new Error(`[inauguratePresident] insert succeeded but returned no id for ${nationId}`);
+
+    // Deactivate ALL other active presidents (excluding the just-inserted
+    // row). Logged but non-blocking — the new president is already in
+    // office; a stale prior row will be caught by the post-condition
+    // check below or cleaned up on the next inauguration.
+    const { error: deactErr } = await supabase.from('presidents')
+        .update({ is_active: false })
+        .eq('nation_id', nationId)
+        .eq('is_active', true)
+        .neq('id', newPresident.id);
+    if (deactErr) {
+        console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
+    }
+
+    // Post-condition: exactly one active president row must exist for
+    // this nation. Anything else is a data-integrity violation that
+    // breaks every downstream consumer (fetchActiveCoalition, EO
+    // authority checks, semi-pres PM nomination).
+    const { count: activeCount, error: countErr } = await supabase.from('presidents')
+        .select('id', { count: 'exact', head: true })
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (countErr) {
+        console.error(`[inauguratePresident] post-condition count query failed:`, countErr.message);
+    } else if (activeCount !== 1) {
+        throw new Error(`[inauguratePresident] post-condition violation: nation ${nationId} has ${activeCount} active president rows (expected exactly 1)`);
+    }
 
     // Phase 5a: presidential ideology shift removed. The legacy mechanic
     // wrote a +15 shift on the winning candidate's ideology axis to faction_
