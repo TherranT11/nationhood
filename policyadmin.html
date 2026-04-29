@@ -617,7 +617,6 @@ async function loadPolicyIntoBuilder(p) {
         if (Array.isArray(p.sector_effects)) {
             opt.sector_effects = p.sector_effects
                 .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
-                .slice(0, SECTOR_EFFECT_MAX)
                 .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }));
         }
         options = [opt];
@@ -645,7 +644,6 @@ async function loadPolicyIntoBuilder(p) {
             const rawSector = Array.isArray(row.sector_effects) ? row.sector_effects : [];
             opt.sector_effects = rawSector
                 .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
-                .slice(0, SECTOR_EFFECT_MAX)
                 .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }));
 
             const startingSet = startingByOption.get(row.id);
@@ -716,7 +714,7 @@ function renderOptionCard(idx) {
             </div>
 
             <div style="${subDivider}">
-                ${subTitle('🗳️', 'Sector Effects (up to 5)')}
+                ${subTitle('🗳️', 'Sector Effects')}
                 <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
                     Per-sector popularity shift on resolution. <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected. <strong>Fail:</strong> sponsor takes the inverse alone.<br>
                     Magnitude is 0.1 to 2.0 in 0.1 steps.
@@ -980,15 +978,14 @@ function updateEffect(optIdx, idx, field, value) {
 }
 
 // ==================== SECTOR EFFECTS (Phase 2) ====================
-const SECTOR_EFFECT_MAX = 5;
 // Display range: 0.1–2.0 (= 1–20 tenths). Sign comes from the +/− toggle,
-// not from the magnitude input itself.
+// not from the magnitude input itself. The per-option count is uncapped.
 const SECTOR_EFFECT_MIN_MAGNITUDE_TENTHS = 1;
 const SECTOR_EFFECT_MAX_MAGNITUDE_TENTHS = 20;
 
 function addSectorEffect(optIdx) {
     const opt = options[optIdx];
-    if (!opt || opt.sector_effects.length >= SECTOR_EFFECT_MAX) return;
+    if (!opt) return;
     // Default new rows to +1.0 — a typical Moderate-tier shift; admin can
     // dial it down or flip the sign with the +/− toggle.
     opt.sector_effects.push({ sector_key: '', change_tenths: 10 });
@@ -1041,9 +1038,7 @@ function renderSectorEffects(optIdx) {
     const opt = options[optIdx];
     if (!opt) return;
     const container = document.getElementById(`sector-effects-container-${optIdx}`);
-    const addBtn = document.getElementById(`add-sector-effect-btn-${optIdx}`);
     if (!container) return;
-    if (addBtn) addBtn.disabled = opt.sector_effects.length >= SECTOR_EFFECT_MAX;
 
     if (opt.sector_effects.length === 0) {
         container.innerHTML = '<div style="color:#666; font-size:0.85rem; padding:8px 0;">No sector effects. Bills without sector effects shift no popularity on resolution.</div>';
@@ -1267,11 +1262,14 @@ async function savePolicy() {
         });
     }
 
-    // Identity-only policies row. Legacy NOT NULL columns get placeholders
-    // from the first option's first stat_effect so the schema's pre-multi-
-    // option constraints stay satisfied. The engine no longer reads them on
-    // multi-option policies — per-option data on policy_options is the
-    // source of truth from Phase 4 onward.
+    // Identity-only policies row. We keep target_stat / stat_direction (the
+    // last two NOT NULL legacy columns without defaults that we've seen
+    // survive the schema trim) populated from the first option's first
+    // stat_effect so the schema stays satisfied. Fields with defaults
+    // (stat_change_per_tick, duration_months, stat_floor, stat_ceiling) are
+    // omitted because some environments have dropped those columns
+    // entirely — the multi-option engine doesn't read them anyway, and
+    // PostgREST rejects writes to columns missing from its schema cache.
     const firstNormalized = optionPayloads[0].normalizedEffects[0];
     const policyData = {
         policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') + '_' + Date.now().toString(36),
@@ -1289,10 +1287,6 @@ async function savePolicy() {
         opposed_policy_ids: null,
         target_stat: firstNormalized?.stat_key || 'stability',
         stat_direction: (normalizeEffectDirection(firstNormalized?.direction) || 'up').toUpperCase(),
-        stat_change_per_tick: firstNormalized?.rate || 1,
-        duration_months: firstNormalized?.duration_ticks || 12,
-        stat_floor: 0,
-        stat_ceiling: 100,
         requires_policy_id: null,
         is_active: true
     };
