@@ -1153,16 +1153,34 @@ function adm2RenderAdminCard() {
         durationLabel = months === 1 ? '1 Month' : `${months} Months`;
     }
 
-    // Coalition line — list party names + abbreviations
+    // Coalition rows — uniform colored chips so the parties line up
+    // visually instead of running together as a comma-separated string.
     const coalitionPartyIds = coalition?.party_ids || [];
-    const coalitionParties = coalitionPartyIds.map(id => parties.find(p => p.id === id)).filter(Boolean);
-    const coalitionLabel = coalitionParties.length
-        ? coalitionParties.map(p => `${p.faction_name}${p.abbreviation ? ' · ' + p.abbreviation : ''}`).join(', ')
-        : 'None';
+    const coalitionParties = coalitionPartyIds
+        .map(id => parties.find(p => p.id === id))
+        .filter(Boolean);
+    let coalitionHtml;
+    if (coalitionParties.length === 0) {
+        coalitionHtml = '<span class="v" style="color:var(--text-faint);">None</span>';
+    } else {
+        coalitionHtml = `<div class="adm2-coal-list">${coalitionParties.map(p => {
+            const color = p.party_color || 'var(--text-muted)';
+            const abbr = p.abbreviation || '—';
+            return `<div class="adm2-coal-row" style="border-left-color:${color};">
+                <span class="adm2-coal-abbr" style="color:${color};">${escapeHtml(abbr)}</span>
+                <span class="adm2-coal-name">${escapeHtml(p.faction_name || '')}</span>
+            </div>`;
+        }).join('')}</div>`;
+    }
 
     const statusPill = isCurrent
         ? '<span class="adm2-pill">Current</span>'
         : (admin?.end_reason ? `<span class="adm2-pill" style="color:var(--red);border-color:var(--red);background:var(--red-faint);">${escapeHtml(admin.end_reason.replace(/_/g,' ').toUpperCase())}</span>` : '');
+
+    // "Term" now reflects the elapsed duration (e.g. "1 Month") rather than
+    // the start date — the start date is implicit from "Current" and the
+    // duration is the metric players actually want at a glance.
+    const termValue = durationLabel || (startDate ? escapeHtml(startDate) : '—');
 
     el.innerHTML = `<div class="adm2-admin-card">
         <div class="title-row">
@@ -1170,9 +1188,8 @@ function adm2RenderAdminCard() {
             ${statusPill}
         </div>
         <div class="adm2-meta">
-            <div class="row"><span class="k">Term</span><span class="v">${escapeHtml(startDate || '—')}${isCurrent ? ' — Present' : ''}</span></div>
-            ${durationLabel ? `<div class="row"><span class="k">Duration</span><span class="v">${escapeHtml(durationLabel)}</span></div>` : ''}
-            <div class="row"><span class="k">Coalition</span><span class="v">${escapeHtml(coalitionLabel)}</span></div>
+            <div class="row"><span class="k">Term</span><span class="v">${termValue}</span></div>
+            <div class="row"><span class="k">Coalition</span><span class="v">${coalitionHtml}</span></div>
         </div>
         <div class="adm2-approval-strip">
             <span class="lbl">Approval</span>
