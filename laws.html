@@ -1639,6 +1639,16 @@ function openDraftModal() {
     document.getElementById('bill-name-section').style.display = 'none';
     document.getElementById('submit-bill-btn').disabled = true;
     document.getElementById('draft-modal').classList.add('active');
+
+    // Refresh active_laws + policies (with options) so the picker's "Active"
+    // banner and the dropdown reflect the live DB state every time the modal
+    // opens — no page reload needed after policyadmin saves or migrations.
+    // Kept as fire-and-forget so the modal opens instantly; the picker
+    // re-renders when the user picks a sector + policy anyway.
+    _refreshActivePolicyState().catch(err => {
+        console.warn('[openDraftModal] active-state refresh failed:', err?.message || err);
+    });
+
     // Fetch data needed for funding articles
     Promise.all([
         _supabase.from('ministries').select('ministry_key, funding_level, discretionary_balance').eq('nation_id', currentNation.id).eq('is_active', true),
@@ -1649,6 +1659,33 @@ function openDraftModal() {
         window._instConfig = instConfig.data || [];
         window._fundingPctMap = buildFundingPctMap(itemAllocs.data);
     });
+}
+
+// Re-pull active_laws + policies (with options) so getCurrentOptionForPolicy
+// always reflects the live DB without needing a page reload. The cached
+// 'policies_active_v2' blob is busted here so the picker's option list is
+// fresh too — useful after a policyadmin save or an SQL migration.
+async function _refreshActivePolicyState() {
+    if (!currentNation?.id) return;
+    qCacheBust('policies_active_v2');
+    const [policiesRes, lawsRes] = await Promise.all([
+        _supabase.from('policies')
+            .select('*, policy_options(id, option_name, option_description, option_order, is_active, sector_effects, stat_effects, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat, fiscal_category)')
+            .eq('is_active', true),
+        _supabase.from('active_laws')
+            .select('*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description)')
+            .eq('nation_id', currentNation.id),
+    ]);
+    if (policiesRes.error) throw policiesRes.error;
+    if (lawsRes.error) throw lawsRes.error;
+    allPolicies = (policiesRes.data || []).map(p => ({
+        ...p,
+        policy_options: Array.isArray(p.policy_options)
+            ? [...p.policy_options].sort((a, b) => (a.option_order || 0) - (b.option_order || 0))
+            : []
+    }));
+    activeLaws = lawsRes.data || [];
+    if (allPolicies.length) qCacheSet('policies_active_v2', allPolicies, 10 * 60 * 1000);
 }
 
 function closeModal() { document.getElementById('draft-modal').classList.remove('active'); }
