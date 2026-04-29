@@ -1675,7 +1675,7 @@ function renderActivePortfolio() {
                     { label: 'INTEREST REVENUE TO DATE (P&L)', value: fmtMoney(d.interestRevenue || 0), color: '#5c5', title: 'Cumulative operating revenue recognized from interest.' },
                     { label: 'PRINCIPAL REPAID TO DATE (ASSET REPAYMENT)', value: fmtMoney(d.principalRepaid || 0), title: 'Cumulative principal repaid. Cash inflow, not revenue.' },
                     { label: 'LOAN CASH COLLECTED TO DATE (INTEREST + PRINCIPAL)', value: fmtMoney(d.cashCollected || 0), title: 'Cumulative loan cash collected = interest + principal.' },
-                    { label: 'MISSED PAYMENTS', value: String(d.missedPayments || 0), color: (d.missedPayments || 0) > 0 ? '#c55' : '#5c5' },
+                    { label: 'MISSED PAYMENTS', value: String(d.paymentsMissed || 0), color: (d.paymentsMissed || 0) > 0 ? '#c55' : '#5c5' },
                     { label: 'NEXT DUE', value: d.nextPayment || '—', color: d.status === 'LATE' ? '#c55' : '#9e9a92' },
                 ];
                 for (const r of rows) {
@@ -3518,16 +3518,16 @@ async function loadActivePortfolio() {
     };
     const loanPrincipalRepaid = (loan) => Math.max(0, loanCashCollected(loan) - loanInterestRevenue(loan));
     // Per-loan monthly interest / principal split for the active card.
-    // Cap interest at the monthly_payment so a shrinking remaining
-    // balance can never display interest > what the borrower actually
-    // pays. The tick processor's own guard at principalPortion() makes
-    // this safe; the cap exists purely so the UI rendering can't show
-    // a negative principal column. The outer Math.max(0, ...) clamps
-    // the rare defensive case where monthly_payment itself comes back
-    // negative -- without it the UI would render a negative interest.
+    // Flat-interest model: interest is accrued on the ORIGINAL principal
+    // every tick, never on remaining_principal — see loan-math.js header
+    // and advance-corp-tick:4094. Reading remaining_principal here
+    // under-reports per-tick interest as the loan amortizes (cumulative
+    // total_interest_paid stayed correct because it's read directly
+    // from the engine's writes). Cap at monthly_payment is preserved
+    // so the UI can't render a negative principal column.
     const loanInterestForRow = (loan) => Math.max(0, Math.min(
         Number(loan.monthly_payment || 0),
-        monthlyInterest(loan.remaining_principal, loan.interest_rate),
+        monthlyInterest(loan.original_principal ?? loan.principal, loan.interest_rate),
     ));
     apPortfolio = (loans || []).map(loan => ({
         monthlyInterestPortion: loanInterestForRow(loan),

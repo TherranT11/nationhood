@@ -1380,7 +1380,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         if (sector === 'Finance') {
             // Finance: interest + premiums earned from active loans/policies
             const { data: finLoans } = await _supabase.from('finance_active_loans')
-                .select('monthly_payment, payments_made, total_paid, total_interest_paid, interest_rate, remaining_principal, finance_loan_requests(request_type)')
+                .select('monthly_payment, payments_made, total_paid, total_interest_paid, interest_rate, principal, original_principal, remaining_principal, finance_loan_requests(request_type)')
                 .eq('lender_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
             for (const loan of (finLoans || [])) {
@@ -1392,8 +1392,13 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                 } else if (reqType === 'loan') {
                     const monthlyPayment = Number(loan.monthly_payment || 0);
                     financeLoanScheduledPaymentsTick += monthlyPayment;
-                    const remaining = Math.max(0, Number(loan.remaining_principal || 0));
-                    const interestPart = Math.min(monthlyPayment, monthlyInterest(remaining, loan.interest_rate));
+                    // Flat-interest base = original_principal (with principal
+                    // as backstop for pre-restructure rows), per loan-math.js
+                    // header and advance-corp-tick:4094. Using remaining here
+                    // under-reports per-tick interest revenue once the loan
+                    // starts amortizing.
+                    const flatBase = Math.max(0, Number(loan.original_principal ?? loan.principal ?? 0));
+                    const interestPart = Math.min(monthlyPayment, monthlyInterest(flatBase, loan.interest_rate));
                     const monthlyPrincipal = principalPortion(monthlyPayment, interestPart);
                     pvtContracts += interestPart;
                     financeLoanInterestRevenue += interestPart;
@@ -2004,8 +2009,12 @@ async function loadLoansSection() {
             const statusColor = loan.status === 'current' ? 'var(--green)' : loan.status === 'late' ? '#c84' : '#c55';
             const pctPaid = loan.term_months > 0 ? Math.round((loan.payments_made / loan.term_months) * 100) : 0;
             const monthlyPayment = Number(loan.monthly_payment || 0);
-            const remainingPrincipal = Math.max(0, Number(loan.remaining_principal || 0));
-            const monthlyInterestPortion = Math.max(0, Math.min(monthlyPayment, monthlyInterest(remainingPrincipal, loan.interest_rate)));
+            // Flat-interest base = original_principal (with principal as
+            // backstop), per loan-math.js + advance-corp-tick:4094. Reading
+            // remaining_principal here under-reports the borrower's actual
+            // tick interest expense as the loan amortizes.
+            const flatBase = Math.max(0, Number(loan.original_principal ?? loan.principal ?? 0));
+            const monthlyInterestPortion = Math.max(0, Math.min(monthlyPayment, monthlyInterest(flatBase, loan.interest_rate)));
             const monthlyPrincipalPortion = principalPortion(monthlyPayment, monthlyInterestPortion);
             const lenderName = loan.lender?.faction_name || 'Unknown bank';
             const issuedDate = tickToDate(loan.started_tick);
