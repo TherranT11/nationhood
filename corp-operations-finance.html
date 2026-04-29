@@ -1714,6 +1714,7 @@ function renderActivePortfolio() {
                 const rows = [
                     { label: 'COVERAGE', value: fmtMoney(d.coverage || 0) },
                     { label: 'PREMIUMS COLLECTED', value: fmtMoney(d.premiumsCollected || 0), color: '#5c5' },
+                    { label: 'MISSED PAYMENTS', value: String(d.paymentsMissed || 0), color: (d.paymentsMissed || 0) > 0 ? '#c55' : '#5c5' },
                     { label: 'CLAIMS FILED', value: String(d.claims || 0), color: (d.claims || 0) > 0 ? '#c84' : '#5c5' },
                     { label: 'PAID OUT', value: fmtMoney(d.paidOut || 0), color: (d.paidOut || 0) > 0 ? '#c55' : '#6a6660' },
                 ];
@@ -1723,6 +1724,13 @@ function renderActivePortfolio() {
                 if (d.status === 'CLAIM' && d.claimAmount) {
                     html += `<div class="ap-claim-box"><div style="font-family:var(--font-mono);font-size:7px;color:#c55;letter-spacing:0.8px;margin-bottom:2px;">PENDING CLAIM</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c55;">${fmtMoney(d.claimAmount)}</div></div>`;
                     html += `<div class="ap-actions"><div class="ap-action-btn green" onclick="apPayClaim('${d.id}')">PAY IN FULL</div><div class="ap-action-btn orange" onclick="apNegotiateClaim('${d.id}')">NEGOTIATE</div><div class="ap-action-btn red" onclick="apDisputeClaim('${d.id}')">DISPUTE</div></div>`;
+                }
+                // Premium-default actions: enabled when the policy is late or
+                // delinquent. The engine never auto-cancels insurance; the
+                // insurer pulls the plug manually here.
+                if (d.status === 'LATE' || d.status === 'DELINQUENT') {
+                    const cancelReason = 'WHEN TO USE: The policyholder has missed enough premiums that the policy is no longer worth the contingent liability. ACTION: Immediately ends the policy. FINANCIAL CONSEQUENCES: No more premiums, no further coverage. The policy disappears from your active portfolio. Irreversible.';
+                    html += `<div class="ap-actions"><div class="ap-action-btn red" title="${escapeHtml(cancelReason)}" onclick="apCancelPolicy('${d.id}')">CANCEL POLICY</div></div>`;
                 }
             } else if (d.type === 'BOND') {
                 const rows = [
@@ -1966,6 +1974,64 @@ async function apForeclose(loanId) {
     }
 }
 
+async function apCancelPolicy(loanId) {
+    // Insurer-initiated cancellation for non-paying policyholders. The
+    // engine never auto-cancels insurance — this is the only termination
+    // path short of natural term expiry.
+    if (_cancelPolicyLock) return;
+
+    // Pre-check the live state so the confirm dialog reflects reality.
+    const { data: currentLoan, error: fetchErr } = await _supabase
+        .from('finance_active_loans')
+        .select('status, payments_missed, monthly_payment, principal, finance_loan_requests!inner(request_type)')
+        .eq('id', loanId)
+        .single();
+    if (fetchErr) { alert('Cancel failed: ' + fetchErr.message); return; }
+    if (currentLoan?.finance_loan_requests?.request_type !== 'insurance') {
+        alert('Cancel Policy is only available for insurance policies.');
+        return;
+    }
+    const status = String(currentLoan?.status || '').toLowerCase();
+    if (status !== 'late' && status !== 'delinquent') {
+        alert('Cancel Policy unavailable. Only late or delinquent policies can be cancelled.');
+        return;
+    }
+
+    const missed = Number(currentLoan?.payments_missed || 0);
+    const premium = Number(currentLoan?.monthly_payment || 0);
+    const coverage = Number(currentLoan?.principal || 0);
+    if (!confirm(
+        'CANCEL POLICY\n\n' +
+        `Missed payments: ${missed}\n` +
+        `Coverage: ${fmtMoney(coverage)}\n` +
+        `Premium: ${fmtMoney(premium)}/tick\n\n` +
+        'This immediately ends the policy. No more premiums, no further coverage.\n' +
+        'This cannot be undone. Proceed?'
+    )) return;
+
+    _cancelPolicyLock = true;
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const completedTick = Number(shard?.current_tick) || null;
+        const { data: updated, error: updErr } = await _supabase
+            .from('finance_active_loans')
+            .update({ status: 'cancelled', completed_tick: completedTick })
+            .eq('id', loanId)
+            .in('status', ['late', 'delinquent']) // optimistic concurrency: only cancel from a non-terminal state
+            .select('id');
+        if (updErr) { alert('Cancel failed: ' + updErr.message); return; }
+        if (!updated || updated.length === 0) {
+            alert('Policy state changed before cancellation could complete. Refresh and try again.');
+            return;
+        }
+
+        await loadActivePortfolio();
+        renderActivePortfolio();
+    } finally {
+        _cancelPolicyLock = false;
+    }
+}
+
 async function apPayClaim(loanId) {
     if (_claimLock) return;
 
@@ -2152,6 +2218,7 @@ async function apSellPosition(loanId) {
 window.apRestructure = apRestructure;
 window.apCallLoan = apCallLoan;
 window.apForeclose = apForeclose;
+window.apCancelPolicy = apCancelPolicy;
 window.apPayClaim = apPayClaim;
 window.apNegotiateClaim = apNegotiateClaim;
 window.apDisputeClaim = apDisputeClaim;
@@ -3241,6 +3308,7 @@ let _submittingOffer = false;
 let _foreclosureLock = false;
 let _callLoanLock = false;
 let _claimLock = false; // shared: pay-full, negotiate, dispute
+let _cancelPolicyLock = false;
 let _sellPositionLock = false;
 async function rdSubmitOffer() {
     if (!rdDeal || !faction || !shard || _submittingOffer) return;
