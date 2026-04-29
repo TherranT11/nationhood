@@ -7,21 +7,87 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/laws-BZL8gt01.js"></script>
+    <style>
+        /* Bump base text by 35% on the laws/bills view — top bar stays at
+           the standard scale so layout outside #content-area is unaffected. */
+        #content-area { font-size: 135%; }
+
+        /* Phase 3.2: widen the bill draft modal by 30% to fit the Active +
+           dropdown + option-details panel comfortably. The selector below
+           is more specific than the global .modal-content rule in
+           css/laws.css so other modals stay at their original size. */
+        #draft-modal-content { max-width: 910px; }
+
+        /* Phase 3.2: option selector panel inside the article-add form. */
+        .option-selector-active {
+            background: var(--bg-card, #1a1a1a);
+            border: 1px solid var(--border-strong, #333);
+            border-radius: 4px;
+            padding: 10px 14px;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+        }
+        .option-selector-active .label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted, #888);
+        }
+        .option-selector-active .name {
+            font-weight: bold;
+            color: var(--green, #5cb85c);
+            margin-top: 2px;
+        }
+        .option-details-card {
+            background: var(--bg-card, #1a1a1a);
+            border: 1px solid var(--blue, #5b9bd5);
+            border-radius: 4px;
+            padding: 12px 14px;
+            margin-top: 10px;
+        }
+        .option-details-card .opt-name {
+            font-weight: bold;
+            color: var(--blue, #5b9bd5);
+            font-size: 0.95rem;
+            margin-bottom: 6px;
+        }
+        .option-details-card .opt-desc {
+            color: var(--text-primary, #e0e0e0);
+            font-size: 0.82rem;
+            line-height: 1.45;
+            margin-bottom: 10px;
+        }
+        .option-details-card .opt-row-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted, #888);
+            margin-top: 8px;
+            margin-bottom: 4px;
+        }
+        .option-details-card .opt-effect {
+            display: inline-block;
+            margin-right: 8px;
+            font-size: 0.8rem;
+        }
+        .effect-up   { color: var(--green, #5cb85c); }
+        .effect-down { color: var(--red,   #d9534f); }
+    </style>
+  <script type="module" crossorigin src="/assets/laws-zAwKIkLJ.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
   <link rel="modulepreload" crossorigin href="/assets/government-structure-DUNrPmll.js">
-  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-CPI0igZM.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-CQCvri_9.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-hUGd1WrW.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-DWHHNqy8.js">
   <link rel="modulepreload" crossorigin href="/assets/corp-valuation-C0hsb2EQ.js">
   <link rel="modulepreload" crossorigin href="/assets/config-CKNXR-qR.js">
   <link rel="modulepreload" crossorigin href="/assets/stats-tIiBSaQA.js">
   <link rel="modulepreload" crossorigin href="/assets/political-actions-DKWURJip.js">
   <link rel="modulepreload" crossorigin href="/assets/budget-Dk7fC1DR.js">
-  <link rel="modulepreload" crossorigin href="/assets/bills-B5lzMfi_.js">
+  <link rel="modulepreload" crossorigin href="/assets/bills-LfUI5n9o.js">
   <link rel="modulepreload" crossorigin href="/assets/trade-constants-CC0netZy.js">
-  <link rel="modulepreload" crossorigin href="/assets/presidential-CfLHmXot.js">
+  <link rel="modulepreload" crossorigin href="/assets/presidential-BXI9i1NS.js">
   <link rel="modulepreload" crossorigin href="/assets/sovereign-default-DRjRiSGP.js">
   <link rel="stylesheet" crossorigin href="/assets/laws-K9hZiW_l.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
@@ -200,6 +266,14 @@
                 <label class="form-label">Select Policy</label>
                 <div class="policy-options" id="policy-options"></div>
             </div>
+            <div class="form-group" id="option-selector-group" style="display:none;">
+                <div id="option-selector-active"></div>
+                <label class="form-label" id="option-selector-label" style="display:none;">Change to</label>
+                <select class="form-select" id="option-selector-select" style="display:none;" onchange="onTargetOptionChange()">
+                    <option value="">-- Choose new option --</option>
+                </select>
+                <div id="option-selector-details"></div>
+            </div>
             <div style="display:flex;gap:8px;margin-top:12px;">
                 <button class="btn-cancel" onclick="hideAddArticleForm()">Cancel</button>
                 <button class="btn-add" id="add-article-btn" disabled onclick="addArticle()">Add to Bill</button>
@@ -310,6 +384,14 @@
         <div class="form-group" id="committee-policy-group" style="display:none;">
             <label class="form-label">Select Policy</label>
             <div class="policy-options" id="committee-policy-options"></div>
+        </div>
+        <div class="form-group" id="committee-option-selector-group" style="display:none;">
+            <div id="committee-option-selector-active"></div>
+            <label class="form-label" id="committee-option-selector-label" style="display:none;">Change to</label>
+            <select class="form-select" id="committee-option-selector-select" style="display:none;" onchange="onCommitteeTargetOptionChange()">
+                <option value="">-- Choose new option --</option>
+            </select>
+            <div id="committee-option-selector-details"></div>
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeCommitteeAddModal()">Cancel</button>

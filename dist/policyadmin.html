@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nationhood | Policy Builder</title>
-  <script type="module" crossorigin src="/assets/policyadmin-BL4GMJtC.js"></script>
+  <script type="module" crossorigin src="/assets/policyadmin-gQyzWfah.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
   <link rel="stylesheet" crossorigin href="/assets/policyadmin-DC2qTpUn.css">
@@ -59,7 +59,7 @@
                             <tr>
                                 <th>Policy Name</th>
                                 <th>Sector / Law</th>
-                                <th>Stat Effects</th>
+                                <th>Options</th>
                                 <th>Ideologies</th>
                                 <th>Costs</th>
                                 <th>Actions</th>
@@ -87,7 +87,7 @@
                     <div class="form-row">
                         <div class="form-field">
                             <label>Sector</label>
-                            <select id="b-sector" onchange="populateLawCategories(); onSectorOrLawChange()">
+                            <select id="b-sector" onchange="populateLawCategories()">
                                 <option value="">-- Select --</option>
                                 <option value="ECONOMICS">💰 Economics</option>
                                 <option value="LABOR">👷 Labor</option>
@@ -107,129 +107,32 @@
                             </select>
                             <div id="new-category-wrapper" style="display:none;margin-top:8px;">
                                 <label style="display:block;font-size:0.72rem;color:#ffcc00;margin-bottom:4px;">NEW CATEGORY NAME</label>
-                                <input type="text" id="b-law-category-new" placeholder="e.g. Secondary Education" oninput="onSectorOrLawChange()">
+                                <input type="text" id="b-law-category-new" placeholder="e.g. Secondary Education">
                             </div>
                         </div>
                     </div>
-                    <div class="form-row">
-    <div class="form-field">
-        <label>Policy Type</label>
-        <select id="b-policy-type">
-            <option value="structural">🏗️ Structural — Activate once, stays on, rescind to remove</option>
-            <option value="lever">🔄 Lever — Toggle on/off, pays upfront each activation</option>
-        </select>
-    </div>
-    <div class="form-field">
-        <label>Fiscal Category</label>
-        <select id="b-fiscal-category">
-            <option value="">-- None (no budget impact) --</option>
-            <option value="Interior">🏛️ Interior</option>
-            <option value="Labor">👷 Labor</option>
-            <option value="Healthcare">🏥 Healthcare</option>
-            <option value="Education">📚 Education</option>
-            <option value="Transportation">🚄 Transportation</option>
-            <option value="Justice">⚖️ Justice</option>
-            <option value="Foreign Ministry">🌐 Foreign Ministry</option>
-            <option value="Finance">💰 Finance</option>
-            <option value="Defense">🛡️ Defense</option>
-            <option value="Energy">⚡ Energy</option>
-        </select>
-    </div>
-</div>
-                </div>
-
-                <!-- Section 2: Sector Effects (Phase 2 — replaces ideology authoring) -->
-                <div class="builder-section">
-                    <div class="builder-section-title">🗳️ 2. Sector Effects (up to 5)</div>
-                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                        Per-sector popularity shift on resolution. <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected. <strong>Fail:</strong> sponsor takes the inverse alone.<br>
-                        Magnitude is 0.1 to 2.0 in 0.1 steps.
-                    </p>
-                    <div id="sector-effects-container"></div>
-                    <button class="add-btn" id="add-sector-effect-btn" onclick="addSectorEffect()">+ Add Sector</button>
-                </div>
-
-                <!-- Section 3: Starting Status -->
-                <div class="builder-section">
-                    <div class="builder-section-title">🌍 3. Starting Status</div>
-                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                        Which nations have this policy active at game start?
-                        <span style="color:#d48a3c;">Active = ongoing cost runs, stat effects do NOT fire (stats are pre-set).</span>
-                    </p>
-                    <div class="nation-checks" id="nation-checks">Loading nations...</div>
-                </div>
-
-                <!-- Section 4: Costs -->
-                <div class="builder-section">
-                    <div class="builder-section-title">💰 4. Costs</div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-                        <div class="form-field">
-                            <label>Upfront Base Cost ($M) <span style="font-size:0.7rem;color:var(--text-dim);">negative = revenue</span></label>
-                            <input type="number" id="b-upfront" value="0" step="1" oninput="updateCostPreview()">
-                        </div>
-                        <div class="form-field">
-                            <label>Upfront Scaling Stat (or None)</label>
-                            <select id="b-upfront-scaling" onchange="updateCostPreview()">
-                                <option value="">None (flat cost)</option>
-                            </select>
-                        </div>
-                        <div class="form-field">
-                            <label>Ongoing Base Cost ($M/tick) <span style="font-size:0.7rem;color:var(--text-dim);">negative = relief</span></label>
-                            <input type="number" id="b-ongoing-base" value="0" step="0.1" oninput="updateCostPreview()">
-                        </div>
-                        <div class="form-field">
-                            <label>Ongoing Scaling Stat (or None)</label>
-                            <select id="b-scaling-stat" onchange="updateCostPreview()">
-                                <option value="">None (flat cost)</option>
-                            </select>
-                        </div>
+                    <div class="form-field">
+                        <label>Policy Type</label>
+                        <select id="b-policy-type">
+                            <option value="structural">🏗️ Structural — Activate once, stays on, rescind to remove</option>
+                            <option value="lever">🔄 Lever — Toggle on/off, pays upfront each activation</option>
+                        </select>
                     </div>
-                    <div class="formula-preview" id="cost-preview" style="display:none;"></div>
                 </div>
 
-                <!-- Section 5: Stat Effects -->
-                <div class="builder-section">
-                    <div class="builder-section-title">📊 5. Stat Effects (up to 10)</div>
-                    <div id="stat-effects-container"></div>
-                    <button class="add-btn" id="add-effect-btn" onclick="addStatEffect()">+ Add Stat Effect</button>
-                    <div class="effect-preview" id="effect-preview" style="display:none;"></div>
-                </div>
-
-                <!-- Section 6: Opposed Policies -->
-                <div class="builder-section">
-                    <div class="builder-section-title">⚔️ 6. Opposed Policies (up to 3, same law category)</div>
-                    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                        Policies that cannot coexist. Activating this policy will auto-rescind any opposed active policy.
+                <!-- Section 2: Options (programmatically rendered cards in Phase 2.9) -->
+                <div style="margin-bottom:14px;">
+                    <div style="font-size:0.85rem; color:#ffcc00; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px; font-weight:bold;">🎚️ 2. Options</div>
+                    <p style="color:#888; font-size:0.82rem; margin-bottom:0;">
+                        A multi-option policy is built from one or more <strong>options</strong>. Each option is a complete configuration — its own sector effects, costs, and stat effects — that nations can switch between via bills. A nation always has exactly one option active at a time.
                     </p>
-                    <div id="opposed-container"></div>
-                    <button class="add-btn" id="add-opposed-btn" onclick="addOpposedSlot()">+ Add Opposed Policy</button>
-                    <div id="opposed-note" style="color:#666; font-size:0.8rem; margin-top:8px; display:none;">
-                        Select a sector and law category first to see available policies.
-                    </div>
+                </div>
+                <div id="options-container"></div>
+                <div style="margin-bottom:20px;">
+                    <button class="add-btn" id="add-option-btn" onclick="addOption()">+ Add Option</button>
                 </div>
 
                 <!-- Submit -->
-                <!-- Section 7: Prerequisite -->
-<div class="builder-section">
-    <div class="builder-section-title">🔗 7. Prerequisite Policy</div>
-    <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-        Does this policy require another policy to be active first?
-        <span style="color:#5b9bd5;">e.g., Central Bank policies require "Establish Central Bank"</span>
-    </p>
-    <div class="prereq-toggle">
-        <input type="checkbox" id="b-has-prereq" onchange="togglePrereq()">
-        <label for="b-has-prereq">This policy requires a prerequisite law</label>
-    </div>
-    <div class="prereq-select-area" id="prereq-select-area" style="display:none;">
-        <div class="form-field">
-            <label>Select Prerequisite Policy</label>
-            <select class="form-field select" id="b-prereq-policy" style="width:100%;padding:10px 14px;background:#252525;border:1px solid #333;border-radius:5px;color:#e0e0e0;font-size:0.9rem;">
-                <option value="">-- Select policy --</option>
-            </select>
-        </div>
-        <div id="prereq-preview" style="display:none; margin-top:10px;"></div>
-    </div>
-</div>
                 <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:10px; margin-bottom:40px;">
                     <button class="btn-dim" onclick="resetBuilder()">Clear Form</button>
                     <button class="btn-gold" id="submit-btn" onclick="savePolicy()">✅ Create Policy</button>

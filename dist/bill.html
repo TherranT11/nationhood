@@ -7,21 +7,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/bill-DAyl87HC.js"></script>
+  <script type="module" crossorigin src="/assets/bill-CFaKdJIV.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
   <link rel="modulepreload" crossorigin href="/assets/government-structure-DUNrPmll.js">
-  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-CPI0igZM.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-CQCvri_9.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-hUGd1WrW.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-DWHHNqy8.js">
   <link rel="modulepreload" crossorigin href="/assets/config-CKNXR-qR.js">
   <link rel="modulepreload" crossorigin href="/assets/stats-tIiBSaQA.js">
   <link rel="modulepreload" crossorigin href="/assets/political-actions-DKWURJip.js">
   <link rel="modulepreload" crossorigin href="/assets/corp-valuation-C0hsb2EQ.js">
   <link rel="modulepreload" crossorigin href="/assets/budget-Dk7fC1DR.js">
-  <link rel="modulepreload" crossorigin href="/assets/bills-B5lzMfi_.js">
-  <link rel="modulepreload" crossorigin href="/assets/presidential-CfLHmXot.js">
-  <link rel="modulepreload" crossorigin href="/assets/executive-orders-CJlHMBqj.js">
+  <link rel="modulepreload" crossorigin href="/assets/bills-LfUI5n9o.js">
+  <link rel="modulepreload" crossorigin href="/assets/presidential-BXI9i1NS.js">
+  <link rel="modulepreload" crossorigin href="/assets/executive-orders-CODgLYGi.js">
   <link rel="stylesheet" crossorigin href="/assets/bill-BAqKymh-.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
 </head>
@@ -103,6 +103,14 @@
         <div class="form-group" id="amendment-policy-group" style="display: none;">
             <label class="form-label">Select Policy</label>
             <div id="amendment-policies"></div>
+        </div>
+        <div class="form-group" id="amendment-option-selector-group" style="display: none;">
+            <div id="amendment-option-selector-active"></div>
+            <label class="form-label" id="amendment-option-selector-label" style="display: none;">Change to</label>
+            <select class="form-select" id="amendment-option-selector-select" style="display: none;" onchange="onAmendmentTargetOptionChange()">
+                <option value="">-- Choose new option --</option>
+            </select>
+            <div id="amendment-option-selector-details"></div>
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeAmendmentModal()">Cancel</button>
@@ -189,6 +197,14 @@
         <div class="form-group" id="sponsor-add-policy-group" style="display: none;">
             <label class="form-label">Select Policy</label>
             <div id="sponsor-add-policies"></div>
+        </div>
+        <div class="form-group" id="sponsor-add-option-selector-group" style="display: none;">
+            <div id="sponsor-add-option-selector-active"></div>
+            <label class="form-label" id="sponsor-add-option-selector-label" style="display: none;">Change to</label>
+            <select class="form-select" id="sponsor-add-option-selector-select" style="display: none;" onchange="onSponsorAddTargetOptionChange()">
+                <option value="">-- Choose new option --</option>
+            </select>
+            <div id="sponsor-add-option-selector-details"></div>
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeSponsorAddModal()">Cancel</button>
