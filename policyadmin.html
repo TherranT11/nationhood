@@ -84,7 +84,7 @@
                     <div class="form-row">
                         <div class="form-field">
                             <label>Sector</label>
-                            <select id="b-sector" onchange="populateLawCategories(); onSectorOrLawChange()">
+                            <select id="b-sector" onchange="populateLawCategories()">
                                 <option value="">-- Select --</option>
                                 <option value="ECONOMICS">💰 Economics</option>
                                 <option value="LABOR">👷 Labor</option>
@@ -104,7 +104,7 @@
                             </select>
                             <div id="new-category-wrapper" style="display:none;margin-top:8px;">
                                 <label style="display:block;font-size:0.72rem;color:#ffcc00;margin-bottom:4px;">NEW CATEGORY NAME</label>
-                                <input type="text" id="b-law-category-new" placeholder="e.g. Secondary Education" oninput="onSectorOrLawChange()">
+                                <input type="text" id="b-law-category-new" placeholder="e.g. Secondary Education">
                             </div>
                         </div>
                     </div>
@@ -213,11 +213,18 @@ let allPolicies = [];
 let filteredPolicies = [];
 let allNations = [];
 let editingPolicyId = null;
+// savePolicy is multi-step (policies upsert → policy_options diff/insert/
+// update → nation_policies sync); without a lock a double-click on the
+// submit button would race two parallel save flows and create duplicate
+// policies. Cleared in a finally{} so a thrown error doesn't strand the
+// button disabled.
+let saveInProgress = false;
 
-// Builder state — Phase 2.8 collapses the previously-flat statEffects /
+// Builder state — Phase 2.8 collapsed the previously-flat statEffects /
 // sectorEffects / startingNations / DOM-bound cost & identity fields into a
-// single per-option object. Phase 2.5/2.7 only ever uses index 0; Phase 2.9
-// will grow this array to N options.
+// single per-option object, and Phase 2.9 grew this array to N options. Each
+// option in the DB has a uuid id; state objects loaded from the DB carry
+// that id so savePolicy can update vs insert correctly.
 function createEmptyOption() {
     return {
         option_name: '',
@@ -1058,7 +1065,7 @@ function renderSectorEffects(optIdx) {
 
     container.innerHTML = opt.sector_effects.map((e, idx) => {
         const optionsHtml = sectorOptions.map(s =>
-            `<option value="${s.sector_key}"${s.sector_key === e.sector_key ? ' selected' : ''}>${escapePolicyHtml(s.name)}</option>`
+            `<option value="${escapeHtml(s.sector_key)}"${s.sector_key === e.sector_key ? ' selected' : ''}>${escapeHtml(s.name)}</option>`
         ).join('');
         const change = Number(e.change_tenths) || 0;
         const isPositive = change >= 0;
@@ -1078,14 +1085,6 @@ function renderSectorEffects(optIdx) {
             </div>
         `;
     }).join('');
-}
-
-// Tiny HTML-escape helper local to the policy admin page (it doesn't import
-// utils.js, and the existing renderStatEffects relies on safe stat keys).
-function escapePolicyHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
 }
 
 function updateEffectPreview(optIdx) {
@@ -1170,7 +1169,6 @@ function onLawCategorySelect() {
         wrapper.style.display = 'none';
         newInput.value = '';
     }
-    onSectorOrLawChange();
 }
 
 function getLawCategoryValue() {
@@ -1180,14 +1178,10 @@ function getLawCategoryValue() {
     }
     return select.value || '';
 }
-
-function onSectorOrLawChange() {
-    // Phase 2.1: opposed-policy logic removed; this hook is kept so the
-    // sector/law-category change handlers don't break, but no longer fans
-    // out to other UI.
-}
 // ==================== SAVE POLICY ====================
 async function savePolicy() {
+    if (saveInProgress) return;
+
     const name = document.getElementById('b-name').value.trim();
     if (!name) { alert('Enter a policy name.'); return; }
 
@@ -1303,6 +1297,12 @@ async function savePolicy() {
         is_active: true
     };
 
+    saveInProgress = true;
+    const submitBtn = document.getElementById('submit-btn');
+    const originalLabel = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Saving…';
+
     try {
         let policyId;
         if (editingPolicyId) {
@@ -1400,14 +1400,18 @@ async function savePolicy() {
         }
 
         editingPolicyId = null;
-        document.getElementById('submit-btn').textContent = '✅ Create Policy';
         await loadPolicies();
         populateFilterDropdowns();
         filterPolicies();
         switchView('list');
+        submitBtn.textContent = '✅ Create Policy';
     } catch (error) {
         showStatus('Error: ' + error.message, 'error');
         console.error(error);
+        submitBtn.textContent = originalLabel;
+    } finally {
+        submitBtn.disabled = false;
+        saveInProgress = false;
     }
 }
 
@@ -1456,7 +1460,6 @@ window.syncOptionField = syncOptionField;
 window.switchView = switchView;
 window.filterPolicies = filterPolicies;
 window.populateLawCategories = populateLawCategories;
-window.onSectorOrLawChange = onSectorOrLawChange;
 window.onLawCategorySelect = onLawCategorySelect;
 window.updateCostPreview = updateCostPreview;
 window.addStatEffect = addStatEffect;
