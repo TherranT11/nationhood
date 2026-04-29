@@ -93,7 +93,7 @@ body {
 
 <div id="page-content" style="display:none;padding:20px;max-width:1400px;margin:0 auto;">
   <div id="expansion-content" style="display:flex;justify-content:center;gap:12px;align-items:flex-start;flex-wrap:wrap;width:100%;">
-    <!-- Row 1: Hire/Fire, Workforce, New Property, Create Subsidiary -->
+    <!-- Row 1: Hire/Fire, Workforce, New Property, Build Regional HQ -->
     <div id="hf-card-container"></div>
     <div id="wf-summary-container"></div>
     <div id="new-property-container"></div>
@@ -1325,7 +1325,7 @@ function renderManageSubsidiariesCard() {
     // ─── LEFT: Table ───
     let tableRows = '';
     if (subsidiaries.length === 0) {
-        tableRows = `<div style="padding:30px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">No subsidiaries established.<br>Use Create Subsidiary to expand.</div>`;
+        tableRows = `<div style="padding:30px 14px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">No legacy subsidiaries.<br>New expansions use Regional HQs (below).</div>`;
     }
     let totalRevenue = 0, totalVal = 0;
     for (let i = 0; i < subsidiaries.length; i++) {
@@ -2044,7 +2044,7 @@ window.subViewBids = subViewBids;
 window.subCancelSale = subCancelSale;
 window.selectSubsidiary = function(i) { _mSubSelected = i; renderManageSubsidiariesCard(); };
 
-// ==================== CREATE SUBSIDIARY ====================
+// ==================== BUILD REGIONAL HQ ====================
 
 let _subNations = [];
 let _subNationCorpCounts = {}; // nation_id -> number of active corps
@@ -2187,12 +2187,108 @@ function subSetAbbr(val) {
     _subCustomAbbr = val.toUpperCase().slice(0, 4);
 }
 
+// Regional HQ replaces the old "Establish Subsidiary" flow. A Regional HQ
+// is a plain corp_properties row in another nation — no separate cash pool,
+// no auto-rate engine, no subsidiary marketplace. It's just a building you
+// own. Disposition goes through the standard propSell path. Cost = a flat
+// BASE × nationMult so it's predictable and not exploitable via deeply
+// discounted establishments. Existing role='subsidiary' rows are
+// untouched and continue to be managed/sold through the legacy paths.
+
+const REGIONAL_HQ_BASE_COST = 30000000; // $30M
+const REGIONAL_HQ_CAPACITY = 500;
+
+function regionalHQNationMult(n) {
+    const sol = Number(n?.standard_of_living ?? 50);
+    return Math.min(2.0, Math.max(0.5, Math.round((sol / 50) * 100) / 100));
+}
+
+function regionalHQCost(n) {
+    return Math.round(REGIONAL_HQ_BASE_COST * regionalHQNationMult(n));
+}
+
+async function buildRegionalHQ(nationId) {
+    if (_subCreating) return;
+    const nation = _subNations.find(n => n.id === nationId);
+    if (!nation) { alert('Nation not found.'); return; }
+
+    // One Regional HQ per nation per corp.
+    const alreadyHas = _ownedProperties.some(p => p.nation_id === nationId && p.type === 'regional_hq');
+    if (alreadyHas) {
+        alert('You already have a Regional HQ in ' + nation.name + '.');
+        return;
+    }
+
+    const cost = regionalHQCost(nation);
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    if (cost > cash) {
+        alert('Insufficient cash. Cost: ' + hfFmtBig(cost) + ', available: ' + hfFmtBig(cash));
+        return;
+    }
+
+    if (!confirm(
+        'Build Regional HQ in ' + nation.name + '?\n\n' +
+        'Cost: ' + hfFmtBig(cost) + ' (' + REGIONAL_HQ_BASE_COST / 1e6 + 'M base × ' + regionalHQNationMult(nation).toFixed(2) + 'x ' + nation.name + ' SoL)\n' +
+        'Capacity: ' + REGIONAL_HQ_CAPACITY + '\n\n' +
+        'The HQ becomes a standard property asset. You can sell it later from the Properties page (60% × condition resale).'
+    )) return;
+
+    _subCreating = true;
+    try {
+        const shardRes = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shardRes.data?.current_tick || 0;
+        const condition = 85 + Math.floor(Math.random() * 16);
+        const maint = Math.round(cost * 0.005);
+        const hqName = (faction.faction_name || 'Corp') + ' — ' + nation.name + ' HQ';
+
+        const { error: propErr } = await _supabase.from('corp_properties').insert({
+            faction_id: faction.id,
+            nation_id: nation.id,
+            name: hqName,
+            type: 'regional_hq',
+            role: 'regional_hq',
+            style: 'Modern',
+            capacity: REGIONAL_HQ_CAPACITY,
+            purchase_price: cost,
+            monthly_maintenance: maint,
+            condition: condition,
+            city: nation.capital || nation.name,
+            purchased_at_tick: currentTick,
+            is_active: true,
+        });
+        if (propErr) throw propErr;
+
+        const newCash = Math.max(0, cash - cost);
+        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        faction.corp_cash_reserves = newCash;
+        subUpdateTopbarCash(newCash);
+
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: nation.id,
+                event_name: 'New Regional HQ Established',
+                category: 'corporate',
+                description_chosen: `${faction.faction_name} has invested ${hfFmtBig(cost)} to build a Regional HQ in ${nation.name}.`,
+                fired_at_tick: currentTick,
+            });
+        } catch (_) { /* non-blocking */ }
+
+        await subReloadCards();
+        alert('Regional HQ built in ' + nation.name + '.\n\nCost: ' + hfFmtBig(cost) + '\nCondition: ' + condition + '%');
+    } catch (err) {
+        alert('Failed: ' + err.message);
+    } finally {
+        _subCreating = false;
+    }
+}
+window.buildRegionalHQ = buildRegionalHQ;
+
+// Legacy `subCreate` is now a no-op that nudges callers to the new flow.
+// Kept to avoid undefined-reference errors from any cached UI fragment.
 async function subCreate() {
-    // Subsidiary establishment is temporarily disabled (HQ-resale exploit).
-    // Server-side data integrity isn't yet enforced; this client-side guard
-    // is the bleed-stop until the Regional HQ refactor lands.
-    alert('Subsidiary establishment is temporarily disabled while the system is replaced with a "Regional HQ" property concept. Existing subsidiaries are unaffected.');
+    alert('Subsidiary establishment has been replaced with Regional HQs. Pick a nation from the list below.');
     return;
+    /* legacy body retained below for refactor-archaeology — never runs */
     if (_subCreating || !_subSelectedNation) return;
     const nation = _subNations.find(n => n.id === _subSelectedNation);
     if (!nation) return;
@@ -2287,209 +2383,52 @@ function renderCreateSubsidiaryCard() {
     const container = document.getElementById('create-subsidiary-container');
     if (!container) return;
 
-    // Subsidiary establishment is temporarily disabled. An HQ-resale exploit
-    // (instant-profit on dissolution after a deeply discounted establishment
-    // cost) has been confirmed and the system is being refactored into a
-    // plain "Regional HQ" property concept. The card renders a stub notice
-    // until the replacement ships.
-    container.innerHTML = `
-        <div style="padding:18px 20px;border:1px solid var(--panel-border);background:var(--bg-card);font-family:'JetBrains Mono', monospace;color:var(--panel-text);">
-            <div style="font-size:13px;font-weight:700;letter-spacing:1px;color:#c8a832;margin-bottom:6px;">SUBSIDIARY ESTABLISHMENT — TEMPORARILY DISABLED</div>
-            <div style="font-size:11px;color:#9e9a92;line-height:1.5;">
-                This feature is offline while it is replaced with a "Regional HQ" property system.
-                Existing subsidiaries are unaffected — you can still manage, sell, or dissolve them
-                from the Home page.
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const ownedNations = new Set(_ownedProperties
+        .filter(p => p.type === 'regional_hq')
+        .map(p => p.nation_id));
+    const candidates = _subNations.slice().sort((a, b) => regionalHQCost(a) - regionalHQCost(b));
+
+    const rows = candidates.map(n => {
+        const cost = regionalHQCost(n);
+        const owned = ownedNations.has(n.id);
+        const canAfford = cost <= cash;
+        const sol = Number(n.standard_of_living ?? 50);
+        const mult = regionalHQNationMult(n);
+        const btnLabel = owned ? 'OWNED' : (canAfford ? 'BUILD' : 'INSUFFICIENT CASH');
+        const btnDisabled = owned || !canAfford;
+        const btnStyle = btnDisabled
+            ? 'opacity:0.4;cursor:not-allowed;background:#3a3833;color:#7a7670;'
+            : 'cursor:pointer;background:#5a9abf;color:#fff;';
+        const onclick = btnDisabled ? '' : `onclick="buildRegionalHQ('${n.id}')"`;
+        return `
+            <div style="display:grid;grid-template-columns:1.5fr 0.7fr 0.7fr 1fr 0.9fr;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);">
+                <div style="font-weight:600;color:var(--panel-text);">${escapeHtml(n.name)}</div>
+                <div style="color:#9e9a92;font-size:10px;">SoL ${Math.round(sol)}</div>
+                <div style="color:#9e9a92;font-size:10px;">×${mult.toFixed(2)}</div>
+                <div style="color:${canAfford ? '#a3b07e' : '#c55'};font-weight:700;">${hfFmtBig(cost)}</div>
+                <div ${onclick} style="text-align:center;padding:6px 10px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:1px;${btnStyle}">${btnLabel}</div>
             </div>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div style="border:1px solid var(--panel-border);background:var(--bg-card);font-family:'JetBrains Mono', monospace;color:var(--panel-text);">
+            <div style="padding:14px 16px;border-bottom:1px solid var(--panel-border);">
+                <div style="font-size:13px;font-weight:700;letter-spacing:1.5px;color:#a3b07e;">BUILD REGIONAL HQ</div>
+                <div style="font-size:10px;color:#9e9a92;line-height:1.5;margin-top:6px;">
+                    A Regional HQ lets your corporation operate in another nation. Cost scales with the
+                    host nation's standard of living. The HQ is a standard property asset — sell it later
+                    from the Properties page if you want out (60% × condition resale).
+                </div>
+                <div style="font-size:10px;color:#9e9a92;margin-top:6px;">Cash on hand: <span style="color:#a3b07e;font-weight:700;">${hfFmtBig(cash)}</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1.5fr 0.7fr 0.7fr 1fr 0.9fr;gap:12px;padding:6px 12px;font-size:9px;letter-spacing:1px;color:#6a6660;border-bottom:1px solid var(--panel-border);">
+                <div>NATION</div><div>SOL</div><div>MULT</div><div>COST</div><div></div>
+            </div>
+            ${rows || '<div style="padding:20px;text-align:center;color:#6a6660;font-style:italic;">No nations available.</div>'}
         </div>
     `;
-    return;
-}
-
-function _renderCreateSubsidiaryCardLegacy_DISABLED() {
-    const container = document.getElementById('create-subsidiary-container');
-    if (!container) return;
-
-    const mono = "'JetBrains Mono', monospace";
-    const C = { bg: 'var(--bg-card)', surface: 'var(--panel-main)', card: 'var(--bg-panel)', border: 'var(--panel-border)',
-        accent: '#8b9a6b', accentBright: '#a3b07e', blue: '#5a9abf', gold: '#c8a832', orange: '#c84',
-        greenBright: '#5c5', greenDark: '#2a5a3a', red: '#c55',
-        yellow: '#ca5', text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
-
-    const parentSector = faction?.corp_sector || 'General';
-    const parentSubsector = faction?.corp_subsector || '';
-    const subsectors = subGetSubsectors();
-    const selectedSub = subsectors.find(s => s.name === _subSelectedSubsector) || subsectors[0];
-
-    // Filter out nations where we already have a subsidiary (role='subsidiary' only — marketplace HQs don't block subsidiary creation)
-    const existingNationIds = new Set(_ownedProperties.filter(p => p.role === 'subsidiary').map(p => p.nation_id));
-    const available = _subNations.filter(n => !existingNationIds.has(n.id));
-    const sel = _subSelectedNation ? available.find(n => n.id === _subSelectedNation) : null;
-
-    const canCreate = _subCustomName.trim().length > 0 && _subCustomAbbr.trim().length >= 2 && sel !== null;
-
-    // ─── SECTOR (selectable — cross-sector has cost multiplier) ───
-    const currentSector = _subSelectedSector || parentSector;
-    const sectorMult = subGetSectorMultiplier();
-    let sectorHtml = `
-    <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
-        <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Sector</div>
-        <div style="display:flex;gap:3px;">
-            ${SUB_AVAILABLE_SECTORS.map(s => {
-                const active = s === currentSector;
-                const isSame = s === parentSector;
-                const mult = isSame ? 1 : (SUB_SECTOR_MULTIPLIERS[s] || 4);
-                const multColor = isSame ? C.greenBright : C.orange;
-                return `<div onclick="subSetSector('${s}')" style="flex:1;padding:5px 4px;text-align:center;cursor:pointer;background:${active ? C.accent + '18' : 'transparent'};border:1px solid ${active ? C.accent + '44' : C.border};">
-                    <div style="font-family:${mono};font-size:9px;font-weight:700;color:${active ? C.accentBright : C.dim}">${s}</div>
-                    <div style="font-family:${mono};font-size:7px;margin-top:2px;color:${multColor}">${isSame ? 'PARENT · ×1' : '×' + mult + ' COST'}</div>
-                </div>`;
-            }).join('')}
-        </div>
-        ${sectorMult > 1 ? `<div style="font-family:${mono};font-size:7px;color:${C.orange};margin-top:4px;padding:3px 6px;background:rgba(204,136,68,0.06);border:1px solid rgba(204,136,68,0.15);">Cross-sector subsidiary: base cost ×${sectorMult}</div>` : ''}
-    </div>`;
-
-    // ─── SUBSECTOR ───
-    let subsectorHtml = `
-    <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
-        <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Subsector</div>
-        <div style="display:flex;gap:3px;">
-            ${subsectors.map(s => {
-                const active = s.name === _subSelectedSubsector;
-                const isSame = s.name === parentSubsector;
-                return `<div onclick="subSetSubsector('${s.name.replace(/'/g, "\\'")}')" style="flex:1;padding:5px 4px;text-align:center;cursor:pointer;background:${active ? C.accent + '18' : 'transparent'};border:1px solid ${active ? C.accent + '44' : C.border};">
-                    <div style="font-family:${mono};font-size:8px;font-weight:700;color:${active ? C.accentBright : C.dim}">${s.name}</div>
-                    <div style="font-family:${mono};font-size:7px;margin-top:2px;color:${isSame ? C.greenBright : s.mod > 0 ? C.orange : C.dim}">${isSame ? 'SAME — ±0%' : (s.mod > 0 ? '+' + Math.round(s.mod * 100) + '%' : '±0%')}</div>
-                </div>`;
-            }).join('')}
-        </div>
-    </div>`;
-
-    // ─── NATION LIST ───
-    let nationHtml = '';
-    if (available.length === 0) {
-        nationHtml = `<div style="padding:20px;text-align:center;font-family:${mono};font-size:10px;color:${C.dim}">Subsidiaries in all available nations.</div>`;
-    } else {
-        for (const n of available) {
-            const active = n.id === _subSelectedNation;
-            const demand = subGetDemand(n.id);
-            const corpCount = _subNationCorpCounts[n.id] || 0;
-            const sol = Math.round(Number(n.standard_of_living ?? 50));
-            const mult = subCalcNationMultiplier(n);
-            nationHtml += `
-            <div onclick="subSelectNation('${n.id}')" style="display:flex;align-items:center;padding:4px 8px;margin-bottom:2px;cursor:pointer;background:${active ? 'rgba(139,154,107,0.04)' : 'transparent'};border:1px solid ${active ? C.accent + '44' : C.border};border-left:${active ? '2px solid ' + C.accent : '2px solid transparent'};">
-                <div style="flex:1;">
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <span style="font-size:11px;font-weight:600;color:${active ? C.text : C.muted}">${n.name}</span>
-                        <span style="font-family:${mono};font-size:7px;font-weight:700;padding:0 4px;color:${demand.color};background:${demand.color}12;border:1px solid ${demand.color}25;line-height:12px">${demand.label}</span>
-                    </div>
-                    <div style="display:flex;gap:8px;margin-top:2px;">
-                        <span style="font-family:${mono};font-size:7px;color:${C.dim}">STD/LIVING: <span style="color:${C.muted}">${sol}</span></span>
-                        <span style="font-family:${mono};font-size:7px;color:${C.dim}">CORPS: <span style="color:${corpCount >= 4 ? C.red : corpCount >= 2 ? C.yellow : C.greenBright}">${corpCount}</span></span>
-                    </div>
-                </div>
-                <div style="text-align:right;">
-                    <div style="font-family:${mono};font-size:9px;font-weight:700;color:${mult > 1 ? C.orange : C.greenBright}">×${mult.toFixed(2)}</div>
-                </div>
-            </div>`;
-        }
-    }
-
-    // ─── NAME + ABBREVIATION ───
-    let nameHtml = `
-    <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
-        <div style="margin-bottom:6px;">
-            <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">Corporation Name</div>
-            <input type="text" value="${(_subCustomName || '').replace(/"/g, '&quot;')}" oninput="subSetName(this.value)" placeholder="e.g., ${(faction?.faction_name || 'Corp') + ' ' + (sel?.name || 'International')}" style="width:100%;padding:5px 8px;font-family:${mono};font-size:10px;color:${C.text};background:${C.card};border:1px solid ${C.border};outline:none;box-sizing:border-box;" />
-        </div>
-        <div>
-            <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">Abbreviation (2-4 chars)</div>
-            <input type="text" value="${(_subCustomAbbr || '').replace(/"/g, '&quot;')}" oninput="subSetAbbr(this.value)" placeholder="${(faction?.faction_name || 'CORP').slice(0,2).toUpperCase() + (sel?.name || 'XX').slice(0,2).toUpperCase()}" maxlength="4" style="width:80px;padding:5px 8px;font-family:${mono};font-size:12px;font-weight:700;color:${C.gold};background:${C.card};border:1px solid ${C.border};outline:none;text-align:center;letter-spacing:2px;" />
-        </div>
-    </div>`;
-
-    // ─── SUBSIDIARY RULES ───
-    const rules = [
-        { rule: 'Bid on projects in that nation', icon: '✓', color: C.greenBright },
-        { rule: 'Hires local workers at nation rates', icon: '✓', color: C.greenBright },
-        { rule: "Must use parent's materials & vehicles", icon: '!', color: C.orange },
-        { rule: 'Reputation gain: 75% sub / 25% parent', icon: '◐', color: C.gold },
-        { rule: 'Market revenue at 50% parent rate', icon: '◐', color: C.gold },
-        { rule: 'Counts as domestic corporation', icon: '✓', color: C.greenBright },
-        { rule: 'Starting reputation: 25', icon: '●', color: C.muted },
-    ];
-    let rulesHtml = `
-    <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
-        <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Subsidiary Rules</div>
-        <div style="background:${C.card};border:1px solid ${C.border};padding:6px 8px;">
-            ${rules.map((r, i) => `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;${i < rules.length - 1 ? 'border-bottom:1px solid ' + C.border : ''}">
-                <span style="font-family:${mono};font-size:9px;color:${r.color};width:12px;text-align:center">${r.icon}</span>
-                <span style="font-size:9px;color:${C.muted}">${r.rule}</span>
-            </div>`).join('')}
-        </div>
-    </div>`;
-
-    // ─── COST BREAKDOWN FOOTER ───
-    const baseCost = 50000000;
-    const subsectorMod = selectedSub.mod;
-    const nationMult = sel ? subCalcNationMultiplier(sel) : null;
-    const finalCost = sel ? subCalcEntryCost(sel) : null;
-    const estimateCost = Math.round(baseCost * sectorMult * (1 + subsectorMod)); // estimate without nation
-
-    let costHtml = `
-    <div style="background:${C.bg};border:1px solid ${C.border};padding:6px 8px;margin-bottom:6px;">
-        <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
-            <span style="font-family:${mono};font-size:8px;color:${C.dim}">BASE</span>
-            <span style="font-family:${mono};font-size:9px;color:${C.muted}">${hfFmtBig(baseCost)}</span>
-        </div>
-        ${sectorMult > 1 ? `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
-            <span style="font-family:${mono};font-size:8px;color:${C.dim}">SECTOR (${currentSector})</span>
-            <span style="font-family:${mono};font-size:9px;font-weight:700;color:${C.orange}">×${sectorMult}</span>
-        </div>` : ''}
-        <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
-            <span style="font-family:${mono};font-size:8px;color:${C.dim}">SUBSECTOR (${selectedSub.name})</span>
-            <span style="font-family:${mono};font-size:9px;color:${subsectorMod === 0 ? C.greenBright : C.orange}">${subsectorMod === 0 ? '±0%' : '+' + Math.round(subsectorMod * 100) + '%'}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid ${C.border};">
-            <span style="font-family:${mono};font-size:8px;color:${C.dim}">NATION (${sel ? sel.name : 'select below'})</span>
-            <span style="font-family:${mono};font-size:9px;color:${sel ? (nationMult > 1 ? C.orange : C.greenBright) : C.dim}">${sel ? '×' + nationMult.toFixed(2) : '—'}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0;">
-            <span style="font-family:${mono};font-size:9px;font-weight:700;color:${C.text}">TOTAL COST</span>
-            <span style="font-family:${mono};font-size:14px;font-weight:700;color:${C.gold}">${sel ? hfFmtBig(finalCost) : '~' + hfFmtBig(estimateCost)}</span>
-        </div>
-    </div>`;
-
-    container.innerHTML = `
-    <div style="width:380px;height:450px;background:${C.surface};border:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;">
-        <div style="padding:8px 14px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:8px;color:${C.gold}">●</span>
-                <span style="font-family:${mono};font-size:11px;font-weight:700;letter-spacing:2px;color:${C.muted};text-transform:uppercase">Create Subsidiary</span>
-            </div>
-        </div>
-        <div style="flex:1;overflow:auto;">
-            ${sectorHtml}
-            ${subsectorHtml}
-            <div style="padding:6px 14px;border-bottom:1px solid ${C.border};">
-                <div style="font-family:${mono};font-size:8px;color:${C.dim};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Nation</div>
-                ${nationHtml}
-            </div>
-            ${nameHtml}
-            ${rulesHtml}
-        </div>
-        <div style="padding:8px 14px;border-top:1px solid ${C.border};background:${C.card};flex-shrink:0;">
-            ${costHtml}
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-family:${mono};font-size:8px;color:${C.dim}">IMMEDIATE PAYMENT</span>
-                <div onclick="subCreate()"
-                    onmouseover="this.style.filter='brightness(1.2)';this.style.transform='scale(1.02)'"
-                    onmouseout="this.style.filter='';this.style.transform=''"
-                    onmousedown="this.style.transform='scale(0.97)'"
-                    onmouseup="this.style.transform='scale(1.02)'"
-                    style="padding:6px 22px;font-family:${mono};font-size:9px;font-weight:700;letter-spacing:1px;color:${canCreate ? '#000' : '#c8a832'};background:${canCreate ? C.gold : 'rgba(200,168,50,0.08)'};border:1px solid ${canCreate ? C.gold : 'rgba(200,168,50,0.3)'};cursor:pointer;opacity:${canCreate ? 1 : 0.7};transition:all 0.1s ease;user-select:none">CREATE SUBSIDIARY</div>
-            </div>
-        </div>
-    </div>`;
 }
 
 window.subSelectNation = subSelectNation;
