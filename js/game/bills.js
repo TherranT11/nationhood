@@ -452,6 +452,66 @@ export async function processSectorShifts(supabase, nationId, resolutions) {
 }
 
 
+// Phase 4.3: charge a policy_option's upfront_cost against the nation's
+// treasury. The option stores cost in $M; we scale by the option's
+// upfront_scaling_stat (when defined and present on the nations row),
+// convert to raw dollars, then draw from budget_reserves first and
+// overflow to debt — same pattern as the government-bailout enactment.
+// Negative upfront values represent revenue and credit budget_reserves.
+// Zero / null values are no-ops.
+async function chargePolicyUpfrontCost(supabase, nationId, option) {
+    if (!option) return;
+    const base = Number(option.upfront_cost || 0);
+    if (!Number.isFinite(base) || base === 0) return;
+
+    const { data: nation, error: nErr } = await supabase
+        .from('nations')
+        .select('*')
+        .eq('id', nationId)
+        .single();
+    if (nErr || !nation) {
+        console.error('[chargePolicyUpfrontCost] failed to load nation', { nationId, error: nErr?.message });
+        return;
+    }
+
+    const scaledM = _scalePolicyCost(base, option.upfront_scaling_stat, nation);
+    const dollars = Math.round(scaledM * 1_000_000); // option.upfront_cost is stored in $M
+    if (dollars === 0) return;
+
+    const reserves = Number(nation.budget_reserves || 0);
+    const debt = Number(nation.debt || 0);
+
+    if (dollars > 0) {
+        // Cost: pull from reserves, overflow to debt.
+        const drawReserves = Math.max(0, Math.min(dollars, reserves));
+        const drawDebt = dollars - drawReserves;
+        const newReserves = Math.max(0, Math.round(reserves - drawReserves));
+        const newDebt = Math.max(0, Math.round(debt + drawDebt));
+        const { error } = await supabase
+            .from('nations')
+            .update({ budget_reserves: newReserves, debt: newDebt })
+            .eq('id', nationId);
+        if (error) {
+            console.error('[chargePolicyUpfrontCost] cost update failed', { nationId, error: error.message });
+            return;
+        }
+        console.log(`[chargePolicyUpfrontCost] cost: $${Math.round(dollars / 1e6)}M (reserves: $${Math.round(drawReserves / 1e6)}M, debt: +$${Math.round(drawDebt / 1e6)}M) on nation ${nationId}`);
+    } else {
+        // Revenue: credit reserves.
+        const credit = Math.abs(dollars);
+        const newReserves = Math.round(reserves + credit);
+        const { error } = await supabase
+            .from('nations')
+            .update({ budget_reserves: newReserves })
+            .eq('id', nationId);
+        if (error) {
+            console.error('[chargePolicyUpfrontCost] revenue update failed', { nationId, error: error.message });
+            return;
+        }
+        console.log(`[chargePolicyUpfrontCost] revenue: +$${Math.round(credit / 1e6)}M to reserves on nation ${nationId}`);
+    }
+}
+
 // Phase 4.2: apply the inverse of a list of sector_effects to a single
 // faction's popularity. Used by enactBill when a policy article switches
 // the nation from one option to another — the bill's sponsor "takes the
@@ -3306,6 +3366,15 @@ export async function enactBill(supabase, bill, currentTick) {
                 policyId: policy.id,
                 policyName: policy.policy_name
             });
+
+            // Phase 4.3: charge the new option's upfront cost. Fires whether
+            // this is a fresh enactment or an option switch — every passing
+            // bill that activates an option pays its implementation cost.
+            // Skipped for orphaned policies that have no policy_options
+            // (no option attached to the article means no upfront to charge).
+            if (art.selected_option) {
+                await chargePolicyUpfrontCost(supabase, bill.nation_id, art.selected_option);
+            }
 
             // MLA enact hook: cancel pending defense-minister confirmations
             // so they don't collide with the forced per-tick sync.
