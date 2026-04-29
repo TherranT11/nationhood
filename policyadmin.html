@@ -242,11 +242,6 @@ function createEmptyOption() {
 let options = [createEmptyOption()];
 
 let sectorOptions = []; // [{ sector_key, name }] — default sectors loaded once on init
-// Preserved ideology data — Phase 2 stops authoring new ideology, but
-// existing policies' ideology must not be destroyed when an admin edits
-// other fields. Captured in editPolicy, written back in savePolicy.
-let preservedIdeology = null;
-let preservedIdeologies = [];
 
 // Tiny helper used by inline oninput/onchange handlers on every per-option
 // input. Renderers fill the inputs from state, and these handlers mirror
@@ -541,14 +536,6 @@ async function loadPolicyIntoBuilder(p) {
         wrapper.style.display = 'block';
         newInput.value = lawCatVal;
     }
-
-    // Ideologies — preserve existing ideology data so re-saving this
-    // policy doesn't destroy it. Phase 2 deprecates authoring;
-    // Phase 5 removes the columns.
-    preservedIdeology   = p.ideology || null;
-    preservedIdeologies = Array.isArray(p.ideologies)
-        ? [...p.ideologies]
-        : (p.ideology ? [p.ideology] : []);
 
     // Fetch every policy_option for this policy.
     let optionRows = [];
@@ -1262,14 +1249,16 @@ async function savePolicy() {
         });
     }
 
-    // Identity-only policies row. We keep target_stat / stat_direction (the
-    // last two NOT NULL legacy columns without defaults that we've seen
-    // survive the schema trim) populated from the first option's first
-    // stat_effect so the schema stays satisfied. Fields with defaults
-    // (stat_change_per_tick, duration_months, stat_floor, stat_ceiling) are
-    // omitted because some environments have dropped those columns
-    // entirely — the multi-option engine doesn't read them anyway, and
-    // PostgREST rejects writes to columns missing from its schema cache.
+    // Identity-only policies row. The schema we're targeting has been trimmed
+    // to just the multi-option-relevant columns plus a couple of legacy NOT
+    // NULL fields (target_stat, stat_direction). Everything else previously
+    // written here — ideology / ideologies / opposed_policy_ids /
+    // requires_policy_id / duration_months / stat_change_per_tick / stat_floor
+    // / stat_ceiling — has been dropped from the live schema. PostgREST
+    // rejects writes referencing any column missing from its schema cache, so
+    // we omit them. The multi-option engine doesn't read any of these on the
+    // policies row anyway — per-option data on policy_options is the source
+    // of truth from Phase 4 onward.
     const firstNormalized = optionPayloads[0].normalizedEffects[0];
     const policyData = {
         policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') + '_' + Date.now().toString(36),
@@ -1279,15 +1268,8 @@ async function savePolicy() {
         major_sector: sector,
         minor_sector: lawCategory, // keep for backward compat
         law_category: lawCategory,
-        // Phase 2: ideology authoring is deprecated. Preserve whatever the
-        // policy already had (or 'Agnostic' / [] for newly-created bills) so
-        // the existing engine still has data while sectors run shadow-mode.
-        ideology: preservedIdeology || 'Agnostic', // column is NOT NULL
-        ideologies: preservedIdeologies,
-        opposed_policy_ids: null,
         target_stat: firstNormalized?.stat_key || 'stability',
         stat_direction: (normalizeEffectDirection(firstNormalized?.direction) || 'up').toUpperCase(),
-        requires_policy_id: null,
         is_active: true
     };
 
@@ -1413,10 +1395,6 @@ async function savePolicy() {
 function resetBuilder() {
     editingPolicyId = null;
     options = [createEmptyOption()];
-    // Phase 2: a new bill starts with no preserved ideology — it will save
-    // as Agnostic / [] without going through the deprecated chip UI.
-    preservedIdeology = null;
-    preservedIdeologies = [];
 
     document.getElementById('b-policy-type').value = 'structural';
     document.getElementById('b-name').value = '';
