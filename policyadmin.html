@@ -242,11 +242,6 @@ function createEmptyOption() {
 let options = [createEmptyOption()];
 
 let sectorOptions = []; // [{ sector_key, name }] — default sectors loaded once on init
-// Preserved ideology data — Phase 2 stops authoring new ideology, but
-// existing policies' ideology must not be destroyed when an admin edits
-// other fields. Captured in editPolicy, written back in savePolicy.
-let preservedIdeology = null;
-let preservedIdeologies = [];
 
 // Tiny helper used by inline oninput/onchange handlers on every per-option
 // input. Renderers fill the inputs from state, and these handlers mirror
@@ -541,14 +536,6 @@ async function loadPolicyIntoBuilder(p) {
         wrapper.style.display = 'block';
         newInput.value = lawCatVal;
     }
-
-    // Ideologies — preserve existing ideology data so re-saving this
-    // policy doesn't destroy it. Phase 2 deprecates authoring;
-    // Phase 5 removes the columns.
-    preservedIdeology   = p.ideology || null;
-    preservedIdeologies = Array.isArray(p.ideologies)
-        ? [...p.ideologies]
-        : (p.ideology ? [p.ideology] : []);
 
     // Fetch every policy_option for this policy.
     let optionRows = [];
@@ -1262,15 +1249,15 @@ async function savePolicy() {
         });
     }
 
-    // Identity-only policies row. We keep target_stat / stat_direction (the
-    // last two NOT NULL legacy columns without defaults that we've seen
-    // survive the schema trim) populated from the first option's first
-    // stat_effect so the schema stays satisfied. Fields with defaults
-    // (stat_change_per_tick, duration_months, stat_floor, stat_ceiling) are
-    // omitted because some environments have dropped those columns
-    // entirely — the multi-option engine doesn't read them anyway, and
-    // PostgREST rejects writes to columns missing from its schema cache.
-    const firstNormalized = optionPayloads[0].normalizedEffects[0];
+    // Identity-only policies row. The live schema has been trimmed down to
+    // the multi-option-relevant columns; the entire legacy single-stat /
+    // ideology / opposed-policy / cost-decay cluster (target_stat,
+    // stat_direction, ideology, ideologies, opposed_policy_ids,
+    // requires_policy_id, duration_months, stat_change_per_tick, stat_floor,
+    // stat_ceiling) has been dropped. PostgREST rejects writes referencing
+    // any column missing from its schema cache, so we don't write any of
+    // them. The multi-option engine reads from policy_options, not the
+    // policies row.
     const policyData = {
         policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') + '_' + Date.now().toString(36),
         policy_name: name,
@@ -1279,15 +1266,6 @@ async function savePolicy() {
         major_sector: sector,
         minor_sector: lawCategory, // keep for backward compat
         law_category: lawCategory,
-        // Phase 2: ideology authoring is deprecated. Preserve whatever the
-        // policy already had (or 'Agnostic' / [] for newly-created bills) so
-        // the existing engine still has data while sectors run shadow-mode.
-        ideology: preservedIdeology || 'Agnostic', // column is NOT NULL
-        ideologies: preservedIdeologies,
-        opposed_policy_ids: null,
-        target_stat: firstNormalized?.stat_key || 'stability',
-        stat_direction: (normalizeEffectDirection(firstNormalized?.direction) || 'up').toUpperCase(),
-        requires_policy_id: null,
         is_active: true
     };
 
@@ -1361,22 +1339,33 @@ async function savePolicy() {
             }
         }
 
-        // Sync nation_policies for every option: wipe existing rows for
-        // this option, then re-insert from the option's starting_nations
-        // Set. A failure here surfaces to the surrounding catch.
+        // Sync nation_policies AND active_laws for every option: wipe
+        // existing rows for this option, then re-insert from the option's
+        // starting_nations Set. nation_policies tracks per-option metadata
+        // for Phase 4's effects engine; active_laws is the table laws.html
+        // and other display sites query, so a starting-status assignment
+        // belongs in both. A failure here surfaces to the surrounding catch.
         for (const payload of optionPayloads) {
             const optId = payload.stateRef.id;
-            const { error: delErr } = await _supabase
+
+            const { error: delNpErr } = await _supabase
                 .from('nation_policies')
                 .delete()
                 .eq('policy_id', policyId)
                 .eq('selected_option_id', optId);
-            if (delErr) throw delErr;
+            if (delNpErr) throw delNpErr;
+
+            const { error: delAlErr } = await _supabase
+                .from('active_laws')
+                .delete()
+                .eq('policy_id', policyId)
+                .eq('selected_option_id', optId);
+            if (delAlErr) throw delAlErr;
 
             if (payload.stateRef.starting_nations.size === 0) continue;
 
             const totalDuration = Math.max(...payload.normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
-            const records = [...payload.stateRef.starting_nations].map(nationId => ({
+            const npRecords = [...payload.stateRef.starting_nations].map(nationId => ({
                 nation_id: nationId,
                 policy_id: policyId,
                 selected_option_id: optId,
@@ -1389,8 +1378,19 @@ async function savePolicy() {
                 effects_completed: true,
                 ticks_elapsed: totalDuration
             }));
-            const { error: insErr } = await _supabase.from('nation_policies').insert(records);
-            if (insErr) throw insErr;
+            const { error: insNpErr } = await _supabase.from('nation_policies').insert(npRecords);
+            if (insNpErr) throw insNpErr;
+
+            const alRecords = [...payload.stateRef.starting_nations].map(nationId => ({
+                nation_id: nationId,
+                policy_id: policyId,
+                selected_option_id: optId,
+                passed_tick: 0
+            }));
+            const { error: insAlErr } = await _supabase
+                .from('active_laws')
+                .upsert(alRecords, { onConflict: 'nation_id,policy_id' });
+            if (insAlErr) throw insAlErr;
         }
 
         editingPolicyId = null;
@@ -1413,10 +1413,6 @@ async function savePolicy() {
 function resetBuilder() {
     editingPolicyId = null;
     options = [createEmptyOption()];
-    // Phase 2: a new bill starts with no preserved ideology — it will save
-    // as Agnostic / [] without going through the deprecated chip UI.
-    preservedIdeology = null;
-    preservedIdeologies = [];
 
     document.getElementById('b-policy-type').value = 'structural';
     document.getElementById('b-name').value = '';
