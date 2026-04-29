@@ -13,6 +13,67 @@
         /* Bump base text by 35% on the laws/bills view — top bar stays at
            the standard scale so layout outside #content-area is unaffected. */
         #content-area { font-size: 135%; }
+
+        /* Phase 3.2: widen the bill draft modal by 30% to fit the Active +
+           dropdown + option-details panel comfortably. The selector below
+           is more specific than the global .modal-content rule in
+           css/laws.css so other modals stay at their original size. */
+        #draft-modal-content { max-width: 910px; }
+
+        /* Phase 3.2: option selector panel inside the article-add form. */
+        .option-selector-active {
+            background: var(--bg-card, #1a1a1a);
+            border: 1px solid var(--border-strong, #333);
+            border-radius: 4px;
+            padding: 10px 14px;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+        }
+        .option-selector-active .label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted, #888);
+        }
+        .option-selector-active .name {
+            font-weight: bold;
+            color: var(--green, #5cb85c);
+            margin-top: 2px;
+        }
+        .option-details-card {
+            background: var(--bg-card, #1a1a1a);
+            border: 1px solid var(--blue, #5b9bd5);
+            border-radius: 4px;
+            padding: 12px 14px;
+            margin-top: 10px;
+        }
+        .option-details-card .opt-name {
+            font-weight: bold;
+            color: var(--blue, #5b9bd5);
+            font-size: 0.95rem;
+            margin-bottom: 6px;
+        }
+        .option-details-card .opt-desc {
+            color: var(--text-primary, #e0e0e0);
+            font-size: 0.82rem;
+            line-height: 1.45;
+            margin-bottom: 10px;
+        }
+        .option-details-card .opt-row-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted, #888);
+            margin-top: 8px;
+            margin-bottom: 4px;
+        }
+        .option-details-card .opt-effect {
+            display: inline-block;
+            margin-right: 8px;
+            font-size: 0.8rem;
+        }
+        .effect-up   { color: var(--green, #5cb85c); }
+        .effect-down { color: var(--red,   #d9534f); }
     </style>
 </head>
 <body>
@@ -188,6 +249,14 @@
             <div class="form-group" id="policy-group" style="display:none;">
                 <label class="form-label">Select Policy</label>
                 <div class="policy-options" id="policy-options"></div>
+            </div>
+            <div class="form-group" id="option-selector-group" style="display:none;">
+                <div id="option-selector-active"></div>
+                <label class="form-label" id="option-selector-label" style="display:none;">Change to</label>
+                <select class="form-select" id="option-selector-select" style="display:none;" onchange="onTargetOptionChange()">
+                    <option value="">-- Choose new option --</option>
+                </select>
+                <div id="option-selector-details"></div>
             </div>
             <div style="display:flex;gap:8px;margin-top:12px;">
                 <button class="btn-cancel" onclick="hideAddArticleForm()">Cancel</button>
@@ -397,6 +466,34 @@ function getCurrentOptionForPolicy(policyId) {
     return policy.policy_options.find(o => o.id === law.selected_option_id) || null;
 }
 
+// Phase 3.2: sector_key → display-name lookup populated by loadSectorsLookup
+// during loadLawsData. Falls back to a title-cased version of the key when
+// the sectors table doesn't have a row for the key (e.g. orphaned data).
+const sectorNames = new Map();
+function formatSectorKey(key) {
+    if (!key) return '';
+    const fromTable = sectorNames.get(key);
+    if (fromTable) return fromTable;
+    return String(key).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+async function loadSectorsLookup() {
+    if (!currentNation?.id) return;
+    try {
+        const { data, error } = await _supabase
+            .from('sectors')
+            .select('sector_key, name')
+            .eq('nation_id', currentNation.id);
+        if (error) throw error;
+        sectorNames.clear();
+        for (const row of (data || [])) {
+            if (row.sector_key) sectorNames.set(row.sector_key, row.name);
+        }
+    } catch (err) {
+        console.warn('Failed to load sector display names:', err.message);
+    }
+}
+
 let currentNation = null, currentFaction = null, currentSeats = 0;
 let allPartySeats = {}, allParties = [], allPolicies = [];
 let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], presidentDeskBills = [], recentBills = [];
@@ -520,6 +617,11 @@ async function loadLawsData() {
         // include policy_options; an older cached blob without options would
         // fail the picker silently.
         const cachedPolicies = qCache('policies_active_v2');
+
+        // Phase 3.2: kick off the sector-name lookup in parallel; we don't
+        // await it here (the picker will format from cached keys when
+        // unavailable, falling back to title-case).
+        loadSectorsLookup();
 
         const { data: parties } = await _supabase.from('factions').select('id, faction_name, seats, action_points, abbreviation, party_color').eq('nation_id', nid).eq('faction_type', 'party');
         allParties = parties || [];
@@ -1566,6 +1668,17 @@ function showAddArticleForm() {
 
 function hideAddArticleForm() {
     _showAllArticleButtons(); _hideAllArticleForms();
+    // Phase 3.2: reset option-selector state so a stale picker panel
+    // doesn't leak into the next article-add session.
+    selectedPolicy = null;
+    selectedTargetOptionId = null;
+    _activeAddButtonId = null;
+    const group = document.getElementById('option-selector-group');
+    if (group) group.style.display = 'none';
+    const select = document.getElementById('option-selector-select');
+    if (select) select.value = '';
+    const details = document.getElementById('option-selector-details');
+    if (details) details.innerHTML = '';
 }
 
 function showTextArticleForm() {
@@ -2566,6 +2679,7 @@ window.onStatFilterChange = onStatFilterChange;
 window.onSectorChange = onSectorChange;
 window.setSearchMode = setSearchMode;
 window.onGlobalStatSearch = onGlobalStatSearch;
+window.onTargetOptionChange = onTargetOptionChange;
 
 let selectedFoundationalType = null;
 
@@ -2898,11 +3012,127 @@ function renderPolicyOptions(policies, containerId, buttonId) {
     }).join('');
 }
 
+// Phase 3.2: state for the option transition the user is composing.
+// Reset whenever the policy selection changes or the modal closes.
+let selectedTargetOptionId = null;
+// Track which Add-button corresponds to the picker so the option-selector
+// can flip its disabled state when the target option changes.
+let _activeAddButtonId = null;
+
 function selectPolicyOption(policyId, buttonId) {
     selectedPolicy = allPolicies.find(p => p.id === policyId);
+    selectedTargetOptionId = null;
+    _activeAddButtonId = buttonId;
     document.querySelectorAll('.policy-option').forEach(el => el.classList.remove('selected'));
     document.querySelector(`[data-policy-id="${policyId}"]`)?.classList.add('selected');
-    document.getElementById(buttonId).disabled = false;
+    // Add-button stays disabled until the user picks a target option in
+    // the option-selector panel (Phase 3.2 disallows no-change).
+    document.getElementById(buttonId).disabled = true;
+    renderOptionSelector(policyId);
+}
+
+// Phase 3.2: render the ACTIVE banner + dropdown of other options for a
+// freshly-clicked policy. Hides the panel for policies that have no
+// options at all (orphaned legacy data — repeal flow handles those).
+function renderOptionSelector(policyId) {
+    const group = document.getElementById('option-selector-group');
+    const activeBox = document.getElementById('option-selector-active');
+    const label = document.getElementById('option-selector-label');
+    const select = document.getElementById('option-selector-select');
+    const details = document.getElementById('option-selector-details');
+    if (!group) return;
+
+    const policy = allPolicies.find(p => p.id === policyId);
+    const options = (policy?.policy_options || []).slice().sort((a, b) => (a.option_order || 0) - (b.option_order || 0));
+
+    details.innerHTML = '';
+    if (!policy || options.length === 0) {
+        group.style.display = 'none';
+        return;
+    }
+
+    const current = getCurrentOptionForPolicy(policyId);
+    const activeName = current?.option_name || 'None';
+    activeBox.innerHTML =
+        '<div class="option-selector-active">' +
+            '<div class="label">Active</div>' +
+            '<div class="name">' + escapeHtml(activeName) + '</div>' +
+        '</div>';
+
+    const selectableOptions = options.filter(o => !current || o.id !== current.id);
+    if (selectableOptions.length === 0) {
+        // Policy has only one option total and it's already active — no bill needed.
+        select.style.display = 'none';
+        label.style.display = 'none';
+        details.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;">This policy has only one option and it is already active.</div>';
+        group.style.display = 'block';
+        return;
+    }
+
+    label.style.display = 'block';
+    select.style.display = 'block';
+    select.innerHTML = '<option value="">-- Choose new option --</option>' +
+        selectableOptions.map(o => '<option value="' + o.id + '">' + escapeHtml(o.option_name || 'Untitled') + '</option>').join('');
+    select.value = '';
+    group.style.display = 'block';
+}
+
+// Phase 3.2: dropdown change handler — render the chosen option's details
+// (description + sectors-affected + stats-affected) and toggle the
+// Add-to-Bill button.
+function onTargetOptionChange() {
+    const select = document.getElementById('option-selector-select');
+    const details = document.getElementById('option-selector-details');
+    const optionId = select.value || null;
+    selectedTargetOptionId = optionId;
+
+    if (!optionId || !selectedPolicy) {
+        details.innerHTML = '';
+        if (_activeAddButtonId) document.getElementById(_activeAddButtonId).disabled = true;
+        return;
+    }
+
+    const option = (selectedPolicy.policy_options || []).find(o => o.id === optionId);
+    if (!option) {
+        details.innerHTML = '';
+        return;
+    }
+    details.innerHTML = renderOptionDetails(option);
+    if (_activeAddButtonId) document.getElementById(_activeAddButtonId).disabled = false;
+}
+
+// Phase 3.2: HTML for a single option's details — name, description,
+// sectors affected (green ↑ / red ↓), stats affected (green ↑ / red ↓).
+function renderOptionDetails(option) {
+    const sectorChips = (Array.isArray(option.sector_effects) ? option.sector_effects : [])
+        .filter(s => s && s.sector_key && Number(s.change_tenths) !== 0)
+        .map(s => {
+            const tenths = Number(s.change_tenths) || 0;
+            const up = tenths > 0;
+            const arrow = up ? '↑' : '↓';
+            const cls = up ? 'effect-up' : 'effect-down';
+            const mag = (Math.abs(tenths) / 10).toFixed(1);
+            return '<span class="opt-effect ' + cls + '">' + arrow + ' ' + escapeHtml(formatSectorKey(s.sector_key)) + ' (' + mag + ')</span>';
+        }).join('');
+
+    const statChips = (Array.isArray(option.stat_effects) ? option.stat_effects : [])
+        .filter(e => e && e.stat_key)
+        .map(e => {
+            const up = (e.direction || '').toLowerCase() === 'up';
+            const arrow = up ? '↑' : '↓';
+            const cls = up ? 'effect-up' : 'effect-down';
+            const rate = e.rate != null ? e.rate : '?';
+            return '<span class="opt-effect ' + cls + '">' + arrow + ' ' + escapeHtml(formatStatName(e.stat_key)) + ' (' + rate + '/t)</span>';
+        }).join('');
+
+    return '<div class="option-details-card">' +
+        '<div class="opt-name">' + escapeHtml(option.option_name || 'Untitled') + '</div>' +
+        (option.option_description ? '<div class="opt-desc">' + escapeHtml(option.option_description) + '</div>' : '') +
+        '<div class="opt-row-label">Sectors Affected</div>' +
+        '<div>' + (sectorChips || '<span style="color:var(--text-muted);font-size:0.8rem;">None</span>') + '</div>' +
+        '<div class="opt-row-label">Stats Affected</div>' +
+        '<div>' + (statChips || '<span style="color:var(--text-muted);font-size:0.8rem;">None</span>') + '</div>' +
+    '</div>';
 }
 
 async function selectRepealPolicy(policyId) {
