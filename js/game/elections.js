@@ -3079,20 +3079,9 @@ export async function processPresidentialElectionResult(supabase, nation, comple
  * Used by processPresidentialElectionResult (auto-inauguration).
  */
 export async function inauguratePresident(supabase, candidate, nationId, factionId, currentTick, outgoingPresident = null, endReason = 'election_loss') {
-    // Deactivate any previous president
-    const { error: deactErr } = await supabase.from('presidents')
-        .update({ is_active: false })
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
-    if (deactErr) {
-        console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
-    }
-
     // Fetch nation data early for per-nation term length
     const { data: nationForTerm, error: nationTermErr } = await supabase.from('nations').select('presidential_term_ticks, presidential_term_limit').eq('id', nationId).single();
     if (nationTermErr) console.error(`[inauguratePresident] Failed to fetch nation term data:`, nationTermErr.message);
-
-    // Trait is now resolved from POSITIVE_TRAITS at display time (leader_traits table removed)
 
     // Determine terms_served: if re-elected (same person), increment; otherwise start at 1
     let termsServed = 1;
@@ -3104,9 +3093,15 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         console.log(`President re-elected: ${candidate.first_name} ${candidate.last_name} — term ${termsServed}`);
     }
 
-    // Insert president record (trait resolved at display time, not stored)
+    // Insert NEW president FIRST. The previous order deactivated the
+    // outgoing president before the INSERT, so a transient INSERT failure
+    // left the nation with zero active presidents — the "President left
+    // empty" bug. Inserting first means a failed INSERT still leaves the
+    // outgoing president in office, which is the correct fallback.
     // Phase 5b: presidents.ideology column dropped.
-    const { error: presErr } = await supabase.from('presidents').insert({
+    // Trait is now resolved from POSITIVE_TRAITS at display time
+    // (leader_traits table removed).
+    const { data: newPresident, error: presErr } = await supabase.from('presidents').insert({
         nation_id: nationId,
         faction_id: factionId,
         first_name: candidate.first_name,
@@ -3119,8 +3114,36 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         term_ends_tick: currentTick + getPresidentialTermTicks(nationForTerm),
         is_active: true,
         terms_served: termsServed
-    });
+    }).select('id').single();
     if (presErr) throw presErr;
+    if (!newPresident?.id) throw new Error(`[inauguratePresident] insert succeeded but returned no id for ${nationId}`);
+
+    // Deactivate ALL other active presidents (excluding the just-inserted
+    // row). Logged but non-blocking — the new president is already in
+    // office; a stale prior row will be caught by the post-condition
+    // check below or cleaned up on the next inauguration.
+    const { error: deactErr } = await supabase.from('presidents')
+        .update({ is_active: false })
+        .eq('nation_id', nationId)
+        .eq('is_active', true)
+        .neq('id', newPresident.id);
+    if (deactErr) {
+        console.error(`[inauguratePresident] Failed to deactivate previous presidents for ${nationId}:`, deactErr.message);
+    }
+
+    // Post-condition: exactly one active president row must exist for
+    // this nation. Anything else is a data-integrity violation that
+    // breaks every downstream consumer (fetchActiveCoalition, EO
+    // authority checks, semi-pres PM nomination).
+    const { count: activeCount, error: countErr } = await supabase.from('presidents')
+        .select('id', { count: 'exact', head: true })
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (countErr) {
+        console.error(`[inauguratePresident] post-condition count query failed:`, countErr.message);
+    } else if (activeCount !== 1) {
+        throw new Error(`[inauguratePresident] post-condition violation: nation ${nationId} has ${activeCount} active president rows (expected exactly 1)`);
+    }
 
     // Phase 5a: presidential ideology shift removed. The legacy mechanic
     // wrote a +15 shift on the winning candidate's ideology axis to faction_
