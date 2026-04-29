@@ -50,21 +50,14 @@ BEGIN
        AND status IN ('formed', 'active', 'caretaker')
        AND (election_id IS DISTINCT FROM v_election_id);
 
-    -- 2. Dissolve any active legacy active_coalitions row.
-    UPDATE active_coalitions
-       SET status = 'dissolved',
-           dissolved_at = now()
-     WHERE nation_id = v_nation_id
-       AND dissolved_at IS NULL;
-
-    -- 3. Deactivate any active head_of_government row. Formation will create a
+    -- 2. Deactivate any active head_of_government row. Formation will create a
     --    fresh row when the new coalition is sworn in.
     UPDATE head_of_government
        SET active = false
      WHERE nation_id = v_nation_id
        AND active = true;
 
-    -- 4. Vacate active ministries — incoming coalition assigns ministers.
+    -- 3. Vacate active ministries — incoming coalition assigns ministers.
     UPDATE ministries
        SET minister_first_name = NULL,
            minister_last_name = NULL,
@@ -73,7 +66,7 @@ BEGIN
      WHERE nation_id = v_nation_id
        AND is_active = true;
 
-    -- 5. Close the open administration row so a fresh one can open on formation.
+    -- 4. Close the open administration row so a fresh one can open on formation.
     UPDATE administrations
        SET ended_at_tick = COALESCE(v_election_tick, ended_at_tick),
            ended_at_date = COALESCE(v_shard_date, ended_at_date),
@@ -82,7 +75,7 @@ BEGIN
      WHERE nation_id = v_nation_id
        AND ended_at_tick IS NULL;
 
-    -- 6. Reset failed_formation_attempts so the new formation window starts fresh.
+    -- 5. Reset failed_formation_attempts so the new formation window starts fresh.
     UPDATE nations
        SET failed_formation_attempts = 0
      WHERE id = v_nation_id;
