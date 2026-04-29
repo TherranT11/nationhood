@@ -89,6 +89,14 @@
             <label class="form-label">Select Policy</label>
             <div id="amendment-policies"></div>
         </div>
+        <div class="form-group" id="amendment-option-selector-group" style="display: none;">
+            <div id="amendment-option-selector-active"></div>
+            <label class="form-label" id="amendment-option-selector-label" style="display: none;">Change to</label>
+            <select class="form-select" id="amendment-option-selector-select" style="display: none;" onchange="onAmendmentTargetOptionChange()">
+                <option value="">-- Choose new option --</option>
+            </select>
+            <div id="amendment-option-selector-details"></div>
+        </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeAmendmentModal()">Cancel</button>
             <button class="btn-submit" id="submit-amendment-btn" disabled onclick="submitAmendment()">Propose Conditional Support</button>
@@ -378,9 +386,12 @@ initPage('laws', async (state) => {
 
 async function loadBillData() {
     try {
+        // Phase 3.5: each bill_articles row also embeds the chosen
+        // policy_options row so the bill-detail article cards can show
+        // "Switch to <option>" without a second round-trip.
         const { data: bill, error } = await _supabase
             .from('bills')
-            .select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*, factions(faction_name))')
+            .select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name), selected_option:policy_options!selected_option_id(option_name, option_description)), bill_support(*, factions(faction_name))')
             .eq('id', billId).single();
         if (error) throw error;
         currentBill = bill;
@@ -452,20 +463,35 @@ async function loadBillData() {
         allPartySeats = seatData.allPartySeats;
         currentSeats = seatData.currentSeats;
 
-        const { data: policies } = await _supabase.from('policies').select('*').eq('is_active', true);
-        allPolicies = policies || [];
+        // Phase 3.5: embed every policy_options row per policy so the
+        // amendment picker can read each option's name / description /
+        // costs / sector_effects / stat_effects, mirroring laws.html
+        // Phase 3.1.
+        const { data: policies } = await _supabase
+            .from('policies')
+            .select('*, policy_options(id, option_name, option_description, option_order, is_active, sector_effects, stat_effects, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat, fiscal_category)')
+            .eq('is_active', true);
+        allPolicies = (policies || []).map(p => ({
+            ...p,
+            policy_options: Array.isArray(p.policy_options)
+                ? [...p.policy_options].sort((a, b) => (a.option_order || 0) - (b.option_order || 0))
+                : []
+        }));
 
-        // Load active laws for repeal article support
+        // Load active laws for repeal article support — also pull the
+        // selected option so getCurrentOptionForPolicy can resolve it.
         const { data: activeLawRows } = await _supabase.from('active_laws')
-            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, stat_effects, target_stat, stat_direction, ideologies, ideology, policy_type)')
+            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, stat_effects, target_stat, stat_direction, ideologies, ideology, policy_type), selected_option:policy_options!selected_option_id(option_name, option_description)')
             .eq('nation_id', bill.nation_id)
             .eq('is_reversal', false);
         nationActiveLaws = (activeLawRows || []).filter(l => l.policies);
 
         if (bill.status === 'committee') {
+            // Phase 3.5: include the chosen option so the amendment list can
+            // render "Switch to <option>" alongside the policy name.
             const { data: amendments } = await _supabase
                 .from('bill_amendment_requests')
-                .select('*, factions(faction_name), policies(policy_name)')
+                .select('*, factions(faction_name), policies(policy_name), selected_option:policy_options!selected_option_id(option_name)')
                 .eq('bill_id', billId).eq('status', 'pending');
             amendmentRequests = amendments || [];
         }
@@ -1649,11 +1675,21 @@ function renderArticles() {
             const pTypeBadge = p.policy_type === 'structural' ? '<span class="policy-type-badge structural">Structural</span>'
                 : p.policy_type === 'lever' ? '<span class="policy-type-badge lever">Lever</span>' : '';
 
+            // Phase 3.5: bill-detail article card shows the option transition
+            // when the article carries a selected_option (set by Phase 3.3 on
+            // the laws.html picker, or by Phase 3.5 on the amendment picker).
+            // Falls back to the bare policy name + description otherwise.
+            const _optName  = art.selected_option?.option_name;
+            const _optDesc  = art.selected_option?.option_description;
+            const _articleTitle = _optName
+                ? (p.policy_name || '') + ' → <span style="color:var(--blue, #5b9bd5);">Switch to ' + _optName + '</span>'
+                : (p.policy_name || '');
+            const _articleDesc = _optDesc || p.description || '';
             return '<div class="article">' +
                 pTypeBadge +
                 '<div class="article-number">Article ' + art.article_number + '</div>' +
-                '<div class="article-title">' + (p.policy_name || '') + '</div>' +
-                '<div class="article-description">' + (p.description || '') + '</div>' +
+                '<div class="article-title">' + _articleTitle + '</div>' +
+                '<div class="article-description">' + _articleDesc + '</div>' +
                 (effectsHTML ? '<div class="article-stat-effect">Effect: ' + effectsHTML + '</div>' : '') +
                 renderSectorEffects(p.sector_effects) +
                 '<div class="article-costs">' +
@@ -2219,7 +2255,7 @@ async function renderSidebar() {
                             ${withdrawBtn}
                             <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
                             <div style="color:var(--blue);font-size:0.82rem;margin-bottom:8px;line-height:1.4;"><strong>${req.factions?.faction_name || 'Unknown'}</strong> will support your bill if you agree to add the following:</div>
-                            ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
+                            ${req.policy_id ? `<div class="amendment-policy">📎 ${req.policies?.policy_name || "Unknown"}${req.selected_option?.option_name ? ` → <span style="color:var(--blue, #5b9bd5);">Switch to ${req.selected_option.option_name}</span>` : ""}</div>` : `<div class="amendment-policy">📎 ${req.article_title || "Untitled"}</div><div class="amendment-text">${(req.article_text || "").substring(0,120)}${(req.article_text || "").length > 120 ? "…" : ""}</div>`}
                             ${isSponsor ? `<div class="amendment-actions"><button class="amendment-btn accept" onclick="respondToAmendment('${req.id}','accepted')">Accept</button><button class="amendment-btn reject" onclick="respondToAmendment('${req.id}','rejected')">Reject</button></div>` : ''}
                         </div>`;
                     }).join('')}
@@ -2743,15 +2779,30 @@ window.handleEmergencyAdvance = handleEmergencyAdvance;
 
 function openAmendmentModal() {
     selectedAmendmentPolicy = null;
+    selectedAmendmentTargetOptionId = null;
     document.getElementById('submit-amendment-btn').disabled = true;
     document.getElementById('amendment-sector').value = '';
     document.getElementById('amendment-policy-group').style.display = 'none';
+    // Phase 3.5: hide the option selector until a policy is picked.
+    const optGroup = document.getElementById('amendment-option-selector-group');
+    if (optGroup) optGroup.style.display = 'none';
     const sel = document.getElementById('amendment-sector');
     sel.innerHTML = '<option value="">-- Choose a sector --</option>';
     MAJOR_SECTORS.forEach(s => { if (_getCompatiblePolicies(s.key).length > 0) sel.innerHTML += `<option value="${s.key}">${s.label}</option>`; });
     document.getElementById('amendment-modal').classList.add('active');
 }
-function closeAmendmentModal() { document.getElementById('amendment-modal').classList.remove('active'); }
+function closeAmendmentModal() {
+    document.getElementById('amendment-modal').classList.remove('active');
+    // Phase 3.5: clear lingering picker state.
+    selectedAmendmentPolicy = null;
+    selectedAmendmentTargetOptionId = null;
+    const optGroup = document.getElementById('amendment-option-selector-group');
+    if (optGroup) optGroup.style.display = 'none';
+    const select = document.getElementById('amendment-option-selector-select');
+    if (select) select.value = '';
+    const details = document.getElementById('amendment-option-selector-details');
+    if (details) details.innerHTML = '';
+}
 
 function onAmendmentSectorChange() {
     const sector = document.getElementById('amendment-sector').value;
@@ -2781,10 +2832,120 @@ function onAmendmentSectorChange() {
     document.getElementById('amendment-policy-group').style.display = 'block';
 }
 
+// Phase 3.5: target option for the amendment picker, parallel to
+// selectedTargetOptionId in laws.html.
+let selectedAmendmentTargetOptionId = null;
+
+// Phase 3.5: same helper as laws.html — look up the option the current
+// nation has currently selected for a given policy. Reads from
+// nationActiveLaws → selected_option_id → matching policy_options entry.
+function getCurrentOptionForPolicy(policyId) {
+    if (!policyId) return null;
+    const law = nationActiveLaws.find(l => l.policy_id === policyId && !l.is_reversal);
+    if (!law || !law.selected_option_id) return null;
+    const policy = allPolicies.find(p => p.id === policyId);
+    if (!policy || !Array.isArray(policy.policy_options)) return null;
+    return policy.policy_options.find(o => o.id === law.selected_option_id) || null;
+}
+
 function selectAmendmentPolicy(id) {
     selectedAmendmentPolicy = allPolicies.find(p => p.id === id);
+    selectedAmendmentTargetOptionId = null;
     document.querySelectorAll('#amendment-policies .policy-option').forEach(e => e.classList.remove('selected'));
     document.querySelector(`[data-policy-id="${id}"]`)?.classList.add('selected');
+    // Submit stays disabled until the target option is chosen.
+    document.getElementById('submit-amendment-btn').disabled = true;
+    renderAmendmentOptionSelector(id);
+}
+
+function renderAmendmentOptionSelector(policyId) {
+    const group = document.getElementById('amendment-option-selector-group');
+    const activeBox = document.getElementById('amendment-option-selector-active');
+    const label = document.getElementById('amendment-option-selector-label');
+    const select = document.getElementById('amendment-option-selector-select');
+    const details = document.getElementById('amendment-option-selector-details');
+    if (!group) return;
+
+    const policy = allPolicies.find(p => p.id === policyId);
+    const options = policy?.policy_options || [];
+
+    details.innerHTML = '';
+    if (!policy || options.length === 0) {
+        group.style.display = 'none';
+        return;
+    }
+
+    const current = getCurrentOptionForPolicy(policyId);
+    const activeName = current?.option_name || 'None';
+    activeBox.innerHTML =
+        '<div class="option-selector-active" style="background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:10px 14px;margin-bottom:10px;font-size:0.85rem;">' +
+            '<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;">Active</div>' +
+            '<div style="font-weight:bold;color:#5cb85c;margin-top:2px;">' + escapeHtml(activeName) + '</div>' +
+        '</div>';
+
+    const selectableOptions = options.filter(o => !current || o.id !== current.id);
+    if (selectableOptions.length === 0) {
+        select.style.display = 'none';
+        label.style.display = 'none';
+        details.innerHTML = '<div style="color:#888;font-size:0.8rem;margin-top:6px;">This policy has only one option and it is already active.</div>';
+        group.style.display = 'block';
+        return;
+    }
+
+    label.style.display = 'block';
+    select.style.display = 'block';
+    select.innerHTML = '<option value="">-- Choose new option --</option>' +
+        selectableOptions.map(o => '<option value="' + o.id + '">' + escapeHtml(o.option_name || 'Untitled') + '</option>').join('');
+    select.value = '';
+    group.style.display = 'block';
+}
+
+function onAmendmentTargetOptionChange() {
+    const select = document.getElementById('amendment-option-selector-select');
+    const details = document.getElementById('amendment-option-selector-details');
+    const optionId = select.value || null;
+    selectedAmendmentTargetOptionId = optionId;
+
+    if (!optionId || !selectedAmendmentPolicy) {
+        details.innerHTML = '';
+        document.getElementById('submit-amendment-btn').disabled = true;
+        return;
+    }
+
+    const option = (selectedAmendmentPolicy.policy_options || []).find(o => o.id === optionId);
+    if (!option) { details.innerHTML = ''; return; }
+
+    // Inline a compact details card; the bill.html stylesheet doesn't have
+    // the option-details-card classes laws.html added, so this carries its
+    // styling locally to avoid coupling the two files.
+    const sectorChips = (Array.isArray(option.sector_effects) ? option.sector_effects : [])
+        .filter(s => s && s.sector_key && Number.isFinite(Number(s.change_tenths)) && Number(s.change_tenths) !== 0)
+        .map(s => {
+            const tenths = Number(s.change_tenths);
+            const up = tenths > 0;
+            const arrow = up ? '↑' : '↓';
+            const colour = up ? '#5cb85c' : '#d9534f';
+            const mag = (Math.abs(tenths) / 10).toFixed(1);
+            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(s.sector_key).replace(/_/g, ' ')) + ' (' + mag + ')</span>';
+        }).join('');
+    const statChips = (Array.isArray(option.stat_effects) ? option.stat_effects : [])
+        .filter(e => e && e.stat_key)
+        .map(e => {
+            const up = (e.direction || '').toLowerCase() === 'up';
+            const arrow = up ? '↑' : '↓';
+            const colour = up ? '#5cb85c' : '#d9534f';
+            const rate = e.rate != null ? e.rate : '?';
+            return '<span style="color:' + colour + ';margin-right:8px;font-size:0.8rem;">' + arrow + ' ' + escapeHtml(String(e.stat_key).replace(/_/g, ' ')) + ' (' + rate + '/t)</span>';
+        }).join('');
+    details.innerHTML =
+        '<div style="background:#1a1a1a;border:1px solid #5b9bd5;border-radius:4px;padding:12px 14px;margin-top:10px;">' +
+            '<div style="font-weight:bold;color:#5b9bd5;font-size:0.95rem;margin-bottom:6px;">' + escapeHtml(option.option_name || 'Untitled') + '</div>' +
+            (option.option_description ? '<div style="color:#e0e0e0;font-size:0.82rem;line-height:1.45;margin-bottom:10px;">' + escapeHtml(option.option_description) + '</div>' : '') +
+            '<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;margin-top:8px;margin-bottom:4px;">Sectors Affected</div>' +
+            '<div>' + (sectorChips || '<span style="color:#888;font-size:0.8rem;">None</span>') + '</div>' +
+            '<div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;margin-top:8px;margin-bottom:4px;">Stats Affected</div>' +
+            '<div>' + (statChips || '<span style="color:#888;font-size:0.8rem;">None</span>') + '</div>' +
+        '</div>';
     document.getElementById('submit-amendment-btn').disabled = false;
 }
 
@@ -2793,12 +2954,28 @@ async function submitAmendment() {
     const mySupport = (currentBill.bill_support || []).find(s => s.faction_id === currentFaction.id);
     if (mySupport?.locked) { alert('Your support is locked — a strike deal was accepted.'); return; }
     if ((currentBill.struck_policy_ids || []).includes(selectedAmendmentPolicy.id)) { alert('This policy was struck from the bill and cannot be re-added.'); return; }
+
+    // Phase 3.5: validate target option (mirrors Phase 3.3 addArticle).
+    const policyOptions = Array.isArray(selectedAmendmentPolicy.policy_options) ? selectedAmendmentPolicy.policy_options : [];
+    if (policyOptions.length > 0) {
+        if (!selectedAmendmentTargetOptionId) { alert('Pick a target option from the "Change to" dropdown.'); return; }
+        const targetOption = policyOptions.find(o => o.id === selectedAmendmentTargetOptionId);
+        if (!targetOption) { alert('Selected option does not belong to this policy.'); return; }
+        const currentOption = getCurrentOptionForPolicy(selectedAmendmentPolicy.id);
+        if (currentOption && currentOption.id === selectedAmendmentTargetOptionId) {
+            alert('That option is already active for this nation — pick a different option.');
+            return;
+        }
+    }
+
     try {
         // Conditional support always costs 1 AP
         const apResult = await deductAP(_supabase, currentFaction.id, 1);
         if (!apResult.success) { alert(apResult.error || 'Insufficient AP (need 1).'); return; }
 
-        const { error } = await _supabase.from('bill_amendment_requests').insert({ bill_id: billId, faction_id: currentFaction.id, policy_id: selectedAmendmentPolicy.id, request_type: 'add', status: 'pending' });
+        const requestRow = { bill_id: billId, faction_id: currentFaction.id, policy_id: selectedAmendmentPolicy.id, request_type: 'add', status: 'pending' };
+        if (selectedAmendmentTargetOptionId) requestRow.selected_option_id = selectedAmendmentTargetOptionId;
+        const { error } = await _supabase.from('bill_amendment_requests').insert(requestRow);
         if (error) throw error;
         // Auto-set stance to conditional — if accepted, auto-locks as YES on floor
         await _supabase.from('bill_support').upsert({ bill_id: billId, faction_id: currentFaction.id, stance: 'conditional', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
@@ -2860,7 +3037,12 @@ async function respondToAmendment(reqId, response) {
                 // Add amendment — AP already deducted above if needed
                 const maxArt = Math.max(...(currentBill.bill_articles || []).map(a => a.article_number), 1);
                 if (req.policy_id) {
-                    await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: req.policy_id, article_number: maxArt + 1, added_by: req.faction_id });
+                    // Phase 3.5: forward the amendment's selected_option_id
+                    // onto the resulting bill_articles row so Phase 4 can
+                    // resolve the option transition at bill-pass time.
+                    const articleRow = { bill_id: billId, policy_id: req.policy_id, article_number: maxArt + 1, added_by: req.faction_id };
+                    if (req.selected_option_id) articleRow.selected_option_id = req.selected_option_id;
+                    await _supabase.from('bill_articles').insert(articleRow);
                 } else {
                     await _supabase.from('bill_articles').insert({ bill_id: billId, policy_id: null, article_number: maxArt + 1, added_by: req.faction_id, article_title: req.article_title, article_text: req.article_text });
                 }
@@ -3613,6 +3795,7 @@ window.onAmendmentSectorChange = onAmendmentSectorChange;
 window.openTextAmendmentModal = openTextAmendmentModal;
 window.closeTextAmendmentModal = closeTextAmendmentModal;
 window.submitAmendment = submitAmendment;
+window.onAmendmentTargetOptionChange = onAmendmentTargetOptionChange;
 window.submitTextAmendment = submitTextAmendment;
 window.signBillAction = signBillAction;
 window.vetoBillAction = vetoBillAction;

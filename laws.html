@@ -369,6 +369,14 @@
             <label class="form-label">Select Policy</label>
             <div class="policy-options" id="committee-policy-options"></div>
         </div>
+        <div class="form-group" id="committee-option-selector-group" style="display:none;">
+            <div id="committee-option-selector-active"></div>
+            <label class="form-label" id="committee-option-selector-label" style="display:none;">Change to</label>
+            <select class="form-select" id="committee-option-selector-select" style="display:none;" onchange="onCommitteeTargetOptionChange()">
+                <option value="">-- Choose new option --</option>
+            </select>
+            <div id="committee-option-selector-details"></div>
+        </div>
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeCommitteeAddModal()">Cancel</button>
             <button class="btn-add" id="committee-add-btn" disabled onclick="submitCommitteeArticle()">Add Article</button>
@@ -4823,7 +4831,18 @@ function openCommitteeAddModal(billId) {
     document.getElementById('committee-add-modal').classList.add('active');
 }
 
-function closeCommitteeAddModal() { document.getElementById('committee-add-modal').classList.remove('active'); }
+function closeCommitteeAddModal() {
+    document.getElementById('committee-add-modal').classList.remove('active');
+    // Phase 3.5: reset option-selector state so the next session is clean.
+    committeeSelectedPolicy = null;
+    committeeSelectedTargetOptionId = null;
+    const group = document.getElementById('committee-option-selector-group');
+    if (group) group.style.display = 'none';
+    const sel = document.getElementById('committee-option-selector-select');
+    if (sel) sel.value = '';
+    const det = document.getElementById('committee-option-selector-details');
+    if (det) det.innerHTML = '';
+}
 
 function onCommitteeSectorChange() {
     const sector = document.getElementById('committee-sector-select').value;
@@ -4853,10 +4872,82 @@ window.onCommitteeStatFilterChange = onCommitteeStatFilterChange;
 // Keep handlers explicitly on window for inline onchange attributes.
 window.onCommitteeSectorChange = onCommitteeSectorChange;
 
+// Phase 3.5: target option for the committee article-add picker, parallel
+// to selectedTargetOptionId in the main draft picker.
+let committeeSelectedTargetOptionId = null;
+
 function selectCommitteePolicy(policyId) {
     committeeSelectedPolicy = allPolicies.find(p => p.id === policyId);
+    committeeSelectedTargetOptionId = null;
     document.querySelectorAll('#committee-policy-options .policy-option').forEach(el => el.classList.remove('selected'));
     document.querySelector(`#committee-policy-options [data-policy-id="${policyId}"]`)?.classList.add('selected');
+    // Add stays disabled until the target option is chosen (mirrors Phase 3.2).
+    document.getElementById('committee-add-btn').disabled = true;
+    renderCommitteeOptionSelector(policyId);
+}
+
+// Phase 3.5: same shape as renderOptionSelector / onTargetOptionChange but
+// scoped to the committee modal's IDs.
+function renderCommitteeOptionSelector(policyId) {
+    const group = document.getElementById('committee-option-selector-group');
+    const activeBox = document.getElementById('committee-option-selector-active');
+    const label = document.getElementById('committee-option-selector-label');
+    const select = document.getElementById('committee-option-selector-select');
+    const details = document.getElementById('committee-option-selector-details');
+    if (!group) return;
+
+    const policy = allPolicies.find(p => p.id === policyId);
+    const options = policy?.policy_options || [];
+
+    details.innerHTML = '';
+    if (!policy || options.length === 0) {
+        group.style.display = 'none';
+        return;
+    }
+
+    const current = getCurrentOptionForPolicy(policyId);
+    const activeName = current?.option_name || 'None';
+    activeBox.innerHTML =
+        '<div class="option-selector-active">' +
+            '<div class="label">Active</div>' +
+            '<div class="name">' + escapeHtml(activeName) + '</div>' +
+        '</div>';
+
+    const selectableOptions = options.filter(o => !current || o.id !== current.id);
+    if (selectableOptions.length === 0) {
+        select.style.display = 'none';
+        label.style.display = 'none';
+        details.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;margin-top:6px;">This policy has only one option and it is already active.</div>';
+        group.style.display = 'block';
+        return;
+    }
+
+    label.style.display = 'block';
+    select.style.display = 'block';
+    select.innerHTML = '<option value="">-- Choose new option --</option>' +
+        selectableOptions.map(o => '<option value="' + o.id + '">' + escapeHtml(o.option_name || 'Untitled') + '</option>').join('');
+    select.value = '';
+    group.style.display = 'block';
+}
+
+function onCommitteeTargetOptionChange() {
+    const select = document.getElementById('committee-option-selector-select');
+    const details = document.getElementById('committee-option-selector-details');
+    const optionId = select.value || null;
+    committeeSelectedTargetOptionId = optionId;
+
+    if (!optionId || !committeeSelectedPolicy) {
+        details.innerHTML = '';
+        document.getElementById('committee-add-btn').disabled = true;
+        return;
+    }
+
+    const option = (committeeSelectedPolicy.policy_options || []).find(o => o.id === optionId);
+    if (!option) {
+        details.innerHTML = '';
+        return;
+    }
+    details.innerHTML = renderOptionDetails(option);
     document.getElementById('committee-add-btn').disabled = false;
 }
 
@@ -4868,11 +4959,27 @@ async function submitCommitteeArticle() {
         alert('Only the bill sponsor can add articles.');
         return;
     }
+
+    // Phase 3.5: validate target option, mirroring Phase 3.3's addArticle.
+    const policyOptions = Array.isArray(committeeSelectedPolicy.policy_options) ? committeeSelectedPolicy.policy_options : [];
+    if (policyOptions.length > 0) {
+        if (!committeeSelectedTargetOptionId) { alert('Pick a target option from the "Change to" dropdown.'); return; }
+        const targetOption = policyOptions.find(o => o.id === committeeSelectedTargetOptionId);
+        if (!targetOption) { alert('Selected option does not belong to this policy.'); return; }
+        const currentOption = getCurrentOptionForPolicy(committeeSelectedPolicy.id);
+        if (currentOption && currentOption.id === committeeSelectedTargetOptionId) {
+            alert('That option is already active for this nation — pick a different option.');
+            return;
+        }
+    }
+
     _actionLock = true;
     try {
         const { data: existingArticles } = await _supabase.from('bill_articles').select('article_number').eq('bill_id', currentCommitteeBillId).order('article_number', { ascending: false }).limit(1);
         const nextArticleNum = (existingArticles?.[0]?.article_number || 1) + 1;
-        await _supabase.from('bill_articles').insert({ bill_id: currentCommitteeBillId, policy_id: committeeSelectedPolicy.id, article_number: nextArticleNum, added_by: currentFaction.id });
+        const articleRow = { bill_id: currentCommitteeBillId, policy_id: committeeSelectedPolicy.id, article_number: nextArticleNum, added_by: currentFaction.id };
+        if (committeeSelectedTargetOptionId) articleRow.selected_option_id = committeeSelectedTargetOptionId;
+        await _supabase.from('bill_articles').insert(articleRow);
         await _supabase.from('bill_support').upsert({ bill_id: currentCommitteeBillId, faction_id: currentFaction.id, stance: 'accept', seat_count: currentSeats }, { onConflict: 'bill_id,faction_id' });
         closeCommitteeAddModal(); await loadLawsData(); renderLawsPage();
     } catch (error) { console.error('Error adding article:', error); alert('Error adding article.'); }
@@ -4902,6 +5009,7 @@ window.addFundingArticle = addFundingArticle;
 window.submitToCommittee = submitToCommittee;
 window.closeCommitteeAddModal = closeCommitteeAddModal;
 window.submitCommitteeArticle = submitCommitteeArticle;
+window.onCommitteeTargetOptionChange = onCommitteeTargetOptionChange;
 window.toggleAllLaws = toggleAllLaws;
 window.openDraftModal = openDraftModal;
 window.toggleMajorSector = toggleMajorSector;
