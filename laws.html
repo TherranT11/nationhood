@@ -3487,10 +3487,44 @@ async function addArticle() {
     }
 
     if (!selectedPolicy) return;
+
+    // Phase 3.3: every policy article must carry a target option. The Add
+    // button is disabled until one is picked, but we re-validate here in
+    // case state was bypassed (e.g., devtools). Defense: also confirm the
+    // option actually belongs to the selected policy.
+    const policyOptions = Array.isArray(selectedPolicy.policy_options) ? selectedPolicy.policy_options : [];
+    if (policyOptions.length > 0) {
+        if (!selectedTargetOptionId) {
+            alert('Pick a target option from the "Change to" dropdown before adding this article.');
+            return;
+        }
+        const targetOption = policyOptions.find(o => o.id === selectedTargetOptionId);
+        if (!targetOption) {
+            alert('Selected option does not belong to this policy. Refresh and try again.');
+            return;
+        }
+        const currentOption = getCurrentOptionForPolicy(selectedPolicy.id);
+        if (currentOption && currentOption.id === selectedTargetOptionId) {
+            alert('That option is already active for this nation — pick a different option.');
+            return;
+        }
+    }
+
     _draftArticleLock = true;
     try {
-        draftArticles.push({ articleNumber: draftArticles.length + 2, policy: selectedPolicy });
-        renderDraftArticles(); hideAddArticleForm(); selectedPolicy = null;
+        const targetOption = policyOptions.find(o => o.id === selectedTargetOptionId) || null;
+        draftArticles.push({
+            articleNumber: draftArticles.length + 2,
+            policy: selectedPolicy,
+            // Phase 3.3: persist the target option through draft → submit.
+            // Stored both as id (for the DB write) and as the resolved
+            // option object (so renderDraftArticles can show its name
+            // without re-walking allPolicies).
+            selectedOptionId: targetOption ? targetOption.id : null,
+            selectedOption: targetOption,
+            currentOption: getCurrentOptionForPolicy(selectedPolicy.id) || null,
+        });
+        renderDraftArticles(); hideAddArticleForm();
         if (draftArticles.length > 0) { document.getElementById('bill-name-section').style.display = 'block'; document.getElementById('submit-bill-btn').disabled = false; }
         updateSubmitButtonCost();
     } finally { _draftArticleLock = false; }
@@ -4347,6 +4381,13 @@ async function submitToCommittee() {
                 const articleRow = { bill_id: bill.id, policy_id: art.policy.id, article_number: art.articleNumber, added_by: currentFaction.id };
                 if (art.isRepeal && art.repealActiveLawId) {
                     articleRow.repeal_active_law_id = art.repealActiveLawId;
+                }
+                // Phase 3.3: persist the chosen option for option-based articles.
+                // Repeal articles intentionally leave selected_option_id null —
+                // they tear the policy down rather than switch it. Phase 4 will
+                // also start consuming this column on the engine side.
+                if (art.selectedOptionId && !art.isRepeal) {
+                    articleRow.selected_option_id = art.selectedOptionId;
                 }
                 return articleRow;
             });
