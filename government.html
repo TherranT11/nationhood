@@ -1894,7 +1894,7 @@ async function loadLawsData() {
         const [policiesRes, activeLawsRes] = await Promise.all([
             _supabase
                 .from('policies')
-                .select('id, policy_name, description, major_sector, minor_sector, law_category, policy_options(id, option_name, option_order, stat_effects, sector_effects)')
+                .select('id, policy_name, description, major_sector, minor_sector, law_category, policy_options(id, option_name, option_description, option_order, stat_effects, sector_effects)')
                 .eq('is_active', true),
             _supabase
                 .from('active_laws')
@@ -1928,7 +1928,9 @@ async function loadLawsData() {
                 policies: { ...p, stat_effects: effective },
                 _isEnacted: isEnacted,
                 _optionCount: opts.length,
+                _selectedOption: selectedOpt,
                 _selectedOptionName: selectedOpt?.option_name || null,
+                _selectedOptionDescription: selectedOpt?.option_description || null,
                 _firstOptionName: opts[0]?.option_name || null,
             };
         });
@@ -2622,16 +2624,28 @@ function renderLawsTab(container) {
 
             const isEnacted = law._isEnacted;
             const optionName = law._selectedOptionName;
+            const optionDesc = law._selectedOptionDescription;
+            // When a specific option is in force, lead with the option's
+            // name+description (the actual legal regime) and demote the
+            // policy name to a small subtitle for context. Falls back to
+            // the policy itself when no option is selected (or when the
+            // law isn't enacted yet — catalog browse view).
+            const showOption = isEnacted && optionName;
+            const titleText = showOption ? optionName : (policy.policy_name || 'Unknown');
+            const subtitleText = showOption ? policy.policy_name : '';
+            const descText = showOption
+                ? (optionDesc || policy.description || '')
+                : (policy.description || '');
             lawsHtml += `<div class="laws-row${isEnacted ? ' enacted' : ''}">
                 <div class="laws-row-main">
                     <div class="laws-row-title">
-                        <span class="laws-row-name">${escapeHtml(policy.policy_name || 'Unknown')}</span>
-                        ${isEnacted && optionName ? `<span class="laws-option-badge">${escapeHtml(optionName)}</span>` : ''}
+                        <span class="laws-row-name">${escapeHtml(titleText)}</span>
+                        ${subtitleText ? `<span class="laws-row-policy">${escapeHtml(subtitleText)}</span>` : ''}
                         ${isEnacted ? '<span class="laws-enacted-badge">ENACTED</span>' : ''}
                         ${minor ? `<span class="laws-minor">${escapeHtml(minor)}</span>` : ''}
                         ${ideoBadges}
                     </div>
-                    ${policy.description ? `<div class="laws-row-desc">${escapeHtml(policy.description)}</div>` : ''}
+                    ${descText ? `<div class="laws-row-desc">${escapeHtml(descText)}</div>` : ''}
                 </div>
                 ${effectTags ? `<div class="laws-row-effects">${effectTags}</div>` : ''}
             </div>`;
