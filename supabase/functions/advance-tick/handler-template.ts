@@ -909,10 +909,12 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
  *   - Surplus: subtracts surplus / 12 from debt (floor at 0)
  */
 async function processBudgetDeficit(supabase, nation, currentTick, institutionConfig) {
-    // 1. Fetch active laws with policy data
+    // 1. Fetch active laws with policy data + the chosen option so
+    //    computeMinistryPolicyCost (Phase 4.4) can read the option's
+    //    fiscal_category / ongoing_base_cost / ongoing_scaling_stat.
     const { data: activeLaws } = await supabase
         .from('active_laws')
-        .select('*, policies(*)')
+        .select('*, policies(*), selected_option:policy_options!selected_option_id(fiscal_category, ongoing_base_cost, ongoing_scaling_stat)')
         .eq('nation_id', nation.id);
 
     // 2. Fetch trade tariff revenue from the trade engine (written earlier this tick)
