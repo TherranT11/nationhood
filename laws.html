@@ -1421,9 +1421,21 @@ function renderMinorSector(majorKey, minorKey) {
 
 function renderActiveLaw(law) {
     const p = law.policies;
+    // Phase 5.1: prefer the active option's name/description/effects over
+    // the policies row. Phase 2.5 onward stops writing stat_effects on
+    // policies, so without this the law card would show no effects at all
+    // on multi-option policies. Falls back to policies + legacy single-stat
+    // for orphaned data.
+    const opt = law.selected_option || null;
+    const optName = opt?.option_name;
+    const optDesc = opt?.option_description;
+    const statEffects = (Array.isArray(opt?.stat_effects) && opt.stat_effects.length > 0)
+        ? opt.stat_effects
+        : (Array.isArray(p?.stat_effects) ? p.stat_effects : null);
+
     let effectsHTML = '';
-    if (p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
-        effectsHTML = p.stat_effects.map(e => {
+    if (statEffects && statEffects.length > 0) {
+        effectsHTML = statEffects.map(e => {
             const dir = e.direction === 'up' ? '↑' : '↓';
             const cls = e.direction === 'up' ? 'effect-up' : 'effect-down';
             return `${formatStatName(e.stat_key)} <span class="${cls}">${dir}</span>`;
@@ -1459,7 +1471,14 @@ function renderActiveLaw(law) {
     const currentTierIdx = tierOrder.indexOf(law.entrenchment_tier || null);
     const canUpgrade = canRescind && currentTierIdx < 3;
     const upgradeBtn = canUpgrade ? `<button class="rescind-btn" style="background:var(--purple);border-color:var(--purple);" onclick="showUpgradeEntrenchment('${law.id}','${p.policy_name.replace(/'/g, "\\'")}','${law.entrenchment_tier || ''}')">🛡 Entrench</button>` : '';
-    return `<div class="active-law"><div class="active-law-name">${p.policy_name}${entrenchBadge}</div><div class="active-law-desc">${p.description || ''}</div><div class="active-law-meta"><span>${effectsHTML}</span><span>Passed tick ${law.passed_tick || '?'}</span>${upgradeBtn}${rescindBtn}</div></div>`;
+    // Phase 5.1: title shows "Policy Name — Option Name" when an option is
+    // selected, with the option's description in the body. Falls back to
+    // the bare policy text for orphaned legacy laws.
+    const lawTitleHTML = optName
+        ? `${escapeHtml(p.policy_name || '')} — <span style="color:var(--blue, #5b9bd5);">${escapeHtml(optName)}</span>`
+        : escapeHtml(p.policy_name || '');
+    const lawDescHTML = escapeHtml(optDesc || p.description || '');
+    return `<div class="active-law"><div class="active-law-name">${lawTitleHTML}${entrenchBadge}</div><div class="active-law-desc">${lawDescHTML}</div><div class="active-law-meta"><span>${effectsHTML}</span><span>Passed tick ${law.passed_tick || '?'}</span>${upgradeBtn}${rescindBtn}</div></div>`;
 }
 
 function toggleMajorSector(key) { document.getElementById('sector-'+key).classList.toggle('expanded'); }
