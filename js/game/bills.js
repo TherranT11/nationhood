@@ -2210,7 +2210,7 @@ export async function resolveVetoOverrideBill(supabase, bill, ctx) {
         await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
         // Enact the ORIGINAL vetoed bill — bypasses president's desk.
         const { data: originalBill } = await supabase.from('bills')
-            .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+            .select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(*, factions(faction_name))')
             .eq('id', bill.original_bill_id).single();
         if (originalBill) {
             await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
@@ -2422,7 +2422,9 @@ export async function resolveExpiredVotes(supabase, nationId) {
         // Simplified query: bill_support only needs faction_id/stance/seat_count for vote
         // tallying. Nesting factions() inside bill_support adds a FK join that can cause
         // the entire query to fail silently in PostgREST, leaving all bills stuck on floor.
-        .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+        // Phase 4.1: also embed the chosen option for every policy article so
+        // enactBill knows which option's effects to fire downstream.
+        .select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
@@ -2946,10 +2948,11 @@ export async function resolveStuckFloorBills(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk' });
             } else {
-                // Load full bill data for enactment — use simplified join (no nested factions in bill_support)
+                // Load full bill data for enactment — use simplified join (no nested factions in bill_support).
+                // Phase 4.1: include the chosen policy_option under each article.
                 const { data: fullBill } = await supabase
                     .from('bills')
-                    .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+                    .select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(faction_id, stance, seat_count)')
                     .eq('id', bill.id)
                     .single();
 
@@ -3170,6 +3173,15 @@ export async function enactBill(supabase, bill, currentTick) {
                     proposed_by: bill.proposed_by,
                     effects_applied_through_tick: currentTick - 1
                 };
+            // Phase 4.1: stamp the chosen option from the bill_article so the
+            // tick processor (Phase 4.4) and bill-pass effects (Phase 4.3)
+            // can read this nation's per-option configuration. Persists null
+            // for legacy / orphaned policies that have no policy_options
+            // (matches the pre-multi-option behaviour where stat_effects
+            // came directly off the policies row).
+            if (art.selected_option_id) {
+                activeLawRow.selected_option_id = art.selected_option_id;
+            }
             // Stamp entrenchment from bill
             if (bill.entrenchment_tier) {
                 activeLawRow.entrenchment_tier = bill.entrenchment_tier;
