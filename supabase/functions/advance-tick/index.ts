@@ -5848,15 +5848,25 @@ function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
     for (const law of (activeLaws || [])) {
         if (law.is_reversal) continue;
         const policy = law.policies;
-        if (!policy || policy.fiscal_category !== fiscalCategory) continue;
+        if (!policy) continue;
+
+        // Phase 4.4: per-option fiscal_category and ongoing_base_cost take
+        // precedence over the legacy policies columns. Filter the law
+        // against the option's fiscal_category when present so the option's
+        // budget bucket determines which ministry pays.
+        const opt = law.selected_option || null;
+        const fiscalCat = opt?.fiscal_category ?? policy.fiscal_category;
+        if (fiscalCat !== fiscalCategory) continue;
+
+        const ongoingBase = (opt?.ongoing_base_cost ?? policy.ongoing_base_cost ?? policy.ongoing_cost_per_tick) || 0;
+        const scalingStat = opt?.ongoing_scaling_stat || policy.ongoing_scaling_stat;
 
         let annualCost = 0;
-        const ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
         if (ongoingBase > 0) {
             let scaled = ongoingBase;
-            if (policy.ongoing_scaling_stat && nation[policy.ongoing_scaling_stat] !== undefined) {
-                const statVal = Number(nation[policy.ongoing_scaling_stat]) || 1;
-                const divisor = RAW_SCALING_DIVISORS[policy.ongoing_scaling_stat] || 50;
+            if (scalingStat && nation[scalingStat] !== undefined) {
+                const statVal = Number(nation[scalingStat]) || 1;
+                const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
                 scaled = ongoingBase * (statVal / divisor);
             }
             annualCost = scaled * GAME_CONFIG.TICKS_PER_YEAR * 1_000_000;
@@ -6866,6 +6876,26 @@ async function repealActiveLaw({
 
 
 /**
+ * Phase 5.3: Walk a bill's articles and produce "Policy → Switch to Option"
+ * one-liners for the option-based articles. Repeal articles, text articles,
+ * and policies without options are skipped. Used to surface multi-option
+ * transitions in bill-passed event descriptions without forcing every
+ * downstream template to add a new placeholder.
+ */
+function _summarizeOptionTransitions(bill) {
+    const transitions = [];
+    for (const art of (bill?.bill_articles || [])) {
+        if (!art?.policy_id || art?.repeal_active_law_id) continue;
+        const policyName = art.policies?.policy_name;
+        const optionName = art.selected_option?.option_name;
+        if (policyName && optionName) {
+            transitions.push(`${policyName} → ${optionName}`);
+        }
+    }
+    return transitions;
+}
+
+/**
  * Fire a bill-related system event (bill_passed / bill_failed / quorum_failed etc).
  * Wraps the common try/catch + placeholder boilerplate used 20+ times in bills.js & presidential.js.
  *
@@ -6882,12 +6912,28 @@ async function repealActiveLaw({
  * @param {object} [opts.extra]            - Any extra placeholder key/values
  */
 async function fireBillEvent(supabase, triggerKey, bill, opts = {}) {
+    // Phase 5.3: surface option transitions to event templates. Two channels:
+    //   • {option_transitions} placeholder — explicit, opt-in for new templates
+    //   • bill_name auto-suffix — universal, so existing templates that
+    //     reference {bill_name} surface the option info without a template
+    //     edit. Skipped when the caller passes billNameOverride (those
+    //     overrides have their own narrative shape) or when the bill has
+    //     no option-based articles (text bills, repeals, foundational, etc.).
+    const transitions = _summarizeOptionTransitions(bill);
+    const transitionsSummary = transitions.join('; ');
+
+    const baseBillName = opts.billNameOverride || bill.bill_name;
+    const decoratedBillName = (!opts.billNameOverride && transitions.length > 0)
+        ? `${baseBillName} (${transitionsSummary})`
+        : baseBillName;
+
     const placeholders = {
         nation: opts.nationName || 'Unknown',
-        bill_name: opts.billNameOverride || bill.bill_name,
+        bill_name: decoratedBillName,
         sponsor: opts.sponsor || bill.factions?.faction_name || 'Unknown',
         votes_for: String(opts.votesFor ?? 0),
         votes_against: String(opts.votesAgainst ?? 0),
+        option_transitions: transitionsSummary,
     };
     if (opts.votesAbstain !== undefined) {
         placeholders.votes_abstain = String(opts.votesAbstain);
@@ -8393,9 +8439,14 @@ async function processSectorShifts(supabase, nationId, resolutions) {
     if (actionable.length === 0) return;
 
     const billIds = actionable.map(r => r.billId);
+    // Phase 4.2: each bill_article also embeds the chosen policy_option's
+    // sector_effects via the selected_option_id FK. Multi-option policies
+    // store sector_effects on the option, not the policies row; the article
+    // sums below prefer the option's sector_effects when present and fall
+    // back to the legacy policies.sector_effects only for orphaned data.
     const { data: bills, error: billErr } = await supabase
         .from('bills')
-        .select('id, nation_id, proposed_by, bill_type, bill_articles(*, policies(sector_effects)), bill_support(faction_id, stance)')
+        .select('id, nation_id, proposed_by, bill_type, bill_articles(*, policies(sector_effects), selected_option:policy_options!selected_option_id(sector_effects)), bill_support(faction_id, stance)')
         .in('id', billIds);
     if (billErr) {
         console.error('[processSectorShifts] failed to load bills', { nationId, error: billErr.message });
@@ -8435,8 +8486,12 @@ async function processSectorShifts(supabase, nationId, resolutions) {
         const result = resultByBill.get(bill.id);
         if (!result) continue;
 
+        // Phase 4.2: per-option sector_effects take precedence over the
+        // legacy policies.sector_effects column. Phase 2.5 onward stops
+        // writing the legacy column, so this fallback only fires for
+        // orphaned pre-multi-option data.
         const articleEffects = (bill.bill_articles || [])
-            .map(art => art?.policies?.sector_effects)
+            .map(art => (art?.selected_option?.sector_effects || art?.policies?.sector_effects))
             .filter(e => Array.isArray(e) && e.length > 0);
         if (articleEffects.length === 0) continue;
         const summed = sumSectorEffects(articleEffects);
@@ -8518,6 +8573,126 @@ async function processSectorShifts(supabase, nationId, resolutions) {
     }
 }
 
+
+// Phase 4.3: charge a policy_option's upfront_cost against the nation's
+// treasury. The option stores cost in $M; we scale by the option's
+// upfront_scaling_stat (when defined and present on the nations row),
+// convert to raw dollars, then draw from budget_reserves first and
+// overflow to debt — same pattern as the government-bailout enactment.
+// Negative upfront values represent revenue and credit budget_reserves.
+// Zero / null values are no-ops.
+async function chargePolicyUpfrontCost(supabase, nationId, option) {
+    if (!option) return;
+    const base = Number(option.upfront_cost || 0);
+    if (!Number.isFinite(base) || base === 0) return;
+
+    const { data: nation, error: nErr } = await supabase
+        .from('nations')
+        .select('*')
+        .eq('id', nationId)
+        .single();
+    if (nErr || !nation) {
+        console.error('[chargePolicyUpfrontCost] failed to load nation', { nationId, error: nErr?.message });
+        return;
+    }
+
+    const scaledM = _scalePolicyCost(base, option.upfront_scaling_stat, nation);
+    const dollars = Math.round(scaledM * 1_000_000); // option.upfront_cost is stored in $M
+    if (dollars === 0) return;
+
+    const reserves = Number(nation.budget_reserves || 0);
+    const debt = Number(nation.debt || 0);
+
+    if (dollars > 0) {
+        // Cost: pull from reserves, overflow to debt.
+        const drawReserves = Math.max(0, Math.min(dollars, reserves));
+        const drawDebt = dollars - drawReserves;
+        const newReserves = Math.max(0, Math.round(reserves - drawReserves));
+        const newDebt = Math.max(0, Math.round(debt + drawDebt));
+        const { error } = await supabase
+            .from('nations')
+            .update({ budget_reserves: newReserves, debt: newDebt })
+            .eq('id', nationId);
+        if (error) {
+            console.error('[chargePolicyUpfrontCost] cost update failed', { nationId, error: error.message });
+            return;
+        }
+        console.log(`[chargePolicyUpfrontCost] cost: $${Math.round(dollars / 1e6)}M (reserves: $${Math.round(drawReserves / 1e6)}M, debt: +$${Math.round(drawDebt / 1e6)}M) on nation ${nationId}`);
+    } else {
+        // Revenue: credit reserves.
+        const credit = Math.abs(dollars);
+        const newReserves = Math.round(reserves + credit);
+        const { error } = await supabase
+            .from('nations')
+            .update({ budget_reserves: newReserves })
+            .eq('id', nationId);
+        if (error) {
+            console.error('[chargePolicyUpfrontCost] revenue update failed', { nationId, error: error.message });
+            return;
+        }
+        console.log(`[chargePolicyUpfrontCost] revenue: +$${Math.round(credit / 1e6)}M to reserves on nation ${nationId}`);
+    }
+}
+
+// Phase 4.2: apply the inverse of a list of sector_effects to a single
+// faction's popularity. Used by enactBill when a policy article switches
+// the nation from one option to another — the bill's sponsor "takes the
+// inverse" of the old option's popularity shift, mirroring the bill-fail
+// rule that already lives in computeSectorShifts. Reads / writes the same
+// faction_sector_popularity table that processSectorShifts touches and
+// applies the same 0–100 clamp.
+async function applyInverseSectorEffectsToFaction(supabase, nationId, factionId, sectorEffects) {
+    if (!nationId || !factionId) return;
+    if (!Array.isArray(sectorEffects) || sectorEffects.length === 0) return;
+
+    const { data: sectors, error: secErr } = await supabase
+        .from('sectors')
+        .select('id, sector_key')
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (secErr) {
+        console.error('[applyInverseSectorEffectsToFaction] failed to load sectors', { nationId, error: secErr.message });
+        return;
+    }
+    const sectorIdByKey = new Map((sectors || []).map(s => [s.sector_key, s.id]));
+    if (sectorIdByKey.size === 0) return;
+
+    const inverseDeltas = sectorEffects
+        .filter(e => e && e.sector_key && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0)
+        .map(e => ({
+            sector_id: sectorIdByKey.get(e.sector_key),
+            delta: -(parseInt(e.change_tenths, 10) || 0),
+        }))
+        .filter(d => d.sector_id);
+    if (inverseDeltas.length === 0) return;
+
+    const { data: current, error: curErr } = await supabase
+        .from('faction_sector_popularity')
+        .select('sector_id, popularity')
+        .eq('faction_id', factionId)
+        .in('sector_id', inverseDeltas.map(d => d.sector_id));
+    if (curErr) {
+        console.error('[applyInverseSectorEffectsToFaction] failed to load current popularities', { factionId, error: curErr.message });
+        return;
+    }
+    const currentBySectorId = new Map((current || []).map(r => [r.sector_id, Number(r.popularity) || 0]));
+
+    const upserts = [];
+    for (const d of inverseDeltas) {
+        const cur = currentBySectorId.get(d.sector_id) ?? 0;
+        const next = Math.max(0, Math.min(100, Math.round(cur + d.delta)));
+        if (next === cur) continue;
+        upserts.push({ faction_id: factionId, sector_id: d.sector_id, popularity: next });
+    }
+    if (upserts.length === 0) return;
+
+    const { error: upsertErr } = await supabase
+        .from('faction_sector_popularity')
+        .upsert(upserts, { onConflict: 'faction_id,sector_id' });
+    if (upsertErr) {
+        console.error('[applyInverseSectorEffectsToFaction] upsert failed', { factionId, count: upserts.length, error: upsertErr.message });
+    }
+}
 
 // ==================== BILL RESOLUTION ENGINE ====================
 
@@ -10286,7 +10461,7 @@ async function resolveVetoOverrideBill(supabase, bill, ctx) {
         await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
         // Enact the ORIGINAL vetoed bill — bypasses president's desk.
         const { data: originalBill } = await supabase.from('bills')
-            .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(*, factions(faction_name))')
+            .select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(*, factions(faction_name))')
             .eq('id', bill.original_bill_id).single();
         if (originalBill) {
             await supabase.from('bills').update({ president_action: 'overridden' }).eq('id', originalBill.id);
@@ -10498,7 +10673,9 @@ async function resolveExpiredVotes(supabase, nationId) {
         // Simplified query: bill_support only needs faction_id/stance/seat_count for vote
         // tallying. Nesting factions() inside bill_support adds a FK join that can cause
         // the entire query to fail silently in PostgREST, leaving all bills stuck on floor.
-        .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+        // Phase 4.1: also embed the chosen option for every policy article so
+        // enactBill knows which option's effects to fire downstream.
+        .select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(faction_id, stance, seat_count)')
         .eq('nation_id', nationId)
         .eq('status', 'floor')
         .lte('voting_ends_tick', currentTick);
@@ -11022,10 +11199,11 @@ async function resolveStuckFloorBills(supabase, nationId) {
                 await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
                 results.push({ billId: bill.id, billName: bill.bill_name, result: 'president_desk' });
             } else {
-                // Load full bill data for enactment — use simplified join (no nested factions in bill_support)
+                // Load full bill data for enactment — use simplified join (no nested factions in bill_support).
+                // Phase 4.1: include the chosen policy_option under each article.
                 const { data: fullBill } = await supabase
                     .from('bills')
-                    .select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+                    .select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(faction_id, stance, seat_count)')
                     .eq('id', bill.id)
                     .single();
 
@@ -11224,9 +11402,12 @@ async function enactBill(supabase, bill, currentTick) {
                 }
             }
 
-            // Clear FK references before upserting the new active_law
+            // Clear FK references before upserting the new active_law.
+            // Phase 4.2: also pull the currently-selected option (if any) so
+            // we can detect option switches and revert the old option's
+            // sector_effects below.
             const { data: existingActiveLaw } = await supabase.from('active_laws')
-                .select('id')
+                .select('id, selected_option_id, selected_option:policy_options!selected_option_id(sector_effects)')
                 .eq('nation_id', bill.nation_id)
                 .eq('policy_id', policy.id)
                 .maybeSingle();
@@ -11234,6 +11415,19 @@ async function enactBill(supabase, bill, currentTick) {
                 await supabase.from('bills').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingActiveLaw.id);
                 await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingActiveLaw.id);
             }
+
+            // Phase 4.2-fix: option-switch sector revert moves to after the
+            // upsert success below. Capturing the old sector_effects here so
+            // we still have them once the upsert lands — the existingActiveLaw
+            // row gets overwritten by the upsert and the inline join is gone.
+            const isOptionSwitch =
+                !!existingActiveLaw &&
+                !!existingActiveLaw.selected_option_id &&
+                !!art.selected_option_id &&
+                existingActiveLaw.selected_option_id !== art.selected_option_id;
+            const oldOptionSectorEffects = isOptionSwitch
+                ? (existingActiveLaw.selected_option?.sector_effects || null)
+                : null;
             console.log('[enactBill] stage=upsert_active_law attempt', {
                 ...logContext,
                 policyId: policy.id,
@@ -11246,6 +11440,15 @@ async function enactBill(supabase, bill, currentTick) {
                     proposed_by: bill.proposed_by,
                     effects_applied_through_tick: currentTick - 1
                 };
+            // Phase 4.1: stamp the chosen option from the bill_article so the
+            // tick processor (Phase 4.4) and bill-pass effects (Phase 4.3)
+            // can read this nation's per-option configuration. Persists null
+            // for legacy / orphaned policies that have no policy_options
+            // (matches the pre-multi-option behaviour where stat_effects
+            // came directly off the policies row).
+            if (art.selected_option_id) {
+                activeLawRow.selected_option_id = art.selected_option_id;
+            }
             // Stamp entrenchment from bill
             if (bill.entrenchment_tier) {
                 activeLawRow.entrenchment_tier = bill.entrenchment_tier;
@@ -11273,6 +11476,31 @@ async function enactBill(supabase, bill, currentTick) {
                 policyId: policy.id,
                 policyName: policy.policy_name
             });
+
+            // Phase 4.2-fix: revert the OLD option's sector_effects against
+            // the bill sponsor only after the active_law upsert has actually
+            // landed. If the upsert had failed, the early-return above would
+            // have skipped this revert — without that guard, we'd have
+            // already mutated faction popularity for a switch that never
+            // happened. Captured oldOptionSectorEffects above before the
+            // upsert overwrote the existingActiveLaw row.
+            if (oldOptionSectorEffects && Array.isArray(oldOptionSectorEffects) && oldOptionSectorEffects.length > 0) {
+                await applyInverseSectorEffectsToFaction(
+                    supabase,
+                    bill.nation_id,
+                    bill.proposed_by,
+                    oldOptionSectorEffects
+                );
+            }
+
+            // Phase 4.3: charge the new option's upfront cost. Fires whether
+            // this is a fresh enactment or an option switch — every passing
+            // bill that activates an option pays its implementation cost.
+            // Skipped for orphaned policies that have no policy_options
+            // (no option attached to the article means no upfront to charge).
+            if (art.selected_option) {
+                await chargePolicyUpfrontCost(supabase, bill.nation_id, art.selected_option);
+            }
 
             // MLA enact hook: cancel pending defense-minister confirmations
             // so they don't collide with the forced per-tick sync.
@@ -21521,15 +21749,18 @@ function _logStatDebug(supabase, nation, tick, statKey, contributorType, contrib
 async function buildPolicyDecayAdjustments(supabase, nationId) {
     const adjustments = {};
 
+    // Phase 4.4: pull stat_effects from the chosen policy_option first; fall
+    // back to the legacy policies.stat_effects column for orphaned data
+    // that pre-dates the multi-option model.
     const { data: activeLaws, error } = await supabase
         .from('active_laws')
-        .select('policy_id, policies(stat_effects)')
+        .select('policy_id, policies(stat_effects), selected_option:policy_options!selected_option_id(stat_effects)')
         .eq('nation_id', nationId);
 
     if (error || !activeLaws) return adjustments;
 
     for (const law of activeLaws) {
-        const effects = law.policies?.stat_effects;
+        const effects = law.selected_option?.stat_effects ?? law.policies?.stat_effects;
         if (!Array.isArray(effects)) continue;
 
         for (const eff of effects) {
@@ -22610,10 +22841,13 @@ async function rebalanceVacantSeats(supabase, nation) {
 async function processStatEffects(supabase, nation, currentTick) {
     let activeLaws;
 
-    // Try join query first; fall back to separate lookup if FK is missing
+    // Try join query first; fall back to separate lookup if FK is missing.
+    // Phase 4.4: also embed the chosen policy_option so per-tick stat effects
+    // come from the option that's actually active for this nation, not the
+    // legacy policies.stat_effects column (which Phase 2.5 stopped writing).
     const { data, error: joinError } = await supabase
         .from('active_laws')
-        .select('*, policies(*)')
+        .select('*, policies(*), selected_option:policy_options!selected_option_id(*)')
         .eq('nation_id', nation.id);
 
     if (joinError) {
@@ -22688,7 +22922,13 @@ async function processStatEffects(supabase, nation, currentTick) {
         if (isReversal && law.reversal_effects && Array.isArray(law.reversal_effects)) {
             effects = law.reversal_effects;
         } else if (policy) {
-            if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
+            // Phase 4.4: prefer the active option's stat_effects. Fall back
+            // to policies.stat_effects (orphaned data) and finally to the
+            // legacy single-stat columns.
+            const optionEffects = law.selected_option?.stat_effects;
+            if (Array.isArray(optionEffects) && optionEffects.length > 0) {
+                effects.push(...optionEffects);
+            } else if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
                 effects.push(...policy.stat_effects);
             } else if (policy.target_stat) {
                 effects.push({
@@ -23409,9 +23649,13 @@ async function processGovernmentCollapseCheck(supabase, nation, currentTick) {
 }
 
 async function processOngoingCosts(supabase, nation, currentTick) {
+    // Phase 4.4: embed the chosen option so the ongoing-cost loop reads
+    // ongoing_base_cost / ongoing_scaling_stat from the option that's
+    // actually active for this nation, not the legacy policies row
+    // (which Phase 2.5 stopped writing).
     const { data: activeLaws } = await supabase
         .from('active_laws')
-        .select('*, policies(*)')
+        .select('*, policies(*), selected_option:policy_options!selected_option_id(ongoing_base_cost, ongoing_scaling_stat)')
         .eq('nation_id', nation.id);
 
     if (!activeLaws || activeLaws.length === 0) return { totalCost: 0, details: [] };
@@ -23425,14 +23669,16 @@ async function processOngoingCosts(supabase, nation, currentTick) {
         if (!policy) continue;
         if (policy.policy_type === 'lever') continue; // Levers are one-time — no ongoing cost
 
-        const baseCost = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
+        const opt = law.selected_option || null;
+        const baseCost = (opt?.ongoing_base_cost ?? policy.ongoing_base_cost ?? policy.ongoing_cost_per_tick) || 0;
         if (baseCost === 0) continue;
 
+        const scalingStat = opt?.ongoing_scaling_stat || policy.ongoing_scaling_stat;
         let tickCost = baseCost;
 
-        if (policy.ongoing_scaling_stat && nation[policy.ongoing_scaling_stat] !== undefined) {
-            const scalingVal = Number(nation[policy.ongoing_scaling_stat]) || 1;
-            const divisor = RAW_SCALING_DIVISORS[policy.ongoing_scaling_stat] || 50;
+        if (scalingStat && nation[scalingStat] !== undefined) {
+            const scalingVal = Number(nation[scalingStat]) || 1;
+            const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
             tickCost = baseCost * (scalingVal / divisor);
         }
 
@@ -33431,10 +33677,12 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
  *   - Surplus: subtracts surplus / 12 from debt (floor at 0)
  */
 async function processBudgetDeficit(supabase, nation, currentTick, institutionConfig) {
-    // 1. Fetch active laws with policy data
+    // 1. Fetch active laws with policy data + the chosen option so
+    //    computeMinistryPolicyCost (Phase 4.4) can read the option's
+    //    fiscal_category / ongoing_base_cost / ongoing_scaling_stat.
     const { data: activeLaws } = await supabase
         .from('active_laws')
-        .select('*, policies(*)')
+        .select('*, policies(*), selected_option:policy_options!selected_option_id(fiscal_category, ongoing_base_cost, ongoing_scaling_stat)')
         .eq('nation_id', nation.id);
 
     // 2. Fetch trade tariff revenue from the trade engine (written earlier this tick)
