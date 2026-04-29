@@ -162,8 +162,11 @@ async function loadExpenditureData(nationId, nation) {
     var totals = {};
     var details = {};
 
+    // Phase 5.2: embed the active option so fiscal_category / costs come
+    // from the option that's actually active for this nation. Phase 2.5
+    // onward stops writing those columns on the policies row.
     var res = await _supabase.from('active_laws')
-        .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat, policy_type)')
+        .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat, policy_type), selected_option:policy_options!selected_option_id(option_name, fiscal_category, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat)')
         .eq('nation_id', nationId)
         .eq('is_reversal', false);
 
@@ -174,25 +177,29 @@ async function loadExpenditureData(nationId, nation) {
         var law = res.data[i];
         if (law.is_reversal) continue;
         var policy = law.policies;
-        if (!policy || !policy.fiscal_category) continue;
+        if (!policy) continue;
         if (policy.policy_type === 'lever') continue; // Levers have no ongoing cost
 
-        var cat = policy.fiscal_category;
+        var opt = law.selected_option || null;
+        var cat = (opt && opt.fiscal_category) || policy.fiscal_category;
+        if (!cat) continue;
         if (!totals[cat]) totals[cat] = 0;
         if (!details[cat]) details[cat] = [];
 
         var policyCost = 0;
 
-        var ongoingBase = policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0;
+        var ongoingBase = ((opt && opt.ongoing_base_cost) || policy.ongoing_base_cost || policy.ongoing_cost_per_tick) || 0;
+        var ongoingScaling = (opt && opt.ongoing_scaling_stat) || policy.ongoing_scaling_stat;
         if (ongoingBase > 0) {
-            var ongoingScaled = scaleCost(ongoingBase, policy.ongoing_scaling_stat, nation);
+            var ongoingScaled = scaleCost(ongoingBase, ongoingScaling, nation);
             policyCost += ongoingScaled * GAME_CONFIG.TICKS_PER_YEAR * 1000000;
         }
 
         if (law.passed_tick >= yearStartTick) {
-            var upfront = policy.upfront_cost || 0;
+            var upfront = ((opt && opt.upfront_cost) || policy.upfront_cost) || 0;
+            var upfrontScaling = (opt && opt.upfront_scaling_stat) || policy.upfront_scaling_stat;
             if (upfront > 0) {
-                var upfrontScaled = scaleCost(upfront, policy.upfront_scaling_stat, nation);
+                var upfrontScaled = scaleCost(upfront, upfrontScaling, nation);
                 policyCost += upfrontScaled * 1000000;
             }
         }
@@ -200,7 +207,12 @@ async function loadExpenditureData(nationId, nation) {
         policyCost *= inflationMult;
         totals[cat] += policyCost;
         if (policyCost > 0) {
-            details[cat].push({ name: policy.policy_name, cost: policyCost, type: 'policy' });
+            // Surface the option name in the budget row so the player can
+            // see which option of a multi-option policy is being charged.
+            var displayName = (opt && opt.option_name)
+                ? (policy.policy_name + ' — ' + opt.option_name)
+                : policy.policy_name;
+            details[cat].push({ name: displayName, cost: policyCost, type: 'policy' });
         }
     }
 

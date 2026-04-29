@@ -2006,27 +2006,35 @@ async function loadBudgetData() {
     const expenditures = {};
 
     try {
+        // Phase 5.2: embed the active option so fiscal_category / cost
+        // fields come from the chosen option. Phase 2.5 onward stops
+        // writing those columns on the policies row, so a multi-option
+        // policy without this fallback would fall through the
+        // fiscal_category check and contribute nothing to expenditures.
         const lawsRes = await _supabase.from('active_laws')
-            .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, policy_type)')
+            .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, policy_type), selected_option:policy_options!selected_option_id(fiscal_category, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat)')
             .eq('nation_id', nation.id)
             .eq('is_reversal', false);
         for (const law of (lawsRes.data || [])) {
             if (law.is_reversal) continue;
             const p = law.policies;
-            if (!p || !p.fiscal_category || p.policy_type === 'lever') continue;
+            if (!p || p.policy_type === 'lever') continue;
+            const opt = law.selected_option || null;
+            const fiscalCat = opt?.fiscal_category ?? p.fiscal_category;
+            if (!fiscalCat) continue;
+            const ongoingBase = (opt?.ongoing_base_cost ?? p.ongoing_base_cost ?? p.ongoing_cost_per_tick) || 0;
+            const ongoingScaling = opt?.ongoing_scaling_stat || p.ongoing_scaling_stat;
+            const upfront = (opt?.upfront_cost ?? p.upfront_cost) || 0;
+            const upfrontScaling = opt?.upfront_scaling_stat || p.upfront_scaling_stat;
             let cost = 0;
-            const ongoingBase = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
             if (ongoingBase > 0) {
-                cost += _gbScaleCost(ongoingBase, p.ongoing_scaling_stat, nation) * GAME_CONFIG.TICKS_PER_YEAR * 1_000_000;
+                cost += _gbScaleCost(ongoingBase, ongoingScaling, nation) * GAME_CONFIG.TICKS_PER_YEAR * 1_000_000;
             }
-            if (law.passed_tick >= yearStartTick) {
-                const upfront = p.upfront_cost || 0;
-                if (upfront > 0) {
-                    cost += _gbScaleCost(upfront, p.upfront_scaling_stat, nation) * 1_000_000;
-                }
+            if (law.passed_tick >= yearStartTick && upfront > 0) {
+                cost += _gbScaleCost(upfront, upfrontScaling, nation) * 1_000_000;
             }
             cost *= inflationMult;
-            expenditures[p.fiscal_category] = (expenditures[p.fiscal_category] || 0) + cost;
+            expenditures[fiscalCat] = (expenditures[fiscalCat] || 0) + cost;
         }
     } catch (_) { /* policy costs stay 0 for failed fetch */ }
 
