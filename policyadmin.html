@@ -1339,22 +1339,33 @@ async function savePolicy() {
             }
         }
 
-        // Sync nation_policies for every option: wipe existing rows for
-        // this option, then re-insert from the option's starting_nations
-        // Set. A failure here surfaces to the surrounding catch.
+        // Sync nation_policies AND active_laws for every option: wipe
+        // existing rows for this option, then re-insert from the option's
+        // starting_nations Set. nation_policies tracks per-option metadata
+        // for Phase 4's effects engine; active_laws is the table laws.html
+        // and other display sites query, so a starting-status assignment
+        // belongs in both. A failure here surfaces to the surrounding catch.
         for (const payload of optionPayloads) {
             const optId = payload.stateRef.id;
-            const { error: delErr } = await _supabase
+
+            const { error: delNpErr } = await _supabase
                 .from('nation_policies')
                 .delete()
                 .eq('policy_id', policyId)
                 .eq('selected_option_id', optId);
-            if (delErr) throw delErr;
+            if (delNpErr) throw delNpErr;
+
+            const { error: delAlErr } = await _supabase
+                .from('active_laws')
+                .delete()
+                .eq('policy_id', policyId)
+                .eq('selected_option_id', optId);
+            if (delAlErr) throw delAlErr;
 
             if (payload.stateRef.starting_nations.size === 0) continue;
 
             const totalDuration = Math.max(...payload.normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
-            const records = [...payload.stateRef.starting_nations].map(nationId => ({
+            const npRecords = [...payload.stateRef.starting_nations].map(nationId => ({
                 nation_id: nationId,
                 policy_id: policyId,
                 selected_option_id: optId,
@@ -1367,8 +1378,19 @@ async function savePolicy() {
                 effects_completed: true,
                 ticks_elapsed: totalDuration
             }));
-            const { error: insErr } = await _supabase.from('nation_policies').insert(records);
-            if (insErr) throw insErr;
+            const { error: insNpErr } = await _supabase.from('nation_policies').insert(npRecords);
+            if (insNpErr) throw insNpErr;
+
+            const alRecords = [...payload.stateRef.starting_nations].map(nationId => ({
+                nation_id: nationId,
+                policy_id: policyId,
+                selected_option_id: optId,
+                passed_tick: 0
+            }));
+            const { error: insAlErr } = await _supabase
+                .from('active_laws')
+                .upsert(alRecords, { onConflict: 'nation_id,policy_id' });
+            if (insAlErr) throw insAlErr;
         }
 
         editingPolicyId = null;
