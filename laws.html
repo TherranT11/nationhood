@@ -466,6 +466,23 @@ function getCurrentOptionForPolicy(policyId) {
     return policy.policy_options.find(o => o.id === law.selected_option_id) || null;
 }
 
+// Phase 3.4: article-card display helpers. Show "Policy Name → Switch to
+// Target Option" when the article carries a selected_option from Phase 3.3.
+// Repeal articles and orphaned policies fall back to the bare policy name.
+function articleNameHtml(art) {
+    const policyName = art?.policies?.policy_name || 'Unknown';
+    const optionName = art?.selected_option?.option_name;
+    if (!optionName || art?.repeal_active_law_id) return escapeHtml(policyName);
+    return escapeHtml(policyName) + ' → <span style="color:var(--blue, #5b9bd5);">Switch to ' + escapeHtml(optionName) + '</span>';
+}
+function articleDescriptionHtml(art) {
+    // Prefer the option's description when present so the article card
+    // explains what the chosen option is rather than the umbrella policy.
+    const optionDesc = art?.selected_option?.option_description;
+    const policyDesc = art?.policies?.description || '';
+    return escapeHtml(optionDesc || policyDesc);
+}
+
 // Phase 3.2: sector_key → display-name lookup populated by loadSectorsLookup
 // during loadLawsData. Falls back to a title-cased version of the key when
 // the sectors table doesn't have a row for the key (e.g. orphaned data).
@@ -643,11 +660,15 @@ async function loadLawsData() {
                 .from('policies')
                 .select('*, policy_options(id, option_name, option_description, option_order, is_active, sector_effects, stat_effects, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat, fiscal_category)')
                 .eq('is_active', true),
-            _supabase.from('active_laws').select('*, policies(*)').eq('nation_id', nid),
-            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name)), bill_support(*)').eq('nation_id', nid).eq('status', 'committee'),
-            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)').eq('nation_id', nid).in('status', ['floor', 'vetoed', 'referendum_pending', 'referendum_approved']),
-            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'frozen'),
-            isPresidential ? _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*))').eq('nation_id', nid).eq('status', 'president_desk') : Promise.resolve({ data: [] }),
+            // Phase 3.4: each bill_articles row also embeds the chosen
+            // policy_options row (via the selected_option_id FK) so the
+            // article-card renderer can show "Switch to X" without a
+            // second round-trip per bill.
+            _supabase.from('active_laws').select('*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description)').eq('nation_id', nid),
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name), selected_option:policy_options!selected_option_id(option_name, option_description)), bill_support(*)').eq('nation_id', nid).eq('status', 'committee'),
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description)), bill_support(faction_id, stance, seat_count)').eq('nation_id', nid).in('status', ['floor', 'vetoed', 'referendum_pending', 'referendum_approved']),
+            _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description))').eq('nation_id', nid).eq('status', 'frozen'),
+            isPresidential ? _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description))').eq('nation_id', nid).eq('status', 'president_desk') : Promise.resolve({ data: [] }),
             _supabase.from('bills').select('*, factions(faction_name)').eq('nation_id', nid).in('status', ['passed', 'failed']).order('passed_tick', { ascending: false }).limit(10)
         ];
         const [policiesRes, lawsRes, committeeRes, floorRes, frozenRes, deskRes, recentRes] = await Promise.all(queries);
@@ -929,7 +950,7 @@ function renderPresidentDeskBills() {
                 if (!art.policies) return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${art.article_title || 'Untitled'} <span style="background:var(--blue);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">TEXT</span></span></div></div>`;
                 const _isRepeal = !!art.repeal_active_law_id;
                 const _repealBadge = _isRepeal ? ' <span style="background:var(--red);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">REPEAL</span>' : '';
-                return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${_isRepeal ? 'Repeal: ' : ''}${art.policies?.policy_name || 'Unknown'}${_repealBadge}</span><div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
+                return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${_isRepeal ? 'Repeal: ' : ''}${articleNameHtml(art)}${_repealBadge}</span><div class="article-desc">${articleDescriptionHtml(art)}</div></div></div>`;
             }).join('')
             : (bill.bill_type === 'repeal' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">🗑️ Proposes to rescind an active law</span></div></div>' : '');
 
@@ -1103,7 +1124,7 @@ function renderFloorBill(bill, isVetoed) {
                     }
                     const _isRepeal = !!art.repeal_active_law_id;
                     const _repealBadge = _isRepeal ? ' <span style="background:var(--red);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">REPEAL</span>' : '';
-                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${_isRepeal ? 'Repeal: ' : ''}${art.policies?.policy_name || 'Unknown'}${_repealBadge}</span><div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
+                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${_isRepeal ? 'Repeal: ' : ''}${articleNameHtml(art)}${_repealBadge}</span><div class="article-desc">${articleDescriptionHtml(art)}</div></div></div>`;
                 }).join(''))))))))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
@@ -1311,7 +1332,7 @@ function renderCommitteeBill(bill) {
                     }
                     const _isRepeal = !!art.repeal_active_law_id;
                     const _repealBadge = _isRepeal ? ' <span style="background:var(--red);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">REPEAL</span>' : '';
-                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${_isRepeal ? 'Repeal: ' : ''}${art.policies?.policy_name || 'Unknown'}${_repealBadge}</span><div class="article-desc">${art.policies?.description || ''}</div></div></div>`;
+                    return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${_isRepeal ? 'Repeal: ' : ''}${articleNameHtml(art)}${_repealBadge}</span><div class="article-desc">${articleDescriptionHtml(art)}</div></div></div>`;
                 }).join('')))))}
             </div>
             ${decreeActionsHTML}
@@ -3874,14 +3895,19 @@ function renderDraftArticles() {
                 <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
             </div>`;
         }
-        // Policy cost/revenue badge for draft articles
+        // Phase 3.4: prefer the chosen option's costs over the legacy
+        // policy-level columns. selectedOption is captured at draft time so
+        // the cost shown matches what Phase 4's engine will charge.
+        const _opt = art.selectedOption || null;
         let _policyCostBadge = '';
         if (art.policy) {
             const _fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
-            const _upRaw = art.policy.upfront_cost || 0;
-            const _onRaw = art.policy.ongoing_base_cost || art.policy.ongoing_cost_per_tick || 0;
-            const _upCost = scaleLawCost(_upRaw, art.policy.upfront_scaling_stat);
-            const _onCost = scaleLawCost(_onRaw, art.policy.ongoing_scaling_stat);
+            const _upRaw   = (_opt?.upfront_cost      ?? art.policy.upfront_cost      ?? 0);
+            const _onRaw   = (_opt?.ongoing_base_cost ?? art.policy.ongoing_base_cost ?? art.policy.ongoing_cost_per_tick ?? 0);
+            const _upStat  = _opt?.upfront_scaling_stat || art.policy.upfront_scaling_stat;
+            const _onStat  = _opt?.ongoing_scaling_stat || art.policy.ongoing_scaling_stat;
+            const _upCost = scaleLawCost(_upRaw, _upStat);
+            const _onCost = scaleLawCost(_onRaw, _onStat);
             const _parts = [];
             if (_upCost > 0) _parts.push(`Up: ${_fmtC(_upCost)}`);
             else if (_upCost < 0) _parts.push(`<span style="color:var(--green)">Rev: ${_fmtC(Math.abs(_upCost))}</span>`);
@@ -3889,7 +3915,18 @@ function renderDraftArticles() {
             else if (_onCost < 0) _parts.push(`<span style="color:var(--green)">Relief: ${_fmtC(Math.abs(_onCost))}/t</span>`);
             if (_parts.length > 0) _policyCostBadge = ' <span style="font-size:0.7rem;color:var(--text-secondary);margin-left:6px;">' + _parts.join(' · ') + '</span>';
         }
-        return `<div class="draft-article-card"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}${_policyCostBadge}</div><div class="draft-article-name">${art.policy.policy_name}</div><div class="draft-article-meta">${art.policy.description || ''}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
+        // Phase 3.4: show "Switch to <option>" with a "from <current>" subtext
+        // when the article carries a target option. Falls back to the bare
+        // policy name for repeal articles and orphaned policies.
+        const _targetName  = _opt?.option_name;
+        const _currentName = art.currentOption?.option_name;
+        const _articleName = _targetName
+            ? `${escapeHtml(art.policy.policy_name)} — <span style="color:var(--blue, #5b9bd5);">Switch to ${escapeHtml(_targetName)}</span>`
+            : escapeHtml(art.policy.policy_name);
+        const _articleSub = _targetName
+            ? `from ${escapeHtml(_currentName || 'None')}`
+            : escapeHtml(art.policy.description || '');
+        return `<div class="draft-article-card"><div class="draft-article-info"><div class="draft-article-num">Article ${art.articleNumber}${_policyCostBadge}</div><div class="draft-article-name">${_articleName}</div><div class="draft-article-meta">${_articleSub}</div></div><button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button></div>`;
     }).join('');
 }
 
