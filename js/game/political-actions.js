@@ -3523,11 +3523,16 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         pmResigned = true;
     }
 
-    // 4. Coalition check — handle if in coalition but not PM (or PM resignation didn't dissolve)
+    // 4. Coalition check — handle if in coalition but not PM (or PM resignation didn't dissolve).
+    // lead_party_id isn't a real column on government_formations — derive
+    // from ministry_assignments['prime_minister'] (with proposed_by as
+    // fallback). The previous query selected lead_party_id directly,
+    // 42703'd silently, and always routed the disbanding party through
+    // the junior-partner branch even when they were the PM.
     if (!pmResigned) {
         const { data: formations } = await supabase
             .from('government_formations')
-            .select('id, lead_party_id, party_ids')
+            .select('id, party_ids, ministry_assignments, proposed_by')
             .eq('nation_id', nationId)
             .in('status', ['formed', 'caretaker']);
 
@@ -3536,7 +3541,8 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         );
 
         if (myFormation) {
-            if (myFormation.lead_party_id === factionId) {
+            const formationLeadPartyId = myFormation.ministry_assignments?.prime_minister || myFormation.proposed_by;
+            if (formationLeadPartyId === factionId) {
                 // Lead party disbanding — dissolve entire coalition
                 await dissolveCoalition(supabase, nationId);
             } else {

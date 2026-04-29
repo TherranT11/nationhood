@@ -988,17 +988,6 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
         .maybeSingle();
     if (activeGov) {
         govStatus = activeGov.status;
-    } else {
-        // Fallback: check legacy active_coalitions
-        const { data: legacyGov } = await supabase
-            .from('active_coalitions')
-            .select('id, status')
-            .eq('nation_id', nationId)
-            .is('dissolved_at', null)
-            .order('formed_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        govStatus = legacyGov?.status || 'formed'; // legacy rows without status default to formed
     }
 
     if (govStatus === 'caretaker') {
@@ -1859,17 +1848,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .eq('nation_id', nation.id)
             .in('status', ['formed', 'active', 'caretaker'])
             .maybeSingle();
-        if (govFormation) {
-            existingGov = govFormation;
-        } else {
-            const { data: legacyGov } = await supabase
-                .from('active_coalitions')
-                .select('id, status')
-                .eq('nation_id', nation.id)
-                .is('dissolved_at', null)
-                .maybeSingle();
-            if (legacyGov) existingGov = legacyGov;
-        }
+        if (govFormation) existingGov = govFormation;
 
         if (existingGov) {
             console.log(`Dissolving government after manual election for ${nation.name}`);
@@ -2626,28 +2605,13 @@ export async function processElections(supabase, nation, currentTick) {
             // must be dissolved so that processGovernmentVacancy can apply -2 approval
             // penalties until a new coalition is formed.
             let existingGov = null;
-            let existingGovSource = null;
             const { data: govFormation } = await supabase
                 .from('government_formations')
                 .select('id, status')
                 .eq('nation_id', nation.id)
                 .in('status', ['formed', 'active', 'caretaker'])
                 .maybeSingle();
-            if (govFormation) {
-                existingGov = govFormation;
-                existingGovSource = 'government_formations';
-            } else {
-                const { data: legacyGov } = await supabase
-                    .from('active_coalitions')
-                    .select('id, status')
-                    .eq('nation_id', nation.id)
-                    .is('dissolved_at', null)
-                    .maybeSingle();
-                if (legacyGov) {
-                    existingGov = legacyGov;
-                    existingGovSource = 'active_coalitions';
-                }
-            }
+            if (govFormation) existingGov = govFormation;
 
             // Fail all frozen bills (from caretaker period) regardless of whether
             // an existing government row was found — bills may have been frozen by
@@ -2662,7 +2626,7 @@ export async function processElections(supabase, nation, currentTick) {
             await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
             if (existingGov) {
-                console.log(`Dissolving ${existingGov.status} government after election for ${nation.name} (source: ${existingGovSource})`);
+                console.log(`Dissolving ${existingGov.status} government after election for ${nation.name}`);
 
                 // Reset failed_formation_attempts so the new election gets a fresh
                 // Stage 1 window (snap election if formation fails). Without this,
