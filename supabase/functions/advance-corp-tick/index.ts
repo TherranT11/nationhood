@@ -4192,7 +4192,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
 // ════════════════════════════════════════════════════════════════════════════════
 
 const SHIPPING_SECTOR_MAP = {
-    fuel_energy:        { subsector: 'bulk_cargo',           category: 'FUEL',     goods: 'Fuel & Energy Products',   goodsSub: 'Petroleum, LNG, coal, refined fuels',        vessel: 'Tanker',          vesselNote: 'Double-hull required.', unit: 'tons' },
+    fuel_energy:        { subsector: 'specialized_transport', category: 'FUEL',     goods: 'Fuel & Energy Products',   goodsSub: 'Petroleum, LNG, coal, refined fuels',        vessel: 'Tanker',          vesselNote: 'Double-hull required.', unit: 'tons' },
     minerals:           { subsector: 'bulk_cargo',           category: 'MINERALS', goods: 'Minerals & Raw Materials', goodsSub: 'Iron ore, copper, bauxite, rare earths',      vessel: 'Bulk Carrier',    vesselNote: 'Heavy-load bulk.',      unit: 'tons' },
     grains_staples:     { subsector: 'bulk_cargo',           category: 'FOOD',     goods: 'Grains & Staples',         goodsSub: 'Wheat, rice, corn, soybeans',                 vessel: 'Bulk Carrier',    vesselNote: 'Dry bulk holds.',       unit: 'tons' },
     livestock_dairy:    { subsector: 'bulk_cargo',           category: 'FOOD',     goods: 'Livestock & Dairy',        goodsSub: 'Feed crops, processed dairy, frozen meat',    vessel: 'Bulk Carrier',    vesselNote: 'Temperature-controlled.', unit: 'tons' },
