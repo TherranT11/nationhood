@@ -3043,7 +3043,9 @@ function renderOptionSelector(policyId) {
     if (!group) return;
 
     const policy = allPolicies.find(p => p.id === policyId);
-    const options = (policy?.policy_options || []).slice().sort((a, b) => (a.option_order || 0) - (b.option_order || 0));
+    // policy.policy_options was pre-sorted by option_order in loadLawsData;
+    // use the array directly instead of re-sorting on every render.
+    const options = policy?.policy_options || [];
 
     details.innerHTML = '';
     if (!policy || options.length === 0) {
@@ -3105,9 +3107,12 @@ function onTargetOptionChange() {
 // sectors affected (green ↑ / red ↓), stats affected (green ↑ / red ↓).
 function renderOptionDetails(option) {
     const sectorChips = (Array.isArray(option.sector_effects) ? option.sector_effects : [])
-        .filter(s => s && s.sector_key && Number(s.change_tenths) !== 0)
+        // Number.isFinite guards against NaN / null / strings that happen to
+        // pass !== 0 — corrupted rows would otherwise render with NaN
+        // magnitudes in the picker.
+        .filter(s => s && s.sector_key && Number.isFinite(Number(s.change_tenths)) && Number(s.change_tenths) !== 0)
         .map(s => {
-            const tenths = Number(s.change_tenths) || 0;
+            const tenths = Number(s.change_tenths);
             const up = tenths > 0;
             const arrow = up ? '↑' : '↓';
             const cls = up ? 'effect-up' : 'effect-down';
@@ -3516,11 +3521,13 @@ async function addArticle() {
         draftArticles.push({
             articleNumber: draftArticles.length + 2,
             policy: selectedPolicy,
-            // Phase 3.3: persist the target option through draft → submit.
-            // Stored both as id (for the DB write) and as the resolved
-            // option object (so renderDraftArticles can show its name
-            // without re-walking allPolicies).
+            // Phase 3.3: persist the target option id through draft → submit
+            // for the bill_articles.selected_option_id write below.
             selectedOptionId: targetOption ? targetOption.id : null,
+            // Phase 3.3 stages these for Phase 3.4: selectedOption powers
+            // the "Switch to <name>" article-card label, currentOption
+            // powers the "from <name>" subtext. Captured at draft time
+            // because the active law may change before the bill is shown.
             selectedOption: targetOption,
             currentOption: getCurrentOptionForPolicy(selectedPolicy.id) || null,
         });
