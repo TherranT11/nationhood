@@ -731,8 +731,7 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
 
 /**
  * Dissolve the current coalition government.
- * - Sets government_formations status to 'dissolved'
- * - Dissolves legacy active_coalitions
+ * - Sets government_formations status to 'dissolved' (canonical)
  * - Deactivates PM in head_of_government
  * Ministries are NOT cleared — the cabinet persists as caretaker until the
  * next election. Nation enters formation period (processGovernmentVacancy
@@ -751,14 +750,6 @@ export async function dissolveCoalition(supabase, nationId, excludeFormationId) 
     if (excludeFormationId) dissolveQuery = dissolveQuery.neq('id', excludeFormationId);
     const { error: formErr } = await dissolveQuery;
     if (formErr) console.warn('dissolveCoalition: formations update failed:', formErr);
-
-    // Also dissolve legacy active_coalitions
-    const { error: acErr } = await supabase
-        .from('active_coalitions')
-        .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
-        .eq('nation_id', nationId)
-        .is('dissolved_at', null);
-    if (acErr) console.warn('dissolveCoalition: active_coalitions update failed:', acErr);
 
     // Deactivate PM
     const { error: pmErr } = await supabase
@@ -1018,9 +1009,10 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
         throw new Error(`Elections already scheduled in ${nextElection.election_tick - currentTick} tick(s). Too close to call early elections.`);
     }
 
-    // 2. Set government to caretaker (both tables — legacy active_coalitions may be source)
-    // Use status='formed' filter as optimistic lock — only one caller can transition formed→caretaker
-    const { data: updatedGov, count: updatedCount } = await supabase
+    // 2. Flip government to caretaker on the canonical table.
+    // Optimistic lock via status='formed' filter — only one caller can
+    // transition formed→caretaker.
+    const { data: updatedGov } = await supabase
         .from('government_formations')
         .update({ status: 'caretaker' })
         .eq('nation_id', nationId)
@@ -1029,11 +1021,6 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
     if (!updatedGov || updatedGov.length === 0) {
         throw new Error('Government was already changed by another action. Please refresh.');
     }
-    await supabase
-        .from('active_coalitions')
-        .update({ status: 'caretaker' })
-        .eq('nation_id', nationId)
-        .is('dissolved_at', null);
 
     // 3. Tiered effects based on gov_approval
     const govApproval = Number(nationCheck?.gov_approval ?? 50);
@@ -1868,12 +1855,6 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
                 .in('status', ['formed', 'active', 'caretaker']);
 
             await supabase
-                .from('active_coalitions')
-                .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
-                .eq('nation_id', nation.id)
-                .is('dissolved_at', null);
-
-            await supabase
                 .from('ministries')
                 .update({
                     minister_first_name: null,
@@ -1886,8 +1867,8 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         }
 
         // HoG deactivation runs UNCONDITIONALLY — even if no government_formations
-        // or active_coalitions row existed. Legacy nations whose PM was auto-
-        // appointed without a formation row must still have their HoG flipped
+        // row existed. Legacy nations whose PM was auto-appointed without a
+        // formation row must still have their HoG flipped
         // to inactive when an election completes, otherwise the stale row
         // suppresses the formation UI across every subsequent cycle (Melizea
         // bug, pre-fix). One source of truth: "election completed" ⇒ "old PM out".
@@ -2659,12 +2640,6 @@ export async function processElections(supabase, nation, currentTick) {
                     .update({ status: 'dissolved' })
                     .eq('nation_id', nation.id)
                     .in('status', ['formed', 'active', 'caretaker']);
-
-                await supabase
-                    .from('active_coalitions')
-                    .update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
-                    .eq('nation_id', nation.id)
-                    .is('dissolved_at', null);
 
                 // Vacate all ministries
                 await supabase

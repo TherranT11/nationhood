@@ -5062,9 +5062,9 @@ async function enactMonarchyReform(supabase, bill, currentTick) {
             p_changes: { legitimacy: 50 - (Number(nation.legitimacy) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
         }).catch(() => {});
 
-        // Dissolve any existing coalition
-        await supabase.from('active_coalitions').update({ status: 'dissolved', dissolved_at: new Date().toISOString() })
-            .eq('nation_id', bill.nation_id).in('status', ['formed', 'active']);
+        // Dissolve any existing coalition (canonical: government_formations).
+        await supabase.from('government_formations').update({ status: 'dissolved' })
+            .eq('nation_id', bill.nation_id).in('status', ['formed', 'active', 'caretaker']);
 
         // Deactivate PM
         await supabase.from('head_of_government').update({ active: false })

@@ -3219,9 +3219,6 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     // excluded.
     if (_isSuccessionInstall) {
         try {
-            await supabase.from('active_coalitions')
-                .update({ status: 'formed' })
-                .eq('id', _coalitionAtEntry.id);
             await supabase.from('government_formations')
                 .update({ status: 'formed' })
                 .eq('nation_id', nationId)
@@ -3424,11 +3421,6 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
     //    election, which made Resign functionally indistinguishable from
     //    a more punitive Call-Early-Elections — the succession path is what
     //    gives the two actions distinct use-cases.)
-    await supabase
-        .from('active_coalitions')
-        .update({ status: 'caretaker' })
-        .eq('nation_id', nationId)
-        .is('dissolved_at', null);
     await supabase
         .from('government_formations')
         .update({ status: 'caretaker' })
