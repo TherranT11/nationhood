@@ -3763,14 +3763,24 @@ async function runStatAudit() {
 
     // 3. Active laws
     heading('ACTIVE LAWS');
+    // Phase 5-fix: trimmed select to columns that exist in the live
+    // schema (target_stat / stat_direction / stat_change_per_tick /
+    // duration_months were dropped during the Phase 2.5 saga). Embedded
+    // selected_option so the per-stat audit reflects the active option
+    // for multi-option laws.
     const { data: laws } = await _supabase.from('active_laws')
-        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name, stat_effects, target_stat, stat_direction, stat_change_per_tick, duration_months)')
+        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name, stat_effects), selected_option:policy_options!selected_option_id(option_name, stat_effects)')
         .eq('nation_id', nationId);
     const hitLaws = (laws || []).filter(l => {
         const p = l.policies;
         if (!p) return false;
-        if (normalizeNationStatKey(p.target_stat) === sk) return true;
-        if (p.stat_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
+        // Phase 5-fix: prefer the active option's stat_effects for
+        // multi-option laws; the legacy target_stat path is gone with
+        // the trimmed schema.
+        const effects = (Array.isArray(l.selected_option?.stat_effects) && l.selected_option.stat_effects.length > 0)
+            ? l.selected_option.stat_effects
+            : p.stat_effects;
+        if (effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
         if (l.is_reversal && l.reversal_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
         return false;
     });

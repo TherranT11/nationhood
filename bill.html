@@ -492,8 +492,12 @@ async function loadBillData() {
 
         // Load active laws for repeal article support — also pull the
         // selected option so getCurrentOptionForPolicy can resolve it.
+        // Phase 5-fix: trimmed select drops columns removed from the live
+        // schema (target_stat, stat_direction, ideology, ideologies);
+        // PostgREST rejects the whole query when any selected column is
+        // missing.
         const { data: activeLawRows } = await _supabase.from('active_laws')
-            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, stat_effects, target_stat, stat_direction, ideologies, ideology, policy_type), selected_option:policy_options!selected_option_id(option_name, option_description)')
+            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, stat_effects, policy_type), selected_option:policy_options!selected_option_id(option_name, option_description)')
             .eq('nation_id', bill.nation_id)
             .eq('is_reversal', false);
         nationActiveLaws = (activeLawRows || []).filter(l => l.policies);
