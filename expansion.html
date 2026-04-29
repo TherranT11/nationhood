@@ -2188,6 +2188,11 @@ function subSetAbbr(val) {
 }
 
 async function subCreate() {
+    // Subsidiary establishment is temporarily disabled (HQ-resale exploit).
+    // Server-side data integrity isn't yet enforced; this client-side guard
+    // is the bleed-stop until the Regional HQ refactor lands.
+    alert('Subsidiary establishment is temporarily disabled while the system is replaced with a "Regional HQ" property concept. Existing subsidiaries are unaffected.');
+    return;
     if (_subCreating || !_subSelectedNation) return;
     const nation = _subNations.find(n => n.id === _subSelectedNation);
     if (!nation) return;
@@ -2279,6 +2284,28 @@ async function subCreate() {
 }
 
 function renderCreateSubsidiaryCard() {
+    const container = document.getElementById('create-subsidiary-container');
+    if (!container) return;
+
+    // Subsidiary establishment is temporarily disabled. An HQ-resale exploit
+    // (instant-profit on dissolution after a deeply discounted establishment
+    // cost) has been confirmed and the system is being refactored into a
+    // plain "Regional HQ" property concept. The card renders a stub notice
+    // until the replacement ships.
+    container.innerHTML = `
+        <div style="padding:18px 20px;border:1px solid var(--panel-border);background:var(--bg-card);font-family:'JetBrains Mono', monospace;color:var(--panel-text);">
+            <div style="font-size:13px;font-weight:700;letter-spacing:1px;color:#c8a832;margin-bottom:6px;">SUBSIDIARY ESTABLISHMENT — TEMPORARILY DISABLED</div>
+            <div style="font-size:11px;color:#9e9a92;line-height:1.5;">
+                This feature is offline while it is replaced with a "Regional HQ" property system.
+                Existing subsidiaries are unaffected — you can still manage, sell, or dissolve them
+                from the Home page.
+            </div>
+        </div>
+    `;
+    return;
+}
+
+function _renderCreateSubsidiaryCardLegacy_DISABLED() {
     const container = document.getElementById('create-subsidiary-container');
     if (!container) return;
 
