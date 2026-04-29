@@ -525,7 +525,6 @@ let activeLaws = [], committeeBills = [], floorBills = [], frozenBills = [], pre
 let isHeadFaction = false, headFactionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let isCaretaker = false;
-let isNoGovernment = false;
 let currentTickGlobal = 0;       // cached current tick
 let draftArticles = [], selectedPolicy = null;
 let committeeSelectedPolicy = null, currentCommitteeBillId = null;
@@ -562,29 +561,16 @@ initPage('laws', async (state) => {
         isPresidentParty = (presidentFactionId && currentFaction?.id === presidentFactionId);
     }
 
-    // Check for caretaker government (legislature frozen)
-    // Bust coalition cache so caretaker status is never stale
+    // Caretaker is the ONLY suspension state. The single source of truth
+    // is active_coalitions.status === 'caretaker', written explicitly by
+    // the four real triggers: callEarlyElectionsAction (Snap Election),
+    // resolveNoConfidence (VoNC), dissolveParliament (Presidential snap),
+    // and resignPM (transitional). Presidential republics legitimately
+    // have no active_coalitions row — that is NOT a suspension state.
     qCacheBust('coalition_');
     {
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
         isCaretaker = coalition?.status === 'caretaker';
-        isNoGovernment = !coalition;
-
-        // Absolute monarchies: legislature is open if a PM is appointed (no coalition needed)
-        if (isNoGovernment && (nation.government_type || '').toLowerCase().includes('absolute')) {
-            const { data: activeHog } = await _supabase.from('head_of_government')
-                .select('id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
-            if (activeHog) isNoGovernment = false;
-        }
-        // Fallback: frozen bills are ground truth for caretaker status
-        if (!isCaretaker) {
-            const { count: frozenCount } = await _supabase
-                .from('bills')
-                .select('*', { count: 'exact', head: true })
-                .eq('nation_id', nation.id)
-                .eq('status', 'frozen');
-            if (frozenCount && frozenCount > 0) isCaretaker = true;
-        }
     }
 
     await loadLawsData();
@@ -719,8 +705,10 @@ async function loadLawsData() {
 // ==================== IDEOLOGY AWARENESS (PHASE 4) ====================
 
 function renderLawsPage() {
-    const canDraft = currentSeats > 0 && !isCaretaker && !isNoGovernment;
-const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and cannot propose bills"' : (isCaretaker ? 'title="Legislature is dissolved — no new bills during caretaker government"' : (isNoGovernment ? 'title="Legislature is suspended until a new government is formed"' : ''));
+    const canDraft = currentSeats > 0 && !isCaretaker;
+    const noSeatsTitle = currentSeats === 0
+        ? 'title="Your faction has no seats and cannot propose bills"'
+        : (isCaretaker ? 'title="Legislature is dissolved — no new bills during caretaker government"' : '');
     const debtRatio = getDebtToGDP(currentNation);
     const defaultEligible = debtRatio >= SOVEREIGN_DEFAULT_CONFIG.MIN_DEBT_TO_GDP;
     const showDefaultBtn = true;
@@ -732,12 +720,7 @@ const noSeatsTitle = currentSeats === 0 ? 'title="Your faction has no seats and 
                     <div style="font-size:1rem;color:var(--orange);font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">⚡ Legislature Dissolved</div>
                     <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;">Caretaker government in place. No new legislation until elections resolve.</div>
                 </div>
-            ` : (isNoGovernment ? `
-                <div style="background:var(--blue-faint);border:2px solid var(--blue-border);border-radius:3px;padding:16px;margin-bottom:20px;text-align:center;">
-                    <div style="font-size:1rem;color:var(--blue);font-weight:bold;text-transform:uppercase;letter-spacing:1.5px;">🏛️ Legislature Suspended</div>
-                    <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;">A new government must be formed before bills can be proposed.</div>
-                </div>
-            ` : '')}
+            ` : ''}
             <div class="laws-header">
                 <div class="section-header" style="margin-bottom:0;border-bottom:none;">${pageTitle}</div>
                 <div class="laws-header-buttons">
@@ -1445,7 +1428,7 @@ function renderActiveLaw(law) {
         const cls = p.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
         effectsHTML = `${formatStatName(p.target_stat)} <span class="${cls}">${dir}</span>`;
     }
-    const canRescind = currentSeats > 0 && !isCaretaker && !isNoGovernment;
+    const canRescind = currentSeats > 0 && !isCaretaker;
     // Entrenchment badge and rescind restrictions
     let entrenchBadge = '';
     let rescindDisabled = false;
@@ -1488,7 +1471,6 @@ async function rescindLaw(activeLawId, policyName, policyId, entrenchmentTier) {
     if (_actionLock) return;
     if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
     if (isCaretaker) { alert('Legislature is dissolved. No new bills during caretaker government.'); return; }
-    if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can be proposed.'); return; }
     if (entrenchmentTier === 'enshrined') { alert('This law is enshrined as constitutional law. It can only be repealed via a foundational bill.'); return; }
     const thresholdNote = entrenchmentTier === 'protected' ? '\n\n⚠ This is a PROTECTED law — repeal requires 60% supermajority.'
         : entrenchmentTier === 'entrenched' ? '\n\n⚠ This is an ENTRENCHED law — repeal requires 67% supermajority.'
@@ -4050,7 +4032,6 @@ async function submitToCommittee() {
     if (draftArticles.length === 0) return;
     if (isSubmitting) return;
     if (isCaretaker) { alert('Legislature is dissolved. No new bills during caretaker government.'); return; }
-    if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can be proposed.'); return; }
     if (currentSeats === 0) { alert('Your faction holds no seats and cannot propose bills.'); return; }
     isSubmitting = true;
     document.getElementById('submit-bill-btn').disabled = true;
@@ -4577,7 +4558,6 @@ let defaultAusterityCount = 0;
 
 async function openDefaultResolutionModal() {
     if (isCaretaker) { alert('Legislature is dissolved.'); return; }
-    if (isNoGovernment) { alert('Legislature is suspended.'); return; }
     if (currentSeats === 0) { alert('Your faction holds no seats.'); return; }
 
     // Check for active resolution
@@ -4743,7 +4723,7 @@ function updateDefaultPreview() {
 
 async function submitDefaultResolution() {
     if (isSubmitting) return;
-    if (isCaretaker || isNoGovernment) return;
+    if (isCaretaker) return;
     if (currentSeats === 0) { alert('Your faction holds no seats.'); return; }
 
     const cfg = SOVEREIGN_DEFAULT_CONFIG;
