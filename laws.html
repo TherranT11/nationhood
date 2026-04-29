@@ -3130,8 +3130,16 @@ function renderOptionSelector(policyId) {
 
     label.style.display = 'block';
     select.style.display = 'block';
+    // Render the currently-active option in the dropdown but disabled, so
+    // players can SEE it sitting there as a no-op rather than being
+    // confused that it vanished. Browsers grey out disabled <option>s
+    // automatically and prevent them from being selected.
     select.innerHTML = '<option value="">-- Choose new option --</option>' +
-        selectableOptions.map(o => '<option value="' + o.id + '">' + escapeHtml(o.option_name || 'Untitled') + '</option>').join('');
+        options.map(o => {
+            const isActive = current && o.id === current.id;
+            const label = escapeHtml(o.option_name || 'Untitled') + (isActive ? ' (Currently Active)' : '');
+            return '<option value="' + o.id + '"' + (isActive ? ' disabled' : '') + '>' + label + '</option>';
+        }).join('');
     select.value = '';
     group.style.display = 'block';
 }
@@ -4953,7 +4961,11 @@ function renderCommitteeOptionSelector(policyId) {
     label.style.display = 'block';
     select.style.display = 'block';
     select.innerHTML = '<option value="">-- Choose new option --</option>' +
-        selectableOptions.map(o => '<option value="' + o.id + '">' + escapeHtml(o.option_name || 'Untitled') + '</option>').join('');
+        options.map(o => {
+            const isActive = current && o.id === current.id;
+            const label = escapeHtml(o.option_name || 'Untitled') + (isActive ? ' (Currently Active)' : '');
+            return '<option value="' + o.id + '"' + (isActive ? ' disabled' : '') + '>' + label + '</option>';
+        }).join('');
     select.value = '';
     group.style.display = 'block';
 }
