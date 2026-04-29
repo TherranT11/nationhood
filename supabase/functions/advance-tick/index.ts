@@ -14282,6 +14282,33 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
  * next election. Nation enters formation period (processGovernmentVacancy
  * handles penalties).
  */
+/**
+ * Clear minister names + party assignments on every active ministry row
+ * for a nation. Used on every parliamentary turnover that should leave
+ * the new PM re-confirming the cabinet from scratch — manual election,
+ * snap election, presidential dissolution. Variant-callers (e.g. the
+ * post-election partial-vacate that excludes the winning faction; the
+ * acting-minister clear for new presidents) keep their own UPDATE
+ * shapes — this helper covers only the identical "orphan everyone"
+ * pattern.
+ *
+ * Errors are logged but non-blocking, matching the surrounding code
+ * style. A failed clear leaves stale ministers in place for one tick
+ * cycle; the next confirmation flow overwrites them anyway.
+ */
+async function orphanCabinet(supabase, nationId) {
+    const { error } = await supabase.from('ministries')
+        .update({
+            minister_first_name: null,
+            minister_last_name: null,
+            minister_age: null,
+            party_id: null
+        })
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (error) console.warn('orphanCabinet: ministries clear failed:', error.message);
+}
+
 async function dissolveCoalition(supabase, nationId, excludeFormationId) {
     // Bust coalition cache so pages immediately see the dissolved state
     if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
@@ -14750,20 +14777,8 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
         .update({ active: false })
         .eq('nation_id', nationId).eq('active', true);
 
-    // 5. Orphan the cabinet — clear minister names + party assignments so
-    // the new PM re-confirms them post-election. Mirrors the same block in
-    // runManualElectionByGovernmentType so dissolution and election-driven
-    // turnover produce the same end-state. Without this, ministers survived
-    // dissolution intact and the next PM inherited a stale cabinet.
-    await supabase.from('ministries')
-        .update({
-            minister_first_name: null,
-            minister_last_name: null,
-            minister_age: null,
-            party_id: null
-        })
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
+    // 5. Orphan the cabinet — new PM re-confirms post-election.
+    await orphanCabinet(supabase, nationId);
 
     // 6. Freeze all pending bills
     await supabase.from('bills')
@@ -15414,16 +15429,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
                 .eq('nation_id', nation.id)
                 .in('status', ['formed', 'active', 'caretaker']);
 
-            await supabase
-                .from('ministries')
-                .update({
-                    minister_first_name: null,
-                    minister_last_name: null,
-                    minister_age: null,
-                    party_id: null
-                })
-                .eq('nation_id', nation.id)
-                .eq('is_active', true);
+            await orphanCabinet(supabase, nation.id);
         }
 
         // HoG deactivation runs UNCONDITIONALLY — even if no government_formations
@@ -16202,16 +16208,7 @@ async function processElections(supabase, nation, currentTick) {
                     .in('status', ['formed', 'active', 'caretaker']);
 
                 // Vacate all ministries
-                await supabase
-                    .from('ministries')
-                    .update({
-                        minister_first_name: null,
-                        minister_last_name: null,
-                        minister_age: null,
-                        party_id: null
-                    })
-                    .eq('nation_id', nation.id)
-                    .eq('is_active', true);
+                await orphanCabinet(supabase, nation.id);
             }
 
             // HoG deactivation runs UNCONDITIONALLY — see matching comment in
@@ -16966,6 +16963,32 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
             // PM nomination — must be the President's party
             if (!president || president.faction_id !== presidentFactionId) {
                 throw new Error('Only the President\'s party can nominate the Prime Minister');
+            }
+            // Cohabitation rule: if the President is appointing their OWN
+            // party as PM, the candidate cannot be the party leader (that's
+            // the President themselves) — must be the Deputy Leader. Look
+            // up the active deputy and require the nominee match.
+            if (nominee.partyId === president.faction_id) {
+                const { data: presFaction } = await supabase.from('factions')
+                    .select('leader_first_name, leader_last_name')
+                    .eq('id', president.faction_id).single();
+                const isLeader = presFaction
+                    && nominee.firstName === presFaction.leader_first_name
+                    && nominee.lastName === presFaction.leader_last_name;
+                if (isLeader) {
+                    throw new Error('The Party Leader is the President — appoint the Deputy Leader as Prime Minister instead.');
+                }
+                // Verify nominee matches an active deputy of the President's party.
+                const { data: deputies } = await supabase.from('faction_deputies')
+                    .select('first_name, last_name')
+                    .eq('faction_id', president.faction_id)
+                    .eq('status', 'active');
+                const matchesDeputy = (deputies || []).some(d =>
+                    d.first_name === nominee.firstName && d.last_name === nominee.lastName
+                );
+                if (!matchesDeputy) {
+                    throw new Error('When appointing your own party as PM, the nominee must be the Deputy Leader. Hire a Deputy first if your party doesn\'t have one.');
+                }
             }
         } else {
             const { data: hog } = await supabase.from('head_of_government')
@@ -24698,6 +24721,23 @@ async function installHOG(supabase, opts) {
  * when their party receives the PM role during coalition formation.
  */
 async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick, opts) {
+    // Semi-Presidential cohabitation rule: the President must manually
+    // nominate a PM via nominatePMCandidate. Auto-appointing the party
+    // leader breaks two scenarios:
+    //   1. If the winning party is the President's own party, the party
+    //      leader IS the President — appointing them as PM creates a
+    //      same-person dual-role conflict.
+    //   2. If the winning party is a different party, the President should
+    //      still get to choose who they appoint — that's the whole point
+    //      of semi-presidential constitutional design.
+    // Bail early in semi-pres systems and let the manual flow take over.
+    const { data: nationGovType } = await supabase.from('nations')
+        .select('government_type').eq('id', nationId).single();
+    if (isSemiPresidential(nationGovType)) {
+        console.log('[autoAppointPartyLeaderAsPM] semi-presidential — skipping auto-appoint (President must manually nominate)');
+        return null;
+    }
+
     // When called from coalition formation flow, skip the coalition check
     // (the formation was JUST set to 'formed' and cache may be stale)
     let _coalitionAtEntry = null;

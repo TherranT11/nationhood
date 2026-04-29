@@ -737,6 +737,33 @@ export async function rolloverAdministration(supabase, nationId, nation, endReas
  * next election. Nation enters formation period (processGovernmentVacancy
  * handles penalties).
  */
+/**
+ * Clear minister names + party assignments on every active ministry row
+ * for a nation. Used on every parliamentary turnover that should leave
+ * the new PM re-confirming the cabinet from scratch — manual election,
+ * snap election, presidential dissolution. Variant-callers (e.g. the
+ * post-election partial-vacate that excludes the winning faction; the
+ * acting-minister clear for new presidents) keep their own UPDATE
+ * shapes — this helper covers only the identical "orphan everyone"
+ * pattern.
+ *
+ * Errors are logged but non-blocking, matching the surrounding code
+ * style. A failed clear leaves stale ministers in place for one tick
+ * cycle; the next confirmation flow overwrites them anyway.
+ */
+async function orphanCabinet(supabase, nationId) {
+    const { error } = await supabase.from('ministries')
+        .update({
+            minister_first_name: null,
+            minister_last_name: null,
+            minister_age: null,
+            party_id: null
+        })
+        .eq('nation_id', nationId)
+        .eq('is_active', true);
+    if (error) console.warn('orphanCabinet: ministries clear failed:', error.message);
+}
+
 export async function dissolveCoalition(supabase, nationId, excludeFormationId) {
     // Bust coalition cache so pages immediately see the dissolved state
     if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
@@ -1205,20 +1232,8 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
         .update({ active: false })
         .eq('nation_id', nationId).eq('active', true);
 
-    // 5. Orphan the cabinet — clear minister names + party assignments so
-    // the new PM re-confirms them post-election. Mirrors the same block in
-    // runManualElectionByGovernmentType so dissolution and election-driven
-    // turnover produce the same end-state. Without this, ministers survived
-    // dissolution intact and the next PM inherited a stale cabinet.
-    await supabase.from('ministries')
-        .update({
-            minister_first_name: null,
-            minister_last_name: null,
-            minister_age: null,
-            party_id: null
-        })
-        .eq('nation_id', nationId)
-        .eq('is_active', true);
+    // 5. Orphan the cabinet — new PM re-confirms post-election.
+    await orphanCabinet(supabase, nationId);
 
     // 6. Freeze all pending bills
     await supabase.from('bills')
@@ -1869,16 +1884,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
                 .eq('nation_id', nation.id)
                 .in('status', ['formed', 'active', 'caretaker']);
 
-            await supabase
-                .from('ministries')
-                .update({
-                    minister_first_name: null,
-                    minister_last_name: null,
-                    minister_age: null,
-                    party_id: null
-                })
-                .eq('nation_id', nation.id)
-                .eq('is_active', true);
+            await orphanCabinet(supabase, nation.id);
         }
 
         // HoG deactivation runs UNCONDITIONALLY — even if no government_formations
@@ -2657,16 +2663,7 @@ export async function processElections(supabase, nation, currentTick) {
                     .in('status', ['formed', 'active', 'caretaker']);
 
                 // Vacate all ministries
-                await supabase
-                    .from('ministries')
-                    .update({
-                        minister_first_name: null,
-                        minister_last_name: null,
-                        minister_age: null,
-                        party_id: null
-                    })
-                    .eq('nation_id', nation.id)
-                    .eq('is_active', true);
+                await orphanCabinet(supabase, nation.id);
             }
 
             // HoG deactivation runs UNCONDITIONALLY — see matching comment in

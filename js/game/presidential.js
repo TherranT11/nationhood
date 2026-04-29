@@ -106,6 +106,32 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
             if (!president || president.faction_id !== presidentFactionId) {
                 throw new Error('Only the President\'s party can nominate the Prime Minister');
             }
+            // Cohabitation rule: if the President is appointing their OWN
+            // party as PM, the candidate cannot be the party leader (that's
+            // the President themselves) — must be the Deputy Leader. Look
+            // up the active deputy and require the nominee match.
+            if (nominee.partyId === president.faction_id) {
+                const { data: presFaction } = await supabase.from('factions')
+                    .select('leader_first_name, leader_last_name')
+                    .eq('id', president.faction_id).single();
+                const isLeader = presFaction
+                    && nominee.firstName === presFaction.leader_first_name
+                    && nominee.lastName === presFaction.leader_last_name;
+                if (isLeader) {
+                    throw new Error('The Party Leader is the President — appoint the Deputy Leader as Prime Minister instead.');
+                }
+                // Verify nominee matches an active deputy of the President's party.
+                const { data: deputies } = await supabase.from('faction_deputies')
+                    .select('first_name, last_name')
+                    .eq('faction_id', president.faction_id)
+                    .eq('status', 'active');
+                const matchesDeputy = (deputies || []).some(d =>
+                    d.first_name === nominee.firstName && d.last_name === nominee.lastName
+                );
+                if (!matchesDeputy) {
+                    throw new Error('When appointing your own party as PM, the nominee must be the Deputy Leader. Hire a Deputy first if your party doesn\'t have one.');
+                }
+            }
         } else {
             const { data: hog } = await supabase.from('head_of_government')
                 .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
