@@ -1911,9 +1911,13 @@ async function showPermitForm() {
 
     // Load permit policies if not cached
     if (!_permitPolicies) {
+        // Phase 5-fix: ideologies and stat_effects columns are gone from
+        // the live policies schema. Permit policies pre-date multi-option;
+        // if the permit_key column is also gone this query will return
+        // empty and the permits picker will simply show nothing.
         const { data } = await _supabase
             .from('policies')
-            .select('id, policy_name, description, permit_key, ideologies, stat_effects, ongoing_base_cost')
+            .select('id, policy_name, description, permit_key, ongoing_base_cost')
             .not('permit_key', 'is', null)
             .eq('is_active', true);
         _permitPolicies = data || [];

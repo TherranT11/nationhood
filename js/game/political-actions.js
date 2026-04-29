@@ -65,18 +65,18 @@ function _logStatDebug(supabase, nation, tick, statKey, contributorType, contrib
 export async function buildPolicyDecayAdjustments(supabase, nationId) {
     const adjustments = {};
 
-    // Phase 4.4: pull stat_effects from the chosen policy_option first; fall
-    // back to the legacy policies.stat_effects column for orphaned data
-    // that pre-dates the multi-option model.
+    // Phase 4.4 + Phase 5-fix: pull stat_effects from the chosen
+    // policy_option. The legacy policies.stat_effects column is gone
+    // from the live schema, so the option is the only source.
     const { data: activeLaws, error } = await supabase
         .from('active_laws')
-        .select('policy_id, policies(stat_effects), selected_option:policy_options!selected_option_id(stat_effects)')
+        .select('policy_id, selected_option:policy_options!selected_option_id(stat_effects)')
         .eq('nation_id', nationId);
 
     if (error || !activeLaws) return adjustments;
 
     for (const law of activeLaws) {
-        const effects = law.selected_option?.stat_effects ?? law.policies?.stat_effects;
+        const effects = law.selected_option?.stat_effects;
         if (!Array.isArray(effects)) continue;
 
         for (const eff of effects) {

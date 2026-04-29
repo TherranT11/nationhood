@@ -3821,18 +3821,12 @@ async function applyAuthoritarianCrisisBonus(supabase, bill, nation, currentTick
         if (isAuthoritarian) break;
     }
 
-    // Also check policy-level stat_effects if linked to a policy
-    if (!isAuthoritarian && bill.policy_id) {
-        const { data: policy } = await supabase.from('policies').select('stat_effects').eq('id', bill.policy_id).maybeSingle();
-        if (policy?.stat_effects) {
-            for (const eff of policy.stat_effects) {
-                if (AUTHORITARIAN_STATS.has(eff.stat_key) && eff.direction === 'down') {
-                    isAuthoritarian = true;
-                    break;
-                }
-            }
-        }
-    }
+    // Phase 5-fix: the policies.stat_effects column is gone from the live
+    // schema, so the legacy bill-policy_id authoritarian-detection branch
+    // is no longer reachable. The article-level loop above already handles
+    // every multi-option policy via art.stat_effects / art.effects, so
+    // dropping this fallback only loses the rare legacy single-policy
+    // branch (no current bill flow uses bill.policy_id directly).
 
     if (!isAuthoritarian) return;
 

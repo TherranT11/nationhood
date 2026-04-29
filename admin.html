@@ -3769,7 +3769,7 @@ async function runStatAudit() {
     // selected_option so the per-stat audit reflects the active option
     // for multi-option laws.
     const { data: laws } = await _supabase.from('active_laws')
-        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name, stat_effects), selected_option:policy_options!selected_option_id(option_name, stat_effects)')
+        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name), selected_option:policy_options!selected_option_id(option_name, stat_effects)')
         .eq('nation_id', nationId);
     const hitLaws = (laws || []).filter(l => {
         const p = l.policies;
@@ -3777,9 +3777,11 @@ async function runStatAudit() {
         // Phase 5-fix: prefer the active option's stat_effects for
         // multi-option laws; the legacy target_stat path is gone with
         // the trimmed schema.
+        // Phase 5-fix: policies.stat_effects column is gone from the live
+        // schema, so multi-option laws read effects from the option only.
         const effects = (Array.isArray(l.selected_option?.stat_effects) && l.selected_option.stat_effects.length > 0)
             ? l.selected_option.stat_effects
-            : p.stat_effects;
+            : null;
         if (effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
         if (l.is_reversal && l.reversal_effects?.some(e => normalizeNationStatKey(e.stat_key) === sk)) return true;
         return false;
