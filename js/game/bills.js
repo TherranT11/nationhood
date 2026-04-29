@@ -3294,30 +3294,18 @@ export async function enactBill(supabase, bill, currentTick) {
                 await supabase.from('bill_articles').update({ repeal_active_law_id: null }).eq('repeal_active_law_id', existingActiveLaw.id);
             }
 
-            // Phase 4.2: detect an option switch and revert the old option's
-            // sector_effects against the bill sponsor. Per the spec, the
-            // sponsor "takes the inverse" of the prior option's popularity
-            // shift — that's the karmic price for switching. Stat effects
-            // and ongoing cost don't need an explicit revert: the active_law
-            // upsert below replaces selected_option_id, so the tick
-            // processor (Phase 4.4) just stops applying the old option's
-            // remaining effects and starts on the new one's schedule.
-            if (
-                existingActiveLaw &&
-                existingActiveLaw.selected_option_id &&
-                art.selected_option_id &&
-                existingActiveLaw.selected_option_id !== art.selected_option_id
-            ) {
-                const oldSectorEffects = existingActiveLaw.selected_option?.sector_effects;
-                if (Array.isArray(oldSectorEffects) && oldSectorEffects.length > 0) {
-                    await applyInverseSectorEffectsToFaction(
-                        supabase,
-                        bill.nation_id,
-                        bill.proposed_by,
-                        oldSectorEffects
-                    );
-                }
-            }
+            // Phase 4.2-fix: option-switch sector revert moves to after the
+            // upsert success below. Capturing the old sector_effects here so
+            // we still have them once the upsert lands — the existingActiveLaw
+            // row gets overwritten by the upsert and the inline join is gone.
+            const isOptionSwitch =
+                !!existingActiveLaw &&
+                !!existingActiveLaw.selected_option_id &&
+                !!art.selected_option_id &&
+                existingActiveLaw.selected_option_id !== art.selected_option_id;
+            const oldOptionSectorEffects = isOptionSwitch
+                ? (existingActiveLaw.selected_option?.sector_effects || null)
+                : null;
             console.log('[enactBill] stage=upsert_active_law attempt', {
                 ...logContext,
                 policyId: policy.id,
@@ -3366,6 +3354,22 @@ export async function enactBill(supabase, bill, currentTick) {
                 policyId: policy.id,
                 policyName: policy.policy_name
             });
+
+            // Phase 4.2-fix: revert the OLD option's sector_effects against
+            // the bill sponsor only after the active_law upsert has actually
+            // landed. If the upsert had failed, the early-return above would
+            // have skipped this revert — without that guard, we'd have
+            // already mutated faction popularity for a switch that never
+            // happened. Captured oldOptionSectorEffects above before the
+            // upsert overwrote the existingActiveLaw row.
+            if (oldOptionSectorEffects && Array.isArray(oldOptionSectorEffects) && oldOptionSectorEffects.length > 0) {
+                await applyInverseSectorEffectsToFaction(
+                    supabase,
+                    bill.nation_id,
+                    bill.proposed_by,
+                    oldOptionSectorEffects
+                );
+            }
 
             // Phase 4.3: charge the new option's upfront cost. Fires whether
             // this is a fresh enactment or an option switch — every passing
