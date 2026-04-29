@@ -317,7 +317,7 @@ let selectedAmendmentTargetOptionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let nationActiveLaws = []; // Active laws in the nation (for repeal articles)
 let currentShardTick = 0; // Current shard tick for deadline proximity checks
-let isNoGovernment = false;
+let isCaretaker = false;   // True only when active_coalitions.status === 'caretaker'
 let coalitionPartyIds = []; // For bill editing permissions
 let coalitionLeadPartyId = null; // PM's party in parliamentary systems
 let ratificationData = null; // Fetched agreement/proposal data for ratification bills
@@ -367,14 +367,10 @@ initPage('laws', async (state) => {
         isPresidentParty = (presidentFactionId && faction?.id === presidentFactionId);
     }
     if (nation) {
+        // Single source of truth for legislature suspension: caretaker status
+        // set by Snap Election / VoNC / dissolve / resign. Mirrors laws.html.
         const coalition = await fetchActiveCoalition(_supabase, nation.id);
-        isNoGovernment = !coalition;
-        // Absolute monarchy: legislature is open if a PM is appointed (no coalition needed)
-        if (isNoGovernment && (nation.government_type || '').toLowerCase().includes('absolute')) {
-            const { data: activeHog } = await _supabase.from('head_of_government')
-                .select('id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
-            if (activeHog) isNoGovernment = false;
-        }
+        isCaretaker = coalition?.status === 'caretaker';
         coalitionPartyIds = coalition?.party_ids || [];
         coalitionLeadPartyId = coalition?.lead_party_id || null;
     }
@@ -897,15 +893,16 @@ function renderBill() {
 
     const isFoundational = bill.bill_type === 'foundational';
     const isAutoFloor = AUTO_FLOOR_BILL_TYPES.includes(bill.bill_type);
-    // Sponsor can always push to floor (unless the legislature is suspended).
-    // Going without a co-sponsor is allowed but costs -2 Momentum when it's a
-    // bill type where a co-sponsor would normally be expected.
-    const canSendToFloor = !isNoGovernment;
+    // Sponsor can always push to floor unless the legislature is dissolved
+    // (caretaker government — Snap Election / VoNC). Going without a
+    // co-sponsor is allowed but costs -2 Momentum when it's a bill type
+    // where a co-sponsor would normally be expected.
+    const canSendToFloor = !isCaretaker;
     const needsSoloPenalty = !isAutoFloor && !billHasCosponsor(bill);
 
     const disabledAttr = canSendToFloor ? '' : 'disabled';
-    const reason = isNoGovernment
-        ? '<div style="color:var(--blue);font-size:0.78rem;margin-bottom:10px;text-align:center;">🏛️ Legislature is suspended until a new government is formed.</div>'
+    const reason = isCaretaker
+        ? '<div style="color:var(--orange);font-size:0.78rem;margin-bottom:10px;text-align:center;">⚡ Legislature is dissolved — no new bills during caretaker government.</div>'
         : (needsSoloPenalty ? '<div style="color:var(--amber);font-size:0.78rem;margin-bottom:10px;text-align:center;">⚠ No co-sponsor — sending to floor will cost your party −2 Momentum.</div>' : '');
 
     const retractBtn = '<button class="sponsor-btn retract" onclick="retractBill()">Retract Bill</button>';
@@ -2635,7 +2632,7 @@ let _sendingToFloor = false;
 async function sendToFloor() {
     if (_sendingToFloor) return;
     if (!currentFaction || currentBill.proposed_by !== currentFaction.id) return;
-    if (isNoGovernment) { alert('Legislature is suspended. A new government must be formed before bills can advance.'); return; }
+    if (isCaretaker) { alert('Legislature is dissolved. No new bills during caretaker government.'); return; }
 
     // Require at least one article for standard bills (foundational/repeal/ratification are self-contained)
     const selfContained = ['repeal', 'ratification', 'foundational'];

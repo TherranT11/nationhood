@@ -4128,18 +4128,12 @@ async function renderGovernmentPage() {
         allParties = partiesRes.data || [];
         lastElectionTick = electionData?.election_tick || null;
 
-        // Detect caretaker: if coalition exists but status isn't caretaker,
-        // check for frozen bills as ground truth (handles legacy tables + failed status updates)
-        if (coalition && coalition.status !== 'caretaker') {
-            const { count: frozenCount } = await _supabase
-                .from('bills')
-                .select('*', { count: 'exact', head: true })
-                .eq('nation_id', currentNation.id)
-                .eq('status', 'frozen');
-            if (frozenCount && frozenCount > 0) {
-                coalition.status = 'caretaker';
-            }
-        }
+        // Caretaker is set EXCLUSIVELY by the four explicit writers
+        // (Snap Election / VoNC / Presidential dissolve / PM resign).
+        // Frozen bills are an EFFECT of caretaker, not a cause — the
+        // previous reverse-causal inference here matched the same
+        // pattern that lived in laws.html and government-structure.js
+        // and has been removed for consistency.
 
         // If caretaker, fetch the scheduled election tick for the banner
         if (coalition && coalition.status === 'caretaker') {
