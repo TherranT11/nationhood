@@ -34,6 +34,18 @@ export function principalPortion(monthlyPayment, monthlyInterestAmount) {
     return Math.max(0, safePayment - safeInterest);
 }
 
+// Flat-interest base for a finance_active_loans row. Returns the principal
+// the engine uses to compute per-tick interest in advance-corp-tick. Reads
+// `original_principal` first (set at origination + reset on restructure)
+// and falls back to `principal` for legacy rows pre-dating the
+// 20260420 migration. Always returns a non-negative number; null/undefined
+// row inputs collapse to 0 so callers never have to null-guard.
+export function loanFlatInterestBase(loan) {
+    if (!loan) return 0;
+    const base = loan.original_principal ?? loan.principal ?? 0;
+    return Math.max(0, Number(base) || 0);
+}
+
 // Collateral recovery rates applied on default. Used by the finance
 // loan default RPC and any UI that previews recovery exposure.
 export const COLLATERAL_RECOVERY_RATES = {

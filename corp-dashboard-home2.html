@@ -1894,7 +1894,7 @@ import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
 import { computeEquipmentValue } from './js/game/corp-valuation.js';
 import { computeRefurbishCost, startRefurbish } from './js/corp-refurbish.js';
-import { monthlyInterest } from './js/game/loan-math.js';
+import { monthlyInterest, loanFlatInterestBase } from './js/game/loan-math.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -2446,17 +2446,18 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         const sector = faction.corp_sector || '';
         if (sector === 'Finance') {
             // Finance: interest + premiums earned from active loans/policies
-            const { data: finLoans } = await _supabase.from('finance_active_loans')
-                .select('monthly_payment, interest_rate, remaining_principal, finance_loan_requests(request_type)')
+            const { data: finLoans, error: finLoansErr } = await _supabase.from('finance_active_loans')
+                .select('monthly_payment, interest_rate, principal, original_principal, finance_loan_requests(request_type)')
                 .eq('lender_faction_id', faction.id)
                 .in('status', ['current', 'late', 'delinquent']);
+            if (finLoansErr) console.warn('[Finances] finance_active_loans query failed:', finLoansErr.message);
             for (const loan of (finLoans || [])) {
                 const reqType = loan.finance_loan_requests?.request_type || 'loan';
                 if (reqType === 'insurance') {
                     pvtContracts += Number(loan.monthly_payment || 0);
                 } else if (reqType === 'loan') {
-                    const remaining = Math.max(0, Number(loan.remaining_principal || 0));
-                    pvtContracts += monthlyInterest(remaining, loan.interest_rate);
+                    // Flat-interest model — see loan-math.js + advance-corp-tick:4094.
+                    pvtContracts += monthlyInterest(loanFlatInterestBase(loan), loan.interest_rate);
                 } else if (reqType === 'bond') {
                     pvtContracts += Number(loan.monthly_payment || 0);
                 }

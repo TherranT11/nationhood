@@ -424,7 +424,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
-import { monthlyInterest, principalPortion } from './js/game/loan-math.js';
+import { monthlyInterest, principalPortion, loanFlatInterestBase } from './js/game/loan-math.js';
 import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
 let allUserFactions = [];
@@ -1675,7 +1675,7 @@ function renderActivePortfolio() {
                     { label: 'INTEREST REVENUE TO DATE (P&L)', value: fmtMoney(d.interestRevenue || 0), color: '#5c5', title: 'Cumulative operating revenue recognized from interest.' },
                     { label: 'PRINCIPAL REPAID TO DATE (ASSET REPAYMENT)', value: fmtMoney(d.principalRepaid || 0), title: 'Cumulative principal repaid. Cash inflow, not revenue.' },
                     { label: 'LOAN CASH COLLECTED TO DATE (INTEREST + PRINCIPAL)', value: fmtMoney(d.cashCollected || 0), title: 'Cumulative loan cash collected = interest + principal.' },
-                    { label: 'MISSED PAYMENTS', value: String(d.missedPayments || 0), color: (d.missedPayments || 0) > 0 ? '#c55' : '#5c5' },
+                    { label: 'MISSED PAYMENTS', value: String(d.paymentsMissed || 0), color: (d.paymentsMissed || 0) > 0 ? '#c55' : '#5c5' },
                     { label: 'NEXT DUE', value: d.nextPayment || '—', color: d.status === 'LATE' ? '#c55' : '#9e9a92' },
                 ];
                 for (const r of rows) {
@@ -3495,12 +3495,13 @@ window.rdSubmitOffer = rdSubmitOffer;
 async function loadActivePortfolio() {
     if (!faction) { renderActivePortfolio(); return; }
 
-    const { data: loans } = await _supabase
+    const { data: loans, error: loansErr } = await _supabase
         .from('finance_active_loans')
         .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker, nation), loan_nation:nations!nation_id(name), finance_loan_requests!inner(request_type)')
         .eq('lender_faction_id', faction.id)
         .in('status', ['current', 'late', 'delinquent'])
         .order('started_tick', { ascending: false });
+    if (loansErr) console.warn('[ActivePortfolio] loans query failed:', loansErr.message);
 
     const TYPE_MAP = { loan: 'LOAN', bond: 'BOND', insurance: 'INSURE', equity: 'EQUITY' };
     const isInsurance = (loan) => loan.finance_loan_requests?.request_type === 'insurance';
@@ -3518,16 +3519,16 @@ async function loadActivePortfolio() {
     };
     const loanPrincipalRepaid = (loan) => Math.max(0, loanCashCollected(loan) - loanInterestRevenue(loan));
     // Per-loan monthly interest / principal split for the active card.
-    // Cap interest at the monthly_payment so a shrinking remaining
-    // balance can never display interest > what the borrower actually
-    // pays. The tick processor's own guard at principalPortion() makes
-    // this safe; the cap exists purely so the UI rendering can't show
-    // a negative principal column. The outer Math.max(0, ...) clamps
-    // the rare defensive case where monthly_payment itself comes back
-    // negative -- without it the UI would render a negative interest.
+    // Flat-interest model: interest is accrued on the ORIGINAL principal
+    // every tick, never on remaining_principal — see loan-math.js header
+    // and advance-corp-tick:4094. Reading remaining_principal here
+    // under-reports per-tick interest as the loan amortizes (cumulative
+    // total_interest_paid stayed correct because it's read directly
+    // from the engine's writes). Cap at monthly_payment is preserved
+    // so the UI can't render a negative principal column.
     const loanInterestForRow = (loan) => Math.max(0, Math.min(
         Number(loan.monthly_payment || 0),
-        monthlyInterest(loan.remaining_principal, loan.interest_rate),
+        monthlyInterest(loanFlatInterestBase(loan), loan.interest_rate),
     ));
     apPortfolio = (loans || []).map(loan => ({
         monthlyInterestPortion: loanInterestForRow(loan),
