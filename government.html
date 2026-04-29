@@ -1295,16 +1295,43 @@ async function adm2LoadCrises(nationId) {
         return _adm2CrisesCache.crises;
     }
     try {
-        const { data, error } = await _supabase
+        // Read directly from active_crises (which carries name + crisis_id)
+        // instead of forcing an inner-join on crisis_templates. The inner
+        // join silently returned 0 rows when crisis_templates RLS blocked
+        // the embed even though active_crises had matching rows. We
+        // hydrate descriptions via a second lookup so missing template
+        // access still leaves the crisis name + start tick visible.
+        const { data: crisesRows, error: crisesErr } = await _supabase
             .from('active_crises')
-            .select('started_at_tick, crisis_templates!inner(name, description)')
+            .select('id, name, crisis_id, started_at_tick')
             .eq('nation_id', nationId);
-        if (error) throw error;
-        const crises = (data || []).map(r => ({
-            name: r.crisis_templates?.name || 'Crisis',
-            description: r.crisis_templates?.description || '',
-            started_at_tick: r.started_at_tick,
-        }));
+        if (crisesErr) throw crisesErr;
+        const rows = crisesRows || [];
+
+        let templateById = new Map();
+        if (rows.length > 0) {
+            const ids = [...new Set(rows.map(r => r.crisis_id).filter(Boolean))];
+            if (ids.length > 0) {
+                const { data: tmplRows, error: tmplErr } = await _supabase
+                    .from('crisis_templates')
+                    .select('id, name, description')
+                    .in('id', ids);
+                if (tmplErr) {
+                    console.warn('[Administration] crisis_templates lookup failed:', tmplErr.message);
+                } else {
+                    for (const t of (tmplRows || [])) templateById.set(t.id, t);
+                }
+            }
+        }
+
+        const crises = rows.map(r => {
+            const tmpl = templateById.get(r.crisis_id);
+            return {
+                name: r.name || tmpl?.name || 'Crisis',
+                description: tmpl?.description || '',
+                started_at_tick: r.started_at_tick,
+            };
+        });
         _adm2CrisesCache = { nationId, tick: currentTick, crises };
         return crises;
     } catch (err) {
@@ -12456,15 +12483,23 @@ async function renderPastAdministrationsTab(container, nationIdOverride) {
                 .order('name', { ascending: true }),
         ]);
 
-        if (adminsRes.error) throw adminsRes.error;
+        if (adminsRes.error) {
+            console.error('[PastAdministrations] administrations query failed:', adminsRes.error);
+            throw adminsRes.error;
+        }
         // Both auxiliary queries are best-effort. If nations or gov_approval_log
-        // errors out we still render the core admin list.
+        // errors out we still render the core admin list — but log the error so
+        // we can spot RLS / schema regressions instead of silently rendering an
+        // empty page.
+        if (logRes?.error) console.warn('[PastAdministrations] gov_approval_log query failed:', logRes.error);
+        if (nationsRes?.error) console.warn('[PastAdministrations] nations query failed:', nationsRes.error);
         const logs = (logRes && !logRes.error) ? (logRes.data || []) : [];
         const nations = (nationsRes && !nationsRes.error) ? (nationsRes.data || []) : [];
         const selectedNation = nations.find(n => n.id === selectedNationId)
             || { id: selectedNationId, name: currentNation?.name || 'Unknown', flag_url: currentNation?.flag_url };
 
         const list = adminsRes.data || [];
+        console.debug('[PastAdministrations] loaded', list.length, 'admin row(s) for nation', selectedNationId);
         const pastAdmins = list.filter(a => a.ended_at_tick != null);
         const currentAdmin = list.find(a => a.ended_at_tick == null);
         const totalCount = pastAdmins.length + (currentAdmin ? 1 : 0);
