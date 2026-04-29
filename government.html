@@ -1881,6 +1881,13 @@ async function loadLawsData() {
                 .eq('is_active', true),
             _supabase.from('active_laws').select('policy_id').eq('nation_id', currentNation.id),
         ]);
+        // Phase 5-fix: surface PostgREST errors in the console. Supabase
+        // returns errors via the response object rather than throwing, so
+        // the surrounding try/catch never fired and _lawsData silently
+        // ended up empty whenever a query failed (schema-cache misses,
+        // RLS blocks, etc.).
+        if (policiesRes.error) console.error('[Laws] policies query failed:', policiesRes.error);
+        if (activeLawsRes.error) console.error('[Laws] active_laws query failed:', activeLawsRes.error);
         const activeIds = new Set((activeLawsRes.data || []).map(l => l.policy_id));
         _lawsData = (policiesRes.data || []).map(p => {
             const opts = Array.isArray(p.policy_options)
