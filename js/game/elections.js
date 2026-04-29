@@ -1087,23 +1087,19 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
     // Bust coalition cache after caretaker transition
     if (typeof qCacheBust === 'function') qCacheBust('coalition_' + nationId);
 
-    // 4. Cancel any existing scheduled elections
-    // (preserve presidential elections for semi-presidential systems)
-    if (isSemiPresidential(nationCheck)) {
-        await supabase.from('elections').delete()
-            .eq('nation_id', nationId).eq('status', 'scheduled').eq('election_type', 'parliamentary');
-    } else {
-        await supabase.from('elections').delete()
-            .eq('nation_id', nationId).eq('status', 'scheduled');
-    }
-
-    // 5. Schedule early election
-    await supabase.from('elections').insert({
-        nation_id: nationId,
-        election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
-        status: 'scheduled',
-        election_type: 'parliamentary'
+    // 4 + 5. Cancel existing scheduled elections and schedule the snap.
+    // Routed through a SECURITY DEFINER RPC because the `elections` table
+    // has no client-side INSERT/DELETE policy (see 20260302_fix_rls_ownership);
+    // direct DML from the player session silently affected zero rows,
+    // leaving the original election in place.
+    const { error: scheduleErr } = await supabase.rpc('schedule_snap_election', {
+        p_nation_id: nationId,
+        p_election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
+        p_preserve_presidential: isSemiPresidential(nationCheck)
     });
+    if (scheduleErr) {
+        throw new Error('Failed to schedule snap election: ' + (scheduleErr.message || scheduleErr));
+    }
 
     // 6. Freeze all active bills (committee and floor)
     await supabase
