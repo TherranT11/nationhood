@@ -4,6 +4,26 @@
  */
 
 /**
+ * Phase 5.3: Walk a bill's articles and produce "Policy → Switch to Option"
+ * one-liners for the option-based articles. Repeal articles, text articles,
+ * and policies without options are skipped. Used to surface multi-option
+ * transitions in bill-passed event descriptions without forcing every
+ * downstream template to add a new placeholder.
+ */
+function _summarizeOptionTransitions(bill) {
+    const transitions = [];
+    for (const art of (bill?.bill_articles || [])) {
+        if (!art?.policy_id || art?.repeal_active_law_id) continue;
+        const policyName = art.policies?.policy_name;
+        const optionName = art.selected_option?.option_name;
+        if (policyName && optionName) {
+            transitions.push(`${policyName} → ${optionName}`);
+        }
+    }
+    return transitions;
+}
+
+/**
  * Fire a bill-related system event (bill_passed / bill_failed / quorum_failed etc).
  * Wraps the common try/catch + placeholder boilerplate used 20+ times in bills.js & presidential.js.
  *
@@ -20,12 +40,28 @@
  * @param {object} [opts.extra]            - Any extra placeholder key/values
  */
 export async function fireBillEvent(supabase, triggerKey, bill, opts = {}) {
+    // Phase 5.3: surface option transitions to event templates. Two channels:
+    //   • {option_transitions} placeholder — explicit, opt-in for new templates
+    //   • bill_name auto-suffix — universal, so existing templates that
+    //     reference {bill_name} surface the option info without a template
+    //     edit. Skipped when the caller passes billNameOverride (those
+    //     overrides have their own narrative shape) or when the bill has
+    //     no option-based articles (text bills, repeals, foundational, etc.).
+    const transitions = _summarizeOptionTransitions(bill);
+    const transitionsSummary = transitions.join('; ');
+
+    const baseBillName = opts.billNameOverride || bill.bill_name;
+    const decoratedBillName = (!opts.billNameOverride && transitions.length > 0)
+        ? `${baseBillName} (${transitionsSummary})`
+        : baseBillName;
+
     const placeholders = {
         nation: opts.nationName || 'Unknown',
-        bill_name: opts.billNameOverride || bill.bill_name,
+        bill_name: decoratedBillName,
         sponsor: opts.sponsor || bill.factions?.faction_name || 'Unknown',
         votes_for: String(opts.votesFor ?? 0),
         votes_against: String(opts.votesAgainst ?? 0),
+        option_transitions: transitionsSummary,
     };
     if (opts.votesAbstain !== undefined) {
         placeholders.votes_abstain = String(opts.votesAbstain);
