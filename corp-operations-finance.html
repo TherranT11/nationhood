@@ -424,7 +424,7 @@ body.light-mode .corp-nav-tab.active { color:#1a1a17; border-bottom-color:#1a1a1
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { computeCorpValuation, computeFinanceReceivableValue } from './js/game/corp-valuation.js';
-import { monthlyInterest, principalPortion } from './js/game/loan-math.js';
+import { monthlyInterest, principalPortion, loanFlatInterestBase } from './js/game/loan-math.js';
 import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
 let allUserFactions = [];
@@ -3495,12 +3495,13 @@ window.rdSubmitOffer = rdSubmitOffer;
 async function loadActivePortfolio() {
     if (!faction) { renderActivePortfolio(); return; }
 
-    const { data: loans } = await _supabase
+    const { data: loans, error: loansErr } = await _supabase
         .from('finance_active_loans')
         .select('*, borrower:factions!borrower_faction_id(id, faction_name, abbreviation, corp_ticker, nation), loan_nation:nations!nation_id(name), finance_loan_requests!inner(request_type)')
         .eq('lender_faction_id', faction.id)
         .in('status', ['current', 'late', 'delinquent'])
         .order('started_tick', { ascending: false });
+    if (loansErr) console.warn('[ActivePortfolio] loans query failed:', loansErr.message);
 
     const TYPE_MAP = { loan: 'LOAN', bond: 'BOND', insurance: 'INSURE', equity: 'EQUITY' };
     const isInsurance = (loan) => loan.finance_loan_requests?.request_type === 'insurance';
@@ -3527,7 +3528,7 @@ async function loadActivePortfolio() {
     // so the UI can't render a negative principal column.
     const loanInterestForRow = (loan) => Math.max(0, Math.min(
         Number(loan.monthly_payment || 0),
-        monthlyInterest(loan.original_principal ?? loan.principal, loan.interest_rate),
+        monthlyInterest(loanFlatInterestBase(loan), loan.interest_rate),
     ));
     apPortfolio = (loans || []).map(loan => ({
         monthlyInterestPortion: loanInterestForRow(loan),
