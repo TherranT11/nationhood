@@ -1918,7 +1918,16 @@ async function loadLawsData() {
         // policy_options so multi-option policies surface their effects on
         // this tab (Phase 2.5 onward stops writing stat_effects on the
         // policies row).
-        const [policiesRes, activeLawsRes] = await Promise.all([
+        // We treat a policy as "in force" if EITHER active_laws OR
+        // nation_policies has an option selected. active_laws is the
+        // legislative-history source of truth (what bill enacted what,
+        // when), but nation_policies is the per-nation default the
+        // policyadmin Starting Status grid writes to. If they disagree,
+        // active_laws wins (it reflects the most recent legislative
+        // action). Falling back to nation_policies prevents the Laws
+        // subtab from going blank when the backfill of active_laws
+        // hasn't happened yet.
+        const [policiesRes, activeLawsRes, nationPoliciesRes] = await Promise.all([
             _supabase
                 .from('policies')
                 .select('id, policy_name, description, major_sector, minor_sector, law_category, policy_options(id, option_name, option_description, option_order, stat_effects, sector_effects)')
@@ -1927,10 +1936,21 @@ async function loadLawsData() {
                 .from('active_laws')
                 .select('policy_id, selected_option_id')
                 .eq('nation_id', currentNation.id),
+            _supabase
+                .from('nation_policies')
+                .select('policy_id, selected_option_id, status')
+                .eq('nation_id', currentNation.id)
+                .eq('status', 'active'),
         ]);
         if (policiesRes.error) console.error('[Laws] policies query failed:', policiesRes.error);
         if (activeLawsRes.error) console.error('[Laws] active_laws query failed:', activeLawsRes.error);
+        if (nationPoliciesRes?.error) console.warn('[Laws] nation_policies query failed:', nationPoliciesRes.error);
         const enactedByPolicy = new Map();
+        // First seed from nation_policies (lowest priority — overwritten by active_laws below).
+        for (const row of (nationPoliciesRes?.data || [])) {
+            if (row.selected_option_id) enactedByPolicy.set(row.policy_id, row.selected_option_id);
+        }
+        // active_laws wins when present.
         for (const row of (activeLawsRes.data || [])) {
             enactedByPolicy.set(row.policy_id, row.selected_option_id || null);
         }
