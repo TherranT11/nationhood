@@ -4883,7 +4883,7 @@ function renderSemiPresPMSection(activeHOG) {
 
 let _pmNomineeSelected = null;
 
-function openNominatePMModal() {
+async function openNominatePMModal() {
     const modal = document.getElementById('assign-modal');
     if (!modal) return;
     document.getElementById('assign-modal-title').textContent = 'Nominate Prime Minister';
@@ -4893,15 +4893,51 @@ function openNominatePMModal() {
         .filter(p => (p.seats || 0) > 0 && p.leader_first_name && p.leader_last_name)
         .sort((a, b) => (b.seats || 0) - (a.seats || 0));
 
+    // Cohabitation gate: if the President's party is in the candidate list,
+    // its nominee must be the Deputy Leader (party leader IS the President).
+    // Fetch the active deputy for the President's party so the card displays
+    // the real candidate name and disables if no deputy is hired.
+    let presPartyDeputy = null;
+    if (presidentFactionId && candidates.some(p => p.id === presidentFactionId)) {
+        try {
+            const { data } = await _supabase.from('faction_deputies')
+                .select('first_name, last_name')
+                .eq('faction_id', presidentFactionId)
+                .eq('status', 'active')
+                .maybeSingle();
+            presPartyDeputy = data || null;
+        } catch (err) {
+            console.warn('[NominatePM] deputy lookup failed:', err?.message || err);
+        }
+    }
+
     const html = candidates.map(p => {
         const isPresParty = p.id === presidentFactionId;
         const pColor = p.party_color || '#888';
         const candLogo = p.party_logo;
         const candCustomLogo = p.custom_logo_url;
         const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: pColor })}</span>` : '';
-        return `<div class="candidate-card" data-party-id="${p.id}" data-party-name="${escapeHtml(p.faction_name)}" onclick="selectPMCandidate(this)" style="border-left:3px solid ${pColor};cursor:pointer;">
+
+        // For the President's party, swap displayed candidate to the Deputy.
+        // If no deputy hired, render disabled with an explanatory hint.
+        let candidateLineHtml;
+        let cardAttrs = `data-party-id="${p.id}" data-party-name="${escapeHtml(p.faction_name)}"`;
+        let cardStyle = `border-left:3px solid ${pColor};cursor:pointer;`;
+        if (isPresParty) {
+            if (presPartyDeputy) {
+                candidateLineHtml = `<div class="candidate-details">${p.seats} seats · Deputy Leader: ${escapeHtml(presPartyDeputy.first_name)} ${escapeHtml(presPartyDeputy.last_name)}</div>`;
+            } else {
+                candidateLineHtml = `<div class="candidate-details" style="color:var(--text-dim);">${p.seats} seats · No Deputy hired — visit Party Actions to appoint one.</div>`;
+                cardStyle = `border-left:3px solid ${pColor};cursor:not-allowed;opacity:0.55;`;
+                cardAttrs += ' data-disabled="true"';
+            }
+        } else {
+            candidateLineHtml = `<div class="candidate-details">${p.seats} seats · Leader: ${escapeHtml(p.leader_first_name)} ${escapeHtml(p.leader_last_name)}</div>`;
+        }
+
+        return `<div class="candidate-card" ${cardAttrs} onclick="selectPMCandidate(this)" style="${cardStyle}">
             <div><div class="candidate-name">${candLogoHtml}${escapeHtml(p.faction_name)}</div>
-            <div class="candidate-details">${p.seats} seats · Leader: ${escapeHtml(p.leader_first_name)} ${escapeHtml(p.leader_last_name)}</div></div>
+            ${candidateLineHtml}</div>
             ${isPresParty ? '<span class="ruling-label">PRESIDENT\'S PARTY</span>' : ''}
         </div>`;
     }).join('');
@@ -4921,6 +4957,7 @@ function openNominatePMModal() {
 }
 
 function selectPMCandidate(card) {
+    if (card.dataset.disabled === 'true') return;
     document.querySelectorAll('#assign-candidates .candidate-card').forEach(c => c.classList.remove('selected'));
     card.classList.add('selected');
     _pmNomineeSelected = {

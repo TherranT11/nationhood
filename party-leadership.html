@@ -24,7 +24,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
 import { deductAP } from './js/game/config.js';
-import { getNationNames } from './js/game/political-actions.js';
+import { getNationNames, appendAdminLeaderChange } from './js/game/political-actions.js';
 import {
     POSITIVE_MAP, NEGATIVE_MAP,
     IDEOLOGY_COLORS, CATEGORY_COLORS,
@@ -591,16 +591,20 @@ window._appointLeader = async function() {
                 .eq('is_active', true);
             if (minErr) console.warn('Failed to update PM ministry (non-blocking):', minErr.message);
 
-            // Update administration record
-            const { error: admErr } = await _supabase.from('administrations')
-                .update({
-                    prime_minister: pmFullName,
-                    admin_name: `${candidate.lastName} Administration`,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('nation_id', currentNation.id)
-                .is('ended_at_tick', null);
-            if (admErr) console.warn('Failed to update administration (non-blocking):', admErr.message);
+            // Tier 2 Phase 5: admin row identity is immutable post-INSERT.
+            // Display reads resolve the current PM from head_of_government,
+            // so the rotation is recorded as a leader_changes event instead
+            // of rewriting prime_minister / admin_name on the row.
+            const oldPmName = [currentFaction.leader_first_name, currentFaction.leader_last_name].filter(Boolean).join(' ').trim() || null;
+            await appendAdminLeaderChange(_supabase, currentNation.id, {
+                tick: currentTick ?? null,
+                role: 'prime_minister',
+                reason: 'party_leadership_change',
+                old_name: oldPmName,
+                new_name: pmFullName,
+                old_party_id: currentFaction.id,
+                new_party_id: currentFaction.id,
+            });
 
             // Fire pm_appointed system event so other players see the PM change
             try {
