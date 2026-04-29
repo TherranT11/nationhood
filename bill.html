@@ -302,6 +302,10 @@ function renderSectorEffects(effects, { reverse = false } = {}) {
 let institutionConfig = [];
 let myVote = null, allPartySeats = {}, allParties = [], allPolicies = [], amendmentRequests = [];
 let selectedAmendmentPolicy = null, isHeadFaction = false, headFactionId = null;
+// Phase 3.5: target option id for the amendment picker, parallel to
+// selectedTargetOptionId in laws.html. Hoisted with the other amendment
+// state for visibility.
+let selectedAmendmentTargetOptionId = null;
 let isPresidential = false, isPresidentParty = false, presidentFactionId = null;
 let nationActiveLaws = []; // Active laws in the nation (for repeal articles)
 let currentShardTick = 0; // Current shard tick for deadline proximity checks
@@ -2242,7 +2246,14 @@ async function renderSidebar() {
                         const withdrawBtn = isMyAmendment ? `<button class="amendment-withdraw-btn" onclick="withdrawConditionalSupport('${req.id}')" title="Withdraw">✕</button>` : '';
                         if (req.request_type === 'strike') {
                             const targetArt = (currentBill.bill_articles || []).find(a => a.id === req.target_article_id);
-                            const artLabel = targetArt ? (targetArt.policies?.policy_name || targetArt.article_title || 'Article ' + targetArt.article_number) : 'Unknown Article';
+                            // Phase 3.5-fix: strike label includes the option
+                            // transition so the sponsor sees what's actually
+                            // being torn out, not just the umbrella policy.
+                            const _stTargetOpt = targetArt?.selected_option?.option_name;
+                            const _stPolicyName = targetArt?.policies?.policy_name || targetArt?.article_title || ('Article ' + targetArt?.article_number);
+                            const artLabel = targetArt
+                                ? (_stTargetOpt ? _stPolicyName + ' → Switch to ' + _stTargetOpt : _stPolicyName)
+                                : 'Unknown Article';
                             return `<div class="amendment-request strike" style="position:relative;">
                                 ${withdrawBtn}
                                 <div class="amendment-header"><div><div class="amendment-party">${req.factions?.faction_name || 'Unknown'}</div><div class="amendment-seats">${allPartySeats[req.faction_id] || 0} seats</div></div></div>
@@ -2832,10 +2843,6 @@ function onAmendmentSectorChange() {
     document.getElementById('amendment-policy-group').style.display = 'block';
 }
 
-// Phase 3.5: target option for the amendment picker, parallel to
-// selectedTargetOptionId in laws.html.
-let selectedAmendmentTargetOptionId = null;
-
 // Phase 3.5: same helper as laws.html — look up the option the current
 // nation has currently selected for a given policy. Reads from
 // nationActiveLaws → selected_option_id → matching policy_options entry.
@@ -2871,7 +2878,10 @@ function renderAmendmentOptionSelector(policyId) {
 
     details.innerHTML = '';
     if (!policy || options.length === 0) {
+        // Phase 3.5-fix: orphaned policies have no transition to choose;
+        // re-enable the amendment submit so they can still be added.
         group.style.display = 'none';
+        document.getElementById('submit-amendment-btn').disabled = false;
         return;
     }
 

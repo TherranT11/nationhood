@@ -3078,7 +3078,12 @@ function renderOptionSelector(policyId) {
 
     details.innerHTML = '';
     if (!policy || options.length === 0) {
+        // Phase 3.5-fix: legacy / orphaned policies with no options can
+        // still be added (no transition to express). Re-enable the Add
+        // button that selectPolicyOption disabled, since there's nothing
+        // to wait for here.
         group.style.display = 'none';
+        if (_activeAddButtonId) document.getElementById(_activeAddButtonId).disabled = false;
         return;
     }
 
@@ -4901,7 +4906,11 @@ function renderCommitteeOptionSelector(policyId) {
 
     details.innerHTML = '';
     if (!policy || options.length === 0) {
+        // Phase 3.5-fix: orphaned policies have no transition to choose.
+        // Re-enable the committee Add button that selectCommitteePolicy
+        // disabled.
         group.style.display = 'none';
+        document.getElementById('committee-add-btn').disabled = false;
         return;
     }
 
