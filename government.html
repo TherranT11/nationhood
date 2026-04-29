@@ -1866,16 +1866,40 @@ let _lawsLoaded = false;
 async function loadLawsData() {
     if (!currentNation) return;
     try {
-        // Load ALL policies (not just active laws) so players can browse everything
+        // Load ALL policies (not just active laws) so players can browse everything.
+        // Phase 5-fix: trimmed SELECT drops columns that were removed from
+        // the live schema (ideology/ideologies/target_stat/stat_direction)
+        // — PostgREST rejects the whole query when any column is missing,
+        // and the catch below was silently emptying _lawsData. Also embeds
+        // policy_options so multi-option policies surface their effects on
+        // this tab (Phase 2.5 onward stops writing stat_effects on the
+        // policies row).
         const [policiesRes, activeLawsRes] = await Promise.all([
-            _supabase.from('policies').select('id, policy_name, description, major_sector, minor_sector, law_category, ideology, ideologies, stat_effects, target_stat, stat_direction').eq('is_active', true),
+            _supabase
+                .from('policies')
+                .select('id, policy_name, description, major_sector, minor_sector, law_category, stat_effects, policy_options(id, option_name, option_order, stat_effects, sector_effects)')
+                .eq('is_active', true),
             _supabase.from('active_laws').select('policy_id').eq('nation_id', currentNation.id),
         ]);
         const activeIds = new Set((activeLawsRes.data || []).map(l => l.policy_id));
-        _lawsData = (policiesRes.data || []).map(p => ({
-            policies: p,
-            _isEnacted: activeIds.has(p.id),
-        }));
+        _lawsData = (policiesRes.data || []).map(p => {
+            const opts = Array.isArray(p.policy_options)
+                ? [...p.policy_options].sort((a, b) => (a.option_order || 0) - (b.option_order || 0))
+                : [];
+            // Surface the first option's stat_effects on the policy object so
+            // the existing effect-tag renderer keeps working for multi-option
+            // policies. Falls back to whatever's on policies.stat_effects for
+            // orphaned legacy data.
+            const effective = (opts[0]?.stat_effects && Array.isArray(opts[0].stat_effects) && opts[0].stat_effects.length > 0)
+                ? opts[0].stat_effects
+                : p.stat_effects;
+            return {
+                policies: { ...p, stat_effects: effective },
+                _isEnacted: activeIds.has(p.id),
+                _optionCount: opts.length,
+                _firstOptionName: opts[0]?.option_name || null,
+            };
+        });
     } catch (err) {
         console.error('[Laws] Load failed:', err);
         _lawsData = [];
