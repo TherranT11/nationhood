@@ -3880,13 +3880,35 @@ async function loadGovData() {
             if (nextEl) coalition._earlyElectionTick = nextEl.election_tick;
         }
 
+        // Reconcile the admin row's identity fields with primary tables.
+        // president_name / president_party_id / president_party_name on
+        // administrations are historical snapshots that can drift —
+        // override with live values from `presidents` and `head_of_government`
+        // before exposing to render code so the Administrative subtab
+        // never displays stale leadership.
+        const reconciledAdmin = adminRes.data ? { ...adminRes.data } : null;
+        if (reconciledAdmin) {
+            if (hog) {
+                reconciledAdmin.pm_party_id = hog.faction_id;
+                reconciledAdmin.pm_party_name = hog.factions?.faction_name || reconciledAdmin.pm_party_name;
+                const livePmName = [hog.first_name, hog.last_name].filter(Boolean).join(' ').trim();
+                if (livePmName) reconciledAdmin.prime_minister = livePmName;
+            }
+            if (president) {
+                reconciledAdmin.president_party_id = president.faction_id;
+                reconciledAdmin.president_party_name = president.factions?.faction_name || reconciledAdmin.president_party_name;
+                const livePresName = [president.first_name, president.last_name].filter(Boolean).join(' ').trim();
+                if (livePresName) reconciledAdmin.president_name = livePresName;
+            }
+        }
+
         _govData = {
             coalition,
             ministries: ministryData,
             parties: loadedParties,
             hog,
             president,
-            admin: adminRes.data,
+            admin: reconciledAdmin,
         };
     } catch (err) {
         console.error('[Government] loadGovData failed:', err);

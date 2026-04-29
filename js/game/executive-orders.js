@@ -319,20 +319,27 @@ function validateEOAuthority(nation, callerFactionId, presidentFactionId, pmFact
 
 /**
  * Fetch the current administration's president and PM faction IDs.
- * Returns { presidentFactionId, pmFactionId } or nulls if not found.
+ * Reads primary tables directly (presidents.is_active, head_of_government.active)
+ * — the administrations row is a historical snapshot whose
+ * president_party_id / pm_party_id can drift from the live state.
+ * Authority checks must use live state.
  */
 async function getAdminFactionIds(supabase, nationId) {
-    const { data: admin } = await supabase
-        .from('administrations')
-        .select('president_party_id, pm_party_id')
-        .eq('nation_id', nationId)
-        .is('ended_at_tick', null)
-        .order('started_at_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const [presRes, hogRes] = await Promise.all([
+        supabase.from('presidents')
+            .select('faction_id')
+            .eq('nation_id', nationId)
+            .eq('is_active', true)
+            .maybeSingle(),
+        supabase.from('head_of_government')
+            .select('faction_id')
+            .eq('nation_id', nationId)
+            .eq('active', true)
+            .maybeSingle(),
+    ]);
     return {
-        presidentFactionId: admin?.president_party_id || null,
-        pmFactionId: admin?.pm_party_id || null
+        presidentFactionId: presRes.data?.faction_id || null,
+        pmFactionId: hogRes.data?.faction_id || null
     };
 }
 

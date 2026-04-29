@@ -220,10 +220,16 @@ initPage('politics', async (state) => {
         .limit(1)
         .maybeSingle();
 
-    // Fetch current administration
+    // Fetch current administration. Identity fields (president_name,
+    // president_party_id, president_party_name) used to be projected here
+    // but the politics page only reads admin_name / stats_at_start /
+    // started_at_tick downstream — so we drop the dead-fetched identity
+    // columns. If a future feature needs the live president, query
+    // presidents.is_active=true directly rather than re-introducing the
+    // drift-prone admin columns.
     const { data: administration } = await _supabase
         .from('administrations')
-        .select('id, admin_name, government_type, started_at_tick, president_name, president_party_id, president_party_name, stats_at_start')
+        .select('id, admin_name, government_type, started_at_tick, stats_at_start')
         .eq('nation_id', nation.id)
         .is('ended_at_tick', null)
         .order('started_at_tick', { ascending: false })
