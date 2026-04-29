@@ -2917,7 +2917,11 @@ function renderAmendmentOptionSelector(policyId) {
     label.style.display = 'block';
     select.style.display = 'block';
     select.innerHTML = '<option value="">-- Choose new option --</option>' +
-        selectableOptions.map(o => '<option value="' + o.id + '">' + escapeHtml(o.option_name || 'Untitled') + '</option>').join('');
+        options.map(o => {
+            const isActive = current && o.id === current.id;
+            const label = escapeHtml(o.option_name || 'Untitled') + (isActive ? ' (Currently Active)' : '');
+            return '<option value="' + o.id + '"' + (isActive ? ' disabled' : '') + '>' + label + '</option>';
+        }).join('');
     select.value = '';
     group.style.display = 'block';
 }
@@ -3474,7 +3478,11 @@ function renderSponsorAddOptionSelector(policyId) {
     label.style.display = 'block';
     select.style.display = 'block';
     select.innerHTML = '<option value="">-- Choose new option --</option>' +
-        selectableOptions.map(o => '<option value="' + o.id + '">' + escapeHtml(o.option_name || 'Untitled') + '</option>').join('');
+        options.map(o => {
+            const isActive = current && o.id === current.id;
+            const label = escapeHtml(o.option_name || 'Untitled') + (isActive ? ' (Currently Active)' : '');
+            return '<option value="' + o.id + '"' + (isActive ? ' disabled' : '') + '>' + label + '</option>';
+        }).join('');
     select.value = '';
     group.style.display = 'block';
 }
