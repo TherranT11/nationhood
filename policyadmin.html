@@ -1262,11 +1262,14 @@ async function savePolicy() {
         });
     }
 
-    // Identity-only policies row. Legacy NOT NULL columns get placeholders
-    // from the first option's first stat_effect so the schema's pre-multi-
-    // option constraints stay satisfied. The engine no longer reads them on
-    // multi-option policies — per-option data on policy_options is the
-    // source of truth from Phase 4 onward.
+    // Identity-only policies row. We keep target_stat / stat_direction (the
+    // last two NOT NULL legacy columns without defaults that we've seen
+    // survive the schema trim) populated from the first option's first
+    // stat_effect so the schema stays satisfied. Fields with defaults
+    // (stat_change_per_tick, duration_months, stat_floor, stat_ceiling) are
+    // omitted because some environments have dropped those columns
+    // entirely — the multi-option engine doesn't read them anyway, and
+    // PostgREST rejects writes to columns missing from its schema cache.
     const firstNormalized = optionPayloads[0].normalizedEffects[0];
     const policyData = {
         policy_key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') + '_' + Date.now().toString(36),
@@ -1284,10 +1287,6 @@ async function savePolicy() {
         opposed_policy_ids: null,
         target_stat: firstNormalized?.stat_key || 'stability',
         stat_direction: (normalizeEffectDirection(firstNormalized?.direction) || 'up').toUpperCase(),
-        stat_change_per_tick: firstNormalized?.rate || 1,
-        duration_months: firstNormalized?.duration_ticks || 12,
-        stat_floor: 0,
-        stat_ceiling: 100,
         requires_policy_id: null,
         is_active: true
     };
