@@ -315,6 +315,16 @@ export async function createAdministration(supabase, nationId, nation, coalition
         // new admin row or close the existing presidential one — that
         // would corrupt the historical ledger and replace the President's
         // record with a PM-centric one.
+        //
+        // KNOWN ISSUE — Phase 4 will fix: the SQL RPC
+        // finalize_government_formation (20260421_finalize_formation_hos_pm_
+        // party_fields.sql) ALSO closes the open admin and inserts a new
+        // PM-centric one on every parliamentary formation, even in
+        // semi-pres. Until the RPC is re-CREATEd with a matching skip,
+        // the JS short-circuit here is necessary-but-not-sufficient — the
+        // RPC path will still corrupt the President's row if it fires
+        // post-coalition-formation. Phase 4 ships the RPC fix alongside
+        // the open-admin-row backfill, so they land together.
         if (isSemiPresidential(nation)) {
             console.log(`[createAdministration] semi-presidential — skipping (admin = president's tenure)`);
             return null;
