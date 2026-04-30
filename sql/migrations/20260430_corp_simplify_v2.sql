@@ -154,10 +154,13 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- ─────────────────────────────────────────────────────────────
 -- 4. Rescale Reputation 0-100 → 0-10
 -- ─────────────────────────────────────────────────────────────
+-- Rescale ALL rows (not just corporations). Parties don't use the field
+-- but the column is shared with the factions table, and the CHECK
+-- constraint applies to every row — leaving parties at the legacy
+-- INT default of 65 would violate BETWEEN 0 AND 10.
 UPDATE factions
 SET corp_reputation = ROUND((COALESCE(corp_reputation, 0)::numeric / 10), 2)
-WHERE faction_type = 'corporation'
-  AND corp_reputation > 10;  -- idempotent guard
+WHERE corp_reputation > 10;  -- idempotent guard
 
 ALTER TABLE factions
   ALTER COLUMN corp_reputation TYPE NUMERIC(4,2) USING corp_reputation::numeric;

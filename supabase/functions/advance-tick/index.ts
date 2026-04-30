@@ -15630,7 +15630,7 @@ const ELECTORATE_CONFIG = {
     // consistency with the prior tuning. Sum doesn't have to equal 1 —
     // raw_appeal feeds a softmax for contested_vote_share that
     // re-normalizes regardless.
-    PILLAR_WEIGHT_GOVERNANCE: 0.40,
+    PILLAR_WEIGHT_ENGAGEMENT: 0.40,
     PILLAR_WEIGHT_MOMENTUM: 0.30,
     PILLAR_WEIGHT_IDEOLOGY: 0.00,
     PILLAR_WEIGHT_GOV_APPROVAL: 0.00,
@@ -15886,7 +15886,7 @@ function computeIssueSalience(nation, statKeys) {
  * Seed faction_electoral_standing rows for all active factions in a nation.
  *
  * Initial raw_appeal uses the 3-pillar formula:
- *   governance(50) * 0.35 + momentum(0) * 0.25 + ideology * 0.30 + govApprovalPillar * 0.10
+ *   engagement(50) * 0.35 + momentum(0) * 0.25 + ideology * 0.30 + govApprovalPillar * 0.10
  * where govApprovalPillar = clamp(50 + (gov_approval - 35) * (50/65), 0, 100).
  *
  * @param {object} supabase - Supabase client
@@ -15959,14 +15959,14 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 
     // Compute initial raw_appeal so elections running before the first tick
     // don't see NULL contested_vote_share. Phase 5a: ideology pillar dropped;
-    // governance and momentum carry the weight. Existing standings still
+    // engagement and momentum carry the weight. Existing standings still
     // need to be in the softmax so a new party doesn't get 100% share from
     // being computed in isolation.
     const govApprovalPillar = clamp(50 + (govApproval - 35) * (50 / 65), 0, 100);
 
     for (const r of rows) {
         r.raw_appeal = round2(
-            50 * 0.35 +       // governance: neutral at genesis
+            50 * 0.35 +       // engagement: neutral at genesis
             0 * 0.25 +        // momentum: 0 at genesis
             0 * 0.30 +        // ideology: pillar removed in Phase 5a
             govApprovalPillar * 0.10
@@ -16084,7 +16084,7 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     // Runs each tick to compute contested_vote_share and turnout_rate
     // for all active parties in a nation.
     //
-    // Pillars: Governance (35%) + Momentum (25%) + Ideology (30%) + Gov Approval (10%)
+    // Pillars: Engagement (35%) + Momentum (25%) + Ideology (30%) + Gov Approval (10%)
 
     const nationId = nation.id;
 
@@ -16161,7 +16161,7 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             : 0;
     }
 
-    // 7. Compute engagement scores (Governance pillar). Reuses leadPartyId
+    // 7. Compute engagement scores (engagement pillar). Reuses leadPartyId
     // from the incumbency block above; coalitionPartyIds keeps the raw
     // party_ids set (without the lead added) since computeEngagementScores
     // takes them separately.
@@ -16178,7 +16178,7 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         console.warn(`[tickElectorate] Engagement scores failed for ${nation.name}, using defaults:`, engErr.message);
     }
 
-    // Phase 5a: ideology pillar removed. The remaining pillars (governance,
+    // Phase 5a: ideology pillar removed. The remaining pillars (engagement,
     // momentum) carry the signal. computeSpatialAlignments was the per-tick
     // ideology computation; no longer called.
 
@@ -16196,7 +16196,7 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         // PILLAR 1: Momentum (0-100 from factions.momentum)
         const momentum = clamp(Number(f.momentum ?? 0), 0, 100);
 
-        // PILLAR 2: Governance (0-100 from engagement score)
+        // PILLAR 2: Engagement (0-100 from engagement score)
         const engagement = engagementResults[f.id]?.engagementScore ?? 50;
 
         // Party approval: governing parties drift toward gov_approval,
@@ -16220,7 +16220,7 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         // Phase 5a: ideology and gov_approval terms drop out (their weights
         // are 0); kept in the formula for symmetry with the genesis path.
         const rawAppeal = round2(
-            engagement * CFG.PILLAR_WEIGHT_GOVERNANCE +
+            engagement * CFG.PILLAR_WEIGHT_ENGAGEMENT +
             momentum * CFG.PILLAR_WEIGHT_MOMENTUM +
             0 * CFG.PILLAR_WEIGHT_IDEOLOGY +
             govApprovalPillar * CFG.PILLAR_WEIGHT_GOV_APPROVAL
@@ -16326,7 +16326,7 @@ function computeRealizedVoteShares(updates, profile, nation) {
     if (updates.length === 0) return;
 
     // Uniform turnout: all parties get the same base turnout rate.
-    // Elections are determined by Momentum/Ideology/Governance through raw_appeal only.
+    // Elections are determined by Momentum/Ideology/Engagement through raw_appeal only.
     // No visibility-based turnout distortion.
     const baseTurnout = 0.65;
 
@@ -16451,7 +16451,7 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick, ent
         }
     }
 
-    // 6. Very good or very bad governance drives engagement
+    // 6. Very good or very bad gov approval drives engagement
     const govApproval = Number(nation.gov_approval ?? 50);
     const govExtreme = Math.abs(govApproval - 50);
     enthusiasmDelta += govExtreme * CFG.ENTHUSIASM_GOV_EXTREME_SCALE;
@@ -16661,7 +16661,7 @@ async function nudgeEnthusiasm(supabase, nationId, delta) {
  */
 async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
     // No-op: credibility system removed — 3-pillar election system
-    // (Governance 35%, Momentum 25%, Ideology 30%, Gov Approval 10%).
+    // (Engagement 35%, Momentum 25%, Ideology 30%, Gov Approval 10%).
     return;
 }
 
@@ -19825,14 +19825,6 @@ const ATTACK_VECTORS = [
         effectiveness: 'high',
     },
     {
-        id: 'governance',
-        name: 'Governance Record',
-        icon: '\u25BC',
-        description: 'Attack stat deterioration on their watch',
-        evidence_required: true,
-        effectiveness: 'high',
-    },
-    {
         id: 'ideology',
         name: 'Ideology',
         icon: '\u25C6',
@@ -19896,31 +19888,26 @@ function _attackHeadline(outcomeId, targetName, vectorId) {
     const headlines = {
         devastating: {
             voting_record: `${targetName}'s voting record exposed \u2014 public outrage mounts`,
-            governance: `${targetName}'s governance failures laid bare in devastating critique`,
             ideology: `${targetName} branded as extremists in viral opposition campaign`,
             smear: `Relentless attacks leave ${targetName} scrambling to respond`,
         },
         effective: {
             voting_record: `${targetName}'s controversial votes draw media scrutiny`,
-            governance: `Questions mount over ${targetName}'s record on key indicators`,
             ideology: `Voters question ${targetName}'s ideological direction after critique`,
             smear: `Negative campaign against ${targetName} lands some punches`,
         },
         glancing: {
             voting_record: `Criticism of ${targetName}'s votes dismissed as political theatre`,
-            governance: `Governance critique against ${targetName} falls flat`,
             ideology: `Ideological attack on ${targetName} largely ignored by public`,
             smear: `Smear campaign against ${targetName} fizzles \u2014 voters indifferent`,
         },
         backfire: {
             voting_record: `Voters rally behind ${targetName} after what they see as unfair attack`,
-            governance: `Governance critique seen as hypocritical \u2014 attacker's credibility drops`,
             ideology: `Ideological attack makes attackers look petty \u2014 ${targetName} gains sympathy`,
             smear: `Baseless smear against ${targetName} draws media rebuke`,
         },
         mutual: {
             voting_record: `Mudslinging over voting records erodes public trust in politics`,
-            governance: `Governance blame game leaves all sides worse off`,
             ideology: `Ideological warfare between parties leaves voters disgusted`,
             smear: `Negative spiral damages both parties \u2014 polarization spikes`,
         },
@@ -19936,8 +19923,6 @@ function _attackHeadline(outcomeId, targetName, vectorId) {
 async function gatherAttackEvidence(supabase, targetFactionId, nationId, currentTick) {
     const evidence = {
         controversial_votes: [],
-        governance_record: [],
-        is_governing: false,
     };
 
     // 1. Controversial votes — bills where this party voted opposite to majority outcome
@@ -19970,54 +19955,6 @@ async function gatherAttackEvidence(supabase, targetFactionId, nationId, current
     }
     evidence.controversial_votes = evidence.controversial_votes.slice(0, 5);
 
-    // 3. Governance record — check if target is in governing coalition
-    const coalition = await fetchActiveCoalition(supabase, nationId);
-    const coalitionPartyIds = new Set(coalition?.party_ids || []);
-    evidence.is_governing = coalitionPartyIds.has(targetFactionId);
-
-    if (evidence.is_governing) {
-        // Find ministries held by this party
-        const { data: ministries } = await supabase
-            .from('ministries')
-            .select('ministry_key')
-            .eq('nation_id', nationId)
-            .eq('party_id', targetFactionId)
-            .eq('is_active', true);
-
-        if (ministries && ministries.length > 0) {
-            // Check stat trends for stats under their ministries
-            for (const m of ministries) {
-                const stats = MINISTRY_TO_STATS[m.ministry_key] || [];
-                for (const statKey of stats) {
-                    const { data: history } = await supabase
-                        .from('stat_history')
-                        .select('value, tick')
-                        .eq('nation_id', nationId)
-                        .eq('stat_name', statKey)
-                        .order('tick', { ascending: false })
-                        .limit(6);
-
-                    if (history && history.length >= 2) {
-                        const newest = history[0].value;
-                        const oldest = history[history.length - 1].value;
-                        const change = newest - oldest;
-                        const sign = statDirectionSign(statKey);
-                        // Stat worsened if it moved opposite to its "good" direction
-                        if ((sign === 1 && change < -3) || (sign === -1 && change > 3)) {
-                            const changeStr = change > 0 ? `+${Math.round(change)}` : `${Math.round(change)}`;
-                            evidence.governance_record.push({
-                                stat: statKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-                                change: changeStr,
-                                ministry: m.ministry_key,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        evidence.governance_record = evidence.governance_record.slice(0, 5);
-    }
-
     return evidence;
 }
 
@@ -20035,24 +19972,16 @@ function buildAttackVectors(evidence) {
         });
     }
 
-    if (evidence.governance_record.length > 0 && evidence.is_governing) {
-        vectors.push({
-            ...ATTACK_VECTORS[1],
-            evidence: evidence.governance_record,
-            strength: 'strong',
-        });
-    }
-
     // Ideology is always available (moderate strength)
     vectors.push({
-        ...ATTACK_VECTORS[2],
+        ...ATTACK_VECTORS[1],
         evidence: null,
         strength: 'moderate',
     });
 
     // General smear is always available (weak strength)
     vectors.push({
-        ...ATTACK_VECTORS[3],
+        ...ATTACK_VECTORS[2],
         evidence: null,
         strength: 'weak',
     });
@@ -28871,23 +28800,23 @@ function calculateTier(growth) {
 const TIER_EFFECTS = {
     1: {
         resolution: 'FRIVOLOUS SUIT',
-        filer: { momentum: -5, governance: -2 },
-        gov: { momentum: 3, governance: 1 },
+        filer: { momentum: -5 },
+        gov: { momentum: 3 },
     },
     2: {
         resolution: 'PARTIAL WIN',
-        filer: { momentum: 3, governance: 0 },
-        gov: { momentum: -2, governance: -2 },
+        filer: { momentum: 3 },
+        gov: { momentum: -2 },
     },
     3: {
         resolution: 'MAJOR WIN',
-        filer: { momentum: 7, governance: 2 },
-        gov: { momentum: -5, governance: -5 },
+        filer: { momentum: 7 },
+        gov: { momentum: -5 },
     },
     4: {
         resolution: 'DEVASTATING WIN',
-        filer: { momentum: 12, governance: 5 },
-        gov: { momentum: -10, governance: -8 },
+        filer: { momentum: 12 },
+        gov: { momentum: -10 },
     },
 };
 
@@ -29003,9 +28932,11 @@ async function fileLawsuit(supabase, params) {
             status: 'active',
             resolution: null,
             momentum_effect: effects.filer.momentum,
-            governance_effect: effects.filer.governance,
             gov_momentum_effect: effects.gov.momentum,
-            gov_governance_effect: effects.gov.governance,
+            // KNOWN ORPHAN: lawsuits.governance_effect and gov_governance_effect
+            // columns still exist in the DB (added by 20260413_agitator_and_lawsuits.sql)
+            // but the Governance score system was removed. They default to 0 and
+            // nothing reads them. A future migration can drop them.
         })
         .select('*')
         .single();
