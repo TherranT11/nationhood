@@ -3,16 +3,26 @@
 -- as a 0-10 stat to match the canonical-stat list shown on the
 -- redesigned corp dashboard.
 --
--- Companion to 20260430_corp_simplify_v2.sql.
+-- Companion to 20260430_corp_simplify_v2.sql. Self-sufficient: works
+-- whether v2 added corp_assets as NUMERIC currency, or never added it at
+-- all. Idempotent — safe to re-run.
 -- ══════════════════════════════════════════════════════════════
 
--- ── corp_assets: NUMERIC currency → NUMERIC(4,2) 0-10 ──
--- Existing values default to 0, so the type narrowing is safe.
--- Clamp anyway in case any stray values were written before this migration.
+-- ── corp_assets: ensure column exists, then narrow to 0-10 ──
+
+-- Add the column if v2 didn't (or v2 hasn't been run yet). If it already
+-- exists with a different type, this is a no-op and the ALTER TYPE below
+-- handles the narrowing.
+ALTER TABLE factions
+  ADD COLUMN IF NOT EXISTS corp_assets NUMERIC(4,2) NOT NULL DEFAULT 0;
+
+-- Clamp any out-of-range values that may exist if the column was previously
+-- typed as plain NUMERIC (currency) and had real values written to it.
 UPDATE factions
 SET corp_assets = LEAST(GREATEST(COALESCE(corp_assets, 0), 0), 10)
 WHERE faction_type = 'corporation';
 
+-- Narrow the type. No-op if already NUMERIC(4,2).
 ALTER TABLE factions
   ALTER COLUMN corp_assets TYPE NUMERIC(4,2) USING corp_assets::numeric;
 
