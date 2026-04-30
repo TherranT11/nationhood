@@ -3785,16 +3785,12 @@ export async function enactBill(supabase, bill, currentTick) {
     // Legislative activity: boost gov_approval_events
     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
 
-    // ── Authoritarian crisis bonus ──
-    // If 3+ crises are active AND this bill reduces freedom-related stats,
-    // award gov_approval + momentum to governing parties.
-    // Diminishing returns: first authoritarian law during multi-crisis = +5/+5,
-    // subsequent ones = +2/+2.
-    try {
-        await applyAuthoritarianCrisisBonus(supabase, bill, nation, currentTick);
-    } catch (authErr) {
-        console.error('[enactBill] Authoritarian crisis bonus failed (non-fatal):', authErr?.message);
-    }
+    // Authoritarian crisis bonus mechanic removed by alpha stats refactor
+    // (Phase 7d). The detection signal — bills decreasing freedom_index /
+    // press_freedom / judicial_independence — relied on three columns
+    // that were deleted with no replacement. Reintroduce against
+    // alpha-19 (e.g., a `policy.flags.authoritarian` attribute) if the
+    // mechanic is wanted back.
 
     console.log('[enactBill] stage=terminal_result result=success', logContext);
     return { success: true };
@@ -3862,113 +3858,12 @@ export async function processRoyalAssent(supabase, nation, currentTick) {
 }
 
 
-// ── Authoritarian Crisis Bonus ──
-// When 3+ crises are active and a bill with authoritarian stat effects passes,
-// governing parties receive gov_approval + momentum bonuses.
-// Diminishing returns: first = +5/+5, subsequent = +2/+2.
-// PHASE 7 TODO: all three stats below are deleted by the alpha refactor
-// (Phase 4 shim routes them to null). With nothing in this set actually
-// resolving, applyAuthoritarianCrisisBonus becomes a no-op and the
-// authoritarian-crisis-bonus mechanic stops firing until Phase 7 picks
-// new detection signals — likely "decreases authority" + "increases
-// unrest" or a `bill.flags.authoritarian = true` policy attribute.
-const AUTHORITARIAN_STATS = new Set(['freedom_index', 'press_freedom', 'judicial_independence']);
-
-async function applyAuthoritarianCrisisBonus(supabase, bill, nation, currentTick) {
-    // 1. Check if the bill has authoritarian effects (decreases freedom stats)
-    const articles = bill.articles || [];
-    let isAuthoritarian = false;
-    for (const article of articles) {
-        if (article.status === 'struck') continue;
-        const effects = article.stat_effects || article.effects || [];
-        for (const eff of effects) {
-            const key = eff.stat_key || eff.stat || '';
-            const dir = eff.direction || (eff.delta < 0 ? 'down' : 'up');
-            if (AUTHORITARIAN_STATS.has(key) && dir === 'down') {
-                isAuthoritarian = true;
-                break;
-            }
-        }
-        if (isAuthoritarian) break;
-    }
-
-    // Phase 5-fix: the policies.stat_effects column is gone from the live
-    // schema, so the legacy bill-policy_id authoritarian-detection branch
-    // is no longer reachable. The article-level loop above already handles
-    // every multi-option policy via art.stat_effects / art.effects, so
-    // dropping this fallback only loses the rare legacy single-policy
-    // branch (no current bill flow uses bill.policy_id directly).
-
-    if (!isAuthoritarian) return;
-
-    // 2. Check active crises count
-    const { data: crises } = await supabase
-        .from('active_crises')
-        .select('id')
-        .eq('nation_id', bill.nation_id);
-
-    const crisisCount = (crises || []).length;
-    if (crisisCount < 3) return;
-
-    // 3. Check diminishing returns — how many authoritarian laws passed during this
-    // multi-crisis period? Count bills with authoritarian effects passed while 3+ crises active.
-    const { data: recentAuth } = await supabase
-        .from('event_log')
-        .select('id')
-        .eq('nation_id', bill.nation_id)
-        .eq('trigger_key', 'authoritarian_crisis_bonus')
-        .gte('fired_at_tick', currentTick - 24); // look back 24 ticks
-
-    const priorCount = (recentAuth || []).length;
-    const isFirst = priorCount === 0;
-    const approvalBonus = isFirst ? 5 : 2;
-    const momentumBonus = isFirst ? 5 : 2;
-
-    // 4. Apply gov_approval bonus
-    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, approvalBonus, 'authoritarian_crisis_law');
-
-    // 5. Apply momentum to all governing parties
-    const { data: admin } = await supabase
-        .from('administrations')
-        .select('coalition_parties')
-        .eq('nation_id', bill.nation_id)
-        .is('ended_at_tick', null)
-        .order('started_at_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    const coalitionParties = admin?.coalition_parties || [];
-    for (const cp of coalitionParties) {
-        if (cp.party_id) {
-            await supabase.rpc('adjust_momentum', {
-                p_faction_id: cp.party_id,
-                p_delta: momentumBonus,
-                p_label: `Authoritarian law during crisis (${crisisCount} crises)`,
-                p_tick: currentTick,
-            });
-        }
-    }
-
-    // 6. Log event for diminishing returns tracking
-    await supabase.from('event_log').insert({
-        nation_id: bill.nation_id,
-        event_name: isFirst ? 'Authoritarian Law — Crisis Mandate' : 'Authoritarian Law — Continued Mandate',
-        trigger_key: 'authoritarian_crisis_bonus',
-        fired_at_tick: currentTick,
-        category: 'government',
-        description_chosen: `${bill.bill_name || 'A bill'} restricting civil liberties passed during ${crisisCount} active crises. Government approval +${approvalBonus}, governing parties +${momentumBonus} momentum${isFirst ? '' : ' (diminished)'}.`,
-        effects_applied: {
-            bill_id: bill.id,
-            crisis_count: crisisCount,
-            approval_bonus: approvalBonus,
-            momentum_bonus: momentumBonus,
-            is_first: isFirst,
-            prior_count: priorCount,
-        },
-    });
-
-    console.log(`[enactBill] Authoritarian crisis bonus: +${approvalBonus} approval, +${momentumBonus} momentum to ${coalitionParties.length} parties (${isFirst ? 'first' : 'diminished'}, ${crisisCount} crises)`);
-}
+// Authoritarian Crisis Bonus mechanic deleted by alpha stats refactor
+// (Phase 7d). Detected bills via stat_effects on freedom_index /
+// press_freedom / judicial_independence — all three columns deleted
+// with no replacement. To reintroduce, build detection off explicit
+// policy metadata (e.g., a `policy.flags.authoritarian = true`
+// attribute) rather than re-mining alpha-19 stat_effects.
 
 export async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
     const ticksActive = currentTick - (passedTick || 0);
