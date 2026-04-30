@@ -816,11 +816,13 @@ export function calculateFoodExportCapacity(nation, subsector, allocation) {
  * @param {string|null} sectorKey - e.g. 'fruits_vegetables'; null = aggregate only
  * @returns {number} multiplier in [0.5, 1.0] (1.0 = no tariff, 0.5 = 100% tariff)
  */
-export function getTariffDampener(nation, sectorKey) {
-    var sectorTariffs = nation.sector_tariffs || {};
-    var hasOverride = sectorKey != null && Object.prototype.hasOwnProperty.call(sectorTariffs, sectorKey);
-    var tariff = hasOverride ? (Number(sectorTariffs[sectorKey]) || 0) : (Number(nation.tariffs) || 0);
-    return 1 - (tariff / 200);
+export function getTariffDampener(_nation, _sectorKey) {
+    // Alpha stats refactor: tariffs + sector_tariffs columns deleted with
+    // no replacement — tariffs are no longer a player-set policy lever
+    // in the alpha schema. Return 1 (no dampening) so callsites that
+    // multiply by this still produce sensible demand. Reintroduce when
+    // a tariff system is rebuilt against alpha columns.
+    return 1;
 }
 
 /**

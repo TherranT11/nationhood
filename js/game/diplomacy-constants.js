@@ -811,7 +811,8 @@ export const CULTURAL_FUNDING_OPTIONS = [
  */
 export const CULTURAL_BASE_EFFECTS = {
     relations: 4,
-    intl_reputation: 1,
+    // alpha-19: intl_reputation → power
+    power: 1,
     soft_power: 3
 };
 
@@ -959,7 +960,8 @@ export function calculateCulturalEffects(config) {
 
     return {
         relations: CULTURAL_BASE_EFFECTS.relations,
-        intl_reputation: CULTURAL_BASE_EFFECTS.intl_reputation,
+        // alpha-19: intl_reputation → power
+        power: CULTURAL_BASE_EFFECTS.power,
         soft_power: CULTURAL_BASE_EFFECTS.soft_power,
         soft_power_duration: durationOpt.permanent ? null : durationOpt.key,
         cost_proposer: Math.round(totalCost * fundingOpt.proposer_share),
