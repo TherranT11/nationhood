@@ -31,10 +31,10 @@ export const DIPLOMACY_CONFIG = {
     STATE_VISIT_REP_BOOST: 3,
     STATE_VISIT_STABILITY_BOOST: 2,
     STATE_VISIT_RELATION_BOOST: 7,
-    STATE_VISIT_TRADE_BONUS: 5,         // +5 trade_balance if active trade agreement
+    // alpha-19: trade_balance column dropped — bonus retired (Phase 7f)
     STATE_VISIT_IO_REP_BONUS: 3,        // +3 int'l rep if shared IO membership (future)
     STATE_VISIT_HIGH_REL_GDP_BONUS: 5,  // +5 gdp_growth if relations > 70
-    STATE_VISIT_FIRST_STABILITY: 1,     // +1 stability for first-ever visit
+    STATE_VISIT_FIRST_CONTROL: 1,       // +1 control for first-ever visit (alpha-19: stability → control)
     STATE_VISIT_AUTOCRACY_DIE: 12,      // 1D12 roll for autocracy risk
     STATE_VISIT_AUTOCRACY_THRESHOLD: 6, // roll <= threshold = negative outcome
     STATE_VISIT_AUTOCRACY_CHANGE: 3,    // ±gov_approval change
@@ -75,14 +75,11 @@ export const DIPLOMACY_CONFIG = {
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
     TRADE_RATIFICATION_VOTING_TICKS: 6,   // ticks for parliament to vote on trade bill
 
-    // Credit requirements for trade agreements (proposing nation must meet these)
-    CREDIT_MIN_FOR_FTA: 25,               // FTA requires credit >= 25
-    CREDIT_MIN_FOR_RSC: 15,               // RSC requires credit >= 15
-    CREDIT_MIN_FOR_PTA: 10,               // PTA requires credit >= 10
-    CREDIT_MIN_FOR_AID_DONOR: 20,         // Donating aid requires credit >= 20 (receiving always ok)
+    // alpha-19: credit column dropped — CREDIT_MIN_FOR_* constants retired in Phase 7f.
+    // checkCreditForTradeAgreement() is now a stub returning { allowed: true }.
 
     // Economic Aid
-    AID_MAX_GDP_PCT: 25,                  // max annual aid as % of donor's GDP
+    AID_MAX_GDP_PCT: 25,                  // max annual aid as % of donor's budget (alpha-19: gdp dropped, budget is the new revenue baseline)
     AID_MIN_AMOUNT: 1000000000,           // min $1B annual aid (to prevent trivial agreements)
     AID_DURATION_MIN_TICKS: 12,           // min 1 year
     AID_DURATION_MAX_TICKS: 120,          // max 10 years
@@ -139,61 +136,50 @@ export function resolveTransferEndpoints(article, agreement) {
 
 /**
  * Check if a nation's credit rating allows proposing a specific trade agreement type.
- * Returns { allowed: true } or { allowed: false, required: number, reason: string }.
+ *
+ * alpha-19 / Phase 7f: credit column was dropped. This function is now a
+ * permanent stub returning { allowed: true } — trade agreements are no longer
+ * credit-gated. Phase 9 will retire the function and its callers entirely.
+ *
+ * Signature kept so callers don't have to change yet.
  */
 export function checkCreditForTradeAgreement(nationCredit, agreementType, isAidDonor) {
-    var credit = Number(nationCredit ?? 50);
-    var thresholds = {
-        fta: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_FTA,
-        pta: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_PTA,
-        resource_supply: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_RSC,
-        economic_aid: isAidDonor ? DIPLOMACY_CONFIG.CREDIT_MIN_FOR_AID_DONOR : 0
-    };
-    var required = thresholds[agreementType];
-    if (required === undefined) return { allowed: true };
-    if (credit >= required) return { allowed: true };
-    return {
-        allowed: false,
-        required: required,
-        current: credit,
-        reason: 'Credit rating too low (' + credit + '/' + required + '). Other nations won\'t negotiate this deal with a nation that can\'t pay its bills.'
-    };
+    return { allowed: true };
 }
 
 /**
  * Curated list of nation stats that can be used as conditions in Economic Aid agreements.
  * Grouped by category for the UI. default_operator indicates the "natural" direction
  * (gte = stat should be high, lte = stat should be low).
+ *
+ * alpha-19 / Phase 7f: filtered to the 19-column menu.
+ *   - judicial_independence → authority
+ *   - inflation → cost_of_living
+ *   - unemployment → workforce (INVERTED: lte → gte)
+ *   - poverty_rate → standard_of_living (INVERTED: lte → gte; deduped with happiness)
+ *   - literacy + education_accessibility → education (deduped)
+ *   - healthcare_accessibility → health
+ *   - stability → control
+ *   - civil_unrest + terrorism → unrest (deduped)
+ *   - international_reputation → power
+ *   Dropped (no replacement): corruption, press_freedom, freedom_index, efficiency,
+ *   tariffs, income_inequality, renewable_energy_percentage, pollution, carbon_emissions.
  */
 export const AID_CONDITION_STATS = [
     // Governance
-    { key: 'corruption', label: 'Corruption', default_operator: 'lte', category: 'Governance' },
-    { key: 'press_freedom', label: 'Press Freedom', default_operator: 'gte', category: 'Governance' },
-    { key: 'freedom_index', label: 'Freedom Index', default_operator: 'gte', category: 'Governance' },
-    { key: 'judicial_independence', label: 'Judicial Independence', default_operator: 'gte', category: 'Governance' },
-    { key: 'efficiency', label: 'Bureaucratic Efficiency', default_operator: 'gte', category: 'Governance' },
+    { key: 'authority', label: 'Authority', default_operator: 'gte', category: 'Governance' },
     // Economic
-    { key: 'inflation', label: 'Inflation', default_operator: 'lte', category: 'Economic' },
-    { key: 'tariffs', label: 'Tariff Rate', default_operator: 'lte', category: 'Economic' },
-    { key: 'unemployment', label: 'Unemployment', default_operator: 'lte', category: 'Economic' },
-    { key: 'poverty_rate', label: 'Poverty Rate', default_operator: 'lte', category: 'Economic' },
-    { key: 'income_inequality', label: 'Income Inequality', default_operator: 'lte', category: 'Economic' },
+    { key: 'cost_of_living', label: 'Cost of Living', default_operator: 'lte', category: 'Economic' },
+    { key: 'workforce', label: 'Workforce Participation', default_operator: 'gte', category: 'Economic' },
     // Social
-    { key: 'literacy', label: 'Literacy', default_operator: 'gte', category: 'Social' },
-    { key: 'healthcare_accessibility', label: 'Healthcare Access', default_operator: 'gte', category: 'Social' },
-    { key: 'education_accessibility', label: 'Education Access', default_operator: 'gte', category: 'Social' },
+    { key: 'education', label: 'Education', default_operator: 'gte', category: 'Social' },
+    { key: 'health', label: 'Healthcare', default_operator: 'gte', category: 'Social' },
     { key: 'standard_of_living', label: 'Standard of Living', default_operator: 'gte', category: 'Social' },
-    { key: 'happiness', label: 'Happiness', default_operator: 'gte', category: 'Social' },
-    // Environmental
-    { key: 'renewable_energy_percentage', label: 'Renewable Energy %', default_operator: 'gte', category: 'Environmental' },
-    { key: 'pollution', label: 'Pollution', default_operator: 'lte', category: 'Environmental' },
-    { key: 'carbon_emissions', label: 'Carbon Emissions', default_operator: 'lte', category: 'Environmental' },
     // Security
-    { key: 'stability', label: 'Stability', default_operator: 'gte', category: 'Security' },
-    { key: 'civil_unrest', label: 'Civil Unrest', default_operator: 'lte', category: 'Security' },
-    { key: 'terrorism', label: 'Terrorism', default_operator: 'lte', category: 'Security' },
+    { key: 'control', label: 'Control', default_operator: 'gte', category: 'Security' },
+    { key: 'unrest', label: 'Unrest', default_operator: 'lte', category: 'Security' },
     // International
-    { key: 'international_reputation', label: 'International Reputation', default_operator: 'gte', category: 'International' }
+    { key: 'power', label: 'Power', default_operator: 'gte', category: 'International' }
 ];
 
 /**
@@ -697,32 +683,27 @@ export const POLICY_STANCES = {
     ]
 };
 
-// Stats where LOWER is better (inverted approval logic)
-export const INVERTED_STATS = [
-    'unemployment', 'poverty_rate', 'income_inequality',
-    'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
-    'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
-    'political_violence', 'emigration', 'debt', 'debt_growth',
-    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices',
-    'cost_of_living'
-];
+// Stats where LOWER is better (inverted approval logic).
+// alpha-19 / Phase 7f: collapsed to the 19-column LOWER_IS_BETTER list.
+export const INVERTED_STATS = ['debt', 'unrest', 'cost_of_living'];
 
 // Stats stored as raw numbers (not 0-100 indices).
-// GDP and debt are stored as raw dollars (88B = 88,000,000,000).
+// debt is stored as raw dollars (88B = 88,000,000,000).
 // All other stats (0-100 indices) use the default divisor of 50.
+// alpha-19 / Phase 7f: gdp column dropped from the schema.
 export const RAW_SCALING_DIVISORS = {
     population: 1_000_000,
     eligible_voters: 1_000_000,
-    gdp: 1_000_000_000,
     debt: 1_000_000_000
 };
 
 // Stats that must NEVER be modified by generic tick processors (processStatEffects,
 // processMinistryActions, processEvents, processCrises, processStatConnections).
-// GDP is driven exclusively by gdp_growth via applyGdpGrowth.
 // Debt is driven exclusively by the budget system (surplus/deficit).
+// alpha-19 / Phase 7f: gdp column dropped, so it's no longer in the skip set.
+// debt remains here because it's flow-managed, not stat-decay-managed.
 // Any policy/event/crisis/connection targeting these keys will be silently skipped.
-export const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
+export const STAT_PROCESSOR_SKIP = new Set(['debt']);
 
 // ==================== MINOR DIPLOMATIC INITIATIVE ====================
 

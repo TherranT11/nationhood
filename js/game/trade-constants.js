@@ -9,7 +9,7 @@ import { calculateNationalBudget } from './budget.js';
 
 export var TRADE_CONFIG = {
     BASE_TRADE_MULTIPLIER: 500000000,      // base dollar value per unit of export capacity
-    BASELINE_GDP: 100000000000,            // 100B — the "average" GDP for scaling
+    BASELINE_GDP: 100000000000,            // 100B — fixed reference value for trade-volume scaling (alpha-19: gdp column dropped, this is now a stable scaling baseline only)
     HISTORY_TICKS: 24,                     // keep 2 game-years of trade history
 };
 
@@ -28,55 +28,54 @@ export var TRADE_SECTORS = [
         key: 'fuel_energy',
         label: 'Fuel & Energy',
         export_only: false,
-        export_stat: 'oil_and_gas',            // reserves — what's in the ground
-        export_bonus_stats: ['energy_generation'] // extraction — what you can pull out
+        export_stat: 'energy'                  // alpha-19: oil_and_gas + energy_generation collapsed into energy
     },
     {
         key: 'minerals',
         label: 'Minerals & Raw Materials',
         export_only: false,
-        export_stat: 'rare_minerals',
+        export_stat: 'energy',                 // alpha-19: rare_minerals → energy
         export_threshold: 15
     },
     {
         key: 'food_agriculture',
         label: 'Food & Agriculture',
         export_only: false,
-        export_stat: 'arable_land',
+        export_stat: 'farmland',
         export_threshold: 10
     },
     {
         key: 'manufactured_goods',
         label: 'Manufactured Goods',
         export_only: false,
-        export_stat: 'manufacturing_output'
+        export_stat: 'industry'
     },
     {
         key: 'technology',
         label: 'Technology & Electronics',
         export_only: false,
-        export_stats: ['digital_infrastructure', 'higher_education'],
+        export_stats: ['infrastructure', 'education'],
         export_threshold: 30
     },
     {
         key: 'arms',
         label: 'Arms & Military Equipment',
         export_only: false,
-        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_stats: ['infrastructure', 'education'],
         export_threshold: 30
     },
     {
         key: 'tourism',
         label: 'Tourism',
         export_only: true,
-        export_stats: ['happiness', 'stability', 'physical_infrastructure'],
+        export_stats: ['standard_of_living', 'control', 'infrastructure'],
         export_threshold: 25
     },
     {
         key: 'services_finance',
         label: 'Services & Finance',
         export_only: true,
-        export_stat: 'service_output',
+        export_stat: 'industry',                // alpha-19: service_output → industry (coexists with manufactured_goods)
         export_threshold: 35
     }
 ];
@@ -171,34 +170,29 @@ export var FOOD_SUBSECTORS = [
         export_threshold: 5,
         export_multiplier: 0.07,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'physical_infrastructure', weight: 0.3 },
-            { stat: 'rail_network', weight: 0.2 }
+            { stat: 'farmland', weight: 1.0 },
+            { stat: 'infrastructure', weight: 0.3 }
+            // alpha-19: rail_network folded into infrastructure (deduped with the entry above)
         ],
         demand_drivers: [
-            { stat: 'population', weight: 1.0, type: 'population' },
-            { stat: 'population_growth', weight: 0.3, type: 'pressure' }
+            { stat: 'population', weight: 1.0, type: 'population' }
+            // alpha-19: population_growth removed (column dropped)
         ],
         stat_effects: {
             supplied: {
-                poverty_rate: -0.15,
+                standard_of_living: 0.15,        // alpha-19: poverty_rate inverted → standard_of_living
                 cost_of_living: -0.10,
-                inflation: -0.05,
-                stability: 0.10,
-                legitimacy: 0.10,
-                happiness: 0.05,
-                lifespan: 0.05
+                control: 0.10,                   // alpha-19: stability → control
+                authority: 0.10,                 // alpha-19: legitimacy → authority
+                health: 0.05                     // alpha-19: lifespan → health
             },
             shortage: {
-                poverty_rate: 0.30,
+                standard_of_living: -0.30,       // alpha-19: poverty_rate inverted → standard_of_living
                 cost_of_living: 0.20,
-                inflation: 0.15,
-                stability: -0.20,
-                legitimacy: -0.20,
-                civil_unrest: 0.25,
-                political_violence: 0.15,
-                emigration: 0.10,
-                happiness: -0.15
+                control: -0.20,                  // alpha-19: stability → control
+                authority: -0.20,                // alpha-19: legitimacy → authority
+                unrest: 0.40                     // alpha-19: civil_unrest + political_violence collapsed → unrest
+                // emigration dropped (column gone), happiness folded into standard_of_living above
             }
         },
         food_security_weight: 0.50,
@@ -213,9 +207,9 @@ export var FOOD_SUBSECTORS = [
         export_threshold: 3,
         export_multiplier: 0.06,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'physical_infrastructure', weight: 0.25 },
-            { stat: 'unemployment', weight: 0.15, inverted: true }
+            { stat: 'farmland', weight: 1.0 },
+            { stat: 'infrastructure', weight: 0.25 },
+            { stat: 'workforce', weight: 0.15 }    // alpha-19: unemployment inverted → workforce (drop `inverted` flag)
         ],
         demand_drivers: [
             { stat: 'standard_of_living', weight: 0.8, type: 'wealth' },
@@ -223,24 +217,16 @@ export var FOOD_SUBSECTORS = [
         ],
         stat_effects: {
             supplied: {
-                standard_of_living: 0.10,
-                happiness: 0.10,
-                healthcare_quality: 0.05,
-                lifespan: 0.05,
-                unemployment: -0.08,
-                labor_force_participation: 0.05
+                standard_of_living: 0.20,         // happiness folded into standard_of_living
+                health: 0.10,                      // healthcare_quality + lifespan collapsed → health (deduped)
+                workforce: 0.13                    // alpha-19: unemployment(-0.08) inverted + labor_force_participation(0.05) → workforce
             },
             shortage: {
-                cost_of_living: 0.15,
-                inflation: 0.10,
-                standard_of_living: -0.10,
-                happiness: -0.10
+                cost_of_living: 0.25,             // inflation folded into cost_of_living
+                standard_of_living: -0.20         // happiness folded into standard_of_living
             }
         },
-        environmental_effects: {
-            carbon_emissions: 0.10,
-            pollution: 0.08
-        },
+        // environmental_effects (carbon_emissions, pollution) dropped — both columns removed in alpha-19
         food_security_weight: 0.20,
         stockpilable: false
     },
@@ -253,35 +239,29 @@ export var FOOD_SUBSECTORS = [
         export_threshold: 3,
         export_multiplier: 0.05,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'physical_infrastructure', weight: 0.5, critical: true },
-            { stat: 'rail_network', weight: 0.5, critical: true },
-            { stat: 'energy_generation', weight: 0.3 }
+            { stat: 'farmland', weight: 1.0 },
+            { stat: 'infrastructure', weight: 1.0, critical: true },  // alpha-19: physical_infrastructure(0.5) + rail_network(0.5) collapsed → infrastructure
+            { stat: 'energy', weight: 0.3 }                            // alpha-19: energy_generation → energy
         ],
         demand_drivers: [
-            { stat: 'urbanization', weight: 0.6, type: 'demand' },
+            { stat: 'workforce', weight: 0.6, type: 'demand' },        // alpha-19: urbanization → workforce
             { stat: 'population', weight: 0.5, type: 'population' },
             { stat: 'standard_of_living', weight: 0.3, type: 'wealth' }
         ],
         stat_effects: {
             supplied: {
-                happiness: 0.12,
-                healthcare_quality: 0.10,
-                lifespan: 0.08,
-                standard_of_living: 0.08
+                standard_of_living: 0.20,         // happiness(0.12) folded into standard_of_living
+                health: 0.18                       // healthcare_quality(0.10) + lifespan(0.08) collapsed → health
             },
             shortage: {
-                cost_of_living: 0.15,
-                inflation: 0.10,
-                happiness: -0.10,
-                healthcare_quality: -0.05
+                cost_of_living: 0.25,             // inflation(0.10) folded into cost_of_living
+                standard_of_living: -0.10,        // happiness(-0.10) folded into standard_of_living
+                health: -0.05                      // healthcare_quality(-0.05) → health
             }
         },
-        environmental_effects: {
-            pollution: 0.05
-        },
+        // environmental_effects (pollution) dropped — column removed in alpha-19
         // UNIQUE MECHANIC: Spoilage multiplier
-        // When rail_network or physical_infrastructure fall below threshold,
+        // When infrastructure or energy fall below threshold,
         // effective supply is reduced regardless of production levels.
         spoilage: {
             rail_threshold: 40,
@@ -301,10 +281,8 @@ export var FOOD_SUBSECTORS = [
         export_threshold: 4,
         export_multiplier: 0.14,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'foreign_investment', weight: 0.4 },
-            { stat: 'currency_strength', weight: 0.3, inverted: true },
-            { stat: 'corruption', weight: 0.2 }
+            { stat: 'farmland', weight: 1.0 }
+            // alpha-19 drops: foreign_investment, currency_strength, corruption (all columns removed)
         ],
         demand_drivers: [
             // Cash crops are primarily EXPORT-driven; import demand is low
@@ -314,30 +292,22 @@ export var FOOD_SUBSECTORS = [
         stat_effects: {
             supplied: {
                 gdp_growth: 0.10,
-                foreign_investment: 0.08,
-                unemployment: -0.08,
-                labor_force_participation: 0.06,
-                currency_strength: 0.05
+                workforce: 0.14                    // alpha-19: unemployment(-0.08) inverted + labor_force_participation(0.06) → workforce
+                // foreign_investment, currency_strength dropped (columns gone)
             },
             shortage: {
                 // Cash crop shortage doesn't cause food insecurity
                 // but hurts export revenue
-                gdp_growth: -0.05,
-                foreign_investment: -0.05
+                gdp_growth: -0.05
+                // foreign_investment dropped (column gone)
             }
         },
-        // Negative externalities of plantation agriculture
+        // structural_effects: most components dropped (income_inequality, social_mobility, corruption, union_strength).
+        // poverty_rate(0.05) inverted → standard_of_living(-0.05).
         structural_effects: {
-            income_inequality: 0.08,
-            poverty_rate: 0.05,
-            social_mobility: -0.05,
-            corruption: 0.05,
-            union_strength: 0.03
+            standard_of_living: -0.05
         },
-        environmental_effects: {
-            pollution: 0.08,
-            carbon_emissions: 0.06
-        },
+        // environmental_effects (pollution, carbon_emissions) dropped — both columns removed in alpha-19
         food_security_weight: 0.00,
         stockpilable: true
     }
@@ -361,9 +331,9 @@ export function isFoodSubsector(sectorKey) {
 /**
  * Get the effective arable land for a specific food sub-sector.
  *
- * effectiveLand = nation.arable_land × (allocation_pct / 100)
+ * effectiveLand = nation.farmland × (allocation_pct / 100)
  *
- * @param {Object} nation      – nation row with arable_land stat (0-100)
+ * @param {Object} nation      – nation row with farmland stat (0-100)
  * @param {string} subsectorKey – food sub-sector key
  * @param {Object} allocation  – food_land_allocation row { grains_pct, livestock_pct, perishables_pct, cash_crops_pct }
  * @returns {number} effective arable land (0-100 scale)
@@ -371,7 +341,7 @@ export function isFoodSubsector(sectorKey) {
 export function getEffectiveArableLand(nation, subsectorKey, allocation) {
     var subsector = FOOD_SUBSECTOR_MAP[subsectorKey];
     if (!subsector || !allocation) return 0;
-    var totalArable = Number(nation.arable_land) || 0;
+    var totalArable = Number(nation.farmland) || 0;
     var allocPct = Number(allocation[subsector.allocation_key]) || 0;
     return totalArable * (allocPct / 100);
 }
@@ -379,18 +349,22 @@ export function getEffectiveArableLand(nation, subsectorKey, allocation) {
 /**
  * Calculate the spoilage multiplier for perishables.
  *
- * When rail_network and/or physical_infrastructure fall below thresholds,
- * effective supply is reduced — the nation can produce abundantly and still
- * face shortage due to logistics failure.
+ * When infrastructure and/or energy fall below thresholds, effective supply
+ * is reduced — the nation can produce abundantly and still face shortage
+ * due to logistics failure.
+ *
+ * alpha-19: rail_network folded into infrastructure (deduped), so the rail
+ * branch now reads the same `infrastructure` column as the cold-chain branch
+ * but uses the rail_threshold + 30-point weighting.
  *
  * @param {Object} nation – nation row with infrastructure stats
  * @returns {number} multiplier 0.4–1.0 (1.0 = no spoilage, 0.4 = maximum spoilage)
  */
 export function calculateSpoilageMultiplier(nation) {
     var cfg = FOOD_SUBSECTOR_MAP.fruits_vegetables.spoilage;
-    var rail = Number(nation.rail_network) || 0;
-    var infra = Number(nation.physical_infrastructure) || 0;
-    var energy = Number(nation.energy_generation) || 0;
+    var rail = Number(nation.infrastructure) || 0;       // alpha-19: rail_network → infrastructure
+    var infra = Number(nation.infrastructure) || 0;      // alpha-19: physical_infrastructure → infrastructure
+    var energy = Number(nation.energy) || 0;             // alpha-19: energy_generation → energy
 
     var spoilagePct = 0;
 
@@ -467,20 +441,22 @@ export function formatPricePerTonne(pricePerTonne) {
  * Spoilage: percentage of reserves lost per tick to degradation.
  * Scales with infrastructure — good warehousing halves spoilage.
  *
- * Capacity: max reserve = GDP × capacityFactor × (physical_infrastructure / 50).
+ * Capacity: max reserve = BASELINE_GDP × capacityFactor × (infrastructure / 50).
+ * alpha-19: gdp column dropped — capacity uses TRADE_CONFIG.BASELINE_GDP as the
+ * fixed scaling baseline. physical_infrastructure → infrastructure.
  * Converted to tonnes via display unit factor.
  */
 export var STOCKPILE_CONFIG = {
     grains_staples: {
         baseSpoilagePct: 2.0,       // 2% per tick (grain stores well)
         infraThreshold: 60,          // infra above this halves spoilage
-        capacityFactor: 0.005,       // 0.5% of GDP as max reserve value
+        capacityFactor: 0.005,       // 0.5% of baseline as max reserve value
         securityMonths: 6            // months of reserves for "food secure" bonus
     },
     cash_crops: {
         baseSpoilagePct: 4.0,       // 4% per tick (cocoa, coffee degrade faster)
         infraThreshold: 60,
-        capacityFactor: 0.003,       // 0.3% of GDP (less strategic need)
+        capacityFactor: 0.003,       // 0.3% of baseline (less strategic need)
         securityMonths: 3
     }
 };
@@ -489,14 +465,14 @@ export var STOCKPILE_CONFIG = {
  * Calculate spoilage rate for a nation's stockpile.
  *
  * @param {string} sectorKey – stockpilable sector key
- * @param {Object} nation    – nation row with physical_infrastructure
+ * @param {Object} nation    – nation row with infrastructure
  * @returns {number} spoilage percentage per tick (0–100)
  */
 export function calculateStockpileSpoilage(sectorKey, nation) {
     var cfg = STOCKPILE_CONFIG[sectorKey];
     if (!cfg) return 0;
     var basePct = cfg.baseSpoilagePct;
-    var infra = Number(nation.physical_infrastructure) || 0;
+    var infra = Number(nation.infrastructure) || 0;       // alpha-19: physical_infrastructure → infrastructure
     if (infra >= cfg.infraThreshold) {
         basePct *= 0.5; // Good warehousing halves spoilage
     } else if (infra < 30) {
@@ -508,16 +484,19 @@ export function calculateStockpileSpoilage(sectorKey, nation) {
 /**
  * Calculate maximum stockpile capacity in dollar value.
  *
+ * alpha-19: gdp column dropped; uses TRADE_CONFIG.BASELINE_GDP as a fixed
+ * scaling baseline. physical_infrastructure → infrastructure.
+ *
  * @param {string} sectorKey – stockpilable sector key
- * @param {Object} nation    – nation row with gdp, physical_infrastructure
+ * @param {Object} nation    – nation row with infrastructure
  * @returns {number} max capacity in dollars
  */
 export function calculateStockpileCapacity(sectorKey, nation) {
     var cfg = STOCKPILE_CONFIG[sectorKey];
     if (!cfg) return 0;
-    var gdp = Number(nation.gdp) || 0;
-    var infra = Number(nation.physical_infrastructure) || 50;
-    return Math.round(gdp * cfg.capacityFactor * (infra / 50));
+    var baseline = TRADE_CONFIG.BASELINE_GDP;             // alpha-19: gdp → fixed baseline
+    var infra = Number(nation.infrastructure) || 50;      // alpha-19: physical_infrastructure → infrastructure
+    return Math.round(baseline * cfg.capacityFactor * (infra / 50));
 }
 
 /**
