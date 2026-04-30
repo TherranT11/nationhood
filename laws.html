@@ -4688,12 +4688,16 @@ function updateDefaultPreview() {
         </div>
         <div class="default-preview-grid">`;
 
-    // Stat preview shrunk in the alpha stats refactor: only stats that
-    // remain in the 19-column schema are listed here. The sovereign-
-    // default engine itself is rewritten in Phase 7 — at that point new
-    // deltas (control / authority / power / etc.) get plumbed in.
+    // Repopulated in Phase 7c — the sovereign-default engine now emits
+    // statChanges in the alpha-19 vocabulary. `inverse` is true for
+    // stats where higher is bad (cost_of_living, unrest) so the +/-
+    // arrow color matches the player's intuition.
     const stats = [
-        ['Standard of Living', preview.statChanges.standard_of_living, false]
+        ['Power',              preview.statChanges.power,              false],
+        ['Industry',           preview.statChanges.industry,           false],
+        ['Cost of Living',     preview.statChanges.cost_of_living,     true],
+        ['Standard of Living', preview.statChanges.standard_of_living, false],
+        ['Unrest',             preview.statChanges.unrest,             true]
     ];
 
     for (const [label, stat, inverse] of stats) {
@@ -4757,7 +4761,7 @@ async function submitDefaultResolution() {
         `Are you sure you want to file a ${defaultType === 'full' ? 'Full Default' : 'Partial Restructuring'} Resolution?\n\n` +
         `This will:\n` +
         `• Cost ${cfg.DEFAULT_RESOLUTION_AP_COST} AP\n` +
-        `• Immediately hit Currency (${cfg.FILING_CURRENCY_HIT}) and Foreign Investment (${cfg.FILING_FOREIGN_INV_HIT})\n` +
+        `• Immediately hit Power (${cfg.FILING_POWER_HIT}) and Industry (${cfg.FILING_INDUSTRY_HIT})\n` +
         `• Go directly to a floor vote (${cfg.VOTING_TICKS} ticks)\n` +
         `• Require a 2/3 supermajority to pass`
     )) return;
@@ -4815,24 +4819,25 @@ async function submitDefaultResolution() {
             bill_id: bill.id,
             status: 'voting',
             debt_at_proposal: Number(currentNation.debt ?? 0),
-            gdp_at_proposal: Number(currentNation.gdp ?? 0),
+            // Alpha refactor: budget_at_proposal replaces the legacy
+            // gdp_at_proposal snapshot. debt_to_gdp_at_proposal column
+            // name is retained (DB column) for backward compat with any
+            // historical rows; the value is now debt/budget, matching
+            // getDebtToBudget(). Phase 9 may rename the column.
+            budget_at_proposal: Number(currentNation.budget ?? 0),
             debt_to_gdp_at_proposal: debtRatio,
             created_at_tick: currentTick
         });
         if (resError) throw resError;
 
-        // Apply filing market reactions (immediate).
-        // PHASE 7 TODO: currency_strength and foreign_investment columns
-        // are scheduled for removal. The sovereign-default model needs
-        // to be rewritten against the 19-column schema (likely power /
-        // industry as the closest analogues for "international standing"
-        // and "investment dries up"). Leaving the writes intact for
-        // now; once Phase 9 drops the columns, this UPDATE will fail
-        // 42703 — that's the forcing function for the redesign.
+        // Apply filing market reactions (immediate). Alpha refactor:
+        // power absorbs the legacy currency_strength flavor (international
+        // standing degrades on filing); industry absorbs the
+        // foreign_investment flavor (investment in production dries up).
         const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
         await _supabase.from('nations').update({
-            currency_strength: clamp(Number(currentNation.currency_strength ?? 50), cfg.FILING_CURRENCY_HIT),
-            foreign_investment: clamp(Number(currentNation.foreign_investment ?? 50), cfg.FILING_FOREIGN_INV_HIT)
+            power:    clamp(Number(currentNation.power    ?? 50), cfg.FILING_POWER_HIT),
+            industry: clamp(Number(currentNation.industry ?? 50), cfg.FILING_INDUSTRY_HIT)
         }).eq('id', currentNation.id);
 
         // Trigger party voting
@@ -4843,8 +4848,8 @@ async function submitDefaultResolution() {
             description_used: `The ${currentFaction.faction_name} has filed a ${defaultType === 'full' ? 'full sovereign default' : 'debt restructuring'} resolution. Markets react with alarm.`,
             category: 'economy',
             effects_applied: [
-                { stat: 'currency_strength', change: cfg.FILING_CURRENCY_HIT },
-                { stat: 'foreign_investment', change: cfg.FILING_FOREIGN_INV_HIT }
+                { stat: 'power',    change: cfg.FILING_POWER_HIT },
+                { stat: 'industry', change: cfg.FILING_INDUSTRY_HIT }
             ],
             fired_at_tick: currentTick
         });
@@ -4852,7 +4857,7 @@ async function submitDefaultResolution() {
         closeDefaultModal();
         await loadLawsData();
         renderLawsPage();
-        alert(`"${billName}" has been filed and sent directly to the floor.\n\nMarkets have reacted: Currency ${cfg.FILING_CURRENCY_HIT}, Foreign Investment ${cfg.FILING_FOREIGN_INV_HIT}.`);
+        alert(`"${billName}" has been filed and sent directly to the floor.\n\nMarkets have reacted: Power ${cfg.FILING_POWER_HIT}, Industry ${cfg.FILING_INDUSTRY_HIT}.`);
     } catch (error) {
         console.error('Error filing Default Resolution:', error);
         alert('Error filing Default Resolution. Please try again.');

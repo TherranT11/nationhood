@@ -26416,51 +26416,48 @@ const SOVEREIGN_DEFAULT_CONFIG = {
 
     // ── Crisis parameters ──
     CRISIS_MIN_DURATION: 20,           // minimum ticks before Sovereign Default Crisis can end
-    CRISIS_CREDIT_CEILING: 25,         // Credit cannot exceed this during crisis
-    CRISIS_FOREIGN_INV_CEILING: 30,    // Foreign Investment ceiling during crisis
-
-    // ── Credit lockout ──
-    CREDIT_LOCKOUT_THRESHOLD: 5,       // Credit <= this = locked out of borrowing
 
     // ── Debt service burden ──
-    BURDEN_THRESHOLD: 1.0,             // debt-to-GDP ratio where burden kicks in
+    // PHASE 7 BALANCE: thresholds below were calibrated against debt/GDP;
+    // post-alpha-refactor they apply to debt/budget (~10x denser than
+    // GDP for typical nations). Numeric values left unchanged so the
+    // mechanic still fires; balance team should retune once the alpha
+    // refactor settles.
+    BURDEN_THRESHOLD: 1.0,             // debt-to-budget ratio where burden kicks in
     BURDEN_MAX: 0.4,                   // maximum burden (40% spending reduction)
     BURDEN_SCALE: 0.2,                 // scaling factor: (ratio - 1.0) * 0.2
 
     // ── Filing market reactions (applied on bill creation) ──
-    FILING_CURRENCY_HIT: -5,
-    FILING_FOREIGN_INV_HIT: -3,
+    // Power: international standing degrades (was currency_strength).
+    // Industry: foreign capital pulls out of production (was foreign_investment).
+    FILING_POWER_HIT: -5,
+    FILING_INDUSTRY_HIT: -3,
 
     // ── Vote failure consequences ──
-    FAILURE_CURRENCY_RECOVERY: 3,
-    FAILURE_FOREIGN_INV_RECOVERY: 3,
     FAILURE_PM_APPROVAL_HIT: -10,
-    FAILURE_INTL_REP_HIT: -2,
+    FAILURE_POWER_HIT: -2,             // was FAILURE_INTL_REP_HIT
 
     // ── Full default immediate penalties ──
-    // For partial restructuring, multiply by (1 - repaymentRate)
-    FULL_DEFAULT_CREDIT_HIT: -40,
-    FULL_DEFAULT_CURRENCY_HIT: -25,
-    FULL_DEFAULT_FOREIGN_INV_HIT: -25,
-    FULL_DEFAULT_INTL_REP_HIT: -20,
-    FULL_DEFAULT_INTEREST_SPIKE: 20,
-    FULL_DEFAULT_INFLATION_SPIKE: 15,
-    FULL_DEFAULT_TRADE_HIT: -10,
+    // For partial restructuring, multiply by (1 - repaymentRate).
+    // Power consolidates the legacy (currency_strength + intl_reputation)
+    // hits — both were international-standing flavors and would have
+    // double-counted into `power` post-shim.
+    FULL_DEFAULT_POWER_HIT: -30,
+    FULL_DEFAULT_INDUSTRY_HIT: -25,
+    FULL_DEFAULT_COST_OF_LIVING_SPIKE: 15,   // was FULL_DEFAULT_INFLATION_SPIKE
     FULL_DEFAULT_SOL_HIT: -8,
-    FULL_DEFAULT_HAPPINESS_HIT: -10,
+    FULL_DEFAULT_UNREST_SPIKE: 10,           // was FULL_DEFAULT_HAPPINESS_HIT (sign flipped)
     FULL_DEFAULT_GOV_APPROVAL_HIT: -15,
     FULL_DEFAULT_WORKER_APPROVAL_HIT: -5,    // working class / debtor blocs
     FULL_DEFAULT_NATIONALIST_APPROVAL_HIT: -10, // nationalist blocs (partially sympathetic)
-
-    // ── Per-tick Sovereign Default Crisis recovery rates ──
-    CRISIS_CREDIT_RECOVERY: 0.5,
-    CRISIS_FOREIGN_INV_RECOVERY: 0.3,
-    CRISIS_CURRENCY_RECOVERY: 0.5,
-    CRISIS_INFLATION_DECAY: -0.3,
-    CRISIS_INTEREST_DECAY: -0.5,
+    // DROPPED (legacy columns deleted by alpha refactor with no replacement):
+    //   FULL_DEFAULT_CREDIT_HIT, FULL_DEFAULT_INTEREST_SPIKE, FULL_DEFAULT_TRADE_HIT
+    // The CRISIS_*_RECOVERY / CRISIS_*_DECAY scaffolding constants were
+    // dropped too — they were never wired into a per-tick recovery
+    // function. If/when crisis recovery is implemented, the rates can
+    // be reintroduced against alpha columns directly.
     CRISIS_GDP_GROWTH_EARLY: -0.3,     // ticks 1-10 (recession)
     CRISIS_GDP_GROWTH_LATE: 0.2,       // ticks 11-20 (recovery)
-    CRISIS_TRADE_RECOVERY: 0.2,
     CRISIS_GDP_GROWTH_PHASE_BREAK: 10, // tick at which recession turns to recovery
 
     // ── Austerity discount ──
@@ -26479,44 +26476,61 @@ const SOVEREIGN_DEFAULT_CONFIG = {
     CONTAGION_CREDIT_MAX: 5,
 
     // ── Sovereign Debt Crisis programmatic triggers ──
-    DEBT_CRISIS_MIN_RATIO: 2.0,        // 200% debt-to-GDP
-    DEBT_CRISIS_MAX_CREDIT: 15,        // Credit must be <= 15
+    // PHASE 7 BALANCE: ratio is now debt/budget; threshold left at 2.0
+    // numerically but conceptually different from the old debt/GDP
+    // 2.0. Retune as part of post-alpha balance pass.
+    DEBT_CRISIS_MIN_RATIO: 2.0,
+    // DROPPED: DEBT_CRISIS_MAX_CREDIT — the credit column is deleted by
+    // the alpha refactor; whatever debt-crisis triggers wanted "credit
+    // is exhausted" can re-key off budget collapse instead.
 };
 
-// Stats that can be targeted by austerity commitments
+// Stats that can be targeted by austerity commitments. Alpha refactor:
+// the ~9-stat legacy list collapses into the 6 alpha columns that
+// actually represent state-funded categories.
 const AUSTERITY_ELIGIBLE_STATS = [
-    'benefits', 'healthcare_quality', 'healthcare_accessibility',
-    'education_accessibility', 'higher_education', 'physical_infrastructure',
-    'digital_infrastructure', 'rail_network', 'energy_generation'
+    'health', 'education', 'infrastructure', 'energy', 'industry', 'workforce'
 ];
 
 // Stats whose policy effects are reduced by debt service burden
-// (government-spending-dependent stats)
+// (government-spending-dependent stats). Same conceptual collapse —
+// if the engine can't afford to fund spending, these are the categories
+// that suffer first.
 const SPENDING_AFFECTED_STATS = new Set([
-    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k',
-    'education_accessibility', 'higher_education', 'literacy',
-    'physical_infrastructure', 'digital_infrastructure', 'rail_network',
-    'benefits', 'social_mobility', 'standard_of_living',
-    'energy_generation', 'crime_rate', 'incarceration_rate'
+    'health', 'education', 'infrastructure',
+    'standard_of_living', 'energy', 'industry', 'workforce'
 ]);
 
 
 // ==================== CORE UTILITY FUNCTIONS ====================
 
 /**
- * Calculate debt-to-GDP ratio safely.
- * Returns ratio as a decimal (1.5 = 150%).
- * Guards against division by zero: GDP=0 with debt → Infinity, no debt → 0.
+ * Calculate debt-to-budget ratio safely.
+ * Returns ratio as a decimal (1.5 = debt is 1.5x annual budget).
+ * Guards against division by zero: budget=0 with debt → Infinity,
+ * no debt → 0.
  *
- * @param {object} nation - Nation object with debt and gdp fields
- * @returns {number} Debt-to-GDP ratio
+ * Alpha refactor: replaces the legacy debt-to-GDP measure. Values
+ * are typically ~10x higher than debt-to-GDP because budget is a
+ * fraction of GDP, so calling thresholds (BURDEN_THRESHOLD,
+ * DEBT_CRISIS_MIN_RATIO) need balance retuning.
+ *
+ * @param {object} nation - Nation object with debt and budget fields
+ * @returns {number} Debt-to-budget ratio
  */
-function getDebtToGDP(nation) {
+function getDebtToBudget(nation) {
     const debt = Number(nation.debt ?? 0);
-    const gdp = Number(nation.gdp ?? 0);
-    if (gdp <= 0) return debt > 0 ? Infinity : 0;
-    return debt / gdp;
+    const budget = Number(nation.budget ?? 0);
+    if (budget <= 0) return debt > 0 ? Infinity : 0;
+    return debt / budget;
 }
+
+// Backwards-compat alias. Existing callers import getDebtToGDP — they
+// continue working post-alpha because the return value is now
+// debt/budget, which still semantically represents "how unsustainable
+// is the debt load". Phase 9 cleanup removes this alias once callers
+// are renamed.
+const getDebtToGDP = getDebtToBudget;
 
 /**
  * Calculate debt service burden (0.0 to 0.4).
@@ -26723,57 +26737,47 @@ function previewDefaultConsequences(nation, defaultType, repaymentRate, austerit
     const currentDebt = Number(nation.debt ?? 0);
     const debtAfter = defaultType === 'full' ? 0 : Math.round(currentDebt * (repaymentRate || 0.5));
 
-    // Apply discount to eligible penalties (credit, intl_rep, foreign_inv)
+    // Apply discount to eligible penalties (power + industry — the
+    // international-standing flavors). Other penalties take the full
+    // multiplier without discount.
     const discountedMultiplier = multiplier * (1 - discount);
 
     const clamp = (current, delta) => Math.max(0, Math.min(100, Math.round((current + delta) * 10) / 10));
+    // Read a current alpha-19 stat with a 50 fallback for nations whose
+    // Phase 2 backfill hasn't run yet. Repeated read avoided by hoisting
+    // each stat into a local before the statChanges literal.
+    const power_         = Number(nation.power           ?? 50);
+    const industry_      = Number(nation.industry        ?? 50);
+    const cost_of_living_ = Number(nation.cost_of_living ?? 50);
+    const sol_           = Number(nation.standard_of_living ?? 50);
+    const unrest_        = Number(nation.unrest          ?? 20);
 
     const statChanges = {
         debt: { before: currentDebt, after: debtAfter, change: debtAfter - currentDebt },
-        credit: {
-            before: Number(nation.credit ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_CREDIT_HIT * discountedMultiplier),
-            after: clamp(Number(nation.credit ?? 50), cfg.FULL_DEFAULT_CREDIT_HIT * discountedMultiplier)
+        power: {
+            before: power_,
+            change: Math.round(cfg.FULL_DEFAULT_POWER_HIT * discountedMultiplier),
+            after: clamp(power_, cfg.FULL_DEFAULT_POWER_HIT * discountedMultiplier)
         },
-        currency_strength: {
-            before: Number(nation.currency_strength ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_CURRENCY_HIT * multiplier),
-            after: clamp(Number(nation.currency_strength ?? 50), cfg.FULL_DEFAULT_CURRENCY_HIT * multiplier)
+        industry: {
+            before: industry_,
+            change: Math.round(cfg.FULL_DEFAULT_INDUSTRY_HIT * discountedMultiplier),
+            after: clamp(industry_, cfg.FULL_DEFAULT_INDUSTRY_HIT * discountedMultiplier)
         },
-        foreign_investment: {
-            before: Number(nation.foreign_investment ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_FOREIGN_INV_HIT * discountedMultiplier),
-            after: clamp(Number(nation.foreign_investment ?? 50), cfg.FULL_DEFAULT_FOREIGN_INV_HIT * discountedMultiplier)
-        },
-        international_reputation: {
-            before: Number(nation.international_reputation ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_INTL_REP_HIT * discountedMultiplier),
-            after: clamp(Number(nation.international_reputation ?? 50), cfg.FULL_DEFAULT_INTL_REP_HIT * discountedMultiplier)
-        },
-        interest_rates: {
-            before: Number(nation.interest_rates ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_INTEREST_SPIKE * multiplier),
-            after: clamp(Number(nation.interest_rates ?? 50), cfg.FULL_DEFAULT_INTEREST_SPIKE * multiplier)
-        },
-        inflation: {
-            before: Number(nation.inflation ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_INFLATION_SPIKE * multiplier),
-            after: clamp(Number(nation.inflation ?? 50), cfg.FULL_DEFAULT_INFLATION_SPIKE * multiplier)
-        },
-        trade_balance: {
-            before: Number(nation.trade_balance ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_TRADE_HIT * multiplier),
-            after: clamp(Number(nation.trade_balance ?? 50), cfg.FULL_DEFAULT_TRADE_HIT * multiplier)
+        cost_of_living: {
+            before: cost_of_living_,
+            change: Math.round(cfg.FULL_DEFAULT_COST_OF_LIVING_SPIKE * multiplier),
+            after: clamp(cost_of_living_, cfg.FULL_DEFAULT_COST_OF_LIVING_SPIKE * multiplier)
         },
         standard_of_living: {
-            before: Number(nation.standard_of_living ?? 50),
+            before: sol_,
             change: Math.round(cfg.FULL_DEFAULT_SOL_HIT * multiplier),
-            after: clamp(Number(nation.standard_of_living ?? 50), cfg.FULL_DEFAULT_SOL_HIT * multiplier)
+            after: clamp(sol_, cfg.FULL_DEFAULT_SOL_HIT * multiplier)
         },
-        happiness: {
-            before: Number(nation.happiness ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_HAPPINESS_HIT * multiplier),
-            after: clamp(Number(nation.happiness ?? 50), cfg.FULL_DEFAULT_HAPPINESS_HIT * multiplier)
+        unrest: {
+            before: unrest_,
+            change: Math.round(cfg.FULL_DEFAULT_UNREST_SPIKE * multiplier),
+            after: clamp(unrest_, cfg.FULL_DEFAULT_UNREST_SPIKE * multiplier)
         }
     };
 
@@ -26787,9 +26791,10 @@ function previewDefaultConsequences(nation, defaultType, repaymentRate, austerit
         debtReduction: currentDebt - debtAfter,
         statChanges,
         governmentApprovalHit: Math.round(cfg.FULL_DEFAULT_GOV_APPROVAL_HIT * multiplier),
-        crisisMinDuration: cfg.CRISIS_MIN_DURATION,
-        creditCeiling: cfg.CRISIS_CREDIT_CEILING,
-        foreignInvCeiling: cfg.CRISIS_FOREIGN_INV_CEILING
+        crisisMinDuration: cfg.CRISIS_MIN_DURATION
+        // creditCeiling / foreignInvCeiling fields dropped — those columns
+        // are deleted by the alpha refactor and the laws.html UI already
+        // stopped reading them in Phase 3b.
     };
 }
 
