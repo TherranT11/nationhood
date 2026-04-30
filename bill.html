@@ -365,7 +365,6 @@ initPage('laws', async (state) => {
             .select('faction_id').eq('nation_id', nation.id).eq('is_active', true).limit(1).maybeSingle();
         presidentFactionId = activePresident?.faction_id || null;
         isPresidentParty = (presidentFactionId && faction?.id === presidentFactionId);
-        console.log('[DEBUG bill.html init]', { isPresidential, nation_id: nation.id, faction_id: faction?.id, faction_name: faction?.faction_name, activePresident, presidentFactionId, isPresidentParty });
     }
     if (nation) {
         // Single source of truth for legislature suspension: caretaker status
@@ -700,7 +699,6 @@ function renderBill() {
 
     // President's desk — show sign/veto actions
     if (isPresidentDesk) {
-        console.log('[DEBUG bill.html renderBill]', { bill_status: bill.status, isPresidentParty_at_render: isPresidentParty, currentFaction_id: currentFaction?.id, presidentFactionId });
         const deskBanner = document.createElement('div');
         deskBanner.style.cssText = 'background:var(--blue-faint);border:2px solid var(--blue-border);border-radius:3px;padding:20px;margin:16px 0;text-align:center;';
         const deadlineTick = bill.president_desk_deadline || '?';

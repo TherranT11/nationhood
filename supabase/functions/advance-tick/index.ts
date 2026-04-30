@@ -7366,6 +7366,126 @@ function calculateSectorContributions(factionId, sectors, popularityRows) {
     return out;
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// DYNAMIC SECTOR WEIGHTS — Phase 1
+// ════════════════════════════════════════════════════════════════════════
+//
+// Each sector's weight is derived from one or two nation stats. Weights
+// are recomputed when an election fires (see runSectorElection wire-up).
+// Storage: `sectors.primary_stat`, `sectors.secondary_stat` — TEXT keys
+// into `nations.<column>`.
+//
+// A trailing `_inverse` suffix means "use 100 - value" — for sectors that
+// grow when the underlying stat shrinks (e.g. Rural & Agricultural's
+// secondary is `urbanization_inverse`).
+//
+// Range: 1–3 per sector, soft-cap to 28 across the nation.
+// Stepped: stat ≥ 65 → 3, 35-65 → 2, < 35 → 1.
+// Two-stat sectors blend 70/30 before stepping.
+
+const SECTOR_WEIGHT_MIN = 1;
+const SECTOR_WEIGHT_MAX = 3;
+const SECTOR_WEIGHT_NATION_CAP = 28;
+const SECTOR_STAT_HIGH_THRESHOLD = 65;
+const SECTOR_STAT_LOW_THRESHOLD = 35;
+const SECTOR_PRIMARY_BLEND = 0.7;
+const SECTOR_SECONDARY_BLEND = 0.3;
+
+/**
+ * Read a stat value off a nation row, supporting an `_inverse` suffix.
+ * Returns null when the stat key is missing or the column doesn't exist.
+ */
+function getStatValueForSector(nation, statKey) {
+    if (!statKey || !nation) return null;
+    const inverse = statKey.endsWith('_inverse');
+    const baseKey = inverse ? statKey.slice(0, -'_inverse'.length) : statKey;
+    const raw = nation[baseKey];
+    const num = typeof raw === 'number' ? raw : (raw == null ? null : Number(raw));
+    if (num == null || Number.isNaN(num)) return null;
+    return inverse ? (100 - num) : num;
+}
+
+function stepStatToWeight(blendedValue) {
+    if (blendedValue == null || Number.isNaN(blendedValue)) return SECTOR_WEIGHT_MIN;
+    if (blendedValue >= SECTOR_STAT_HIGH_THRESHOLD) return SECTOR_WEIGHT_MAX;
+    if (blendedValue >= SECTOR_STAT_LOW_THRESHOLD) return 2;
+    return SECTOR_WEIGHT_MIN;
+}
+
+/**
+ * Compute the new weight for each sector from the nation's current stats.
+ * Returns { [sector_id]: integer weight in [MIN, MAX] }.
+ *
+ * Sectors without a primary_stat keep their existing weight (custom
+ * sectors / operator-managed). Sectors whose primary_stat references a
+ * missing column also keep their existing weight rather than silently
+ * collapse to MIN.
+ *
+ * Soft cap: if the raw sum exceeds NATION_CAP, weights are scaled
+ * proportionally and re-clamped — preserves relative ordering.
+ */
+function computeSectorWeights(nation, sectors) {
+    if (!nation || !Array.isArray(sectors) || sectors.length === 0) return {};
+
+    const out = {};
+    for (const s of sectors) {
+        if (!s.is_active) continue;
+        const existing = Math.max(
+            SECTOR_WEIGHT_MIN,
+            Math.min(SECTOR_WEIGHT_MAX, Math.round(Number(s.weight) || SECTOR_WEIGHT_MIN))
+        );
+
+        if (!s.primary_stat) { out[s.id] = existing; continue; }
+
+        const primaryVal = getStatValueForSector(nation, s.primary_stat);
+        if (primaryVal == null) { out[s.id] = existing; continue; }
+
+        let blended = primaryVal;
+        const secondaryVal = getStatValueForSector(nation, s.secondary_stat);
+        if (secondaryVal != null) {
+            blended = primaryVal * SECTOR_PRIMARY_BLEND + secondaryVal * SECTOR_SECONDARY_BLEND;
+        }
+        out[s.id] = stepStatToWeight(blended);
+    }
+
+    const total = Object.values(out).reduce((a, b) => a + b, 0);
+    if (total > SECTOR_WEIGHT_NATION_CAP) {
+        const scale = SECTOR_WEIGHT_NATION_CAP / total;
+        for (const id of Object.keys(out)) {
+            out[id] = Math.max(
+                SECTOR_WEIGHT_MIN,
+                Math.min(SECTOR_WEIGHT_MAX, Math.round(out[id] * scale))
+            );
+        }
+    }
+    return out;
+}
+
+/**
+ * Persist computed weights into `sectors`. Returns the count of rows whose
+ * weight actually changed.
+ */
+async function persistSectorWeights(supabase, weightsBySectorId, currentSectors) {
+    if (!supabase || !weightsBySectorId) return 0;
+    const before = new Map((currentSectors || []).map(s => [s.id, Number(s.weight) || 0]));
+    let changed = 0;
+    for (const [sectorId, newWeight] of Object.entries(weightsBySectorId)) {
+        if (before.get(sectorId) === newWeight) continue;
+        const { error } = await supabase.from('sectors')
+            .update({ weight: newWeight }).eq('id', sectorId);
+        if (error) {
+            console.warn(`[persistSectorWeights] update failed for sector ${sectorId}:`, error.message);
+            continue;
+        }
+        changed++;
+        // Mutate the in-memory sector list too so subsequent reads in the
+        // same call (TWP computation) see the fresh weight.
+        const sector = (currentSectors || []).find(s => s.id === sectorId);
+        if (sector) sector.weight = newWeight;
+    }
+    return changed;
+}
+
 /**
  * Computes one faction's Total Weighted Popularity for a nation.
  *
@@ -15222,6 +15342,16 @@ async function processPartialElection(supabase, nation, election, currentTick) {
         return;
     }
 
+    // Phase 1 dynamic sector weights: recompute and persist before TWP
+    // so partial elections see the same up-to-date weights as a full
+    // election. Mutates sectorList in place; non-fatal on error.
+    try {
+        const newWeights = computeSectorWeights(nation, sectorList);
+        await persistSectorWeights(supabase, newWeights, sectorList);
+    } catch (wErr) {
+        console.warn(`[processPartialElection] dynamic-weight recompute failed (non-fatal):`, wErr?.message || wErr);
+    }
+
     // 2. Tie-breakers + TWP per faction.
     const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
     const augmentedPop = layerBonusesIntoPopularity(popularity, sectorList, bonuses);
@@ -15243,15 +15373,23 @@ async function processPartialElection(supabase, nation, election, currentTick) {
         await supabase.from('factions').update({ seats: newTotal }).eq('id', f.id);
     }
 
-    // 5. Build results in the legacy partial-election shape so the UI doesn't
-    //    need plumbing changes.
+    // 5. Scale TWP shares to realistic vote counts using the nation's
+    //    eligible_voters and sector-weighted turnout. Same helper the
+    //    full-election and presidential paths use.
+    const eligibleForScale = Number(nation.eligible_voters) || 0;
+    const partialScaling = (eligibleForScale > 0)
+        ? computeTwpVoteScaling(twpByFaction, sectorList, eligibleForScale)
+        : null;
+
     const seatResults = factionList.map(f => ({
         party_id: f.id,
         party_name: f.faction_name,
         existing_seats: f.seats || 0,
         new_seats: deltaAllocation[f.id] ?? 0,
         total_seats: (f.seats || 0) + (deltaAllocation[f.id] ?? 0),
-        votes: Math.round(twpByFaction[f.id] || 0),
+        votes: partialScaling
+            ? (partialScaling.votesByFaction[f.id] ?? 0)
+            : Math.round(twpByFaction[f.id] || 0),
     }));
 
     await supabase.from('elections').update({
@@ -15262,8 +15400,12 @@ async function processPartialElection(supabase, nation, election, currentTick) {
             votes: seatResults,
             seats: seatResults,
             bloc_details: [],
-            total_votes_cast: Math.round(Object.values(twpByFaction).reduce((s, v) => s + v, 0)),
-            total_abstentions: 0,
+            total_votes_cast: partialScaling
+                ? partialScaling.totalVotesCast
+                : Math.round(Object.values(twpByFaction).reduce((s, v) => s + v, 0)),
+            total_abstentions: partialScaling ? partialScaling.abstentions : 0,
+            turnout_pct: partialScaling ? partialScaling.turnoutPct : null,
+            eligible_voters: eligibleForScale,
             sector_breakdown: {
                 independent_seats_unchanged: true,
                 factions: factionList.map(f => ({
@@ -15598,6 +15740,19 @@ async function runSectorElection(supabase, nation) {
         return buildEmptySectorElectionResult(indep, totalSeats);
     }
 
+    // Phase 1 dynamic sector weights: recompute and persist before TWP.
+    // sectors carry primary_stat / secondary_stat keys (set by the
+    // 20260430_sector_dynamic_weights migration); each weight is stepped
+    // from the nation's current stat values (≥65→3, 35-65→2, <35→1) and
+    // soft-capped to the nation total of 28. persistSectorWeights mutates
+    // sectorList in place so the TWP math below reads the fresh values.
+    try {
+        const newWeights = computeSectorWeights(nation, sectorList);
+        await persistSectorWeights(supabase, newWeights, sectorList);
+    } catch (wErr) {
+        console.warn(`[runSectorElection] dynamic-weight recompute failed (non-fatal):`, wErr?.message || wErr);
+    }
+
     // 3. Tie-breaker bonuses (election-scope, not persisted).
     const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
 
@@ -15650,6 +15805,8 @@ async function runSectorElection(supabase, nation) {
         bonuses,
         indep,
         totalSeats,
+        nation,
+        sectors: sectorList,
     });
 }
 
@@ -15890,12 +16047,69 @@ function layerBonusesIntoPopularity(popularity, sectors, bonuses) {
     return out;
 }
 
-function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFaction, bonuses, indep, totalSeats }) {
+/**
+ * Scale TWP shares to a realistic vote count using the nation's eligible
+ * voters and a sector-weighted turnout. Single source of truth for the
+ * TWP→votes display math, mirroring the model already in
+ * runSectorPresidentialElectionRound:
+ *
+ *   sectorWeightedTurnout = Σ(weight × base_turnout) / Σ(weight)
+ *   totalVotesCast        = round(eligible × sectorWeightedTurnout)
+ *   votes[party]          = round((twp[party] / totalTwp) × totalVotesCast)
+ *
+ * Without this, sector-engine elections reported the rounded sum of TWP
+ * (small two-digit numbers like 97) as the actual vote count and the
+ * turnout percentage as null, making elections look like a handful of
+ * voters even in nations with millions of eligible voters.
+ *
+ * Falls back to a neutral 0.65 turnout if sectors are missing or carry
+ * no weight, so partial-data nations still get a defensible display.
+ */
+function computeTwpVoteScaling(twpByFaction, sectors, eligible) {
+    let turnout = 0.65;
+    if (sectors && sectors.length > 0) {
+        const sumW = sectors.reduce((s, x) => s + (Number(x.weight) || 0), 0);
+        if (sumW > 0) {
+            const sumWT = sectors.reduce((s, x) => s + (Number(x.weight) || 0) * (Number(x.base_turnout) || 0), 0);
+            turnout = sumWT / sumW;
+        }
+    }
+    const eligibleNum = Number(eligible) || 0;
+    const targetTotalVotes = Math.round(eligibleNum * turnout);
+
+    let totalTwp = 0;
+    for (const fid in twpByFaction) totalTwp += Number(twpByFaction[fid]) || 0;
+
+    const votesByFaction = {};
+    for (const fid in twpByFaction) {
+        const twp = Number(twpByFaction[fid]) || 0;
+        const share = totalTwp > 0 ? twp / totalTwp : 0;
+        votesByFaction[fid] = Math.round(share * targetTotalVotes);
+    }
+
+    const actualTotal = Object.values(votesByFaction).reduce((s, v) => s + v, 0);
+    const abstentions = Math.max(0, eligibleNum - actualTotal);
+    const turnoutPct = eligibleNum > 0
+        ? Number(((actualTotal / eligibleNum) * 100).toFixed(2))
+        : 0;
+
+    return { votesByFaction, totalVotesCast: actualTotal, abstentions, turnoutPct };
+}
+
+function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFaction, bonuses, indep, totalSeats, nation, sectors }) {
     const seatRows = [];
     const voteRows = [];
     const breakdown = [];
     let totalTwp = 0;
     for (const f of factions) totalTwp += Number(twpByFaction[f.id]) || 0;
+
+    // Derive realistic vote counts from TWP shares + nation's eligible voters.
+    // Falls through to TWP-as-votes if nation/eligible isn't supplied (legacy
+    // callers), so behavior is monotonically additive.
+    const eligible = Number(nation?.eligible_voters) || 0;
+    const scaling = (eligible > 0)
+        ? computeTwpVoteScaling(twpByFaction, sectors, eligible)
+        : null;
 
     for (const f of factions) {
         const fSeats = seats[f.id] ?? 0;
@@ -15903,13 +16117,16 @@ function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFac
         const sharePct = totalTwp > 0 ? Math.round((fTwp / totalTwp) * 10000) / 100 : 0;
 
         seatRows.push({ party_id: f.id, party_name: f.faction_name, seats: fSeats });
-        // 'votes' in the legacy shape is total votes cast for the party. We
-        // expose TWP here as the closest analog so the existing UI columns
-        // light up; a future pass can rename the field.
+        // 'votes' is the displayed vote count for the party. With nation +
+        // sectors supplied, this is the realistic eligible×turnout-scaled
+        // count; without, it falls back to rounded TWP (legacy behavior).
+        const fVotes = scaling
+            ? (scaling.votesByFaction[f.id] ?? 0)
+            : Math.round(fTwp);
         voteRows.push({
             party_id: f.id,
             party_name: f.faction_name,
-            votes: Math.round(fTwp),
+            votes: fVotes,
             vote_percentage: sharePct,
             seats: fSeats,
         });
@@ -15936,12 +16153,14 @@ function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFac
         votes: voteRows,
         seats: seatRows,
         bloc_details: [],
-        // Legacy fields kept for the existing UI; values mean less in the
-        // sector engine but need to be present so the result page doesn't
-        // crash on missing keys.
-        total_votes_cast: Math.round(totalTwp),
-        total_abstentions: 0,
-        turnout_pct: null,
+        // Legacy display fields. With scaling supplied, these show the
+        // realistic ballot count + abstentions + turnout %. Without, they
+        // fall back to the old TWP-as-votes shape (non-zero only when
+        // legacy callers omit nation/sectors).
+        total_votes_cast: scaling ? scaling.totalVotesCast : Math.round(totalTwp),
+        total_abstentions: scaling ? scaling.abstentions : 0,
+        turnout_pct: scaling ? scaling.turnoutPct : null,
+        eligible_voters: Number(nation?.eligible_voters) || 0,
         // Phase 3 additions.
         sector_breakdown: {
             independent_seats: indep.next,
