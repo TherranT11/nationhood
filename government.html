@@ -73,7 +73,7 @@ import { nominateMinister, nominatePMCandidate, signPresidentialBill, vetoPresid
 import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder } from './js/game/executive-orders.js';
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
-import { calculateBillSupport, computeBillCostTotals } from './js/game/bills.js';
+import { calculateBillSupport, computeBillCostTotals, enactBill } from './js/game/bills.js';
 import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_TO_MINISTRY_KEY, FISCAL_CATEGORIES } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
@@ -2840,16 +2840,35 @@ window.royalAssent = async function(billId, enact) {
     const hasMajority = (bill.votes_for || 0) >= majority;
 
     try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = shard?.current_tick || 0;
+
         if (enact) {
-            // Enact the bill
-            const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-            await _supabase.from('bills').update({ status: 'passed', passed_tick: shard?.current_tick || 0 }).eq('id', billId);
-            // +1 legitimacy
+            // Re-fetch the bill with its articles + selected_option so enactBill
+            // can apply policy effects. Only updating status='passed' (the
+            // prior behavior) marked the bill resolved without ever writing
+            // to active_laws / running stat effects — every monarchy enactment
+            // was silently a no-op on the policy side.
+            const { data: fullBill, error: billErr } = await _supabase.from('bills')
+                .select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(faction_id, stance, seat_count)')
+                .eq('id', billId).single();
+            if (billErr || !fullBill) {
+                alert('Failed to load bill for enactment: ' + (billErr?.message || 'not found'));
+                return;
+            }
+            const enactment = await enactBill(_supabase, fullBill, currentTick);
+            if (!enactment?.success) {
+                alert('Enactment failed: ' + (enactment?.error || 'unknown error'));
+                return;
+            }
+            // +1 legitimacy for active engagement (no delta on auto-enact via
+            // processRoyalAssent — that path rewards absentee monarchs).
             const newLeg = Math.min(100, (currentNation.legitimacy || 50) + 1);
             await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', currentNation.id);
             currentNation.legitimacy = newLeg;
         } else {
-            // Veto the bill
+            // Veto: bill is dead, no policy effects to apply. Direct status
+            // flip is correct here.
             await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
             // -3 legitimacy if majority supported, -1 otherwise
             const legCost = hasMajority ? -3 : -1;
@@ -2864,7 +2883,7 @@ window.royalAssent = async function(billId, enact) {
         if (content) renderLegislatureTab(content);
     } catch (err) {
         console.error('[RoyalAssent] Error:', err);
-        alert('Failed to process royal assent.');
+        alert('Failed to process royal assent: ' + (err?.message || err));
     }
 };
 
