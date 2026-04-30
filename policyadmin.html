@@ -620,23 +620,30 @@ async function loadPolicyIntoBuilder(p) {
         opt.ongoing_scaling_stat = p.ongoing_scaling_stat  || '';
         opt.fiscal_category      = p.fiscal_category       || '';
         if (Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
-            opt.stat_effects = p.stat_effects.map(e => ({
-                ...e,
-                stat_key: normalizePolicyStatKey(e.stat_key),
-                direction: normalizeEffectDirection(e.direction) || 'up',
-                adjust_type: e.adjust_type || null,
-                adjust_value: e.adjust_value || 0
-            }));
+            opt.stat_effects = p.stat_effects
+                .map(e => ({
+                    ...e,
+                    stat_key: normalizePolicyStatKey(e.stat_key),
+                    direction: normalizeEffectDirection(e.direction) || 'up',
+                    adjust_type: e.adjust_type || null,
+                    adjust_value: e.adjust_value || 0
+                }))
+                // Phase 9: drop effects whose stat_key normalized to null
+                // (the underlying stat is gone from the alpha-23 schema).
+                .filter(e => e.stat_key);
         } else if (p.target_stat) {
-            opt.stat_effects = [{
-                stat_key: normalizePolicyStatKey(p.target_stat),
-                direction: normalizeEffectDirection(p.stat_direction) || 'up',
-                rate: p.stat_change_per_tick || 1,
-                delay_ticks: 0,
-                duration_ticks: p.duration_months || 12,
-                adjust_type: null,
-                adjust_value: 0
-            }];
+            const normalizedTarget = normalizePolicyStatKey(p.target_stat);
+            if (normalizedTarget) {
+                opt.stat_effects = [{
+                    stat_key: normalizedTarget,
+                    direction: normalizeEffectDirection(p.stat_direction) || 'up',
+                    rate: p.stat_change_per_tick || 1,
+                    delay_ticks: 0,
+                    duration_ticks: p.duration_months || 12,
+                    adjust_type: null,
+                    adjust_value: 0
+                }];
+            }
         }
         if (Array.isArray(p.sector_effects)) {
             opt.sector_effects = p.sector_effects
@@ -657,13 +664,16 @@ async function loadPolicyIntoBuilder(p) {
             opt.ongoing_scaling_stat = row.ongoing_scaling_stat || '';
 
             const rawStat = Array.isArray(row.stat_effects) ? row.stat_effects : [];
-            opt.stat_effects = rawStat.map(e => ({
-                ...e,
-                stat_key: normalizePolicyStatKey(e.stat_key),
-                direction: normalizeEffectDirection(e.direction) || 'up',
-                adjust_type: e.adjust_type || null,
-                adjust_value: e.adjust_value || 0
-            }));
+            opt.stat_effects = rawStat
+                .map(e => ({
+                    ...e,
+                    stat_key: normalizePolicyStatKey(e.stat_key),
+                    direction: normalizeEffectDirection(e.direction) || 'up',
+                    adjust_type: e.adjust_type || null,
+                    adjust_value: e.adjust_value || 0
+                }))
+                // Phase 9: drop effects whose stat_key normalized to null.
+                .filter(e => e.stat_key);
 
             const rawSector = Array.isArray(row.sector_effects) ? row.sector_effects : [];
             opt.sector_effects = rawSector
