@@ -11,7 +11,7 @@
 //
 // Exports initPartyOverview(supabase, state, containerId)
 
-import { getStrongholdSectors } from './game/sectors.js';
+import { getStrongholdSectors, calculateSectorContributions } from './game/sectors.js';
 import { getGoverningStatus, getGoverningStatusFor } from './game/agitator.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, statDirectionSign } from './game/stats.js';
 import { hasElectedPresident } from './game/government-types.js';
@@ -193,6 +193,11 @@ export async function initPartyOverview(supabase, state, containerId) {
             popularityRows = pop || [];
         }
         const strongholdsByParty = processStrongholds(allParties, sectors, popularityRows);
+        // Player's full sector breakdown — all active sectors with raw
+        // popularity, sorted highest-first. Powers the "You" row's grid
+        // view in renderStrongholdsSection (rivals still show top-3 chips).
+        const mySectorContributions = calculateSectorContributions(factionId, sectors, popularityRows)
+            .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
         // Compute governance score
         let govResult = { score: 0, deltas: [], decayCycles: 0, multiplier: 1, ticksInPower: 0 };
@@ -231,6 +236,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             rivalParties: allParties.filter(p => p.id !== factionId),
             blocMap,
             strongholdsByParty,
+            mySectorContributions,
             recentActivity: activityResult.data || [],
             caucuses: caucusResult.data || [],
             nextElection: nextElection,
@@ -427,9 +433,9 @@ function renderGovernanceTable(o) {
     </div>`;
 }
 
-// Phase 4: replaces ideology axis bars. Each visible party gets a row showing
-// their top-3 stronghold sectors as chips, with the contribution magnitude as
-// a small bar. Same legend toggle pattern as before.
+// Player's row renders every active sector as a grid with raw popularity
+// values; rival rows render their top-3 sectors by contribution as chips
+// with a relative-width bar. Legend toggles which rows are visible.
 function renderStrongholdsSection(o, faction, partyColor) {
     const allLegend = [
         { id: faction?.id, name: 'You', color: partyColor },
@@ -454,33 +460,54 @@ function renderStrongholdsSection(o, faction, partyColor) {
     }
     if (maxContribution <= 0) maxContribution = 1; // avoid divide-by-zero on empty data
 
+    const myFactionId = faction?.id;
     const partyRows = allLegend
         .filter(p => visibleIds.has(p.id))
         .map(p => {
-            const sh = o.strongholdsByParty[p.id] || [];
             const chipColor = p.color || '#666';
-            const chipsHtml = sh.length > 0
-                ? sh.map(s => {
-                    const widthPct = Math.max(8, (s.contribution / maxContribution) * 100);
-                    return `<div class="po-stronghold-chip" style="border-color:${chipColor}44;background:${chipColor}10;">
-                        <div class="po-stronghold-chip-bar" style="width:${widthPct}%;background:${chipColor};"></div>
-                        <span class="po-stronghold-chip-label">${esc(s.name)}</span>
+            // Player's own row: full grid of every active sector with raw
+            // popularity. Rivals: top-3 chips by contribution (existing).
+            // Showing zero-popularity sectors for the player is intentional —
+            // the grid is meant to communicate the full landscape, not just
+            // where they're already strong.
+            let bodyHtml;
+            if (p.id === myFactionId) {
+                const cells = (o.mySectorContributions || []).map(s => {
+                    const pop = Math.round(Number(s.popularity) || 0);
+                    const popColor = pop >= 50 ? 'var(--green)' : pop >= 25 ? 'var(--amber)' : pop > 0 ? 'var(--text-secondary)' : 'var(--text-dim)';
+                    return `<div class="po-stronghold-cell" style="border-color:${chipColor}44;background:${chipColor}08;">
+                        <span class="po-stronghold-cell-label">${esc(s.name)}</span>
+                        <span class="po-stronghold-cell-value" style="color:${popColor};">${pop}</span>
                     </div>`;
-                }).join('')
-                : `<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);padding:4px 0;">Unaligned (no sector popularity yet)</div>`;
+                }).join('');
+                bodyHtml = cells.length > 0
+                    ? `<div class="po-stronghold-grid">${cells}</div>`
+                    : `<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);padding:4px 0;">No active sectors in this nation.</div>`;
+            } else {
+                const sh = o.strongholdsByParty[p.id] || [];
+                bodyHtml = sh.length > 0
+                    ? `<div class="po-stronghold-chips">${sh.map(s => {
+                        const widthPct = Math.max(8, (s.contribution / maxContribution) * 100);
+                        return `<div class="po-stronghold-chip" style="border-color:${chipColor}44;background:${chipColor}10;">
+                            <div class="po-stronghold-chip-bar" style="width:${widthPct}%;background:${chipColor};"></div>
+                            <span class="po-stronghold-chip-label">${esc(s.name)}</span>
+                        </div>`;
+                    }).join('')}</div>`
+                    : `<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);padding:4px 0;">Unaligned (no sector popularity yet)</div>`;
+            }
             return `<div class="po-stronghold-row">
                 <div class="po-stronghold-party">
                     <div class="po-legend-dot" style="background:${chipColor};"></div>
                     <span class="po-stronghold-party-name">${esc(p.name)}</span>
                 </div>
-                <div class="po-stronghold-chips">${chipsHtml}</div>
+                ${bodyHtml}
             </div>`;
         }).join('');
 
     return `<div class="po-card">
         <div class="po-card-header">
             <span class="po-card-title">SECTOR STRONGHOLDS</span>
-            <span class="po-card-subtitle">top 3 by contribution</span>
+            <span class="po-card-subtitle">your popularity per sector · rivals show top 3</span>
         </div>
         <div style="padding:8px 12px;">
             <div class="po-legend">${legendHtml}</div>

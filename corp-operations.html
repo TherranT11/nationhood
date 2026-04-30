@@ -3750,14 +3750,80 @@ function renderProjectModal() {
     }
     footerLeft += `<span class="pm-ftr__badge" style="color:${s.quality >= 75 ? 'var(--green)' : s.quality >= 50 ? 'var(--amber)' : s.quality >= 25 ? 'var(--orange)' : 'var(--red)'};background:var(--bg-0);border:1px solid var(--border-0)">QUALITY: ${s.quality}/100 — ${s.qualityLabel}</span>`;
 
+    // Abandon is only offered while the contract is still 'awarded' — once
+    // construction has actually started (status='in_progress'), the player
+    // is committed and must deliver or fail at completion. The escape hatch
+    // exists for contracts that won but can't fulfil (e.g. a host nation
+    // enacted a permit policy after the award and the corp can't acquire
+    // the permit in time).
+    const canAbandon = p.status === 'awarded';
+
     document.getElementById('pm-footer').innerHTML = `
         <div class="pm-ftr__left">${footerLeft}</div>
         <div style="display:flex;gap:8px;">
             ${s.effectiveProgress >= s.totalTicks ? `<button data-deliver-id="${pmState.project.id}" style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#000;background:var(--green);border:none;cursor:pointer;" onclick="closeProjectModal();deliverProject('${pmState.project.id}','${(pmState.project.name || '').replace(/'/g, "\\'")}',${pmState.bid?.bid_price || 0},${pmState.bid?.estimated_cost || 0},${pmState.bid?.estimated_quality || 65})">DELIVER</button>` : ''}
+            ${canAbandon ? `<button onclick="abandonContract('${pmState.project.id}')" style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#fff;background:var(--red);border:none;cursor:pointer;">ABANDON</button>` : ''}
             <button class="pm-ftr__close" onclick="closeProjectModal()">CLOSE</button>
         </div>
     `;
 }
+
+let _abandonLock = false;
+
+async function abandonContract(contractId) {
+    if (_abandonLock) return;
+    if (!faction || !contractId) return;
+
+    const project = activeProjects.find(p => p.id === contractId);
+    if (!project || project.status !== 'awarded') {
+        alert('This contract is no longer in the awarded state and cannot be abandoned.');
+        return;
+    }
+
+    const bondNote = project.bond_id ? '\n• Performance bond will be FORFEITED to the bond issuer.' : '';
+    const confirmMsg =
+        `Abandon "${project.name}"?\n\n` +
+        `• Contract status will be set to expired (the issuer can re-list).\n` +
+        `• Your corp loses 3 reputation.${bondNote}\n\n` +
+        `This cannot be undone.`;
+    if (!confirm(confirmMsg)) return;
+
+    _abandonLock = true;
+    try {
+        // Server-side RPC handles bond forfeit, reputation deduction, bid +
+        // contract status atomically and bypasses the client-side RLS that
+        // blocks cross-faction writes (lender's cash). Authorization is
+        // enforced inside the RPC against auth.uid().
+        const { data: result, error: rpcError } = await _supabase.rpc('abandon_construction_contract', {
+            p_contract_id: contractId,
+        });
+        if (rpcError) { alert('Abandon failed: ' + rpcError.message); return; }
+        if (!result?.ok) { alert('Abandon rejected: ' + (result?.message || result?.code || 'unknown')); return; }
+
+        // Reflect the server-side reputation hit in the local cache.
+        faction.corp_reputation = Math.max(0, Number(faction.corp_reputation || 65) - 3);
+
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: project.nation_id,
+                event_name: 'Contract Abandoned',
+                category: 'corporate',
+                description_chosen: `${faction.faction_name} has abandoned the "${project.name}" contract.`,
+                fired_at_tick: result.tick || 0,
+            });
+        } catch (_) { /* non-blocking */ }
+
+        closeProjectModal();
+        await loadActiveProjects();
+        renderActiveProjects();
+        alert('Contract abandoned.');
+    } catch (err) {
+        alert('Abandon failed: ' + (err?.message || err));
+    } finally {
+        _abandonLock = false;
+    }
+}
+window.abandonContract = abandonContract;
 
 function renderPmOverview(s, p, budgetColor, budgetPct, remaining, ticksRemaining, isLate) {
     const deadlineDate = tickToDate(s.awardedTick + s.totalTicks);

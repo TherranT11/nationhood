@@ -4,7 +4,7 @@
  */
 
 import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
-import { hasElectedPresident, getCurrentConstitutionalSystem, MINISTRY_OFFICE_NAMES } from './government-types.js';
+import { hasElectedPresident, getCurrentConstitutionalSystem, isAbsoluteMonarchy, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './diplomacy-constants.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
 import { computeCorpValuation } from './corp-valuation.js';
@@ -2677,8 +2677,11 @@ export async function resolveExpiredVotes(supabase, nationId) {
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
 
-        // Absolute Monarchy: ordinary bills that pass go to royal assent instead of auto-enacting
-        const isMonarchy = (nation?.government_type || '').toLowerCase().includes('monarchy');
+        // Absolute Monarchy: ordinary bills that pass go to royal assent instead of auto-enacting.
+        // The royal_assent_deadline gives processRoyalAssent (advance-tick) a tick
+        // to auto-enact if the Monarch never acts — without it, an inactive
+        // Monarch could freeze every passed bill in the nation indefinitely.
+        const isMonarchy = isAbsoluteMonarchy(nation);
         const isOrdinaryBill = !isNoConfidence && !isFoundational
             && bill.bill_type !== 'impeachment_motion' && bill.bill_type !== 'impeachment_conviction'
             && bill.bill_type !== 'veto_override' && bill.bill_type !== 'default_resolution';
@@ -2688,6 +2691,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
                 votes_for: votesFor,
                 votes_against: votesAgainst,
                 votes_abstain: votesAbstain,
+                royal_assent_deadline: currentTick + GAME_CONFIG.ROYAL_ASSENT_TICKS,
             }).eq('id', bill.id);
             results.push({ billId: bill.id, billName: bill.bill_name, resolution: 'awaiting_royal_assent', votesFor, votesAgainst });
             continue; // skip normal enactment — monarch decides
@@ -3794,6 +3798,67 @@ export async function enactBill(supabase, bill, currentTick) {
 
     console.log('[enactBill] stage=terminal_result result=success', logContext);
     return { success: true };
+}
+
+/**
+ * Auto-enact bills whose royal_assent_deadline has passed without the
+ * Monarch acting. Mirrors processPresidentDesk for the parallel
+ * presidential auto-sign path.
+ *
+ * Default behavior on timeout: ENACT (apply policy effects via enactBill,
+ * status flips to 'passed' inside enactBill itself). No legitimacy
+ * delta is applied — the +1/-1/-3 deltas are tied to active engagement
+ * via the Royal Assent panel and would reward absentee monarchs
+ * if granted automatically.
+ *
+ * Bail early for non-monarchy nations so the function is safe to call
+ * unconditionally each tick from advance-tick.
+ */
+export async function processRoyalAssent(supabase, nation, currentTick) {
+    if (!isAbsoluteMonarchy(nation)) return [];
+
+    const { data: expiredAssent, error: assentErr } = await supabase.from('bills')
+        .select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(*, factions(faction_name))')
+        .eq('nation_id', nation.id)
+        .eq('status', 'awaiting_royal_assent')
+        .lte('royal_assent_deadline', currentTick);
+
+    if (assentErr) {
+        console.warn(`[processRoyalAssent] select failed for nation ${nation.id}: ${assentErr.message}`);
+        return [];
+    }
+    if (!expiredAssent || expiredAssent.length === 0) return [];
+
+    const results = [];
+    for (const bill of expiredAssent) {
+        // enactBill handles status='passed' + active_laws upsert + stat
+        // effects + every other downstream side-effect. Single source of
+        // truth for ordinary-bill enactment.
+        const enactment = await enactBill(supabase, bill, currentTick);
+        if (!enactment?.success) {
+            console.error(`[processRoyalAssent] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
+            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted', enactFailed: true, error: enactment?.error });
+            continue;
+        }
+
+        try {
+            await fireBillEvent(supabase, 'bill_passed', bill, {
+                currentTick,
+                nationId: nation.id,
+                nationName: nation.name,
+                votesFor: bill.votes_for || 0,
+                votesAgainst: bill.votes_against || 0,
+                votesAbstain: bill.votes_abstain || 0,
+                articleCount: (bill.bill_articles || []).length,
+                billNameOverride: bill.bill_name + ' (auto-enacted — Royal Assent deadline expired)',
+            });
+        } catch (evErr) {
+            console.warn(`[processRoyalAssent] fireBillEvent failed (non-fatal):`, evErr?.message || evErr);
+        }
+
+        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted' });
+    }
+    return results;
 }
 
 

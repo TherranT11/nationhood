@@ -82,6 +82,7 @@ const GAME_CONFIG = {
     PARLIAMENTARY_TERM_TICKS: 24,
     VETO_OVERRIDE_THRESHOLD: 2/3,
     PRESIDENT_DESK_TICKS: 6,
+    ROYAL_ASSENT_TICKS: 6,                // mirrors PRESIDENT_DESK_TICKS — auto-enact on timeout
     MINISTER_CONFIRMATION_VOTING_TICKS: 6,
     PRESIDENTIAL_TERM_LIMIT: 2,           // max terms before incumbent must step aside
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
@@ -10774,8 +10775,11 @@ async function resolveExpiredVotes(supabase, nationId) {
         const isNoConfidence = bill.bill_type === 'no_confidence';
         const isFoundational = bill.bill_type === 'foundational';
 
-        // Absolute Monarchy: ordinary bills that pass go to royal assent instead of auto-enacting
-        const isMonarchy = (nation?.government_type || '').toLowerCase().includes('monarchy');
+        // Absolute Monarchy: ordinary bills that pass go to royal assent instead of auto-enacting.
+        // The royal_assent_deadline gives processRoyalAssent (advance-tick) a tick
+        // to auto-enact if the Monarch never acts — without it, an inactive
+        // Monarch could freeze every passed bill in the nation indefinitely.
+        const isMonarchy = isAbsoluteMonarchy(nation);
         const isOrdinaryBill = !isNoConfidence && !isFoundational
             && bill.bill_type !== 'impeachment_motion' && bill.bill_type !== 'impeachment_conviction'
             && bill.bill_type !== 'veto_override' && bill.bill_type !== 'default_resolution';
@@ -10785,6 +10789,7 @@ async function resolveExpiredVotes(supabase, nationId) {
                 votes_for: votesFor,
                 votes_against: votesAgainst,
                 votes_abstain: votesAbstain,
+                royal_assent_deadline: currentTick + GAME_CONFIG.ROYAL_ASSENT_TICKS,
             }).eq('id', bill.id);
             results.push({ billId: bill.id, billName: bill.bill_name, resolution: 'awaiting_royal_assent', votesFor, votesAgainst });
             continue; // skip normal enactment — monarch decides
@@ -11891,6 +11896,67 @@ async function enactBill(supabase, bill, currentTick) {
 
     console.log('[enactBill] stage=terminal_result result=success', logContext);
     return { success: true };
+}
+
+/**
+ * Auto-enact bills whose royal_assent_deadline has passed without the
+ * Monarch acting. Mirrors processPresidentDesk for the parallel
+ * presidential auto-sign path.
+ *
+ * Default behavior on timeout: ENACT (apply policy effects via enactBill,
+ * status flips to 'passed' inside enactBill itself). No legitimacy
+ * delta is applied — the +1/-1/-3 deltas are tied to active engagement
+ * via the Royal Assent panel and would reward absentee monarchs
+ * if granted automatically.
+ *
+ * Bail early for non-monarchy nations so the function is safe to call
+ * unconditionally each tick from advance-tick.
+ */
+async function processRoyalAssent(supabase, nation, currentTick) {
+    if (!isAbsoluteMonarchy(nation)) return [];
+
+    const { data: expiredAssent, error: assentErr } = await supabase.from('bills')
+        .select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(*, factions(faction_name))')
+        .eq('nation_id', nation.id)
+        .eq('status', 'awaiting_royal_assent')
+        .lte('royal_assent_deadline', currentTick);
+
+    if (assentErr) {
+        console.warn(`[processRoyalAssent] select failed for nation ${nation.id}: ${assentErr.message}`);
+        return [];
+    }
+    if (!expiredAssent || expiredAssent.length === 0) return [];
+
+    const results = [];
+    for (const bill of expiredAssent) {
+        // enactBill handles status='passed' + active_laws upsert + stat
+        // effects + every other downstream side-effect. Single source of
+        // truth for ordinary-bill enactment.
+        const enactment = await enactBill(supabase, bill, currentTick);
+        if (!enactment?.success) {
+            console.error(`[processRoyalAssent] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
+            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted', enactFailed: true, error: enactment?.error });
+            continue;
+        }
+
+        try {
+            await fireBillEvent(supabase, 'bill_passed', bill, {
+                currentTick,
+                nationId: nation.id,
+                nationName: nation.name,
+                votesFor: bill.votes_for || 0,
+                votesAgainst: bill.votes_against || 0,
+                votesAbstain: bill.votes_abstain || 0,
+                articleCount: (bill.bill_articles || []).length,
+                billNameOverride: bill.bill_name + ' (auto-enacted — Royal Assent deadline expired)',
+            });
+        } catch (evErr) {
+            console.warn(`[processRoyalAssent] fireBillEvent failed (non-fatal):`, evErr?.message || evErr);
+        }
+
+        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted' });
+    }
+    return results;
 }
 
 
@@ -14383,8 +14449,12 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
         .eq('id', nationId)
         .single();
 
-    // Presidential systems do not have votes of no confidence
+    // Presidential systems do not have votes of no confidence.
+    // Absolute monarchy: defense in depth — fileNoConfidenceMotion already
+    // rejects monarchy nations, but a stale bill from before that gate
+    // could otherwise reach this resolver.
     if (!hasParliamentaryPM(nation)) return;
+    if (isAbsoluteMonarchy(nation)) return;
 
     const semiPres = isSemiPresidential(nation);
 
@@ -14547,9 +14617,12 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
  * @param {Array}  coalitionPartyIds - All coalition party IDs
  */
 async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coalitionPartyIds) {
-    // Presidential systems cannot call early elections
-    const { data: nationCheck } = await supabase.from('nations').select('government_type, gov_approval').eq('id', nationId).single();
+    // Presidential systems cannot call early elections.
+    // Absolute monarchy: parliament does not run elections — the Monarch
+    // controls government composition via the Appoint PM royal action.
+    const { data: nationCheck } = await supabase.from('nations').select('government_type, hos_election_method, gov_approval').eq('id', nationId).single();
     if (!hasParliamentaryPM(nationCheck)) return { success: false, error: 'Presidential systems cannot call early elections' };
+    if (isAbsoluteMonarchy(nationCheck)) return { success: false, error: 'Elections are not held under absolute monarchy.' };
 
     // 0. Server-side guard: only proceed if coalition is still 'formed' (check both tables)
     let govStatus = null;
@@ -14857,8 +14930,11 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
  * @returns {Promise<object|null>} Summary of actions taken, or null if not applicable
  */
 async function processGovernmentVacancy(supabase, nation, currentTick) {
-    // Only applies to parliamentary democracies
+    // Only applies to parliamentary democracies.
+    // Absolute monarchy: PM vacancies are filled by the Monarch's
+    // appointment, not by snap elections / emergency formation.
     if (!hasParliamentaryPM(nation)) return null;
+    if (isAbsoluteMonarchy(nation)) return null;
 
     // Check for active coalition
     const coalition = await fetchActiveCoalition(supabase, nation.id);
@@ -35313,6 +35389,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         if (deskResults.length > 0) {
             summary.presidentDesk = summary.presidentDesk || [];
             summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
+        }
+
+        // Auto-enact bills past the Royal Assent deadline (Absolute Monarchy).
+        // Mirrors the presidential auto-sign path so an inactive Monarch
+        // doesn't freeze every passed ordinary bill in the nation.
+        const royalResults = await processRoyalAssent(supabase, nation, newTick);
+        if (royalResults.length > 0) {
+            summary.royalAssent = summary.royalAssent || [];
+            summary.royalAssent.push({ nation: nation.name, bills: royalResults });
         }
 
         // Presidential pre-election candidate generation + term end safety net.

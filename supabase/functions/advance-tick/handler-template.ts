@@ -2451,6 +2451,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             summary.presidentDesk.push({ nation: nation.name, bills: deskResults });
         }
 
+        // Auto-enact bills past the Royal Assent deadline (Absolute Monarchy).
+        // Mirrors the presidential auto-sign path so an inactive Monarch
+        // doesn't freeze every passed ordinary bill in the nation.
+        const royalResults = await processRoyalAssent(supabase, nation, newTick);
+        if (royalResults.length > 0) {
+            summary.royalAssent = summary.royalAssent || [];
+            summary.royalAssent.push({ nation: nation.name, bills: royalResults });
+        }
+
         // Presidential pre-election candidate generation + term end safety net.
         // (processParliamentaryPMTimeout removed — PM is never auto-installed.)
         await triggerPresidentialCandidateSelection(supabase, nation, newTick);

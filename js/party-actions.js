@@ -1280,8 +1280,17 @@ function renderActionsPanel(leaderName, partyColor, faction) {
         //   2. No motion already pending in this nation
         //   3. 12-tick per-PM-party cooldown (loaded into _noConfidenceCooldownTicks)
         if (action.id === 'no_confidence') {
+            const isMonarchyNation = isAbsoluteMonarchy(_state.nation);
             const isPMParty = !!_administration && _administration.pm_party_id === faction.id;
-            if (isPMParty) {
+            if (isMonarchyNation) {
+                // Parliament has no authority to remove the Monarch's PM.
+                // Dismissal is a royal prerogative — the Monarch replaces
+                // the PM via the Appoint Prime Minister royal action above.
+                // Defense in depth: fileNoConfidenceMotion also rejects
+                // monarchy nations server-side.
+                isDisabled = true;
+                action.lockReason = 'Parliament cannot remove the Monarch’s Prime Minister. Only the Monarch can dismiss the PM.';
+            } else if (isPMParty) {
                 isDisabled = true;
                 action.lockReason = 'Your party is the Prime Minister — file from another party.';
             } else if (_noConfidencePending) {
@@ -1303,8 +1312,20 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             // impeachment), so hide the actions there too by keeping them locked.
             const nation = _state.nation;
             const isParliamentaryPM = hasParliamentaryPM(nation);
+            const isMonarchy = isAbsoluteMonarchy(nation);
             const isPMParty = !!_administration && _administration.pm_party_id === faction.id;
-            if (!isParliamentaryPM) {
+            if (isMonarchy) {
+                // Absolute monarchy: no parliamentary elections, no PM-led
+                // dissolution. Both call_early_elections and resign_as_pm
+                // would trigger the parliamentary caretaker + snap-election
+                // cascade in resignPM / callEarlyElectionsAction, which is
+                // incoherent in monarchy. The Monarch changes the government
+                // via the Appoint PM royal action.
+                isDisabled = true;
+                action.lockReason = action.id === 'call_early_elections'
+                    ? 'Elections are not held under absolute monarchy. The Monarch appoints the Prime Minister.'
+                    : 'Prime Ministers serve at the Monarch’s pleasure. The Monarch must replace the PM via the Appoint Prime Minister royal action.';
+            } else if (!isParliamentaryPM) {
                 isDisabled = true;
                 action.lockReason = 'Only parliamentary and semi-presidential systems have a PM seat.';
             } else if (!isPMParty) {
@@ -3097,6 +3118,35 @@ async function openAppointPMModal(root) {
                     currentTick,
                 });
 
+                // Persist a real government_formations row so reads stop
+                // depending on the synthetic monarchy fallback in
+                // government-structure.js. Mirrors the parliamentary
+                // pattern: dissolve any prior formed/caretaker/active rows,
+                // then insert a fresh 'formed' row keyed to this royal
+                // appointment. Non-blocking: the synthetic fallback still
+                // covers a write failure.
+                try {
+                    await _supabase.from('government_formations')
+                        .update({ status: 'dissolved' })
+                        .eq('nation_id', nation.id)
+                        .in('status', ['formed', 'caretaker', 'active']);
+                    const { data: shardData } = await _supabase.from('shard')
+                        .select('current_date').eq('name', 'Alpha Shard').single();
+                    await _supabase.from('government_formations').insert({
+                        nation_id: nation.id,
+                        election_id: null,
+                        proposed_by: faction.id,
+                        party_ids: [selectedPartyId],
+                        status: 'formed',
+                        formation_type: 'monarchy',
+                        formed_at: new Date().toISOString(),
+                        ministry_assignments: { prime_minister: selectedPartyId },
+                        game_year: shardData?.current_date || '',
+                    });
+                } catch (gfErr) {
+                    console.warn('[AppointPM] government_formations write failed (non-blocking — synthetic fallback still works):', gfErr?.message || gfErr);
+                }
+
                 // Legitimacy effects (monarchy only).
                 // Dismissing a non-monarch PM costs -4. Appointing a non-monarch
                 // PM grants +3. Replacing one non-monarch PM with another nets -1.
@@ -3552,6 +3602,7 @@ async function triggerCallEarlyElections() {
     if (_callEarlyElectionsSubmitting) return;
     if (!_state?.faction?.id || !_state?.nation?.id) return;
     if (!hasParliamentaryPM(_state.nation)) { alert('Early elections are only available in parliamentary and semi-presidential systems.'); return; }
+    if (isAbsoluteMonarchy(_state.nation)) { alert('Elections are not held under absolute monarchy.'); return; }
     const pmPartyId = _administration?.pm_party_id;
     if (!pmPartyId || pmPartyId !== _state.faction.id) { alert('Prime Minister\u2019s party only.'); return; }
 
@@ -3656,6 +3707,7 @@ async function triggerResignAsPM() {
     if (_resignPMSubmitting) return;
     if (!_state?.faction?.id || !_state?.nation?.id) return;
     if (!hasParliamentaryPM(_state.nation)) { alert('Resignation is only available in parliamentary and semi-presidential systems.'); return; }
+    if (isAbsoluteMonarchy(_state.nation)) { alert('Prime Ministers serve at the Monarch’s pleasure. The Monarch must replace the PM via the Appoint Prime Minister royal action.'); return; }
     const pmPartyId = _administration?.pm_party_id;
     if (!pmPartyId || pmPartyId !== _state.faction.id) { alert('Prime Minister\u2019s party only.'); return; }
 

@@ -4,7 +4,7 @@
  */
 
 import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, SNAP_COOLDOWN_GAP, getPresidentialTermTicks, getPresidentialTermLimit, getParliamentaryTermTicks } from './config.js';
-import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, hasElectedPresident, hasParliamentaryPM, isSemiPresidential } from './government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, hasElectedPresident, hasParliamentaryPM, isSemiPresidential, isAbsoluteMonarchy } from './government-types.js';
 import { snapshotNationStats } from './stats.js';
 import { adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
@@ -838,8 +838,12 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
         .eq('id', nationId)
         .single();
 
-    // Presidential systems do not have votes of no confidence
+    // Presidential systems do not have votes of no confidence.
+    // Absolute monarchy: defense in depth — fileNoConfidenceMotion already
+    // rejects monarchy nations, but a stale bill from before that gate
+    // could otherwise reach this resolver.
     if (!hasParliamentaryPM(nation)) return;
+    if (isAbsoluteMonarchy(nation)) return;
 
     const semiPres = isSemiPresidential(nation);
 
@@ -1002,9 +1006,12 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
  * @param {Array}  coalitionPartyIds - All coalition party IDs
  */
 export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coalitionPartyIds) {
-    // Presidential systems cannot call early elections
-    const { data: nationCheck } = await supabase.from('nations').select('government_type, gov_approval').eq('id', nationId).single();
+    // Presidential systems cannot call early elections.
+    // Absolute monarchy: parliament does not run elections — the Monarch
+    // controls government composition via the Appoint PM royal action.
+    const { data: nationCheck } = await supabase.from('nations').select('government_type, hos_election_method, gov_approval').eq('id', nationId).single();
     if (!hasParliamentaryPM(nationCheck)) return { success: false, error: 'Presidential systems cannot call early elections' };
+    if (isAbsoluteMonarchy(nationCheck)) return { success: false, error: 'Elections are not held under absolute monarchy.' };
 
     // 0. Server-side guard: only proceed if coalition is still 'formed' (check both tables)
     let govStatus = null;
@@ -1312,8 +1319,11 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
  * @returns {Promise<object|null>} Summary of actions taken, or null if not applicable
  */
 export async function processGovernmentVacancy(supabase, nation, currentTick) {
-    // Only applies to parliamentary democracies
+    // Only applies to parliamentary democracies.
+    // Absolute monarchy: PM vacancies are filled by the Monarch's
+    // appointment, not by snap elections / emergency formation.
     if (!hasParliamentaryPM(nation)) return null;
+    if (isAbsoluteMonarchy(nation)) return null;
 
     // Check for active coalition
     const coalition = await fetchActiveCoalition(supabase, nation.id);

@@ -26,6 +26,7 @@ export const GAME_CONFIG = {
     PARLIAMENTARY_TERM_TICKS: 24,
     VETO_OVERRIDE_THRESHOLD: 2/3,
     PRESIDENT_DESK_TICKS: 6,
+    ROYAL_ASSENT_TICKS: 6,                // mirrors PRESIDENT_DESK_TICKS — auto-enact on timeout
     MINISTER_CONFIRMATION_VOTING_TICKS: 6,
     PRESIDENTIAL_TERM_LIMIT: 2,           // max terms before incumbent must step aside
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
