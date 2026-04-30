@@ -5189,9 +5189,12 @@ const INVERTED_ALIAS_KEYS = new Set([
 
 function normalizeNationStatKey(statKey) {
     if (!statKey || typeof statKey !== 'string') return null;
-    // Use `in` so an explicit `null` value (DELETED-stat sentinel) is
-    // honored — `||` would have fallen through to the original key.
-    if (statKey in STAT_KEY_ALIASES) return STAT_KEY_ALIASES[statKey];
+    // Use Object.hasOwn (not the `in` operator) so inherited Object.prototype
+    // members like 'toString' / 'hasOwnProperty' / '__proto__' don't match
+    // and leak the inherited method back to the caller. hasOwn also still
+    // returns true for explicit null sentinels (DELETED-stat), unlike the
+    // original `||` lookup which would have fallen through to the raw key.
+    if (Object.hasOwn(STAT_KEY_ALIASES, statKey)) return STAT_KEY_ALIASES[statKey];
     return statKey;
 }
 
