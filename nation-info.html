@@ -25,19 +25,16 @@
         <a class="toc-link" href="#government">Government</a>
         <a class="toc-link" href="#relations">Relations</a>
         <a class="toc-link" href="#economy">Economy</a>
-        <a class="toc-link" href="#taxation">Taxation</a>
         <a class="toc-link" href="#labor">Labor</a>
         <a class="toc-link" href="#demographics">Demographics</a>
         <a class="toc-link" href="#healthcare">Healthcare</a>
         <a class="toc-link" href="#education">Education</a>
         <a class="toc-link" href="#infrastructure">Infrastructure</a>
         <a class="toc-link" href="#resources">Resources</a>
-        <a class="toc-link" href="#environment">Environment</a>
         <a class="toc-link" href="#society">Society</a>
         <a class="toc-link" href="#governance">Governance</a>
         <a class="toc-link" href="#security">Security</a>
         <a class="toc-link" href="#immigration">Immigration</a>
-        <a class="toc-link" href="#international">International</a>
         <a class="toc-back" href="dashboard.html">&larr; Home</a>
     </nav>
 
@@ -203,10 +200,7 @@ function roundDelta(v) { return Math.abs(v) >= 1 ? Math.round(v).toString() : v.
 
 // Inverted stats (lower = better)
 const INVERTED = new Set([
-    'debt','debt_growth','inflation','unemployment','poverty_rate','income_inequality',
-    'drug_use','pollution','carbon_emissions','crime_rate','incarceration_rate',
-    'civil_unrest','terrorism','political_violence','illegal_immigration','emigration',
-    'corruption','polarization','fuel_prices','cost_of_living'
+    'debt','unrest','cost_of_living'
 ]);
 
 function colorClass(val, inverted, key) {
@@ -227,8 +221,7 @@ function ranking(key, val, inverted) {
 function trendHTML(key, current, inverted, isCurrency) {
     if (historyFetchFailed) return '<span class="stat-trend unavailable" title="Trend unavailable: history fetch failed">&#9888; unavailable</span>';
     if (!previousTick || current == null) return '<span class="stat-trend neutral">&mdash;</span>';
-    var hKey = key === 'GDP' ? 'gdp' : key;
-    var prev = previousTick[hKey];
+    var prev = previousTick[key];
     if (prev == null) return '<span class="stat-trend neutral">&mdash;</span>';
     var delta = current - prev;
     var inv = inverted ? ' inverted' : '';
@@ -243,9 +236,9 @@ function trendHTML(key, current, inverted, isCurrency) {
     return '<span class="stat-trend neutral">&mdash;</span>';
 }
 
-// GDP/debt scaling (raw dollars stored in DB)
+// Budget/debt scaling (raw dollars stored in DB)
 // Detect misscaled values (0-100 stat scores instead of raw dollars)
-var RAW_DOLLAR_KEYS = { gdp: true, debt: true };
+var RAW_DOLLAR_KEYS = { budget: true, debt: true };
 function isMisscaledMonetary(key, val) {
     return RAW_DOLLAR_KEYS[key] && val != null && Number(val) >= 0 && Number(val) <= 100000;
 }
@@ -307,103 +300,47 @@ function statCard(label, key, val, desc, format, inverted, displayVal) {
 // ---------- Stat Section Definitions ----------
 var STAT_SECTIONS = [
     { id: 'economy', icon: '&#128176;', title: 'Economy', stats: [
-        ['GDP', 'gdp', 'Gross domestic product', 'gdp', false, function(n){ return scaleGDP(n.gdp); }],
+        ['Budget', 'budget', 'Government budget', 'currency', false, function(n){ return scaleGDP(n.budget); }],
         ['GDP Growth', 'gdp_growth', 'Monthly growth rate', null, false, function(n){ var p = ((Number(n.gdp_growth ?? 50) - 50) / 50) * 1; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; }],
         ['National Debt', 'debt', 'Government debt', 'currency', true, function(n){ return scaleGDP(n.debt); }],
-        ['Debt Growth', 'debt_growth', 'Rate of debt increase', null, true],
-        ['Inflation', 'inflation', 'Inflation growth rate', null, true, function(n){ return formatInflationRate(n.inflation) + ' \u2014 ' + getInflationLabel(n.inflation); }],
-        ['Interest Rates', 'interest_rates', 'Central bank rate'],
-        ['Trade Balance', 'trade_balance', 'Exports minus imports', null, false, function(n){ var v = Math.round(Number(n.trade_balance ?? 50)); if (v === 50) return 'Balanced'; return v + '% Exp / ' + (100-v) + '% Imp'; }],
-        ['Currency Strength', 'currency_strength', 'National currency value'],
-        ['Foreign Investment', 'foreign_investment', 'International capital inflow'],
-        ['Credit Rating', 'credit', 'Creditworthiness']
-    ]},
-    { id: 'taxation', icon: '&#129534;', title: 'Taxation', stats: [
-        ['Income Tax', 'income_tax', 'Personal income tax rate'],
-        ['Corporate Tax', 'corporate_tax', 'Business profits tax rate'],
-        ['Sales Tax', 'sales_tax', 'Goods & services tax'],
-        ['Tariffs', 'tariffs', 'Import/export duties']
+        ['Cost of Living', 'cost_of_living', 'Consumer cost burden', null, true],
+        ['Goods', 'goods', 'Domestic goods supply'],
+        ['Industry', 'industry', 'Industrial production'],
+        ['Energy', 'energy', 'Energy supply'],
+        ['Power', 'power', 'Power generation capacity']
     ]},
     { id: 'labor', icon: '&#128119;', title: 'Labor & Employment', stats: [
-        ['Unemployment', 'unemployment', 'Without work', null, true],
-        ['Labor Participation', 'labor_force_participation', 'Working-age adults employed'],
-        ['Minimum Wage', 'minimum_wage', 'Lowest legal hourly wage'],
-        ['Union Strength', 'union_strength', 'Labor union power'],
-        ['Poverty Rate', 'poverty_rate', 'Below poverty line', null, true],
-        ['Income Inequality', 'income_inequality', 'Rich-poor gap', null, true]
+        ['Workforce', 'workforce', 'Labor force capacity']
     ]},
     { id: 'demographics', icon: '&#128101;', title: 'Demographics', stats: [
-        ['Population Growth', 'population_growth', 'Rate of change'],
-        ['Median Age', 'median_age', 'Average age', 'years'],
-        ['Eligible Voters', 'eligible_voters', 'Citizens able to vote'],
-        ['Ethnic Diversity', 'ethnic_diversity', 'Cultural heterogeneity']
+        ['Eligible Voters', 'eligible_voters', 'Citizens able to vote']
     ]},
     { id: 'healthcare', icon: '&#127973;', title: 'Healthcare', stats: [
-        ['Healthcare Quality', 'healthcare_quality', 'Medical care standard'],
-        ['Healthcare Access', 'healthcare_accessibility', 'Population access'],
-        ['Hospital Beds', 'beds_per_100k', 'Beds per 100k'],
-        ['Life Expectancy', 'lifespan', 'Average lifespan', 'years'],
-        ['Drug Use', 'drug_use', 'Substance abuse', null, true]
+        ['Health', 'health', 'Healthcare system quality and access']
     ]},
     { id: 'education', icon: '&#127891;', title: 'Education', stats: [
-        ['Literacy Rate', 'literacy', 'Can read/write'],
-        ['Higher Education', 'higher_education', 'University graduation rate'],
-        ['Education Access', 'education_accessibility', 'Access to schooling'],
-        ['Academic Immigration', 'academic_immigration', 'Scholars attracted']
+        ['Education', 'education', 'Education system quality']
     ]},
     { id: 'infrastructure', icon: '&#127959;', title: 'Infrastructure', stats: [
-        ['Physical Infra', 'physical_infrastructure', 'Roads, bridges, ports'],
-        ['Digital Infra', 'digital_infrastructure', 'Internet & tech networks'],
-        ['Rail Network', 'rail_network', 'Train connectivity'],
-        ['Urbanization', 'urbanization', 'Population in cities'],
-        ['Energy Generation', 'energy_generation', 'Power production'],
-        ['Renewable Energy', 'renewable_energy_percentage', 'Clean energy %']
+        ['Infrastructure', 'infrastructure', 'Roads, rail, digital networks']
     ]},
     { id: 'resources', icon: '&#9935;', title: 'Resources', stats: [
-        ['Arable Land', 'arable_land', 'Farmable territory'],
-        ['Rare Minerals', 'rare_minerals', 'Valuable deposits'],
-        ['Oil & Gas', 'oil_and_gas', 'Fossil fuel reserves'],
-        ['Fuel Prices', 'fuel_prices', 'Energy cost', null, true]
-    ]},
-    { id: 'environment', icon: '&#127757;', title: 'Environment', stats: [
-        ['Pollution', 'pollution', 'Air & water contamination', null, true],
-        ['Carbon Emissions', 'carbon_emissions', 'Greenhouse gas output', null, true]
+        ['Farmland', 'farmland', 'Farmable territory']
     ]},
     { id: 'society', icon: '&#127968;', title: 'Society', stats: [
         ['Standard of Living', 'standard_of_living', 'Quality of life'],
-        ['Happiness', 'happiness', 'National wellbeing'],
-        ['Religiosity', 'religiosity', 'Religious belief strength'],
-        ['Cost of Living', 'cost_of_living', 'Consumer cost burden', null, true],
-        ['Housing Affordability', 'housing_affordability', 'Housing accessibility'],
-        ['Social Mobility', 'social_mobility', 'Ability to change class'],
-        ['Benefits', 'benefits', 'Social welfare programs'],
-        ['Crime Rate', 'crime_rate', 'Criminal incidents per capita', null, true],
-        ['Incarceration', 'incarceration_rate', 'Imprisoned population', null, true]
+        ['Cost of Living', 'cost_of_living', 'Consumer cost burden', null, true]
     ]},
     { id: 'governance', icon: '&#127963;', title: 'Governance', stats: [
-        ['Stability', 'stability', 'Government steadiness'],
-        ['Legitimacy', 'legitimacy', 'Public trust'],
-        ['Efficiency', 'efficiency', 'Bureaucratic effectiveness'],
-        ['Corruption', 'corruption', 'Abuse of office', null, true],
-        ['Press Freedom', 'press_freedom', 'Media independence'],
-        ['Judicial Independence', 'judicial_independence', 'Court fairness'],
-        ['Freedom Index', 'freedom_index', 'Civil liberties'],
-        ['Polarization', 'polarization', 'Political division', null, true]
+        ['Control', 'control', 'Government control of territory'],
+        ['Authority', 'authority', 'Government authority'],
+        ['Crown Authority', 'crown_authority', 'Authority of the crown', null, false, null, function(n){ return n.crown_authority != null; }]
     ]},
     { id: 'security', icon: '&#128737;', title: 'Security', stats: [
-        ['Civil Unrest', 'civil_unrest', 'Protests & riots', null, true],
-        ['Terrorism Threat', 'terrorism', 'Extremist activity', null, true],
-        ['Political Violence', 'political_violence', 'Politically motivated attacks', null, true]
+        ['Unrest', 'unrest', 'Protests, riots & political violence', null, true]
     ]},
     { id: 'immigration', icon: '&#9992;', title: 'Immigration', stats: [
-        ['Immigration', 'immigration', 'Legal arrivals'],
-        ['Illegal Immigration', 'illegal_immigration', 'Undocumented arrivals', null, true],
-        ['Emigration', 'emigration', 'Citizens leaving (brain drain)', null, true]
-    ]},
-    { id: 'international', icon: '&#127760;', title: 'International', stats: [
-        ['Intl. Reputation', 'international_reputation', 'Global standing'],
-        ['Manufacturing Output', 'manufacturing_output', 'Industrial production'],
-        ['Service Output', 'service_output', 'Services & finance output']
+        ['Immigration', 'immigration', 'Legal arrivals']
     ]}
 ];
 
@@ -616,6 +553,8 @@ function renderStats() {
             var format = st[3] || null;
             var inverted = st[4] || false;
             var displayFn = st[5] || null;
+            var showFn = st[6] || null;
+            if (showFn && !showFn(nation)) continue;
             var val = nation[key];
             var displayVal = displayFn ? displayFn(nation) : undefined;
             h += statCard(label, key, val, desc, format, inverted, displayVal);
@@ -666,11 +605,11 @@ function renderSidebar() {
     // Live stats
     var liveStats = [
         ['Population', fmt(nation.population)],
-        ['GDP', fmtCur(scaleGDP(nation.gdp))],
+        ['Budget', fmtCur(scaleGDP(nation.budget))],
         ['Nat. Debt', fmtCur(scaleGDP(nation.debt))],
         ['Approval', (nation.gov_approval ?? 40) + '%'],
-        ['Stability', nation.stability != null ? Number(nation.stability).toFixed(1) : 'N/A'],
-        ['Freedom', nation.freedom_index || 'N/A']
+        ['Control', nation.control != null ? Number(nation.control).toFixed(0) : 'N/A'],
+        ['Unrest', nation.unrest != null ? Number(nation.unrest).toFixed(0) : 'N/A']
     ];
     var lh = '';
     for (var i = 0; i < liveStats.length; i++) {

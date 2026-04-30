@@ -152,10 +152,9 @@ const MINISTRY_ACTIONS = {
                 // stat_effects: scalable = true means rate is multiplied by use-count scale
                 // scalable = false means penalty stays at 100% regardless of use count
                 baseEffects: [
-                    { stat_key: 'crime_rate',         direction: 'down', rate: 2, scalable: true },
-                    { stat_key: 'incarceration_rate',  direction: 'up',   rate: 3, scalable: true },
-                    { stat_key: 'happiness',           direction: 'down', rate: 2, scalable: false },
-                    { stat_key: 'social_mobility',     direction: 'down', rate: 1, scalable: false }
+                    { stat_key: 'unrest',              direction: 'down', rate: 2, scalable: true },
+                    { stat_key: 'control',             direction: 'up',   rate: 1, scalable: true },
+                    { stat_key: 'standard_of_living',  direction: 'down', rate: 1, scalable: false }
                 ]
             },
             {
@@ -577,12 +576,10 @@ const MINISTRY_ACTIONS = {
                 desc: 'Fund the repair, resurfacing, and upkeep of existing road and highway networks nationally.',
                 apCosts: [0, 0, 0, 0],
                 oneTimeCostPerMillion: 6_000_000,
-                // Dynamic cost: road-heavy nations (high physical_infrastructure, low rail_network) pay more
+                // Dynamic cost: low-infrastructure nations pay more for road upkeep
                 dynamicCostFn: function(pop) {
-                    const physInfra = Number(currentNation?.physical_infrastructure || 50);
-                    const rail = Number(currentNation?.rail_network || 50);
-                    const differential = Math.max(0, physInfra - rail);
-                    const scalingFactor = 1 + (differential / 100);
+                    const infra = Number(currentNation?.infrastructure || 50);
+                    const scalingFactor = 1 + ((100 - infra) / 200);
                     return Math.round((pop / 1_000_000) * 6_000_000 * scalingFactor);
                 },
                 delay: 1,
@@ -2328,12 +2325,12 @@ function renderBudgetTab(container) {
     const bondPct = Math.round(creditRating.bondRatio * 100);
     const printPct = 100 - bondPct;
 
-    // GDP card values. nation.gdp_growth is a 0-100 stat that maps
+    // Budget card values. nation.gdp_growth is a 0-100 stat that maps
     // linearly to ±1% per month at the extremes (stat 50 = 0%, stat
     // 100 = +1%/mo, stat 0 = −1%/mo) — same formula budget.js uses to
-    // drift GDP each tick. Expected yearly growth compounds monthly
+    // drift each tick. Expected yearly growth compounds monthly
     // so 12 months at +0.5%/mo ≈ +6.17%/yr.
-    const gdpNow = Number(currentNation?.gdp) || 0;
+    const gdpNow = Number(currentNation?.budget) || 0;
     const gdpGrowthStat = Number(currentNation?.gdp_growth ?? 50);
     const gdpMonthlyPct = ((gdpGrowthStat - 50) / 50) * 1.0;   // signed %
     const gdpYearlyPct  = (Math.pow(1 + gdpMonthlyPct / 100, 12) - 1) * 100;
@@ -2350,7 +2347,7 @@ function renderBudgetTab(container) {
             </div>
             <div class="gb-stats">
                 <div class="gb-stat is-gdp">
-                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>GDP</div>
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Budget</div>
                     <div class="gb-stat__primary">${_gbFmtCurrency(gdpNow)}</div>
                     <div class="gb-stat__secondary">
                         <span class="gb-stat__secondary-k">Monthly</span>
@@ -2383,18 +2380,6 @@ function renderBudgetTab(container) {
                         ? ''
                         : `<div class="gb-stat__secondary"><span class="gb-stat__secondary-hint">Accumulated Reserves</span></div>`
                     }
-                </div>
-                <div class="gb-stat is-credit">
-                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Credit</div>
-                    <div class="gb-stat__primary">${creditRating.letter}</div>
-                    <div class="gb-stat__secondary">
-                        <span class="gb-stat__secondary-k">Score</span>
-                        <span>${creditScore}/100</span>
-                    </div>
-                    <div class="gb-stat__secondary" style="border-top:none;padding-top:0;">
-                        <span class="gb-stat__secondary-k">Bond / Print</span>
-                        <span>${bondPct}% / ${printPct}%</span>
-                    </div>
                 </div>
             </div>
             <div class="gb-wrap">
@@ -2826,8 +2811,8 @@ function renderRoyalAssentPanel() {
             </div>
             ${isMonarch ? `
                 <div style="display:flex;gap:8px;margin-top:8px;">
-                    <button onclick="royalAssent('${bill.id}', true)" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#000;background:#c8a832;border:none;cursor:pointer;letter-spacing:0.06em;">&#128081; ENACT (+1 Legitimacy)</button>
-                    <button onclick="royalAssent('${bill.id}', false)" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:pointer;letter-spacing:0.06em;">&#10006; VETO ${hasMajority ? '(-3 Legitimacy)' : '(-1 Legitimacy)'}</button>
+                    <button onclick="royalAssent('${bill.id}', true)" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#000;background:#c8a832;border:none;cursor:pointer;letter-spacing:0.06em;">&#128081; ENACT (+1 Crown Authority)</button>
+                    <button onclick="royalAssent('${bill.id}', false)" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#d44a4a;background:transparent;border:1px solid #d44a4a44;cursor:pointer;letter-spacing:0.06em;">&#10006; VETO ${hasMajority ? '(-3 Crown Authority)' : '(-1 Crown Authority)'}</button>
                 </div>
             ` : `
                 <div style="font-family:var(--font-mono);font-size:10px;color:#c8a832;margin-top:6px;font-style:italic;">Awaiting the ${escapeHtml(monarchTitle)}'s decision...</div>
@@ -2875,20 +2860,20 @@ window.royalAssent = async function(billId, enact) {
                 alert('Enactment failed: ' + (enactment?.error || 'unknown error'));
                 return;
             }
-            // +1 legitimacy for active engagement (no delta on auto-enact via
+            // +1 crown authority for active engagement (no delta on auto-enact via
             // processRoyalAssent — that path rewards absentee monarchs).
-            const newLeg = Math.min(100, (currentNation.legitimacy || 50) + 1);
-            await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', currentNation.id);
-            currentNation.legitimacy = newLeg;
+            const newCA = Math.min(100, (currentNation.crown_authority || 50) + 1);
+            await _supabase.from('nations').update({ crown_authority: newCA }).eq('id', currentNation.id);
+            currentNation.crown_authority = newCA;
         } else {
             // Veto: bill is dead, no policy effects to apply. Direct status
             // flip is correct here.
             await _supabase.from('bills').update({ status: 'vetoed' }).eq('id', billId);
-            // -3 legitimacy if majority supported, -1 otherwise
-            const legCost = hasMajority ? -3 : -1;
-            const newLeg = Math.max(0, (currentNation.legitimacy || 50) + legCost);
-            await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', currentNation.id);
-            currentNation.legitimacy = newLeg;
+            // -3 crown authority if majority supported, -1 otherwise
+            const caCost = hasMajority ? -3 : -1;
+            const newCA = Math.max(0, (currentNation.crown_authority || 50) + caCost);
+            await _supabase.from('nations').update({ crown_authority: newCA }).eq('id', currentNation.id);
+            currentNation.crown_authority = newCA;
         }
 
         // Reload legislature
@@ -10611,22 +10596,22 @@ async function purgeMinister(ministryKey) {
             await _supabase.rpc('adjust_momentum', { p_faction_id: ministry.party_id, p_delta: -approvalLossPurged, p_label: `Minister purged (${-approvalLossPurged})`, p_tick: currentTick });
         }
 
-        const { data: nation } = await _supabase.from('nations').select('stability, corruption').eq('id', currentNation.id).single();
-        const stability = nation?.stability ?? 50;
-        const corruption = nation?.corruption ?? 50;
+        const { data: nation } = await _supabase.from('nations').select('unrest, authority').eq('id', currentNation.id).single();
+        const unrest = nation?.unrest ?? 50;
+        const authority = nation?.authority ?? 50;
 
-        let stabilityChange;
+        let unrestChange;
         if (purgeCount >= 2) {
-            stabilityChange = -stabilityRoll;
-        } else if (stability >= 50) {
-            stabilityChange = -stabilityRoll;
+            unrestChange = stabilityRoll;
+        } else if (authority >= 50) {
+            unrestChange = -stabilityRoll;
         } else {
-            stabilityChange = stabilityRoll;
+            unrestChange = stabilityRoll;
         }
 
         await _supabase.from('nations').update({
-            stability: Math.max(0, Math.min(100, stability + stabilityChange)),
-            corruption: Math.min(100, corruption + corruptionGain)
+            unrest: Math.max(0, Math.min(100, unrest + unrestChange)),
+            authority: Math.min(100, authority + corruptionGain)
         }).eq('id', currentNation.id);
 
         await _supabase.from('campaign_actions').insert({
@@ -10644,8 +10629,8 @@ async function purgeMinister(ministryKey) {
                 approval_boost: approvalBoost,
                 decay_ticks_remaining: decayTicks,
                 decay_rate: 1,
-                stability_change: stabilityChange,
-                corruption_gain: corruptionGain,
+                unrest_change: unrestChange,
+                authority_gain: corruptionGain,
                 purge_number: purgeCount + 1
             }
         });
@@ -10657,9 +10642,9 @@ async function purgeMinister(ministryKey) {
         } else {
             resultMsg += 'Your Approval: No boost (too many recent purges)\n';
         }
-        resultMsg += 'Nation: ' + (stabilityChange >= 0 ? '+' : '') + stabilityChange + ' Stability, +' + corruptionGain + ' Corruption';
+        resultMsg += 'Nation: ' + (unrestChange >= 0 ? '+' : '') + unrestChange + ' Unrest, +' + corruptionGain + ' Authority';
         if (purgeCount === 1) resultMsg += '\n\n⚠️ Diminishing returns: 2nd purge in 6 ticks — boost halved.';
-        if (purgeCount >= 2) resultMsg += '\n\n🚨 Regime fatigue: 3rd+ purge in 6 ticks — no boost, double corruption.';
+        if (purgeCount >= 2) resultMsg += '\n\n🚨 Regime fatigue: 3rd+ purge in 6 ticks — no boost.';
 
         alert(resultMsg);
 
@@ -10965,10 +10950,8 @@ function renderImpeachmentButton() {
         <div style="margin-top:10px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border-hair);border-radius:3px;text-align:left;">
             <div style="font-family:var(--font-mono);font-size:9px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Charge Requirements</div>
             ${chargeRow('Abuse of Power', abuseMet, `Overreach ≥ ${abuseThreshold} (${overreachCount}/${abuseThreshold})`)}
-            ${chargeRow('Corruption', corruptionMet, `Corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD} (${Math.round(corruptionStat)})`)}
             ${chargeRow('Gross Incompetence', incompMet, `Approval ≤ ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD} for ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_TICKS} ticks (${Math.round(govApproval)})`)}
             ${chargeRow('Constitutional Violation', false, `≥ ${GAME_CONFIG.IMPEACHMENT_VETO_ABUSE_COUNT} vetoed bills with ⅔ support`)}
-            ${chargeRow('Criminal Conduct', crimMet, `Corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD} (${Math.round(crimCorruption)}) + Judicial Indep ≤ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD} (${Math.round(judicialIndep)})`)}
         </div>`;
 
     if (mySeats < 1) {
@@ -11240,7 +11223,7 @@ function renderTaxAdjustmentConfirm(panel) {
 
 function renderPriceControlsConfirm(panel) {
     const stats = [
-        { key: 'fuel_prices', label: 'Fuel Prices' },
+        { key: 'cost_of_living', label: 'Cost of Living' },
         { key: 'food_security', label: 'Food Security' }
     ];
     const cooldowns = eoAvailability?.pcCooldowns || {};
@@ -11271,7 +11254,7 @@ function renderEmergencyConfirm(panel) {
             <br>• +8 initial approval boost (crisis rally)
             <br>• -4 approval per tick after first tick
             <br>• Opposition gains +6 momentum
-            <br>• After ${EO_CONFIG.EMERGENCY_UNREST_THRESHOLD} ticks: civil unrest rises +1/tick
+            <br>• After ${EO_CONFIG.EMERGENCY_UNREST_THRESHOLD} ticks: unrest rises +1/tick
             <br>• Ending starts a ${EO_CONFIG.EMERGENCY_COOLDOWN}-tick cooldown
             <br>• Lasts until manually ended, president removed, or impeached
         </div>
@@ -11319,10 +11302,7 @@ const STIMULUS_IDEOLOGY_AXES = [
 
 // Stats where HIGHER = WORSE (increasing these is bad, decreasing is good)
 const _EO_BAD_STATS = new Set([
-    'pollution', 'carbon_emissions', 'crime_rate', 'corruption', 'unemployment',
-    'income_inequality', 'poverty_rate', 'civil_unrest', 'cost_of_living',
-    'fuel_prices', 'incarceration_rate', 'drug_use', 'illegal_immigration',
-    'polarization', 'inflation'
+    'unrest', 'cost_of_living', 'debt'
 ]);
 
 function _eoStatBadge(statKey, magnitude, direction) {
@@ -11584,16 +11564,6 @@ async function buildImpeachmentCharges() {
         reason: abuseAvail ? '' : `Requires presidential overreach ≥ ${GAME_CONFIG.IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD} (currently ${overreachCount})`
     });
 
-    // 2. Corruption — requires corruption stat >= threshold
-    const corruptionStat = currentNation.corruption ?? 0;
-    const corruptionAvail = corruptionStat >= GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD;
-    charges.push({
-        type: 'corruption',
-        label: 'Corruption',
-        available: corruptionAvail,
-        reason: corruptionAvail ? '' : `Requires corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CORRUPTION_THRESHOLD} (currently ${Math.round(corruptionStat)})`
-    });
-
     // 3. Incompetence — requires gov_approval <= threshold for consecutive ticks
     const govApproval = currentNation.gov_approval ?? 40;
     const requiredTicks = GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_TICKS;
@@ -11641,22 +11611,6 @@ async function buildImpeachmentCharges() {
         label: 'Constitutional Violation',
         available: constViolAvail,
         reason: constViolAvail ? '' : `Requires ≥ ${GAME_CONFIG.IMPEACHMENT_VETO_ABUSE_COUNT} vetoed bills with ⅔ support (currently ${vetoAbuseCount})`
-    });
-
-    // 5. Criminal Conduct — requires corruption >= threshold AND judicial_independence <= threshold
-    const crimCorruption = currentNation.corruption ?? 0;
-    const judicialIndep = currentNation.judicial_independence ?? 50;
-    const crimCorruptionMet = crimCorruption >= GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD;
-    const crimJudicialMet = judicialIndep <= GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD;
-    const crimAvail = crimCorruptionMet && crimJudicialMet;
-    const crimReasons = [];
-    if (!crimCorruptionMet) crimReasons.push(`corruption ≥ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD} (currently ${Math.round(crimCorruption)})`);
-    if (!crimJudicialMet) crimReasons.push(`judicial independence ≤ ${GAME_CONFIG.IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD} (currently ${Math.round(judicialIndep)})`);
-    charges.push({
-        type: 'criminal_conduct',
-        label: 'Criminal Conduct',
-        available: crimAvail,
-        reason: crimAvail ? '' : `Requires ${crimReasons.join(' and ')}`
     });
 
     return charges;
@@ -12399,12 +12353,10 @@ function computeAdminChanges(statsStart, statsEnd) {
  */
 function formatAdminStatName(key) {
     const overrides = {
-        'gdp': 'GDP', 'gdp_growth': 'GDP Growth', 'oil_and_gas': 'Oil & Gas',
-        'beds_per_100k': 'Hospital Beds', 'lifespan': 'Life Expectancy',
-        'literacy': 'Literacy Rate', 'credit': 'Credit Rating',
-        'labor_force_participation': 'Labor Participation',
-        'renewable_energy_percentage': 'Renewable Energy',
-        'debt_growth': 'Debt Growth'
+        'gdp_growth': 'GDP Growth',
+        'cost_of_living': 'Cost of Living',
+        'standard_of_living': 'Standard of Living',
+        'crown_authority': 'Crown Authority'
     };
     if (overrides[key]) return overrides[key];
     return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -12414,10 +12366,9 @@ function formatAdminStatName(key) {
  * Format a raw stat value for display (no sign prefix).
  */
 function formatStatValue(val, key) {
-    if (['gdp', 'debt'].includes(key)) return (val / 1e9).toFixed(1) + 'B';
+    if (['budget', 'debt'].includes(key)) return (val / 1e9).toFixed(1) + 'B';
     if (key === 'population') return (val / 1e6).toFixed(2) + 'M';
     if (key === 'gdp_growth') { var p = ((val - 50) / 50) * 1; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; }
-    if (key === 'trade_balance') { var v = Math.round(val); return v === 50 ? 'Balanced' : v + '% Exp / ' + (100-v) + '% Imp'; }
     if (Math.abs(val) < 1 && val !== 0) return val.toFixed(2);
     return String(Math.round(val * 10) / 10);
 }
@@ -12427,7 +12378,7 @@ function formatStatValue(val, key) {
  */
 function formatChange(raw, key) {
     const sign = raw > 0 ? '+' : '';
-    if (['gdp', 'debt'].includes(key)) return sign + (raw / 1e9).toFixed(1) + 'B';
+    if (['budget', 'debt'].includes(key)) return sign + (raw / 1e9).toFixed(1) + 'B';
     if (key === 'population') return sign + (raw / 1e6).toFixed(2) + 'M';
     if (Math.abs(raw) < 1 && raw !== 0) return sign + raw.toFixed(2);
     return sign + Math.round(raw * 10) / 10;

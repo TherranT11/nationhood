@@ -31,7 +31,6 @@ import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, hasElectedPresident } from './js/game/government-types.js';
 import { normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game/stats.js';
-import { formatInflationRate, getInflationLabel, inflationColorClass, inflationRate, formatFuelPrice, getFuelPriceLabel, fuelPriceColorClass, fuelPricePerGallon } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
@@ -42,7 +41,7 @@ let allNations = [];
 let totalNations = 0;
 let previousTickData = null;
 var statEffectsByKey = {};
-var rawStatConnections = []; // cached for illegal immigration tab
+var rawStatConnections = []; // cached for stat connection effects
 let sparklineHistory = {}; // statKey → array of last 10 values
 
 // Collapsed state for sections (persisted in sessionStorage)
@@ -53,117 +52,58 @@ var defaultOpen = { economic: true, taxation: true, labor: true, infrastructure:
 var STAT_CATEGORIES = [
     { id: 'economic', label: 'Economic', icon: '\u{1F4B0}', blocs: ['Business Owners', 'Urban Workers'],
       stats: [
-        { name: 'GDP', key: 'gdp', desc: 'Gross domestic product', format: 'gdp', noHealth: true },
+        { name: 'Budget', key: 'budget', desc: 'Government budget', format: 'currency', noHealth: true },
         { name: 'GDP Growth', key: 'gdp_growth', desc: 'Monthly economic growth rate', format: 'gdpgrowth' },
         { name: 'National Debt', key: 'debt', desc: 'Government debt obligations', format: 'currency', inverted: true, noHealth: true },
-        { name: 'Debt Growth', key: 'debt_growth', desc: 'Rate of debt accumulation', inverted: true },
-        { name: 'Inflation', key: 'inflation', desc: 'Inflation growth rate', inverted: true, format: 'inflation' },
-        { name: 'Interest Rates', key: 'interest_rates', desc: 'Central bank lending rate', inverted: true },
-        { name: 'Trade Balance', key: 'trade_balance', desc: 'Exports minus imports', format: 'trade' },
-        { name: 'Currency Strength', key: 'currency_strength', desc: 'Value of national currency' },
-        { name: 'Foreign Investment', key: 'foreign_investment', desc: 'International capital inflow' },
-        { name: 'Credit Rating', key: 'credit', desc: 'National creditworthiness' },
-        { name: 'Manufacturing Output', key: 'manufacturing_output', desc: 'Industrial production capacity' },
-        { name: 'Service Output', key: 'service_output', desc: 'Services & finance sector output' }
-    ]},
-    { id: 'taxation', label: 'Taxation', icon: '\u{1F3DB}', blocs: ['Business Owners', 'Urban Workers', 'Urban Progressives'],
-      stats: [
-        { name: 'Income Tax', key: 'income_tax', desc: 'Rate on personal income' },
-        { name: 'Corporate Tax', key: 'corporate_tax', desc: 'Rate on business profits' },
-        { name: 'Sales Tax', key: 'sales_tax', desc: 'Tax on goods and services' },
-        { name: 'Tariffs', key: 'tariffs', desc: 'Import/export duties' }
+        { name: 'Cost of Living', key: 'cost_of_living', desc: 'Consumer cost burden', inverted: true },
+        { name: 'Goods', key: 'goods', desc: 'Domestic goods supply' },
+        { name: 'Industry', key: 'industry', desc: 'Industrial production' },
+        { name: 'Energy', key: 'energy', desc: 'Energy supply' },
+        { name: 'Power', key: 'power', desc: 'Power generation capacity' }
     ]},
     { id: 'labor', label: 'Labor & Employment', icon: '\u{1F464}', blocs: ['Urban Workers', 'Business Owners'],
       stats: [
-        { name: 'Unemployment', key: 'unemployment', desc: 'Percentage without work', inverted: true, format: 'unemployment' },
-        { name: 'Labor Participation', key: 'labor_force_participation', desc: 'Working-age adults employed' },
-        { name: 'Minimum Wage', key: 'minimum_wage', desc: 'Lowest legal hourly wage' },
-        { name: 'Union Strength', key: 'union_strength', desc: 'Power of labor unions' },
-        { name: 'Poverty Rate', key: 'poverty_rate', desc: 'Population below poverty line', inverted: true },
-        { name: 'Income Inequality', key: 'income_inequality', desc: 'Gap between rich and poor', inverted: true }
+        { name: 'Workforce', key: 'workforce', desc: 'Labor force capacity' }
     ]},
     { id: 'demographics', label: 'Demographics', icon: '\u{1F465}', blocs: [],
       stats: [
         { name: 'Population', key: 'population', desc: 'Total national population', noHealth: true, format: 'count' },
-        { name: 'Population Growth', key: 'population_growth', desc: 'Rate of population change' },
-        { name: 'Median Age', key: 'median_age', desc: 'Average age of population', format: 'years' },
-        { name: 'Eligible Voters', key: 'eligible_voters', desc: 'Citizens able to vote', noHealth: true, format: 'count' },
-        { name: 'Ethnic Diversity', key: 'ethnic_diversity', desc: 'Cultural heterogeneity' }
+        { name: 'Eligible Voters', key: 'eligible_voters', desc: 'Citizens able to vote', noHealth: true, format: 'count' }
     ]},
     { id: 'healthcare', label: 'Healthcare', icon: '\u{1F3E5}', blocs: ['Urban Progressives', 'Ethnic Minorities'],
       stats: [
-        { name: 'Healthcare Quality', key: 'healthcare_quality', desc: 'Overall medical care standard' },
-        { name: 'Healthcare Access', key: 'healthcare_accessibility', desc: 'Access to medical services' },
-        { name: 'Hospital Beds', key: 'beds_per_100k', desc: 'Beds per 100,000 people' },
-        { name: 'Life Expectancy', key: 'lifespan', desc: 'Average lifespan in years' },
-        { name: 'Drug Use', key: 'drug_use', desc: 'Substance abuse prevalence', inverted: true }
+        { name: 'Health', key: 'health', desc: 'Healthcare system quality and access' }
     ]},
     { id: 'education', label: 'Education', icon: '\u{1F393}', blocs: ['Academics & Professionals', 'Urban Progressives'],
       stats: [
-        { name: 'Literacy Rate', key: 'literacy', desc: 'Population able to read/write' },
-        { name: 'Higher Education', key: 'higher_education', desc: 'University graduation rate' },
-        { name: 'Education Access', key: 'education_accessibility', desc: 'Access to schooling' },
-        { name: 'Academic Immigration', key: 'academic_immigration', desc: 'Scholars attracted to nation' }
+        { name: 'Education', key: 'education', desc: 'Education system quality' }
     ]},
     { id: 'infrastructure', label: 'Infrastructure', icon: '\u{1F3D7}', blocs: ['Business Owners', 'Rural Traditionalists'],
       stats: [
-        { name: 'Physical Infra.', key: 'physical_infrastructure', desc: 'Roads, bridges, ports' },
-        { name: 'Digital Infra.', key: 'digital_infrastructure', desc: 'Internet and tech networks' },
-        { name: 'Rail Network', key: 'rail_network', desc: 'Train connectivity' },
-        { name: 'Urbanization', key: 'urbanization', desc: 'Population in cities' },
-        { name: 'Energy Generation', key: 'energy_generation', desc: 'Power production capacity' },
-        { name: 'Renewable Energy', key: 'renewable_energy_percentage', desc: 'Clean energy percentage' }
+        { name: 'Infrastructure', key: 'infrastructure', desc: 'Roads, rail, digital networks' }
     ]},
     { id: 'resources', label: 'Resources', icon: '\u{26CF}', blocs: [],
       stats: [
-        { name: 'Arable Land', key: 'arable_land', desc: 'Farmable territory' },
-        { name: 'Rare Minerals', key: 'rare_minerals', desc: 'Valuable mineral deposits' },
-        { name: 'Oil & Gas', key: 'oil_and_gas', desc: 'Fossil fuel reserves' },
-        { name: 'Fuel Prices', key: 'fuel_prices', desc: 'Cost of energy', inverted: true, format: 'fuel' }
-    ]},
-    { id: 'environment', label: 'Environment', icon: '\u{1F30D}', blocs: ['Urban Progressives'],
-      stats: [
-        { name: 'Pollution', key: 'pollution', desc: 'Air and water contamination', inverted: true },
-        { name: 'Carbon Emissions', key: 'carbon_emissions', desc: 'Greenhouse gas output', inverted: true }
+        { name: 'Farmland', key: 'farmland', desc: 'Farmable territory' }
     ]},
     { id: 'social', label: 'Social', icon: '\u{1F3E0}', blocs: ['Religious Conservatives', 'Ethnic Minorities', 'Urban Workers'],
       stats: [
         { name: 'Standard of Living', key: 'standard_of_living', desc: 'Quality of life index' },
-        { name: 'Happiness', key: 'happiness', desc: 'National wellbeing index' },
-        { name: 'Religiosity', key: 'religiosity', desc: 'Strength of religious institutions' },
-        { name: 'Cost of Living', key: 'cost_of_living', desc: 'Consumer cost burden', inverted: true },
-        { name: 'Housing Affordability', key: 'housing_affordability', desc: 'Housing accessibility' },
-        { name: 'Social Mobility', key: 'social_mobility', desc: 'Ability to change class' },
-        { name: 'Benefits', key: 'benefits', desc: 'Social welfare programs' },
-        { name: 'Crime Rate', key: 'crime_rate', desc: 'Criminal incidents per capita', inverted: true },
-        { name: 'Incarceration Rate', key: 'incarceration_rate', desc: 'Imprisoned population', inverted: true }
+        { name: 'Cost of Living', key: 'cost_of_living', desc: 'Consumer cost burden', inverted: true }
     ]},
     { id: 'governance', label: 'Governance', icon: '\u{1F3DB}', blocs: ['Academics & Professionals', 'Ethnic Minorities', 'Urban Progressives'],
       stats: [
-        { name: 'Stability', key: 'stability', desc: 'Government steadiness' },
-        { name: 'Legitimacy', key: 'legitimacy', desc: 'Public trust in government' },
-        { name: 'Efficiency', key: 'efficiency', desc: 'Bureaucratic effectiveness' },
-        { name: 'Corruption', key: 'corruption', desc: 'Abuse of public office', inverted: true },
-        { name: 'Press Freedom', key: 'press_freedom', desc: 'Media independence' },
-        { name: 'Judicial Ind.', key: 'judicial_independence', desc: 'Court system fairness' },
-        { name: 'Freedom Index', key: 'freedom_index', desc: 'Civil liberties rating' },
-        { name: 'Polarization', key: 'polarization', desc: 'Political division', inverted: true }
+        { name: 'Control', key: 'control', desc: 'Government control of territory' },
+        { name: 'Authority', key: 'authority', desc: 'Government authority' },
+        { name: 'Crown Authority', key: 'crown_authority', desc: 'Authority of the crown', conditional: function(nation){ return nation.crown_authority != null; } }
     ]},
     { id: 'security', label: 'Security', icon: '\u{1F6E1}', blocs: ['Military & Security', 'Nationalist Bloc'],
       stats: [
-        { name: 'Civil Unrest', key: 'civil_unrest', desc: 'Protests and riots', inverted: true },
-        { name: 'Terrorism Threat', key: 'terrorism', desc: 'Extremist activity level', inverted: true },
-        { name: 'Political Violence', key: 'political_violence', desc: 'Politically motivated attacks', inverted: true }
+        { name: 'Unrest', key: 'unrest', desc: 'Protests, riots & political violence', inverted: true }
     ]},
     { id: 'immigration', label: 'Immigration', icon: '\u{2708}', blocs: ['Nationalist Bloc', 'Rural Traditionalists', 'Ethnic Minorities'],
       stats: [
-        { name: 'Immigration', key: 'immigration', desc: 'People entering legally' },
-        { name: 'Illegal Immigration', key: 'illegal_immigration', desc: 'Undocumented arrivals', inverted: true },
-        { name: 'Emigration', key: 'emigration', desc: 'Citizens leaving (brain drain)', inverted: true }
-    ]},
-    { id: 'international', label: 'International', icon: '\u{1F310}', blocs: [],
-      stats: [
-        { name: 'Intl. Reputation', key: 'international_reputation', desc: 'Global standing and respect' }
+        { name: 'Immigration', key: 'immigration', desc: 'People entering legally' }
     ]}
 ];
 
@@ -192,6 +132,7 @@ function healthColorRaw(val, inverted) {
 function catHealth(cat, nation) {
     var scored = cat.stats.filter(function(s) {
         if (s.noHealth) return false;
+        if (s.conditional && !s.conditional(nation)) return false;
         var v = nation[s.key];
         return v !== null && v !== undefined;
     });
@@ -732,21 +673,21 @@ function parseInstitutionEffects(allocations, institutions, nation, map) {
     }
 }
 
-// ── Debt Pressure: graduated stat effects from debt-to-GDP ratio ──
+// ── Debt Pressure: graduated stat effects from debt-to-budget ratio ──
 var DEBT_PRESSURE_TIERS_CLIENT = [
     { maxRatio: 0.60, label: 'Healthy',     color: '#4ade80', effects: {} },
-    { maxRatio: 0.80, label: 'Elevated',    color: '#a3e635', effects: { interest_rates: 0.05 } },
-    { maxRatio: 1.00, label: 'Concerning',  color: '#fbbf24', effects: { interest_rates: 0.1, foreign_investment: -0.1, currency_strength: -0.05 } },
-    { maxRatio: 1.50, label: 'Dangerous',   color: '#f97316', effects: { interest_rates: 0.2, foreign_investment: -0.2, currency_strength: -0.15 } },
-    { maxRatio: 2.00, label: 'Severe',      color: '#ef4444', effects: { interest_rates: 0.4, foreign_investment: -0.4, currency_strength: -0.3 } },
-    { maxRatio: Infinity, label: 'Crisis',  color: '#f43f5e', effects: { interest_rates: 0.7, foreign_investment: -0.7, currency_strength: -0.5 } },
+    { maxRatio: 0.80, label: 'Elevated',    color: '#a3e635', effects: {} },
+    { maxRatio: 1.00, label: 'Concerning',  color: '#fbbf24', effects: {} },
+    { maxRatio: 1.50, label: 'Dangerous',   color: '#f97316', effects: {} },
+    { maxRatio: 2.00, label: 'Severe',      color: '#ef4444', effects: {} },
+    { maxRatio: Infinity, label: 'Crisis',  color: '#f43f5e', effects: {} },
 ];
 
 function parseDebtPressureEffects(nation, map) {
     var debt = Number(nation.debt || 0);
-    var gdp = Number(nation.gdp || 0);
-    if (gdp <= 0 || debt <= 0) return;
-    var ratio = debt / gdp;
+    var budget = Number(nation.budget || 0);
+    if (budget <= 0 || debt <= 0) return;
+    var ratio = debt / budget;
 
     var tier = DEBT_PRESSURE_TIERS_CLIENT[0];
     for (var i = 0; i < DEBT_PRESSURE_TIERS_CLIENT.length; i++) {
@@ -755,14 +696,12 @@ function parseDebtPressureEffects(nation, map) {
 
     // Only show entries for stats that have nonzero effects at this tier
     var effects = tier.effects;
-    var pctLabel = Math.round(ratio * 100) + '% Debt-to-GDP';
+    var pctLabel = Math.round(ratio * 100) + '% Debt-to-Budget';
     for (var statKey in effects) {
         if (!effects.hasOwnProperty(statKey)) continue;
         var delta = effects[statKey];
         if (delta === 0) continue;
         var dir = delta > 0 ? 'up' : 'down';
-        // interest_rates going UP is bad; foreign_investment/currency going DOWN is bad
-        // So for display: interest_rates up = red arrow, others down = red arrow
         addEffectToMap(map, statKey, pctLabel, dir, 'Debt Pressure', Math.abs(delta), null, {
             tierLabel: tier.label,
             tierColor: tier.color,
@@ -773,10 +712,7 @@ function parseDebtPressureEffects(nation, map) {
 
 // Stats known to be affected by the trade system engine each tick
 var TRADE_AFFECTED_STATS = {
-    gdp_growth: 'Trade Balance',
-    currency_strength: 'Trade Balance',
-    inflation: 'Import Prices',
-    unemployment: 'Trade Displacement'
+    gdp_growth: 'Trade Balance'
 };
 
 function parseTradeSystemEffects(nation, map) {
@@ -881,8 +817,8 @@ function formatTradeBalance(rawValue) {
     return expPct + '% Exp / ' + impPct + '% Imp';
 }
 
-// Detect GDP/debt stored as 0-100 stat scores instead of raw dollars
-var RAW_DOLLAR_KEYS = { gdp: true, debt: true };
+// Detect budget/debt stored as 0-100 stat scores instead of raw dollars
+var RAW_DOLLAR_KEYS = { budget: true, debt: true };
 function isMisscaledMonetary(key, val) {
     return RAW_DOLLAR_KEYS[key] && val != null && Number(val) >= 0 && Number(val) <= 100000;
 }
@@ -895,20 +831,15 @@ function getDisplayValue(stat, nation) {
     var raw = nation[stat.key];
     var format = stat.format;
     if (raw === null || raw === undefined) return 'N/A';
-    if (format === 'gdp' || format === 'currency') {
+    if (format === 'currency') {
         assertRawEconomicValue(raw, stat.key);
     }
-    if ((format === 'gdp' || format === 'currency') && isMisscaledMonetary(stat.key, raw)) {
+    if (format === 'currency' && isMisscaledMonetary(stat.key, raw)) {
         return '$' + Math.round(Number(raw));
     }
     if (format === 'count') return formatNumber(raw);
-    if (format === 'gdp' || format === 'currency') return formatCurrencyShort(scaleRawToDollars(raw));
+    if (format === 'currency') return formatCurrencyShort(scaleRawToDollars(raw));
     if (format === 'gdpgrowth') return formatGdpGrowth(raw);
-    if (format === 'trade') return formatTradeBalance(raw);
-    if (format === 'inflation') return formatInflationRate(raw);
-    if (format === 'fuel') return formatFuelPrice(raw, nation.currency_strength, nation.inflation);
-    if (format === 'years') return (Math.round(Number(raw) * 10) / 10) + ' yrs';
-    if (format === 'unemployment') return formatUnemploymentPct(Number(raw));
     return Math.round(Number(raw) * 10) / 10;
 }
 
@@ -1019,182 +950,6 @@ function buildRankingPipsHTML(rank, total) {
             : '<div class="compact-bottom__rank-pip compact-bottom__rank-pip--empty"></div>';
     }
     h += '<span class="compact-bottom__rank-label">#' + rank + '</span></div>';
-    return h;
-}
-
-function renderFeaturedGDP(nation) {
-    var gdpRaw = nation.gdp ?? 0;
-    var gdpGrowthRaw = Number(nation.gdp_growth ?? 50);
-    var monthlyPct = ((gdpGrowthRaw - 50) / 50) * 1;
-    var yearlyPct = (Math.pow(1 + monthlyPct / 100, 12) - 1) * 100;
-    var gdpDisplay = formatCurrencyShort(scaleRawToDollars(gdpRaw));
-    // Split "$88.7 Billion" into value + unit
-    var parts = gdpDisplay.match(/^(\$[\d,.]+)\s*(.*)$/);
-    var gdpVal = parts ? parts[1] : gdpDisplay;
-    var gdpUnit = parts ? parts[2] : '';
-
-    // Delta per tick
-    var deltaStr = '';
-    if (previousTickData && previousTickData.gdp != null && gdpRaw != null) {
-        var gdpDelta = Number(gdpRaw) - Number(previousTickData.gdp);
-        var deltaDir = gdpDelta >= 0 ? '\u25B2' : '\u25BC';
-        var deltaColor = gdpDelta >= 0 ? 'var(--n-green)' : 'var(--n-red)';
-        deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + ' ' + Math.abs(gdpDelta).toFixed(1) + ' per tick</span>';
-    }
-
-    // Growth rate color
-    var growthColor = monthlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
-    var yearlyColor = yearlyPct >= 0 ? 'var(--n-green)' : 'var(--n-red)';
-    var growthStr = (monthlyPct >= 0 ? '+' : '') + monthlyPct.toFixed(2) + '%';
-    var yearlyStr = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
-
-    // GDP growth label
-    var gdpLabel = getGdpGrowthLabel(monthlyPct);
-    var tagColor, tagBorder;
-    if (monthlyPct < -0.33) { tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; }
-    else if (monthlyPct < 0) { tagColor = 'var(--n-orange)'; tagBorder = 'var(--n-orange)'; }
-    else if (monthlyPct < 0.17) { tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; }
-    else { tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; }
-
-    var dotColor = tagColor;
-    var scaleItems = getGdpGrowthScaleItems(monthlyPct);
-
-    // Sparkline
-    var sparkData = sparklineHistory['gdp'] ? sparklineHistory['gdp'].slice() : [];
-    if (gdpRaw != null) sparkData.push(Number(gdpRaw));
-    var chartColor = monthlyPct >= 0 ? getCSSColor('--n-green') : getCSSColor('--n-red');
-    var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
-
-    var h = '<div class="featured-card featured-card--gdp">';
-    // Header
-    h += '<div class="featured-card__header">';
-    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
-    h += '<span class="featured-card__title">Gross Domestic Product</span>';
-    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(gdpLabel) + '</span>';
-    h += '</div>';
-
-    // Description
-    h += '<div class="featured-card__desc">Gross domestic product</div>';
-
-    // Value + side stats
-    h += '<div class="featured-card__value-row">';
-    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + gdpVal + '</span>';
-    if (gdpUnit) h += '<span class="featured-card__big-unit" style="color:' + tagColor + ';">' + escapeHtml(gdpUnit) + '</span>';
-    h += '</div>';
-    h += '<div class="featured-card__side-stats">';
-    h += '<div><span class="featured-card__side-label">Growth Rate</span></div>';
-    h += '<div><span class="featured-card__side-value" style="color:' + growthColor + ';">' + growthStr + '</span></div>';
-    h += '<div><span class="featured-card__side-label">Yearly Forecast</span></div>';
-    h += '<div><span class="featured-card__side-value" style="color:' + yearlyColor + ';">' + yearlyStr + '</span></div>';
-    h += '</div>';
-    h += '</div>';
-
-    // Delta
-    if (deltaStr) h += deltaStr;
-
-    // Chart
-    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
-
-    // Scale
-    h += '<div class="featured-card__scale">';
-    for (var i = 0; i < scaleItems.length; i++) {
-        var si = scaleItems[i];
-        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
-        h += escapeHtml(si.label);
-        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
-        h += '</div>';
-    }
-    h += '</div>';
-
-    // Affected by
-    h += buildFeaturedAbpHTML('gdp');
-    // Also include gdp_growth effects
-    var gdpGrowthEffects = statEffectsByKey['gdp_growth'] || [];
-    if (gdpGrowthEffects.length > 0 && !(statEffectsByKey['gdp'] || []).length) {
-        h += buildFeaturedAbpHTML('gdp_growth');
-    }
-
-    h += '</div>';
-    return h;
-}
-
-function renderFeaturedInflation(nation) {
-    var inflRaw = Number(nation.inflation ?? 50);
-    var rate = inflationRate(inflRaw);
-    var rateStr = formatInflationRate(inflRaw);
-    var label = getInflationLabel(inflRaw);
-
-    // Tag color
-    var iClass = inflationColorClass(inflRaw);
-    var tagColor, tagBorder, dotColor;
-    if (iClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; dotColor = 'var(--n-green)'; }
-    else if (iClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; dotColor = 'var(--n-yellow)'; }
-    else { tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; dotColor = 'var(--n-red)'; }
-
-    // Delta per tick
-    var deltaStr = '';
-    if (previousTickData && previousTickData.inflation != null) {
-        var prevRate = inflationRate(Number(previousTickData.inflation));
-        var rateDelta = rate - prevRate;
-        // For inflation, down is good
-        var deltaDir = rateDelta >= 0 ? '\u25B2' : '\u25BC';
-        var deltaColor = rateDelta <= 0 ? 'var(--n-green)' : 'var(--n-red)';
-        deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">' + deltaDir + Math.abs(rateDelta).toFixed(2) + ' per tick</span>';
-    }
-
-    // Scale items
-    var scaleItems = [
-        { label: 'Deflation', range: '<0%', active: rate < 0 },
-        { label: 'Low', range: '0-1%', active: rate >= 0 && rate < 1 },
-        { label: 'Stable', range: '1-3%', active: rate >= 1 && rate < 3 },
-        { label: 'High', range: '3-6%', active: rate >= 3 && rate < 6 },
-        { label: 'Hyper', range: '6%+', active: rate >= 6 }
-    ];
-
-    // Sparkline — for inflation, invert visually: down line = good
-    var sparkData = sparklineHistory['inflation'] ? sparklineHistory['inflation'].slice() : [];
-    if (inflRaw != null) sparkData.push(inflRaw);
-    // Color: green if good/stable, red if bad
-    var chartColor = iClass === 'good' ? getCSSColor('--n-green') : iClass === 'medium' ? getCSSColor('--n-yellow') : getCSSColor('--n-red');
-    var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
-
-    var h = '<div class="featured-card featured-card--inflation">';
-    // Header
-    h += '<div class="featured-card__header">';
-    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
-    h += '<span class="featured-card__title">Inflation</span>';
-    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(label) + '</span>';
-    h += '</div>';
-
-    // Description
-    h += '<div class="featured-card__desc">Inflation growth rate</div>';
-
-    // Value row
-    h += '<div class="featured-card__value-row">';
-    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + rateStr + '</span></div>';
-    h += '</div>';
-
-    // Delta
-    if (deltaStr) h += deltaStr;
-
-    // Chart
-    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
-
-    // Scale
-    h += '<div class="featured-card__scale">';
-    for (var i = 0; i < scaleItems.length; i++) {
-        var si = scaleItems[i];
-        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
-        h += escapeHtml(si.label);
-        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
-        h += '</div>';
-    }
-    h += '</div>';
-
-    // Affected by
-    h += buildFeaturedAbpHTML('inflation');
-
-    h += '</div>';
     return h;
 }
 
@@ -1447,86 +1202,10 @@ function renderFeaturedStatCard(stat, nation) {
     return h;
 }
 
-function renderFeaturedFuelPrices(nation) {
-    var fuelRaw = Number(nation.fuel_prices ?? 50);
-    var currRaw = Number(nation.currency_strength ?? 50);
-    var inflRaw = Number(nation.inflation ?? 50);
-    var price = fuelPricePerGallon(fuelRaw, currRaw, inflRaw);
-    var priceStr = formatFuelPrice(fuelRaw, currRaw, inflRaw);
-    var label = getFuelPriceLabel(fuelRaw, currRaw, inflRaw);
-
-    // Tag color
-    var fClass = fuelPriceColorClass(fuelRaw, currRaw, inflRaw);
-    var tagColor, tagBorder, dotColor;
-    if (fClass === 'good') { tagColor = 'var(--n-green)'; tagBorder = 'var(--n-green)'; dotColor = 'var(--n-green)'; }
-    else if (fClass === 'medium') { tagColor = 'var(--n-yellow)'; tagBorder = 'var(--n-yellow)'; dotColor = 'var(--n-yellow)'; }
-    else { tagColor = 'var(--n-red)'; tagBorder = 'var(--n-red)'; dotColor = 'var(--n-red)'; }
-
-    // Delta per tick (based on price change)
-    var deltaStr = '';
-    if (previousTickData && previousTickData.fuel_prices != null) {
-        var prevPrice = fuelPricePerGallon(
-            Number(previousTickData.fuel_prices),
-            Number(previousTickData.currency_strength ?? currRaw),
-            Number(previousTickData.inflation ?? inflRaw)
-        );
-        var priceDelta = price - prevPrice;
-        if (Math.abs(priceDelta) >= 0.01) {
-            // For fuel prices, down is good
-            var deltaDir = priceDelta >= 0 ? '\u25B2' : '\u25BC';
-            var deltaColor = priceDelta <= 0 ? 'var(--n-green)' : 'var(--n-red)';
-            deltaStr = '<span class="featured-card__delta" style="color:' + deltaColor + ';">$' + Math.abs(priceDelta).toFixed(2) + ' ' + deltaDir + ' per tick</span>';
-        }
-    }
-
-    // Scale items
-    var scaleItems = [
-        { label: 'Cheap', range: '<$2', active: price < 2.00 },
-        { label: 'Normal', range: '$2-4', active: price >= 2.00 && price < 4.00 },
-        { label: 'Elevated', range: '$4-5.50', active: price >= 4.00 && price < 5.50 },
-        { label: 'Expensive', range: '$5.50-7', active: price >= 5.50 && price < 7.00 },
-        { label: 'Crisis', range: '$7+', active: price >= 7.00 }
-    ];
-
-    // Sparkline
-    var sparkData = sparklineHistory['fuel_prices'] ? sparklineHistory['fuel_prices'].slice() : [];
-    if (fuelRaw != null) sparkData.push(fuelRaw);
-    var chartColor = fClass === 'good' ? getCSSColor('--n-green') : fClass === 'medium' ? getCSSColor('--n-yellow') : getCSSColor('--n-red');
-    var chartSVG = buildFeaturedSparkSVG(sparkData, chartColor);
-
-    var h = '<div class="featured-card featured-card--fuel">';
-    h += '<div class="featured-card__header">';
-    h += '<div class="featured-card__dot" style="background:' + dotColor + ';"></div>';
-    h += '<span class="featured-card__title">Fuel Prices</span>';
-    h += '<span class="featured-card__tag" style="color:' + tagColor + ';border-color:' + tagBorder + ';">' + escapeHtml(label) + '</span>';
-    h += '</div>';
-    h += '<div class="featured-card__desc">Cost of energy — adjusted for currency strength &amp; inflation</div>';
-    h += '<div class="featured-card__value-row">';
-    h += '<div><span class="featured-card__big-value" style="color:' + tagColor + ';">' + priceStr + '</span></div>';
-    h += '</div>';
-    if (deltaStr) h += deltaStr;
-    h += '<div class="featured-card__chart">' + chartSVG + '</div>';
-    h += '<div class="featured-card__scale">';
-    for (var i = 0; i < scaleItems.length; i++) {
-        var si = scaleItems[i];
-        h += '<div class="featured-card__scale-item' + (si.active ? ' featured-card__scale-item--active' : '') + '">';
-        h += escapeHtml(si.label);
-        h += '<span class="featured-card__scale-range">' + escapeHtml(si.range) + '</span>';
-        h += '</div>';
-    }
-    h += '</div>';
-    h += buildFeaturedAbpHTML('fuel_prices');
-    h += '</div>';
-    return h;
-}
-
 // Map of stat keys to their custom featured renderers
 var FEATURED_RENDERERS = {
-    gdp: renderFeaturedGDP,
     gdp_growth: renderFeaturedGDPGrowth,
-    inflation: renderFeaturedInflation,
-    debt: renderFeaturedDebt,
-    fuel_prices: renderFeaturedFuelPrices
+    debt: renderFeaturedDebt
 };
 
 function renderFeaturedCategory(cat, nation) {
@@ -1538,6 +1217,7 @@ function renderFeaturedCategory(cat, nation) {
     var alerts = 0;
     for (var i = 0; i < cat.stats.length; i++) {
         if (cat.stats[i].noHealth) continue;
+        if (cat.stats[i].conditional && !cat.stats[i].conditional(nation)) continue;
         var sv = Number(nation[cat.stats[i].key] ?? 50);
         var effective = cat.stats[i].inverted ? 100 - sv : sv;
         if (effective < 15) alerts++;
@@ -1569,6 +1249,7 @@ function renderFeaturedCategory(cat, nation) {
     h += '<div class="featured-grid">';
     for (var si = 0; si < cat.stats.length; si++) {
         var stat = cat.stats[si];
+        if (stat.conditional && !stat.conditional(nation)) continue;
         if (FEATURED_RENDERERS[stat.key]) {
             h += FEATURED_RENDERERS[stat.key](nation);
         } else {
@@ -1616,11 +1297,11 @@ function renderImmigrationTab(nation) {
     }
     var netMigration = totalInflow - totalOutflow;
 
-    // Capacity: how much room for growth (based on infrastructure, healthcare, etc.)
-    var infra = Number(nation.physical_infrastructure ?? 50);
-    var housing = Number(nation.urbanization ?? 50);
-    var healthcare = Number(nation.healthcare_quality ?? 50);
-    var capacity = Math.round((infra + housing + healthcare) / 3);
+    // Capacity: how much room for growth (based on infrastructure, workforce, health)
+    var infra = Number(nation.infrastructure ?? 50);
+    var workforce = Number(nation.workforce ?? 50);
+    var health = Number(nation.health ?? 50);
+    var capacity = Math.round((infra + workforce + health) / 3);
 
     var isPositive = netMigration >= 0;
     var migSign = isPositive ? '+' : '\u2212';
@@ -1646,12 +1327,9 @@ function renderImmigrationTab(nation) {
     h += '</div>';
     h += '</div>';
 
-    // ── 4 Immigration stat cards ──
+    // ── Immigration stat card ──
     var stats = [
-        { name: 'Immigration', key: 'immigration', desc: 'People entering legally', inverted: false },
-        { name: 'Emigration', key: 'emigration', desc: 'Citizens leaving (brain drain)', inverted: true },
-        { name: 'Illegal Immigration', key: 'illegal_immigration', desc: 'Undocumented arrivals', inverted: true },
-        { name: 'Academic Immigration', key: 'academic_immigration', desc: 'Scholars attracted to nation', inverted: false }
+        { name: 'Immigration', key: 'immigration', desc: 'People entering legally', inverted: false }
     ];
 
     h += '<div class="imm-stats-row">';
@@ -1869,250 +1547,6 @@ function renderMigrationDestsPanel(nation) {
     return h;
 }
 
-// ===== ILLEGAL IMMIGRATION TAB =====
-
-function getIllegalTier(val) {
-    if (val >= 70) return { label: 'CRITICAL', color: 'var(--n-red)' };
-    if (val >= 50) return { label: 'HIGH', color: 'var(--n-orange)' };
-    if (val >= 30) return { label: 'ELEVATED', color: 'var(--n-yellow)' };
-    if (val >= 15) return { label: 'MODERATE', color: 'var(--n-cyan)' };
-    return { label: 'LOW', color: 'var(--n-green)' };
-}
-
-function renderIllegalImmigrationTab(nation) {
-    var illegalVal = Number(nation.illegal_immigration ?? 0);
-    var tier = getIllegalTier(illegalVal);
-    var h = '';
-
-    // Delta from previous tick
-    var deltaHtml = '';
-    if (previousTickData && previousTickData.illegal_immigration != null) {
-        var delta = illegalVal - Number(previousTickData.illegal_immigration);
-        if (Math.abs(delta) >= 0.01) {
-            var dColor = delta > 0 ? 'var(--n-red)' : 'var(--n-green)';
-            var dArrow = delta > 0 ? '\u25B2' : '\u25BC';
-            deltaHtml = '<span class="ill-hero-delta" style="color:' + dColor + ';">' + dArrow + ' ' + Math.abs(delta).toFixed(1) + '</span>';
-        }
-    }
-
-    // ── Hero ──
-    h += '<div class="ill-hero">';
-    h += '<div class="ill-hero-left">';
-    h += '<div class="ill-hero-label">ILLEGAL IMMIGRATION</div>';
-    h += '<div class="ill-hero-value" style="color:' + tier.color + ';">' + illegalVal.toFixed(1) + '</div>';
-    h += deltaHtml;
-    h += '</div>';
-    h += '<div class="ill-hero-badge" style="color:' + tier.color + ';border-color:' + tier.color + ';background:' + tier.color + '15;">' + tier.label + '</div>';
-    h += '</div>';
-
-    // ── Two-column: Push Factors + Stat Drag ──
-    h += '<div class="ill-columns">';
-
-    // Left: Push Factors (why they come)
-    h += '<div class="ill-panel">';
-    h += '<div class="ill-panel-title">Push Factors (Why They Come)</div>';
-    h += renderIllegalPushFactors(nation);
-    h += '</div>';
-
-    // Right: Stat Drag Effects
-    h += '<div class="ill-panel">';
-    h += '<div class="ill-panel-title">Stat Drag Effects</div>';
-    h += renderIllegalStatDrag(nation, illegalVal);
-    h += '</div>';
-
-    h += '</div>'; // end columns
-
-    // ── By Origin breakdown ──
-    h += renderIllegalByOrigin(nation);
-
-    // ── Footer disclaimer ──
-    h += '<div class="ill-disclaimer">';
-    h += '<div class="ill-disclaimer-bar"></div>';
-    h += '<div class="ill-disclaimer-text">Illegal immigrants do not naturalize, do not vote, and are not assigned to voter blocs. They affect economic and social stats only.</div>';
-    h += '</div>';
-
-    return h;
-}
-
-function renderIllegalPushFactors(nation) {
-    // Compute push factors from neighboring nations that send illegal immigrants
-    if (!migrationFlowData || migrationFlowData.length === 0 || !allNations || allNations.length === 0) {
-        return '<div class="ill-empty">Waiting for migration data...</div>';
-    }
-
-    var latestTick = getLatestMigrationTick();
-
-    // Find nations sending illegal immigrants to us
-    var originIds = {};
-    for (var i = 0; i < migrationFlowData.length; i++) {
-        var f = migrationFlowData[i];
-        if (f.tick !== latestTick || f.category !== 'illegal' || f.dest_nation_id !== nation.id) continue;
-        if (!originIds[f.origin_nation_id]) originIds[f.origin_nation_id] = 0;
-        originIds[f.origin_nation_id] += f.flow_count;
-    }
-
-    // Build push factor rows from origin nations
-    var factors = [];
-    var nationLookup = {};
-    for (var i = 0; i < allNations.length; i++) nationLookup[allNations[i].id] = allNations[i];
-
-    for (var oid in originIds) {
-        var origin = nationLookup[oid];
-        if (!origin) continue;
-        // Emigration pressure from this origin
-        var poverty = Number(origin.poverty_rate ?? 50);
-        var unemployment = Number(origin.unemployment ?? 50);
-        var unrest = Number(origin.civil_unrest ?? 50);
-        var pressure = Math.round((poverty * 0.4 + unemployment * 0.35 + unrest * 0.25));
-        if (pressure > 20) {
-            factors.push({ label: origin.name + ' Emigration Pressure', value: pressure, rate: (pressure / 500).toFixed(2) });
-        }
-    }
-
-    // Destination pull factors
-    var sol = Number(nation.standard_of_living ?? 50);
-    if (sol > 40) factors.push({ label: 'Your Standard of Living', value: sol, rate: (sol / 500).toFixed(2) });
-    var tariffs = Number(nation.tariffs ?? 50);
-    if (tariffs < 30) factors.push({ label: 'Low Tariffs (Open Borders)', value: 100 - tariffs, rate: ((100 - tariffs) / 2000).toFixed(2) });
-
-    factors.sort(function(a, b) { return parseFloat(b.rate) - parseFloat(a.rate); });
-
-    var h = '';
-    var netPressure = 0;
-    for (var i = 0; i < factors.length; i++) {
-        var pf = factors[i];
-        netPressure += parseFloat(pf.rate);
-        h += '<div class="ill-factor-row">';
-        h += '<span class="ill-factor-label">' + escapeHtml(pf.label) + '</span>';
-        h += '<span class="ill-factor-val">' + pf.value + '</span>';
-        h += '<span class="ill-factor-rate" style="color:var(--n-red);">+' + pf.rate + '/tick</span>';
-        h += '</div>';
-    }
-    if (factors.length === 0) {
-        h += '<div class="ill-empty">No significant push factors detected.</div>';
-    }
-    h += '<div class="ill-net-pressure">';
-    h += '<span class="ill-net-label">NET PRESSURE</span>';
-    h += '<span class="ill-net-val" style="color:var(--n-red);">+' + netPressure.toFixed(2) + '/tick</span>';
-    h += '</div>';
-    return h;
-}
-
-function renderIllegalStatDrag(nation, illegalVal) {
-    if (!rawStatConnections || rawStatConnections.length === 0) {
-        return '<div class="ill-empty">Loading stat effects...</div>';
-    }
-    // Show stat_connections where source_stat = 'illegal_immigration'
-    var connections = rawStatConnections.filter(function(c) {
-        return c.source_stat === 'illegal_immigration';
-    });
-
-    if (connections.length === 0) {
-        return '<div class="ill-empty">No stat connections configured for illegal immigration.</div>';
-    }
-
-    var active = [];
-    var inactive = [];
-    for (var i = 0; i < connections.length; i++) {
-        var conn = connections[i];
-        var triggered = conn.source_dir === 'above'
-            ? illegalVal > conn.threshold
-            : illegalVal < conn.threshold;
-        if (triggered) {
-            active.push(conn);
-        } else {
-            inactive.push(conn);
-        }
-    }
-
-    var h = '';
-
-    // Active effects
-    if (active.length > 0) {
-        h += '<div class="ill-drag-section-label">ACTIVE AT CURRENT LEVEL (' + illegalVal.toFixed(1) + ')</div>';
-        for (var i = 0; i < active.length; i++) {
-            var c = active[i];
-            var dir = c.target_dir === 'up' ? '+' : '-';
-            var effectColor = c.target_dir === 'up' ? 'var(--n-red)' : 'var(--n-green)';
-            // For "bad" stats going up, show red; for good stats going down, show red
-            var statName = prettyStatName(c.target_stat);
-            h += '<div class="ill-drag-row">';
-            h += '<span class="ill-drag-stat">' + escapeHtml(statName) + '</span>';
-            var threshDir = c.source_dir === 'above' ? '&gt;' : '&lt;';
-            h += '<span class="ill-drag-thresh">' + threshDir + ' ' + c.threshold + ' threshold</span>';
-            h += '<span class="ill-drag-effect" style="color:' + effectColor + ';">' + dir + c.magnitude.toFixed(2) + '/tick</span>';
-            h += '</div>';
-        }
-    }
-
-    // Inactive effects
-    if (inactive.length > 0) {
-        h += '<div class="ill-drag-section-label ill-drag-inactive-label">INACTIVE — TRIGGERED IF STAT CROSSES THRESHOLD</div>';
-        for (var i = 0; i < inactive.length; i++) {
-            var c = inactive[i];
-            var dir = c.target_dir === 'up' ? '+' : '-';
-            var threshDir = c.source_dir === 'above' ? '&gt;' : '&lt;';
-            var statName = prettyStatName(c.target_stat);
-            h += '<div class="ill-drag-row ill-drag-row--inactive">';
-            h += '<span class="ill-drag-stat">' + escapeHtml(statName) + '</span>';
-            h += '<span class="ill-drag-thresh">' + threshDir + ' ' + c.threshold + ' threshold</span>';
-            h += '<span class="ill-drag-effect">' + dir + c.magnitude.toFixed(2) + '/tick</span>';
-            h += '</div>';
-        }
-    }
-
-    return h;
-}
-
-function renderIllegalByOrigin(nation) {
-    if (!migrationFlowData || migrationFlowData.length === 0) {
-        return '';
-    }
-
-    var latestTick = getLatestMigrationTick();
-
-    // Aggregate illegal flows by origin
-    var origins = {};
-    var totalIllegal = 0;
-    for (var i = 0; i < migrationFlowData.length; i++) {
-        var f = migrationFlowData[i];
-        if (f.tick !== latestTick || f.category !== 'illegal' || f.dest_nation_id !== nation.id) continue;
-        var name = f.origin?.name || 'Unknown';
-        if (!origins[name]) origins[name] = { count: 0, color: '' };
-        origins[name].count += f.flow_count;
-        totalIllegal += f.flow_count;
-    }
-
-    if (totalIllegal === 0) {
-        return '<div class="ill-panel" style="margin:0 0 20px;"><div class="ill-panel-title">Illegal Immigration By Origin</div><div class="ill-empty">No illegal immigration detected this tick.</div></div>';
-    }
-
-    // Sort by count descending
-    var sorted = Object.keys(origins).map(function(name) {
-        return { name: name, count: origins[name].count };
-    }).sort(function(a, b) { return b.count - a.count; });
-
-    // Assign colors
-    var barColors = ['#a78bfa', '#ef4444', '#4ade80', '#f97316', '#f472b6', '#22d3ee', '#facc15', '#60a5fa'];
-
-    var h = '<div class="ill-origins">';
-    h += '<div class="ill-panel-title">Illegal Immigration By Origin</div>';
-    for (var i = 0; i < sorted.length; i++) {
-        var o = sorted[i];
-        var pct = Math.round((o.count / totalIllegal) * 100);
-        var barWidth = Math.max(2, pct);
-        var color = barColors[i % barColors.length];
-        h += '<div class="ill-origin-row">';
-        h += '<span class="ill-origin-name" style="color:' + color + ';">' + escapeHtml(o.name) + '</span>';
-        h += '<div class="ill-origin-bar-wrap"><div class="ill-origin-bar" style="width:' + barWidth + '%;background:' + color + ';"></div></div>';
-        h += '<span class="ill-origin-pct">' + pct + '%</span>';
-        h += '<span class="ill-origin-count">' + formatNumber(o.count) + '</span>';
-        h += '</div>';
-    }
-    h += '</div>';
-    return h;
-}
-
 // ===== MIGRATION MATRIX =====
 
 var NATION_MATRIX_COLORS = ['#22d3ee','#f472b6','#a78bfa','#4ade80','#facc15','#f97316','#60a5fa','#c084fc'];
@@ -2217,13 +1651,12 @@ function renderMigrationMatrix(nation) {
 // ===== PULL FACTOR SCORE =====
 
 var PULL_FACTORS = [
-    { label: 'Standard of Living', key: 'standard_of_living', weight: 0.25 },
-    { label: 'Stability', key: 'stability', weight: 0.20 },
-    { label: 'Freedom Index', key: 'freedom_index', weight: 0.15 },
-    { label: 'GDP Growth', key: 'gdp_growth', weight: 0.10 },
-    { label: 'Happiness', key: 'happiness', weight: 0.10 },
-    { label: 'Healthcare Access', key: 'healthcare_accessibility', weight: 0.10 },
-    { label: 'Benefits', key: 'welfare_spending', weight: 0.10 }
+    { label: 'Standard of Living', key: 'standard_of_living', weight: 0.30 },
+    { label: 'GDP Growth', key: 'gdp_growth', weight: 0.20 },
+    { label: 'Health', key: 'health', weight: 0.15 },
+    { label: 'Education', key: 'education', weight: 0.10 },
+    { label: 'Workforce', key: 'workforce', weight: 0.10 },
+    { label: 'Infrastructure', key: 'infrastructure', weight: 0.15 }
 ];
 
 function renderPullFactorScore(nation) {
@@ -2284,7 +1717,6 @@ async function renderNationPage(nation) {
     h += '<button class="nation-tab' + (_activeNationTab === 'profile' ? ' active' : '') + '" data-tab="profile" onclick="switchNationTab(\'profile\')">Nation</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'statistics' ? ' active' : '') + '" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'immigration' ? ' active' : '') + '" data-tab="immigration" onclick="switchNationTab(\'immigration\')">Immigration</button>';
-    h += '<button class="nation-tab' + (_activeNationTab === 'illegal' ? ' active' : '') + '" data-tab="illegal" onclick="switchNationTab(\'illegal\')">Illegal Immigration</button>';
     h += '</div>';
 
     // ---- Statistics tab ----
@@ -2303,7 +1735,7 @@ async function renderNationPage(nation) {
     // ---- Nation Profile tab (embedded nation-info.html) ----
     // Note: on tick-advanced this subtree is rebuilt along with every other
     // tab (see listener above), so the iframe reloads. Consistent with how
-    // Immigration / Illegal Immigration refresh. Users on the profile tab
+    // Immigration refreshes. Users on the profile tab
     // during a tick boundary will see it reload.
     h += '<div class="nation-body nation-tab-content" id="nation-tab-profile"' + (_activeNationTab === 'profile' ? '' : ' style="display:none;"') + '>';
     var _profileSlug = String(nation.name || '').toLowerCase().replace(/\s+/g, '');
@@ -2319,11 +1751,6 @@ async function renderNationPage(nation) {
     h += renderImmigrationTab(nation);
     h += '<div id="migration-flow-panels"><div class="imm-loading">Loading migration data...</div></div>';
     h += '</div>'; // end immigration tab
-
-    // ---- Illegal Immigration tab ----
-    h += '<div class="nation-body nation-tab-content" id="nation-tab-illegal"' + (_activeNationTab === 'illegal' ? '' : ' style="display:none;"') + '>';
-    h += renderIllegalImmigrationTab(nation);
-    h += '</div>'; // end illegal immigration tab
 
     document.getElementById('content-area').innerHTML = h;
     attachHandlers();
@@ -2348,15 +1775,6 @@ async function renderNationPage(nation) {
                 console.error('[nation] Immigration tab render failed:', renderErr);
                 var immPanel = document.getElementById('nation-tab-immigration');
                 if (immPanel) immPanel.innerHTML = renderImmigrationTab(nation);
-            }
-            // Re-render illegal immigration tab with flow data
-            try {
-                var illPanel = document.getElementById('nation-tab-illegal');
-                if (illPanel) {
-                    illPanel.innerHTML = renderIllegalImmigrationTab(nation);
-                }
-            } catch (illErr) {
-                console.error('[nation] Illegal immigration tab render failed:', illErr);
             }
         }).catch(function(err) { console.warn('[nation] Migration flow load failed:', err); });
     } catch (e) { console.warn('[nation] Migration flows not available:', e); }

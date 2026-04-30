@@ -139,6 +139,13 @@ function render(root, partyMap) {
         const topParties = votes.slice(0, 3);
         const turnout = elec.results?.turnout_pct ?? 0;
         const totalVotesCast = elec.results?.total_votes_cast ?? 0;
+        // Independents are seated by the sector engine via a 1D10 roll
+        // before TWP allocation (see rollIndependents in js/game/sectors.js
+        // and runSectorElection in js/game/elections.js). The roll result
+        // is snapshotted into elec.results.sector_breakdown.independent_seats
+        // at election time. Falling back to 0 keeps legacy / pre-sector
+        // election rows working without a white segment.
+        const independentSeats = elec.results?.sector_breakdown?.independent_seats ?? 0;
         const date = tickToDate(elec.election_tick);
 
         // Find the administration that started after this election
@@ -184,10 +191,17 @@ function render(root, partyMap) {
 
         // Expanded detail (Phase 2+ will fill this in more)
         if (isExp) {
-            // Seat bar
-            const seatBarHtml = votes.map(p =>
+            // Seat bar — parties first, then a white segment for independents
+            // so the bar fills the full parliament. Without the trailing
+            // white block, sector-engine elections look like the parties
+            // got every seat even when independents were rolled in.
+            const partyBarHtml = votes.map(p =>
                 `<div style="width:${(p.seats / totalSeats) * 100}%;background:${p.color};height:100%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:${p.seats >= 8 ? 9 : 6}px;font-weight:700;color:#000;">${p.seats >= 5 ? p.seats : ''}</div>`
             ).join('');
+            const independentBarHtml = independentSeats > 0
+                ? `<div style="width:${(independentSeats / totalSeats) * 100}%;background:#ffffff;height:100%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:${independentSeats >= 8 ? 9 : 6}px;font-weight:700;color:#000;" title="Independents">${independentSeats >= 5 ? independentSeats : ''}</div>`
+                : '';
+            const seatBarHtml = partyBarHtml + independentBarHtml;
 
             // Results table
             const resultsHtml = votes.map(p => {
@@ -212,7 +226,20 @@ function render(root, partyMap) {
                     <span class="pe-col-pct" style="width:55px;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);">${(p.vote_percentage || 0).toFixed(1)}%</span>
                     <span class="pe-col-rep" style="width:80px;text-align:right;font-family:var(--font-mono);font-size:10px;font-weight:700;color:${Math.abs(seatVoteDiff) < 2 ? 'var(--text-dim)' : seatVoteDiff > 0 ? '#5c5' : '#c84'};">${seatVoteDiff > 0 ? '+' : ''}${seatVoteDiff.toFixed(1)}% <span style="font-size:8px;color:var(--text-dim);">${Math.abs(seatVoteDiff) < 2 ? 'proportional' : seatVoteDiff > 0 ? 'overrep.' : 'underrep.'}</span></span>
                 </div>`;
-            }).join('');
+            }).join('') + (independentSeats > 0 ? `<div class="pe-tbl-row" style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid rgba(200,196,184,0.03);">
+                    <div class="pe-col-logo" style="width:30px;height:30px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;margin-right:8px;color:#fff;">IN</div>
+                    <div class="pe-col-party" style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:5px;">
+                            <span style="font-size:13px;font-weight:700;color:var(--text-bright);">Independents</span>
+                        </div>
+                        <div style="font-family:var(--font-mono);font-size:9px;color:#cccccc;">IND</div>
+                    </div>
+                    <span class="pe-col-seats" style="width:60px;text-align:right;font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-bright);">${independentSeats}</span>
+                    <span class="pe-col-change" style="width:60px;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">—</span>
+                    <span class="pe-col-votes" style="width:70px;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">—</span>
+                    <span class="pe-col-pct" style="width:55px;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">—</span>
+                    <span class="pe-col-rep" style="width:80px;text-align:right;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">—</span>
+                </div>` : '');
 
             // Government formation card
             let govHtml = '';

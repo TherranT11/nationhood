@@ -450,23 +450,16 @@ function renderStrongholdsSection(o, faction, partyColor) {
         </div>`;
     }).join('');
 
-    // Compute the largest contribution across all visible parties so chip
-    // bars share a scale (taller bar = stronger relative to the room).
     const visibleIds = new Set(_visibleParties);
-    let maxContribution = 0;
-    for (const id of visibleIds) {
-        const sh = o.strongholdsByParty[id] || [];
-        for (const s of sh) if (s.contribution > maxContribution) maxContribution = s.contribution;
-    }
-    if (maxContribution <= 0) maxContribution = 1; // avoid divide-by-zero on empty data
-
     const myFactionId = faction?.id;
     const partyRows = allLegend
         .filter(p => visibleIds.has(p.id))
         .map(p => {
             const chipColor = p.color || '#666';
             // Player's own row: full grid of every active sector with raw
-            // popularity. Rivals: top-3 chips by contribution (existing).
+            // popularity. Rivals: top-3 chips by contribution. Both use a
+            // flat chip style matching the Rival Parties card on the same
+            // page so the same data reads the same way wherever it shows up.
             // Showing zero-popularity sectors for the player is intentional —
             // the grid is meant to communicate the full landscape, not just
             // where they're already strong.
@@ -489,13 +482,9 @@ function renderStrongholdsSection(o, faction, partyColor) {
             } else {
                 const sh = o.strongholdsByParty[p.id] || [];
                 bodyHtml = sh.length > 0
-                    ? `<div class="po-stronghold-chips">${sh.map(s => {
-                        const widthPct = Math.max(8, (s.contribution / maxContribution) * 100);
-                        return `<div class="po-stronghold-chip" style="border-color:${chipColor}44;background:${chipColor}10;">
-                            <div class="po-stronghold-chip-bar" style="width:${widthPct}%;background:${chipColor};"></div>
-                            <span class="po-stronghold-chip-label">${esc(s.name)}</span>
-                        </div>`;
-                    }).join('')}</div>`
+                    ? `<div class="po-stronghold-chips">${sh.map(s => `<div class="po-stronghold-chip" style="border-color:${chipColor}44;background:${chipColor}10;">
+                        <span class="po-stronghold-chip-label">${esc(s.name)}</span>
+                    </div>`).join('')}</div>`
                     : `<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);padding:4px 0;">Unaligned (no sector popularity yet)</div>`;
             }
             return `<div class="po-stronghold-row">
