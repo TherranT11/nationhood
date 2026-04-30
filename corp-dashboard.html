@@ -477,6 +477,150 @@ body.corp-redesign::before {
   font-style: italic;
   padding: 8px 0;
 }
+
+/* ── DISPATCHES FEED (Phase 4) ── */
+.cr-event-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--cr-line);
+  margin-bottom: 12px;
+}
+.cr-event-tab-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--cr-line-bright);
+  flex-wrap: wrap;
+}
+.cr-event-tab-bar {
+  display: flex;
+  gap: 0;
+}
+.cr-event-tab {
+  background: transparent;
+  border: 1px solid var(--cr-line-bright);
+  padding: 4px 9px;
+  font-family: var(--cr-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cr-text-tertiary);
+  cursor: pointer;
+  transition: all 0.15s;
+  border-right: none;
+}
+.cr-event-tab:last-child { border-right: 1px solid var(--cr-line-bright); }
+.cr-event-tab:hover:not(.active) {
+  color: var(--cr-text-secondary);
+  background: var(--cr-bg-elevated);
+}
+.cr-event-tab.active {
+  color: var(--cr-bg-primary);
+  background: var(--cr-accent-gold);
+  border-color: var(--cr-accent-gold);
+}
+.cr-event-tab.active + .cr-event-tab { border-left-color: var(--cr-accent-gold); }
+
+.cr-event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 720px;
+  overflow-y: auto;
+}
+.cr-event-list::-webkit-scrollbar { width: 4px; }
+.cr-event-list::-webkit-scrollbar-track { background: transparent; }
+.cr-event-list::-webkit-scrollbar-thumb {
+  background: var(--cr-line-bright);
+  border-radius: 2px;
+}
+.cr-event-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--cr-line);
+  position: relative;
+}
+.cr-event-item:last-child { border-bottom: none; }
+.cr-event-item::before {
+  content: '';
+  position: absolute;
+  left: -22px; top: 0; bottom: 0;
+  width: 2px;
+  background: transparent;
+}
+.cr-event-item.cat-politics::before  { background: var(--cr-accent-blue); opacity: 0.5; }
+.cr-event-item.cat-corporate::before { background: var(--cr-accent-gold); opacity: 0.5; }
+
+.cr-event-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+.cr-event-tag {
+  font-family: var(--cr-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border: 1px solid var(--cr-line-bright);
+  color: var(--cr-text-secondary);
+  background: var(--cr-bg-secondary);
+}
+.cr-event-tag.tag-politics {
+  color: var(--cr-accent-blue);
+  border-color: rgba(90, 120, 150, 0.4);
+  background: rgba(90, 120, 150, 0.08);
+}
+.cr-event-tag.tag-corporate {
+  color: var(--cr-accent-gold);
+  border-color: rgba(201, 164, 73, 0.4);
+  background: rgba(201, 164, 73, 0.08);
+}
+.cr-event-nation {
+  font-family: var(--cr-mono);
+  font-size: 9px;
+  color: var(--cr-text-tertiary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.cr-event-time {
+  font-family: var(--cr-mono);
+  font-size: 9px;
+  color: var(--cr-text-tertiary);
+  letter-spacing: 0.1em;
+  margin-left: auto;
+}
+.cr-event-headline {
+  font-family: var(--cr-serif);
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--cr-text-primary);
+  margin-bottom: 6px;
+  letter-spacing: -0.005em;
+}
+.cr-event-body {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--cr-text-secondary);
+}
+.cr-event-empty {
+  padding: 30px 0;
+  text-align: center;
+  font-family: var(--cr-mono);
+  font-size: 10px;
+  color: var(--cr-text-tertiary);
+  font-style: italic;
+  letter-spacing: 0.05em;
+}
 .cr-section-header {
   display: flex;
   align-items: baseline;
@@ -582,18 +726,30 @@ body.corp-redesign::before {
     <!-- MAIN GRID -->
     <div class="cr-main-grid">
 
-      <!-- LEFT: Dispatches (Phase 4) -->
+      <!-- LEFT: Dispatches -->
       <div>
         <div class="cr-panel">
           <span class="cr-panel-corner cr-panel-corner-tl"></span>
           <span class="cr-panel-corner cr-panel-corner-tr"></span>
           <span class="cr-panel-corner cr-panel-corner-bl"></span>
           <span class="cr-panel-corner cr-panel-corner-br"></span>
-          <div class="cr-panel-header">
+          <div class="cr-event-panel-header">
             <div class="cr-panel-title">Dispatches</div>
-            <div class="cr-panel-meta">PHASE 4</div>
+            <div class="cr-panel-meta" id="cr-event-count">—</div>
           </div>
-          <div class="cr-placeholder">Dispatches feed lands in <strong>Phase 4</strong>.</div>
+          <div class="cr-event-tab-row">
+            <div class="cr-event-tab-bar" data-tab-axis="category">
+              <button class="cr-event-tab active" data-category="politics">Politics</button>
+              <button class="cr-event-tab" data-category="corporate">Corporate</button>
+            </div>
+            <div class="cr-event-tab-bar" data-tab-axis="scope">
+              <button class="cr-event-tab active" data-scope="nation">Nation</button>
+              <button class="cr-event-tab" data-scope="world">World</button>
+            </div>
+          </div>
+          <ul class="cr-event-list" id="cr-event-list">
+            <li class="cr-event-empty">Loading…</li>
+          </ul>
         </div>
       </div>
 
@@ -642,6 +798,15 @@ let faction = null;
 let nation = null;
 let shard = null;
 let allUserFactions = [];
+
+// Dispatches feed state — one cache slot per (category, scope) combination
+// so re-clicking a tab is instant after the first fetch. Reset on page load.
+const _eventState = {
+    category: 'politics',  // 'politics' | 'corporate'
+    scope:    'nation',    // 'nation'   | 'world'
+    cache:    {},          // key = `${category}:${scope}` -> array of rows
+    inflight: null,        // current fetch's key, to ignore stale resolutions
+};
 
 function fmtMoney(n) {
     const num = Number(n) || 0;
@@ -817,6 +982,8 @@ async function init() {
     renderFinancialRow(pnlHistory);
     renderOperatingIndicators(ownership, user.id);
     renderFooter();
+    bindDispatchTabs();
+    loadDispatches();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
@@ -1097,6 +1264,131 @@ function renderOperatingIndicators(ownership, currentUserId) {
         renderPerfCard('Assets',         faction.corp_assets),
         renderOwnershipCard(ownership, currentUserId),
     ].join('');
+}
+
+// ─── DISPATCHES FEED ─────────────────────────────────────────
+
+function bindDispatchTabs() {
+    document.querySelectorAll('.cr-event-tab-bar').forEach(bar => {
+        bar.addEventListener('click', (e) => {
+            const btn = e.target.closest('.cr-event-tab');
+            if (!btn || btn.classList.contains('active')) return;
+            const axis = bar.getAttribute('data-tab-axis');
+            // Update active state within this group only.
+            bar.querySelectorAll('.cr-event-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            // Update state and reload.
+            if (axis === 'category') {
+                _eventState.category = btn.getAttribute('data-category');
+            } else if (axis === 'scope') {
+                _eventState.scope = btn.getAttribute('data-scope');
+            }
+            loadDispatches();
+        });
+    });
+}
+
+async function loadDispatches() {
+    const key = `${_eventState.category}:${_eventState.scope}`;
+    const listEl  = document.getElementById('cr-event-list');
+    const countEl = document.getElementById('cr-event-count');
+    if (!listEl) return;
+
+    // Hit cache first.
+    if (_eventState.cache[key]) {
+        renderDispatchList(_eventState.cache[key]);
+        return;
+    }
+
+    listEl.innerHTML = '<li class="cr-event-empty">Loading…</li>';
+    if (countEl) countEl.textContent = '—';
+
+    _eventState.inflight = key;
+    const myNationId = faction.nation_id;
+
+    let q = _supabase.from('event_log')
+        .select('id, event_name, description_used, category, fired_at_tick, nation_id, nations(name)')
+        .eq('category', _eventState.category)
+        .order('fired_at_tick', { ascending: false })
+        .limit(30);
+
+    if (_eventState.scope === 'nation') {
+        if (!myNationId) {
+            renderDispatchList([]);
+            return;
+        }
+        q = q.eq('nation_id', myNationId);
+    } else {
+        // World scope. Allow null nation_id matches to surface (some events
+        // may be cross-nation); the .neq still excludes the player's own.
+        if (myNationId) q = q.neq('nation_id', myNationId);
+    }
+
+    const { data, error } = await q;
+
+    // Bail if a newer tab click superseded this fetch.
+    if (_eventState.inflight !== key) return;
+
+    if (error) {
+        console.error('[corp-dashboard] event_log fetch error:', error.message);
+        listEl.innerHTML = '<li class="cr-event-empty">Failed to load dispatches.</li>';
+        return;
+    }
+
+    const rows = data || [];
+    _eventState.cache[key] = rows;
+    renderDispatchList(rows);
+}
+
+function renderDispatchList(rows) {
+    const listEl  = document.getElementById('cr-event-list');
+    const countEl = document.getElementById('cr-event-count');
+    if (!listEl) return;
+
+    if (countEl) {
+        countEl.textContent = rows.length === 0 ? 'NONE' : `${rows.length} ITEM${rows.length === 1 ? '' : 'S'}`;
+    }
+
+    if (rows.length === 0) {
+        listEl.innerHTML = `<li class="cr-event-empty">No ${escapeHtml(_eventState.category)} dispatches in ${_eventState.scope === 'nation' ? 'your nation' : 'the world'} yet.</li>`;
+        return;
+    }
+
+    const currentTick = Number(shard?.current_tick) || 0;
+    const showNation = _eventState.scope === 'world';
+
+    listEl.innerHTML = rows.map(row => {
+        const cat       = row.category || _eventState.category;
+        const tagClass  = cat === 'politics' ? 'tag-politics'
+                        : cat === 'corporate' ? 'tag-corporate'
+                        : '';
+        const itemClass = cat === 'politics' ? 'cat-politics'
+                        : cat === 'corporate' ? 'cat-corporate'
+                        : '';
+
+        const ticksAgo = Math.max(0, currentTick - (Number(row.fired_at_tick) || 0));
+        const timeStr  = ticksAgo === 0 ? 'JUST NOW'
+                       : ticksAgo === 1 ? '1 TICK AGO'
+                       : `${ticksAgo} TICKS AGO`;
+
+        const nationName = row.nations?.name || row.nation || null;
+        const nationBadge = (showNation && nationName)
+            ? `<span class="cr-event-nation">◊ ${escapeHtml(nationName)}</span>`
+            : '';
+
+        const headline = row.event_name || 'Untitled dispatch';
+        const body     = row.description_used || '';
+
+        return `<li class="cr-event-item ${itemClass}">
+            <div class="cr-event-meta">
+                <span class="cr-event-tag ${tagClass}">${escapeHtml(cat)}</span>
+                ${nationBadge}
+                <span class="cr-event-time">${timeStr}</span>
+            </div>
+            <div class="cr-event-headline">${escapeHtml(headline)}</div>
+            ${body ? `<div class="cr-event-body">${escapeHtml(body)}</div>` : ''}
+        </li>`;
+    }).join('');
 }
 
 function renderFooter() {
