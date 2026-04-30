@@ -541,7 +541,7 @@ function getConstitutionalSystemDescription(system) {
 
 var TRADE_CONFIG = {
     BASE_TRADE_MULTIPLIER: 500000000,      // base dollar value per unit of export capacity
-    BASELINE_GDP: 100000000000,            // 100B — the "average" GDP for scaling
+    BASELINE_GDP: 100000000000,            // 100B — fixed reference value for trade-volume scaling (alpha-19: gdp column dropped, this is now a stable scaling baseline only)
     HISTORY_TICKS: 24,                     // keep 2 game-years of trade history
 };
 
@@ -560,55 +560,54 @@ var TRADE_SECTORS = [
         key: 'fuel_energy',
         label: 'Fuel & Energy',
         export_only: false,
-        export_stat: 'oil_and_gas',            // reserves — what's in the ground
-        export_bonus_stats: ['energy_generation'] // extraction — what you can pull out
+        export_stat: 'energy'                  // alpha-19: oil_and_gas + energy_generation collapsed into energy
     },
     {
         key: 'minerals',
         label: 'Minerals & Raw Materials',
         export_only: false,
-        export_stat: 'rare_minerals',
+        export_stat: 'energy',                 // alpha-19: rare_minerals → energy
         export_threshold: 15
     },
     {
         key: 'food_agriculture',
         label: 'Food & Agriculture',
         export_only: false,
-        export_stat: 'arable_land',
+        export_stat: 'farmland',
         export_threshold: 10
     },
     {
         key: 'manufactured_goods',
         label: 'Manufactured Goods',
         export_only: false,
-        export_stat: 'manufacturing_output'
+        export_stat: 'industry'
     },
     {
         key: 'technology',
         label: 'Technology & Electronics',
         export_only: false,
-        export_stats: ['digital_infrastructure', 'higher_education'],
+        export_stats: ['infrastructure', 'education'],
         export_threshold: 30
     },
     {
         key: 'arms',
         label: 'Arms & Military Equipment',
         export_only: false,
-        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_stats: ['infrastructure', 'education'],
         export_threshold: 30
     },
     {
         key: 'tourism',
         label: 'Tourism',
         export_only: true,
-        export_stats: ['happiness', 'stability', 'physical_infrastructure'],
+        export_stats: ['standard_of_living', 'control', 'infrastructure'],
         export_threshold: 25
     },
     {
         key: 'services_finance',
         label: 'Services & Finance',
         export_only: true,
-        export_stat: 'service_output',
+        export_stat: 'industry',                // alpha-19: service_output → industry (coexists with manufactured_goods)
         export_threshold: 35
     }
 ];
@@ -703,34 +702,29 @@ var FOOD_SUBSECTORS = [
         export_threshold: 5,
         export_multiplier: 0.07,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'physical_infrastructure', weight: 0.3 },
-            { stat: 'rail_network', weight: 0.2 }
+            { stat: 'farmland', weight: 1.0 },
+            { stat: 'infrastructure', weight: 0.3 }
+            // alpha-19: rail_network folded into infrastructure (deduped with the entry above)
         ],
         demand_drivers: [
-            { stat: 'population', weight: 1.0, type: 'population' },
-            { stat: 'population_growth', weight: 0.3, type: 'pressure' }
+            { stat: 'population', weight: 1.0, type: 'population' }
+            // alpha-19: population_growth removed (column dropped)
         ],
         stat_effects: {
             supplied: {
-                poverty_rate: -0.15,
+                standard_of_living: 0.15,        // alpha-19: poverty_rate inverted → standard_of_living
                 cost_of_living: -0.10,
-                inflation: -0.05,
-                stability: 0.10,
-                legitimacy: 0.10,
-                happiness: 0.05,
-                lifespan: 0.05
+                control: 0.10,                   // alpha-19: stability → control
+                authority: 0.10,                 // alpha-19: legitimacy → authority
+                health: 0.05                     // alpha-19: lifespan → health
             },
             shortage: {
-                poverty_rate: 0.30,
+                standard_of_living: -0.30,       // alpha-19: poverty_rate inverted → standard_of_living
                 cost_of_living: 0.20,
-                inflation: 0.15,
-                stability: -0.20,
-                legitimacy: -0.20,
-                civil_unrest: 0.25,
-                political_violence: 0.15,
-                emigration: 0.10,
-                happiness: -0.15
+                control: -0.20,                  // alpha-19: stability → control
+                authority: -0.20,                // alpha-19: legitimacy → authority
+                unrest: 0.40                     // alpha-19: civil_unrest + political_violence collapsed → unrest
+                // emigration dropped (column gone), happiness folded into standard_of_living above
             }
         },
         food_security_weight: 0.50,
@@ -745,9 +739,9 @@ var FOOD_SUBSECTORS = [
         export_threshold: 3,
         export_multiplier: 0.06,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'physical_infrastructure', weight: 0.25 },
-            { stat: 'unemployment', weight: 0.15, inverted: true }
+            { stat: 'farmland', weight: 1.0 },
+            { stat: 'infrastructure', weight: 0.25 },
+            { stat: 'workforce', weight: 0.15 }    // alpha-19: unemployment inverted → workforce (drop `inverted` flag)
         ],
         demand_drivers: [
             { stat: 'standard_of_living', weight: 0.8, type: 'wealth' },
@@ -755,24 +749,16 @@ var FOOD_SUBSECTORS = [
         ],
         stat_effects: {
             supplied: {
-                standard_of_living: 0.10,
-                happiness: 0.10,
-                healthcare_quality: 0.05,
-                lifespan: 0.05,
-                unemployment: -0.08,
-                labor_force_participation: 0.05
+                standard_of_living: 0.20,         // happiness folded into standard_of_living
+                health: 0.10,                      // healthcare_quality + lifespan collapsed → health (deduped)
+                workforce: 0.13                    // alpha-19: unemployment(-0.08) inverted + labor_force_participation(0.05) → workforce
             },
             shortage: {
-                cost_of_living: 0.15,
-                inflation: 0.10,
-                standard_of_living: -0.10,
-                happiness: -0.10
+                cost_of_living: 0.25,             // inflation folded into cost_of_living
+                standard_of_living: -0.20         // happiness folded into standard_of_living
             }
         },
-        environmental_effects: {
-            carbon_emissions: 0.10,
-            pollution: 0.08
-        },
+        // environmental_effects (carbon_emissions, pollution) dropped — both columns removed in alpha-19
         food_security_weight: 0.20,
         stockpilable: false
     },
@@ -785,35 +771,29 @@ var FOOD_SUBSECTORS = [
         export_threshold: 3,
         export_multiplier: 0.05,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'physical_infrastructure', weight: 0.5, critical: true },
-            { stat: 'rail_network', weight: 0.5, critical: true },
-            { stat: 'energy_generation', weight: 0.3 }
+            { stat: 'farmland', weight: 1.0 },
+            { stat: 'infrastructure', weight: 1.0, critical: true },  // alpha-19: physical_infrastructure(0.5) + rail_network(0.5) collapsed → infrastructure
+            { stat: 'energy', weight: 0.3 }                            // alpha-19: energy_generation → energy
         ],
         demand_drivers: [
-            { stat: 'urbanization', weight: 0.6, type: 'demand' },
+            { stat: 'workforce', weight: 0.6, type: 'demand' },        // alpha-19: urbanization → workforce
             { stat: 'population', weight: 0.5, type: 'population' },
             { stat: 'standard_of_living', weight: 0.3, type: 'wealth' }
         ],
         stat_effects: {
             supplied: {
-                happiness: 0.12,
-                healthcare_quality: 0.10,
-                lifespan: 0.08,
-                standard_of_living: 0.08
+                standard_of_living: 0.20,         // happiness(0.12) folded into standard_of_living
+                health: 0.18                       // healthcare_quality(0.10) + lifespan(0.08) collapsed → health
             },
             shortage: {
-                cost_of_living: 0.15,
-                inflation: 0.10,
-                happiness: -0.10,
-                healthcare_quality: -0.05
+                cost_of_living: 0.25,             // inflation(0.10) folded into cost_of_living
+                standard_of_living: -0.10,        // happiness(-0.10) folded into standard_of_living
+                health: -0.05                      // healthcare_quality(-0.05) → health
             }
         },
-        environmental_effects: {
-            pollution: 0.05
-        },
+        // environmental_effects (pollution) dropped — column removed in alpha-19
         // UNIQUE MECHANIC: Spoilage multiplier
-        // When rail_network or physical_infrastructure fall below threshold,
+        // When infrastructure or energy fall below threshold,
         // effective supply is reduced regardless of production levels.
         spoilage: {
             rail_threshold: 40,
@@ -833,10 +813,8 @@ var FOOD_SUBSECTORS = [
         export_threshold: 4,
         export_multiplier: 0.14,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'foreign_investment', weight: 0.4 },
-            { stat: 'currency_strength', weight: 0.3, inverted: true },
-            { stat: 'corruption', weight: 0.2 }
+            { stat: 'farmland', weight: 1.0 }
+            // alpha-19 drops: foreign_investment, currency_strength, corruption (all columns removed)
         ],
         demand_drivers: [
             // Cash crops are primarily EXPORT-driven; import demand is low
@@ -846,30 +824,22 @@ var FOOD_SUBSECTORS = [
         stat_effects: {
             supplied: {
                 gdp_growth: 0.10,
-                foreign_investment: 0.08,
-                unemployment: -0.08,
-                labor_force_participation: 0.06,
-                currency_strength: 0.05
+                workforce: 0.14                    // alpha-19: unemployment(-0.08) inverted + labor_force_participation(0.06) → workforce
+                // foreign_investment, currency_strength dropped (columns gone)
             },
             shortage: {
                 // Cash crop shortage doesn't cause food insecurity
                 // but hurts export revenue
-                gdp_growth: -0.05,
-                foreign_investment: -0.05
+                gdp_growth: -0.05
+                // foreign_investment dropped (column gone)
             }
         },
-        // Negative externalities of plantation agriculture
+        // structural_effects: most components dropped (income_inequality, social_mobility, corruption, union_strength).
+        // poverty_rate(0.05) inverted → standard_of_living(-0.05).
         structural_effects: {
-            income_inequality: 0.08,
-            poverty_rate: 0.05,
-            social_mobility: -0.05,
-            corruption: 0.05,
-            union_strength: 0.03
+            standard_of_living: -0.05
         },
-        environmental_effects: {
-            pollution: 0.08,
-            carbon_emissions: 0.06
-        },
+        // environmental_effects (pollution, carbon_emissions) dropped — both columns removed in alpha-19
         food_security_weight: 0.00,
         stockpilable: true
     }
@@ -893,9 +863,9 @@ function isFoodSubsector(sectorKey) {
 /**
  * Get the effective arable land for a specific food sub-sector.
  *
- * effectiveLand = nation.arable_land × (allocation_pct / 100)
+ * effectiveLand = nation.farmland × (allocation_pct / 100)
  *
- * @param {Object} nation      – nation row with arable_land stat (0-100)
+ * @param {Object} nation      – nation row with farmland stat (0-100)
  * @param {string} subsectorKey – food sub-sector key
  * @param {Object} allocation  – food_land_allocation row { grains_pct, livestock_pct, perishables_pct, cash_crops_pct }
  * @returns {number} effective arable land (0-100 scale)
@@ -903,7 +873,7 @@ function isFoodSubsector(sectorKey) {
 function getEffectiveArableLand(nation, subsectorKey, allocation) {
     var subsector = FOOD_SUBSECTOR_MAP[subsectorKey];
     if (!subsector || !allocation) return 0;
-    var totalArable = Number(nation.arable_land) || 0;
+    var totalArable = Number(nation.farmland) || 0;
     var allocPct = Number(allocation[subsector.allocation_key]) || 0;
     return totalArable * (allocPct / 100);
 }
@@ -911,18 +881,22 @@ function getEffectiveArableLand(nation, subsectorKey, allocation) {
 /**
  * Calculate the spoilage multiplier for perishables.
  *
- * When rail_network and/or physical_infrastructure fall below thresholds,
- * effective supply is reduced — the nation can produce abundantly and still
- * face shortage due to logistics failure.
+ * When infrastructure and/or energy fall below thresholds, effective supply
+ * is reduced — the nation can produce abundantly and still face shortage
+ * due to logistics failure.
+ *
+ * alpha-19: rail_network folded into infrastructure (deduped), so the rail
+ * branch now reads the same `infrastructure` column as the cold-chain branch
+ * but uses the rail_threshold + 30-point weighting.
  *
  * @param {Object} nation – nation row with infrastructure stats
  * @returns {number} multiplier 0.4–1.0 (1.0 = no spoilage, 0.4 = maximum spoilage)
  */
 function calculateSpoilageMultiplier(nation) {
     var cfg = FOOD_SUBSECTOR_MAP.fruits_vegetables.spoilage;
-    var rail = Number(nation.rail_network) || 0;
-    var infra = Number(nation.physical_infrastructure) || 0;
-    var energy = Number(nation.energy_generation) || 0;
+    var rail = Number(nation.infrastructure) || 0;       // alpha-19: rail_network → infrastructure
+    var infra = Number(nation.infrastructure) || 0;      // alpha-19: physical_infrastructure → infrastructure
+    var energy = Number(nation.energy) || 0;             // alpha-19: energy_generation → energy
 
     var spoilagePct = 0;
 
@@ -999,20 +973,22 @@ function formatPricePerTonne(pricePerTonne) {
  * Spoilage: percentage of reserves lost per tick to degradation.
  * Scales with infrastructure — good warehousing halves spoilage.
  *
- * Capacity: max reserve = GDP × capacityFactor × (physical_infrastructure / 50).
+ * Capacity: max reserve = BASELINE_GDP × capacityFactor × (infrastructure / 50).
+ * alpha-19: gdp column dropped — capacity uses TRADE_CONFIG.BASELINE_GDP as the
+ * fixed scaling baseline. physical_infrastructure → infrastructure.
  * Converted to tonnes via display unit factor.
  */
 var STOCKPILE_CONFIG = {
     grains_staples: {
         baseSpoilagePct: 2.0,       // 2% per tick (grain stores well)
         infraThreshold: 60,          // infra above this halves spoilage
-        capacityFactor: 0.005,       // 0.5% of GDP as max reserve value
+        capacityFactor: 0.005,       // 0.5% of baseline as max reserve value
         securityMonths: 6            // months of reserves for "food secure" bonus
     },
     cash_crops: {
         baseSpoilagePct: 4.0,       // 4% per tick (cocoa, coffee degrade faster)
         infraThreshold: 60,
-        capacityFactor: 0.003,       // 0.3% of GDP (less strategic need)
+        capacityFactor: 0.003,       // 0.3% of baseline (less strategic need)
         securityMonths: 3
     }
 };
@@ -1021,14 +997,14 @@ var STOCKPILE_CONFIG = {
  * Calculate spoilage rate for a nation's stockpile.
  *
  * @param {string} sectorKey – stockpilable sector key
- * @param {Object} nation    – nation row with physical_infrastructure
+ * @param {Object} nation    – nation row with infrastructure
  * @returns {number} spoilage percentage per tick (0–100)
  */
 function calculateStockpileSpoilage(sectorKey, nation) {
     var cfg = STOCKPILE_CONFIG[sectorKey];
     if (!cfg) return 0;
     var basePct = cfg.baseSpoilagePct;
-    var infra = Number(nation.physical_infrastructure) || 0;
+    var infra = Number(nation.infrastructure) || 0;       // alpha-19: physical_infrastructure → infrastructure
     if (infra >= cfg.infraThreshold) {
         basePct *= 0.5; // Good warehousing halves spoilage
     } else if (infra < 30) {
@@ -1040,16 +1016,19 @@ function calculateStockpileSpoilage(sectorKey, nation) {
 /**
  * Calculate maximum stockpile capacity in dollar value.
  *
+ * alpha-19: gdp column dropped; uses TRADE_CONFIG.BASELINE_GDP as a fixed
+ * scaling baseline. physical_infrastructure → infrastructure.
+ *
  * @param {string} sectorKey – stockpilable sector key
- * @param {Object} nation    – nation row with gdp, physical_infrastructure
+ * @param {Object} nation    – nation row with infrastructure
  * @returns {number} max capacity in dollars
  */
 function calculateStockpileCapacity(sectorKey, nation) {
     var cfg = STOCKPILE_CONFIG[sectorKey];
     if (!cfg) return 0;
-    var gdp = Number(nation.gdp) || 0;
-    var infra = Number(nation.physical_infrastructure) || 50;
-    return Math.round(gdp * cfg.capacityFactor * (infra / 50));
+    var baseline = TRADE_CONFIG.BASELINE_GDP;             // alpha-19: gdp → fixed baseline
+    var infra = Number(nation.infrastructure) || 50;      // alpha-19: physical_infrastructure → infrastructure
+    return Math.round(baseline * cfg.capacityFactor * (infra / 50));
 }
 
 /**
@@ -1266,13 +1245,9 @@ function buildEffectiveSectorList() {
 function calculateFoodDomesticProduction(nation, subsector, allocation) {
     var cfg = TRADE_CONFIG;
 
-    var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
-    if (gdpModifier <= 0) return 0;
-
-    // Food production is LAND-driven, not GDP-driven.
-    // Use sqrt(gdpModifier) so economy matters but land dominates.
-    var econScale = Math.sqrt(gdpModifier);
+    // alpha-19: gdp column dropped — use BASELINE_GDP as fixed reference (gdpModifier = 1.0).
+    var gdpModifier = 1.0;
+    var econScale = 1.0;
 
     var effectiveLand = getEffectiveArableLand(nation, subsector.key, allocation);
     if (effectiveLand <= (subsector.export_threshold || 0)) return 0;
@@ -1284,7 +1259,7 @@ function calculateFoodDomesticProduction(nation, subsector, allocation) {
     var drivers = subsector.drivers;
     for (var i = 0; i < drivers.length; i++) {
         var d = drivers[i];
-        if (d.stat === 'arable_land') continue;
+        if (d.stat === 'farmland') continue;
         var val = Number(nation[d.stat]) || 0;
         if (d.inverted) val = 100 - val;
         var bonus = ((val - 50) / 50) * d.weight * 0.3;
@@ -1299,9 +1274,9 @@ function calculateFoodDomesticProduction(nation, subsector, allocation) {
         totalProduction *= calculateSpoilageMultiplier(nation);
     }
 
-    // Stability (political disruption reduces real farm output)
-    var stability = Number(nation.stability ?? 50);
-    var stabilityMod = Math.min(1.0, stability / 40);
+    // Control (political disruption reduces real farm output) — alpha-19: stability → control.
+    var control = Number(nation.control ?? 50);
+    var stabilityMod = Math.min(1.0, control / 40);
     totalProduction *= stabilityMod;
 
     return Math.round(totalProduction);
@@ -1311,10 +1286,9 @@ function calculateFoodDomesticProduction(nation, subsector, allocation) {
 // apply sub-sector export fraction, currency modifier, floor.
 function calculateFoodExportCapacity(nation, subsector, allocation) {
     var cfg = TRADE_CONFIG;
-    var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
-    if (gdpModifier <= 0) return 0;
-    var econScale = Math.sqrt(gdpModifier);
+    // alpha-19: gdp column dropped — gdpModifier pinned to 1.0.
+    var gdpModifier = 1.0;
+    var econScale = 1.0;
 
     var totalProduction = calculateFoodDomesticProduction(nation, subsector, allocation);
     if (totalProduction <= 0) return 0;
@@ -1331,7 +1305,8 @@ function calculateFoodExportCapacity(nation, subsector, allocation) {
         var sol = (Number(nation.standard_of_living ?? 50)) / 100;
         domesticNeed = popNorm * (0.3 + sol * 0.7) * cfg.BASE_TRADE_MULTIPLIER * 0.25;
     } else if (subsector.key === 'fruits_vegetables') {
-        var urban = (Number(nation.urbanization ?? 50)) / 100;
+        // alpha-19: urbanization → workforce (proxy for urban consumer base).
+        var urban = (Number(nation.workforce ?? 50)) / 100;
         var solFV = (Number(nation.standard_of_living ?? 50)) / 100;
         domesticNeed = popNorm * (0.4 + urban * 0.4 + solFV * 0.3) * cfg.BASE_TRADE_MULTIPLIER * 0.2;
     } else if (subsector.key === 'cash_crops') {
@@ -1346,10 +1321,7 @@ function calculateFoodExportCapacity(nation, subsector, allocation) {
     // Export fraction of the surplus (most food stays domestic)
     var capacity = surplus * subsector.export_multiplier;
 
-    // Currency strength modifier on EXPORTS
-    var currencyStrength = Number(nation.currency_strength ?? 50);
-    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
-    capacity *= currencyModifier;
+    // alpha-19: currency_strength column dropped — no currency modifier on exports.
 
     // Floor: minimal organic trade
     var minCapacity = Math.round(0.002 * cfg.BASE_TRADE_MULTIPLIER * econScale);
@@ -1392,8 +1364,8 @@ function getTariffDampener(nation, sectorKey) {
  */
 function calculateFoodImportDemand(nation, subsector, allocation) {
     var cfg = TRADE_CONFIG;
-    var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    // alpha-19: gdp column dropped — gdpModifier pinned to 1.0 (BASELINE_GDP reference).
+    var gdpModifier = 1.0;
     var popNorm = (Number(nation.population) || 1) / 5000000;
 
     var grossDemand = 0;
@@ -1404,10 +1376,8 @@ function calculateFoodImportDemand(nation, subsector, allocation) {
 
     if (subsector.key === 'grains_staples') {
         // GRAINS: population-driven. Everyone needs staples.
-        // Population growth creates additional pressure.
-        var popGrowth = Number(nation.population_growth ?? 50);
-        var growthPressure = Math.max(0, (popGrowth - 40) / 60) * 0.3;
-        grossDemand = popNorm * (1.0 + growthPressure) * cfg.BASE_TRADE_MULTIPLIER * 0.45;
+        // alpha-19: population_growth dropped — no growth-pressure surcharge.
+        grossDemand = popNorm * 1.0 * cfg.BASE_TRADE_MULTIPLIER * 0.45;
 
         // Domestic coverage: effective land scaled by population pressure
         // Large populations outstrip local farming even with good land
@@ -1426,8 +1396,8 @@ function calculateFoodImportDemand(nation, subsector, allocation) {
 
     else if (subsector.key === 'fruits_vegetables') {
         // PERISHABLES: urbanization + wealth driven.
-        // Urban populations need organized food supply chains.
-        var urban = (Number(nation.urbanization ?? 50)) / 100;
+        // alpha-19: urbanization → workforce (proxy for urban consumer base).
+        var urban = (Number(nation.workforce ?? 50)) / 100;
         var sol = (Number(nation.standard_of_living ?? 50)) / 100;
         grossDemand = popNorm * (0.4 + urban * 0.4 + sol * 0.3) * cfg.BASE_TRADE_MULTIPLIER * 0.2;
 
@@ -1454,10 +1424,7 @@ function calculateFoodImportDemand(nation, subsector, allocation) {
 
     if (rawDemand <= 0) return 0;
 
-    // Currency strength: weak currency = imports cost more = can afford less
-    var currencyStrength = Number(nation.currency_strength ?? 50);
-    var affordability = currencyStrength / 50;
-    rawDemand *= affordability;
+    // alpha-19: currency_strength dropped — no affordability scaling.
 
     // Tariff dampener — per-sector override from bill TARIFF_RATE_CHANGE
     // articles (nations.sector_tariffs jsonb), else aggregate nation.tariffs.
@@ -1505,12 +1472,13 @@ function calculateDomesticProduction(nation, sector, opts) {
     //   oil=0                     → 0    (no reserves = no production, regardless of grid)
     //   Display basis $5B ≈ 1 Mbbl/d, so $75B ≈ 15 Mbbl/d (above Saudi-tier).
     if (sector.key === 'fuel_energy') {
-        var oil = Number(nation.oil_and_gas) || 0;
-        var gen = Number(nation.energy_generation) || 0;
-        var stab = Number(nation.stability ?? 50);
-        var genModifier = 0.75 + (gen / 100) * 0.5;
+        // alpha-19: oil_and_gas + energy_generation collapsed into 'energy'.
+        // Use single energy alpha column as both reserves driver and grid modifier.
+        var energyStat = Number(nation.energy) || 0;
+        var stab = Number(nation.control ?? 50);
+        var genModifier = 0.75 + (energyStat / 100) * 0.5;
         return Math.round(
-            (oil / 100) * 60e9 * genModifier * Math.min(1.0, stab / 40)
+            (energyStat / 100) * 60e9 * genModifier * Math.min(1.0, stab / 40)
         );
     }
 
@@ -1529,9 +1497,10 @@ function calculateDomesticProduction(nation, sector, opts) {
     // (currently slightly oversupplied at the per-nation level despite a
     // near-balanced global net).
     if (sector.key === 'manufactured_goods') {
-        var manufStat = Number(nation.manufacturing_output) || 0;
+        // alpha-19: manufacturing_output → industry; stability → control.
+        var manufStat = Number(nation.industry) || 0;
         var popMillions = (Number(nation.population) || 0) / 1_000_000;
-        var stabMg = Number(nation.stability ?? 50);
+        var stabMg = Number(nation.control ?? 50);
         return Math.round(
             (manufStat / 100) * popMillions * 220_000_000 * Math.min(1.0, stabMg / 55)
         );
@@ -1539,8 +1508,8 @@ function calculateDomesticProduction(nation, sector, opts) {
 
     // Resource sectors (oil, minerals, food) are fixed endowments — no GDP scaling.
     // Industrial/service sectors scale with economic size (sqrt for diminishing returns).
-    var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
+    // alpha-19: gdp column dropped — gdpModifier pinned to 1.0 across all sectors.
+    var gdpModifier = 1.0;
     if (gdpModifier <= 0) return 0;
 
     // Primary score: must clear threshold on its own. Bonus stats can add but not gate.
@@ -1579,16 +1548,17 @@ function calculateDomesticProduction(nation, sector, opts) {
     }
     if (sector.key === 'tourism') {
         totalProduction *= 0.5;
-        if ((Number(nation.stability) || 0) <= 25) return 0;
+        // alpha-19: stability → control.
+        if ((Number(nation.control) || 0) <= 25) return 0;
     }
     if (sector.key === 'services_finance') {
         totalProduction *= 0.7;
     }
 
-    // ── Stability modifier ──
-    // Political instability disrupts production across all sectors.
-    // Below 40 stability, output degrades. At 20, halved. At 0, zero.
-    var stability = Number(nation.stability ?? 50);
+    // ── Control modifier ──
+    // alpha-19: stability → control. Political disruption reduces output.
+    // Below 40 control, output degrades. At 20, halved. At 0, zero.
+    var stability = Number(nation.control ?? 50);
     var stabilityMod = Math.min(1.0, stability / 40);
     totalProduction *= stabilityMod;
 
@@ -1601,8 +1571,8 @@ function calculateDomesticProduction(nation, sector, opts) {
 // base as production.
 function calculateExportCapacity(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
-    var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
+    // alpha-19: gdp column dropped — gdpModifier pinned to 1.0 (BASELINE_GDP reference).
+    var gdpModifier = 1.0;
     if (gdpModifier <= 0) return 0;
 
     var totalProduction = calculateDomesticProduction(nation, sector, opts);
@@ -1622,18 +1592,21 @@ function calculateExportCapacity(nation, sector, opts) {
         domesticDemand = computeFuelDemand(nation).gross;
     }
     else if (sector.key === 'minerals') {
-        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
-        var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
-        var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
-        domesticDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        // alpha-19: manufacturing_output → industry; physical_infrastructure
+        // and digital_infrastructure both → infrastructure (collapse the
+        // 0.15 + 0.10 weight onto a single 0.25 read).
+        var manufScore = (Number(nation.industry) || 0) / SN;
+        var infraScore = (Number(nation.infrastructure) || 0) / SN;
+        domesticDemand = (manufScore * 0.4 + infraScore * 0.25) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
     }
     else if (sector.key === 'manufactured_goods') {
         var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
         domesticDemand = popNorm * (solNorm / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
     }
     else if (sector.key === 'technology') {
+        // alpha-19: digital_infrastructure → infrastructure.
         var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
-        var digiNorm = (Number(nation.digital_infrastructure) || 0) / SN;
+        var digiNorm = (Number(nation.infrastructure) || 0) / SN;
         domesticDemand = popNorm * ((solNorm + digiNorm) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
     }
 
@@ -1642,12 +1615,7 @@ function calculateExportCapacity(nation, sector, opts) {
         capacity = Math.max(0, totalProduction - domesticDemand);
     }
 
-    // ── Currency strength modifier on EXPORTS ──
-    // Strong currency = exports expensive abroad = less competitive.
-    // currency_strength 50 = 1.0 (neutral), 75 = 0.67x, 25 = 2.0x
-    var currencyStrength = Number(nation.currency_strength ?? 50);
-    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
-    capacity *= currencyModifier;
+    // alpha-19: currency_strength dropped — no currency competitiveness modifier.
 
     // Fuel runs on the simplified model: import_demand and export_capacity
     // are mutually exclusive. A nation that consumes more than it produces
@@ -1689,9 +1657,10 @@ function calculateExportCapacity(nation, sector, opts) {
 // production) and max(0, production - gross).
 function computeFuelDemand(nation) {
     const pop = Number(nation.population) || 0;
-    const urban = Number(nation.urbanization) || 0;
+    // alpha-19: urbanization → workforce; manufacturing_output → industry.
+    const urban = Number(nation.workforce) || 0;
     const sol = Number(nation.standard_of_living) || 0;
-    const manuf = Number(nation.manufacturing_output) || 0;
+    const manuf = Number(nation.industry) || 0;
 
     const intensity = (urban * 3 + sol * 3 + manuf) / 700;
     const gross = (pop / 1_000_000) * 550_000_000 * intensity;
@@ -1714,15 +1683,16 @@ function calculateDomesticFuelDemand(nation) {
 // currency 100 → $25B max demand per nation. Scales linearly with pop.
 function computeManufDemand(nation) {
     const pop = Number(nation.population) || 0;
-    const urban = Number(nation.urbanization) || 0;
+    // alpha-19: urbanization → workforce; higher_education → education;
+    // manufacturing_output → industry; currency_strength dropped (importPower → 1.0).
+    const urban = Number(nation.workforce) || 0;
     const sol = Number(nation.standard_of_living) || 0;
-    const edu = Number(nation.higher_education) || 0;
-    const manuf = Number(nation.manufacturing_output) || 0;
-    const currency = Number(nation.currency_strength) || 0;
+    const edu = Number(nation.education) || 0;
+    const manuf = Number(nation.industry) || 0;
 
     const intensity        = (urban + sol + edu) / 300;
     const domesticCoverage = manuf / 100;
-    const importPower      = currency / 100;
+    const importPower      = 1.0;
 
     const gross = (pop / 1_000_000) * 250_000_000 * intensity * importPower;
     return {
@@ -1777,11 +1747,8 @@ function calculateImportDemand(nation, sector, opts) {
     }
 
     var cfg = TRADE_CONFIG;
-    var gdp = Number(nation.gdp) || 0;
-    // Resource sectors pin at 1.0 to stay consistent with the export-side
-    // (calculateExportCapacity), so gross demand for fuel/minerals does
-    // not scale with GDP while production is also pinned.
-    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
+    // alpha-19: gdp column dropped — gdpModifier pinned to 1.0.
+    var gdpModifier = 1.0;
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;   // stat normalizer: divide 0-100 stats by 5
 
@@ -1793,14 +1760,16 @@ function calculateImportDemand(nation, sector, opts) {
 
     // ── MINERALS & RAW MATERIALS ──
     // Demand: manufacturing needs + infrastructure development + technology production.
-    // Domestic offset: rare_minerals (max 65%).
+    // alpha-19: manufacturing_output → industry; physical_infrastructure +
+    // digital_infrastructure both → infrastructure (collapse 0.15 + 0.10
+    // weight onto a single 0.25 read). rare_minerals → energy (alpha proxy
+    // for raw-material reserves; closest available alpha column).
     if (sector.key === 'minerals') {
-        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
-        var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
-        var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
-        grossDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        var manufScore = (Number(nation.industry) || 0) / SN;
+        var infraScore = (Number(nation.infrastructure) || 0) / SN;
+        grossDemand = (manufScore * 0.4 + infraScore * 0.25) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
 
-        var minerals = (Number(nation.rare_minerals) || 0) / 100;
+        var minerals = (Number(nation.energy) || 0) / 100;
         domesticCoverage = Math.min(0.65, minerals * 0.8);
     }
 
@@ -1813,21 +1782,22 @@ function calculateImportDemand(nation, sector, opts) {
         var sol = (Number(nation.standard_of_living ?? 50)) / 100;
         grossDemand = popNorm * (1 + sol * 0.5) * cfg.BASE_TRADE_MULTIPLIER * 0.8;
 
-        var arableLand = (Number(nation.arable_land) || 0) / 100;
+        // alpha-19: arable_land → farmland.
+        var arableLand = (Number(nation.farmland) || 0) / 100;
         domesticCoverage = arableLand / Math.max(0.2, popNorm * 1.2);
     }
 
     // ── TECHNOLOGY & ELECTRONICS ──
     // Demand: standard of living (wealthy populations buy tech) + digital
     // infrastructure needs + population base.
-    // Domestic offset: higher_education + digital_infrastructure (max 60%).
+    // alpha-19: digital_infrastructure → infrastructure; higher_education → education.
     else if (sector.key === 'technology') {
         var sol = (Number(nation.standard_of_living ?? 50)) / SN;
-        var digi = (Number(nation.digital_infrastructure) || 0) / SN;
+        var digi = (Number(nation.infrastructure) || 0) / SN;
         grossDemand = popNorm * ((sol + digi) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
 
-        var edu = (Number(nation.higher_education) || 0) / 100;
-        var digiProd = (Number(nation.digital_infrastructure) || 0) / 100;
+        var edu = (Number(nation.education) || 0) / 100;
+        var digiProd = (Number(nation.infrastructure) || 0) / 100;
         domesticCoverage = Math.min(0.60, (edu + digiProd) / 2 * 0.7);
     }
 
@@ -1840,12 +1810,7 @@ function calculateImportDemand(nation, sector, opts) {
 
     if (rawDemand <= 0) return 0;
 
-    // ── Currency strength on imports ──
-    // Weak currency makes imports MORE expensive → you can afford LESS.
-    // currency_strength 50 = 1.0, 25 = 0.5 (can only afford half), 75 = 1.5
-    var currencyStrength = Number(nation.currency_strength ?? 50);
-    var affordability = currencyStrength / 50;
-    rawDemand *= affordability;
+    // alpha-19: currency_strength dropped — no affordability scaling on imports.
 
     // ── Tariff dampener ──
     // Your own tariffs reduce import volume (makes foreign goods more expensive).
@@ -1928,33 +1893,20 @@ function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var proximity = (opts && opts.proximity != null) ? Number(opts.proximity) : 50;
     var proximityBonus = ((100 - proximity) / 100) * 20;
 
-    // Foreign investment: high-FDI nations are integrated into global capital flows
-    // Average of both nations' FDI: 50 (neutral) = +0, 80 = +9, 20 = -9
-    var fdiA = Number(nationA.foreign_investment ?? 50);
-    var fdiB = Number(nationB.foreign_investment ?? 50);
-    var avgFdi = (fdiA + fdiB) / 2;
-    var fdiBonus = ((avgFdi - 50) / 50) * 15;
+    // alpha-19: foreign_investment dropped (no FDI signal in alpha-19 stat set).
+    var fdiBonus = 0;
 
     // International reputation: nations with good standing are trusted trade partners
-    // Average of both nations' reputation: 50 (neutral) = +0, 80 = +6, 20 = -6
-    var repA = Number(nationA.international_reputation ?? 50);
-    var repB = Number(nationB.international_reputation ?? 50);
+    // alpha-19: international_reputation → power. Average of both nations' power:
+    // 50 (neutral) = +0, 80 = +6, 20 = -6.
+    var repA = Number(nationA.power ?? 50);
+    var repB = Number(nationB.power ?? 50);
     var avgRep = (repA + repB) / 2;
     var reputationBonus = ((avgRep - 50) / 50) * 10;
 
-    // Credit rating: nations with poor credit are unreliable trade partners; high credit signals trustworthiness
-    // Penalty uses WORSE credit of the two nations (weakest-link): credit 50+ = no penalty, scales linearly to -20 at credit 0, floor -25 for negative
-    // Bonus uses BETTER credit of the two nations (best-link): credit 50 = +0, scales linearly to +10 at credit 100
-    var creditA = Number(nationA.credit ?? 50);
-    var creditB = Number(nationB.credit ?? 50);
-    var worstCredit = Math.min(creditA, creditB);
-    var bestCredit = Math.max(creditA, creditB);
+    // alpha-19: credit dropped — no creditworthiness signal in alpha-19 stat set.
     var creditPenalty = 0;
-    if (worstCredit < 50) {
-        if (worstCredit < 0) creditPenalty = -25;
-        else creditPenalty = -((50 - worstCredit) / 50) * 20;
-    }
-    var creditBonus = bestCredit > 50 ? ((bestCredit - 50) / 50) * 10 : 0;
+    var creditBonus = 0;
 
     var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + fdiBonus + reputationBonus + creditPenalty + creditBonus;
 
@@ -2744,8 +2696,8 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 var eoAff = affinityMap[eoImporter.id + '|' + eoExporter.id] || 0;
                 if (eoAff <= 0) continue;
 
-                var eoPartnerGdp = Number(eoImporter.gdp) || 0;
-                var contribution = (eoPartnerGdp / TRADE_CONFIG.BASELINE_GDP) * eoAff;
+                // alpha-19: gdp column dropped — use BASELINE_GDP as fixed reference (ratio = 1.0).
+                var contribution = 1.0 * eoAff;
                 worldDemandScore += contribution;
                 partnerContributions.push({
                     nationId: eoImporter.id,
@@ -3017,12 +2969,15 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
 
         var surplus = totalExp - totalImp;
-        var gdp = Number(n.gdp) || 0;
+        // alpha-19: gdp column dropped — derive trade balance against BASELINE_GDP reference.
+        var gdp = TRADE_CONFIG.BASELINE_GDP;
         var tradeBalanceIdx = deriveTradeBalanceIndex(surplus, gdp);
 
         // Tariff revenue: calculated bilaterally to account for FTA/PTA tariff reductions
+        // alpha-19: tariffs column dropped — fall back to per-sector overrides only
+        // via getTariffDampener; aggregate baseTariffRate pinned to 0.
         var budget = budgetMap[n.id];
-        var baseTariffRate = (Number(n.tariffs) || 0) / 100;
+        var baseTariffRate = 0;
         var collectionRate = budget ? budget.collectionRate : 0.7;
         var tariffRev = 0;
 
@@ -3060,7 +3015,9 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         totalGlobalVolume += totalExp;
 
         // ── Trade-driven stat nudges ──
-        var nationUpdates = { trade_balance: tradeBalanceIdx };
+        // alpha-19: trade_balance column dropped — tradeBalanceIdx is still
+        // computed for trade_summary rows but no longer mirrored onto nations.
+        var nationUpdates = {};
 
         // GDP growth: trade volume (exports + imports) as % of GDP
         // Neutral at 50% of GDP; more trade = better growth, isolation = drag
@@ -3073,16 +3030,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             nationUpdates.gdp_growth = Math.round(Math.max(0, Math.min(100, currentGdpGrowth + tradeGdpNudge)) * 10) / 10;
         }
 
-        // Currency strength: trade surplus strengthens currency, deficit weakens it
-        // Gentler than GDP nudge: (tradeBalance - 50) / 100 → range -0.5 to +0.5 per tick
-        var currentCurrency = Number(n.currency_strength ?? 50);
-        var currencyNudge = (tradeBalanceIdx - 50) / 100;
-        if (Math.abs(currencyNudge) >= 0.01) {
-            nationUpdates.currency_strength = Math.round(Math.max(0, Math.min(100, currentCurrency + currencyNudge)) * 10) / 10;
-        }
+        // alpha-19: currency_strength dropped — no per-tick nudge.
 
-        // Inflation from import prices: weighted average price modifier of imports
-        // If average import prices > 1.0, inflation pressure rises (imported inflation)
+        // Cost-of-living from import prices: weighted average price modifier of imports.
+        // alpha-19: inflation → cost_of_living. If average import prices > 1.0, cost
+        // of living rises (imported inflation pressure).
         var importWeightedPrice = 0;
         var totalImpForPrice = 0;
         for (var si2 = 0; si2 < sectors.length; si2++) {
@@ -3094,25 +3046,26 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             }
         }
         var avgImportPrice = totalImpForPrice > 0 ? importWeightedPrice / totalImpForPrice : 1.0;
-        // Nudge inflation: (avgPrice - 1.0) scaled to ±0.5 per tick
-        var currentInflation = Number(n.inflation ?? 50);
+        // Nudge cost_of_living: (avgPrice - 1.0) scaled to ±0.5 per tick
+        var currentInflation = Number(n.cost_of_living ?? 50);
         var inflationNudge = (avgImportPrice - 1.0) * 1.0; // price 1.5 → +0.5 nudge, price 0.7 → -0.3
         if (Math.abs(inflationNudge) >= 0.01) {
-            nationUpdates.inflation = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 10) / 10;
+            nationUpdates.cost_of_living = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 10) / 10;
         }
 
-        // Unemployment from trade displacement: net imports in job-heavy sectors (manufacturing + services)
-        // indicate domestic producers being outcompeted → unemployment pressure
+        // Workforce from trade displacement: net imports in job-heavy sectors
+        // (manufacturing + services) indicate domestic producers being outcompeted →
+        // workforce shrinks (alpha-19: unemployment → workforce, INVERTED — net
+        // imports DECREASE workforce, net exports INCREASE workforce).
         var mfgNet = (actualImports[n.id]['manufactured_goods'] || 0) - (actualExports[n.id]['manufactured_goods'] || 0);
         var svcNet = (actualImports[n.id]['services_finance'] || 0) - (actualExports[n.id]['services_finance'] || 0);
         if (gdp > 0) {
             var displacementRatio = (mfgNet + svcNet) / gdp;
-            // Positive ratio = net importer in job sectors → unemployment nudge up
-            // Negative ratio = net exporter in job sectors → unemployment nudge down (job creation)
-            var unemploymentNudge = Math.max(-0.5, Math.min(0.5, displacementRatio * 100));
+            // Inverted vs unemployment: positive ratio = workforce nudge DOWN.
+            var unemploymentNudge = Math.max(-0.5, Math.min(0.5, -displacementRatio * 100));
             if (Math.abs(unemploymentNudge) >= 0.01) {
-                var currentUnemployment = Number(n.unemployment ?? 50);
-                nationUpdates.unemployment = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 10) / 10;
+                var currentUnemployment = Number(n.workforce ?? 50);
+                nationUpdates.workforce = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 10) / 10;
             }
         }
 
@@ -3131,66 +3084,72 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var severity = unmetRatio * unmetRatio;
 
             if (sKey3 === 'fuel_energy') {
+                // alpha-19: energy_generation → energy; manufacturing_output → industry;
+                // inflation → cost_of_living (merged with the existing fuelCol nudge).
                 var fuelEnergyPen = severity * 1.5;
                 var fuelManufPen = severity * 1.0;
                 var fuelInflation = severity * 1.0;
                 var fuelCol = severity * 0.8;
-                nationUpdates.energy_generation = Math.round(Math.max(0, (Number(n.energy_generation ?? 50)) - fuelEnergyPen) * 10) / 10;
-                nationUpdates.manufacturing_output = Math.round(Math.max(0, (Number(n.manufacturing_output ?? 50)) - fuelManufPen) * 10) / 10;
-                nationUpdates.inflation = Math.round(Math.min(100, (nationUpdates.inflation != null ? nationUpdates.inflation : (Number(n.inflation ?? 50))) + fuelInflation) * 10) / 10;
-                nationUpdates.cost_of_living = Math.round(Math.min(100, (Number(n.cost_of_living ?? 50)) + fuelCol) * 10) / 10;
+                nationUpdates.energy = Math.round(Math.max(0, (Number(n.energy ?? 50)) - fuelEnergyPen) * 10) / 10;
+                nationUpdates.industry = Math.round(Math.max(0, (Number(n.industry ?? 50)) - fuelManufPen) * 10) / 10;
+                var fuelColCurrent = nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50));
+                nationUpdates.cost_of_living = Math.round(Math.min(100, fuelColCurrent + fuelInflation + fuelCol) * 10) / 10;
             } else if (sKey3 === 'grains_staples') {
-                // Grain shortage: famine risk — stability, legitimacy, civil unrest, emigration
+                // Grain shortage: famine risk — control, authority, unrest, SoL.
+                // alpha-19: happiness → standard_of_living; civil_unrest → unrest;
+                // stability → control; legitimacy → authority; poverty_rate → standard_of_living
+                // (INVERTED — negate). Combine happiness/poverty into a single SoL nudge.
                 var grainHappiness = severity * 1.5;
                 var grainUnrest = severity * 2.0;
                 var grainStability = severity * 1.5;
                 var grainLegitimacy = severity * 1.5;
                 var grainPoverty = severity * 2.0;
-                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness ?? 50)) - grainHappiness) * 10) / 10;
-                nationUpdates.civil_unrest = Math.round(Math.min(100, (Number(n.civil_unrest) || 0) + grainUnrest) * 10) / 10;
-                nationUpdates.stability = Math.round(Math.max(0, (nationUpdates.stability != null ? nationUpdates.stability : (Number(n.stability ?? 50))) - grainStability) * 10) / 10;
-                nationUpdates.legitimacy = Math.round(Math.max(0, (Number(n.legitimacy ?? 50)) - grainLegitimacy) * 10) / 10;
-                nationUpdates.poverty_rate = Math.round(Math.min(100, (Number(n.poverty_rate) || 0) + grainPoverty) * 10) / 10;
+                var grainSolCurrent = Number(n.standard_of_living ?? 50);
+                // happiness → SoL: subtract grainHappiness; poverty_rate inverted → also subtract grainPoverty.
+                nationUpdates.standard_of_living = Math.round(Math.max(0, grainSolCurrent - grainHappiness - grainPoverty) * 10) / 10;
+                nationUpdates.unrest = Math.round(Math.min(100, (Number(n.unrest) || 0) + grainUnrest) * 10) / 10;
+                nationUpdates.control = Math.round(Math.max(0, (nationUpdates.control != null ? nationUpdates.control : (Number(n.control ?? 50))) - grainStability) * 10) / 10;
+                nationUpdates.authority = Math.round(Math.max(0, (Number(n.authority ?? 50)) - grainLegitimacy) * 10) / 10;
             } else if (sKey3 === 'livestock_dairy') {
-                // Livestock shortage: quality of life decline
+                // Livestock shortage: quality of life decline.
+                // alpha-19: happiness → standard_of_living (merge with livestockSol).
                 var livestockSol = severity * 1.0;
                 var livestockHappy = severity * 0.8;
                 var livestockCol = severity * 0.8;
-                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living ?? 50)) - livestockSol) * 10) / 10;
-                nationUpdates.happiness = Math.round(Math.max(0, (nationUpdates.happiness != null ? nationUpdates.happiness : (Number(n.happiness ?? 50))) - livestockHappy) * 10) / 10;
+                var livestockSolCurrent = Number(n.standard_of_living ?? 50);
+                nationUpdates.standard_of_living = Math.round(Math.max(0, livestockSolCurrent - livestockSol - livestockHappy) * 10) / 10;
                 nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + livestockCol) * 10) / 10;
             } else if (sKey3 === 'fruits_vegetables') {
-                // Perishables shortage: health and happiness impact
+                // Perishables shortage: health and SoL impact.
+                // alpha-19: healthcare_quality → health; happiness → standard_of_living.
                 var fvHealth = severity * 1.0;
                 var fvHappy = severity * 1.0;
                 var fvCol = severity * 0.6;
-                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality ?? 50)) - fvHealth) * 10) / 10;
-                nationUpdates.happiness = Math.round(Math.max(0, (nationUpdates.happiness != null ? nationUpdates.happiness : (Number(n.happiness ?? 50))) - fvHappy) * 10) / 10;
+                nationUpdates.health = Math.round(Math.max(0, (Number(n.health ?? 50)) - fvHealth) * 10) / 10;
+                nationUpdates.standard_of_living = Math.round(Math.max(0, (nationUpdates.standard_of_living != null ? nationUpdates.standard_of_living : (Number(n.standard_of_living ?? 50))) - fvHappy) * 10) / 10;
                 nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + fvCol) * 10) / 10;
             } else if (sKey3 === 'cash_crops') {
-                // Cash crop shortage: GDP and investment impact (not food security)
+                // Cash crop shortage: GDP impact only (alpha-19: foreign_investment dropped).
                 var ccGdp = severity * 0.8;
-                var ccFdi = severity * 0.6;
                 nationUpdates.gdp_growth = Math.round(Math.max(0, (nationUpdates.gdp_growth != null ? nationUpdates.gdp_growth : (Number(n.gdp_growth ?? 50))) - ccGdp) * 10) / 10;
-                nationUpdates.foreign_investment = Math.round(Math.max(0, (Number(n.foreign_investment ?? 50)) - ccFdi) * 10) / 10;
             } else if (sKey3 === 'minerals') {
+                // alpha-19: manufacturing_output → industry.
                 var minManuf = severity * 1.0;
                 var minInfra = severity * 0.7;
-                nationUpdates.manufacturing_output = Math.round(Math.max(0, (nationUpdates.manufacturing_output != null ? nationUpdates.manufacturing_output : (Number(n.manufacturing_output ?? 50))) - minManuf) * 10) / 10;
+                nationUpdates.industry = Math.round(Math.max(0, (nationUpdates.industry != null ? nationUpdates.industry : (Number(n.industry ?? 50))) - minManuf) * 10) / 10;
                 nationUpdates.infrastructure = Math.round(Math.max(0, (Number(n.infrastructure ?? 50)) - minInfra) * 10) / 10;
             } else if (sKey3 === 'manufactured_goods') {
                 var mfgSol = severity * 1.0;
                 var mfgCol = severity * 0.8;
-                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living ?? 50)) - mfgSol) * 10) / 10;
+                nationUpdates.standard_of_living = Math.round(Math.max(0, (nationUpdates.standard_of_living != null ? nationUpdates.standard_of_living : (Number(n.standard_of_living ?? 50))) - mfgSol) * 10) / 10;
                 nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + mfgCol) * 10) / 10;
             } else if (sKey3 === 'technology') {
+                // alpha-19: digital_infrastructure → infrastructure;
+                // innovation_index dropped (no replacement; collapse penalty into infrastructure).
                 var techDigi = severity * 0.8;
-                var techInnov = severity * 0.8;
-                nationUpdates.digital_infrastructure = Math.round(Math.max(0, (Number(n.digital_infrastructure ?? 50)) - techDigi) * 10) / 10;
-                nationUpdates.innovation_index = Math.round(Math.max(0, (Number(n.innovation_index ?? 50)) - techInnov) * 10) / 10;
+                nationUpdates.infrastructure = Math.round(Math.max(0, (nationUpdates.infrastructure != null ? nationUpdates.infrastructure : (Number(n.infrastructure ?? 50))) - techDigi) * 10) / 10;
             } else if (sKey3 === 'arms') {
-                var armsMil = severity * 1.0;
-                nationUpdates.military_strength = Math.round(Math.max(0, (Number(n.military_strength ?? 50)) - armsMil) * 10) / 10;
+                // alpha-19: military_strength dropped — no military stat to nudge in alpha-19.
             }
         }
 
@@ -3311,10 +3270,10 @@ const DIPLOMACY_CONFIG = {
     STATE_VISIT_REP_BOOST: 3,
     STATE_VISIT_STABILITY_BOOST: 2,
     STATE_VISIT_RELATION_BOOST: 7,
-    STATE_VISIT_TRADE_BONUS: 5,         // +5 trade_balance if active trade agreement
+    // alpha-19: trade_balance column dropped — bonus retired (Phase 7f)
     STATE_VISIT_IO_REP_BONUS: 3,        // +3 int'l rep if shared IO membership (future)
     STATE_VISIT_HIGH_REL_GDP_BONUS: 5,  // +5 gdp_growth if relations > 70
-    STATE_VISIT_FIRST_STABILITY: 1,     // +1 stability for first-ever visit
+    STATE_VISIT_FIRST_CONTROL: 1,       // +1 control for first-ever visit (alpha-19: stability → control)
     STATE_VISIT_AUTOCRACY_DIE: 12,      // 1D12 roll for autocracy risk
     STATE_VISIT_AUTOCRACY_THRESHOLD: 6, // roll <= threshold = negative outcome
     STATE_VISIT_AUTOCRACY_CHANGE: 3,    // ±gov_approval change
@@ -3355,14 +3314,11 @@ const DIPLOMACY_CONFIG = {
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
     TRADE_RATIFICATION_VOTING_TICKS: 6,   // ticks for parliament to vote on trade bill
 
-    // Credit requirements for trade agreements (proposing nation must meet these)
-    CREDIT_MIN_FOR_FTA: 25,               // FTA requires credit >= 25
-    CREDIT_MIN_FOR_RSC: 15,               // RSC requires credit >= 15
-    CREDIT_MIN_FOR_PTA: 10,               // PTA requires credit >= 10
-    CREDIT_MIN_FOR_AID_DONOR: 20,         // Donating aid requires credit >= 20 (receiving always ok)
+    // alpha-19: credit column dropped — CREDIT_MIN_FOR_* constants retired in Phase 7f.
+    // checkCreditForTradeAgreement() is now a stub returning { allowed: true }.
 
     // Economic Aid
-    AID_MAX_GDP_PCT: 25,                  // max annual aid as % of donor's GDP
+    AID_MAX_GDP_PCT: 25,                  // max annual aid as % of donor's budget (alpha-19: gdp dropped, budget is the new revenue baseline)
     AID_MIN_AMOUNT: 1000000000,           // min $1B annual aid (to prevent trivial agreements)
     AID_DURATION_MIN_TICKS: 12,           // min 1 year
     AID_DURATION_MAX_TICKS: 120,          // max 10 years
@@ -3419,61 +3375,50 @@ function resolveTransferEndpoints(article, agreement) {
 
 /**
  * Check if a nation's credit rating allows proposing a specific trade agreement type.
- * Returns { allowed: true } or { allowed: false, required: number, reason: string }.
+ *
+ * alpha-19 / Phase 7f: credit column was dropped. This function is now a
+ * permanent stub returning { allowed: true } — trade agreements are no longer
+ * credit-gated. Phase 9 will retire the function and its callers entirely.
+ *
+ * Signature kept so callers don't have to change yet.
  */
 function checkCreditForTradeAgreement(nationCredit, agreementType, isAidDonor) {
-    var credit = Number(nationCredit ?? 50);
-    var thresholds = {
-        fta: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_FTA,
-        pta: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_PTA,
-        resource_supply: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_RSC,
-        economic_aid: isAidDonor ? DIPLOMACY_CONFIG.CREDIT_MIN_FOR_AID_DONOR : 0
-    };
-    var required = thresholds[agreementType];
-    if (required === undefined) return { allowed: true };
-    if (credit >= required) return { allowed: true };
-    return {
-        allowed: false,
-        required: required,
-        current: credit,
-        reason: 'Credit rating too low (' + credit + '/' + required + '). Other nations won\'t negotiate this deal with a nation that can\'t pay its bills.'
-    };
+    return { allowed: true };
 }
 
 /**
  * Curated list of nation stats that can be used as conditions in Economic Aid agreements.
  * Grouped by category for the UI. default_operator indicates the "natural" direction
  * (gte = stat should be high, lte = stat should be low).
+ *
+ * alpha-19 / Phase 7f: filtered to the 19-column menu.
+ *   - judicial_independence → authority
+ *   - inflation → cost_of_living
+ *   - unemployment → workforce (INVERTED: lte → gte)
+ *   - poverty_rate → standard_of_living (INVERTED: lte → gte; deduped with happiness)
+ *   - literacy + education_accessibility → education (deduped)
+ *   - healthcare_accessibility → health
+ *   - stability → control
+ *   - civil_unrest + terrorism → unrest (deduped)
+ *   - international_reputation → power
+ *   Dropped (no replacement): corruption, press_freedom, freedom_index, efficiency,
+ *   tariffs, income_inequality, renewable_energy_percentage, pollution, carbon_emissions.
  */
 const AID_CONDITION_STATS = [
     // Governance
-    { key: 'corruption', label: 'Corruption', default_operator: 'lte', category: 'Governance' },
-    { key: 'press_freedom', label: 'Press Freedom', default_operator: 'gte', category: 'Governance' },
-    { key: 'freedom_index', label: 'Freedom Index', default_operator: 'gte', category: 'Governance' },
-    { key: 'judicial_independence', label: 'Judicial Independence', default_operator: 'gte', category: 'Governance' },
-    { key: 'efficiency', label: 'Bureaucratic Efficiency', default_operator: 'gte', category: 'Governance' },
+    { key: 'authority', label: 'Authority', default_operator: 'gte', category: 'Governance' },
     // Economic
-    { key: 'inflation', label: 'Inflation', default_operator: 'lte', category: 'Economic' },
-    { key: 'tariffs', label: 'Tariff Rate', default_operator: 'lte', category: 'Economic' },
-    { key: 'unemployment', label: 'Unemployment', default_operator: 'lte', category: 'Economic' },
-    { key: 'poverty_rate', label: 'Poverty Rate', default_operator: 'lte', category: 'Economic' },
-    { key: 'income_inequality', label: 'Income Inequality', default_operator: 'lte', category: 'Economic' },
+    { key: 'cost_of_living', label: 'Cost of Living', default_operator: 'lte', category: 'Economic' },
+    { key: 'workforce', label: 'Workforce Participation', default_operator: 'gte', category: 'Economic' },
     // Social
-    { key: 'literacy', label: 'Literacy', default_operator: 'gte', category: 'Social' },
-    { key: 'healthcare_accessibility', label: 'Healthcare Access', default_operator: 'gte', category: 'Social' },
-    { key: 'education_accessibility', label: 'Education Access', default_operator: 'gte', category: 'Social' },
+    { key: 'education', label: 'Education', default_operator: 'gte', category: 'Social' },
+    { key: 'health', label: 'Healthcare', default_operator: 'gte', category: 'Social' },
     { key: 'standard_of_living', label: 'Standard of Living', default_operator: 'gte', category: 'Social' },
-    { key: 'happiness', label: 'Happiness', default_operator: 'gte', category: 'Social' },
-    // Environmental
-    { key: 'renewable_energy_percentage', label: 'Renewable Energy %', default_operator: 'gte', category: 'Environmental' },
-    { key: 'pollution', label: 'Pollution', default_operator: 'lte', category: 'Environmental' },
-    { key: 'carbon_emissions', label: 'Carbon Emissions', default_operator: 'lte', category: 'Environmental' },
     // Security
-    { key: 'stability', label: 'Stability', default_operator: 'gte', category: 'Security' },
-    { key: 'civil_unrest', label: 'Civil Unrest', default_operator: 'lte', category: 'Security' },
-    { key: 'terrorism', label: 'Terrorism', default_operator: 'lte', category: 'Security' },
+    { key: 'control', label: 'Control', default_operator: 'gte', category: 'Security' },
+    { key: 'unrest', label: 'Unrest', default_operator: 'lte', category: 'Security' },
     // International
-    { key: 'international_reputation', label: 'International Reputation', default_operator: 'gte', category: 'International' }
+    { key: 'power', label: 'Power', default_operator: 'gte', category: 'International' }
 ];
 
 /**
@@ -3797,7 +3742,8 @@ const PROPOSAL_TYPES = {
         label: 'Cultural Exchange',
         description: 'Establish cultural exchange programs between nations.',
         stat_effects: [
-            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: international_reputation → power.
+            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     visa_agreement: {
@@ -3805,7 +3751,8 @@ const PROPOSAL_TYPES = {
         label: 'Visa Agreement',
         description: 'Simplify visa requirements for travel between nations.',
         stat_effects: [
-            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            // alpha-19: international_reputation → power.
+            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
             { stat_key: 'immigration', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -3820,7 +3767,8 @@ const PROPOSAL_TYPES = {
         label: 'Student Exchange',
         description: 'Create student exchange programs to boost education.',
         stat_effects: [
-            { stat_key: 'higher_education', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: higher_education → education.
+            { stat_key: 'education', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
 
@@ -3830,8 +3778,9 @@ const PROPOSAL_TYPES = {
         label: 'Non-Aggression Pact',
         description: 'Binding commitment not to declare war for a set period.',
         stat_effects: [
-            { stat_key: 'stability', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
-            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: stability → control; international_reputation → power.
+            { stat_key: 'control', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     military_alliance: {
@@ -3839,8 +3788,9 @@ const PROPOSAL_TYPES = {
         label: 'Military Alliance',
         description: 'Mutual defense pact — if one is attacked, the other must respond.',
         stat_effects: [
-            { stat_key: 'stability', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: stability → control; international_reputation → power.
+            { stat_key: 'control', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
+            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     embargo: {
@@ -3848,8 +3798,8 @@ const PROPOSAL_TYPES = {
         label: 'Embargo/Sanctions',
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
-            { stat_key: 'trade_balance', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'international_reputation', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
+            // alpha-19: trade_balance dropped (no replacement); international_reputation → power.
+            { stat_key: 'power', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     ceasefire: {
@@ -3858,8 +3808,9 @@ const PROPOSAL_TYPES = {
         description: 'Stop active conflict between warring nations.',
         requires_war: true,
         stat_effects: [
-            { stat_key: 'stability', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 1 },
-            { stat_key: 'civil_unrest', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: stability → control; civil_unrest → unrest.
+            { stat_key: 'control', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'unrest', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     open_borders: {
@@ -3867,8 +3818,8 @@ const PROPOSAL_TYPES = {
         label: 'Open Borders',
         description: 'Major immigration and security implications — open borders between nations.',
         stat_effects: [
-            { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'trade_balance', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 0 }
+            // alpha-19: trade_balance dropped (no replacement).
+            { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     close_embassy: {
@@ -3876,7 +3827,8 @@ const PROPOSAL_TYPES = {
         label: 'Close Embassy',
         description: 'Shut down diplomatic presence in the target nation.',
         stat_effects: [
-            { stat_key: 'international_reputation', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: international_reputation → power.
+            { stat_key: 'power', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
         ]
     }
 };
@@ -3977,32 +3929,27 @@ const POLICY_STANCES = {
     ]
 };
 
-// Stats where LOWER is better (inverted approval logic)
-const INVERTED_STATS = [
-    'unemployment', 'poverty_rate', 'income_inequality',
-    'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
-    'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
-    'political_violence', 'emigration', 'debt', 'debt_growth',
-    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices',
-    'cost_of_living'
-];
+// Stats where LOWER is better (inverted approval logic).
+// alpha-19 / Phase 7f: collapsed to the 19-column LOWER_IS_BETTER list.
+const INVERTED_STATS = ['debt', 'unrest', 'cost_of_living'];
 
 // Stats stored as raw numbers (not 0-100 indices).
-// GDP and debt are stored as raw dollars (88B = 88,000,000,000).
+// debt is stored as raw dollars (88B = 88,000,000,000).
 // All other stats (0-100 indices) use the default divisor of 50.
+// alpha-19 / Phase 7f: gdp column dropped from the schema.
 const RAW_SCALING_DIVISORS = {
     population: 1_000_000,
     eligible_voters: 1_000_000,
-    gdp: 1_000_000_000,
     debt: 1_000_000_000
 };
 
 // Stats that must NEVER be modified by generic tick processors (processStatEffects,
 // processMinistryActions, processEvents, processCrises, processStatConnections).
-// GDP is driven exclusively by gdp_growth via applyGdpGrowth.
 // Debt is driven exclusively by the budget system (surplus/deficit).
+// alpha-19 / Phase 7f: gdp column dropped, so it's no longer in the skip set.
+// debt remains here because it's flow-managed, not stat-decay-managed.
 // Any policy/event/crisis/connection targeting these keys will be silently skipped.
-const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
+const STAT_PROCESSOR_SKIP = new Set(['debt']);
 
 // ==================== MINOR DIPLOMATIC INITIATIVE ====================
 
@@ -4062,10 +4009,11 @@ const VISA_EXCLUDES = [
 const VISA_BASE_EFFECTS = {
     relations: 6,
     revenue: 12_000_000,
-    intl_reputation: 1,
-    immigration: 1,
-    polarization: 0,
-    terrorism_risk: 0
+    // alpha-19: intl_reputation → power (international_reputation → power).
+    // polarization + terrorism_risk dropped — no alpha-column replacements;
+    // calculateVisaEffects no longer surfaces them in its return structs.
+    power: 1,
+    immigration: 1
 };
 
 /**
@@ -4151,7 +4099,8 @@ const STUDENT_FIELDS = [
 const STUDENT_BASE_EFFECTS = {
     relations: 3,
     cost_total: 6_000_000,
-    higher_education: 1,
+    // alpha-19: higher_education → education
+    education: 1,
     soft_power_per_year: 1
 };
 
@@ -4191,7 +4140,8 @@ function calculateVisaEffects(config) {
 
     let relations = Math.round(VISA_BASE_EFFECTS.relations * dMod * sMod);
     let revenue = Math.round(VISA_BASE_EFFECTS.revenue * dMod * sMod);
-    let intl_reputation = VISA_BASE_EFFECTS.intl_reputation;
+    // alpha-19: intl_reputation → power.
+    let power = VISA_BASE_EFFECTS.power;
     let immigration = workIncluded ? 2 : 1;
 
     // One-way: halve relations for the non-receiving nation, revenue only to receiver
@@ -4212,47 +4162,28 @@ function calculateVisaEffects(config) {
         }
     }
 
-    // Polarization + Terrorism from "All Purposes" scope
-    let proposer_polarization = 0, target_polarization = 0;
-    let proposer_terrorism = 0, target_terrorism = 0;
-    if (scopeOpt.penalties) {
-        if (isReciprocal) {
-            proposer_polarization = 1; target_polarization = 1;
-            proposer_terrorism = 0.5; target_terrorism = 0.5;
-        } else if (isOneWayProposer) {
-            // Target receives visitors → penalties on target only
-            target_polarization = 1; target_terrorism = 0.5;
-        } else {
-            // Proposer receives visitors → penalties on proposer only
-            proposer_polarization = 1; proposer_terrorism = 0.5;
-        }
-    }
+    // alpha-19: polarization + terrorism dropped — "All Purposes" scope no
+    // longer carries those penalties (no alpha-column replacements).
 
     return {
         proposer: {
             relations: proposer_relations,
             revenue: proposer_revenue,
-            intl_reputation,
-            immigration: isReciprocal || !isOneWayProposer ? immigration : 0,
-            polarization: proposer_polarization,
-            terrorism_risk: proposer_terrorism
+            power,
+            immigration: isReciprocal || !isOneWayProposer ? immigration : 0
         },
         target: {
             relations: target_relations,
             revenue: target_revenue,
-            intl_reputation,
-            immigration: isReciprocal || isOneWayProposer ? immigration : 0,
-            polarization: target_polarization,
-            terrorism_risk: target_terrorism
+            power,
+            immigration: isReciprocal || isOneWayProposer ? immigration : 0
         },
         // Summary (for display in proposer's UI — shows total combined)
         summary: {
             relations,
             revenue,
-            intl_reputation,
-            immigration,
-            polarization: proposer_polarization || target_polarization ? 1 : 0,
-            terrorism_risk: proposer_terrorism || target_terrorism ? 0.5 : 0
+            power,
+            immigration
         }
     };
 }
@@ -4297,7 +4228,8 @@ function calculateStudentEffects(config) {
 
     return {
         relations: STUDENT_BASE_EFFECTS.relations,
-        higher_education: STUDENT_BASE_EFFECTS.higher_education + levelOpt.higher_ed_bonus,
+        // alpha-19: higher_education → education
+        education: STUDENT_BASE_EFFECTS.education + levelOpt.higher_ed_bonus,
         soft_power_per_year: STUDENT_BASE_EFFECTS.soft_power_per_year,
         permanent_soft_power: durationOpt.permanent_bonus ? 1 : 0,
         technology_bonus: techBonus,
@@ -4502,11 +4434,10 @@ const OPEN_BORDERS_BASE_EFFECTS = {
     relations: 8,
     immigration: 4,
     gdp_growth: 1,
-    labor_force_participation: 2,
-    civil_unrest: 3,
-    polarization: 2,
-    terrorism: 0.5,
-    housing_affordability: -1,
+    // alpha-19: labor_force_participation → workforce; civil_unrest → unrest.
+    // polarization, terrorism, housing_affordability dropped — no alpha replacements.
+    workforce: 2,
+    unrest: 3,
     cost_of_living: 0.5,
     cost_proposer: 15000000,
     cost_target: 15000000,
@@ -4528,14 +4459,14 @@ function calculateOpenBordersEffects(config) {
     const sMod = scopeOpt.modifier;
     const base = OPEN_BORDERS_BASE_EFFECTS;
 
+    // alpha-19: labor_force_participation → workforce (kept positive — open borders
+    // grow the workforce); civil_unrest → unrest. polarization / terrorism /
+    // housing_affordability dropped (no alpha replacements).
     const relations = Math.round(base.relations * sMod);
     const immigration = Math.round(base.immigration * sMod);
     const gdp_growth = +(base.gdp_growth * sMod).toFixed(2);
-    const labor_force = Math.round(base.labor_force_participation * sMod);
-    const civil_unrest = Math.round(transOpt.unrest_spike * sMod);
-    const polarization = Math.round(base.polarization * sMod);
-    const terrorism = +(base.terrorism * sMod).toFixed(2);
-    const housing = Math.round(base.housing_affordability * sMod);
+    const workforce = Math.round(base.workforce * sMod);
+    const unrest = Math.round(transOpt.unrest_spike * sMod);
     const col = +(base.cost_of_living * sMod).toFixed(2);
 
     const ratification_cost = Math.round(base.cost_proposer * sMod);
@@ -4547,31 +4478,29 @@ function calculateOpenBordersEffects(config) {
 
     if (isReciprocal) {
         proposer = {
-            relations, immigration, gdp_growth, labor_force_participation: labor_force,
-            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+            relations, immigration, gdp_growth, workforce,
+            unrest, cost_of_living: col
         };
         target = { ...proposer };
     } else if (isOurToThem) {
         // Our citizens go to them — target receives migrants
         proposer = {
             relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
-            labor_force_participation: 0, civil_unrest: 0, polarization: Math.round(polarization * 0.5),
-            terrorism: 0, housing_affordability: 0, cost_of_living: 0
+            workforce: 0, unrest: 0, cost_of_living: 0
         };
         target = {
-            relations, immigration, gdp_growth, labor_force_participation: labor_force,
-            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+            relations, immigration, gdp_growth, workforce,
+            unrest, cost_of_living: col
         };
     } else {
         // Their citizens come to us — proposer receives migrants
         proposer = {
-            relations, immigration, gdp_growth, labor_force_participation: labor_force,
-            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+            relations, immigration, gdp_growth, workforce,
+            unrest, cost_of_living: col
         };
         target = {
             relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
-            labor_force_participation: 0, civil_unrest: 0, polarization: Math.round(polarization * 0.5),
-            terrorism: 0, housing_affordability: 0, cost_of_living: 0
+            workforce: 0, unrest: 0, cost_of_living: 0
         };
     }
 
@@ -4579,8 +4508,8 @@ function calculateOpenBordersEffects(config) {
         proposer,
         target,
         summary: {
-            relations, immigration, gdp_growth, labor_force_participation: labor_force,
-            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+            relations, immigration, gdp_growth, workforce,
+            unrest, cost_of_living: col
         },
         costs: {
             ratification_proposer: ratification_cost,
@@ -4621,11 +4550,10 @@ const EXTRADITION_EXCEPTION_OPTIONS = [
 
 const EXTRADITION_BASE_EFFECTS = {
     relations: 5,
-    crime_rate: -3,
-    terrorism: -1,
-    corruption: -1,
-    international_reputation: 1,
-    judicial_independence: 0.5,
+    // alpha-19: crime_rate, terrorism, corruption dropped (no alpha replacements);
+    // international_reputation → power; judicial_independence → authority.
+    power: 1,
+    authority: 0.5,
     cost_proposer: 8000000,
     cost_target: 8000000,
     ongoing_cost: 3000000
@@ -4642,49 +4570,34 @@ function calculateExtraditionEffects(config) {
     const exceptions = config.exceptions || [];
     const base = EXTRADITION_BASE_EFFECTS;
 
-    // Effectiveness scales with number and weight of scopes
-    const totalWeight = scopes.reduce((sum, s) => {
-        const opt = EXTRADITION_SCOPE_OPTIONS.find(o => o.key === s);
-        return sum + (opt ? opt.crime_weight : 0);
-    }, 0);
-    const scopeMod = Math.min(1.5, totalWeight / 2.5); // normalize around standard 3-scope config
-
-    // Exception effectiveness reduction
-    const exceptionMult = exceptions.reduce((mult, e) => {
-        const opt = EXTRADITION_EXCEPTION_OPTIONS.find(o => o.key === e);
-        return mult * (opt ? opt.effectiveness_mult : 1.0);
-    }, 1.0);
-
-    const crimeMult = appealOpt.crime_mult * exceptionMult;
-
-    const crime_rate = +(base.crime_rate * scopeMod * crimeMult).toFixed(1);
-    const terrorism = scopes.includes('terrorism') ? +(base.terrorism * crimeMult).toFixed(1) : 0;
-    const corruption = +(base.corruption * scopeMod).toFixed(1);
+    // alpha-19: crime_rate, terrorism, corruption, freedom_index, press_freedom,
+    // polarization all dropped (no alpha-column replacements). The pre-alpha
+    // scope-weight / exception-multiplier math drove only those dropped fields,
+    // so it has been removed. exceptions/scopes are still inspected below for
+    // political-offense / dual-criminality warnings + sovereignty constraints.
+    void exceptions;
     const relations = base.relations;
-    const intl_reputation = base.international_reputation;
-    const judicial_independence = +(base.judicial_independence + appealOpt.judicial_penalty).toFixed(1);
+    // alpha-19: international_reputation → power.
+    const power_base = base.power;
+    // alpha-19: judicial_independence → authority. appealOpt.judicial_penalty
+    // (negative for executive-style processes) still pulls authority down.
+    const authority = +(base.authority + appealOpt.judicial_penalty).toFixed(1);
 
-    // Political offenses penalties
+    // Political offenses penalties — alpha-19: freedom_index / press_freedom /
+    // polarization dropped. Reputation/power penalty for political-offense
+    // scopes is preserved.
     const hasPoliticalOffenses = scopes.includes('political_offenses');
-    const freedom_index = hasPoliticalOffenses ? -2 + appealOpt.freedom_penalty : appealOpt.freedom_penalty;
-    const press_freedom = hasPoliticalOffenses ? -1 : 0;
     const reputation_penalty = hasPoliticalOffenses ? -2 : 0;
-    const polarization = hasPoliticalOffenses ? 1 : 0;
 
-    // Dual criminality waived penalty
+    // alpha-19: dual-criminality waiver previously dinged freedom_index — that
+    // column is dropped; no remaining alpha-column hook for this lever.
     const dualWaived = config.dual_criminality === 'waived';
-    const freedom_extra = dualWaived ? -1 : 0;
+    void dualWaived;
 
     const effects = {
         relations,
-        crime_rate,
-        terrorism,
-        corruption,
-        international_reputation: intl_reputation + reputation_penalty,
-        judicial_independence,
-        freedom_index: freedom_index + freedom_extra,
-        press_freedom,
-        polarization
+        power: power_base + reputation_penalty,
+        authority
     };
 
     return {
@@ -4746,8 +4659,9 @@ const ENVIRONMENT_PENALTY_OPTIONS = [
 
 const ENVIRONMENT_BASE_EFFECTS = {
     relations: 6,
-    international_reputation: 2,
-    pollution: -2,
+    // alpha-19: international_reputation → power; pollution dropped (no
+    // alpha-column replacement).
+    power: 2,
     cost_proposer: 12000000,
     cost_target: 12000000,
     ongoing_cost: 4000000
@@ -4766,26 +4680,26 @@ function calculateEnvironmentalEffects(config) {
     const base = ENVIRONMENT_BASE_EFFECTS;
 
     const relations = base.relations;
-    const intl_reputation = base.international_reputation + emissionOpt.reputation_bonus
+    // alpha-19: international_reputation → power.
+    const power = base.power + emissionOpt.reputation_bonus
         + conservation.reduce((sum, c) => {
             const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === c);
             return sum + (opt ? opt.bonus_reputation : 0);
         }, 0);
 
-    const pollution = base.pollution + pollutionOpt.pollution_bonus
-        + conservation.reduce((sum, c) => {
-            const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === c);
-            return sum + (opt ? opt.bonus_pollution : 0);
-        }, 0);
+    // alpha-19: pollution dropped (no alpha-column replacement). pollutionOpt
+    // / conservation bonus_pollution data is still consumed by the compliance
+    // block below (cap_offset) but no longer surfaces as a stat delta.
 
-    const manufacturing_output = pollutionOpt.manufacturing_penalty;
+    // alpha-19: manufacturing_output → industry. pollutionOpt.manufacturing_penalty
+    // is negative under strict standards and still drags industrial capacity.
+    const industry = pollutionOpt.manufacturing_penalty;
     const gdp_growth = emissionOpt.gdp_penalty;
 
     const effects = {
         relations,
-        international_reputation: intl_reputation,
-        pollution,
-        manufacturing_output,
+        power,
+        industry,
         gdp_growth
     };
 
