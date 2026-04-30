@@ -433,9 +433,9 @@ function renderGovernanceTable(o) {
     </div>`;
 }
 
-// Phase 4: replaces ideology axis bars. Each visible party gets a row showing
-// their top-3 stronghold sectors as chips, with the contribution magnitude as
-// a small bar. Same legend toggle pattern as before.
+// Player's row renders every active sector as a grid with raw popularity
+// values; rival rows render their top-3 sectors by contribution as chips
+// with a relative-width bar. Legend toggles which rows are visible.
 function renderStrongholdsSection(o, faction, partyColor) {
     const allLegend = [
         { id: faction?.id, name: 'You', color: partyColor },
