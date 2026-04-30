@@ -7379,13 +7379,13 @@ function calculateSectorContributions(factionId, sectors, popularityRows) {
 // grow when the underlying stat shrinks (e.g. Rural & Agricultural's
 // secondary is `urbanization_inverse`).
 //
-// Range: 1–3 per sector, soft-cap to 28 across the nation.
+// Range: 1–3 per sector, soft-cap to 32 across the nation.
 // Stepped: stat ≥ 65 → 3, 35-65 → 2, < 35 → 1.
 // Two-stat sectors blend 70/30 before stepping.
 
 const SECTOR_WEIGHT_MIN = 1;
 const SECTOR_WEIGHT_MAX = 3;
-const SECTOR_WEIGHT_NATION_CAP = 28;
+const SECTOR_WEIGHT_NATION_CAP = 32;
 const SECTOR_STAT_HIGH_THRESHOLD = 65;
 const SECTOR_STAT_LOW_THRESHOLD = 35;
 const SECTOR_PRIMARY_BLEND = 0.7;
@@ -16080,11 +16080,29 @@ function computeTwpVoteScaling(twpByFaction, sectors, eligible) {
     let totalTwp = 0;
     for (const fid in twpByFaction) totalTwp += Number(twpByFaction[fid]) || 0;
 
+    // When every faction has TWP=0 (nation hasn't seeded
+    // faction_sector_popularity yet, or all rows are still at 0),
+    // allocateSeatsByTwp falls through to even-split. Mirror that here so
+    // the displayed vote count + turnout stay consistent with the seat
+    // table: if seats split evenly, votes split evenly too. Otherwise the
+    // past-elections panel reads 0 votes / 0.0% turnout while every
+    // faction has 23ish seats, which looks broken.
+    const factionIds = Object.keys(twpByFaction);
+    const evenSplit = totalTwp === 0 && factionIds.length > 0;
+
     const votesByFaction = {};
-    for (const fid in twpByFaction) {
-        const twp = Number(twpByFaction[fid]) || 0;
-        const share = totalTwp > 0 ? twp / totalTwp : 0;
-        votesByFaction[fid] = Math.round(share * targetTotalVotes);
+    if (evenSplit) {
+        const base = Math.floor(targetTotalVotes / factionIds.length);
+        const remainder = targetTotalVotes - base * factionIds.length;
+        factionIds.forEach((fid, i) => {
+            votesByFaction[fid] = base + (i < remainder ? 1 : 0);
+        });
+    } else {
+        for (const fid of factionIds) {
+            const twp = Number(twpByFaction[fid]) || 0;
+            const share = totalTwp > 0 ? twp / totalTwp : 0;
+            votesByFaction[fid] = Math.round(share * targetTotalVotes);
+        }
     }
 
     const actualTotal = Object.values(votesByFaction).reduce((s, v) => s + v, 0);

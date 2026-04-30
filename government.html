@@ -1152,7 +1152,7 @@ function renderAdministrationTab(container) {
 function adm2RenderAdminCard() {
     const el = document.getElementById('adm2-admin-card');
     if (!el || !_govData) return;
-    const { coalition, hog, admin, parties } = _govData;
+    const { coalition, hog, admin, parties, president } = _govData;
     const nation = currentNation;
     const approval = Number(nation?.gov_approval ?? 50).toFixed(1);
     const approvalColor = approval >= 55 ? 'var(--green)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
@@ -1161,9 +1161,20 @@ function adm2RenderAdminCard() {
     const startDate = admin?.started_at_date || tickToDate(admin?.started_at_tick);
     const isCurrent = admin && !admin.ended_at_tick;
 
-    // Duration in months (ticks since start). currentTick is a module-level
-    // var set from shard queries — don't shadow it here.
-    const startTick = admin?.started_at_tick;
+    // Duration anchors to the MOST RECENT leader change rather than the
+    // admin row's started_at_tick. In semi-presidential nations the admin
+    // row deliberately stays open across PM swaps (it tracks the
+    // President's tenure), and legacy rows can miss a rotation entirely —
+    // both leave the raw started_at_tick reading from game start. Falling
+    // back to hog.appointed_tick / president.elected_tick makes the term
+    // counter reset whenever the player actually sees a new PM or
+    // President take office.
+    const startTickCandidates = [
+        admin?.started_at_tick,
+        hog?.appointed_tick,
+        president?.elected_tick,
+    ].filter(t => typeof t === 'number');
+    const startTick = startTickCandidates.length ? Math.max(...startTickCandidates) : null;
     let durationLabel = '';
     if (typeof startTick === 'number' && typeof currentTick === 'number' && currentTick >= startTick) {
         const months = Math.max(0, currentTick - startTick);
@@ -10392,7 +10403,9 @@ async function confirmAssign() {
                 .eq('nation_id', currentNation.id)
                 .eq('active', true);
 
-            // Upsert new PM record — use faction's leader_ideology as single source of truth
+            // Upsert new PM record — use faction's leader_ideology as single source of truth.
+            // appointed_tick is required so the Administration card's term display
+            // resets to "now" instead of inheriting the previous PM's start tick.
             const assignPartyData = allParties.find(p => p.id === selectedCandidate.partyId);
             await _supabase.from('head_of_government').upsert({
                 nation_id: currentNation.id,
@@ -10401,6 +10414,7 @@ async function confirmAssign() {
                 last_name: selectedCandidate.lastName,
                 age: selectedCandidate.age,
                 ideology: assignPartyData?.leader_ideology || null,
+                appointed_tick: authoritativeTick,
                 active: true
             }, { onConflict: 'nation_id' });
 

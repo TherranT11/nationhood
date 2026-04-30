@@ -83,13 +83,13 @@ export function calculateSectorContributions(factionId, sectors, popularityRows)
 // grow when the underlying stat shrinks (e.g. Rural & Agricultural's
 // secondary is `urbanization_inverse`).
 //
-// Range: 1–3 per sector, soft-cap to 28 across the nation.
+// Range: 1–3 per sector, soft-cap to 32 across the nation.
 // Stepped: stat ≥ 65 → 3, 35-65 → 2, < 35 → 1.
 // Two-stat sectors blend 70/30 before stepping.
 
 const SECTOR_WEIGHT_MIN = 1;
 const SECTOR_WEIGHT_MAX = 3;
-const SECTOR_WEIGHT_NATION_CAP = 28;
+const SECTOR_WEIGHT_NATION_CAP = 32;
 const SECTOR_STAT_HIGH_THRESHOLD = 65;
 const SECTOR_STAT_LOW_THRESHOLD = 35;
 const SECTOR_PRIMARY_BLEND = 0.7;
