@@ -110,28 +110,6 @@ body.corp-redesign.light-mode {
 }
 body.corp-redesign.light-mode .cr-masthead { border-bottom-color: var(--panel-border); }
 
-.cr-masthead-date {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  padding-bottom: 12px;
-  margin-bottom: 14px;
-  border-bottom: 1px solid var(--border-hair);
-}
-body.corp-redesign.light-mode .cr-masthead-date { border-bottom-color: var(--panel-border); }
-.cr-masthead-date strong {
-  color: var(--text-bright);
-  font-weight: 600;
-}
-.cr-masthead-date .cr-date-divider {
-  color: var(--text-dim);
-}
-
 .cr-masthead-eyebrow {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -197,6 +175,8 @@ body.corp-redesign.light-mode .cr-ticker-block { border-left-color: var(--panel-
   font-size: 11px;
   color: var(--text-dim);
 }
+.cr-ticker-change.positive { color: var(--green); }
+.cr-ticker-change.negative { color: var(--red); }
 
 /* ── MAIN GRID ── */
 .cr-main-grid {
@@ -466,27 +446,6 @@ body.corp-redesign.light-mode .cr-perf-meter-cell {
   color: var(--text-bright);
   font-weight: 500;
 }
-.cr-perf-trend-tag {
-  position: absolute;
-  top: 18px;
-  right: 20px;
-}
-.cr-delta {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  padding: 2px 6px;
-  background: var(--bg-3);
-  border: 1px solid var(--border-1);
-  color: var(--text-dim);
-  letter-spacing: 0.04em;
-}
-body.corp-redesign.light-mode .cr-delta {
-  background: var(--bg-panel);
-  border-color: var(--panel-border);
-}
-.cr-delta.up   { color: var(--green); border-color: var(--green-border); }
-.cr-delta.down { color: var(--red);   border-color: var(--red-border); }
-
 /* ── OWNERSHIP CARD (renders inside the perf grid) ── */
 .cr-ownership-bar {
   display: flex;
@@ -751,11 +710,6 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
     <!-- MASTHEAD -->
     <div class="cr-masthead">
       <div>
-        <div class="cr-masthead-date" id="cr-masthead-date">
-          <span><strong id="cr-current-date">—</strong></span>
-          <span class="cr-date-divider">·</span>
-          <span>Tick <strong id="cr-current-tick">—</strong></span>
-        </div>
         <div class="cr-masthead-eyebrow" id="cr-sector">— —</div>
         <h1 class="cr-corp-name" id="cr-corp-name">Loading…</h1>
         <div class="cr-corp-meta">
@@ -905,10 +859,14 @@ function renderSparklineSvg(series, colorVar) {
     if (!Number.isFinite(min) || !Number.isFinite(max)) {
         return '<div class="cr-sparkline-empty">— no history yet</div>';
     }
-    const range = max - min || 1;
+    const range = max - min;
     const points = series.map((v, i) => {
         const x = (i / (series.length - 1)) * w;
-        const y = h - ((Number(v) - min) / range) * h;
+        // When all values are equal (range=0), draw a flat line in the
+        // middle of the viewBox rather than at the bottom (the previous
+        // `range || 1` fallback caused the divisor to be 1, but the
+        // numerator (v - min) was always 0, pinning every point to y=h).
+        const y = range === 0 ? h / 2 : h - ((Number(v) - min) / range) * h;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
     return `<svg class="cr-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
@@ -916,13 +874,16 @@ function renderSparklineSvg(series, colorVar) {
     </svg>`;
 }
 
-// tickToDate returns 'MMM, YYYY' (e.g. 'Mar, 2026'). Pull just the year for
-// "Founded 1924" style display in the masthead meta row.
+// tickToDate returns 'MMM, YYYY' (e.g. 'Mar, 2026'). Pull just the
+// 4-digit year for "Founded 1924" style display in the masthead meta
+// row. Use a regex match instead of split/trim so a future format
+// change (different separator, missing space, etc.) degrades to the
+// full date string rather than silently displaying an empty token.
 function tickToYear(tick) {
     if (tick == null) return null;
-    const formatted = tickToDate(tick); // 'Mar, 2026'
-    const parts = formatted.split(',');
-    return (parts[1] || formatted).trim();
+    const formatted = tickToDate(tick) || '';
+    const match = formatted.match(/(\d{4})/);
+    return match ? match[1] : formatted;
 }
 
 // Italicize the last word of the corp name in accent-gold for the masthead
@@ -1003,6 +964,9 @@ async function init() {
     }
     shard = shardRes.data;
     nation = nationRes?.data || null;
+    if (nationRes?.error) {
+        console.error('[corp-dashboard] nation fetch error:', nationRes.error.message);
+    }
     if (pnlRes?.error) {
         console.error('[corp-dashboard] pnl_history fetch error:', pnlRes.error.message);
     }
@@ -1026,7 +990,7 @@ async function init() {
         }
     }
 
-    renderMasthead();
+    renderMasthead(pnlHistory);
     renderFinancialRow(pnlHistory);
     renderOperatingIndicators(ownership, user.id);
     renderFooter();
@@ -1037,13 +1001,7 @@ async function init() {
     document.getElementById('page-content').style.display = '';
 }
 
-function renderMasthead() {
-    // Current in-game date + tick at top of masthead.
-    const dateStr = shard?.current_date || tickToDate(shard?.current_tick) || '—';
-    document.getElementById('cr-current-date').textContent = dateStr;
-    document.getElementById('cr-current-tick').textContent =
-        shard?.current_tick != null ? String(shard.current_tick) : '—';
-
+function renderMasthead(history) {
     const sector = faction.corp_sector || 'Unspecified Sector';
     document.getElementById('cr-sector').textContent = `— ${sector} —`;
 
@@ -1064,9 +1022,29 @@ function renderMasthead() {
     const debt = Number(faction.corp_debt) || 0;
     const valuation = cash - debt;
     document.getElementById('cr-ticker-price').textContent = fmtMoney(valuation);
-    // Delta vs last tick will land in Phase 2 once corp_pnl_history is wired.
-    document.getElementById('cr-ticker-change').textContent =
-        '— · valuation (cash − debt)';
+
+    // Valuation delta vs the prior tick. corp_pnl_history doesn't track debt
+    // historically, so we approximate prior-tick valuation as
+    // prev.cash_end − current_debt (assumes debt unchanged in the last tick,
+    // which is true unless a debt-affecting RPC ran between snapshots).
+    const prev = history?.length > 0 ? history[history.length - 1] : null;
+    const changeEl = document.getElementById('cr-ticker-change');
+    if (prev && Number.isFinite(Number(prev.cash_end))) {
+        const prevValuation = Number(prev.cash_end) - debt;
+        const delta = valuation - prevValuation;
+        if (delta === 0) {
+            changeEl.textContent = '— unchanged · valuation (cash − debt)';
+            changeEl.className = 'cr-ticker-change';
+        } else {
+            const arrow = delta > 0 ? '▲' : '▼';
+            const sign  = delta > 0 ? '+' : '';
+            changeEl.textContent = `${arrow} ${sign}${fmtMoney(delta)} · valuation (cash − debt)`;
+            changeEl.className = 'cr-ticker-change ' + (delta > 0 ? 'positive' : 'negative');
+        }
+    } else {
+        changeEl.textContent = '— valuation (cash − debt)';
+        changeEl.className = 'cr-ticker-change';
+    }
 }
 
 function renderFinancialRow(history) {
@@ -1213,11 +1191,11 @@ function renderPerfMeter(score) {
 function renderPerfCard(label, score) {
     const num = Number(score) || 0;
     const display = Number.isInteger(num) ? num.toString() : num.toFixed(1);
-    // Per-stat delta requires per-tick stat history (not yet stored).
-    // Show a neutral em-dash placeholder until a corp_stat_history table lands.
-    const deltaTag = `<span class="cr-delta cr-perf-trend-tag">— —</span>`;
+    // Per-stat delta would go in a top-right tag here, but it requires per-
+    // tick stat history (no corp_stat_history table exists). Omitted entirely
+    // rather than rendered as a meaningless "— —" placeholder; will return
+    // when the history table lands.
     return `<div class="cr-perf-card">
-        ${deltaTag}
         <div class="cr-perf-header">
             <div class="cr-perf-name">${escapeHtml(label)}</div>
             <div class="cr-perf-value">${escapeHtml(display)}<span class="cr-max">/10</span></div>
