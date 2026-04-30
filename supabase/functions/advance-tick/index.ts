@@ -4974,7 +4974,7 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
 const NATION_STAT_COLUMNS = [
     'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
     'trade_balance', 'currency_strength', 'foreign_investment', 'credit',
-    'income_tax', 'corporate_tax', 'sales_tax', 'tariffs',
+    'sales_tax', 'tariffs',
     'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
     'poverty_rate', 'income_inequality',
     'population', 'population_growth', 'median_age', 'eligible_voters', 'ethnic_diversity',
@@ -4983,27 +4983,27 @@ const NATION_STAT_COLUMNS = [
     'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
     'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
     'pollution', 'carbon_emissions',
-    'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
+    'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'incarceration_rate',
     'religiosity',
-    'stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence',
+    'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence',
     'freedom_index', 'polarization',
     'civil_unrest', 'terrorism', 'political_violence',
     'immigration', 'illegal_immigration', 'emigration',
     'international_reputation',
     'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability',
-    // Alpha refactor: 14 alpha-19 columns. cost_of_living + standard_of_living
-    // already in the legacy section above. budget was missing entirely from
-    // the legacy list (pre-existing oversight surfaced by the Phase 7g
-    // audit smoke test — translateStatEffect was returning null for any
-    // stat_effect entry with stat_key='budget'). Phase 9 drops the legacy
-    // entries above and leaves these + the pass-throughs (gdp_growth,
-    // debt, immigration, standard_of_living, cost_of_living) as the
-    // canonical 19.
+    // Alpha refactor: 23-stat alpha menu. Legacy section above stays
+    // populated through the dual-stat window — Phase 9 will drop the
+    // legacy-only entries. The alpha-23 set comprises the 5 pass-throughs
+    // (gdp_growth, debt, immigration, standard_of_living, cost_of_living)
+    // plus the 18 listed below. Phase 8.5.1 renamed authority →
+    // public_approval, goods → service_sector, crime_rate → crime; and
+    // restored income_tax / corporate_tax / corruption to the live set.
     'budget',
-    'control', 'unrest', 'authority', 'crown_authority',
+    'control', 'unrest', 'public_approval', 'crown_authority',
     'energy', 'health', 'education', 'power',
     'infrastructure', 'industry', 'farmland',
-    'goods', 'workforce',
+    'service_sector', 'workforce',
+    'income_tax', 'corporate_tax', 'crime', 'corruption',
 ];
 
 const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
@@ -5018,7 +5018,7 @@ const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 // INVERTED_ALIAS_KEYS — for those, the apply path also flips
 // up↔down / negates delta so the semantics survive the rename.
 const STAT_KEY_ALIASES = {
-    // ── Direct renames into the 19-column schema ──
+    // ── Direct renames into the alpha-23 schema ──
     civil_unrest:               'unrest',
     terrorism:                  'unrest',
     political_violence:         'unrest',
@@ -5043,13 +5043,21 @@ const STAT_KEY_ALIASES = {
     sanctions:                  'power',
     stability:                  'control',
     military_strength:          'control',
-    legitimacy:                 'authority',
     hospital_beds:              'health',
+
+    // ── Phase 8.5.1 renames ──
+    authority:                  'public_approval',
+    legitimacy:                 'public_approval',  // legitimacy already aliased to authority pre-8.5; cascade to new name
+    judicial_independence:      'public_approval',  // collapsed into public_approval per Phase 7H bills.js block
+    goods:                      'service_sector',
+    crime_rate:                 'crime',
 
     // ── Inverted (rename + flip direction; also see INVERTED_ALIAS_KEYS) ──
     unemployment:               'workforce',
 
     // ── DELETED stats — Phase 9 drops the column. Apply path skips. ──
+    // Phase 8.5.2 restored income_tax / corporate_tax / corruption /
+    // crime to the live alpha menu, so they're no longer in this list.
     religious:                  null,
     religiosity:                null,
     efficiency:                 null,
@@ -5060,7 +5068,6 @@ const STAT_KEY_ALIASES = {
     GDP:                        null,
     inflation:                  null,
     foreign_investment:         null,
-    income_tax:                 null,
     tariffs:                    null,
     credit:                     null,
     credit_rating:              null,
@@ -5073,7 +5080,6 @@ const STAT_KEY_ALIASES = {
     energy_generation:          null,
     fuel_prices:                null,
     pollution:                  null,
-    crime_rate:                 null,
     social_mobility:            null,
     benefits:                   null,
     population_growth:          null,
@@ -5082,7 +5088,6 @@ const STAT_KEY_ALIASES = {
     union_strength:             null,
     illegal_immigration:        null,
     emigration:                 null,
-    corporate_tax:              null,
     sales_tax:                  null,
     interest_rates:             null,
     poverty_rate:               null,
@@ -5096,9 +5101,7 @@ const STAT_KEY_ALIASES = {
     median_age:                 null,
     carbon_emissions:           null,
     renewable_energy_percentage: null,
-    corruption:                 null,
     press_freedom:              null,
-    judicial_independence:      null,
     incarceration_rate:         null,
     drug_use:                   null,
     ethnic_diversity:           null,
@@ -5165,21 +5168,24 @@ function translateStatEffect(eff) {
 
 /**
  * Stats where HIGHER values are better (increase = achievement).
- * Alpha 19-column schema. Excludes budget (flow, not 0-100), and debt
- * (which is in LOWER_IS_BETTER as a 0-100 burden score).
+ * Alpha 23-column schema. Excludes budget (flow, not 0-100), debt
+ * (LOWER_IS_BETTER), and the two tax stats (income_tax, corporate_tax)
+ * which are neutral player-controlled levers (high = revenue but
+ * dampens growth — UI/momentum logic shouldn't auto-flag either
+ * direction as good).
  */
 const STATS_HIGHER_IS_BETTER = [
     'gdp_growth', 'immigration', 'standard_of_living',
-    'control', 'authority', 'crown_authority',
+    'control', 'public_approval', 'crown_authority',
     'energy', 'health', 'education', 'power',
-    'infrastructure', 'industry', 'farmland', 'goods', 'workforce',
+    'infrastructure', 'industry', 'farmland', 'service_sector', 'workforce',
 ];
 
 /**
  * Stats where LOWER values are better (decrease = achievement).
  */
 const STATS_LOWER_IS_BETTER = [
-    'debt', 'unrest', 'cost_of_living',
+    'debt', 'unrest', 'cost_of_living', 'crime', 'corruption',
 ];
 
 // ==================== STAT DECAY CONFIGURATION ====================
@@ -5203,11 +5209,11 @@ const STAT_DECAY_CONFIG = {
     immigration:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     control:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
     unrest:            { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
-    authority:         { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
+    public_approval:   { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
     crown_authority:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     power:             { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     workforce:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    goods:             { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    service_sector:    { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
     standard_of_living: { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
@@ -5218,6 +5224,12 @@ const STAT_DECAY_CONFIG = {
     industry:           { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
     energy:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
     farmland:           { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    crime:              { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+    corruption:         { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+
+    // income_tax + corporate_tax intentionally NOT in the decay table —
+    // they're player-set levers (0-10 scale) that should hold the value
+    // the player chose until a new bill or admin change moves them.
 };
 
 // Validate decay config keys at module load
