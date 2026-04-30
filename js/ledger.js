@@ -7,11 +7,11 @@ let _supabase = null;
 let _state = null;
 let _allNations = [];
 let _selectedNationId = null;
-let _activeCategory = 'economy';
+let _activeCategory = 'fiscal';
 let _mode = 'single';
 let _compareIds = [];
 let _rankingStat = 'gdp_growth';
-let _rankingCategory = 'economy';
+let _rankingCategory = 'fiscal';
 let _searchTerm = '';
 
 function esc(str) {
@@ -69,24 +69,16 @@ function isHigherBetter(statId) {
     return null; // neutral
 }
 
-// Phase 9b: alpha-23 stat menu only. eligible_voters dropped (derived
-// from population × 0.65 at read time). Goods category preserved as a
-// custom trade-flow viewer.
+// Phase 9b: alpha-23 stat menu, organized into the 7 groups shared with
+// the admin/policy/crisis stat pickers. Goods is preserved as a custom
+// trade-flow viewer.
 const STAT_CATEGORIES = [
-    { id: 'economy', name: 'Economy', stats: [
+    { id: 'fiscal', name: 'Fiscal', stats: [
         { id: 'budget', name: 'Budget' },
         { id: 'debt', name: 'Debt' },
         { id: 'gdp_growth', name: 'GDP Growth' },
         { id: 'income_tax', name: 'Income Tax' },
         { id: 'corporate_tax', name: 'Corporate Tax' },
-        { id: 'cost_of_living', name: 'Cost of Living' },
-    ]},
-    { id: 'demographics', name: 'Demographics', stats: [
-        { id: 'population', name: 'Population' },
-        { id: 'immigration', name: 'Immigration' },
-    ]},
-    { id: 'society', name: 'Society', stats: [
-        { id: 'standard_of_living', name: 'Standard of Living' },
         { id: 'cost_of_living', name: 'Cost of Living' },
     ]},
     { id: 'governance', name: 'Governance', stats: [
@@ -95,9 +87,18 @@ const STAT_CATEGORIES = [
         { id: 'crown_authority', name: 'Crown Authority' },
         { id: 'corruption', name: 'Corruption' },
     ]},
-    { id: 'security', name: 'Security', stats: [
+    { id: 'stability', name: 'Stability', stats: [
         { id: 'unrest', name: 'Unrest' },
         { id: 'crime', name: 'Crime' },
+    ]},
+    { id: 'population', name: 'Population', stats: [
+        { id: 'population', name: 'Population' },
+        { id: 'immigration', name: 'Immigration' },
+    ]},
+    { id: 'wellbeing', name: 'Wellbeing', stats: [
+        { id: 'health', name: 'Health' },
+        { id: 'education', name: 'Education' },
+        { id: 'standard_of_living', name: 'Standard of Living' },
     ]},
     { id: 'productive', name: 'Productive Base', stats: [
         { id: 'infrastructure', name: 'Infrastructure' },
@@ -106,10 +107,6 @@ const STAT_CATEGORIES = [
         { id: 'service_sector', name: 'Service Sector' },
         { id: 'workforce', name: 'Workforce' },
         { id: 'energy', name: 'Energy' },
-    ]},
-    { id: 'wellbeing', name: 'Wellbeing', stats: [
-        { id: 'health', name: 'Health' },
-        { id: 'education', name: 'Education' },
     ]},
     { id: 'international', name: 'International', stats: [
         { id: 'power', name: 'Power' },
