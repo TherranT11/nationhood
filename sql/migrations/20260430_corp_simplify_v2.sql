@@ -19,12 +19,13 @@ DROP TABLE IF EXISTS corp_equipment_deliveries CASCADE;
 DROP TABLE IF EXISTS corp_equipment CASCADE;
 DROP TABLE IF EXISTS corp_warehouse CASCADE;
 
+DROP TABLE IF EXISTS available_properties CASCADE;
+DROP TABLE IF EXISTS property_catalog CASCADE;
 DROP TABLE IF EXISTS corp_properties CASCADE;
 DROP TABLE IF EXISTS corp_permits CASCADE;
 DROP TABLE IF EXISTS construction_permits CASCADE;
--- construction_contracts is a parallel/superseded contract table that depends
--- on dead materials/equipment/workforce systems. Killing it; corp_contracts is
--- the surviving contract table. (FLAG for review: confirm this is desired.)
+-- construction_contracts is a parallel contract table that depends on dead
+-- materials/equipment/workforce systems. corp_contracts is the surviving one.
 DROP TABLE IF EXISTS construction_contracts CASCADE;
 DROP TABLE IF EXISTS permit_policies CASCADE;
 DROP TABLE IF EXISTS project_permit_requirements CASCADE;
@@ -51,11 +52,32 @@ DROP TABLE IF EXISTS health_insurance_tiers CASCADE;
 DROP TABLE IF EXISTS health_insurance_pools CASCADE;
 DROP TABLE IF EXISTS health_insurance_policies CASCADE;
 
--- Drop dead RPCs
-DROP FUNCTION IF EXISTS declare_corp_bankruptcy(uuid) CASCADE;
-DROP FUNCTION IF EXISTS deliver_vessel_order(uuid) CASCADE;
-DROP FUNCTION IF EXISTS abandon_construction_contract(uuid) CASCADE;
-DROP FUNCTION IF EXISTS release_stuck_corp_equipment() CASCADE;
+-- Drop dead RPCs by name (signature-agnostic, handles overloads).
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT n.nspname, p.proname, pg_get_function_identity_arguments(p.oid) AS args
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname IN (
+        'declare_corp_bankruptcy',
+        'deliver_vessel_order',
+        'abandon_construction_contract',
+        'release_stuck_corp_equipment',
+        'buy_bond',
+        'sell_bond',
+        'dispute_bond',
+        'call_loan',
+        'claim_loan',
+        'foreclose_loan',
+        'pay_loan',
+        'project_permit_requirements'
+      )
+  LOOP
+    EXECUTE format('DROP FUNCTION IF EXISTS %I.%I(%s) CASCADE', r.nspname, r.proname, r.args);
+  END LOOP;
+END $$;
 
 -- ─────────────────────────────────────────────────────────────
 -- 2. Drop dead columns on factions (corp side)
@@ -66,9 +88,6 @@ ALTER TABLE factions
   DROP COLUMN IF EXISTS corp_skilled_workforce,
   DROP COLUMN IF EXISTS corp_innovative_workforce,
   DROP COLUMN IF EXISTS corp_operational_efficiency;
-
--- Drop tick processor column for vessels/equipment cycles (corp tick stays)
--- (No-op if not present.)
 
 -- ─────────────────────────────────────────────────────────────
 -- 3. Add new persisted stats to factions
@@ -118,6 +137,11 @@ ALTER TABLE factions
 ALTER TABLE factions
   ALTER COLUMN corp_reputation SET DEFAULT 5.0;
 
+UPDATE factions SET corp_reputation = 5.0 WHERE corp_reputation IS NULL;
+
+ALTER TABLE factions
+  ALTER COLUMN corp_reputation SET NOT NULL;
+
 DO $$ BEGIN
   ALTER TABLE factions
     ADD CONSTRAINT corp_reputation_range CHECK (corp_reputation BETWEEN 0 AND 10);
@@ -156,14 +180,30 @@ CREATE TABLE IF NOT EXISTS corp_ownership (
 CREATE INDEX IF NOT EXISTS idx_corp_ownership_corp ON corp_ownership(corp_id);
 CREATE INDEX IF NOT EXISTS idx_corp_ownership_holder ON corp_ownership(holder_type, holder_id);
 
--- Sum-to-100 enforcement via deferred trigger (allows transactional reshuffles)
+-- Sum-to-100 enforcement via deferred trigger (allows transactional reshuffles).
+-- Skips the check if the corp itself no longer exists (FK CASCADE delete) or
+-- the corp has 0 ownership rows left (corp being dissolved). This avoids
+-- blocking corp deletion when CASCADE empties the table for that corp_id.
 CREATE OR REPLACE FUNCTION corp_ownership_sum_check() RETURNS TRIGGER AS $$
 DECLARE
   v_total NUMERIC;
   v_corp  UUID;
+  v_count INT;
 BEGIN
   v_corp := COALESCE(NEW.corp_id, OLD.corp_id);
-  SELECT COALESCE(SUM(pct), 0) INTO v_total FROM corp_ownership WHERE corp_id = v_corp;
+
+  IF NOT EXISTS (SELECT 1 FROM factions WHERE id = v_corp) THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT COUNT(*), COALESCE(SUM(pct), 0)
+    INTO v_count, v_total
+    FROM corp_ownership WHERE corp_id = v_corp;
+
+  IF v_count = 0 THEN
+    RETURN NULL;  -- corp dissolved; ownership cleared deliberately
+  END IF;
+
   IF v_total <> 100 THEN
     RAISE EXCEPTION 'corp_ownership for corp % must sum to 100, got %', v_corp, v_total;
   END IF;
@@ -177,16 +217,22 @@ CREATE CONSTRAINT TRIGGER corp_ownership_sum_trigger
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION corp_ownership_sum_check();
 
+-- RLS: read-all (ownership stakes are public knowledge); writes are gated to
+-- service_role / SECURITY DEFINER RPCs (no INSERT/UPDATE/DELETE policy = deny).
 ALTER TABLE corp_ownership ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "corp_ownership_read_all" ON corp_ownership;
 CREATE POLICY "corp_ownership_read_all" ON corp_ownership FOR SELECT USING (true);
 
--- Backfill: every existing corp gets 100% to its linked_user_id (player) as 'player'
+-- Backfill: every corporation gets 100% ownership seeded.
+-- Player-owned corps (linked_user_id present) → 'player' holder.
+-- NPC/state-owned corps → 'state' holder (anonymous).
 INSERT INTO corp_ownership (corp_id, holder_type, holder_id, pct)
-SELECT id, 'player', linked_user_id, 100
+SELECT id,
+       CASE WHEN linked_user_id IS NOT NULL THEN 'player' ELSE 'state' END,
+       linked_user_id,
+       100
 FROM factions
 WHERE faction_type = 'corporation'
-  AND linked_user_id IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM corp_ownership o WHERE o.corp_id = factions.id);
 
 -- ─────────────────────────────────────────────────────────────
@@ -207,6 +253,8 @@ CREATE TABLE IF NOT EXISTS corp_pnl_history (
 
 CREATE INDEX IF NOT EXISTS idx_corp_pnl_history_tick ON corp_pnl_history(tick);
 
+-- RLS: read-all (P&L is published to all viewers); writes via tick processor
+-- (SECURITY DEFINER) only — no INSERT/UPDATE/DELETE policy = deny by default.
 ALTER TABLE corp_pnl_history ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "corp_pnl_history_read_all" ON corp_pnl_history;
 CREATE POLICY "corp_pnl_history_read_all" ON corp_pnl_history FOR SELECT USING (true);
