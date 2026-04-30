@@ -61,23 +61,23 @@ export function calculateTier(growth) {
 export const TIER_EFFECTS = {
     1: {
         resolution: 'FRIVOLOUS SUIT',
-        filer: { momentum: -5, governance: -2 },
-        gov: { momentum: 3, governance: 1 },
+        filer: { momentum: -5 },
+        gov: { momentum: 3 },
     },
     2: {
         resolution: 'PARTIAL WIN',
-        filer: { momentum: 3, governance: 0 },
-        gov: { momentum: -2, governance: -2 },
+        filer: { momentum: 3 },
+        gov: { momentum: -2 },
     },
     3: {
         resolution: 'MAJOR WIN',
-        filer: { momentum: 7, governance: 2 },
-        gov: { momentum: -5, governance: -5 },
+        filer: { momentum: 7 },
+        gov: { momentum: -5 },
     },
     4: {
         resolution: 'DEVASTATING WIN',
-        filer: { momentum: 12, governance: 5 },
-        gov: { momentum: -10, governance: -8 },
+        filer: { momentum: 12 },
+        gov: { momentum: -10 },
     },
 };
 
@@ -193,9 +193,11 @@ export async function fileLawsuit(supabase, params) {
             status: 'active',
             resolution: null,
             momentum_effect: effects.filer.momentum,
-            governance_effect: effects.filer.governance,
             gov_momentum_effect: effects.gov.momentum,
-            gov_governance_effect: effects.gov.governance,
+            // KNOWN ORPHAN: lawsuits.governance_effect and gov_governance_effect
+            // columns still exist in the DB (added by 20260413_agitator_and_lawsuits.sql)
+            // but the Governance score system was removed. They default to 0 and
+            // nothing reads them. A future migration can drop them.
         })
         .select('*')
         .single();
