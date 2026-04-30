@@ -95,6 +95,13 @@ END $$;
 -- ─────────────────────────────────────────────────────────────
 -- 2. Drop dead columns on factions (corp side)
 -- ─────────────────────────────────────────────────────────────
+
+-- Drop the workforce-audit trigger and its function before dropping the
+-- columns it depends on (corp_general/skilled/innovative_workforce). The
+-- audit table itself is dropped above; this is the trigger that wrote to it.
+DROP TRIGGER IF EXISTS trg_log_workforce_change ON factions;
+DROP FUNCTION IF EXISTS log_workforce_change() CASCADE;
+
 ALTER TABLE factions
   DROP COLUMN IF EXISTS corp_subsector,
   DROP COLUMN IF EXISTS corp_general_workforce,
