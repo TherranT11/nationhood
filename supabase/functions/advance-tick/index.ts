@@ -3063,11 +3063,14 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         var svcNet = (actualImports[n.id]['services_finance'] || 0) - (actualExports[n.id]['services_finance'] || 0);
         if (gdp > 0) {
             var displacementRatio = (mfgNet + svcNet) / gdp;
-            // Inverted vs unemployment: positive ratio = workforce nudge DOWN.
-            var unemploymentNudge = Math.max(-0.5, Math.min(0.5, -displacementRatio * 100));
-            if (Math.abs(unemploymentNudge) >= 0.01) {
-                var currentUnemployment = Number(n.workforce ?? 50);
-                nationUpdates.workforce = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 10) / 10;
+            // Inverted vs the legacy unemployment nudge: positive ratio
+            // (net imports outcompeting domestic producers) = workforce
+            // nudge DOWN. Variable names + writes use the alpha-19
+            // workforce column directly.
+            var workforceNudge = Math.max(-0.5, Math.min(0.5, -displacementRatio * 100));
+            if (Math.abs(workforceNudge) >= 0.01) {
+                var currentWorkforce = Number(n.workforce ?? 50);
+                nationUpdates.workforce = Math.round(Math.max(0, Math.min(100, currentWorkforce + workforceNudge)) * 10) / 10;
             }
         }
 
