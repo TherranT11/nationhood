@@ -1211,14 +1211,15 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
     // Check if dissolving after a recent no-confidence vote (authoritarian overreach)
     const voncPenalty = nation.last_vonc_tick && (currentTick - nation.last_vonc_tick) <= 6;
 
-    // 1. Stability -3 (+ legitimacy -5 if post-vonc)
-    const newStability = Math.max(0, Number(nation.control ?? 50) - 3);
+    // 1. Control -3 (+ authority -5 if post-vonc).
+    // Alpha refactor: stability → control, legitimacy → authority.
+    const newControl = Math.max(0, Number(nation.control ?? 50) - 3);
     const nationUpdate = {
-        stability: newStability,
+        control: newControl,
         last_dissolution_tick: currentTick
     };
     if (voncPenalty) {
-        nationUpdate.legitimacy = Math.max(0, Number(nation.authority ?? 50) - 5);
+        nationUpdate.authority = Math.max(0, Number(nation.authority ?? 50) - 5);
     }
     await supabase.from('nations').update(nationUpdate).eq('id', nationId);
 

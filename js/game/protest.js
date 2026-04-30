@@ -485,17 +485,19 @@ export function computeTierEffects(tier, opts = {}) {
  * @returns {object} stat deltas to apply
  */
 export function computeTier6CrisisEffects(ticksActive, publicAddressThisTick) {
+    // Alpha refactor: civil_unrest + political_violence both → unrest
+    // (sum the per-tick deltas at config time); foreign_investment
+    // dropped (column gone with no replacement).
     const effects = {
         gov_approval: PROTEST_CONFIG.TIER6_GOV_APPROVAL_PER_TICK,
-        civil_unrest: PROTEST_CONFIG.TIER6_CIVIL_UNREST_PER_TICK,
+        unrest: PROTEST_CONFIG.TIER6_CIVIL_UNREST_PER_TICK
+              + PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK,
         gdp_growth: PROTEST_CONFIG.TIER6_GDP_GROWTH_PER_TICK,
-        foreign_investment: PROTEST_CONFIG.TIER6_FOREIGN_INVESTMENT_PER_TICK,
-        political_violence: PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK,
     };
 
-    // Public Address reduces civil unrest accumulation by 1 that tick
+    // Public Address reduces unrest accumulation by 1 that tick
     if (publicAddressThisTick) {
-        effects.civil_unrest = Math.max(0, effects.civil_unrest - 1);
+        effects.unrest = Math.max(0, effects.unrest - 1);
     }
 
     return effects;
@@ -507,17 +509,18 @@ export function computeTier6CrisisEffects(ticksActive, publicAddressThisTick) {
  * @returns {object} stat deltas to apply
  */
 export function computeTier7CrisisEffects(publicAddressThisTick) {
+    // Alpha refactor: see computeTier6CrisisEffects above for the
+    // collapse rationale.
     const effects = {
         gov_approval: PROTEST_CONFIG.TIER7_GOV_APPROVAL_PER_TICK,
-        civil_unrest: PROTEST_CONFIG.TIER7_CIVIL_UNREST_PER_TICK,
+        unrest: PROTEST_CONFIG.TIER7_CIVIL_UNREST_PER_TICK
+              + PROTEST_CONFIG.TIER7_POLITICAL_VIOLENCE_PER_TICK,
         gdp_growth: PROTEST_CONFIG.TIER7_GDP_GROWTH_PER_TICK,
-        foreign_investment: PROTEST_CONFIG.TIER7_FOREIGN_INVESTMENT_PER_TICK,
-        political_violence: PROTEST_CONFIG.TIER7_POLITICAL_VIOLENCE_PER_TICK,
     };
 
-    // Public Address reduces civil unrest accumulation by 1
+    // Public Address reduces unrest accumulation by 1
     if (publicAddressThisTick) {
-        effects.civil_unrest = Math.max(0, effects.civil_unrest - 1);
+        effects.unrest = Math.max(0, effects.unrest - 1);
     }
 
     return effects;

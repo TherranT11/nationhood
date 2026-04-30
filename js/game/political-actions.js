@@ -373,7 +373,10 @@ export const RALLY_OUTCOMES = [
 
 /**
  * Compute outcome weights for a rally targeting a voter bloc.
- * Weights shift based on approval, crises, polarization, civil unrest, and recent rallies.
+ * Weights shift based on approval, crises, unrest, and recent rallies.
+ * Alpha refactor: polarization branch retired (column deleted; the
+ * divisive/counter swing it triggered is functionally absorbed by the
+ * existing high-unrest branch below).
  */
 export function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationState) {
     const weights = { rousing: 20, solid: 38, low: 15, gaffe: 12, divisive: 8, counter: 5 };
@@ -389,11 +392,6 @@ export function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationStat
     if (nationState.crisisCount > 0) {
         weights.gaffe += 6; weights.divisive += 4; weights.counter += 10;
         weights.rousing -= 8; weights.solid -= 6;
-    }
-
-    // High polarization
-    if (nationState.polarization > 60) {
-        weights.divisive += 6; weights.counter += 4; weights.solid -= 4;
     }
 
     // Rallied recently → stale material
@@ -494,10 +492,12 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     const targetApproval = 50;
 
     // ── 5. Compute weights and roll outcome ──
+    // Alpha refactor: polarization + stability fields dropped from
+    // nationState — polarization column gone, stability was set but
+    // never read. civilUnrest reads from `nation.unrest` (alpha-19
+    // equivalent of the legacy civil_unrest column).
     const nationState = {
-        polarization: 0,
         civilUnrest: nation?.unrest || 0,
-        stability: nation?.control || 50,
         crisisCount: crisisCount || 0,
     };
     const weights = getRallyOutcomeWeights(targetApproval, ralliedRecently, nationState);
@@ -962,10 +962,12 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
         effects.push({ label: selfLabel, value: selfDelta });
     }
 
-    // Polarization
+    // Polarization mechanic retired by alpha stats refactor (column
+    // deleted with no replacement). The outcome.polarization signal
+    // from political-action templates still flows in but no longer
+    // writes to a column. Effects record retained so historical
+    // event_log shows the intended impact.
     if (outcome.polarization > 0) {
-        const newPol = Math.min(100, 0 + outcome.polarization);
-        await supabase.from('nations').update({ polarization: newPol }).eq('id', nationId);
         effects.push({ label: 'Polarization', value: outcome.polarization });
     }
 

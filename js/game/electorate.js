@@ -34,42 +34,58 @@ import { computeEngagementScores } from './engagement.js';
 export const ISSUE_DEFS = {
     cost_of_living: {
         label: 'Cost of Living',
-        stats: ['cost_of_living', 'inflation', 'housing_affordability', 'fuel_prices'],
+        // Alpha refactor: inflation/housing_affordability/fuel_prices columns
+        // dropped; cost_of_living absorbs the inflation/fuel signals.
+        stats: ['cost_of_living'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     immigration: {
         label: 'Immigration',
-        stats: ['immigration', 'illegal_immigration', 'emigration', 'ethnic_diversity'],
+        // Alpha refactor: illegal_immigration/emigration/ethnic_diversity dropped.
+        stats: ['immigration'],
         axes: ['globalism_nationalism', 'security_freedom'],
     },
     healthcare: {
         label: 'Healthcare',
-        stats: ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan'],
+        // Alpha refactor: healthcare_*, beds_per_100k, lifespan all collapsed
+        // into the unified `health` column.
+        stats: ['health'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     unemployment: {
         label: 'Unemployment',
-        stats: ['unemployment', 'labor_force_participation', 'minimum_wage', 'poverty_rate'],
+        // Alpha refactor: unemployment/labor_force_participation → workforce
+        // (inversion handled via statDirectionSign); minimum_wage dropped;
+        // poverty_rate → standard_of_living (inverted).
+        stats: ['workforce', 'standard_of_living'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     corruption: {
         label: 'Corruption',
-        stats: ['corruption', 'judicial_independence', 'press_freedom', 'efficiency'],
+        // Alpha refactor: corruption/press_freedom/efficiency dropped;
+        // judicial_independence → authority.
+        stats: ['authority'],
         axes: ['tradition_progress', 'security_freedom'],
     },
     education: {
         label: 'Education',
-        stats: ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
+        // Alpha refactor: literacy/higher_education/education_accessibility/
+        // academic_immigration all collapsed into `education`.
+        stats: ['education'],
         axes: ['tradition_progress', 'individualism_collectivism'],
     },
     infrastructure: {
         label: 'Infrastructure',
-        stats: ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation'],
+        // Alpha refactor: physical_infrastructure/digital_infrastructure/
+        // rail_network → infrastructure; energy_generation → energy.
+        stats: ['infrastructure', 'energy'],
         axes: ['tradition_progress', 'globalism_nationalism'],
     },
     climate: {
         label: 'Climate & Environment',
-        stats: ['pollution', 'carbon_emissions', 'renewable_energy_percentage', 'arable_land'],
+        // Alpha refactor: pollution/carbon_emissions/renewable_energy_percentage
+        // dropped; arable_land → farmland.
+        stats: ['farmland'],
         axes: ['tradition_progress', 'globalism_nationalism'],
     },
 };
@@ -91,39 +107,48 @@ export const ISSUE_IDS = Object.keys(ISSUE_DEFS);
  *   - weight: how strongly this stat affects the band (0-1)
  *   - direction: +1 means higher stat → larger band, -1 means higher stat → smaller band
  */
+// Alpha refactor: many of the legacy stats that drove demographic shifts
+// (population_growth, median_age, lifespan, income_inequality, social_mobility,
+// religiosity, ethnic_diversity, housing_affordability, ...) were collapsed
+// or dropped. The translations below remap surviving signals onto the 19
+// alpha columns; rows that referenced only dropped stats become empty arrays
+// so the band falls back to its schema default.
+//
+// Inversions:
+//   poverty_rate (high = bad) → standard_of_living (high = good): flip direction
 const DEMOGRAPHIC_STAT_MAP = {
     age: {
-        age_18_29:  [{ stat: 'population_growth', weight: 0.6, direction: 1 }, { stat: 'median_age', weight: 0.5, direction: -1 }],
-        age_30_44:  [{ stat: 'higher_education', weight: 0.3, direction: 1 }],
-        age_45_64:  [{ stat: 'urbanization', weight: 0.2, direction: 1 }],
-        age_65plus: [{ stat: 'lifespan', weight: 0.5, direction: 1 }, { stat: 'median_age', weight: 0.5, direction: 1 }],
+        age_18_29:  [],
+        age_30_44:  [{ stat: 'education', weight: 0.3, direction: 1 }],
+        age_45_64:  [{ stat: 'workforce', weight: 0.2, direction: 1 }],
+        age_65plus: [{ stat: 'health', weight: 0.5, direction: 1 }],
     },
     income: {
-        income_low:    [{ stat: 'poverty_rate', weight: 0.6, direction: 1 }, { stat: 'income_inequality', weight: 0.4, direction: 1 }],
-        income_middle: [{ stat: 'social_mobility', weight: 0.4, direction: 1 }],
-        income_upper:  [{ stat: 'gdp_growth', weight: 0.3, direction: 1 }, { stat: 'higher_education', weight: 0.3, direction: 1 }],
-        income_high:   [{ stat: 'gdp_growth', weight: 0.2, direction: 1 }, { stat: 'income_inequality', weight: 0.3, direction: 1 }],
+        income_low:    [{ stat: 'standard_of_living', weight: 0.6, direction: -1 }],
+        income_middle: [],
+        income_upper:  [{ stat: 'gdp_growth', weight: 0.3, direction: 1 }, { stat: 'education', weight: 0.3, direction: 1 }],
+        income_high:   [{ stat: 'gdp_growth', weight: 0.2, direction: 1 }],
     },
     education: {
-        edu_nodegree: [{ stat: 'literacy', weight: 0.5, direction: -1 }, { stat: 'education_accessibility', weight: 0.4, direction: -1 }],
-        edu_undergrad: [{ stat: 'higher_education', weight: 0.5, direction: 1 }, { stat: 'education_accessibility', weight: 0.3, direction: 1 }],
-        edu_postgrad:  [{ stat: 'higher_education', weight: 0.5, direction: 1 }, { stat: 'academic_immigration', weight: 0.3, direction: 1 }],
+        edu_nodegree: [{ stat: 'education', weight: 0.5, direction: -1 }],
+        edu_undergrad: [{ stat: 'education', weight: 0.5, direction: 1 }],
+        edu_postgrad:  [{ stat: 'education', weight: 0.5, direction: 1 }],
     },
     urbanization: {
-        urban_rural:     [{ stat: 'urbanization', weight: 0.6, direction: -1 }, { stat: 'arable_land', weight: 0.3, direction: 1 }],
-        urban_smalltown: [{ stat: 'urbanization', weight: 0.2, direction: -1 }],
-        urban_suburban:  [{ stat: 'urbanization', weight: 0.3, direction: 1 }, { stat: 'housing_affordability', weight: 0.2, direction: -1 }],
-        urban_urban:     [{ stat: 'urbanization', weight: 0.6, direction: 1 }],
+        urban_rural:     [{ stat: 'workforce', weight: 0.6, direction: -1 }, { stat: 'farmland', weight: 0.3, direction: 1 }],
+        urban_smalltown: [{ stat: 'workforce', weight: 0.2, direction: -1 }],
+        urban_suburban:  [{ stat: 'workforce', weight: 0.3, direction: 1 }],
+        urban_urban:     [{ stat: 'workforce', weight: 0.6, direction: 1 }],
     },
     religion: {
-        religion_secular:  [{ stat: 'religiosity', weight: 0.7, direction: -1 }, { stat: 'higher_education', weight: 0.2, direction: 1 }],
+        religion_secular:  [{ stat: 'education', weight: 0.2, direction: 1 }],
         religion_moderate: [],
-        religion_devout:   [{ stat: 'religiosity', weight: 0.7, direction: 1 }],
+        religion_devout:   [],
     },
     nativity: {
-        nativity_majority:  [{ stat: 'ethnic_diversity', weight: 0.5, direction: -1 }, { stat: 'immigration', weight: 0.3, direction: -1 }],
-        nativity_minority:  [{ stat: 'ethnic_diversity', weight: 0.6, direction: 1 }],
-        nativity_immigrant: [{ stat: 'immigration', weight: 0.5, direction: 1 }, { stat: 'ethnic_diversity', weight: 0.2, direction: 1 }],
+        nativity_majority:  [{ stat: 'immigration', weight: 0.3, direction: -1 }],
+        nativity_minority:  [],
+        nativity_immigrant: [{ stat: 'immigration', weight: 0.5, direction: 1 }],
     },
 };
 

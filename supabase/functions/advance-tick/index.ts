@@ -12052,27 +12052,22 @@ async function enactPresidentialTermLength(supabase, bill, currentTick) {
         console.error(`[enactFoundationalBill] Failed to update presidential_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
     }
 
-    // Apply mechanical effects based on whether terms got shorter or longer
+    // Apply mechanical effects based on whether terms got shorter or longer.
+    // Alpha refactor: polarization + political_engagement columns are gone
+    // (the latter never existed on nations); legitimacy → authority,
+    // stability → control. Term-shortened path now writes nothing column-
+    // wise but the log line is kept for event traceability.
     if (newTermTicks < oldTermTicks) {
-        // Shortening terms — more elections, more polarization & engagement
-        const newPol = Math.min(100, 0 + 2);
-        const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
-        const { error: shortErr } = await supabase.from('nations').update({
-            polarization: newPol,
-            political_engagement: newEng
-        }).eq('id', bill.nation_id);
-        if (shortErr) console.error(`[enactFoundationalBill] Term shortened stat update failed:`, shortErr.message);
-        else console.log(`[enactFoundationalBill] Term shortened: polarization +2, political_engagement +3`);
+        console.log(`[enactFoundationalBill] Term shortened (polarization + political_engagement effects retired by alpha refactor)`);
     } else if (newTermTicks > oldTermTicks) {
-        // Extending terms — less accountability, more stability
-        const newLegitimacy = Math.max(0, (nation?.authority || 50) - 3);
-        const newStability = Math.min(100, (nation?.control || 50) + 2);
+        const newAuthority = Math.max(0, (nation?.authority || 50) - 3);
+        const newControl   = Math.min(100, (nation?.control || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
-            legitimacy: newLegitimacy,
-            stability: newStability
+            authority: newAuthority,
+            control:   newControl
         }).eq('id', bill.nation_id);
         if (extErr) console.error(`[enactFoundationalBill] Term extended stat update failed:`, extErr.message);
-        else console.log(`[enactFoundationalBill] Term extended: legitimacy -3, stability +2`);
+        else console.log(`[enactFoundationalBill] Term extended: authority -3, control +2`);
     }
 
     // If no imminent election, reschedule the next presidential election with the new term length
@@ -12150,27 +12145,20 @@ async function enactLegislativeTermLength(supabase, bill, currentTick) {
         console.error(`[enactFoundationalBill] Failed to update parliamentary_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
     }
 
-    // Apply mechanical effects based on whether terms got shorter or longer
+    // Apply mechanical effects based on whether terms got shorter or longer.
+    // Alpha refactor: see the parallel presidential-term block above for
+    // rationale (polarization + political_engagement retired).
     if (newParlTermTicks < oldParlTermTicks) {
-        // Shortening terms — more elections, more polarization & engagement
-        const newPol = Math.min(100, 0 + 2);
-        const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
-        const { error: shortErr } = await supabase.from('nations').update({
-            polarization: newPol,
-            political_engagement: newEng
-        }).eq('id', bill.nation_id);
-        if (shortErr) console.error(`[enactFoundationalBill] Legislative term shortened stat update failed:`, shortErr.message);
-        else console.log(`[enactFoundationalBill] Legislative term shortened: polarization +2, political_engagement +3`);
+        console.log(`[enactFoundationalBill] Legislative term shortened (polarization + political_engagement effects retired by alpha refactor)`);
     } else if (newParlTermTicks > oldParlTermTicks) {
-        // Extending terms — less accountability, more stability
-        const newLegitimacy = Math.max(0, (nation?.authority || 50) - 3);
-        const newStability = Math.min(100, (nation?.control || 50) + 2);
+        const newAuthority = Math.max(0, (nation?.authority || 50) - 3);
+        const newControl   = Math.min(100, (nation?.control || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
-            legitimacy: newLegitimacy,
-            stability: newStability
+            authority: newAuthority,
+            control:   newControl
         }).eq('id', bill.nation_id);
         if (extErr) console.error(`[enactFoundationalBill] Legislative term extended stat update failed:`, extErr.message);
-        else console.log(`[enactFoundationalBill] Legislative term extended: legitimacy -3, stability +2`);
+        else console.log(`[enactFoundationalBill] Legislative term extended: authority -3, control +2`);
     }
 
     // NOTE: We do NOT reschedule the current parliamentary election.
@@ -12220,18 +12208,19 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
         .limit(1)
         .maybeSingle();
 
-    // Apply mechanical effects
+    // Apply mechanical effects. Alpha refactor: legitimacy → authority,
+    // press_freedom + judicial_independence dropped (columns gone — both
+    // were positive-democracy signals already largely captured by
+    // authority).
     if (newTermLimit === 0) {
         // Removing term limits
-        let legitimacyPenalty = 6;
-        const newLegitimacy = Math.max(0, (nation?.authority || 50) - legitimacyPenalty);
+        let authorityPenalty = 6;
+        const newAuthority = Math.max(0, (nation?.authority || 50) - authorityPenalty);
         const newUnrest = Math.min(100, (nation?.unrest || 0) + 4);
-        const updates = {
-            legitimacy: newLegitimacy,
-            civil_unrest: newUnrest
-        };
-        // (regime_health effect removed — Phase 0)
-        const { error: removeErr } = await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+        const { error: removeErr } = await supabase.from('nations').update({
+            authority: newAuthority,
+            unrest:    newUnrest
+        }).eq('id', bill.nation_id);
         if (removeErr) console.error(`[enactFoundationalBill] Failed to update stats for term limit removal:`, removeErr.message);
 
         // Opposition parties gain momentum
@@ -12250,27 +12239,19 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
             }
         }
 
-        // Extra polarization if sitting president has served 2+ terms
-        if (activePresident && (activePresident.terms_served || 1) >= 2) {
-            const newPol = Math.min(100, 0 + 10);
-            const { error: polErr } = await supabase.from('nations').update({ polarization: newPol }).eq('id', bill.nation_id);
-            if (polErr) console.error(`[enactFoundationalBill] Polarization update failed:`, polErr.message);
-            else console.log(`[enactFoundationalBill] Sitting president has ${activePresident.terms_served} terms — polarization +10`);
-        }
+        // Polarization escalation for entrenched presidents retired by
+        // alpha refactor (column gone with no replacement).
 
-        console.log(`[enactFoundationalBill] Term limits removed: legitimacy -${legitimacyPenalty}, civil_unrest +4, opposition momentum +8`);
+        console.log(`[enactFoundationalBill] Term limits removed: authority -${authorityPenalty}, unrest +4, opposition momentum +8`);
     } else if (oldEffectiveLimit === null || newTermLimit < oldEffectiveLimit) {
-        // Adding or tightening term limits
-        const newLegitimacy = Math.min(100, (nation?.authority || 50) + 5);
-        const newPressFreedom = Math.min(100, 50 + 2);
-        const newJudicialInd = Math.min(100, (nation?.authority || 50) + 2);
+        // Adding or tightening term limits — only the authority bump
+        // survives; press_freedom + judicial_independence retired.
+        const newAuthority = Math.min(100, (nation?.authority || 50) + 5);
         const { error: tightenErr } = await supabase.from('nations').update({
-            legitimacy: newLegitimacy,
-            press_freedom: newPressFreedom,
-            judicial_independence: newJudicialInd
+            authority: newAuthority
         }).eq('id', bill.nation_id);
         if (tightenErr) console.error(`[enactFoundationalBill] Term limits tighten stat update failed:`, tightenErr.message);
-        else console.log(`[enactFoundationalBill] Term limits tightened to ${newTermLimit}: legitimacy +5, press_freedom +2, judicial_independence +2`);
+        else console.log(`[enactFoundationalBill] Term limits tightened to ${newTermLimit}: authority +5`);
     }
 
     const limitText = newTermLimit === 0 ? 'No Term Limits' : `${newTermLimit} Term${newTermLimit !== 1 ? 's' : ''}`;
@@ -12628,24 +12609,23 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
         console.error(`[enactFoundationalBill] Failed to update hos_election_method for nation ${bill.nation_id}:`, nationErr.message);
     }
 
-    // Apply mechanical effects based on method
+    // Apply mechanical effects based on method. Alpha refactor:
+    // stability → control, legitimacy → authority; polarization +
+    // political_engagement effects retired (columns gone).
     if (newMethod === 'hereditary') {
-        // Constitutional monarchy: stability +5, legitimacy -5
-        const newStability = Math.min(100, (nation?.control || 50) + 5);
-        const newLegitimacy = Math.max(0, (nation?.authority || 50) - 5);
-        const statUpdate = { stability: newStability, legitimacy: newLegitimacy };
+        const newControl   = Math.min(100, (nation?.control || 50) + 5);
+        const newAuthority = Math.max(0, (nation?.authority || 50) - 5);
+        const statUpdate = { control: newControl, authority: newAuthority };
 
         const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
         if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
-        else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5`);
+        else console.log(`[enactFoundationalBill] Constitutional monarchy established: control +5, authority -5`);
     } else if (newMethod === 'direct_vote') {
-        // Direct vote: legitimacy +3, political_engagement +3, polarization +2
+        // Direct vote: authority +3 (engagement + polarization retired)
         // AND transition Parliamentary → Presidential
         const wasParliamentary = !nation?.government_type?.toLowerCase().includes('president');
         const statUpdate = {
-            legitimacy: Math.min(100, (nation?.authority || 50) + 3),
-            political_engagement: Math.min(100, (nation?.political_engagement || 50) + 3),
-            polarization: Math.min(100, 0 + 2)
+            authority: Math.min(100, (nation?.authority || 50) + 3)
         };
 
         if (wasParliamentary) {
@@ -12798,15 +12778,15 @@ async function enactJudicialPoliticization(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const cappedJudicial = Math.min(Number(nation?.authority ?? 50), 30);
-    const newLegitimacy = Math.max(0, (nation?.authority ?? 50) - 5);
-    const newFreedom = Math.max(0, 50 - 3);
+    // Alpha refactor: judicial_independence + legitimacy + freedom_index
+    // collapse onto authority. The authority hit absorbs all three
+    // democratic-erosion signals at once. Capped to a max of 30 to
+    // mirror the legacy cappedJudicial intent.
+    const newAuthority = Math.min(Math.max(0, (nation?.authority ?? 50) - 5), 30);
 
     const { error: nationErr } = await supabase.from('nations').update({
         judicial_appointment_politicization: true,
-        judicial_independence: cappedJudicial,
-        legitimacy: newLegitimacy,
-        freedom_index: newFreedom
+        authority: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
 
@@ -12842,13 +12822,12 @@ async function enactElectoralCommissionReform(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const newLegitimacy = Math.max(0, (nation?.authority ?? 50) - 5);
-    const newPolarization = Math.min(100, 0 + 3);
+    // Alpha refactor: legitimacy → authority; polarization retired.
+    const newAuthority = Math.max(0, (nation?.authority ?? 50) - 5);
 
     const { error: nationErr } = await supabase.from('nations').update({
         electoral_commission_reform: true,
-        legitimacy: newLegitimacy,
-        polarization: newPolarization
+        authority: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for electoral commission reform:`, nationErr.message);
 
@@ -12885,15 +12864,13 @@ async function enactPartyRegistrationReform(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const newLegitimacy = Math.max(0, (nation?.authority ?? 50) - 4);
-    const newPolarization = Math.min(100, 0 + 5);
-    const newFreedom = Math.max(0, 50 - 3);
+    // Alpha refactor: legitimacy + freedom_index → authority (combined
+    // -7 hit absorbs both democratic-erosion signals); polarization retired.
+    const newAuthority = Math.max(0, (nation?.authority ?? 50) - 7);
 
     const { error: nationErr } = await supabase.from('nations').update({
         party_registration_threshold: threshold,
-        legitimacy: newLegitimacy,
-        polarization: newPolarization,
-        freedom_index: newFreedom
+        authority: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for party registration act:`, nationErr.message);
 
@@ -12931,13 +12908,13 @@ async function enactLegislativeQuorumReform(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const newLegitimacy = Math.max(0, (nation?.authority ?? 50) - 3);
-    const newFreedom = Math.max(0, 50 - 2);
+    // Alpha refactor: legitimacy + freedom_index → authority (combined
+    // -5 hit).
+    const newAuthority = Math.max(0, (nation?.authority ?? 50) - 5);
 
     const { error: nationErr } = await supabase.from('nations').update({
         legislative_quorum_override: quorumPct,
-        legitimacy: newLegitimacy,
-        freedom_index: newFreedom
+        authority: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for quorum reform:`, nationErr.message);
 
@@ -12962,11 +12939,11 @@ async function enactConstitutionalStreamlining(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
+    // Alpha refactor: legitimacy + freedom_index → authority (combined
+    // -13 hit absorbs both); polarization retired.
     const { error: nationErr } = await supabase.from('nations').update({
         constitutional_amendment_streamlining: true,
-        legitimacy: Math.max(0, (nation?.authority ?? 50) - 8),
-        polarization: Math.min(100, 0 + 5),
-        freedom_index: Math.max(0, 50 - 5)
+        authority: Math.max(0, (nation?.authority ?? 50) - 13)
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for constitutional streamlining:`, nationErr.message);
 
@@ -14666,14 +14643,15 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
     // Check if dissolving after a recent no-confidence vote (authoritarian overreach)
     const voncPenalty = nation.last_vonc_tick && (currentTick - nation.last_vonc_tick) <= 6;
 
-    // 1. Stability -3 (+ legitimacy -5 if post-vonc)
-    const newStability = Math.max(0, Number(nation.control ?? 50) - 3);
+    // 1. Control -3 (+ authority -5 if post-vonc).
+    // Alpha refactor: stability → control, legitimacy → authority.
+    const newControl = Math.max(0, Number(nation.control ?? 50) - 3);
     const nationUpdate = {
-        stability: newStability,
+        control: newControl,
         last_dissolution_tick: currentTick
     };
     if (voncPenalty) {
-        nationUpdate.legitimacy = Math.max(0, Number(nation.authority ?? 50) - 5);
+        nationUpdate.authority = Math.max(0, Number(nation.authority ?? 50) - 5);
     }
     await supabase.from('nations').update(nationUpdate).eq('id', nationId);
 
@@ -18040,42 +18018,58 @@ async function computeEngagementScores(supabase, nation, factions, coalitionPart
 const ISSUE_DEFS = {
     cost_of_living: {
         label: 'Cost of Living',
-        stats: ['cost_of_living', 'inflation', 'housing_affordability', 'fuel_prices'],
+        // Alpha refactor: inflation/housing_affordability/fuel_prices columns
+        // dropped; cost_of_living absorbs the inflation/fuel signals.
+        stats: ['cost_of_living'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     immigration: {
         label: 'Immigration',
-        stats: ['immigration', 'illegal_immigration', 'emigration', 'ethnic_diversity'],
+        // Alpha refactor: illegal_immigration/emigration/ethnic_diversity dropped.
+        stats: ['immigration'],
         axes: ['globalism_nationalism', 'security_freedom'],
     },
     healthcare: {
         label: 'Healthcare',
-        stats: ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan'],
+        // Alpha refactor: healthcare_*, beds_per_100k, lifespan all collapsed
+        // into the unified `health` column.
+        stats: ['health'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     unemployment: {
         label: 'Unemployment',
-        stats: ['unemployment', 'labor_force_participation', 'minimum_wage', 'poverty_rate'],
+        // Alpha refactor: unemployment/labor_force_participation → workforce
+        // (inversion handled via statDirectionSign); minimum_wage dropped;
+        // poverty_rate → standard_of_living (inverted).
+        stats: ['workforce', 'standard_of_living'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     corruption: {
         label: 'Corruption',
-        stats: ['corruption', 'judicial_independence', 'press_freedom', 'efficiency'],
+        // Alpha refactor: corruption/press_freedom/efficiency dropped;
+        // judicial_independence → authority.
+        stats: ['authority'],
         axes: ['tradition_progress', 'security_freedom'],
     },
     education: {
         label: 'Education',
-        stats: ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
+        // Alpha refactor: literacy/higher_education/education_accessibility/
+        // academic_immigration all collapsed into `education`.
+        stats: ['education'],
         axes: ['tradition_progress', 'individualism_collectivism'],
     },
     infrastructure: {
         label: 'Infrastructure',
-        stats: ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation'],
+        // Alpha refactor: physical_infrastructure/digital_infrastructure/
+        // rail_network → infrastructure; energy_generation → energy.
+        stats: ['infrastructure', 'energy'],
         axes: ['tradition_progress', 'globalism_nationalism'],
     },
     climate: {
         label: 'Climate & Environment',
-        stats: ['pollution', 'carbon_emissions', 'renewable_energy_percentage', 'arable_land'],
+        // Alpha refactor: pollution/carbon_emissions/renewable_energy_percentage
+        // dropped; arable_land → farmland.
+        stats: ['farmland'],
         axes: ['tradition_progress', 'globalism_nationalism'],
     },
 };
@@ -18097,39 +18091,48 @@ const ISSUE_IDS = Object.keys(ISSUE_DEFS);
  *   - weight: how strongly this stat affects the band (0-1)
  *   - direction: +1 means higher stat → larger band, -1 means higher stat → smaller band
  */
+// Alpha refactor: many of the legacy stats that drove demographic shifts
+// (population_growth, median_age, lifespan, income_inequality, social_mobility,
+// religiosity, ethnic_diversity, housing_affordability, ...) were collapsed
+// or dropped. The translations below remap surviving signals onto the 19
+// alpha columns; rows that referenced only dropped stats become empty arrays
+// so the band falls back to its schema default.
+//
+// Inversions:
+//   poverty_rate (high = bad) → standard_of_living (high = good): flip direction
 const DEMOGRAPHIC_STAT_MAP = {
     age: {
-        age_18_29:  [{ stat: 'population_growth', weight: 0.6, direction: 1 }, { stat: 'median_age', weight: 0.5, direction: -1 }],
-        age_30_44:  [{ stat: 'higher_education', weight: 0.3, direction: 1 }],
-        age_45_64:  [{ stat: 'urbanization', weight: 0.2, direction: 1 }],
-        age_65plus: [{ stat: 'lifespan', weight: 0.5, direction: 1 }, { stat: 'median_age', weight: 0.5, direction: 1 }],
+        age_18_29:  [],
+        age_30_44:  [{ stat: 'education', weight: 0.3, direction: 1 }],
+        age_45_64:  [{ stat: 'workforce', weight: 0.2, direction: 1 }],
+        age_65plus: [{ stat: 'health', weight: 0.5, direction: 1 }],
     },
     income: {
-        income_low:    [{ stat: 'poverty_rate', weight: 0.6, direction: 1 }, { stat: 'income_inequality', weight: 0.4, direction: 1 }],
-        income_middle: [{ stat: 'social_mobility', weight: 0.4, direction: 1 }],
-        income_upper:  [{ stat: 'gdp_growth', weight: 0.3, direction: 1 }, { stat: 'higher_education', weight: 0.3, direction: 1 }],
-        income_high:   [{ stat: 'gdp_growth', weight: 0.2, direction: 1 }, { stat: 'income_inequality', weight: 0.3, direction: 1 }],
+        income_low:    [{ stat: 'standard_of_living', weight: 0.6, direction: -1 }],
+        income_middle: [],
+        income_upper:  [{ stat: 'gdp_growth', weight: 0.3, direction: 1 }, { stat: 'education', weight: 0.3, direction: 1 }],
+        income_high:   [{ stat: 'gdp_growth', weight: 0.2, direction: 1 }],
     },
     education: {
-        edu_nodegree: [{ stat: 'literacy', weight: 0.5, direction: -1 }, { stat: 'education_accessibility', weight: 0.4, direction: -1 }],
-        edu_undergrad: [{ stat: 'higher_education', weight: 0.5, direction: 1 }, { stat: 'education_accessibility', weight: 0.3, direction: 1 }],
-        edu_postgrad:  [{ stat: 'higher_education', weight: 0.5, direction: 1 }, { stat: 'academic_immigration', weight: 0.3, direction: 1 }],
+        edu_nodegree: [{ stat: 'education', weight: 0.5, direction: -1 }],
+        edu_undergrad: [{ stat: 'education', weight: 0.5, direction: 1 }],
+        edu_postgrad:  [{ stat: 'education', weight: 0.5, direction: 1 }],
     },
     urbanization: {
-        urban_rural:     [{ stat: 'urbanization', weight: 0.6, direction: -1 }, { stat: 'arable_land', weight: 0.3, direction: 1 }],
-        urban_smalltown: [{ stat: 'urbanization', weight: 0.2, direction: -1 }],
-        urban_suburban:  [{ stat: 'urbanization', weight: 0.3, direction: 1 }, { stat: 'housing_affordability', weight: 0.2, direction: -1 }],
-        urban_urban:     [{ stat: 'urbanization', weight: 0.6, direction: 1 }],
+        urban_rural:     [{ stat: 'workforce', weight: 0.6, direction: -1 }, { stat: 'farmland', weight: 0.3, direction: 1 }],
+        urban_smalltown: [{ stat: 'workforce', weight: 0.2, direction: -1 }],
+        urban_suburban:  [{ stat: 'workforce', weight: 0.3, direction: 1 }],
+        urban_urban:     [{ stat: 'workforce', weight: 0.6, direction: 1 }],
     },
     religion: {
-        religion_secular:  [{ stat: 'religiosity', weight: 0.7, direction: -1 }, { stat: 'higher_education', weight: 0.2, direction: 1 }],
+        religion_secular:  [{ stat: 'education', weight: 0.2, direction: 1 }],
         religion_moderate: [],
-        religion_devout:   [{ stat: 'religiosity', weight: 0.7, direction: 1 }],
+        religion_devout:   [],
     },
     nativity: {
-        nativity_majority:  [{ stat: 'ethnic_diversity', weight: 0.5, direction: -1 }, { stat: 'immigration', weight: 0.3, direction: -1 }],
-        nativity_minority:  [{ stat: 'ethnic_diversity', weight: 0.6, direction: 1 }],
-        nativity_immigrant: [{ stat: 'immigration', weight: 0.5, direction: 1 }, { stat: 'ethnic_diversity', weight: 0.2, direction: 1 }],
+        nativity_majority:  [{ stat: 'immigration', weight: 0.3, direction: -1 }],
+        nativity_minority:  [],
+        nativity_immigrant: [{ stat: 'immigration', weight: 0.5, direction: 1 }],
     },
 };
 
@@ -20455,17 +20458,19 @@ function computeTierEffects(tier, opts = {}) {
  * @returns {object} stat deltas to apply
  */
 function computeTier6CrisisEffects(ticksActive, publicAddressThisTick) {
+    // Alpha refactor: civil_unrest + political_violence both → unrest
+    // (sum the per-tick deltas at config time); foreign_investment
+    // dropped (column gone with no replacement).
     const effects = {
         gov_approval: PROTEST_CONFIG.TIER6_GOV_APPROVAL_PER_TICK,
-        civil_unrest: PROTEST_CONFIG.TIER6_CIVIL_UNREST_PER_TICK,
+        unrest: PROTEST_CONFIG.TIER6_CIVIL_UNREST_PER_TICK
+              + PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK,
         gdp_growth: PROTEST_CONFIG.TIER6_GDP_GROWTH_PER_TICK,
-        foreign_investment: PROTEST_CONFIG.TIER6_FOREIGN_INVESTMENT_PER_TICK,
-        political_violence: PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK,
     };
 
-    // Public Address reduces civil unrest accumulation by 1 that tick
+    // Public Address reduces unrest accumulation by 1 that tick
     if (publicAddressThisTick) {
-        effects.civil_unrest = Math.max(0, effects.civil_unrest - 1);
+        effects.unrest = Math.max(0, effects.unrest - 1);
     }
 
     return effects;
@@ -20477,17 +20482,18 @@ function computeTier6CrisisEffects(ticksActive, publicAddressThisTick) {
  * @returns {object} stat deltas to apply
  */
 function computeTier7CrisisEffects(publicAddressThisTick) {
+    // Alpha refactor: see computeTier6CrisisEffects above for the
+    // collapse rationale.
     const effects = {
         gov_approval: PROTEST_CONFIG.TIER7_GOV_APPROVAL_PER_TICK,
-        civil_unrest: PROTEST_CONFIG.TIER7_CIVIL_UNREST_PER_TICK,
+        unrest: PROTEST_CONFIG.TIER7_CIVIL_UNREST_PER_TICK
+              + PROTEST_CONFIG.TIER7_POLITICAL_VIOLENCE_PER_TICK,
         gdp_growth: PROTEST_CONFIG.TIER7_GDP_GROWTH_PER_TICK,
-        foreign_investment: PROTEST_CONFIG.TIER7_FOREIGN_INVESTMENT_PER_TICK,
-        political_violence: PROTEST_CONFIG.TIER7_POLITICAL_VIOLENCE_PER_TICK,
     };
 
-    // Public Address reduces civil unrest accumulation by 1
+    // Public Address reduces unrest accumulation by 1
     if (publicAddressThisTick) {
-        effects.civil_unrest = Math.max(0, effects.civil_unrest - 1);
+        effects.unrest = Math.max(0, effects.unrest - 1);
     }
 
     return effects;
@@ -22082,7 +22088,10 @@ const RALLY_OUTCOMES = [
 
 /**
  * Compute outcome weights for a rally targeting a voter bloc.
- * Weights shift based on approval, crises, polarization, civil unrest, and recent rallies.
+ * Weights shift based on approval, crises, unrest, and recent rallies.
+ * Alpha refactor: polarization branch retired (column deleted; the
+ * divisive/counter swing it triggered is functionally absorbed by the
+ * existing high-unrest branch below).
  */
 function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationState) {
     const weights = { rousing: 20, solid: 38, low: 15, gaffe: 12, divisive: 8, counter: 5 };
@@ -22098,11 +22107,6 @@ function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationState) {
     if (nationState.crisisCount > 0) {
         weights.gaffe += 6; weights.divisive += 4; weights.counter += 10;
         weights.rousing -= 8; weights.solid -= 6;
-    }
-
-    // High polarization
-    if (nationState.polarization > 60) {
-        weights.divisive += 6; weights.counter += 4; weights.solid -= 4;
     }
 
     // Rallied recently → stale material
@@ -22203,10 +22207,12 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
     const targetApproval = 50;
 
     // ── 5. Compute weights and roll outcome ──
+    // Alpha refactor: polarization + stability fields dropped from
+    // nationState — polarization column gone, stability was set but
+    // never read. civilUnrest reads from `nation.unrest` (alpha-19
+    // equivalent of the legacy civil_unrest column).
     const nationState = {
-        polarization: 0,
         civilUnrest: nation?.unrest || 0,
-        stability: nation?.control || 50,
         crisisCount: crisisCount || 0,
     };
     const weights = getRallyOutcomeWeights(targetApproval, ralliedRecently, nationState);
@@ -22671,10 +22677,12 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
         effects.push({ label: selfLabel, value: selfDelta });
     }
 
-    // Polarization
+    // Polarization mechanic retired by alpha stats refactor (column
+    // deleted with no replacement). The outcome.polarization signal
+    // from political-action templates still flows in but no longer
+    // writes to a column. Effects record retained so historical
+    // event_log shows the intended impact.
     if (outcome.polarization > 0) {
-        const newPol = Math.min(100, 0 + outcome.polarization);
-        await supabase.from('nations').update({ polarization: newPol }).eq('id', nationId);
         effects.push({ label: 'Polarization', value: outcome.polarization });
     }
 
@@ -31844,32 +31852,18 @@ async function fileLawsuit(supabase, params) {
     var metricAtStart, metricNow, growth;
 
     if (basis === 'civil_rights') {
-        // Freedom index: decline is bad for government, good for lawsuit
+        // Freedom index column deleted in alpha refactor (no replacement) — pin
+        // to neutral 50 so the calc keeps producing a non-erroring tier=0 outcome.
         var freedomAtStart = Number(administration?.stats_at_start?.freedom_index ?? 50);
-        var { data: nationRow, error: nationErr } = await supabase
-            .from('nations')
-            .select('freedom_index')
-            .eq('id', nationId)
-            .single();
-        if (nationErr) {
-            return { success: false, lawsuit: null, tier: 0, error: 'Failed to fetch freedom index data.' };
-        }
-        metricNow = Number(nationRow?.freedom_index ?? 50);
+        metricNow = 50;
         metricAtStart = freedomAtStart;
         // Growth = how much freedom DECLINED (positive = freedom dropped = stronger case)
         growth = Math.max(0, metricAtStart - metricNow);
     } else {
-        // Corruption: growth is bad for government, good for lawsuit
+        // Corruption column deleted in alpha refactor (no replacement) — pin
+        // to neutral 50 so growth resolves to 0 and lawsuits land in tier 0.
         var corruptionAtStart = Number(administration?.stats_at_start?.corruption ?? 50);
-        var { data: nationRow, error: nationErr } = await supabase
-            .from('nations')
-            .select('corruption')
-            .eq('id', nationId)
-            .single();
-        if (nationErr) {
-            return { success: false, lawsuit: null, tier: 0, error: 'Failed to fetch corruption data.' };
-        }
-        metricNow = Number(nationRow?.corruption ?? 50);
+        metricNow = 50;
         metricAtStart = corruptionAtStart;
         growth = Math.max(0, metricNow - metricAtStart);
     }
