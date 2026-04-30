@@ -197,6 +197,8 @@ body.corp-redesign.light-mode .cr-ticker-block { border-left-color: var(--panel-
   font-size: 11px;
   color: var(--text-dim);
 }
+.cr-ticker-change.positive { color: var(--green); }
+.cr-ticker-change.negative { color: var(--red); }
 
 /* ── MAIN GRID ── */
 .cr-main-grid {
@@ -905,10 +907,14 @@ function renderSparklineSvg(series, colorVar) {
     if (!Number.isFinite(min) || !Number.isFinite(max)) {
         return '<div class="cr-sparkline-empty">— no history yet</div>';
     }
-    const range = max - min || 1;
+    const range = max - min;
     const points = series.map((v, i) => {
         const x = (i / (series.length - 1)) * w;
-        const y = h - ((Number(v) - min) / range) * h;
+        // When all values are equal (range=0), draw a flat line in the
+        // middle of the viewBox rather than at the bottom (the previous
+        // `range || 1` fallback caused the divisor to be 1, but the
+        // numerator (v - min) was always 0, pinning every point to y=h).
+        const y = range === 0 ? h / 2 : h - ((Number(v) - min) / range) * h;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
     return `<svg class="cr-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
@@ -916,13 +922,16 @@ function renderSparklineSvg(series, colorVar) {
     </svg>`;
 }
 
-// tickToDate returns 'MMM, YYYY' (e.g. 'Mar, 2026'). Pull just the year for
-// "Founded 1924" style display in the masthead meta row.
+// tickToDate returns 'MMM, YYYY' (e.g. 'Mar, 2026'). Pull just the
+// 4-digit year for "Founded 1924" style display in the masthead meta
+// row. Use a regex match instead of split/trim so a future format
+// change (different separator, missing space, etc.) degrades to the
+// full date string rather than silently displaying an empty token.
 function tickToYear(tick) {
     if (tick == null) return null;
-    const formatted = tickToDate(tick); // 'Mar, 2026'
-    const parts = formatted.split(',');
-    return (parts[1] || formatted).trim();
+    const formatted = tickToDate(tick) || '';
+    const match = formatted.match(/(\d{4})/);
+    return match ? match[1] : formatted;
 }
 
 // Italicize the last word of the corp name in accent-gold for the masthead
@@ -1003,6 +1012,9 @@ async function init() {
     }
     shard = shardRes.data;
     nation = nationRes?.data || null;
+    if (nationRes?.error) {
+        console.error('[corp-dashboard] nation fetch error:', nationRes.error.message);
+    }
     if (pnlRes?.error) {
         console.error('[corp-dashboard] pnl_history fetch error:', pnlRes.error.message);
     }
@@ -1026,7 +1038,7 @@ async function init() {
         }
     }
 
-    renderMasthead();
+    renderMasthead(pnlHistory);
     renderFinancialRow(pnlHistory);
     renderOperatingIndicators(ownership, user.id);
     renderFooter();
@@ -1037,7 +1049,7 @@ async function init() {
     document.getElementById('page-content').style.display = '';
 }
 
-function renderMasthead() {
+function renderMasthead(history) {
     // Current in-game date + tick at top of masthead.
     const dateStr = shard?.current_date || tickToDate(shard?.current_tick) || '—';
     document.getElementById('cr-current-date').textContent = dateStr;
@@ -1064,9 +1076,29 @@ function renderMasthead() {
     const debt = Number(faction.corp_debt) || 0;
     const valuation = cash - debt;
     document.getElementById('cr-ticker-price').textContent = fmtMoney(valuation);
-    // Delta vs last tick will land in Phase 2 once corp_pnl_history is wired.
-    document.getElementById('cr-ticker-change').textContent =
-        '— · valuation (cash − debt)';
+
+    // Valuation delta vs the prior tick. corp_pnl_history doesn't track debt
+    // historically, so we approximate prior-tick valuation as
+    // prev.cash_end − current_debt (assumes debt unchanged in the last tick,
+    // which is true unless a debt-affecting RPC ran between snapshots).
+    const prev = history?.length > 0 ? history[history.length - 1] : null;
+    const changeEl = document.getElementById('cr-ticker-change');
+    if (prev && Number.isFinite(Number(prev.cash_end))) {
+        const prevValuation = Number(prev.cash_end) - debt;
+        const delta = valuation - prevValuation;
+        if (delta === 0) {
+            changeEl.textContent = '— unchanged · valuation (cash − debt)';
+            changeEl.className = 'cr-ticker-change';
+        } else {
+            const arrow = delta > 0 ? '▲' : '▼';
+            const sign  = delta > 0 ? '+' : '';
+            changeEl.textContent = `${arrow} ${sign}${fmtMoney(delta)} · valuation (cash − debt)`;
+            changeEl.className = 'cr-ticker-change ' + (delta > 0 ? 'positive' : 'negative');
+        }
+    } else {
+        changeEl.textContent = '— valuation (cash − debt)';
+        changeEl.className = 'cr-ticker-change';
+    }
 }
 
 function renderFinancialRow(history) {
