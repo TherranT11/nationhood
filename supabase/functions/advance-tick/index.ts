@@ -718,14 +718,14 @@ var FOOD_SUBSECTORS = [
                 standard_of_living: 0.15,        // alpha-19: poverty_rate inverted → standard_of_living
                 cost_of_living: -0.10,
                 control: 0.10,                   // alpha-19: stability → control
-                authority: 0.10,                 // alpha-19: legitimacy → authority
+                public_approval: 0.10,           // alpha-23: legitimacy → public_approval (renamed from authority in 8.5.1)
                 health: 0.05                     // alpha-19: lifespan → health
             },
             shortage: {
                 standard_of_living: -0.30,       // alpha-19: poverty_rate inverted → standard_of_living
                 cost_of_living: 0.20,
                 control: -0.20,                  // alpha-19: stability → control
-                authority: -0.20,                // alpha-19: legitimacy → authority
+                public_approval: -0.20,          // alpha-23: legitimacy → public_approval (renamed from authority in 8.5.1)
                 unrest: 0.40                     // alpha-19: civil_unrest + political_violence collapsed → unrest
                 // emigration dropped (column gone), happiness folded into standard_of_living above
             }
@@ -3117,7 +3117,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 nationUpdates.standard_of_living = Math.round(Math.max(0, grainSolCurrent - grainHappiness - grainPoverty) * 10) / 10;
                 nationUpdates.unrest = Math.round(Math.min(100, (Number(n.unrest) || 0) + grainUnrest) * 10) / 10;
                 nationUpdates.control = Math.round(Math.max(0, (nationUpdates.control != null ? nationUpdates.control : (Number(n.control ?? 50))) - grainStability) * 10) / 10;
-                nationUpdates.authority = Math.round(Math.max(0, (Number(n.authority ?? 50)) - grainLegitimacy) * 10) / 10;
+                nationUpdates.public_approval = Math.round(Math.max(0, (Number(n.public_approval ?? 50)) - grainLegitimacy) * 10) / 10;
             } else if (sKey3 === 'livestock_dairy') {
                 // Livestock shortage: quality of life decline.
                 // alpha-19: happiness → standard_of_living (merge with livestockSol).
@@ -4560,10 +4560,13 @@ const EXTRADITION_EXCEPTION_OPTIONS = [
 
 const EXTRADITION_BASE_EFFECTS = {
     relations: 5,
-    // alpha-19: crime_rate, terrorism, corruption dropped (no alpha replacements);
-    // international_reputation → power; judicial_independence → authority.
+    // alpha-19: terrorism dropped (collapsed into unrest); international_reputation
+    // → power; judicial_independence → authority → public_approval (alpha-23).
+    // alpha-23: corruption + crime restored to live menu (Phase 8.5.2);
+    // a future balance pass can re-add small effects on those columns
+    // here if extradition pacts should nudge corruption / crime trends.
     power: 1,
-    authority: 0.5,
+    public_approval: 0.5,
     cost_proposer: 8000000,
     cost_target: 8000000,
     ongoing_cost: 3000000
@@ -4589,9 +4592,10 @@ function calculateExtraditionEffects(config) {
     const relations = base.relations;
     // alpha-19: international_reputation → power.
     const power_base = base.power;
-    // alpha-19: judicial_independence → authority. appealOpt.judicial_penalty
-    // (negative for executive-style processes) still pulls authority down.
-    const authority = +(base.authority + appealOpt.judicial_penalty).toFixed(1);
+    // alpha-19/23: judicial_independence → authority → public_approval.
+    // appealOpt.judicial_penalty (negative for executive-style processes)
+    // still pulls public_approval down.
+    const public_approval = +(base.public_approval + appealOpt.judicial_penalty).toFixed(1);
 
     // Political offenses penalties — alpha-19: freedom_index / press_freedom /
     // polarization dropped. Reputation/power penalty for political-offense
@@ -4607,7 +4611,7 @@ function calculateExtraditionEffects(config) {
     const effects = {
         relations,
         power: power_base + reputation_penalty,
-        authority
+        public_approval
     };
 
     return {
@@ -12072,10 +12076,10 @@ async function enactPresidentialTermLength(supabase, bill, currentTick) {
     if (newTermTicks < oldTermTicks) {
         console.log(`[enactFoundationalBill] Term shortened (polarization + political_engagement effects retired by alpha refactor)`);
     } else if (newTermTicks > oldTermTicks) {
-        const newAuthority = Math.max(0, (nation?.authority || 50) - 3);
+        const newAuthority = Math.max(0, (nation?.public_approval || 50) - 3);
         const newControl   = Math.min(100, (nation?.control || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
-            authority: newAuthority,
+            public_approval: newAuthority,
             control:   newControl
         }).eq('id', bill.nation_id);
         if (extErr) console.error(`[enactFoundationalBill] Term extended stat update failed:`, extErr.message);
@@ -12163,10 +12167,10 @@ async function enactLegislativeTermLength(supabase, bill, currentTick) {
     if (newParlTermTicks < oldParlTermTicks) {
         console.log(`[enactFoundationalBill] Legislative term shortened (polarization + political_engagement effects retired by alpha refactor)`);
     } else if (newParlTermTicks > oldParlTermTicks) {
-        const newAuthority = Math.max(0, (nation?.authority || 50) - 3);
+        const newAuthority = Math.max(0, (nation?.public_approval || 50) - 3);
         const newControl   = Math.min(100, (nation?.control || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
-            authority: newAuthority,
+            public_approval: newAuthority,
             control:   newControl
         }).eq('id', bill.nation_id);
         if (extErr) console.error(`[enactFoundationalBill] Legislative term extended stat update failed:`, extErr.message);
@@ -12227,10 +12231,10 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
     if (newTermLimit === 0) {
         // Removing term limits
         let authorityPenalty = 6;
-        const newAuthority = Math.max(0, (nation?.authority || 50) - authorityPenalty);
+        const newAuthority = Math.max(0, (nation?.public_approval || 50) - authorityPenalty);
         const newUnrest = Math.min(100, (nation?.unrest || 0) + 4);
         const { error: removeErr } = await supabase.from('nations').update({
-            authority: newAuthority,
+            public_approval: newAuthority,
             unrest:    newUnrest
         }).eq('id', bill.nation_id);
         if (removeErr) console.error(`[enactFoundationalBill] Failed to update stats for term limit removal:`, removeErr.message);
@@ -12258,9 +12262,9 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
     } else if (oldEffectiveLimit === null || newTermLimit < oldEffectiveLimit) {
         // Adding or tightening term limits — only the authority bump
         // survives; press_freedom + judicial_independence retired.
-        const newAuthority = Math.min(100, (nation?.authority || 50) + 5);
+        const newAuthority = Math.min(100, (nation?.public_approval || 50) + 5);
         const { error: tightenErr } = await supabase.from('nations').update({
-            authority: newAuthority
+            public_approval: newAuthority
         }).eq('id', bill.nation_id);
         if (tightenErr) console.error(`[enactFoundationalBill] Term limits tighten stat update failed:`, tightenErr.message);
         else console.log(`[enactFoundationalBill] Term limits tightened to ${newTermLimit}: authority +5`);
@@ -12529,7 +12533,7 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
 
     // ── Stat effects based on target system ──
     const stability = nation?.control || 50;
-    const legitimacy = nation?.authority || 50;
+    const legitimacy = nation?.public_approval || 50;
     const politicalEngagement = nation?.political_engagement || 50;
     const polarization = 0;
     const civilUnrest = nation?.unrest || 0;
@@ -12626,8 +12630,8 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
     // political_engagement effects retired (columns gone).
     if (newMethod === 'hereditary') {
         const newControl   = Math.min(100, (nation?.control || 50) + 5);
-        const newAuthority = Math.max(0, (nation?.authority || 50) - 5);
-        const statUpdate = { control: newControl, authority: newAuthority };
+        const newAuthority = Math.max(0, (nation?.public_approval || 50) - 5);
+        const statUpdate = { control: newControl, public_approval: newAuthority };
 
         const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
         if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
@@ -12637,7 +12641,7 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
         // AND transition Parliamentary → Presidential
         const wasParliamentary = !nation?.government_type?.toLowerCase().includes('president');
         const statUpdate = {
-            authority: Math.min(100, (nation?.authority || 50) + 3)
+            public_approval: Math.min(100, (nation?.public_approval || 50) + 3)
         };
 
         if (wasParliamentary) {
@@ -12794,11 +12798,11 @@ async function enactJudicialPoliticization(supabase, bill, currentTick) {
     // collapse onto authority. The authority hit absorbs all three
     // democratic-erosion signals at once. Capped to a max of 30 to
     // mirror the legacy cappedJudicial intent.
-    const newAuthority = Math.min(Math.max(0, (nation?.authority ?? 50) - 5), 30);
+    const newAuthority = Math.min(Math.max(0, (nation?.public_approval ?? 50) - 5), 30);
 
     const { error: nationErr } = await supabase.from('nations').update({
         judicial_appointment_politicization: true,
-        authority: newAuthority
+        public_approval: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
 
@@ -12835,11 +12839,11 @@ async function enactElectoralCommissionReform(supabase, bill, currentTick) {
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
     // Alpha refactor: legitimacy → authority; polarization retired.
-    const newAuthority = Math.max(0, (nation?.authority ?? 50) - 5);
+    const newAuthority = Math.max(0, (nation?.public_approval ?? 50) - 5);
 
     const { error: nationErr } = await supabase.from('nations').update({
         electoral_commission_reform: true,
-        authority: newAuthority
+        public_approval: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for electoral commission reform:`, nationErr.message);
 
@@ -12878,11 +12882,11 @@ async function enactPartyRegistrationReform(supabase, bill, currentTick) {
 
     // Alpha refactor: legitimacy + freedom_index → authority (combined
     // -7 hit absorbs both democratic-erosion signals); polarization retired.
-    const newAuthority = Math.max(0, (nation?.authority ?? 50) - 7);
+    const newAuthority = Math.max(0, (nation?.public_approval ?? 50) - 7);
 
     const { error: nationErr } = await supabase.from('nations').update({
         party_registration_threshold: threshold,
-        authority: newAuthority
+        public_approval: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for party registration act:`, nationErr.message);
 
@@ -12922,11 +12926,11 @@ async function enactLegislativeQuorumReform(supabase, bill, currentTick) {
 
     // Alpha refactor: legitimacy + freedom_index → authority (combined
     // -5 hit).
-    const newAuthority = Math.max(0, (nation?.authority ?? 50) - 5);
+    const newAuthority = Math.max(0, (nation?.public_approval ?? 50) - 5);
 
     const { error: nationErr } = await supabase.from('nations').update({
         legislative_quorum_override: quorumPct,
-        authority: newAuthority
+        public_approval: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for quorum reform:`, nationErr.message);
 
@@ -12955,7 +12959,7 @@ async function enactConstitutionalStreamlining(supabase, bill, currentTick) {
     // -13 hit absorbs both); polarization retired.
     const { error: nationErr } = await supabase.from('nations').update({
         constitutional_amendment_streamlining: true,
-        authority: Math.max(0, (nation?.authority ?? 50) - 13)
+        public_approval: Math.max(0, (nation?.public_approval ?? 50) - 13)
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for constitutional streamlining:`, nationErr.message);
 
@@ -12977,7 +12981,7 @@ async function enactConstitutionalStreamlining(supabase, bill, currentTick) {
 async function enactMonarchyReform(supabase, bill, currentTick) {
     const reformKey = bill.proposed_monarchy_reform;
     const { data: nation } = await supabase.from('nations')
-        .select('id, name, government_type, monarch_faction_id, authority, gov_approval')
+        .select('id, name, government_type, monarch_faction_id, public_approval, gov_approval')
         .eq('id', bill.nation_id).single();
 
     if (!nation) { console.error(`[enactFoundationalBill] Nation not found for monarchy reform`); return false; }
@@ -13057,7 +13061,7 @@ async function enactMonarchyReform(supabase, bill, currentTick) {
         // Reset legitimacy and gov approval for fresh start
         await supabase.rpc('increment_nation_stats', {
             p_nation_id: bill.nation_id,
-            p_changes: { legitimacy: 50 - (Number(nation.authority) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
+            p_changes: { legitimacy: 50 - (Number(nation.public_approval) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
         }).catch(() => {});
 
         // Dissolve any existing coalition (canonical: government_formations).
@@ -14618,7 +14622,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
  */
 async function dissolveParliament(supabase, nationId, presidentFactionId) {
     const { data: nation } = await supabase.from('nations')
-        .select('name, government_type, control, authority, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
+        .select('name, government_type, control, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
         .eq('id', nationId).single();
 
     if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
@@ -14663,7 +14667,7 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
         last_dissolution_tick: currentTick
     };
     if (voncPenalty) {
-        nationUpdate.authority = Math.max(0, Number(nation.authority ?? 50) - 5);
+        nationUpdate.public_approval = Math.max(0, Number(nation.public_approval ?? 50) - 5);
     }
     await supabase.from('nations').update(nationUpdate).eq('id', nationId);
 
@@ -16584,14 +16588,14 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     // === WINNER/LOSER EFFECTS ===
     try {
         const { data: nationStats } = await supabase.from('nations')
-            .select('control, authority, standard_of_living, unrest')
+            .select('control, public_approval, standard_of_living, unrest')
             .eq('id', nation.id).single();
 
         if (nationStats) {
             const updates = {};
             if (isIncumbentWin) {
                 // Incumbent wins: +3 legitimacy, +2 stability (mandate renewed)
-                updates.legitimacy = Math.min(100, Math.round(((nationStats.authority || 50) + 3) * 10) / 10);
+                updates.legitimacy = Math.min(100, Math.round(((nationStats.public_approval || 50) + 3) * 10) / 10);
                 updates.stability = Math.min(100, Math.round(((nationStats.control || 50) + 2) * 10) / 10);
                 console.log(`Incumbent win effects: +3 legitimacy, +2 stability (${nation.name})`);
             } else if (isChallengerWin && !wasRunoff) {
@@ -16603,7 +16607,7 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
             } else if (isIncumbentRunoffLoss) {
                 // Incumbent loses in runoff: extra penalties (contested transition)
                 updates.stability = Math.max(0, Math.round(((nationStats.control || 50) - 4) * 10) / 10);
-                updates.legitimacy = Math.max(0, Math.round(((nationStats.authority || 50) - 2) * 10) / 10);
+                updates.legitimacy = Math.max(0, Math.round(((nationStats.public_approval || 50) - 2) * 10) / 10);
                 updates.civil_unrest = Math.min(100, Math.round(((nationStats.unrest || 0) + 5) * 10) / 10);
                 updates.happiness = Math.min(100, Math.round(((nationStats.standard_of_living || 50) + 2) * 10) / 10);
                 console.log(`Incumbent runoff loss effects: -4 stability, -2 legitimacy, +5 civil_unrest, +2 happiness (${nation.name})`);
@@ -21891,11 +21895,15 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
         }
     }
 
-    // Enforce foundational law caps on stats
-    // Judicial Appointment Politicization Act: cap judicial_independence at 30
+    // Enforce foundational law caps on stats.
+    // Judicial Appointment Politicization Act: caps public_approval
+    // at 30 (was the legacy judicial_independence cap; Phase 7H
+    // collapsed legitimacy + judicial_independence + freedom_index
+    // into public_approval, so the cap now applies to the merged
+    // signal).
     if (nation.judicial_appointment_politicization) {
-        const ji = nationUpdates.judicial_independence ?? Number(nation.authority ?? 50);
-        if (ji > 30) nationUpdates.judicial_independence = 30;
+        const pa = nationUpdates.public_approval ?? Number(nation.public_approval ?? 50);
+        if (pa > 30) nationUpdates.public_approval = 30;
     }
     // State Media Control Act: cap press_freedom at 40
     if (nation.state_media_control) {

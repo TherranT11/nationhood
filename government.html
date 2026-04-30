@@ -1189,7 +1189,7 @@ function adm2RenderAdminCard() {
 
     // Regime stat strip: control + authority + crown_authority (only render crown_authority if not null)
     const controlVal = nation?.control;
-    const authorityVal = nation?.authority;
+    const authorityVal = nation?.public_approval;
     const crownAuthVal = nation?.crown_authority;
     const fmtRegimeStat = (v) => (v == null ? '—' : Math.round(Number(v)) + '/100');
     const regimeStatColor = (v) => {
@@ -1198,7 +1198,7 @@ function adm2RenderAdminCard() {
         return n >= 60 ? 'var(--green)' : n >= 35 ? 'var(--amber)' : 'var(--red)';
     };
     let regimeStatsHtml = `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Control</span><span style="color:${regimeStatColor(controlVal)};font-weight:700;">${fmtRegimeStat(controlVal)}</span></div>`
-        + `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Authority</span><span style="color:${regimeStatColor(authorityVal)};font-weight:700;">${fmtRegimeStat(authorityVal)}</span></div>`;
+        + `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Public Approval</span><span style="color:${regimeStatColor(authorityVal)};font-weight:700;">${fmtRegimeStat(authorityVal)}</span></div>`;
     if (crownAuthVal != null) {
         regimeStatsHtml += `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Crown Auth.</span><span style="color:${regimeStatColor(crownAuthVal)};font-weight:700;">${fmtRegimeStat(crownAuthVal)}</span></div>`;
     }
@@ -4038,7 +4038,7 @@ function renderParliamentaryEmergency(activeHOG) {
                 <span style="font-size:0.65rem;color:var(--text-muted);margin-left:auto;">via Emergency Powers Act</span>
             </div>
             <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">
-                Declare a national emergency to bypass legislative votes on bills. While active: control -1/tick, authority -0.5/tick, unrest +0.5/tick.
+                Declare a national emergency to bypass legislative votes on bills. While active: control -1/tick, public_approval -0.5/tick, unrest +0.5/tick.
             </div>
             <button class="ministry-btn${canDeclare ? '' : ' disabled'}" style="padding:8px 20px;font-size:0.75rem;" onclick="${canDeclare ? 'declareParliamentaryEmergency()' : ''}" id="declare-emergency-btn" ${canDeclare ? '' : 'disabled'}>
                 Declare Emergency 
@@ -4048,7 +4048,7 @@ function renderParliamentaryEmergency(activeHOG) {
 }
 
 window.declareParliamentaryEmergency = async function() {
-    if (!confirm(`Declare a National Emergency?\n\nWhile active:\n• Bills bypass legislative votes\n• Control -1/tick\n• Authority -0.5/tick\n• Unrest +0.5/tick\n\n`)) return;
+    if (!confirm(`Declare a National Emergency?\n\nWhile active:\n• Bills bypass legislative votes\n• Control -1/tick\n• Public Approval -0.5/tick\n• Unrest +0.5/tick\n\n`)) return;
 
     const btn = document.getElementById('declare-emergency-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Declaring...'; }
@@ -9728,7 +9728,7 @@ async function protestCrisisAction(actionType) {
             } else if (actionType === 'epo' && result.outcome === 'resolved') {
                 alert('The crackdown succeeded. The protest crisis has been resolved.');
             } else if (actionType === 'national_emergency') {
-                alert('National Emergency declared. The crisis has ended, but at a severe cost to control and authority.');
+                alert('National Emergency declared. The crisis has ended, but at a severe cost to control and public approval.');
             } else if (actionType === 'public_address') {
                 if (result.outcome === 'resolved') {
                     alert('The public address worked! The protest crisis has ended peacefully.');
@@ -10561,14 +10561,14 @@ async function purgeMinister(ministryKey) {
             await _supabase.rpc('adjust_momentum', { p_faction_id: ministry.party_id, p_delta: -approvalLossPurged, p_label: `Minister purged (${-approvalLossPurged})`, p_tick: currentTick });
         }
 
-        const { data: nation } = await _supabase.from('nations').select('unrest, authority').eq('id', currentNation.id).single();
+        const { data: nation } = await _supabase.from('nations').select('unrest, public_approval').eq('id', currentNation.id).single();
         const unrest = nation?.unrest ?? 50;
-        const authority = nation?.authority ?? 50;
+        const publicApproval = nation?.public_approval ?? 50;
 
         let unrestChange;
         if (purgeCount >= 2) {
             unrestChange = stabilityRoll;
-        } else if (authority >= 50) {
+        } else if (publicApproval >= 50) {
             unrestChange = -stabilityRoll;
         } else {
             unrestChange = stabilityRoll;
@@ -10576,7 +10576,7 @@ async function purgeMinister(ministryKey) {
 
         await _supabase.from('nations').update({
             unrest: Math.max(0, Math.min(100, unrest + unrestChange)),
-            authority: Math.min(100, authority + corruptionGain)
+            public_approval: Math.min(100, publicApproval + corruptionGain)
         }).eq('id', currentNation.id);
 
         await _supabase.from('campaign_actions').insert({
@@ -10607,7 +10607,7 @@ async function purgeMinister(ministryKey) {
         } else {
             resultMsg += 'Your Approval: No boost (too many recent purges)\n';
         }
-        resultMsg += 'Nation: ' + (unrestChange >= 0 ? '+' : '') + unrestChange + ' Unrest, +' + corruptionGain + ' Authority';
+        resultMsg += 'Nation: ' + (unrestChange >= 0 ? '+' : '') + unrestChange + ' Unrest, +' + corruptionGain + ' Public Approval';
         if (purgeCount === 1) resultMsg += '\n\n⚠️ Diminishing returns: 2nd purge in 6 ticks — boost halved.';
         if (purgeCount >= 2) resultMsg += '\n\n🚨 Regime fatigue: 3rd+ purge in 6 ticks — no boost.';
 

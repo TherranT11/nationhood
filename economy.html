@@ -456,7 +456,7 @@ async function loadAllNationsData() {
     if (cached) { allNations = cached; return; }
 
     var res = await _supabase.from('nations')
-        .select('id, name, gdp, population, gdp_growth, immigration, standard_of_living, cost_of_living, debt, budget, control, unrest, authority, crown_authority, energy, health, education, power, infrastructure, industry, farmland, goods, workforce');
+        .select('id, name, gdp, population, gdp_growth, immigration, standard_of_living, cost_of_living, debt, budget, control, unrest, public_approval, crown_authority, energy, health, education, power, infrastructure, industry, farmland, service_sector, workforce');
 
     if (res.data) {
         allNations = res.data;
@@ -2813,7 +2813,7 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
             var penalties = [];
             if (sectorKey === 'fuel_energy') penalties = ['Energy \u2193', 'Industry \u2193', 'Cost of Living \u2191'];
             else if (sectorKey === 'food_agriculture') penalties = ['Standard of Living \u2193', 'Unrest \u2191', 'Health \u2193'];
-            else if (sectorKey === 'grains_staples') penalties = ['Control \u2193', 'Authority \u2193', 'Unrest \u2191', 'Standard of Living \u2193'];
+            else if (sectorKey === 'grains_staples') penalties = ['Control \u2193', 'Public Approval \u2193', 'Unrest \u2191', 'Standard of Living \u2193'];
             else if (sectorKey === 'livestock_dairy') penalties = ['Standard of Living \u2193', 'Cost of Living \u2191'];
             else if (sectorKey === 'fruits_vegetables') penalties = ['Health \u2193', 'Cost of Living \u2191'];
             else if (sectorKey === 'cash_crops') penalties = ['GDP Growth \u2193'];
@@ -3165,9 +3165,9 @@ function formatStatLabel(key) {
         workforce: 'Workforce',
         unrest: 'Unrest',
         control: 'Control',
-        authority: 'Authority',
+        public_approval: 'Public Approval',
         crown_authority: 'Crown Authority',
-        goods: 'Goods',
+        service_sector: 'Service Sector',
         cost_of_living: 'Cost of Living',
         standard_of_living: 'Standard of Living'
     };
@@ -4114,7 +4114,7 @@ function renderIndustriesTab(nation) {
         { key: 'industry', label: 'Industry' },
         { key: 'workforce', label: 'Workforce' },
         { key: 'energy', label: 'Energy' },
-        { key: 'goods', label: 'Goods' },
+        { key: 'service_sector', label: 'Service Sector' },
         { key: 'gdp_growth', label: 'GDP Growth' },
         { key: 'infrastructure', label: 'Infrastructure' }
     ];
@@ -4122,7 +4122,7 @@ function renderIndustriesTab(nation) {
         { key: 'industry', label: 'Industry' },
         { key: 'infrastructure', label: 'Infrastructure' },
         { key: 'workforce', label: 'Workforce' },
-        { key: 'goods', label: 'Goods' },
+        { key: 'service_sector', label: 'Service Sector' },
         { key: 'energy', label: 'Energy' },
         { key: 'power', label: 'Power' }
     ];
@@ -4132,7 +4132,7 @@ function renderIndustriesTab(nation) {
         { key: 'standard_of_living', label: 'Std. of Living' },
         { key: 'workforce', label: 'Workforce' },
         { key: 'control', label: 'Control' },
-        { key: 'authority', label: 'Authority' }
+        { key: 'public_approval', label: 'Public Approval' }
     ];
     var invDrivers = [
         { key: 'budget', label: 'Budget' },
@@ -4140,12 +4140,12 @@ function renderIndustriesTab(nation) {
         { key: 'debt', label: 'National Debt' },
         { key: 'industry', label: 'Industry' },
         { key: 'control', label: 'Control' },
-        { key: 'authority', label: 'Authority' }
+        { key: 'public_approval', label: 'Public Approval' }
     ];
     var insDrivers = [
         { key: 'control', label: 'Control' },
         { key: 'infrastructure', label: 'Infrastructure' },
-        { key: 'authority', label: 'Authority' },
+        { key: 'public_approval', label: 'Public Approval' },
         { key: 'workforce', label: 'Workforce' },
         { key: 'unrest', label: 'Unrest' },
         { key: 'health', label: 'Health' }
@@ -4486,7 +4486,7 @@ function renderIndustriesTab(nation) {
         { key: 'infrastructure', label: 'Infrastructure' },
         { key: 'workforce', label: 'Workforce' },
         { key: 'industry', label: 'Industry' },
-        { key: 'goods', label: 'Goods' },
+        { key: 'service_sector', label: 'Service Sector' },
         { key: 'energy', label: 'Energy' },
         { key: 'gdp_growth', label: 'GDP Growth' }
     ];

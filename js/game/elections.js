@@ -1174,7 +1174,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
  */
 export async function dissolveParliament(supabase, nationId, presidentFactionId) {
     const { data: nation } = await supabase.from('nations')
-        .select('name, government_type, control, authority, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
+        .select('name, government_type, control, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
         .eq('id', nationId).single();
 
     if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
@@ -1219,7 +1219,7 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
         last_dissolution_tick: currentTick
     };
     if (voncPenalty) {
-        nationUpdate.authority = Math.max(0, Number(nation.authority ?? 50) - 5);
+        nationUpdate.public_approval = Math.max(0, Number(nation.public_approval ?? 50) - 5);
     }
     await supabase.from('nations').update(nationUpdate).eq('id', nationId);
 
@@ -3140,14 +3140,14 @@ export async function processPresidentialElectionResult(supabase, nation, comple
     // === WINNER/LOSER EFFECTS ===
     try {
         const { data: nationStats } = await supabase.from('nations')
-            .select('control, authority, standard_of_living, unrest')
+            .select('control, public_approval, standard_of_living, unrest')
             .eq('id', nation.id).single();
 
         if (nationStats) {
             const updates = {};
             if (isIncumbentWin) {
                 // Incumbent wins: +3 legitimacy, +2 stability (mandate renewed)
-                updates.legitimacy = Math.min(100, Math.round(((nationStats.authority || 50) + 3) * 10) / 10);
+                updates.legitimacy = Math.min(100, Math.round(((nationStats.public_approval || 50) + 3) * 10) / 10);
                 updates.stability = Math.min(100, Math.round(((nationStats.control || 50) + 2) * 10) / 10);
                 console.log(`Incumbent win effects: +3 legitimacy, +2 stability (${nation.name})`);
             } else if (isChallengerWin && !wasRunoff) {
@@ -3159,7 +3159,7 @@ export async function processPresidentialElectionResult(supabase, nation, comple
             } else if (isIncumbentRunoffLoss) {
                 // Incumbent loses in runoff: extra penalties (contested transition)
                 updates.stability = Math.max(0, Math.round(((nationStats.control || 50) - 4) * 10) / 10);
-                updates.legitimacy = Math.max(0, Math.round(((nationStats.authority || 50) - 2) * 10) / 10);
+                updates.legitimacy = Math.max(0, Math.round(((nationStats.public_approval || 50) - 2) * 10) / 10);
                 updates.civil_unrest = Math.min(100, Math.round(((nationStats.unrest || 0) + 5) * 10) / 10);
                 updates.happiness = Math.min(100, Math.round(((nationStats.standard_of_living || 50) + 2) * 10) / 10);
                 console.log(`Incumbent runoff loss effects: -4 stability, -2 legitimacy, +5 civil_unrest, +2 happiness (${nation.name})`);

@@ -164,11 +164,15 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
         }
     }
 
-    // Enforce foundational law caps on stats
-    // Judicial Appointment Politicization Act: cap judicial_independence at 30
+    // Enforce foundational law caps on stats.
+    // Judicial Appointment Politicization Act: caps public_approval
+    // at 30 (was the legacy judicial_independence cap; Phase 7H
+    // collapsed legitimacy + judicial_independence + freedom_index
+    // into public_approval, so the cap now applies to the merged
+    // signal).
     if (nation.judicial_appointment_politicization) {
-        const ji = nationUpdates.judicial_independence ?? Number(nation.authority ?? 50);
-        if (ji > 30) nationUpdates.judicial_independence = 30;
+        const pa = nationUpdates.public_approval ?? Number(nation.public_approval ?? 50);
+        if (pa > 30) nationUpdates.public_approval = 30;
     }
     // State Media Control Act: cap press_freedom at 40
     if (nation.state_media_control) {

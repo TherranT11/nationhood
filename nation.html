@@ -56,7 +56,7 @@ var STAT_CATEGORIES = [
         { name: 'GDP Growth', key: 'gdp_growth', desc: 'Monthly economic growth rate', format: 'gdpgrowth' },
         { name: 'National Debt', key: 'debt', desc: 'Government debt obligations', format: 'currency', inverted: true, noHealth: true },
         { name: 'Cost of Living', key: 'cost_of_living', desc: 'Consumer cost burden', inverted: true },
-        { name: 'Goods', key: 'goods', desc: 'Domestic goods supply' },
+        { name: 'Service Sector', key: 'service_sector', desc: 'Domestic service sector activity' },
         { name: 'Industry', key: 'industry', desc: 'Industrial production' },
         { name: 'Energy', key: 'energy', desc: 'Energy supply' },
         { name: 'Power', key: 'power', desc: 'Power generation capacity' }
@@ -94,7 +94,7 @@ var STAT_CATEGORIES = [
     { id: 'governance', label: 'Governance', icon: '\u{1F3DB}', blocs: ['Academics & Professionals', 'Ethnic Minorities', 'Urban Progressives'],
       stats: [
         { name: 'Control', key: 'control', desc: 'Government control of territory' },
-        { name: 'Authority', key: 'authority', desc: 'Government authority' },
+        { name: 'Public Approval', key: 'public_approval', desc: 'Public approval of the government' },
         { name: 'Crown Authority', key: 'crown_authority', desc: 'Authority of the crown', conditional: function(nation){ return nation.crown_authority != null; } }
     ]},
     { id: 'security', label: 'Security', icon: '\u{1F6E1}', blocs: ['Military & Security', 'Nationalist Bloc'],

@@ -183,14 +183,14 @@ export var FOOD_SUBSECTORS = [
                 standard_of_living: 0.15,        // alpha-19: poverty_rate inverted → standard_of_living
                 cost_of_living: -0.10,
                 control: 0.10,                   // alpha-19: stability → control
-                authority: 0.10,                 // alpha-19: legitimacy → authority
+                public_approval: 0.10,           // alpha-23: legitimacy → public_approval (renamed from authority in 8.5.1)
                 health: 0.05                     // alpha-19: lifespan → health
             },
             shortage: {
                 standard_of_living: -0.30,       // alpha-19: poverty_rate inverted → standard_of_living
                 cost_of_living: 0.20,
                 control: -0.20,                  // alpha-19: stability → control
-                authority: -0.20,                // alpha-19: legitimacy → authority
+                public_approval: -0.20,          // alpha-23: legitimacy → public_approval (renamed from authority in 8.5.1)
                 unrest: 0.40                     // alpha-19: civil_unrest + political_violence collapsed → unrest
                 // emigration dropped (column gone), happiness folded into standard_of_living above
             }
@@ -2582,7 +2582,7 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 nationUpdates.standard_of_living = Math.round(Math.max(0, grainSolCurrent - grainHappiness - grainPoverty) * 10) / 10;
                 nationUpdates.unrest = Math.round(Math.min(100, (Number(n.unrest) || 0) + grainUnrest) * 10) / 10;
                 nationUpdates.control = Math.round(Math.max(0, (nationUpdates.control != null ? nationUpdates.control : (Number(n.control ?? 50))) - grainStability) * 10) / 10;
-                nationUpdates.authority = Math.round(Math.max(0, (Number(n.authority ?? 50)) - grainLegitimacy) * 10) / 10;
+                nationUpdates.public_approval = Math.round(Math.max(0, (Number(n.public_approval ?? 50)) - grainLegitimacy) * 10) / 10;
             } else if (sKey3 === 'livestock_dairy') {
                 // Livestock shortage: quality of life decline.
                 // alpha-19: happiness → standard_of_living (merge with livestockSol).

@@ -1313,10 +1313,13 @@ export const EXTRADITION_EXCEPTION_OPTIONS = [
 
 const EXTRADITION_BASE_EFFECTS = {
     relations: 5,
-    // alpha-19: crime_rate, terrorism, corruption dropped (no alpha replacements);
-    // international_reputation → power; judicial_independence → authority.
+    // alpha-19: terrorism dropped (collapsed into unrest); international_reputation
+    // → power; judicial_independence → authority → public_approval (alpha-23).
+    // alpha-23: corruption + crime restored to live menu (Phase 8.5.2);
+    // a future balance pass can re-add small effects on those columns
+    // here if extradition pacts should nudge corruption / crime trends.
     power: 1,
-    authority: 0.5,
+    public_approval: 0.5,
     cost_proposer: 8000000,
     cost_target: 8000000,
     ongoing_cost: 3000000
@@ -1342,9 +1345,10 @@ export function calculateExtraditionEffects(config) {
     const relations = base.relations;
     // alpha-19: international_reputation → power.
     const power_base = base.power;
-    // alpha-19: judicial_independence → authority. appealOpt.judicial_penalty
-    // (negative for executive-style processes) still pulls authority down.
-    const authority = +(base.authority + appealOpt.judicial_penalty).toFixed(1);
+    // alpha-19/23: judicial_independence → authority → public_approval.
+    // appealOpt.judicial_penalty (negative for executive-style processes)
+    // still pulls public_approval down.
+    const public_approval = +(base.public_approval + appealOpt.judicial_penalty).toFixed(1);
 
     // Political offenses penalties — alpha-19: freedom_index / press_freedom /
     // polarization dropped. Reputation/power penalty for political-offense
@@ -1360,7 +1364,7 @@ export function calculateExtraditionEffects(config) {
     const effects = {
         relations,
         power: power_base + reputation_penalty,
-        authority
+        public_approval
     };
 
     return {
