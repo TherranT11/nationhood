@@ -1,0 +1,226 @@
+-- ══════════════════════════════════════════════════════════════
+-- Corporation Simplification v2
+-- Collapses ~20 corp subsystems down to 11 canonical stats:
+--   Ownership, Cash, Revenue, Costs, Debt, Employee Wages,
+--   Innovation, Market Share, Reputation, Productivity, Assets
+--
+-- Corps live on the `factions` table (faction_type='corporation').
+-- ══════════════════════════════════════════════════════════════
+
+-- ─────────────────────────────────────────────────────────────
+-- 1. Drop dead tables (children before parents for FK safety)
+-- ─────────────────────────────────────────────────────────────
+DROP TABLE IF EXISTS vessel_incidents CASCADE;
+DROP TABLE IF EXISTS vessel_insurance CASCADE;
+DROP TABLE IF EXISTS shipping_application_vessel CASCADE;
+DROP TABLE IF EXISTS corp_vessels CASCADE;
+
+DROP TABLE IF EXISTS corp_equipment_deliveries CASCADE;
+DROP TABLE IF EXISTS corp_equipment CASCADE;
+DROP TABLE IF EXISTS corp_warehouse CASCADE;
+
+DROP TABLE IF EXISTS corp_properties CASCADE;
+DROP TABLE IF EXISTS corp_permits CASCADE;
+DROP TABLE IF EXISTS construction_permits CASCADE;
+-- construction_contracts is a parallel/superseded contract table that depends
+-- on dead materials/equipment/workforce systems. Killing it; corp_contracts is
+-- the surviving contract table. (FLAG for review: confirm this is desired.)
+DROP TABLE IF EXISTS construction_contracts CASCADE;
+DROP TABLE IF EXISTS permit_policies CASCADE;
+DROP TABLE IF EXISTS project_permit_requirements CASCADE;
+
+DROP TABLE IF EXISTS bond_holdings CASCADE;
+DROP TABLE IF EXISTS government_bonds CASCADE;
+DROP TABLE IF EXISTS construction_insurance CASCADE;
+
+DROP TABLE IF EXISTS finance_active_loans CASCADE;
+DROP TABLE IF EXISTS finance_loan_requests CASCADE;
+DROP TABLE IF EXISTS finance_insurance_claims CASCADE;
+DROP TABLE IF EXISTS finance_insurance_policies CASCADE;
+
+DROP TABLE IF EXISTS corp_workforce_audit CASCADE;
+DROP TABLE IF EXISTS corp_donation_cooldown CASCADE;
+DROP TABLE IF EXISTS corp_cash_history CASCADE;
+
+-- corp_executives + corp_executive_pool: KEPT (per spec).
+
+-- Drop corp-side health insurance
+DROP TABLE IF EXISTS health_insurance_lawsuits CASCADE;
+DROP TABLE IF EXISTS health_insurance_claims CASCADE;
+DROP TABLE IF EXISTS health_insurance_tiers CASCADE;
+DROP TABLE IF EXISTS health_insurance_pools CASCADE;
+DROP TABLE IF EXISTS health_insurance_policies CASCADE;
+
+-- Drop dead RPCs
+DROP FUNCTION IF EXISTS declare_corp_bankruptcy(uuid) CASCADE;
+DROP FUNCTION IF EXISTS deliver_vessel_order(uuid) CASCADE;
+DROP FUNCTION IF EXISTS abandon_construction_contract(uuid) CASCADE;
+DROP FUNCTION IF EXISTS release_stuck_corp_equipment() CASCADE;
+
+-- ─────────────────────────────────────────────────────────────
+-- 2. Drop dead columns on factions (corp side)
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE factions
+  DROP COLUMN IF EXISTS corp_subsector,
+  DROP COLUMN IF EXISTS corp_general_workforce,
+  DROP COLUMN IF EXISTS corp_skilled_workforce,
+  DROP COLUMN IF EXISTS corp_innovative_workforce,
+  DROP COLUMN IF EXISTS corp_operational_efficiency;
+
+-- Drop tick processor column for vessels/equipment cycles (corp tick stays)
+-- (No-op if not present.)
+
+-- ─────────────────────────────────────────────────────────────
+-- 3. Add new persisted stats to factions
+-- ─────────────────────────────────────────────────────────────
+
+-- Single-number Assets (replaces properties + equipment + warehouse + vessels)
+ALTER TABLE factions
+  ADD COLUMN IF NOT EXISTS corp_assets NUMERIC NOT NULL DEFAULT 0;
+
+-- 0-10 derived stats (event-driven, no passive drift)
+ALTER TABLE factions
+  ADD COLUMN IF NOT EXISTS corp_innovation     NUMERIC(4,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS corp_market_share   NUMERIC(4,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS corp_productivity   NUMERIC(4,2) NOT NULL DEFAULT 0;
+
+-- Per-tick flow snapshots (recomputed each tick; history in corp_pnl_history)
+ALTER TABLE factions
+  ADD COLUMN IF NOT EXISTS corp_revenue_current_tick NUMERIC NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS corp_costs_current_tick   NUMERIC NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS corp_wages_current_tick   NUMERIC NOT NULL DEFAULT 0;
+
+-- Range constraints on 0-10 stats
+DO $$ BEGIN
+  ALTER TABLE factions
+    ADD CONSTRAINT corp_innovation_range   CHECK (corp_innovation   BETWEEN 0 AND 10);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE factions
+    ADD CONSTRAINT corp_market_share_range CHECK (corp_market_share BETWEEN 0 AND 10);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE factions
+    ADD CONSTRAINT corp_productivity_range CHECK (corp_productivity BETWEEN 0 AND 10);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ─────────────────────────────────────────────────────────────
+-- 4. Rescale Reputation 0-100 → 0-10
+-- ─────────────────────────────────────────────────────────────
+UPDATE factions
+SET corp_reputation = ROUND((COALESCE(corp_reputation, 0)::numeric / 10), 2)
+WHERE faction_type = 'corporation'
+  AND corp_reputation > 10;  -- idempotent guard
+
+ALTER TABLE factions
+  ALTER COLUMN corp_reputation TYPE NUMERIC(4,2) USING corp_reputation::numeric;
+
+ALTER TABLE factions
+  ALTER COLUMN corp_reputation SET DEFAULT 5.0;
+
+DO $$ BEGIN
+  ALTER TABLE factions
+    ADD CONSTRAINT corp_reputation_range CHECK (corp_reputation BETWEEN 0 AND 10);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ─────────────────────────────────────────────────────────────
+-- 5. Strip dead columns from corp_contracts
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE corp_contracts
+  DROP COLUMN IF EXISTS assigned_workforce,
+  DROP COLUMN IF EXISTS assigned_assets,
+  DROP COLUMN IF EXISTS permits_required,
+  DROP COLUMN IF EXISTS equipment_required,
+  DROP COLUMN IF EXISTS materials_estimated,
+  DROP COLUMN IF EXISTS current_phase,
+  DROP COLUMN IF EXISTS stalled_ticks,
+  DROP COLUMN IF EXISTS required_subsector;
+
+ALTER TABLE corp_contracts
+  ADD COLUMN IF NOT EXISTS progress_pct NUMERIC(5,2) NOT NULL DEFAULT 0
+    CHECK (progress_pct BETWEEN 0 AND 100);
+
+-- ─────────────────────────────────────────────────────────────
+-- 6. Ownership table (multiple stakeholders, sums to 100% per corp)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS corp_ownership (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  corp_id      UUID NOT NULL REFERENCES factions(id) ON DELETE CASCADE,
+  holder_type  TEXT NOT NULL CHECK (holder_type IN ('player','state','shareholders','rival_corp','other')),
+  holder_id    UUID,           -- nullable: e.g. anonymous shareholders
+  pct          NUMERIC(5,2) NOT NULL CHECK (pct >= 0 AND pct <= 100),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_corp_ownership_corp ON corp_ownership(corp_id);
+CREATE INDEX IF NOT EXISTS idx_corp_ownership_holder ON corp_ownership(holder_type, holder_id);
+
+-- Sum-to-100 enforcement via deferred trigger (allows transactional reshuffles)
+CREATE OR REPLACE FUNCTION corp_ownership_sum_check() RETURNS TRIGGER AS $$
+DECLARE
+  v_total NUMERIC;
+  v_corp  UUID;
+BEGIN
+  v_corp := COALESCE(NEW.corp_id, OLD.corp_id);
+  SELECT COALESCE(SUM(pct), 0) INTO v_total FROM corp_ownership WHERE corp_id = v_corp;
+  IF v_total <> 100 THEN
+    RAISE EXCEPTION 'corp_ownership for corp % must sum to 100, got %', v_corp, v_total;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS corp_ownership_sum_trigger ON corp_ownership;
+CREATE CONSTRAINT TRIGGER corp_ownership_sum_trigger
+  AFTER INSERT OR UPDATE OR DELETE ON corp_ownership
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION corp_ownership_sum_check();
+
+ALTER TABLE corp_ownership ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "corp_ownership_read_all" ON corp_ownership;
+CREATE POLICY "corp_ownership_read_all" ON corp_ownership FOR SELECT USING (true);
+
+-- Backfill: every existing corp gets 100% to its linked_user_id (player) as 'player'
+INSERT INTO corp_ownership (corp_id, holder_type, holder_id, pct)
+SELECT id, 'player', linked_user_id, 100
+FROM factions
+WHERE faction_type = 'corporation'
+  AND linked_user_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM corp_ownership o WHERE o.corp_id = factions.id);
+
+-- ─────────────────────────────────────────────────────────────
+-- 7. Per-tick P&L history
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS corp_pnl_history (
+  corp_id    UUID NOT NULL REFERENCES factions(id) ON DELETE CASCADE,
+  tick       INTEGER NOT NULL,
+  revenue    NUMERIC NOT NULL DEFAULT 0,
+  costs      NUMERIC NOT NULL DEFAULT 0,
+  wages      NUMERIC NOT NULL DEFAULT 0,
+  profit     NUMERIC GENERATED ALWAYS AS (revenue - costs - wages) STORED,
+  cash_start NUMERIC NOT NULL DEFAULT 0,
+  cash_end   NUMERIC NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (corp_id, tick)
+);
+
+CREATE INDEX IF NOT EXISTS idx_corp_pnl_history_tick ON corp_pnl_history(tick);
+
+ALTER TABLE corp_pnl_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "corp_pnl_history_read_all" ON corp_pnl_history;
+CREATE POLICY "corp_pnl_history_read_all" ON corp_pnl_history FOR SELECT USING (true);
+
+-- ─────────────────────────────────────────────────────────────
+-- 8. Comments
+-- ─────────────────────────────────────────────────────────────
+COMMENT ON COLUMN factions.corp_assets             IS 'Total asset value (single number). Modified by events. Replaces properties/equipment/vessels/warehouse.';
+COMMENT ON COLUMN factions.corp_innovation         IS '0-10 R&D and creative output. Event-driven, no passive drift.';
+COMMENT ON COLUMN factions.corp_market_share       IS '0-10 industry share. Event-driven.';
+COMMENT ON COLUMN factions.corp_productivity       IS '0-10 input-to-output efficiency. Event-driven.';
+COMMENT ON COLUMN factions.corp_reputation         IS '0-10 public/investor perception. Event-driven (scandals, performance, treatment of workers).';
+COMMENT ON COLUMN factions.corp_revenue_current_tick IS 'Revenue earned during the current tick. Snapshot — historized in corp_pnl_history.';
+COMMENT ON COLUMN factions.corp_costs_current_tick   IS 'Non-wage operating costs for the current tick.';
+COMMENT ON COLUMN factions.corp_wages_current_tick   IS 'Wage outflows for the current tick.';
+COMMENT ON TABLE  corp_ownership   IS 'Stakeholder ownership of corporations. Sums to 100% per corp.';
+COMMENT ON TABLE  corp_pnl_history IS 'Per-tick P&L snapshot for each corporation.';
