@@ -109,9 +109,6 @@
         <div class="add-text-article-section" id="add-permit-section" onclick="showPermitForm()">
             <span class="add-text-article-btn-text">+ Add Permit</span>
         </div>
-        <div class="add-text-article-section" id="add-tariff-section" onclick="showTariffForm()">
-            <span class="add-text-article-btn-text">+ Tariff Article</span>
-        </div>
         <div class="add-text-article-section" id="add-tax-section" onclick="showTaxForm()">
             <span class="add-text-article-btn-text">+ Tax Article</span>
         </div>
@@ -172,42 +169,6 @@
             <div style="display:flex;gap:8px;margin-top:12px;">
                 <button class="btn-cancel" onclick="hideBailoutForm()">Cancel</button>
                 <button class="btn-add" id="add-bailout-btn" disabled onclick="addBailoutArticle()">Add to Bill</button>
-            </div>
-        </div>
-        <div id="add-tariff-form" style="display:none;">
-            <div class="form-group">
-                <label class="form-label" style="color:var(--amber);">Select Sector or Good</label>
-                <select class="form-select" id="tariff-sector-select" onchange="onTariffSectorChange()">
-                    <option value="">-- Choose a sector --</option>
-                    <option value="fuel_energy">Fuel & Energy</option>
-                    <option value="minerals">Minerals & Raw Materials</option>
-                    <option value="grains_staples">Grains & Staples</option>
-                    <option value="livestock_dairy">Livestock & Dairy</option>
-                    <option value="fruits_vegetables">Fruits & Vegetables</option>
-                    <option value="cash_crops">Cash Crops & Plantation</option>
-                    <option value="manufactured_goods">Manufactured Goods</option>
-                    <option value="technology">Technology & Electronics</option>
-                    <option value="arms">Arms & Military Equipment</option>
-                </select>
-            </div>
-            <div id="tariff-controls" style="display:none;">
-                <div class="form-group">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                        <label class="form-label" style="margin:0;">Tariff Rate</label>
-                        <span id="tariff-rate-display" style="font-family:var(--font-mono);font-size:1.2rem;font-weight:700;color:var(--amber);">0%</span>
-                    </div>
-                    <input type="range" id="tariff-rate-slider" class="form-select" min="0" max="100" step="1" value="0" oninput="onTariffRateChange()" style="width:100%;accent-color:var(--amber);height:6px;padding:0;border:none;background:transparent;" />
-                    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-top:2px;">
-                        <span>0% (Free Trade)</span>
-                        <span>50% (Protectionist)</span>
-                        <span>100% (Embargo)</span>
-                    </div>
-                </div>
-                <div id="tariff-preview" style="margin:8px 0;padding:10px;background:var(--bg-card);border:1px solid var(--border-main);border-radius:4px;font-size:0.75rem;color:var(--text-muted);line-height:1.6;"></div>
-                <div style="display:flex;gap:8px;margin-top:12px;">
-                    <button class="btn-cancel" onclick="hideTariffForm()">Cancel</button>
-                    <button class="btn-add" id="add-tariff-btn" disabled onclick="addTariffArticle()">Add to Bill</button>
-                </div>
             </div>
         </div>
         <div id="add-permit-form" style="display:none;">
@@ -438,7 +399,6 @@ import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolici
 import { calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, getRequiredSeats, evaluateBillVote } from './js/game/bills.js';
 import { formatStatName, formatMinorSector } from './js/game/political-actions.js';
 import { MAJOR_SECTORS, RAW_SCALING_DIVISORS, checkSovereigntyConstraints } from './js/game/diplomacy-constants.js';
-import { getTariffDampener } from './js/game/trade-constants.js';
 import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidential.js';
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
@@ -1691,7 +1651,6 @@ function _hideAllArticleForms() {
     document.getElementById('add-funding-article-form').style.display = 'none';
     document.getElementById('add-entrenchment-form').style.display = 'none';
     document.getElementById('add-permit-form').style.display = 'none';
-    document.getElementById('add-tariff-form').style.display = 'none';
     document.getElementById('add-tax-form').style.display = 'none';
     document.getElementById('add-bailout-form').style.display = 'none';
 }
@@ -1703,7 +1662,6 @@ function _showAllArticleButtons() {
     const hasFoundational = draftArticles.some(a => a.isFoundational);
     document.getElementById('add-entrenchment-section').style.display = (hasEntrenchment || hasFoundational) ? 'none' : 'block';
     document.getElementById('add-permit-section').style.display = 'block';
-    document.getElementById('add-tariff-section').style.display = 'block';
     // One tax article per bill (any tax type) — hide button if already added.
     const hasTax = draftArticles.some(a => a.isTax);
     document.getElementById('add-tax-section').style.display = hasTax ? 'none' : 'block';
@@ -1715,7 +1673,6 @@ function _hideAllArticleButtons() {
     document.getElementById('add-funding-article-section').style.display = 'none';
     document.getElementById('add-entrenchment-section').style.display = 'none';
     document.getElementById('add-permit-section').style.display = 'none';
-    document.getElementById('add-tariff-section').style.display = 'none';
     document.getElementById('add-tax-section').style.display = 'none';
     document.getElementById('add-bailout-section').style.display = 'none';
 }
@@ -2054,112 +2011,7 @@ function hidePermitForm() {
 
 // ==================== TARIFF ARTICLES ====================
 
-const TARIFF_SECTOR_LABELS = {
-    fuel_energy: 'Fuel & Energy', minerals: 'Minerals & Raw Materials',
-    grains_staples: 'Grains & Staples', livestock_dairy: 'Livestock & Dairy',
-    fruits_vegetables: 'Fruits & Vegetables', cash_crops: 'Cash Crops & Plantation',
-    manufactured_goods: 'Manufactured Goods', technology: 'Technology & Electronics',
-    arms: 'Arms & Military Equipment',
-};
 
-function showTariffForm() {
-    _hideAllArticleButtons(); _hideAllArticleForms();
-    document.getElementById('add-tariff-form').style.display = 'block';
-    document.getElementById('tariff-sector-select').value = '';
-    document.getElementById('tariff-controls').style.display = 'none';
-    document.getElementById('add-tariff-btn').disabled = true;
-}
-
-function hideTariffForm() {
-    _showAllArticleButtons(); _hideAllArticleForms();
-}
-
-function onTariffSectorChange() {
-    const sector = document.getElementById('tariff-sector-select').value;
-    if (!sector) {
-        document.getElementById('tariff-controls').style.display = 'none';
-        document.getElementById('add-tariff-btn').disabled = true;
-        return;
-    }
-    document.getElementById('tariff-controls').style.display = 'block';
-    document.getElementById('tariff-rate-slider').value = 0;
-    onTariffRateChange();
-}
-
-function onTariffRateChange() {
-    const rate = Number(document.getElementById('tariff-rate-slider').value);
-    const sector = document.getElementById('tariff-sector-select').value;
-    const label = TARIFF_SECTOR_LABELS[sector] || sector;
-    document.getElementById('tariff-rate-display').textContent = rate + '%';
-    document.getElementById('tariff-rate-display').style.color = rate >= 80 ? '#d9534f' : rate >= 50 ? '#c84' : rate >= 20 ? '#ca5' : '#5cb85c';
-    document.getElementById('add-tariff-btn').disabled = !sector;
-
-    // Preview — actual reduction comes from the trade engine's dampener (single
-    // source of truth). At rate=100 (slider max) the dampener caps imports at
-    // ~50% of demand; an outright embargo would require rate=200, which the
-    // slider intentionally doesn't reach.
-    const reductionPct = Math.round((1 - getTariffDampener({ sector_tariffs: { [sector]: rate } }, sector)) * 100);
-    const reductionTxt = ' Reduces ' + label + ' import volume by ~' + reductionPct + '%.';
-    const preview = document.getElementById('tariff-preview');
-    let desc = '';
-    if (rate === 0) desc = 'Free trade — no tariff on ' + label + ' imports.';
-    else if (rate <= 15) desc = 'Low tariff (' + rate + '%) on ' + label + '.' + reductionTxt + ' Minor revenue, minimal disruption.';
-    else if (rate <= 35) desc = 'Moderate tariff (' + rate + '%) on ' + label + '.' + reductionTxt + ' Protects domestic producers.';
-    else if (rate <= 60) desc = 'High tariff (' + rate + '%) on ' + label + '.' + reductionTxt + ' Significant trade barrier; partners may retaliate.';
-    else if (rate <= 85) desc = 'Severe tariff (' + rate + '%) on ' + label + '.' + reductionTxt + ' Expect diplomatic consequences.';
-    else desc = 'Maximum slider tariff (' + rate + '%) on ' + label + '.' + reductionTxt + ' Imports are dampened, not blocked — a full embargo is a separate policy.';
-
-    preview.innerHTML = '<div style="margin-bottom:6px;">' + desc + '</div>' +
-        '<div style="display:flex;gap:16px;font-family:var(--font-mono);font-size:0.7rem;">' +
-        '<span style="color:var(--green);">Revenue ↑</span>' +
-        '<span style="color:var(--red);">Import volume ↓</span>' +
-        (rate >= 30 ? '<span style="color:var(--red);">Cost of living ↑</span>' : '') +
-        (rate >= 50 ? '<span style="color:var(--red);">Foreign investment ↓</span>' : '') +
-        (rate >= 80 ? '<span style="color:var(--red);">Diplomatic tension ↑</span>' : '') +
-        '</div>';
-}
-
-function addTariffArticle() {
-    if (_draftArticleLock) return;
-    const sector = document.getElementById('tariff-sector-select').value;
-    const rate = Number(document.getElementById('tariff-rate-slider').value);
-    if (!sector) return;
-
-    _draftArticleLock = true;
-    try {
-        const label = TARIFF_SECTOR_LABELS[sector] || sector;
-        const articleNum = draftArticles.length + 2;
-
-        draftArticles.push({
-            articleNumber: articleNum,
-            isTariff: true,
-            policy: {
-                id: null,
-                policy_name: label + ' Tariff — ' + rate + '%',
-                description: 'Sets a ' + rate + '% tariff on all ' + label + ' imports.',
-            },
-            effect_data: {
-                type: 'TARIFF_RATE_CHANGE',
-                sector: sector,
-                new_rate: rate,
-            },
-        });
-
-        renderDraftArticles();
-        _showAllArticleButtons(); _hideAllArticleForms();
-        document.getElementById('bill-name-section').style.display = 'block';
-        document.getElementById('submit-bill-btn').disabled = false;
-        updateSubmitButtonCost();
-    } finally {
-        _draftArticleLock = false;
-    }
-}
-
-window.showTariffForm = showTariffForm;
-window.hideTariffForm = hideTariffForm;
-window.onTariffSectorChange = onTariffSectorChange;
-window.onTariffRateChange = onTariffRateChange;
-window.addTariffArticle = addTariffArticle;
 
 // ==================== TAX ARTICLE ====================
 // Stepped rate change for any supported tax type (income, corporate, ...).

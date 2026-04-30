@@ -363,38 +363,12 @@ function renderTradeHeaderStats() {
 }
 
 async function loadTradeFlowData() {
-    const nationId = _worldState?.nation?.id;
-    if (!nationId) return;
-
-    // Get latest trade_summary tick
-    const { data: sumRows } = await _supabase.from('trade_summary')
-        .select('*')
-        .eq('nation_id', nationId)
-        .order('tick', { ascending: false })
-        .limit(1);
-    _tradeSummary = sumRows?.[0] || null;
-
-    if (!_tradeSummary) return;
-
-    // Get trade flows for that tick
-    const { data: flowRows } = await _supabase.from('trade_flows')
-        .select('sector, domestic_production, domestic_demand, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
-        .eq('nation_id', nationId)
-        .eq('tick', _tradeSummary.tick);
-
+    // Phase 10A: trade_summary / trade_flows / trade_partners tables
+    // dropped with the goods-trade engine wipe. Trade-agreement clauses
+    // that read these globals fall through to zero/empty state.
+    _tradeSummary = null;
     _tradeFlows = {};
-    if (flowRows) {
-        for (const row of flowRows) {
-            _tradeFlows[row.sector] = row;
-        }
-    }
-
-    // Load bilateral trade partners (imports to us + exports from us)
-    const { data: partnerRows } = await _supabase.from('trade_partners')
-        .select('exporter_nation_id, importer_nation_id, sector, trade_volume')
-        .eq('tick', _tradeSummary.tick)
-        .or(`exporter_nation_id.eq.${nationId},importer_nation_id.eq.${nationId}`);
-    _tradePartnersBilateral = partnerRows || [];
+    _tradePartnersBilateral = [];
 }
 
 // ── Trade-lane efficiency helpers (shared by commodity detail + agreements) ──
@@ -2131,24 +2105,10 @@ function renderTradeAgreements() {
 let _allNationFlows = {}; // nationId → { sector → { export_capacity, import_demand } }
 
 async function loadAllNationFlows() {
-    if (!_tradeSummary) return;
-    // net_flow is required by computeCompatibility / getNationSurplusesAndDeficits
-    // (both read it from this map). export_capacity and import_demand stay
-    // because computeCompatibility uses their sum for the totalVol denominator.
-    const { data: allFlows } = await _supabase.from('trade_flows')
-        .select('nation_id, sector, export_capacity, import_demand, net_flow')
-        .eq('tick', _tradeSummary.tick);
+    // Phase 10A: trade_flows table dropped. computeCompatibility +
+    // getNationSurplusesAndDeficits fall through to "no overlap" with
+    // an empty map until the goods-trade rebuild lands.
     _allNationFlows = {};
-    if (allFlows) {
-        for (const row of allFlows) {
-            if (!_allNationFlows[row.nation_id]) _allNationFlows[row.nation_id] = {};
-            _allNationFlows[row.nation_id][row.sector] = {
-                export_capacity: Number(row.export_capacity) || 0,
-                import_demand: Number(row.import_demand) || 0,
-                net_flow: Number(row.net_flow) || 0,
-            };
-        }
-    }
 }
 
 function computeCompatibility(myNationId, theirNationId) {
@@ -2935,59 +2895,16 @@ let _worldAmbassadors = [];
  * Fetch bilateral trade data between two nations for the latest tick.
  * Returns { exportsToThem, importsFromThem, totalExports, totalImports, balance, tick }
  */
-async function fetchBilateralTrade(myNationId, theirNationId) {
-    const currentTick = _worldState.shard?.current_tick || 0;
-    if (currentTick <= 0) return null;
-
-    // Get the latest tick with trade_partners data (might be 1 tick behind)
-    const { data: latestRow } = await _supabase.from('trade_partners')
-        .select('tick')
-        .or(`exporter_nation_id.eq.${myNationId},exporter_nation_id.eq.${theirNationId}`)
-        .order('tick', { ascending: false })
-        .limit(1);
-    const tradeTick = latestRow?.[0]?.tick ?? currentTick;
-
-    // Fetch what we export TO them and what we import FROM them (at the same tick)
-    const [exportsRes, importsRes] = await Promise.all([
-        _supabase.from('trade_partners')
-            .select('sector, trade_volume')
-            .eq('exporter_nation_id', myNationId)
-            .eq('importer_nation_id', theirNationId)
-            .eq('tick', tradeTick),
-        _supabase.from('trade_partners')
-            .select('sector, trade_volume')
-            .eq('exporter_nation_id', theirNationId)
-            .eq('importer_nation_id', myNationId)
-            .eq('tick', tradeTick),
-    ]);
-
-    const exportsToThem = {};   // sector → volume (what we sell to them)
-    const importsFromThem = {}; // sector → volume (what they sell to us)
-    let totalExports = 0;
-    let totalImports = 0;
-
-    if (exportsRes.data) {
-        for (const row of exportsRes.data) {
-            const vol = Number(row.trade_volume) || 0;
-            exportsToThem[row.sector] = (exportsToThem[row.sector] || 0) + vol;
-            totalExports += vol;
-        }
-    }
-    if (importsRes.data) {
-        for (const row of importsRes.data) {
-            const vol = Number(row.trade_volume) || 0;
-            importsFromThem[row.sector] = (importsFromThem[row.sector] || 0) + vol;
-            totalImports += vol;
-        }
-    }
-
+async function fetchBilateralTrade(_myNationId, _theirNationId) {
+    // Phase 10A: trade_partners table dropped. Bilateral trade view
+    // returns zero-state until the goods-trade rebuild lands.
     return {
-        exportsToThem,
-        importsFromThem,
-        totalExports,
-        totalImports,
-        balance: totalExports - totalImports,
-        tick: tradeTick,
+        exportsToThem: {},
+        importsFromThem: {},
+        totalExports: 0,
+        totalImports: 0,
+        balance: 0,
+        tick: _worldState.shard?.current_tick || 0,
     };
 }
 
@@ -11300,15 +11217,11 @@ async function renderUTRDraftPanel(body, statusEl) {
         return;
     }
 
-    // Fetch current trade flows with target + our tariff rate
-    // PHASE 7 TODO: tariffs drops in Phase 9
-    var baseTariff = Number(currentNation.tariffs ?? 0);
-    var latestTick = shardTick;
-    var { data: tradeRows } = await _supabase.from('trade_partners')
-        .select('sector, trade_volume, exporter_nation_id, importer_nation_id')
-        .eq('tick', latestTick)
-        .or('and(exporter_nation_id.eq.' + activeDraftTarget.id + ',importer_nation_id.eq.' + currentNation.id + '),' +
-            'and(exporter_nation_id.eq.' + currentNation.id + ',importer_nation_id.eq.' + activeDraftTarget.id + ')');
+    // Phase 10A: trade_partners table dropped + nations.tariffs column
+    // dropped (Phase 9). UTR draft panel falls through with no flow data
+    // until the goods-trade rebuild lands.
+    var baseTariff = 0;
+    var tradeRows = [];
 
     // Check for existing agreements that modify tariffs with this target (FTA/PTA)
     var { data: existingAgreements } = await _supabase.from('trade_agreements')
@@ -11520,16 +11433,10 @@ async function renderEmbargoDraftPanel(body, statusEl) {
         return;
     }
 
-    // Fetch trade flow data between our nation and target
-    
-    const latestTick = shardTick;
-
-    const { data: tradeRows } = await _supabase
-        .from('trade_partners')
-        .select('sector, trade_volume, exporter_nation_id, importer_nation_id')
-        .eq('tick', latestTick)
-        .or('and(exporter_nation_id.eq.' + currentNation.id + ',importer_nation_id.eq.' + activeDraftTarget.id + '),' +
-            'and(exporter_nation_id.eq.' + activeDraftTarget.id + ',importer_nation_id.eq.' + currentNation.id + ')');
+    // Phase 10A: trade_partners table dropped. Embargo draft panel
+    // falls through with no bilateral flow data until the goods-trade
+    // rebuild lands.
+    const tradeRows = null;
 
     _embargoTradeData = {};
     if (tradeRows) {
@@ -19732,26 +19639,10 @@ async function negFlowFetchFlowsOnce() {
     const myId      = _activeNegModal.myNationId;
     const partnerId = _activeNegModal.partnerNationId;
     if (!myId || !partnerId) return;
-    try {
-        const { data, error } = await _supabase.from('trade_flows')
-            .select('nation_id, sector, export_capacity, import_demand, tick')
-            .in('nation_id', [myId, partnerId])
-            .order('tick', { ascending: false })
-            .limit(200); // 2 nations × ~20 sectors × few recent ticks
-        if (error || !data) return;
-        // Keep only the most-recent row per (nation, sector). Rows are
-        // already ordered tick-desc, so first hit per key wins.
-        const map = { [myId]: {}, [partnerId]: {} };
-        for (const row of data) {
-            if (!map[row.nation_id]) map[row.nation_id] = {};
-            if (map[row.nation_id][row.sector]) continue;
-            map[row.nation_id][row.sector] = {
-                export_capacity: Number(row.export_capacity) || 0,
-                import_demand:   Number(row.import_demand)   || 0,
-            };
-        }
-        _activeNegModal._capacityFlows = map;
-    } catch (_) { /* silent — warnings just won't render */ }
+    // Phase 10A: trade_flows table dropped. Capacity-warning overlay
+    // is suppressed (empty map → negFlowEvaluateWarnings hides itself)
+    // until the goods-trade rebuild lands.
+    _activeNegModal._capacityFlows = { [myId]: {}, [partnerId]: {} };
 }
 
 // Evaluate buyer/seller capacity vs the user's contracted volume and

@@ -3447,19 +3447,6 @@ export async function enactBill(supabase, bill, currentTick) {
                 console.log(`[enactBill] TAX_CHANGE ${taxKey} ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, ` +
                     Object.entries(fx).map(([k, v]) => `${k} ${v >= 0 ? '+' : ''}${v}`).join(', '));
             }
-        } else if (effect.type === 'TARIFF_RATE_CHANGE' && effect.sector) {
-            // Per-sector tariff: merge into nation's sector_tariffs jsonb
-            const tariffRate = Math.max(0, Math.min(100, Number(effect.new_rate)));
-            const { data: nationRow, error: tariffReadErr } = await supabase.from('nations').select('sector_tariffs').eq('id', bill.nation_id).single();
-            if (tariffReadErr) {
-                console.error('[enactBill] Failed to read sector_tariffs:', tariffReadErr.message);
-            } else {
-                const existingTariffs = nationRow?.sector_tariffs || {};
-                existingTariffs[effect.sector] = tariffRate;
-                const { error: tariffWriteErr } = await supabase.from('nations').update({ sector_tariffs: existingTariffs }).eq('id', bill.nation_id);
-                if (tariffWriteErr) console.error('[enactBill] Failed to write sector_tariffs:', tariffWriteErr.message);
-                else console.log(`[enactBill] Sector tariff: ${effect.sector} → ${tariffRate}%`);
-            }
         } else if (effect.type === 'gov_bailout' && effect.corp_faction_id && Number.isFinite(effect.amount) && effect.amount > 0) {
             // Government Bailout: single-source-of-truth is effect_data { corp_faction_id, amount }.
             // Re-validate corp, recompute valuation, fund from reserves → debt, +0.1 gdp_growth,
