@@ -5760,10 +5760,11 @@ async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source)
  * Per-tick income tax revenue.
  *   (population / 10_000_000) × income_tax × (1 − unrest/100)
  * Lands as a small literal number that adds to nation.budget each tick.
+ * Pass a rateOverride to preview revenue at a hypothetical rate.
  */
-function computeIncomeTaxRevenue(nation) {
+function computeIncomeTaxRevenue(nation, rateOverride) {
     const pop = Number(nation.population || 0);
-    const rate = Number(nation.income_tax || 0);
+    const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.income_tax || 0);
     const unrest = Number(nation.unrest || 0);
     const rev = (pop / 10_000_000) * rate * (1 - unrest / 100);
     return Math.max(0, rev);
@@ -5772,11 +5773,12 @@ function computeIncomeTaxRevenue(nation) {
 /**
  * Per-tick corporate tax revenue.
  *   (service_sector + industry) / 10 × corporate_tax × (1 − corruption/100)
+ * Pass a rateOverride to preview revenue at a hypothetical rate.
  */
-function computeCorporateTaxRevenue(nation) {
+function computeCorporateTaxRevenue(nation, rateOverride) {
     const svc = Number(nation.service_sector || 0);
     const ind = Number(nation.industry || 0);
-    const rate = Number(nation.corporate_tax || 0);
+    const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.corporate_tax || 0);
     const corruption = Number(nation.corruption || 0);
     const rev = ((svc + ind) / 10) * rate * (1 - corruption / 100);
     return Math.max(0, rev);
@@ -35580,10 +35582,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             const totalRev = incomeRev + corpRev;
             if (totalRev > 0) {
                 const newBudget = Math.max(0, Number(nation.budget || 0) + totalRev);
-                await supabase.from('nations')
+                const { error: budgetErr } = await supabase.from('nations')
                     .update({ budget: newBudget })
                     .eq('id', nation.id);
-                nation.budget = newBudget;
+                if (budgetErr) {
+                    console.error(`[advanceTick] Tax revenue DB update failed for ${nation.name}:`, budgetErr.message);
+                } else {
+                    nation.budget = newBudget;
+                }
             }
         } catch (taxErr) {
             console.error(`[advanceTick] Tax revenue tick failed for ${nation.name} (non-fatal):`, taxErr);

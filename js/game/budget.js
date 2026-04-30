@@ -18,10 +18,11 @@ import { fireBilateralEvent } from './event-helpers.js';
  * Per-tick income tax revenue.
  *   (population / 10_000_000) × income_tax × (1 − unrest/100)
  * Lands as a small literal number that adds to nation.budget each tick.
+ * Pass a rateOverride to preview revenue at a hypothetical rate.
  */
-export function computeIncomeTaxRevenue(nation) {
+export function computeIncomeTaxRevenue(nation, rateOverride) {
     const pop = Number(nation.population || 0);
-    const rate = Number(nation.income_tax || 0);
+    const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.income_tax || 0);
     const unrest = Number(nation.unrest || 0);
     const rev = (pop / 10_000_000) * rate * (1 - unrest / 100);
     return Math.max(0, rev);
@@ -30,11 +31,12 @@ export function computeIncomeTaxRevenue(nation) {
 /**
  * Per-tick corporate tax revenue.
  *   (service_sector + industry) / 10 × corporate_tax × (1 − corruption/100)
+ * Pass a rateOverride to preview revenue at a hypothetical rate.
  */
-export function computeCorporateTaxRevenue(nation) {
+export function computeCorporateTaxRevenue(nation, rateOverride) {
     const svc = Number(nation.service_sector || 0);
     const ind = Number(nation.industry || 0);
-    const rate = Number(nation.corporate_tax || 0);
+    const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.corporate_tax || 0);
     const corruption = Number(nation.corruption || 0);
     const rev = ((svc + ind) / 10) * rate * (1 - corruption / 100);
     return Math.max(0, rev);

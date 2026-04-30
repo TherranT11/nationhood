@@ -2672,10 +2672,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             const totalRev = incomeRev + corpRev;
             if (totalRev > 0) {
                 const newBudget = Math.max(0, Number(nation.budget || 0) + totalRev);
-                await supabase.from('nations')
+                const { error: budgetErr } = await supabase.from('nations')
                     .update({ budget: newBudget })
                     .eq('id', nation.id);
-                nation.budget = newBudget;
+                if (budgetErr) {
+                    console.error(`[advanceTick] Tax revenue DB update failed for ${nation.name}:`, budgetErr.message);
+                } else {
+                    nation.budget = newBudget;
+                }
             }
         } catch (taxErr) {
             console.error(`[advanceTick] Tax revenue tick failed for ${nation.name} (non-fatal):`, taxErr);

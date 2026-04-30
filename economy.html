@@ -28,7 +28,7 @@ import { escapeHtml } from './js/utils.js';
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { hasElectedPresident } from './js/game/government-types.js';
 import { fetchActiveCoalition } from './js/game/government-structure.js';
-import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TAX_CONFIG } from './js/game/budget.js';
+import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TAX_CONFIG, computeIncomeTaxRevenue, computeCorporateTaxRevenue } from './js/game/budget.js';
 import { RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS } from './js/game/diplomacy-constants.js';
 import { TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, formatSectorVolume, FOOD_SUBSECTORS, FOOD_SUBSECTOR_KEYS, FOOD_SUBSECTOR_MAP, isFoodSubsector, getEffectiveArableLand, calculateSpoilageMultiplier, computeFoodSecurityStatus, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, calculateReserveMonths, calculateStockpileCapacity, calculateStockpileSpoilage, STOCKPILE_CONFIG } from './js/game/trade-constants.js';
 import { ISSUE_CATEGORY_STATS, buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
@@ -80,7 +80,6 @@ var taxAdminFunding = { allocated: 0, needed: 0, fundingPct: 0 };
 var taxRateChanges = {};  // legacy tax-key map; tax columns removed in 19-col schema
 var originalRates = {};   // legacy tax-key map; tax columns removed in 19-col schema
 var taxPendingBills = [];
-var taxHistory = [];
 var activeCoalition = null;
 
 // ==================== INIT ====================
@@ -109,7 +108,6 @@ initPage('economy', async function(state) {
         loadTaxConnections(),
         loadTaxAdminFunding(nation),
         loadTaxPendingBills(nation.id),
-        loadTaxHistory(nation.id),
         fetchActiveCoalition(_supabase, nation.id).then(function(c) { activeCoalition = c; }),
         loadIndustriesData(nation.id)
     ]);
@@ -669,10 +667,6 @@ async function submitTaxBill(nation) {
     var termBill = 'bill';
 
     // Build confirmation summary
-    var gdp = Number(nation.gdp || 0);
-    var eff = Number(nation.efficiency || 50);
-    var corr = Number(nation.corruption || 50);
-    var collectionRate = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
     var summaryLines = [];
     for (var i = 0; i < changedKeys.length; i++) {
         var key = changedKeys[i];
@@ -681,14 +675,15 @@ async function submitTaxBill(nation) {
         var oldRate = originalRates[key];
         var newRate = taxRateChanges[key];
         var direction = newRate > oldRate ? 'increase' : 'decrease';
-        var delta = gdp * ((newRate - oldRate) / 100) * cfg.gdpMultiplier * collectionRate;
+        var compute = key === 'income_tax' ? computeIncomeTaxRevenue : computeCorporateTaxRevenue;
+        var delta = compute(nation, newRate) - compute(nation, oldRate);
         var rateDiff = newRate - oldRate;
         // All tax types: increases hurt approval, cuts boost it
         var approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
         var impactLine = '  Government approval: ' + (approvalImpact >= 0 ? '+' : '') + approvalImpact + ' (decays over time)';
         summaryLines.push(
-            cfg.name + ': ' + oldRate + '% → ' + newRate + '% (' + direction + ')\n' +
-            '  Revenue: ' + (delta >= 0 ? '+' : '') + formatBudgetCurrency(delta) + '/yr\n' +
+            cfg.name + ': ' + oldRate + ' → ' + newRate + ' (' + direction + ')\n' +
+            '  Revenue/tick: ' + (delta >= 0 ? '+' : '') + formatBudgetCurrency(delta) + '\n' +
             impactLine
         );
     }
@@ -749,7 +744,8 @@ async function submitTaxBill(nation) {
             if (!artCfg) continue;
             var artOld = originalRates[artKey];
             var artNew = taxRateChanges[artKey];
-            var artDelta = gdp * ((artNew - artOld) / 100) * artCfg.gdpMultiplier * collectionRate;
+            var artComputeFn = artKey === 'income_tax' ? computeIncomeTaxRevenue : computeCorporateTaxRevenue;
+            var artDelta = artComputeFn(nation, artNew) - artComputeFn(nation, artOld);
             var artRateDiff = artNew - artOld;
             var artApprovalText;
             var artApproval = artRateDiff > 0 ? artRateDiff * -2 : Math.abs(artRateDiff) * 1;
@@ -762,8 +758,8 @@ async function submitTaxBill(nation) {
                 added_by: currentFaction.id,
                 article_title: artCfg.name + ' Rate Change',
                 article_text: 'Proposing to change ' + artCfg.name + ' from ' + artOld +
-                    '% to ' + artNew + '%. This would ' + (artDelta >= 0 ? 'generate' : 'cost') +
-                    ' ' + formatBudgetCurrency(Math.abs(artDelta)) + ' per year in revenue.\n\n' +
+                    ' to ' + artNew + '. This would ' + (artDelta >= 0 ? 'generate' : 'cost') +
+                    ' ' + formatBudgetCurrency(Math.abs(artDelta)) + ' per tick in revenue.\n\n' +
                     'Estimated impact: ' + artApprovalText,
                 effect_data: {
                     type: 'TAX_RATE_CHANGE',
@@ -1249,33 +1245,6 @@ async function loadTaxPendingBills(nationId) {
     qCacheSet(cacheKey, taxPendingBills, 2 * 60 * 1000);
 }
 
-async function loadTaxHistory(nationId) {
-    var cacheKey = 'tax_history_' + nationId + '_t' + currentTick;
-    var cached = qCache(cacheKey);
-    if (cached) { taxHistory = cached; return; }
-    var { data } = await _supabase.from('nations_history')
-        .select('tick, income_tax, corporate_tax, corruption')
-        .eq('nation_id', nationId)
-        .order('tick', { ascending: false })
-        .limit(12);
-    taxHistory = (data || []).reverse(); // oldest first
-    qCacheSet(cacheKey, taxHistory, 5 * 60 * 1000);
-}
-
-function computeSparklineRevenues(taxKey, gdpMultiplier) {
-    var revenues = [];
-    for (var i = 0; i < taxHistory.length; i++) {
-        var snap = taxHistory[i];
-        var rate = Number(snap[taxKey] || 0);
-        var gdp = Number(snap.gdp || 0);
-        var eff = Number(snap.efficiency || 50);
-        var corr = Number(snap.corruption || 50);
-        var cr = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
-        revenues.push(gdp * (rate / 100) * gdpMultiplier * cr);
-    }
-    return revenues;
-}
-
 function getTaxEffects(taxKey) {
     return taxConnections.filter(function(c) { return c.source_stat === taxKey; });
 }
@@ -1322,9 +1291,10 @@ function renderTaxationTab(nation) {
     h += '<span class="tax-summary-detail">' + (budget.grossRevenue > 0 ? Math.round(totalTaxRevenue / budget.grossRevenue * 100) : 0) + '% of total income</span>';
     h += '</div>';
 
-    var taxBurden = Math.round(avgRate * 1.28);
-    var burdenLabel = taxBurden < 30 ? 'Low (0–30)' : taxBurden < 50 ? 'Moderate-Low (30–50)' : taxBurden < 70 ? 'Moderate (50–70)' : taxBurden < 85 ? 'High (70–85)' : 'Very High (85+)';
-    var burdenClass = taxBurden < 50 ? 'green' : taxBurden < 70 ? 'yellow' : 'red';
+    // Tax burden on the alpha 0-10 scale (avg of income + corporate rates).
+    var taxBurden = avgRate.toFixed(1);
+    var burdenLabel = avgRate < 3 ? 'Low (0–3)' : avgRate < 5 ? 'Moderate-Low (3–5)' : avgRate < 7 ? 'Moderate (5–7)' : avgRate < 8.5 ? 'High (7–8.5)' : 'Very High (8.5+)';
+    var burdenClass = avgRate < 5 ? 'green' : avgRate < 7 ? 'yellow' : 'red';
     h += '<div class="tax-summary-stat">';
     h += '<span class="tax-summary-label">Tax Burden</span>';
     h += '<span class="tax-summary-value ' + burdenClass + '">' + taxBurden + '</span>';
@@ -1416,12 +1386,9 @@ function renderTaxCard(config, nation, budget) {
     var revenue = budget[config.revenueKey] || 0;
     var effects = getTaxEffects(config.key);
 
-    // Revenue projection
-    var gdp = Number(nation.gdp || 0);
-    var eff = Number(nation.efficiency || 50);
-    var corr = Number(nation.corruption || 50);
-    var collectionRate = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
-    var projectedRevenue = gdp * (currentRate / 100) * config.gdpMultiplier * collectionRate;
+    // Revenue projection (per-tick) using the live alpha formulas.
+    var compute = config.key === 'income_tax' ? computeIncomeTaxRevenue : computeCorporateTaxRevenue;
+    var projectedRevenue = compute(nation, currentRate);
     var revenueDelta = projectedRevenue - revenue;
 
     var fillPct = config.maxRate > 0 ? Math.round((currentRate / config.maxRate) * 100) : 0;
@@ -1434,22 +1401,6 @@ function renderTaxCard(config, nation, budget) {
     h += '<span class="tax-name">' + escapeHtml(config.name) + '</span>';
     h += '<span class="tax-category-pill ' + config.categoryClass + '">' + escapeHtml(config.category) + '</span>';
     h += '<div class="tax-spacer"></div>';
-
-    // Sparkline
-    var sparkRevenues = computeSparklineRevenues(config.key, config.gdpMultiplier);
-    if (sparkRevenues.length > 0) {
-        var sparkMax = Math.max.apply(null, sparkRevenues) || 1;
-        h += '<div class="tax-sparkline-container">';
-        h += '<span class="tax-sparkline-label">' + sparkRevenues.length + ' ticks</span>';
-        h += '<div class="tax-sparkline">';
-        for (var s = 0; s < sparkRevenues.length; s++) {
-            var barH = Math.max(2, Math.round((sparkRevenues[s] / sparkMax) * 20));
-            var barCls = (s === sparkRevenues.length - 1) ? ' current' : '';
-            h += '<div class="tax-spark-bar' + barCls + '" style="height:' + barH + 'px"></div>';
-        }
-        h += '</div>';
-        h += '</div>';
-    }
 
     h += '<div class="tax-revenue-block">';
     h += '<span class="tax-revenue-label">Revenue</span>';
