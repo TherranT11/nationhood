@@ -132,10 +132,15 @@ export const NATION_STAT_COLUMNS = [
     'immigration', 'illegal_immigration', 'emigration',
     'international_reputation',
     'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability',
-    // Alpha refactor Phase 2: 13 net-new columns (cost_of_living already
-    // listed above, standard_of_living already canonical). Phase 9 drops
-    // the legacy entries above and leaves these 13 + the pass-through
-    // ones as the canonical 19.
+    // Alpha refactor: 14 alpha-19 columns. cost_of_living + standard_of_living
+    // already in the legacy section above. budget was missing entirely from
+    // the legacy list (pre-existing oversight surfaced by the Phase 7g
+    // audit smoke test — translateStatEffect was returning null for any
+    // stat_effect entry with stat_key='budget'). Phase 9 drops the legacy
+    // entries above and leaves these + the pass-throughs (gdp_growth,
+    // debt, immigration, standard_of_living, cost_of_living) as the
+    // canonical 19.
+    'budget',
     'control', 'unrest', 'authority', 'crown_authority',
     'energy', 'health', 'education', 'power',
     'infrastructure', 'industry', 'farmland',
