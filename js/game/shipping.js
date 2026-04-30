@@ -219,7 +219,10 @@ export async function generateShippingRoutes(supabase, currentTick) {
     var nameMap = {};
     if (nations) {
         for (var ni = 0; ni < nations.length; ni++) {
-            tariffMap[nations[ni].id] = Number(nations[ni].tariffs) || 0;
+            // Phase 9: tariffs column dropped. Aggregate tariff lever no
+            // longer exists in the alpha schema; leave the map at 0 until
+            // a per-sector tariff system is rebuilt.
+            tariffMap[nations[ni].id] = 0;
             nameMap[nations[ni].id] = nations[ni].name;
         }
     }

@@ -4890,11 +4890,10 @@ function generateListings(equipmentKey) {
     const supply = calculateEquipmentSupply(equipmentKey, marketNation);
     const listings = [];
     // PHASE 7 TODO: inflation drops in Phase 9
-    const inflation = Number(marketNation?.inflation ?? 50);
-    // PHASE 7 TODO: fuel_prices drops in Phase 9
-    const fuel = Number(marketNation?.fuel_prices ?? 50);
-    // PHASE 7 TODO: manufacturing_output drops in Phase 9 (renamed to industry)
-    const mfg = Number(marketNation?.manufacturing_output ?? 50);
+    // Phase 9: inflation + fuel_prices deleted with no replacement; pin to 50 baseline.
+    const inflation = 50;
+    const fuel = 50;
+    const mfg = Number(marketNation?.industry ?? 50);
     const isImport = emSelectedNation && nationStats && emSelectedNation.id !== nationStats.id;
 
     // Calculate import costs if browsing a foreign nation
@@ -9776,20 +9775,19 @@ function smOpenCommission() {
 }
 
 async function loadCommissionNations() {
-    // PHASE 7 TODO: manufacturing_output, physical_infrastructure, tariffs drop in Phase 9
+    // Phase 9: manufacturing_output → industry; physical_infrastructure
+    // → infrastructure; tariffs deleted with no replacement.
     const { data } = await _supabase.from('nations')
-        .select('id, name, manufacturing_output, physical_infrastructure, tariffs')
+        .select('id, name, industry, infrastructure')
         .order('name');
     _commNations = (data || []).map(n => {
-        // PHASE 7 TODO: manufacturing_output drops in Phase 9 (renamed to industry)
-        const mfg = Number(n.manufacturing_output ?? 50);
+        const mfg = Number(n.industry ?? 50);
         // Cost modifier: high MFG = more expensive (better quality). Low MFG = cheaper (lower quality).
         const costMod = Math.round((0.75 + (mfg / 100) * 0.5) * 100) / 100; // 0.75 at MFG 0, 1.25 at MFG 100
         // Build speed modifier: high MFG = faster. Low MFG = slower.
         const buildMod = Math.round((1.5 - (mfg / 100) * 0.65) * 100) / 100; // 1.5 at MFG 0, 0.85 at MFG 100
         const isHome = n.id === faction?.nation_id;
-        // PHASE 7 TODO: tariffs drops in Phase 9
-        return { id: n.id, name: n.name, mfg, costMod, buildMod, isHome, tariffs: Number(n.tariffs ?? 0) };
+        return { id: n.id, name: n.name, mfg, costMod, buildMod, isHome, tariffs: 0 };
     });
     // Put home nation first
     _commNations.sort((a, b) => (b.isHome ? 1 : 0) - (a.isHome ? 1 : 0));

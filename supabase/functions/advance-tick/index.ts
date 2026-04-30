@@ -4970,38 +4970,15 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
  *   service_output             Services & finance sector output (0-100)
  *   housing_affordability      Housing accessibility (0-100, higher is better)
  */
-// Alpha stats refactor — Phase 2 added 14 net-new columns; Phase 4 (this
-// file) routes legacy keys to them via STAT_KEY_ALIASES. Old columns stay
-// in the whitelist during the dual-stat window so any read path that
-// hasn't cut over yet still sees a valid column. Phase 9 drops both the
-// old columns from the schema AND from this list in one pass.
+// Alpha stats refactor — Phase 9 dropped the legacy stat columns from
+// the schema. The whitelist is now exactly the 23 alpha stats:
+//   * 5 pass-throughs from the legacy schema:
+//     gdp_growth, debt, immigration, standard_of_living, cost_of_living
+//   * 18 alpha-only columns added in Phase 2 / 8.5.1
+// Legacy stat keys still appear in event/policy stat_effects JSON;
+// STAT_KEY_ALIASES routes or null-filters them at apply time.
 const NATION_STAT_COLUMNS = [
-    'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
-    'trade_balance', 'currency_strength', 'foreign_investment', 'credit',
-    'sales_tax', 'tariffs',
-    'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
-    'poverty_rate', 'income_inequality',
-    'population', 'population_growth', 'median_age', 'eligible_voters', 'ethnic_diversity',
-    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use',
-    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
-    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
-    'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
-    'pollution', 'carbon_emissions',
-    'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'incarceration_rate',
-    'religiosity',
-    'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence',
-    'freedom_index', 'polarization',
-    'civil_unrest', 'terrorism', 'political_violence',
-    'immigration', 'illegal_immigration', 'emigration',
-    'international_reputation',
-    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability',
-    // Alpha refactor: 23-stat alpha menu. Legacy section above stays
-    // populated through the dual-stat window — Phase 9 will drop the
-    // legacy-only entries. The alpha-23 set comprises the 5 pass-throughs
-    // (gdp_growth, debt, immigration, standard_of_living, cost_of_living)
-    // plus the 18 listed below. Phase 8.5.1 renamed authority →
-    // public_approval, goods → service_sector, crime_rate → crime; and
-    // restored income_tax / corporate_tax / corruption to the live set.
+    'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
     'budget',
     'control', 'unrest', 'public_approval', 'crown_authority',
     'energy', 'health', 'education', 'power',
@@ -23760,15 +23737,15 @@ async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
-// All columns that nations_history tracks (must match the DB table schema)
+// All columns that nations_history tracks (must match the DB table schema).
+// Phase 9 trimmed NATION_STAT_COLUMNS to alpha-23, but the snapshot loop
+// also tracks two non-stat metadata columns (population, eligible_voters)
+// that nations_history has carried since launch.
 const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
     'gov_approval',
-    // Phase 5b: ideology axis voter columns dropped from nations.
-    // The progressive_/liberal_/moderate_/conservative_/nationalist_voters
-    // entries never existed on nations to begin with — pre-existing dead
-    // config that the snapshot loop was silently skipping via the
-    // `nation[key] !== undefined` guard.
+    'population',
+    'eligible_voters',
 ];
 
 async function snapshotNationHistory(supabase, nation, currentTick) {
@@ -26995,7 +26972,10 @@ async function generateShippingRoutes(supabase, currentTick) {
     var nameMap = {};
     if (nations) {
         for (var ni = 0; ni < nations.length; ni++) {
-            tariffMap[nations[ni].id] = Number(nations[ni].tariffs) || 0;
+            // Phase 9: tariffs column dropped. Aggregate tariff lever no
+            // longer exists in the alpha schema; leave the map at 0 until
+            // a per-sector tariff system is rebuilt.
+            tariffMap[nations[ni].id] = 0;
             nameMap[nations[ni].id] = nations[ni].name;
         }
     }

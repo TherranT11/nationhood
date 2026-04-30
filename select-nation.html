@@ -956,8 +956,8 @@ function renderNations(nations, partiesByNation, crisesByNation) {
             <span class="stat-row__value" style="color:${isFull ? 'var(--red)' : 'var(--text-secondary)'};">${eligiblePartyCount}${maxParties ? ' / ' + maxParties : ''}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-row__label">Stability</span>
-            <span class="stat-row__value" style="color:${(nation.stability ?? 50) >= 60 ? 'var(--green)' : (nation.stability ?? 50) >= 40 ? 'var(--amber)' : 'var(--red)'};">${Number(nation.stability ?? 50).toFixed(1)}</span>
+            <span class="stat-row__label">Control</span>
+            <span class="stat-row__value" style="color:${(nation.control ?? 50) >= 60 ? 'var(--green)' : (nation.control ?? 50) >= 40 ? 'var(--amber)' : 'var(--red)'};">${Number(nation.control ?? 50).toFixed(1)}</span>
           </div>
 
           ${nParties.some(p => p.seats > 0) ? `

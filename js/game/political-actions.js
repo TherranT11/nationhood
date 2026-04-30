@@ -2017,15 +2017,15 @@ export async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
-// All columns that nations_history tracks (must match the DB table schema)
+// All columns that nations_history tracks (must match the DB table schema).
+// Phase 9 trimmed NATION_STAT_COLUMNS to alpha-23, but the snapshot loop
+// also tracks two non-stat metadata columns (population, eligible_voters)
+// that nations_history has carried since launch.
 export const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
     'gov_approval',
-    // Phase 5b: ideology axis voter columns dropped from nations.
-    // The progressive_/liberal_/moderate_/conservative_/nationalist_voters
-    // entries never existed on nations to begin with — pre-existing dead
-    // config that the snapshot loop was silently skipping via the
-    // `nation[key] !== undefined` guard.
+    'population',
+    'eligible_voters',
 ];
 
 export async function snapshotNationHistory(supabase, nation, currentTick) {

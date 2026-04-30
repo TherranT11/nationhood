@@ -513,10 +513,9 @@ function renderPropertyCard() {
     // National HQ always present — value scales with nation stats
     const hqNation = nationStats?.name || faction?.nation || 'Home Nation';
     const hqBaseCost = 50000000; // $50M base for 500 capacity HQ
-    // PHASE 7 TODO: inflation drops in Phase 9
-    const hqInflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
-    // PHASE 7 TODO: stability drops in Phase 9 (use control as closest equivalent)
-    const hqStabMod = 0.8 + (Number(nationStats?.stability ?? 50) / 100 * 0.4);
+    // Phase 9: inflation deleted with no replacement; pin modifier to 1.
+    const hqInflMod = 1;
+    const hqStabMod = 0.8 + (Number(nationStats?.control ?? 50) / 100 * 0.4);
     const hqValue = Math.round(hqBaseCost * hqInflMod * hqStabMod);
     const hqMaint = Math.round(hqValue * 0.005);
     totalValue += hqValue;

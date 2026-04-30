@@ -942,7 +942,7 @@ function renderPage(root) {
         ? (partyFunds / 1000000).toFixed(1) + 'M'
         : partyFunds >= 1000 ? Math.round(partyFunds / 1000) + 'k' : partyFunds);
     const approvalValue = _isMonarchy
-        ? Math.round(Number(_state.nation?.legitimacy ?? _state.nation?.gov_approval ?? 50))
+        ? Math.round(Number(_state.nation?.public_approval ?? _state.nation?.gov_approval ?? 50))
         : Math.round(Number(_state.nation?.gov_approval ?? 0));
 
     renderRoleActionsShell(root, {
@@ -3147,9 +3147,9 @@ async function openAppointPMModal(root) {
                     console.warn('[AppointPM] government_formations write failed (non-blocking — synthetic fallback still works):', gfErr?.message || gfErr);
                 }
 
-                // Legitimacy effects (monarchy only).
+                // Public-approval effects (monarchy only).
                 // Dismissing a non-monarch PM costs -4. Appointing a non-monarch
-                // PM grants +3. Replacing one non-monarch PM with another nets -1.
+                // PM grants +3. Phase 7H/8.5.1 collapsed legitimacy → public_approval.
                 let legitimacyDelta = 0;
                 const monarchPartyId = nation.monarch_faction_id;
                 const prevPmPartyId = currentHog?.faction_id || null;
@@ -3158,11 +3158,11 @@ async function openAppointPMModal(root) {
                 if (dismissingNonMonarchPm) legitimacyDelta -= 4;
                 if (appointingNonMonarchPm) legitimacyDelta += 3;
                 if (legitimacyDelta !== 0) {
-                    const currentLeg = Number(nation.legitimacy ?? 50);
+                    const currentLeg = Number(nation.public_approval ?? 50);
                     const newLeg = Math.max(0, Math.min(100, currentLeg + legitimacyDelta));
                     try {
-                        await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
-                        nation.legitimacy = newLeg;
+                        await _supabase.from('nations').update({ public_approval: newLeg }).eq('id', nation.id);
+                        nation.public_approval = newLeg;
                     } catch (_) { /* non-blocking */ }
                 }
 
@@ -3380,12 +3380,12 @@ async function openGrantSeatsModal(root) {
                 }
 
                 const legGain = actualGrant * 0.5;
-                const newLeg = Math.min(100, (Number(nation.legitimacy) || 50) + legGain);
-                const { error: e3 } = await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
-                if (e3) { alert('Failed to update legitimacy.'); return; }
+                const newLeg = Math.min(100, (Number(nation.public_approval) || 50) + legGain);
+                const { error: e3 } = await _supabase.from('nations').update({ public_approval: newLeg }).eq('id', nation.id);
+                if (e3) { alert('Failed to update public approval.'); return; }
 
                 faction.seats = seatMap.get(faction.id) || 0;
-                nation.legitimacy = newLeg;
+                nation.public_approval = newLeg;
 
                 // Log event (non-blocking)
                 try {
@@ -3536,7 +3536,7 @@ async function openRevokeSeatsModal(root) {
                 const newMonarchSeats = (freshMonarch.seats || 0) + take;
                 const newTargetSeats = (freshTarget.seats || 0) - take;
                 const legCost = take;
-                const newLeg = Math.max(0, (Number(nation.legitimacy) || 50) - legCost);
+                const newLeg = Math.max(0, (Number(nation.public_approval) || 50) - legCost);
 
                 // Conservation invariant: monarch gains exactly what target loses.
                 const sumAfter = sumBefore - (freshMonarch.seats || 0) - (freshTarget.seats || 0)
@@ -3551,12 +3551,12 @@ async function openRevokeSeatsModal(root) {
                 if (e1) { alert('Failed to revoke seats: ' + e1.message); return; }
                 const { error: e2 } = await _supabase.from('factions').update({ seats: newTargetSeats }).eq('id', selectedFactionId);
                 if (e2) { alert('Failed to revoke seats: ' + e2.message); return; }
-                const { error: e3 } = await _supabase.from('nations').update({ legitimacy: newLeg }).eq('id', nation.id);
-                if (e3) { alert('Failed to update legitimacy.'); return; }
+                const { error: e3 } = await _supabase.from('nations').update({ public_approval: newLeg }).eq('id', nation.id);
+                if (e3) { alert('Failed to update public approval.'); return; }
 
                 faction.seats = newMonarchSeats;
                 faction.party_funds = newFunds;
-                nation.legitimacy = newLeg;
+                nation.public_approval = newLeg;
                 sessionStorage.removeItem('nationhood_state');
 
                 try {

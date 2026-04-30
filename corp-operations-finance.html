@@ -690,7 +690,7 @@ async function loadDealFlow() {
     }).map(req => {
         if (req.request_type === 'bond') {
             const n = req.issuer_nation;
-            const stability = Number(n?.stability ?? 50);
+            const stability = Number(n?.control ?? 50);
             const creditRating = Number(n?.credit ?? 50);
             const gdp = Number(n?.gdp ?? 1);
             const debt = Number(n?.debt ?? 0);
@@ -733,7 +733,7 @@ async function loadDealFlow() {
         if (req.request_type === 'equity') {
             const corp = req.requesting_faction;
             const rep = Number(corp?.corp_reputation ?? 50);
-            const stab = Number(borrowerNations[corp?.nation_id]?.stability ?? 50);
+            const stab = Number(borrowerNations[corp?.nation_id]?.control ?? 50);
             return {
                 id: req.id,
                 type: 'EQUITY',
@@ -764,7 +764,7 @@ async function loadDealFlow() {
         }
         if (req.request_type === 'insurance') {
             const insRep = Number(req.requesting_faction?.corp_reputation ?? 50);
-            const insStability = Number(borrowerNations[req.requesting_faction?.nation_id]?.stability ?? 50);
+            const insStability = Number(borrowerNations[req.requesting_faction?.nation_id]?.control ?? 50);
             return {
                 id: req.id,
                 type: 'INSURE',
@@ -809,7 +809,7 @@ async function loadDealFlow() {
             activeLoans: (borrowerLoanData[req.requesting_faction?.id] || {}).count || 0,
             totalOutstanding: (borrowerLoanData[req.requesting_faction?.id] || {}).totalOutstanding || 0,
             creditRating: Number(borrowerNations[req.requesting_faction?.nation_id]?.credit ?? 50),
-            stability: Number(borrowerNations[req.requesting_faction?.nation_id]?.stability ?? 50),
+            stability: Number(borrowerNations[req.requesting_faction?.nation_id]?.control ?? 50),
             risk: (() => {
                 const cr = Number(borrowerNations[req.requesting_faction?.nation_id]?.credit ?? 50);
                 const rep = Number(req.requesting_faction?.corp_reputation ?? 50);
@@ -841,7 +841,7 @@ async function loadDealFlow() {
             // Hide the seller's own listings (you can't buy your own stake).
             if (pos.lender_faction_id === faction.id) continue;
             const targetRep = Number(pos.target?.corp_reputation ?? 50);
-            const targetStab = Number(pos.listing_nation?.stability ?? 50);
+            const targetStab = Number(pos.listing_nation?.control ?? 50);
             dfDeals.push({
                 id: 'sec_' + pos.id,
                 positionId: pos.id,
