@@ -169,35 +169,10 @@ export async function initLedger(supabase, state) {
     renderLedgerBody(root);
 }
 
-async function loadAllTradeFlows(supabase) {
+async function loadAllTradeFlows(_supabase) {
+    // Phase 10A: trade_flows + trade_summary tables dropped. The Goods
+    // tab renders an empty placeholder until the rebuild lands.
     _allTradeFlows = {};
-    try {
-        // Get the latest tick from trade_summary for any nation
-        const { data: sumRows } = await supabase.from('trade_summary')
-            .select('tick')
-            .order('tick', { ascending: false })
-            .limit(1);
-        const tick = sumRows?.[0]?.tick;
-        if (!tick) return;
-
-        // Fetch all nations' flows for that tick
-        const { data: flows } = await supabase.from('trade_flows')
-            .select('nation_id, sector, export_capacity, import_demand, export_volume, import_volume')
-            .eq('tick', tick);
-        if (!flows) return;
-
-        for (const row of flows) {
-            if (!_allTradeFlows[row.nation_id]) _allTradeFlows[row.nation_id] = {};
-            _allTradeFlows[row.nation_id][row.sector] = {
-                export_capacity: Number(row.export_capacity) || 0,
-                import_demand: Number(row.import_demand) || 0,
-                export_volume: Number(row.export_volume) || 0,
-                import_volume: Number(row.import_volume) || 0,
-            };
-        }
-    } catch (err) {
-        console.warn('[Ledger] Failed to load trade flows:', err.message);
-    }
 }
 
 function getGoodsRank(nationId, sectorKey, metric) {

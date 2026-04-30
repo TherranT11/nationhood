@@ -700,57 +700,10 @@ async function enactSovereignDefault(supabase, bill, currentTick) {
         fired_at_tick: currentTick
     });
 
-    // 11. Contagion — hit trade partners' credit
-    try {
-        // Find nations that trade with this nation (from most recent tick data)
-        const { data: partners } = await supabase
-            .from('trade_partners')
-            .select('importer_nation_id, trade_volume')
-            .eq('exporter_nation_id', nation.id)
-            .order('tick', { ascending: false })
-            .limit(50);
-
-        const { data: partners2 } = await supabase
-            .from('trade_partners')
-            .select('exporter_nation_id, trade_volume')
-            .eq('importer_nation_id', nation.id)
-            .order('tick', { ascending: false })
-            .limit(50);
-
-        // Unique set of partner nation IDs
-        const partnerIds = new Set<string>();
-        (partners || []).forEach(p => partnerIds.add(p.importer_nation_id));
-        (partners2 || []).forEach(p => partnerIds.add(p.exporter_nation_id));
-        partnerIds.delete(nation.id); // exclude self
-
-        for (const partnerId of partnerIds) {
-            // Random contagion hit within range
-            const hit = -(cfg.CONTAGION_CREDIT_MIN + Math.random() * (cfg.CONTAGION_CREDIT_MAX - cfg.CONTAGION_CREDIT_MIN));
-            const { data: partnerNation } = await supabase
-                .from('nations')
-                .select('credit, name')
-                .eq('id', partnerId)
-                .single();
-
-            if (partnerNation) {
-                const newCredit = Math.max(0, Math.round((Number(partnerNation.credit ?? 50) + hit) * 10) / 10);
-                await supabase.from('nations').update({ credit: newCredit }).eq('id', partnerId);
-                console.log(`[Contagion] ${partnerNation.name}: credit ${hit.toFixed(1)} (${nation.name} default)`);
-
-                await supabase.from('event_log').insert({
-                    nation_id: partnerId,
-                    event_name: 'Sovereign Default Contagion',
-                    description_used: `${nation.name}'s sovereign default has shaken investor confidence in the region.`,
-                    category: 'economy',
-                    effects_applied: [{ stat: 'credit', change: Math.round(hit * 10) / 10 }],
-                    fired_at_tick: currentTick
-                });
-            }
-        }
-        console.log(`[Contagion] ${partnerIds.size} trade partners affected by ${nation.name}'s default`);
-    } catch (contagionErr) {
-        console.error(`[Contagion] Failed:`, contagionErr);
-    }
+    // Phase 10A: sovereign-default contagion removed. The trade_partners
+    // table is dropped, and the `credit` column (Phase 9) is gone too.
+    // Reintroduce when the goods-trade rebuild lands and a credit-like
+    // signal exists again.
 }
 
 /**
