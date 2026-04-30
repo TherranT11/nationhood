@@ -587,7 +587,7 @@ async function renderCardBilateralIntel(issue) {
     const theirName = issue.nation_a_id === ourNationId ? (issue.nation_b?.name || 'Unknown') : (issue.nation_a?.name || 'Unknown');
 
     const [theirRes, ourHogRes, theirHogRes, ourCrisesRes, theirCrisesRes] = await Promise.allSettled([
-        _supabase.from('nations').select('gov_approval, stability, international_reputation').eq('id', theirNationId).single(),
+        _supabase.from('nations').select('gov_approval, control, power').eq('id', theirNationId).single(),
         _supabase.from('head_of_government').select('first_name, last_name, factions:faction_id(faction_name, abbreviation)').eq('nation_id', ourNationId).eq('active', true).maybeSingle(),
         _supabase.from('head_of_government').select('first_name, last_name, factions:faction_id(faction_name, abbreviation)').eq('nation_id', theirNationId).eq('active', true).maybeSingle(),
         _supabase.from('active_crises').select('id, crisis_templates(name)').eq('nation_id', ourNationId),
@@ -600,11 +600,11 @@ async function renderCardBilateralIntel(issue) {
     const ourCrises = ourCrisesRes.status === 'fulfilled' ? (ourCrisesRes.value.data || []) : [];
     const theirCrises = theirCrisesRes.status === 'fulfilled' ? (theirCrisesRes.value.data || []) : [];
 
-    function intelCard(name, color, hog, approval, stability, fa, crises) {
+    function intelCard(name, color, hog, approval, control, power, crises) {
         const hogName = hog ? `<strong>${escapeHtml(hog.first_name)} ${escapeHtml(hog.last_name)}</strong>` : '<em>Vacant</em>';
         const hogParty = hog?.factions?.abbreviation ? `<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:4px;">[${escapeHtml(hog.factions.abbreviation)}]</span>` : '';
         const approvalColor = approval >= 60 ? 'var(--teal)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
-        const stabColor = stability >= 60 ? 'var(--teal)' : stability >= 40 ? 'var(--amber)' : 'var(--red)';
+        const controlColor = control >= 60 ? 'var(--teal)' : control >= 40 ? 'var(--amber)' : 'var(--red)';
         let crisesHtml = '';
         if (crises.length === 0) crisesHtml = '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">None</span>';
         else crisesHtml = crises.map(c => `<div style="font-size:9.5px;color:var(--text-muted);padding-left:10px;position:relative;margin-top:1px;"><span style="position:absolute;left:0;top:5px;width:4px;height:4px;border-radius:50%;background:var(--amber);"></span>${escapeHtml(c.crisis_templates?.name || 'Crisis')}</div>`).join('');
@@ -613,22 +613,22 @@ async function renderCardBilateralIntel(issue) {
             <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px;color:${color};">${escapeHtml(name)}</div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Head of Government</span><span style="font-size:11px;color:var(--text-muted);">${hogName}${hogParty}</span></div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Gov. Approval</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${approvalColor};">${Math.round(approval)}</span></div>
-            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Stability</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${stabColor};">${Math.round(stability)}</span></div>
-            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Foreign Affairs</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;">${faToDrawCount(fa)}</span><span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:4px;">cards</span></div>
+            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Control</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${controlColor};">${Math.round(control)}</span></div>
+            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Foreign Affairs</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;">${faToDrawCount(power)}</span><span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:4px;">cards</span></div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Active Crises</span></div>
             ${crisesHtml}
         </div>`;
     }
 
     const ourApproval = Number(currentNation.gov_approval ?? 50);
-    const ourStability = Number(currentNation.stability ?? 50);
-    const ourFA = Number(currentNation.international_reputation ?? 50);
+    const ourControl = Number(currentNation.control ?? 50);
+    const ourPower = Number(currentNation.power ?? 50);
     const theirApproval = Number(theirNation?.gov_approval ?? 50);
-    const theirStability = Number(theirNation?.stability ?? 50);
-    const theirFA = Number(theirNation?.international_reputation ?? 50);
+    const theirControl = Number(theirNation?.control ?? 50);
+    const theirPower = Number(theirNation?.power ?? 50);
 
     el.style.display = '';
-    el.innerHTML = `<div style="display:flex;">${intelCard(ourName, 'var(--blue,#6b8cae)', ourHog, ourApproval, ourStability, ourFA, ourCrises)}<div style="border-left:1px solid rgba(200,196,184,0.06);"></div>${intelCard(theirName, 'var(--red,#a65d5d)', theirHog, theirApproval, theirStability, theirFA, theirCrises)}</div>`;
+    el.innerHTML = `<div style="display:flex;">${intelCard(ourName, 'var(--blue,#6b8cae)', ourHog, ourApproval, ourControl, ourPower, ourCrises)}<div style="border-left:1px solid rgba(200,196,184,0.06);"></div>${intelCard(theirName, 'var(--red,#a65d5d)', theirHog, theirApproval, theirControl, theirPower, theirCrises)}</div>`;
 }
 
 function renderCardStatusStrip(issue) {
@@ -696,7 +696,7 @@ function renderCardDeckStrip(issue, totalCardDefs) {
     const theirHand = issue.nation_a_id === currentNation.id ? (issue.hand_b || []) : (issue.hand_a || []);
     const deckLeft = (issue.deck_remaining || []).length;
     const activeCard = issue.active_card ? 1 : 0;
-    const fa = Math.round(Number(currentNation.international_reputation) || 0);
+    const fa = Math.round(Number(currentNation.power) || 0);
 
     let pips = '';
     for (let i = 0; i < played; i++) pips += '<div style="width:6px;height:10px;border:1px solid var(--text-dim);background:var(--text-dim);opacity:0.3;"></div>';
@@ -708,7 +708,7 @@ function renderCardDeckStrip(issue, totalCardDefs) {
         <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);">Deck</span>
         <div style="display:flex;gap:2px;">${pips}</div>
         <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${played} played / ${myHand.length} hand / ${deckLeft} deck</span>
-        <span style="font-family:var(--font-mono);font-size:8px;color:var(--teal,#5b9a8b);margin-left:auto;">Foreign Affairs: ${faToDrawCount(Number(currentNation.international_reputation))} cards</span>
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--teal,#5b9a8b);margin-left:auto;">Foreign Affairs: ${faToDrawCount(Number(currentNation.power))} cards</span>
     </div>`;
 }
 
@@ -1031,7 +1031,7 @@ function renderCardHand(issue, myHand, cardDefMap, mySide, isMyTurn) {
         return;
     }
 
-    const fa = Math.round(Number(currentNation.international_reputation) || 0);
+    const fa = Math.round(Number(currentNation.power) || 0);
     const played = (issue.played_cards || []).filter(p => p.played_by === mySide).length;
 
     const typeShort = { unilateral: 'Uni', diplomatic: 'Dip', aggressive: 'Agg', special: 'Spc' };

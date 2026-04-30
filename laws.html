@@ -440,7 +440,7 @@ import { formatStatName, formatMinorSector } from './js/game/political-actions.j
 import { MAJOR_SECTORS, RAW_SCALING_DIVISORS, checkSovereigntyConstraints } from './js/game/diplomacy-constants.js';
 import { getTariffDampener } from './js/game/trade-constants.js';
 import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidential.js';
-import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier } from './js/game/budget.js';
+import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
 import { getValidNewRates, computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_STEP_PP, TAX_KEY_LABELS, TAX_EFFECT_LABELS } from './js/game/tax-articles.js';
@@ -1841,13 +1841,14 @@ function _dollarsToMillions(amount) {
 function _computeInstitutionBaseCost(instId) {
     const cfg = (window._instConfig || []).find(i => i.id === instId);
     if (!cfg || !currentNation) return 0;
-    const inflationMult = getInflationMultiplier(currentNation.inflation);
+    // Alpha stats refactor (Phase 7b): see bill.html for full rationale.
+    // Both gdp/GDP and inflation columns are deleted by the alpha
+    // refactor; collapsed gdp-scaled institutions to population
+    // scaling. Mirror of bill.html:_computeInstitutionBaseCost — keep
+    // in sync.
     const baseVal = Number(cfg.base_cost_per_capita || 0);
     // Funding article economics are computed and stored in $M to match bill rendering logic.
-    if ((cfg.scaling_type || 'population') === 'gdp') {
-        return _dollarsToMillions((baseVal / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflationMult);
-    }
-    return _dollarsToMillions(baseVal * Number(currentNation.population || 0) * inflationMult);
+    return _dollarsToMillions(baseVal * Number(currentNation.population || 0));
 }
 
 function _calculateFundingArticleOngoingCost(fundingData) {
@@ -4687,16 +4688,16 @@ function updateDefaultPreview() {
         </div>
         <div class="default-preview-grid">`;
 
+    // Repopulated in Phase 7c — the sovereign-default engine now emits
+    // statChanges in the alpha-19 vocabulary. `inverse` is true for
+    // stats where higher is bad (cost_of_living, unrest) so the +/-
+    // arrow color matches the player's intuition.
     const stats = [
-        ['Credit', preview.statChanges.credit, false],
-        ['Currency', preview.statChanges.currency_strength, false],
-        ['Foreign Inv.', preview.statChanges.foreign_investment, false],
-        ['Intl. Rep.', preview.statChanges.international_reputation, false],
-        ['Interest Rates', preview.statChanges.interest_rates, true],
-        ['Inflation', preview.statChanges.inflation, true],
-        ['Trade Balance', preview.statChanges.trade_balance, false],
+        ['Power',              preview.statChanges.power,              false],
+        ['Industry',           preview.statChanges.industry,           false],
+        ['Cost of Living',     preview.statChanges.cost_of_living,     true],
         ['Standard of Living', preview.statChanges.standard_of_living, false],
-        ['Happiness', preview.statChanges.happiness, false]
+        ['Unrest',             preview.statChanges.unrest,             true]
     ];
 
     for (const [label, stat, inverse] of stats) {
@@ -4714,7 +4715,7 @@ function updateDefaultPreview() {
             ${preview.austerityDiscount > 0 ? `<span style="color:var(--green);">Austerity discount: -${Math.round(preview.austerityDiscount * 100)}%</span>` : ''}
         </div>
         <div style="font-size:0.7rem;color:var(--orange);margin-top:8px;">
-            ⚠ Triggers Sovereign Default Crisis (min ${preview.crisisMinDuration} ticks). Credit capped at ${preview.creditCeiling}, Foreign Investment at ${preview.foreignInvCeiling}. Requires 2/3 supermajority to pass. Goes directly to floor vote (${SOVEREIGN_DEFAULT_CONFIG.VOTING_TICKS} ticks).
+            ⚠ Triggers Sovereign Default Crisis (min ${preview.crisisMinDuration} ticks). Requires 2/3 supermajority to pass. Goes directly to floor vote (${SOVEREIGN_DEFAULT_CONFIG.VOTING_TICKS} ticks).
         </div>
     </div>`;
 
@@ -4760,7 +4761,7 @@ async function submitDefaultResolution() {
         `Are you sure you want to file a ${defaultType === 'full' ? 'Full Default' : 'Partial Restructuring'} Resolution?\n\n` +
         `This will:\n` +
         `• Cost ${cfg.DEFAULT_RESOLUTION_AP_COST} AP\n` +
-        `• Immediately hit Currency (${cfg.FILING_CURRENCY_HIT}) and Foreign Investment (${cfg.FILING_FOREIGN_INV_HIT})\n` +
+        `• Immediately hit Power (${cfg.FILING_POWER_HIT}) and Industry (${cfg.FILING_INDUSTRY_HIT})\n` +
         `• Go directly to a floor vote (${cfg.VOTING_TICKS} ticks)\n` +
         `• Require a 2/3 supermajority to pass`
     )) return;
@@ -4818,17 +4819,25 @@ async function submitDefaultResolution() {
             bill_id: bill.id,
             status: 'voting',
             debt_at_proposal: Number(currentNation.debt ?? 0),
-            gdp_at_proposal: Number(currentNation.gdp ?? 0),
+            // Alpha refactor: budget_at_proposal replaces the legacy
+            // gdp_at_proposal snapshot. debt_to_gdp_at_proposal column
+            // name is retained (DB column) for backward compat with any
+            // historical rows; the value is now debt/budget, matching
+            // getDebtToBudget(). Phase 9 may rename the column.
+            budget_at_proposal: Number(currentNation.budget ?? 0),
             debt_to_gdp_at_proposal: debtRatio,
             created_at_tick: currentTick
         });
         if (resError) throw resError;
 
-        // Apply filing market reactions (immediate)
+        // Apply filing market reactions (immediate). Alpha refactor:
+        // power absorbs the legacy currency_strength flavor (international
+        // standing degrades on filing); industry absorbs the
+        // foreign_investment flavor (investment in production dries up).
         const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
         await _supabase.from('nations').update({
-            currency_strength: clamp(Number(currentNation.currency_strength ?? 50), cfg.FILING_CURRENCY_HIT),
-            foreign_investment: clamp(Number(currentNation.foreign_investment ?? 50), cfg.FILING_FOREIGN_INV_HIT)
+            power:    clamp(Number(currentNation.power    ?? 50), cfg.FILING_POWER_HIT),
+            industry: clamp(Number(currentNation.industry ?? 50), cfg.FILING_INDUSTRY_HIT)
         }).eq('id', currentNation.id);
 
         // Trigger party voting
@@ -4839,8 +4848,8 @@ async function submitDefaultResolution() {
             description_used: `The ${currentFaction.faction_name} has filed a ${defaultType === 'full' ? 'full sovereign default' : 'debt restructuring'} resolution. Markets react with alarm.`,
             category: 'economy',
             effects_applied: [
-                { stat: 'currency_strength', change: cfg.FILING_CURRENCY_HIT },
-                { stat: 'foreign_investment', change: cfg.FILING_FOREIGN_INV_HIT }
+                { stat: 'power',    change: cfg.FILING_POWER_HIT },
+                { stat: 'industry', change: cfg.FILING_INDUSTRY_HIT }
             ],
             fired_at_tick: currentTick
         });
@@ -4848,7 +4857,7 @@ async function submitDefaultResolution() {
         closeDefaultModal();
         await loadLawsData();
         renderLawsPage();
-        alert(`"${billName}" has been filed and sent directly to the floor.\n\nMarkets have reacted: Currency ${cfg.FILING_CURRENCY_HIT}, Foreign Investment ${cfg.FILING_FOREIGN_INV_HIT}.`);
+        alert(`"${billName}" has been filed and sent directly to the floor.\n\nMarkets have reacted: Power ${cfg.FILING_POWER_HIT}, Industry ${cfg.FILING_INDUSTRY_HIT}.`);
     } catch (error) {
         console.error('Error filing Default Resolution:', error);
         alert('Error filing Default Resolution. Please try again.');

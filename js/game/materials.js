@@ -26,32 +26,32 @@ export const MATERIALS = [
         category: 'RAW',       // RAW = tariff on raw materials
         tiers: {
             LOW:  { requirements: [] },  // always available
-            STD:  { requirements: [{ stat: 'manufacturing_output', min: 20 }] },
-            HIGH: { requirements: [{ stat: 'manufacturing_output', min: 50 }, { stat: 'higher_education', min: 40 }] },
+            STD:  { requirements: [{ stat: 'industry', min: 20 }] },
+            HIGH: { requirements: [{ stat: 'industry', min: 50 }, { stat: 'education', min: 40 }] },
         },
-        priceDrivers: ['manufacturing_output', 'inflation', 'fuel_prices', 'urbanization'],
+        priceDrivers: ['industry', 'cost_of_living', 'workforce'],
     },
     {
         key: 'steel',
         name: 'Steel',
         category: 'RAW',
         tiers: {
-            LOW:  { requirements: [{ stat: 'manufacturing_output', min: 10 }] },
-            STD:  { requirements: [{ stat: 'manufacturing_output', min: 35 }, { stat: 'rare_minerals', min: 20 }] },
-            HIGH: { requirements: [{ stat: 'manufacturing_output', min: 60 }, { stat: 'rare_minerals', min: 40 }, { stat: 'higher_education', min: 45 }] },
+            LOW:  { requirements: [{ stat: 'industry', min: 10 }] },
+            STD:  { requirements: [{ stat: 'industry', min: 35 }, { stat: 'energy', min: 20 }] },
+            HIGH: { requirements: [{ stat: 'industry', min: 60 }, { stat: 'energy', min: 40 }, { stat: 'education', min: 45 }] },
         },
-        priceDrivers: ['manufacturing_output', 'rare_minerals', 'inflation', 'fuel_prices'],
+        priceDrivers: ['industry', 'energy', 'cost_of_living'],
     },
     {
         key: 'lumber',
         name: 'Lumber',
         category: 'RAW',
         tiers: {
-            LOW:  { requirements: [{ stat: 'arable_land', min: 10 }] },
-            STD:  { requirements: [{ stat: 'arable_land', min: 30 }, { stat: 'physical_infrastructure', min: 20 }] },
-            HIGH: { requirements: [{ stat: 'arable_land', min: 50 }, { stat: 'manufacturing_output', min: 30 }] },
+            LOW:  { requirements: [{ stat: 'farmland', min: 10 }] },
+            STD:  { requirements: [{ stat: 'farmland', min: 30 }, { stat: 'infrastructure', min: 20 }] },
+            HIGH: { requirements: [{ stat: 'farmland', min: 50 }, { stat: 'industry', min: 30 }] },
         },
-        priceDrivers: ['arable_land', 'physical_infrastructure', 'inflation'],
+        priceDrivers: ['farmland', 'infrastructure', 'cost_of_living'],
     },
     {
         key: 'aggregate',
@@ -59,54 +59,54 @@ export const MATERIALS = [
         category: 'RAW',
         tiers: {
             LOW:  { requirements: [] },  // it's rocks
-            STD:  { requirements: [{ stat: 'rare_minerals', min: 15 }, { stat: 'physical_infrastructure', min: 20 }] },
-            HIGH: { requirements: [{ stat: 'rare_minerals', min: 35 }, { stat: 'manufacturing_output', min: 25 }] },
+            STD:  { requirements: [{ stat: 'energy', min: 15 }, { stat: 'infrastructure', min: 20 }] },
+            HIGH: { requirements: [{ stat: 'energy', min: 35 }, { stat: 'industry', min: 25 }] },
         },
-        priceDrivers: ['rare_minerals', 'physical_infrastructure', 'inflation'],
+        priceDrivers: ['energy', 'infrastructure', 'cost_of_living'],
     },
     {
         key: 'em_systems',
         name: 'E&M Systems',
         category: 'MANUFACTURED',   // MANUFACTURED = tariff on manufactured goods
         tiers: {
-            LOW:  { requirements: [{ stat: 'manufacturing_output', min: 15 }] },
-            STD:  { requirements: [{ stat: 'manufacturing_output', min: 40 }, { stat: 'digital_infrastructure', min: 25 }] },
-            HIGH: { requirements: [{ stat: 'manufacturing_output', min: 55 }, { stat: 'digital_infrastructure', min: 50 }, { stat: 'energy_generation', min: 40 }] },
+            LOW:  { requirements: [{ stat: 'industry', min: 15 }] },
+            STD:  { requirements: [{ stat: 'industry', min: 40 }, { stat: 'infrastructure', min: 25 }] },
+            HIGH: { requirements: [{ stat: 'industry', min: 55 }, { stat: 'infrastructure', min: 50 }, { stat: 'energy', min: 40 }] },
         },
-        priceDrivers: ['manufacturing_output', 'digital_infrastructure', 'inflation', 'energy_generation'],
+        priceDrivers: ['industry', 'infrastructure', 'cost_of_living', 'energy'],
     },
     {
         key: 'glass_facades',
         name: 'Glass & Facades',
         category: 'MANUFACTURED',
         tiers: {
-            LOW:  { requirements: [{ stat: 'manufacturing_output', min: 20 }] },
-            STD:  { requirements: [{ stat: 'manufacturing_output', min: 40 }, { stat: 'standard_of_living', min: 35 }] },
-            HIGH: { requirements: [{ stat: 'manufacturing_output', min: 60 }, { stat: 'digital_infrastructure', min: 40 }, { stat: 'higher_education', min: 50 }] },
+            LOW:  { requirements: [{ stat: 'industry', min: 20 }] },
+            STD:  { requirements: [{ stat: 'industry', min: 40 }, { stat: 'standard_of_living', min: 35 }] },
+            HIGH: { requirements: [{ stat: 'industry', min: 60 }, { stat: 'infrastructure', min: 40 }, { stat: 'education', min: 50 }] },
         },
-        priceDrivers: ['manufacturing_output', 'standard_of_living', 'inflation'],
+        priceDrivers: ['industry', 'standard_of_living', 'cost_of_living'],
     },
     {
         key: 'asphalt',
         name: 'Asphalt',
         category: 'RAW',
         tiers: {
-            LOW:  { requirements: [{ stat: 'oil_and_gas', min: 10 }] },
-            STD:  { requirements: [{ stat: 'oil_and_gas', min: 30 }, { stat: 'manufacturing_output', min: 25 }] },
-            HIGH: { requirements: [{ stat: 'oil_and_gas', min: 45 }, { stat: 'manufacturing_output', min: 40 }, { stat: 'physical_infrastructure', min: 40 }] },
+            LOW:  { requirements: [{ stat: 'energy', min: 10 }] },
+            STD:  { requirements: [{ stat: 'energy', min: 30 }, { stat: 'industry', min: 25 }] },
+            HIGH: { requirements: [{ stat: 'energy', min: 45 }, { stat: 'industry', min: 40 }, { stat: 'infrastructure', min: 40 }] },
         },
-        priceDrivers: ['oil_and_gas', 'manufacturing_output', 'inflation', 'fuel_prices'],
+        priceDrivers: ['energy', 'industry', 'cost_of_living'],
     },
     {
         key: 'heavy_parts',
         name: 'Heavy Machinery Parts',
         category: 'MANUFACTURED',
         tiers: {
-            LOW:  { requirements: [{ stat: 'manufacturing_output', min: 40 }, { stat: 'rare_minerals', min: 30 }] },
-            STD:  { requirements: [{ stat: 'manufacturing_output', min: 60 }, { stat: 'rare_minerals', min: 45 }, { stat: 'higher_education', min: 40 }] },
-            HIGH: { requirements: [{ stat: 'manufacturing_output', min: 75 }, { stat: 'rare_minerals', min: 60 }, { stat: 'higher_education', min: 55 }, { stat: 'digital_infrastructure', min: 45 }] },
+            LOW:  { requirements: [{ stat: 'industry', min: 40 }, { stat: 'energy', min: 30 }] },
+            STD:  { requirements: [{ stat: 'industry', min: 60 }, { stat: 'energy', min: 45 }, { stat: 'education', min: 40 }] },
+            HIGH: { requirements: [{ stat: 'industry', min: 75 }, { stat: 'energy', min: 60 }, { stat: 'education', min: 55 }, { stat: 'infrastructure', min: 45 }] },
         },
-        priceDrivers: ['manufacturing_output', 'rare_minerals', 'higher_education', 'digital_infrastructure'],
+        priceDrivers: ['industry', 'energy', 'education', 'infrastructure'],
     },
 ];
 
@@ -184,12 +184,12 @@ export function calculateBasePrice(materialKey, tier, nation) {
 
     // Price modifier: average of driver stats inverted.
     // High stats = lower prices (better supply), low stats = higher prices (scarcity).
-    // inflation directly increases price, others inversely affect it.
+    // cost_of_living directly increases price, others inversely affect it.
     let modifier = 1.0;
     for (const statKey of mat.priceDrivers) {
         const val = Number(nation?.[statKey] ?? 50);
-        if (statKey === 'inflation' || statKey === 'fuel_prices') {
-            // Higher inflation/fuel = higher prices
+        if (statKey === 'cost_of_living') {
+            // Higher cost_of_living = higher prices
             modifier *= 1 + ((val - 50) / 200);
         } else {
             // Higher production stats = lower prices
@@ -246,9 +246,9 @@ export function calculateSupply(materialKey, tier, nation) {
  * @returns {number} multiplier (e.g. 1.35 = 35% markup)
  */
 export function calculateImportMultiplier(sourceNation, destNation, category) {
-    const fuelCost = Number(destNation?.fuel_prices ?? 50);
-    const srcInfra = Number(sourceNation?.physical_infrastructure ?? 50);
-    const dstInfra = Number(destNation?.physical_infrastructure ?? 50);
+    const fuelCost = Number(destNation?.cost_of_living ?? 50);
+    const srcInfra = Number(sourceNation?.infrastructure ?? 50);
+    const dstInfra = Number(destNation?.infrastructure ?? 50);
 
     // Base transport markup: 10-40% depending on fuel and infrastructure
     const transportMult = 1 + (fuelCost / 200) + ((100 - srcInfra) / 500) + ((100 - dstInfra) / 500);

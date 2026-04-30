@@ -153,29 +153,21 @@ async function hashPassword(pw) {
 // Phase 2: ideology authoring removed; existing policy ideology data is
 // preserved on edit but no longer editable through this UI.
 
+// Phase 9: schema is the alpha-23 stat menu plus population/eligible_voters
+// metadata. The legacy raw-scaling helpers (gdp/debt as raw dollar values)
+// are retired — debt is still numeric on the alpha schema but not raw $.
 const RAW_SCALING_INFO = {
-    population: { divisor: 1_000_000, unit: 'per million people', example: '10M', exampleVal: 10_000_000 },
-    gdp: { divisor: 1_000_000_000, unit: 'per $1B GDP', example: '$500B', exampleVal: 500_000_000_000 },
-    debt: { divisor: 1_000_000_000, unit: 'per $1B debt', example: '$200B', exampleVal: 200_000_000_000 }
+    population: { divisor: 1_000_000, unit: 'per million people', example: '10M', exampleVal: 10_000_000 }
 };
 
 const STAT_GROUPS = [
-    { label: '💰 Economic', stats: ['gdp','gdp_growth','debt','debt_growth','inflation','interest_rates','trade_balance','currency_strength','foreign_investment','credit'] },
-    { label: '📋 Taxation', stats: ['income_tax','corporate_tax','sales_tax','tariffs'] },
-    { label: '👷 Labor & Employment', stats: ['unemployment','labor_force_participation','minimum_wage','union_strength','poverty_rate','income_inequality'] },
-    { label: '👥 Demographics', stats: ['population','eligible_voters','population_growth','median_age','ethnic_diversity'] },
-    { label: '🏥 Healthcare', stats: ['healthcare_quality','healthcare_accessibility','beds_per_100k','lifespan','drug_use'] },
-    { label: '📚 Education', stats: ['literacy','higher_education','education_accessibility','academic_immigration'] },
-    { label: '🏗️ Infrastructure', stats: ['physical_infrastructure','digital_infrastructure','rail_network','urbanization','energy_generation','renewable_energy_percentage'] },
-    { label: '⛏️ Resources', stats: ['arable_land','rare_minerals','oil_and_gas','fuel_prices'] },
-    { label: '🌿 Environment', stats: ['pollution','carbon_emissions'] },
-    { label: '🏠 Social', stats: ['standard_of_living','happiness','social_mobility','benefits','crime_rate','incarceration_rate'] },
-    { label: '⛪ Religion', stats: ['religiosity'] },
-    { label: '🏛️ Governance', stats: ['stability','legitimacy','efficiency','corruption','press_freedom','judicial_independence','freedom_index','polarization'] },
-    { label: '🔒 Security', stats: ['civil_unrest','terrorism','political_violence'] },
-    { label: '🌍 Immigration', stats: ['immigration','illegal_immigration','emigration'] },
-    { label: '🏭 Industry', stats: ['manufacturing_output','service_output','cost_of_living','housing_affordability'] },
-    { label: '🌐 International', stats: ['international_reputation'] }
+    { label: '💰 Fiscal', stats: ['budget','debt','gdp_growth','income_tax','corporate_tax'] },
+    { label: '🏛️ Governance', stats: ['control','public_approval','crown_authority','corruption'] },
+    { label: '🔥 Stability', stats: ['unrest','crime'] },
+    { label: '👥 Population', stats: ['population','eligible_voters','immigration'] },
+    { label: '🏥 Wellbeing', stats: ['health','education','standard_of_living','cost_of_living'] },
+    { label: '🏗️ Productive base', stats: ['infrastructure','industry','farmland','service_sector','workforce','energy'] },
+    { label: '🌐 International', stats: ['power'] }
 ];
 
 // Flatten for dropdown building
@@ -186,26 +178,71 @@ function buildStatOptions() {
 }
 const STAT_OPTIONS_HTML = buildStatOptions();
 const CANONICAL_STAT_KEYS = new Set(STAT_GROUPS.flatMap(group => group.stats));
+
+// Phase 9: stale stat keys from pre-alpha policies are normalized to the
+// alpha-23 canonical name on edit. Keys mapped to null are silently
+// dropped from the policy on save (the underlying stat is gone).
 const POLICY_STAT_KEY_ALIASES = {
-    intl_reputation: 'international_reputation',
-    diplomatic_standing: 'international_reputation',
-    credit_rating: 'credit',
-    credit_score: 'credit',
-    trade: 'trade_balance',
-    trade_volume: 'trade_balance',
-    education: 'higher_education',
-    education_quality: 'higher_education',
-    military_strength: 'stability',
-    literacy_rate: 'literacy',
-    hospital_beds: 'beds_per_100k',
-    technology: 'digital_infrastructure',
-    infrastructure: 'physical_infrastructure',
-    tourism: 'international_reputation'
+    // Renames into alpha-23
+    authority: 'public_approval',
+    legitimacy: 'public_approval',
+    judicial_independence: 'public_approval',
+    goods: 'service_sector',
+    crime_rate: 'crime',
+    stability: 'control',
+    civil_unrest: 'unrest',
+    terrorism: 'unrest',
+    political_violence: 'unrest',
+    healthcare_quality: 'health',
+    healthcare_accessibility: 'health',
+    beds_per_100k: 'health',
+    lifespan: 'health',
+    hospital_beds: 'health',
+    higher_education: 'education',
+    education_quality: 'education',
+    physical_infrastructure: 'infrastructure',
+    digital_infrastructure: 'infrastructure',
+    rail_network: 'infrastructure',
+    technology: 'infrastructure',
+    urbanization: 'workforce',
+    labor_force_participation: 'workforce',
+    arable_land: 'farmland',
+    manufacturing_output: 'industry',
+    international_reputation: 'power',
+    intl_reputation: 'power',
+    diplomatic_standing: 'power',
+    tourism: 'power',
+    trade_agreements: 'power',
+    sanctions: 'power',
+    military_strength: 'control',
+    // Inverted alias: unemployment → workforce (direction flipped at apply)
+    unemployment: 'workforce',
+    // Deleted with no replacement — caller decides whether to drop
+    religious: null, religiosity: null, efficiency: null, happiness: null,
+    polarization: null, freedom_index: null, gdp: null, GDP: null,
+    inflation: null, foreign_investment: null, tariffs: null, credit: null,
+    credit_rating: null, credit_score: null, literacy: null, literacy_rate: null,
+    academic_immigration: null, oil_and_gas: null, rare_minerals: null,
+    energy_generation: null, fuel_prices: null, pollution: null,
+    social_mobility: null, benefits: null, population_growth: null,
+    debt_growth: null, minimum_wage: null, union_strength: null,
+    illegal_immigration: null, emigration: null, sales_tax: null,
+    interest_rates: null, poverty_rate: null, income_inequality: null,
+    trade_balance: null, trade: null, trade_volume: null,
+    currency_strength: null, birth_rate: null, death_rate: null,
+    median_age: null, carbon_emissions: null,
+    renewable_energy_percentage: null, press_freedom: null,
+    incarceration_rate: null, drug_use: null, ethnic_diversity: null,
+    education_accessibility: null, service_output: null,
+    housing_affordability: null
 };
 
 function normalizePolicyStatKey(statKey) {
     if (!statKey || typeof statKey !== 'string') return null;
-    return POLICY_STAT_KEY_ALIASES[statKey] || statKey;
+    if (statKey in POLICY_STAT_KEY_ALIASES) {
+        return POLICY_STAT_KEY_ALIASES[statKey];  // may be null (drop)
+    }
+    return statKey;
 }
 
 // ==================== STATE ====================
@@ -583,23 +620,30 @@ async function loadPolicyIntoBuilder(p) {
         opt.ongoing_scaling_stat = p.ongoing_scaling_stat  || '';
         opt.fiscal_category      = p.fiscal_category       || '';
         if (Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
-            opt.stat_effects = p.stat_effects.map(e => ({
-                ...e,
-                stat_key: normalizePolicyStatKey(e.stat_key),
-                direction: normalizeEffectDirection(e.direction) || 'up',
-                adjust_type: e.adjust_type || null,
-                adjust_value: e.adjust_value || 0
-            }));
+            opt.stat_effects = p.stat_effects
+                .map(e => ({
+                    ...e,
+                    stat_key: normalizePolicyStatKey(e.stat_key),
+                    direction: normalizeEffectDirection(e.direction) || 'up',
+                    adjust_type: e.adjust_type || null,
+                    adjust_value: e.adjust_value || 0
+                }))
+                // Phase 9: drop effects whose stat_key normalized to null
+                // (the underlying stat is gone from the alpha-23 schema).
+                .filter(e => e.stat_key);
         } else if (p.target_stat) {
-            opt.stat_effects = [{
-                stat_key: normalizePolicyStatKey(p.target_stat),
-                direction: normalizeEffectDirection(p.stat_direction) || 'up',
-                rate: p.stat_change_per_tick || 1,
-                delay_ticks: 0,
-                duration_ticks: p.duration_months || 12,
-                adjust_type: null,
-                adjust_value: 0
-            }];
+            const normalizedTarget = normalizePolicyStatKey(p.target_stat);
+            if (normalizedTarget) {
+                opt.stat_effects = [{
+                    stat_key: normalizedTarget,
+                    direction: normalizeEffectDirection(p.stat_direction) || 'up',
+                    rate: p.stat_change_per_tick || 1,
+                    delay_ticks: 0,
+                    duration_ticks: p.duration_months || 12,
+                    adjust_type: null,
+                    adjust_value: 0
+                }];
+            }
         }
         if (Array.isArray(p.sector_effects)) {
             opt.sector_effects = p.sector_effects
@@ -620,13 +664,16 @@ async function loadPolicyIntoBuilder(p) {
             opt.ongoing_scaling_stat = row.ongoing_scaling_stat || '';
 
             const rawStat = Array.isArray(row.stat_effects) ? row.stat_effects : [];
-            opt.stat_effects = rawStat.map(e => ({
-                ...e,
-                stat_key: normalizePolicyStatKey(e.stat_key),
-                direction: normalizeEffectDirection(e.direction) || 'up',
-                adjust_type: e.adjust_type || null,
-                adjust_value: e.adjust_value || 0
-            }));
+            opt.stat_effects = rawStat
+                .map(e => ({
+                    ...e,
+                    stat_key: normalizePolicyStatKey(e.stat_key),
+                    direction: normalizeEffectDirection(e.direction) || 'up',
+                    adjust_type: e.adjust_type || null,
+                    adjust_value: e.adjust_value || 0
+                }))
+                // Phase 9: drop effects whose stat_key normalized to null.
+                .filter(e => e.stat_key);
 
             const rawSector = Array.isArray(row.sector_effects) ? row.sector_effects : [];
             opt.sector_effects = rawSector

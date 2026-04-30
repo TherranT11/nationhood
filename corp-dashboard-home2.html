@@ -2289,10 +2289,12 @@ function renderWorkforce(nation, nationName, factionData) {
     const INNOVATIVE_MULT = 6;
 
     // Base annual wage: (minimum_wage / 100) × $48,000
+    // PHASE 7 TODO: minimum_wage drops in Phase 9
     const minWageStat = s('minimum_wage');
     const baseAnnualWage = (minWageStat / 100) * 48000;
 
     // Modifiers: inflation + standard of living
+    // PHASE 7 TODO: inflation drops in Phase 9
     const inflation = s('inflation');
     const sol = s('standard_of_living');
     const inflMod = 1 + ((inflation - 50) / 100 * 0.5);
@@ -2415,6 +2417,9 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const BASE_RATE = 87_000_000;
     const s = (key) => getNationStat(nation, key);
 
+    // PHASE 7 TODO: urbanization, population_growth, physical_infrastructure,
+    // inflation, interest_rates all drop in Phase 9 — rebuild the market-rev
+    // multiplier against the new 19-stat schema (workforce, infrastructure, etc.).
     const gdpFactor     = 1 + (s('gdp_growth') - 50) / 100 * 0.4;
     const urbanFactor   = 1 + (s('urbanization') - 50) / 100 * 0.3;
     const popFactor     = 1 + (s('population_growth') - 50) / 100 * 0.2;
@@ -2634,6 +2639,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const fleet = fleetMaint || 0;
     const FIXED_OVERHEAD = 75000; // minimum operating costs (matches tick processor)
     // Corporate tax: applied to positive income (matches tick processor formula)
+    // PHASE 7 TODO: corporate_tax drops in Phase 9
     const corpTaxRate = Math.max(0, Math.min(1, (Number(nation?.corporate_tax ?? 0) / 100) || 0));
     const preExpenses = wages + execSalaries + materials + properties + equipment + fleet + debtService + corpLoanService + insurancePremiums + projectCosts + FIXED_OVERHEAD;
     const taxableIncome = Math.max(0, totalRevenue - preExpenses);
@@ -2646,9 +2652,11 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         const { data: props } = await _supabase.from('corp_properties').select('nation_id').eq('faction_id', faction.id).eq('is_active', true);
         (props || []).forEach(p => { if (p.nation_id) presenceIds.add(p.nation_id); });
         if (presenceIds.size > 0) {
+            // PHASE 7 TODO: corporate_tax drops in Phase 9
             const { data: taxNations } = await _supabase.from('nations').select('id, name, corporate_tax').in('id', [...presenceIds]);
             if (taxNations && taxNations.length > 0) {
                 taxBreakdownHtml = taxNations.sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(n => {
+                    // PHASE 7 TODO: corporate_tax drops in Phase 9
                     const rate = Math.round(Number(n.corporate_tax ?? 0));
                     const nationTax = Math.round(taxableIncome * (rate / 100) / taxNations.length); // simplified per-nation estimate
                     const rateColor = rate > 25 ? '#c55' : rate > 15 ? '#ca5' : '#5c5';
@@ -2706,6 +2714,9 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     h2SetKPIRevenue(totalRevenue, netProfit);
 
     // Driver data for display
+    // PHASE 7 TODO: urbanization, population_growth, physical_infrastructure,
+    // inflation, interest_rates drop in Phase 9 — rebuild driver list against
+    // the new 19-stat schema (workforce, infrastructure) when the engine cuts over.
     const drivers = [
         { stat: 'gdp_growth', value: s('gdp_growth'), weight: '0.4' },
         { stat: 'urbanization', value: s('urbanization'), weight: '0.3' },
@@ -2804,23 +2815,8 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
                 <div class="fin-cash-debt__value" style="color:var(--amber)">${fmtMoney(debt)}</div>
             </div>
         </div>
-        <!-- Purchasing Power -->
-        ${(() => {
-            const currStr = Number(nation?.currency_strength ?? 50);
-            const infl = Number(nation?.inflation ?? 0);
-            const currMult = currStr / 50;
-            const inflMult = Math.max(0.5, 1 - infl / 200);
-            const realValue = Math.round(cash * currMult * inflMult);
-            const ppColor = realValue >= cash ? 'var(--green)' : realValue >= cash * 0.8 ? 'var(--amber)' : 'var(--red)';
-            const pctOfNominal = cash > 0 ? Math.round((realValue / cash) * 100) : 100;
-            return `<div style="padding:4px 14px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border-hair);">
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase;">Purchasing Power</div>
-                <div style="display:flex;align-items:center;gap:6px;">
-                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${ppColor};">${fmtMoney(realValue)}</span>
-                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">${pctOfNominal}% · CUR ${currStr} · INF ${Math.round(infl)}</span>
-                </div>
-            </div>`;
-        })()}
+        <!-- Purchasing Power widget removed: built on currency_strength + inflation, both drop in Phase 9. -->
+
         <!-- Loans Section -->
         <div style="padding:8px 14px;border-top:1px solid var(--border-0);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -3232,7 +3228,9 @@ async function renderProperty(nation, nationName, factionData, shard) {
 
     // National HQ always present — value scales with nation stats
     const hqBaseCost = 50000000; // $50M base for a 500 capacity HQ
+    // PHASE 7 TODO: inflation drops in Phase 9
     const hqInflMod = 1 + ((getNationStat(nation, 'inflation') - 50) / 100 * 0.3);
+    // PHASE 7 TODO: stability drops in Phase 9 (use control as closest equivalent)
     const hqStabMod = 0.8 + (getNationStat(nation, 'stability') / 100 * 0.4);
     const hqValue = Math.round(hqBaseCost * hqInflMod * hqStabMod);
     const hqMaint = Math.round(hqValue * 0.005); // 0.5% of value per month
@@ -3925,6 +3923,7 @@ let _sellInProgress = false;
 function showSellModal(propId, propName, purchasePrice, condition) {
     if (_sellInProgress) return;
     const nation = window._nationStats;
+    // PHASE 7 TODO: inflation drops in Phase 9
     const inflation = getNationStat(nation, 'inflation');
 
     // Sale price = purchase_price × inflation modifier × (condition / 100)
@@ -4016,6 +4015,7 @@ function showRefurbishModal(propId, propName, condition, purchasePrice, refurbis
     if (_refurbInProgress) return;
     const nation = window._nationStats;
     const faction = window._factionData;
+    // PHASE 7 TODO: inflation drops in Phase 9
     const inflation = getNationStat(nation, 'inflation');
     const inflationMod = 1 + (inflation - 50) / 100 * 0.3;
     const refurbishCost = computeRefurbishCost({ purchase_price: purchasePrice, refurbish_count: refurbishCount }, inflationMod);
@@ -4071,6 +4071,7 @@ async function confirmRefurbish(propId, purchasePrice, refurbishCount, condition
         const nation = window._nationStats;
         if (!factionId) throw new Error('No faction');
 
+        // PHASE 7 TODO: inflation drops in Phase 9
         const inflation = getNationStat(nation, 'inflation');
         const inflationMod = 1 + (inflation - 50) / 100 * 0.3;
         const prop = { id: propId, purchase_price: purchasePrice, refurbish_count: refurbishCount, condition: condition };
@@ -4818,7 +4819,7 @@ init();
     <li><strong>Buy Property</strong> — purchase office buildings or regional HQs from the property marketplace to house your workforce.</li>
     <li><strong>Bid on Contracts</strong> — government and private construction contracts appear in the Open Contracts pool. Submit competitive bids to win work.</li>
     </ol>
-    <p><em>Tip: Your corporation earns market revenue each tick based on your nation's economic health. Keep an eye on GDP growth, urbanization, and inflation.</em></p>
+    <p><em>Tip: Your corporation earns market revenue each tick based on your nation's economic health. Keep an eye on GDP growth, workforce, and standard of living.</em></p>
     </div></details>
 
     <details class="cg-section"><summary>How Corp Ticks Work</summary><div>
@@ -4887,15 +4888,6 @@ init();
     <p>Buy government bonds issued by the Minister of Finance. Browse bond offerings in <strong>Deal Flow</strong> → choose how much to buy → collect monthly coupon payments from the national treasury. Higher coupon = riskier nation. Sovereign default = you lose your principal.</p>
     <h4 style="font-family:var(--font-mono);font-size:10px;color:#aa7a5a;margin:10px 0 4px;">Insurance</h4>
     <p>Insure construction projects against disruption events. Construction corps click <strong>INSURE</strong> on their projects → you review in <strong>Deal Flow</strong> → set premium rate, coverage, and deductible → click <strong>Write Policy</strong>. Collect premiums monthly. Pay out when disruption events fire.</p>
-    </div></details>
-
-    <details class="cg-section"><summary>Purchasing Power</summary><div>
-    <p>Your cash is worth more or less depending on your nation's economy:</p>
-    <ul>
-    <li><strong>Currency Strength</strong> — higher = your money buys more. Baseline is 50.</li>
-    <li><strong>Inflation</strong> — higher = your money buys less. Erodes purchasing power over time.</li>
-    </ul>
-    <p>The <strong>Purchasing Power</strong> indicator below your Cash/Debt display shows the real value of your reserves. A weak currency with high inflation means your $200M might only be worth $120M in real terms.</p>
     </div></details>
 
     <details class="cg-section"><summary>Tips for New Players</summary><div>

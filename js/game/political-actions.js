@@ -6,7 +6,7 @@
 import { deductAP, GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM, isSemiPresidential } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
-import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
+import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, translateStatEffect, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fetchActiveCoalition, deriveLeadPartyId } from './government-structure.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
@@ -164,15 +164,19 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
         }
     }
 
-    // Enforce foundational law caps on stats
-    // Judicial Appointment Politicization Act: cap judicial_independence at 30
+    // Enforce foundational law caps on stats.
+    // Judicial Appointment Politicization Act: caps public_approval
+    // at 30 (was the legacy judicial_independence cap; Phase 7H
+    // collapsed legitimacy + judicial_independence + freedom_index
+    // into public_approval, so the cap now applies to the merged
+    // signal).
     if (nation.judicial_appointment_politicization) {
-        const ji = nationUpdates.judicial_independence ?? Number(nation.judicial_independence ?? 50);
-        if (ji > 30) nationUpdates.judicial_independence = 30;
+        const pa = nationUpdates.public_approval ?? Number(nation.public_approval ?? 50);
+        if (pa > 30) nationUpdates.public_approval = 30;
     }
     // State Media Control Act: cap press_freedom at 40
     if (nation.state_media_control) {
-        const pf = nationUpdates.press_freedom ?? Number(nation.press_freedom ?? 50);
+        const pf = nationUpdates.press_freedom ?? 50;
         if (pf > 40) nationUpdates.press_freedom = 40;
     }
 
@@ -373,7 +377,10 @@ export const RALLY_OUTCOMES = [
 
 /**
  * Compute outcome weights for a rally targeting a voter bloc.
- * Weights shift based on approval, crises, polarization, civil unrest, and recent rallies.
+ * Weights shift based on approval, crises, unrest, and recent rallies.
+ * Alpha refactor: polarization branch retired (column deleted; the
+ * divisive/counter swing it triggered is functionally absorbed by the
+ * existing high-unrest branch below).
  */
 export function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationState) {
     const weights = { rousing: 20, solid: 38, low: 15, gaffe: 12, divisive: 8, counter: 5 };
@@ -389,11 +396,6 @@ export function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationStat
     if (nationState.crisisCount > 0) {
         weights.gaffe += 6; weights.divisive += 4; weights.counter += 10;
         weights.rousing -= 8; weights.solid -= 6;
-    }
-
-    // High polarization
-    if (nationState.polarization > 60) {
-        weights.divisive += 6; weights.counter += 4; weights.solid -= 4;
     }
 
     // Rallied recently → stale material
@@ -486,7 +488,7 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     let targetBloc = { id: null, bloc_name: 'General Public', population_weight: 100 };
 
     const { data: nation } = await supabase
-        .from('nations').select('polarization, civil_unrest, stability').eq('id', nationId).single();
+        .from('nations').select('unrest, control').eq('id', nationId).single();
     const { count: crisisCount } = await supabase
         .from('active_crises').select('id', { count: 'exact', head: true }).eq('nation_id', nationId);
 
@@ -494,10 +496,12 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     const targetApproval = 50;
 
     // ── 5. Compute weights and roll outcome ──
+    // Alpha refactor: polarization + stability fields dropped from
+    // nationState — polarization column gone, stability was set but
+    // never read. civilUnrest reads from `nation.unrest` (alpha-19
+    // equivalent of the legacy civil_unrest column).
     const nationState = {
-        polarization: nation?.polarization || 0,
-        civilUnrest: nation?.civil_unrest || 0,
-        stability: nation?.stability || 50,
+        civilUnrest: nation?.unrest || 0,
         crisisCount: crisisCount || 0,
     };
     const weights = getRallyOutcomeWeights(targetApproval, ralliedRecently, nationState);
@@ -901,9 +905,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
     const { data: faction } = await supabase
         .from('factions').select('action_points, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    const { data: nationForCost } = await supabase
-        .from('nations').select('polarization').eq('id', nationId).single();
-    const baseAttackCost = getAttackAPCost(nationForCost?.polarization);
+    const baseAttackCost = getAttackAPCost(0);
     const attackApMod = getTraitAPModifier('attack', faction, currentTick);
     const effectiveAttackCost = Math.max(1, baseAttackCost + attackApMod);
     if ((faction.action_points || 0) < effectiveAttackCost)
@@ -964,14 +966,12 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
         effects.push({ label: selfLabel, value: selfDelta });
     }
 
-    // Polarization
+    // Polarization mechanic retired by alpha stats refactor (column
+    // deleted with no replacement). The outcome.polarization signal
+    // from political-action templates still flows in but no longer
+    // writes to a column. Effects record retained so historical
+    // event_log shows the intended impact.
     if (outcome.polarization > 0) {
-        const { data: nation } = await supabase
-            .from('nations').select('polarization').eq('id', nationId).single();
-        if (nation) {
-            const newPol = Math.min(100, (nation.polarization || 0) + outcome.polarization);
-            await supabase.from('nations').update({ polarization: newPol }).eq('id', nationId);
-        }
         effects.push({ label: 'Polarization', value: outcome.polarization });
     }
 
@@ -1271,26 +1271,30 @@ export async function processStatEffects(supabase, nation, currentTick) {
             const ticksSincePassed = tick - passedTick;
 
             for (const eff of effects) {
-                const delay = Number(eff.delay_ticks) || 0;
-                const duration = Number(eff.duration_ticks) || 12;
-                const rate = Number(eff.rate) || 1;
-                const dir = String(eff.direction || '').toLowerCase();
-                const rawStatKey = eff.stat_key;
-                const statKey = normalizeNationStatKey(rawStatKey);
-
-                if (!statKey || !NATION_STAT_COLUMN_SET.has(statKey)) {
+                // Phase 4 alpha-stats shim: translateStatEffect remaps the
+                // legacy 80-stat keys onto the new 19-column schema (and
+                // flips direction for inversions like unemployment →
+                // workforce). Returns null for stats deleted with no
+                // replacement — those entries skip silently.
+                const translated = translateStatEffect(eff);
+                if (!translated) {
                     if (tick === lastApplied + 1) {
                         console.warn(
-                            `[processStatEffects] Skipping invalid stat_key "${rawStatKey}" for ${effectSource}`
+                            `[processStatEffects] Skipping invalid/deleted stat_key "${eff.stat_key || eff.stat}" for ${effectSource}`
                         );
                     }
                     continue;
                 }
+                const delay = Number(translated.delay_ticks) || 0;
+                const duration = Number(translated.duration_ticks) || 12;
+                const rate = Number(translated.rate) || 1;
+                const dir = String(translated.direction || '').toLowerCase();
+                const statKey = translated.stat_key;
 
                 if (dir !== 'up' && dir !== 'down') {
                     if (tick === lastApplied + 1) {
                         console.warn(
-                            `[processStatEffects] Skipping invalid direction "${eff.direction}" for stat_key="${rawStatKey}" from ${effectSource}`
+                            `[processStatEffects] Skipping invalid direction "${translated.direction}" for stat_key="${eff.stat_key || eff.stat}" from ${effectSource}`
                         );
                     }
                     continue;
@@ -2013,15 +2017,15 @@ export async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
-// All columns that nations_history tracks (must match the DB table schema)
+// All columns that nations_history tracks (must match the DB table schema).
+// Phase 9 trimmed NATION_STAT_COLUMNS to alpha-23, but the snapshot loop
+// also tracks two non-stat metadata columns (population, eligible_voters)
+// that nations_history has carried since launch.
 export const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
     'gov_approval',
-    // Phase 5b: ideology axis voter columns dropped from nations.
-    // The progressive_/liberal_/moderate_/conservative_/nationalist_voters
-    // entries never existed on nations to begin with — pre-existing dead
-    // config that the snapshot loop was silently skipping via the
-    // `nation[key] !== undefined` guard.
+    'population',
+    'eligible_voters',
 ];
 
 export async function snapshotNationHistory(supabase, nation, currentTick) {
@@ -3484,15 +3488,15 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
 
     const { data: nation } = await supabase
         .from('nations')
-        .select('stability')
+        .select('control')
         .eq('id', nationId)
         .single();
 
     if (nation) {
-        const newStability = Math.max(0, (nation.stability ?? 50) - 3);
+        const newStability = Math.max(0, (nation.control ?? 50) - 3);
         await supabase
             .from('nations')
-            .update({ stability: newStability })
+            .update({ control: newStability })
             .eq('id', nationId);
     }
 

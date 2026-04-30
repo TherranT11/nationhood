@@ -25,11 +25,10 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { formatInflationRate, getInflationLabel, inflationColorClass } from './js/game/stats.js';
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { hasElectedPresident } from './js/game/government-types.js';
 import { fetchActiveCoalition } from './js/game/government-structure.js';
-import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TAX_CONFIG } from './js/game/budget.js';
+import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TAX_CONFIG, computeIncomeTaxRevenue, computeCorporateTaxRevenue } from './js/game/budget.js';
 import { RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS } from './js/game/diplomacy-constants.js';
 import { TRADE_SECTORS, TRADE_SECTOR_KEYS, TRADE_SECTOR_MAP, formatSectorVolume, FOOD_SUBSECTORS, FOOD_SUBSECTOR_KEYS, FOOD_SUBSECTOR_MAP, isFoodSubsector, getEffectiveArableLand, calculateSpoilageMultiplier, computeFoodSecurityStatus, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, calculateReserveMonths, calculateStockpileCapacity, calculateStockpileSpoilage, STOCKPILE_CONFIG } from './js/game/trade-constants.js';
 import { ISSUE_CATEGORY_STATS, buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
@@ -81,7 +80,6 @@ var taxAdminFunding = { allocated: 0, needed: 0, fundingPct: 0 };
 var taxRateChanges = {};  // legacy tax-key map; tax columns removed in 19-col schema
 var originalRates = {};   // legacy tax-key map; tax columns removed in 19-col schema
 var taxPendingBills = [];
-var taxHistory = [];
 var activeCoalition = null;
 
 // ==================== INIT ====================
@@ -110,7 +108,6 @@ initPage('economy', async function(state) {
         loadTaxConnections(),
         loadTaxAdminFunding(nation),
         loadTaxPendingBills(nation.id),
-        loadTaxHistory(nation.id),
         fetchActiveCoalition(_supabase, nation.id).then(function(c) { activeCoalition = c; }),
         loadIndustriesData(nation.id)
     ]);
@@ -457,7 +454,7 @@ async function loadAllNationsData() {
     if (cached) { allNations = cached; return; }
 
     var res = await _supabase.from('nations')
-        .select('id, name, gdp, population, gdp_growth, immigration, standard_of_living, cost_of_living, debt, budget, control, unrest, authority, crown_authority, energy, health, education, power, infrastructure, industry, farmland, goods, workforce');
+        .select('id, name, gdp, population, gdp_growth, immigration, standard_of_living, cost_of_living, debt, budget, control, unrest, public_approval, crown_authority, energy, health, education, power, infrastructure, industry, farmland, service_sector, workforce');
 
     if (res.data) {
         allNations = res.data;
@@ -670,10 +667,6 @@ async function submitTaxBill(nation) {
     var termBill = 'bill';
 
     // Build confirmation summary
-    var gdp = Number(nation.gdp || 0);
-    var eff = Number(nation.efficiency || 50);
-    var corr = Number(nation.corruption || 50);
-    var collectionRate = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
     var summaryLines = [];
     for (var i = 0; i < changedKeys.length; i++) {
         var key = changedKeys[i];
@@ -682,14 +675,15 @@ async function submitTaxBill(nation) {
         var oldRate = originalRates[key];
         var newRate = taxRateChanges[key];
         var direction = newRate > oldRate ? 'increase' : 'decrease';
-        var delta = gdp * ((newRate - oldRate) / 100) * cfg.gdpMultiplier * collectionRate;
+        var compute = key === 'income_tax' ? computeIncomeTaxRevenue : computeCorporateTaxRevenue;
+        var delta = compute(nation, newRate) - compute(nation, oldRate);
         var rateDiff = newRate - oldRate;
         // All tax types: increases hurt approval, cuts boost it
         var approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
         var impactLine = '  Government approval: ' + (approvalImpact >= 0 ? '+' : '') + approvalImpact + ' (decays over time)';
         summaryLines.push(
-            cfg.name + ': ' + oldRate + '% → ' + newRate + '% (' + direction + ')\n' +
-            '  Revenue: ' + (delta >= 0 ? '+' : '') + formatBudgetCurrency(delta) + '/yr\n' +
+            cfg.name + ': ' + oldRate + ' → ' + newRate + ' (' + direction + ')\n' +
+            '  Revenue/tick: ' + (delta >= 0 ? '+' : '') + formatBudgetCurrency(delta) + '\n' +
             impactLine
         );
     }
@@ -750,7 +744,8 @@ async function submitTaxBill(nation) {
             if (!artCfg) continue;
             var artOld = originalRates[artKey];
             var artNew = taxRateChanges[artKey];
-            var artDelta = gdp * ((artNew - artOld) / 100) * artCfg.gdpMultiplier * collectionRate;
+            var artComputeFn = artKey === 'income_tax' ? computeIncomeTaxRevenue : computeCorporateTaxRevenue;
+            var artDelta = artComputeFn(nation, artNew) - artComputeFn(nation, artOld);
             var artRateDiff = artNew - artOld;
             var artApprovalText;
             var artApproval = artRateDiff > 0 ? artRateDiff * -2 : Math.abs(artRateDiff) * 1;
@@ -763,8 +758,8 @@ async function submitTaxBill(nation) {
                 added_by: currentFaction.id,
                 article_title: artCfg.name + ' Rate Change',
                 article_text: 'Proposing to change ' + artCfg.name + ' from ' + artOld +
-                    '% to ' + artNew + '%. This would ' + (artDelta >= 0 ? 'generate' : 'cost') +
-                    ' ' + formatBudgetCurrency(Math.abs(artDelta)) + ' per year in revenue.\n\n' +
+                    ' to ' + artNew + '. This would ' + (artDelta >= 0 ? 'generate' : 'cost') +
+                    ' ' + formatBudgetCurrency(Math.abs(artDelta)) + ' per tick in revenue.\n\n' +
                     'Estimated impact: ' + artApprovalText,
                 effect_data: {
                     type: 'TAX_RATE_CHANGE',
@@ -1195,7 +1190,7 @@ async function loadTaxConnections() {
     var { data } = await _supabase.from('stat_connections')
         .select('source_stat, source_dir, threshold, target_stat, target_dir, magnitude, dampening')
         .eq('enabled', true)
-        .in('source_stat', ['income_tax', 'corporate_tax', 'sales_tax']);
+        .in('source_stat', ['income_tax', 'corporate_tax']);
     taxConnections = data || [];
     qCacheSet(cacheKey, taxConnections, 5 * 60 * 1000);
 }
@@ -1250,33 +1245,6 @@ async function loadTaxPendingBills(nationId) {
     qCacheSet(cacheKey, taxPendingBills, 2 * 60 * 1000);
 }
 
-async function loadTaxHistory(nationId) {
-    var cacheKey = 'tax_history_' + nationId + '_t' + currentTick;
-    var cached = qCache(cacheKey);
-    if (cached) { taxHistory = cached; return; }
-    var { data } = await _supabase.from('nations_history')
-        .select('tick, income_tax, corporate_tax, sales_tax, gdp, efficiency, corruption')
-        .eq('nation_id', nationId)
-        .order('tick', { ascending: false })
-        .limit(12);
-    taxHistory = (data || []).reverse(); // oldest first
-    qCacheSet(cacheKey, taxHistory, 5 * 60 * 1000);
-}
-
-function computeSparklineRevenues(taxKey, gdpMultiplier) {
-    var revenues = [];
-    for (var i = 0; i < taxHistory.length; i++) {
-        var snap = taxHistory[i];
-        var rate = Number(snap[taxKey] || 0);
-        var gdp = Number(snap.gdp || 0);
-        var eff = Number(snap.efficiency || 50);
-        var corr = Number(snap.corruption || 50);
-        var cr = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
-        revenues.push(gdp * (rate / 100) * gdpMultiplier * cr);
-    }
-    return revenues;
-}
-
 function getTaxEffects(taxKey) {
     return taxConnections.filter(function(c) { return c.source_stat === taxKey; });
 }
@@ -1299,23 +1267,19 @@ function renderTaxationTab(nation) {
 
     var incomeTax = Math.round(Number(nation.income_tax || 0));
     var corpTax = Math.round(Number(nation.corporate_tax || 0));
-    var salesTax = Math.round(Number(nation.sales_tax || 0));
 
     // Store original rates on first render (don't overwrite if already set)
-    // Use integer-rounded values to match slider step=1 precision
     if (!originalRates._initialized) {
-        originalRates = { income_tax: incomeTax, corporate_tax: corpTax, sales_tax: salesTax, _initialized: true };
+        originalRates = { income_tax: incomeTax, corporate_tax: corpTax, _initialized: true };
     }
 
-    // Warn if database rates have fractional parts that will be lost by integer sliders
     if (Math.round(Number(nation.income_tax || 0) * 10) % 10 !== 0 ||
-        Math.round(Number(nation.corporate_tax || 0) * 10) % 10 !== 0 ||
-        Math.round(Number(nation.sales_tax || 0) * 10) % 10 !== 0) {
+        Math.round(Number(nation.corporate_tax || 0) * 10) % 10 !== 0) {
         console.warn('[Taxation] DB tax rates have fractional precision — slider uses integer rounding');
     }
 
-    var avgRate = (incomeTax + corpTax + salesTax) / 3;
-    var totalTaxRevenue = budget.incomeRevenue + budget.corpRevenue + budget.salesRevenue + (budget.propertyRevenue || 0);
+    var avgRate = (incomeTax + corpTax) / 2;
+    var totalTaxRevenue = budget.incomeRevenue + budget.corpRevenue;
 
     var h = '<div class="econ-tab-body">';
 
@@ -1327,9 +1291,10 @@ function renderTaxationTab(nation) {
     h += '<span class="tax-summary-detail">' + (budget.grossRevenue > 0 ? Math.round(totalTaxRevenue / budget.grossRevenue * 100) : 0) + '% of total income</span>';
     h += '</div>';
 
-    var taxBurden = Math.round(avgRate * 1.28);
-    var burdenLabel = taxBurden < 30 ? 'Low (0–30)' : taxBurden < 50 ? 'Moderate-Low (30–50)' : taxBurden < 70 ? 'Moderate (50–70)' : taxBurden < 85 ? 'High (70–85)' : 'Very High (85+)';
-    var burdenClass = taxBurden < 50 ? 'green' : taxBurden < 70 ? 'yellow' : 'red';
+    // Tax burden on the alpha 0-10 scale (avg of income + corporate rates).
+    var taxBurden = avgRate.toFixed(1);
+    var burdenLabel = avgRate < 3 ? 'Low (0–3)' : avgRate < 5 ? 'Moderate-Low (3–5)' : avgRate < 7 ? 'Moderate (5–7)' : avgRate < 8.5 ? 'High (7–8.5)' : 'Very High (8.5+)';
+    var burdenClass = avgRate < 5 ? 'green' : avgRate < 7 ? 'yellow' : 'red';
     h += '<div class="tax-summary-stat">';
     h += '<span class="tax-summary-label">Tax Burden</span>';
     h += '<span class="tax-summary-value ' + burdenClass + '">' + taxBurden + '</span>';
@@ -1421,12 +1386,9 @@ function renderTaxCard(config, nation, budget) {
     var revenue = budget[config.revenueKey] || 0;
     var effects = getTaxEffects(config.key);
 
-    // Revenue projection
-    var gdp = Number(nation.gdp || 0);
-    var eff = Number(nation.efficiency || 50);
-    var corr = Number(nation.corruption || 50);
-    var collectionRate = 0.35 + ((eff + (100 - corr)) / 200) * 0.65;
-    var projectedRevenue = gdp * (currentRate / 100) * config.gdpMultiplier * collectionRate;
+    // Revenue projection (per-tick) using the live alpha formulas.
+    var compute = config.key === 'income_tax' ? computeIncomeTaxRevenue : computeCorporateTaxRevenue;
+    var projectedRevenue = compute(nation, currentRate);
     var revenueDelta = projectedRevenue - revenue;
 
     var fillPct = config.maxRate > 0 ? Math.round((currentRate / config.maxRate) * 100) : 0;
@@ -1439,22 +1401,6 @@ function renderTaxCard(config, nation, budget) {
     h += '<span class="tax-name">' + escapeHtml(config.name) + '</span>';
     h += '<span class="tax-category-pill ' + config.categoryClass + '">' + escapeHtml(config.category) + '</span>';
     h += '<div class="tax-spacer"></div>';
-
-    // Sparkline
-    var sparkRevenues = computeSparklineRevenues(config.key, config.gdpMultiplier);
-    if (sparkRevenues.length > 0) {
-        var sparkMax = Math.max.apply(null, sparkRevenues) || 1;
-        h += '<div class="tax-sparkline-container">';
-        h += '<span class="tax-sparkline-label">' + sparkRevenues.length + ' ticks</span>';
-        h += '<div class="tax-sparkline">';
-        for (var s = 0; s < sparkRevenues.length; s++) {
-            var barH = Math.max(2, Math.round((sparkRevenues[s] / sparkMax) * 20));
-            var barCls = (s === sparkRevenues.length - 1) ? ' current' : '';
-            h += '<div class="tax-spark-bar' + barCls + '" style="height:' + barH + 'px"></div>';
-        }
-        h += '</div>';
-        h += '</div>';
-    }
 
     h += '<div class="tax-revenue-block">';
     h += '<span class="tax-revenue-label">Revenue</span>';
@@ -2814,7 +2760,7 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
             var penalties = [];
             if (sectorKey === 'fuel_energy') penalties = ['Energy \u2193', 'Industry \u2193', 'Cost of Living \u2191'];
             else if (sectorKey === 'food_agriculture') penalties = ['Standard of Living \u2193', 'Unrest \u2191', 'Health \u2193'];
-            else if (sectorKey === 'grains_staples') penalties = ['Control \u2193', 'Authority \u2193', 'Unrest \u2191', 'Standard of Living \u2193'];
+            else if (sectorKey === 'grains_staples') penalties = ['Control \u2193', 'Public Approval \u2193', 'Unrest \u2191', 'Standard of Living \u2193'];
             else if (sectorKey === 'livestock_dairy') penalties = ['Standard of Living \u2193', 'Cost of Living \u2191'];
             else if (sectorKey === 'fruits_vegetables') penalties = ['Health \u2193', 'Cost of Living \u2191'];
             else if (sectorKey === 'cash_crops') penalties = ['GDP Growth \u2193'];
@@ -3166,9 +3112,9 @@ function formatStatLabel(key) {
         workforce: 'Workforce',
         unrest: 'Unrest',
         control: 'Control',
-        authority: 'Authority',
+        public_approval: 'Public Approval',
         crown_authority: 'Crown Authority',
-        goods: 'Goods',
+        service_sector: 'Service Sector',
         cost_of_living: 'Cost of Living',
         standard_of_living: 'Standard of Living'
     };
@@ -4115,7 +4061,7 @@ function renderIndustriesTab(nation) {
         { key: 'industry', label: 'Industry' },
         { key: 'workforce', label: 'Workforce' },
         { key: 'energy', label: 'Energy' },
-        { key: 'goods', label: 'Goods' },
+        { key: 'service_sector', label: 'Service Sector' },
         { key: 'gdp_growth', label: 'GDP Growth' },
         { key: 'infrastructure', label: 'Infrastructure' }
     ];
@@ -4123,7 +4069,7 @@ function renderIndustriesTab(nation) {
         { key: 'industry', label: 'Industry' },
         { key: 'infrastructure', label: 'Infrastructure' },
         { key: 'workforce', label: 'Workforce' },
-        { key: 'goods', label: 'Goods' },
+        { key: 'service_sector', label: 'Service Sector' },
         { key: 'energy', label: 'Energy' },
         { key: 'power', label: 'Power' }
     ];
@@ -4133,7 +4079,7 @@ function renderIndustriesTab(nation) {
         { key: 'standard_of_living', label: 'Std. of Living' },
         { key: 'workforce', label: 'Workforce' },
         { key: 'control', label: 'Control' },
-        { key: 'authority', label: 'Authority' }
+        { key: 'public_approval', label: 'Public Approval' }
     ];
     var invDrivers = [
         { key: 'budget', label: 'Budget' },
@@ -4141,12 +4087,12 @@ function renderIndustriesTab(nation) {
         { key: 'debt', label: 'National Debt' },
         { key: 'industry', label: 'Industry' },
         { key: 'control', label: 'Control' },
-        { key: 'authority', label: 'Authority' }
+        { key: 'public_approval', label: 'Public Approval' }
     ];
     var insDrivers = [
         { key: 'control', label: 'Control' },
         { key: 'infrastructure', label: 'Infrastructure' },
-        { key: 'authority', label: 'Authority' },
+        { key: 'public_approval', label: 'Public Approval' },
         { key: 'workforce', label: 'Workforce' },
         { key: 'unrest', label: 'Unrest' },
         { key: 'health', label: 'Health' }
@@ -4487,7 +4433,7 @@ function renderIndustriesTab(nation) {
         { key: 'infrastructure', label: 'Infrastructure' },
         { key: 'workforce', label: 'Workforce' },
         { key: 'industry', label: 'Industry' },
-        { key: 'goods', label: 'Goods' },
+        { key: 'service_sector', label: 'Service Sector' },
         { key: 'energy', label: 'Energy' },
         { key: 'gdp_growth', label: 'GDP Growth' }
     ];

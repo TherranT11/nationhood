@@ -593,8 +593,8 @@ function renderNations() {
         const isShippingBlocked = corpSetup && corpSetup.sector === 'Shipping' && isLandlocked;
 
         const pop = nation.population ? nation.population.toLocaleString() : '—';
-        const gdp = nation.gdp ? '$' + (nation.gdp / 1e9).toFixed(1) + 'B' : '—';
-        const stab = nation.stability != null ? Math.round(nation.stability) : '—';
+        const ctrl = nation.control != null ? Math.round(nation.control) : '—';
+        // PHASE 7 TODO: corporate_tax drops in Phase 9
         const corpTax = nation.corporate_tax != null ? Math.round(nation.corporate_tax) + '%' : '—';
 
         return `
@@ -612,12 +612,8 @@ function renderNations() {
                         <span class="stat-row__value">${pop}</span>
                     </div>
                     <div class="stat-row">
-                        <span class="stat-row__label">GDP</span>
-                        <span class="stat-row__value">${gdp}</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-row__label">Stability</span>
-                        <span class="stat-row__value">${stab}</span>
+                        <span class="stat-row__label">Control</span>
+                        <span class="stat-row__value">${ctrl}</span>
                     </div>
                     <div class="stat-row">
                         <span class="stat-row__label">Corporate Tax</span>
@@ -803,7 +799,9 @@ async function confirmNation() {
         const ceoAge = 40 + Math.floor(Math.random() * 36);
 
         // Starting financials, scaled by currency strength + inflation for Finance corps
+        // PHASE 7 TODO: currency_strength drops in Phase 9
         const currencyMult = (Number(nation.currency_strength) || 50) / 50;
+        // PHASE 7 TODO: inflation drops in Phase 9
         const inflationMult = corpSetup.sector === 'Finance'
             ? Math.max(0.5, 1 - (Number(nation.inflation) || 0) / 200) // high inflation reduces starting capital
             : 1;

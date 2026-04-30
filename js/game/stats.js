@@ -107,86 +107,203 @@
  *   service_output             Services & finance sector output (0-100)
  *   housing_affordability      Housing accessibility (0-100, higher is better)
  */
+// Alpha stats refactor — Phase 9 dropped the legacy stat columns from
+// the schema. The whitelist is now exactly the 23 alpha stats:
+//   * 5 pass-throughs from the legacy schema:
+//     gdp_growth, debt, immigration, standard_of_living, cost_of_living
+//   * 18 alpha-only columns added in Phase 2 / 8.5.1
+// Legacy stat keys still appear in event/policy stat_effects JSON;
+// STAT_KEY_ALIASES routes or null-filters them at apply time.
 export const NATION_STAT_COLUMNS = [
-    'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
-    'trade_balance', 'currency_strength', 'foreign_investment', 'credit',
-    'income_tax', 'corporate_tax', 'sales_tax', 'tariffs',
-    'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
-    'poverty_rate', 'income_inequality',
-    'population', 'population_growth', 'median_age', 'eligible_voters', 'ethnic_diversity',
-    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use',
-    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
-    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
-    'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
-    'pollution', 'carbon_emissions',
-    'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
-    'religiosity',
-    'stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence',
-    'freedom_index', 'polarization',
-    'civil_unrest', 'terrorism', 'political_violence',
-    'immigration', 'illegal_immigration', 'emigration',
-    'international_reputation',
-    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability'
+    'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
+    'budget',
+    'control', 'unrest', 'public_approval', 'crown_authority',
+    'energy', 'health', 'education', 'power',
+    'infrastructure', 'industry', 'farmland',
+    'service_sector', 'workforce',
+    'income_tax', 'corporate_tax', 'crime', 'corruption',
 ];
 
 export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 
+// Phase 4 translation shim — maps old stat keys to the new 19-column
+// schema at apply time. Two value types:
+//   * String: rename only (passes through to a live column)
+//   * null:   stat is deleted in the alpha refactor with no replacement;
+//             callers must skip the effect rather than fall through
+//
+// Direction-inverting aliases are tracked separately in
+// INVERTED_ALIAS_KEYS — for those, the apply path also flips
+// up↔down / negates delta so the semantics survive the rename.
 export const STAT_KEY_ALIASES = {
-    intl_reputation: 'international_reputation',
-    diplomatic_standing: 'international_reputation',
-    credit_rating: 'credit',
-    credit_score: 'credit',
-    trade: 'trade_balance',
-    trade_volume: 'trade_balance',
-    education: 'higher_education',
-    education_quality: 'higher_education',
-    military_strength: 'stability',
-    literacy_rate: 'literacy',
-    hospital_beds: 'beds_per_100k',
-    technology: 'digital_infrastructure',
-    infrastructure: 'physical_infrastructure',
-    tourism: 'international_reputation',
-    // Legacy aliases for removed/renamed stats
-    religious: 'religiosity',
-    // NOTE: birth_rate and death_rate aliases REMOVED — they mapped 1:1 to population_growth
-    // which caused direction inversion bugs. Fix policy data to use population_growth directly.
-    trade_agreements: 'international_reputation',
-    sanctions: 'international_reputation'
+    // ── Direct renames into the alpha-23 schema ──
+    civil_unrest:               'unrest',
+    terrorism:                  'unrest',
+    political_violence:         'unrest',
+    healthcare_accessibility:   'health',
+    healthcare_quality:         'health',
+    lifespan:                   'health',
+    beds_per_100k:              'health',
+    physical_infrastructure:    'infrastructure',
+    digital_infrastructure:     'infrastructure',
+    rail_network:               'infrastructure',
+    urbanization:               'workforce',
+    labor_force_participation:  'workforce',
+    higher_education:           'education',
+    education_quality:          'education',
+    arable_land:                'farmland',
+    manufacturing_output:       'industry',
+    international_reputation:   'power',
+    intl_reputation:            'power',
+    diplomatic_standing:        'power',
+    tourism:                    'power',
+    trade_agreements:           'power',
+    sanctions:                  'power',
+    stability:                  'control',
+    military_strength:          'control',
+    hospital_beds:              'health',
+
+    // ── Phase 8.5.1 renames ──
+    authority:                  'public_approval',
+    legitimacy:                 'public_approval',  // legitimacy already aliased to authority pre-8.5; cascade to new name
+    judicial_independence:      'public_approval',  // collapsed into public_approval per Phase 7H bills.js block
+    goods:                      'service_sector',
+    crime_rate:                 'crime',
+
+    // ── Inverted (rename + flip direction; also see INVERTED_ALIAS_KEYS) ──
+    unemployment:               'workforce',
+
+    // ── DELETED stats — Phase 9 drops the column. Apply path skips. ──
+    // Phase 8.5.2 restored income_tax / corporate_tax / corruption /
+    // crime to the live alpha menu, so they're no longer in this list.
+    religious:                  null,
+    religiosity:                null,
+    efficiency:                 null,
+    happiness:                  null,
+    polarization:               null,
+    freedom_index:              null,
+    gdp:                        null,
+    GDP:                        null,
+    inflation:                  null,
+    foreign_investment:         null,
+    tariffs:                    null,
+    credit:                     null,
+    credit_rating:              null,
+    credit_score:               null,
+    literacy:                   null,
+    literacy_rate:              null,
+    academic_immigration:       null,
+    oil_and_gas:                null,
+    rare_minerals:              null,
+    energy_generation:          null,
+    fuel_prices:                null,
+    pollution:                  null,
+    social_mobility:            null,
+    benefits:                   null,
+    population_growth:          null,
+    debt_growth:                null,
+    minimum_wage:               null,
+    union_strength:             null,
+    illegal_immigration:        null,
+    emigration:                 null,
+    sales_tax:                  null,
+    interest_rates:             null,
+    poverty_rate:               null,
+    income_inequality:          null,
+    trade_balance:              null,
+    trade:                      null,
+    trade_volume:               null,
+    currency_strength:          null,
+    birth_rate:                 null,
+    death_rate:                 null,
+    median_age:                 null,
+    carbon_emissions:           null,
+    renewable_energy_percentage: null,
+    press_freedom:              null,
+    incarceration_rate:         null,
+    drug_use:                   null,
+    ethnic_diversity:           null,
+    education_accessibility:    null,
+    technology:                 null,
+    service_output:             null,
+    housing_affordability:      null,
 };
+
+// Old stat keys whose semantic direction is opposite of the new column
+// they map to. e.g. unemployment → workforce: a bill that pushes
+// unemployment UP is pushing workforce DOWN. The Phase 4 apply path
+// flips `direction` (up↔down) and negates `delta` for these keys.
+export const INVERTED_ALIAS_KEYS = new Set([
+    'unemployment',
+]);
 
 export function normalizeNationStatKey(statKey) {
     if (!statKey || typeof statKey !== 'string') return null;
-    return STAT_KEY_ALIASES[statKey] || statKey;
+    // Use Object.hasOwn (not the `in` operator) so inherited Object.prototype
+    // members like 'toString' / 'hasOwnProperty' / '__proto__' don't match
+    // and leak the inherited method back to the caller. hasOwn also still
+    // returns true for explicit null sentinels (DELETED-stat), unlike the
+    // original `||` lookup which would have fallen through to the raw key.
+    if (Object.hasOwn(STAT_KEY_ALIASES, statKey)) return STAT_KEY_ALIASES[statKey];
+    return statKey;
+}
+
+/**
+ * Phase 4 translation shim — re-maps a stat-effect entry from the legacy
+ * key set onto the alpha 19-column schema at apply time.
+ *
+ *   in:  { stat_key: 'civil_unrest', direction: 'up', rate: 0.5, ... }
+ *   out: { stat_key: 'unrest',       direction: 'up', rate: 0.5, ... }
+ *
+ *   in:  { stat_key: 'unemployment', direction: 'up', delta: 5 }
+ *   out: { stat_key: 'workforce',    direction: 'down', delta: -5 }
+ *
+ *   in:  { stat_key: 'happiness', ... }   (DELETED)
+ *   out: null
+ *
+ * Accepts both `stat_key` and `stat` shapes (the codebase uses both).
+ * Returns null when the underlying stat was deleted by the alpha refactor
+ * with no replacement — callers must skip these entries entirely.
+ */
+export function translateStatEffect(eff) {
+    if (!eff || typeof eff !== 'object') return null;
+    const oldKey = eff.stat_key || eff.stat || '';
+    if (!oldKey) return null;
+
+    const newKey = normalizeNationStatKey(oldKey);
+    if (!newKey || !NATION_STAT_COLUMN_SET.has(newKey)) return null;
+
+    const out = { ...eff, stat_key: newKey };
+    if (out.stat) out.stat = newKey;
+
+    if (INVERTED_ALIAS_KEYS.has(oldKey)) {
+        if (out.direction === 'up') out.direction = 'down';
+        else if (out.direction === 'down') out.direction = 'up';
+        if (typeof out.delta === 'number') out.delta = -out.delta;
+    }
+    return out;
 }
 
 /**
  * Stats where HIGHER values are better (increase = achievement).
+ * Alpha 23-column schema. Excludes budget (flow, not 0-100), debt
+ * (LOWER_IS_BETTER), and the two tax stats (income_tax, corporate_tax)
+ * which are neutral player-controlled levers (high = revenue but
+ * dampens growth — UI/momentum logic shouldn't auto-flag either
+ * direction as good).
  */
 export const STATS_HIGHER_IS_BETTER = [
-    'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
-    'labor_force_participation', 'minimum_wage', 'union_strength',
-    'population_growth', 'ethnic_diversity',
-    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
-    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
-    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
-    'arable_land', 'rare_minerals',
-    'standard_of_living', 'happiness', 'social_mobility', 'benefits',
-    'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence', 'freedom_index',
-    'immigration', 'international_reputation',
-    'manufacturing_output', 'service_output', 'housing_affordability'
+    'gdp_growth', 'immigration', 'standard_of_living',
+    'control', 'public_approval', 'crown_authority',
+    'energy', 'health', 'education', 'power',
+    'infrastructure', 'industry', 'farmland', 'service_sector', 'workforce',
 ];
 
 /**
  * Stats where LOWER values are better (decrease = achievement).
  */
 export const STATS_LOWER_IS_BETTER = [
-    'debt_growth', 'inflation', 'interest_rates',
-    'unemployment', 'poverty_rate', 'income_inequality',
-    'drug_use', 'fuel_prices', 'pollution', 'carbon_emissions',
-    'crime_rate', 'incarceration_rate', 'corruption', 'polarization',
-    'civil_unrest', 'terrorism', 'political_violence',
-    'illegal_immigration', 'emigration',
-    'cost_of_living'
+    'debt', 'unrest', 'cost_of_living', 'crime', 'corruption',
 ];
 
 // ==================== STAT DECAY CONFIGURATION ====================
@@ -198,50 +315,39 @@ const DECAY_SPEED = { CRAWL: 0.15, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  *   - 'equilibrium': drifts toward a midpoint (requires constant governing effort)
  *   - 'erosion': degrades toward a bad floor (punishes neglect)
  * Stats not listed are persistent — they hold value indefinitely.
+ *
+ * Alpha 19-column schema. budget + debt are flow-based and not in here
+ * (managed by budget.js / debt.js). crown_authority decays only when
+ * the column is non-NULL — processStatDecay's null-guard at
+ * political-actions.js:110 skips non-monarchies cleanly.
  */
 export const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 38, speed: DECAY_SPEED.CRAWL },
-    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
-    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
-    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
-    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
-    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
-    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
-    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    crime_rate:          { type: 'equilibrium', target: 18, speed: DECAY_SPEED.CRAWL },
-    stability:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
-    legitimacy:          { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
+    gdp_growth:        { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    immigration:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    control:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
+    unrest:            { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
+    public_approval:   { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
+    crown_authority:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    power:             { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    workforce:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    service_sector:    { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
-    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
-    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.CRAWL },
-    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    manufacturing_output:     { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    service_output:           { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    cost_of_living:           { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
-    housing_affordability:    { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    standard_of_living: { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    cost_of_living:     { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+    health:             { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    education:          { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    infrastructure:     { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    industry:           { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    energy:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    farmland:           { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    crime:              { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+    corruption:         { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+
+    // income_tax + corporate_tax intentionally NOT in the decay table —
+    // they're player-set levers (0-10 scale) that should hold the value
+    // the player chose until a new bill or admin change moves them.
 };
 
 // Validate decay config keys at module load

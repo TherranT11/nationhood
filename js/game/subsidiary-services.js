@@ -64,8 +64,8 @@ export function calculateBaseRate(interestRates) {
  * @returns {number} additional premium percentage (0-3%)
  */
 export function calculateInsuranceRiskSurcharge(nation) {
-    var stability = Number(nation.stability ?? 50);
-    var civilUnrest = Number(nation.civil_unrest ?? 20);
+    var stability = Number(nation.control ?? 50);
+    var civilUnrest = Number(nation.unrest ?? 20);
     var surcharge = 0;
 
     // Stability below 40: +0.5% per 10 points below 40
@@ -89,8 +89,12 @@ export function calculateInsuranceRiskSurcharge(nation) {
  * @returns {number} additional spread percentage (0-2%)
  */
 export function calculateLoanCreditSpread(nation) {
-    var inflation = Number(nation.inflation ?? 38);
-    var credit = Number(nation.credit ?? 50);
+    var inflation = Number(nation.cost_of_living ?? 38);
+    // Alpha refactor: credit column deleted with no replacement. Pin
+    // to neutral 50 so the spread formula keeps producing sensible
+    // (non-extreme) values until the bond/credit system is rebuilt
+    // against alpha columns.
+    var credit = 50;
     var spread = 0;
 
     // Inflation above 50: +0.3% per 10 points above 50
@@ -115,7 +119,7 @@ export function calculateLoanCreditSpread(nation) {
  * @returns {{ baseRate: number, riskAdjustment: number, markup: number, effectiveRate: number }}
  */
 export function calculateEffectiveRate(nation, serviceType, markup) {
-    var baseRate = calculateBaseRate(nation.interest_rates);
+    var baseRate = calculateBaseRate(50);
     var riskAdj = 0;
 
     if (serviceType === 'insurance') {
@@ -140,16 +144,21 @@ export function calculateEffectiveRate(nation, serviceType, markup) {
 // ═══════════════════════════════════════════════════
 
 /**
- * Calculate default coverage limit based on nation GDP.
- * Insurance: max coverage per policy = 0.1% of nation GDP
- * Loans: max loan amount = 0.05% of nation GDP
+ * Calculate default coverage limit based on a fixed reference GDP.
+ * Insurance: max coverage per policy = 0.1% of reference
+ * Loans: max loan amount = 0.05% of reference
+ *
+ * Alpha refactor: nation.gdp column was deleted with no replacement.
+ * Coverage limits pin to a flat 100B reference until a fiscal scaling
+ * signal is rebuilt against alpha columns (likely budget × workforce
+ * or similar productivity proxy).
  */
-export function calculateCoverageLimit(nation, serviceType) {
-    var gdp = Number(nation.gdp) || 100000000000; // default 100B
+export function calculateCoverageLimit(_nation, serviceType) {
+    var gdp = 100000000000;
     if (serviceType === 'insurance') {
-        return Math.round(gdp * 0.001); // 0.1% of GDP
+        return Math.round(gdp * 0.001);
     }
-    return Math.round(gdp * 0.0005); // 0.05% of GDP
+    return Math.round(gdp * 0.0005);
 }
 
 // ═══════════════════════════════════════════════════

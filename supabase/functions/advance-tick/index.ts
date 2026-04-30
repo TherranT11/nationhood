@@ -97,14 +97,17 @@ const GAME_CONFIG = {
     IMPEACHMENT_MOTION_COOLDOWN_TICKS: 10, // cooldown after failed motion
     IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS: 20, // cooldown after acquittal
     IMPEACHMENT_EMERGENCY_ELECTION_TICKS: 6,  // ticks until emergency presidential election
-    // Charge precondition thresholds
-    IMPEACHMENT_CORRUPTION_THRESHOLD: 40,     // corruption stat >= this for corruption charge
+    // Charge precondition thresholds.
+    // Alpha refactor: IMPEACHMENT_CORRUPTION_THRESHOLD and the two
+    // IMPEACHMENT_CRIMINAL_* thresholds were removed by Phase 3a's
+    // impeachment audit — corruption + judicial_independence columns
+    // are deleted, and buildImpeachmentCharges no longer emits
+    // 'corruption' or 'criminal_conduct' charges. Leaving the
+    // remaining (still-live) thresholds in place.
     IMPEACHMENT_INCOMPETENCE_THRESHOLD: 25,   // gov_approval <= this for incompetence charge
     IMPEACHMENT_INCOMPETENCE_TICKS: 6,        // consecutive ticks below threshold
     IMPEACHMENT_VETO_ABUSE_COUNT: 2,          // vetoed bills with >66% support
     IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD: 4, // overreach_count >= this for abuse of power
-    IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD: 30,  // corruption >= this AND judicial_independence <= threshold
-    IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD: 35,    // judicial_independence <= this AND corruption >= threshold
 
     // (Autocracy v2 action constants removed — Phase 0)
     NEW_FACTION_MIN_SEATS: 8,
@@ -541,7 +544,7 @@ function getConstitutionalSystemDescription(system) {
 
 var TRADE_CONFIG = {
     BASE_TRADE_MULTIPLIER: 500000000,      // base dollar value per unit of export capacity
-    BASELINE_GDP: 100000000000,            // 100B — the "average" GDP for scaling
+    BASELINE_GDP: 100000000000,            // 100B — fixed reference value for trade-volume scaling (alpha-19: gdp column dropped, this is now a stable scaling baseline only)
     HISTORY_TICKS: 24,                     // keep 2 game-years of trade history
 };
 
@@ -560,55 +563,54 @@ var TRADE_SECTORS = [
         key: 'fuel_energy',
         label: 'Fuel & Energy',
         export_only: false,
-        export_stat: 'oil_and_gas',            // reserves — what's in the ground
-        export_bonus_stats: ['energy_generation'] // extraction — what you can pull out
+        export_stat: 'energy'                  // alpha-19: oil_and_gas + energy_generation collapsed into energy
     },
     {
         key: 'minerals',
         label: 'Minerals & Raw Materials',
         export_only: false,
-        export_stat: 'rare_minerals',
+        export_stat: 'energy',                 // alpha-19: rare_minerals → energy
         export_threshold: 15
     },
     {
         key: 'food_agriculture',
         label: 'Food & Agriculture',
         export_only: false,
-        export_stat: 'arable_land',
+        export_stat: 'farmland',
         export_threshold: 10
     },
     {
         key: 'manufactured_goods',
         label: 'Manufactured Goods',
         export_only: false,
-        export_stat: 'manufacturing_output'
+        export_stat: 'industry'
     },
     {
         key: 'technology',
         label: 'Technology & Electronics',
         export_only: false,
-        export_stats: ['digital_infrastructure', 'higher_education'],
+        export_stats: ['infrastructure', 'education'],
         export_threshold: 30
     },
     {
         key: 'arms',
         label: 'Arms & Military Equipment',
         export_only: false,
-        export_stats: ['physical_infrastructure', 'higher_education'],
+        export_stats: ['infrastructure', 'education'],
         export_threshold: 30
     },
     {
         key: 'tourism',
         label: 'Tourism',
         export_only: true,
-        export_stats: ['happiness', 'stability', 'physical_infrastructure'],
+        export_stats: ['standard_of_living', 'control', 'infrastructure'],
         export_threshold: 25
     },
     {
         key: 'services_finance',
         label: 'Services & Finance',
         export_only: true,
-        export_stat: 'service_output',
+        export_stat: 'industry',                // alpha-19: service_output → industry (coexists with manufactured_goods)
         export_threshold: 35
     }
 ];
@@ -703,34 +705,29 @@ var FOOD_SUBSECTORS = [
         export_threshold: 5,
         export_multiplier: 0.07,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'physical_infrastructure', weight: 0.3 },
-            { stat: 'rail_network', weight: 0.2 }
+            { stat: 'farmland', weight: 1.0 },
+            { stat: 'infrastructure', weight: 0.3 }
+            // alpha-19: rail_network folded into infrastructure (deduped with the entry above)
         ],
         demand_drivers: [
-            { stat: 'population', weight: 1.0, type: 'population' },
-            { stat: 'population_growth', weight: 0.3, type: 'pressure' }
+            { stat: 'population', weight: 1.0, type: 'population' }
+            // alpha-19: population_growth removed (column dropped)
         ],
         stat_effects: {
             supplied: {
-                poverty_rate: -0.15,
+                standard_of_living: 0.15,        // alpha-19: poverty_rate inverted → standard_of_living
                 cost_of_living: -0.10,
-                inflation: -0.05,
-                stability: 0.10,
-                legitimacy: 0.10,
-                happiness: 0.05,
-                lifespan: 0.05
+                control: 0.10,                   // alpha-19: stability → control
+                public_approval: 0.10,           // alpha-23: legitimacy → public_approval (renamed from authority in 8.5.1)
+                health: 0.05                     // alpha-19: lifespan → health
             },
             shortage: {
-                poverty_rate: 0.30,
+                standard_of_living: -0.30,       // alpha-19: poverty_rate inverted → standard_of_living
                 cost_of_living: 0.20,
-                inflation: 0.15,
-                stability: -0.20,
-                legitimacy: -0.20,
-                civil_unrest: 0.25,
-                political_violence: 0.15,
-                emigration: 0.10,
-                happiness: -0.15
+                control: -0.20,                  // alpha-19: stability → control
+                public_approval: -0.20,          // alpha-23: legitimacy → public_approval (renamed from authority in 8.5.1)
+                unrest: 0.40                     // alpha-19: civil_unrest + political_violence collapsed → unrest
+                // emigration dropped (column gone), happiness folded into standard_of_living above
             }
         },
         food_security_weight: 0.50,
@@ -745,9 +742,9 @@ var FOOD_SUBSECTORS = [
         export_threshold: 3,
         export_multiplier: 0.06,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'physical_infrastructure', weight: 0.25 },
-            { stat: 'unemployment', weight: 0.15, inverted: true }
+            { stat: 'farmland', weight: 1.0 },
+            { stat: 'infrastructure', weight: 0.25 },
+            { stat: 'workforce', weight: 0.15 }    // alpha-19: unemployment inverted → workforce (drop `inverted` flag)
         ],
         demand_drivers: [
             { stat: 'standard_of_living', weight: 0.8, type: 'wealth' },
@@ -755,24 +752,16 @@ var FOOD_SUBSECTORS = [
         ],
         stat_effects: {
             supplied: {
-                standard_of_living: 0.10,
-                happiness: 0.10,
-                healthcare_quality: 0.05,
-                lifespan: 0.05,
-                unemployment: -0.08,
-                labor_force_participation: 0.05
+                standard_of_living: 0.20,         // happiness folded into standard_of_living
+                health: 0.10,                      // healthcare_quality + lifespan collapsed → health (deduped)
+                workforce: 0.13                    // alpha-19: unemployment(-0.08) inverted + labor_force_participation(0.05) → workforce
             },
             shortage: {
-                cost_of_living: 0.15,
-                inflation: 0.10,
-                standard_of_living: -0.10,
-                happiness: -0.10
+                cost_of_living: 0.25,             // inflation folded into cost_of_living
+                standard_of_living: -0.20         // happiness folded into standard_of_living
             }
         },
-        environmental_effects: {
-            carbon_emissions: 0.10,
-            pollution: 0.08
-        },
+        // environmental_effects (carbon_emissions, pollution) dropped — both columns removed in alpha-19
         food_security_weight: 0.20,
         stockpilable: false
     },
@@ -785,35 +774,29 @@ var FOOD_SUBSECTORS = [
         export_threshold: 3,
         export_multiplier: 0.05,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'physical_infrastructure', weight: 0.5, critical: true },
-            { stat: 'rail_network', weight: 0.5, critical: true },
-            { stat: 'energy_generation', weight: 0.3 }
+            { stat: 'farmland', weight: 1.0 },
+            { stat: 'infrastructure', weight: 1.0, critical: true },  // alpha-19: physical_infrastructure(0.5) + rail_network(0.5) collapsed → infrastructure
+            { stat: 'energy', weight: 0.3 }                            // alpha-19: energy_generation → energy
         ],
         demand_drivers: [
-            { stat: 'urbanization', weight: 0.6, type: 'demand' },
+            { stat: 'workforce', weight: 0.6, type: 'demand' },        // alpha-19: urbanization → workforce
             { stat: 'population', weight: 0.5, type: 'population' },
             { stat: 'standard_of_living', weight: 0.3, type: 'wealth' }
         ],
         stat_effects: {
             supplied: {
-                happiness: 0.12,
-                healthcare_quality: 0.10,
-                lifespan: 0.08,
-                standard_of_living: 0.08
+                standard_of_living: 0.20,         // happiness(0.12) folded into standard_of_living
+                health: 0.18                       // healthcare_quality(0.10) + lifespan(0.08) collapsed → health
             },
             shortage: {
-                cost_of_living: 0.15,
-                inflation: 0.10,
-                happiness: -0.10,
-                healthcare_quality: -0.05
+                cost_of_living: 0.25,             // inflation(0.10) folded into cost_of_living
+                standard_of_living: -0.10,        // happiness(-0.10) folded into standard_of_living
+                health: -0.05                      // healthcare_quality(-0.05) → health
             }
         },
-        environmental_effects: {
-            pollution: 0.05
-        },
+        // environmental_effects (pollution) dropped — column removed in alpha-19
         // UNIQUE MECHANIC: Spoilage multiplier
-        // When rail_network or physical_infrastructure fall below threshold,
+        // When infrastructure or energy fall below threshold,
         // effective supply is reduced regardless of production levels.
         spoilage: {
             rail_threshold: 40,
@@ -833,10 +816,8 @@ var FOOD_SUBSECTORS = [
         export_threshold: 4,
         export_multiplier: 0.14,
         drivers: [
-            { stat: 'arable_land', weight: 1.0 },
-            { stat: 'foreign_investment', weight: 0.4 },
-            { stat: 'currency_strength', weight: 0.3, inverted: true },
-            { stat: 'corruption', weight: 0.2 }
+            { stat: 'farmland', weight: 1.0 }
+            // alpha-19 drops: foreign_investment, currency_strength, corruption (all columns removed)
         ],
         demand_drivers: [
             // Cash crops are primarily EXPORT-driven; import demand is low
@@ -846,30 +827,22 @@ var FOOD_SUBSECTORS = [
         stat_effects: {
             supplied: {
                 gdp_growth: 0.10,
-                foreign_investment: 0.08,
-                unemployment: -0.08,
-                labor_force_participation: 0.06,
-                currency_strength: 0.05
+                workforce: 0.14                    // alpha-19: unemployment(-0.08) inverted + labor_force_participation(0.06) → workforce
+                // foreign_investment, currency_strength dropped (columns gone)
             },
             shortage: {
                 // Cash crop shortage doesn't cause food insecurity
                 // but hurts export revenue
-                gdp_growth: -0.05,
-                foreign_investment: -0.05
+                gdp_growth: -0.05
+                // foreign_investment dropped (column gone)
             }
         },
-        // Negative externalities of plantation agriculture
+        // structural_effects: most components dropped (income_inequality, social_mobility, corruption, union_strength).
+        // poverty_rate(0.05) inverted → standard_of_living(-0.05).
         structural_effects: {
-            income_inequality: 0.08,
-            poverty_rate: 0.05,
-            social_mobility: -0.05,
-            corruption: 0.05,
-            union_strength: 0.03
+            standard_of_living: -0.05
         },
-        environmental_effects: {
-            pollution: 0.08,
-            carbon_emissions: 0.06
-        },
+        // environmental_effects (pollution, carbon_emissions) dropped — both columns removed in alpha-19
         food_security_weight: 0.00,
         stockpilable: true
     }
@@ -893,9 +866,9 @@ function isFoodSubsector(sectorKey) {
 /**
  * Get the effective arable land for a specific food sub-sector.
  *
- * effectiveLand = nation.arable_land × (allocation_pct / 100)
+ * effectiveLand = nation.farmland × (allocation_pct / 100)
  *
- * @param {Object} nation      – nation row with arable_land stat (0-100)
+ * @param {Object} nation      – nation row with farmland stat (0-100)
  * @param {string} subsectorKey – food sub-sector key
  * @param {Object} allocation  – food_land_allocation row { grains_pct, livestock_pct, perishables_pct, cash_crops_pct }
  * @returns {number} effective arable land (0-100 scale)
@@ -903,7 +876,7 @@ function isFoodSubsector(sectorKey) {
 function getEffectiveArableLand(nation, subsectorKey, allocation) {
     var subsector = FOOD_SUBSECTOR_MAP[subsectorKey];
     if (!subsector || !allocation) return 0;
-    var totalArable = Number(nation.arable_land) || 0;
+    var totalArable = Number(nation.farmland) || 0;
     var allocPct = Number(allocation[subsector.allocation_key]) || 0;
     return totalArable * (allocPct / 100);
 }
@@ -911,18 +884,22 @@ function getEffectiveArableLand(nation, subsectorKey, allocation) {
 /**
  * Calculate the spoilage multiplier for perishables.
  *
- * When rail_network and/or physical_infrastructure fall below thresholds,
- * effective supply is reduced — the nation can produce abundantly and still
- * face shortage due to logistics failure.
+ * When infrastructure and/or energy fall below thresholds, effective supply
+ * is reduced — the nation can produce abundantly and still face shortage
+ * due to logistics failure.
+ *
+ * alpha-19: rail_network folded into infrastructure (deduped), so the rail
+ * branch now reads the same `infrastructure` column as the cold-chain branch
+ * but uses the rail_threshold + 30-point weighting.
  *
  * @param {Object} nation – nation row with infrastructure stats
  * @returns {number} multiplier 0.4–1.0 (1.0 = no spoilage, 0.4 = maximum spoilage)
  */
 function calculateSpoilageMultiplier(nation) {
     var cfg = FOOD_SUBSECTOR_MAP.fruits_vegetables.spoilage;
-    var rail = Number(nation.rail_network) || 0;
-    var infra = Number(nation.physical_infrastructure) || 0;
-    var energy = Number(nation.energy_generation) || 0;
+    var rail = Number(nation.infrastructure) || 0;       // alpha-19: rail_network → infrastructure
+    var infra = Number(nation.infrastructure) || 0;      // alpha-19: physical_infrastructure → infrastructure
+    var energy = Number(nation.energy) || 0;             // alpha-19: energy_generation → energy
 
     var spoilagePct = 0;
 
@@ -999,20 +976,22 @@ function formatPricePerTonne(pricePerTonne) {
  * Spoilage: percentage of reserves lost per tick to degradation.
  * Scales with infrastructure — good warehousing halves spoilage.
  *
- * Capacity: max reserve = GDP × capacityFactor × (physical_infrastructure / 50).
+ * Capacity: max reserve = BASELINE_GDP × capacityFactor × (infrastructure / 50).
+ * alpha-19: gdp column dropped — capacity uses TRADE_CONFIG.BASELINE_GDP as the
+ * fixed scaling baseline. physical_infrastructure → infrastructure.
  * Converted to tonnes via display unit factor.
  */
 var STOCKPILE_CONFIG = {
     grains_staples: {
         baseSpoilagePct: 2.0,       // 2% per tick (grain stores well)
         infraThreshold: 60,          // infra above this halves spoilage
-        capacityFactor: 0.005,       // 0.5% of GDP as max reserve value
+        capacityFactor: 0.005,       // 0.5% of baseline as max reserve value
         securityMonths: 6            // months of reserves for "food secure" bonus
     },
     cash_crops: {
         baseSpoilagePct: 4.0,       // 4% per tick (cocoa, coffee degrade faster)
         infraThreshold: 60,
-        capacityFactor: 0.003,       // 0.3% of GDP (less strategic need)
+        capacityFactor: 0.003,       // 0.3% of baseline (less strategic need)
         securityMonths: 3
     }
 };
@@ -1021,14 +1000,14 @@ var STOCKPILE_CONFIG = {
  * Calculate spoilage rate for a nation's stockpile.
  *
  * @param {string} sectorKey – stockpilable sector key
- * @param {Object} nation    – nation row with physical_infrastructure
+ * @param {Object} nation    – nation row with infrastructure
  * @returns {number} spoilage percentage per tick (0–100)
  */
 function calculateStockpileSpoilage(sectorKey, nation) {
     var cfg = STOCKPILE_CONFIG[sectorKey];
     if (!cfg) return 0;
     var basePct = cfg.baseSpoilagePct;
-    var infra = Number(nation.physical_infrastructure) || 0;
+    var infra = Number(nation.infrastructure) || 0;       // alpha-19: physical_infrastructure → infrastructure
     if (infra >= cfg.infraThreshold) {
         basePct *= 0.5; // Good warehousing halves spoilage
     } else if (infra < 30) {
@@ -1040,16 +1019,19 @@ function calculateStockpileSpoilage(sectorKey, nation) {
 /**
  * Calculate maximum stockpile capacity in dollar value.
  *
+ * alpha-19: gdp column dropped; uses TRADE_CONFIG.BASELINE_GDP as a fixed
+ * scaling baseline. physical_infrastructure → infrastructure.
+ *
  * @param {string} sectorKey – stockpilable sector key
- * @param {Object} nation    – nation row with gdp, physical_infrastructure
+ * @param {Object} nation    – nation row with infrastructure
  * @returns {number} max capacity in dollars
  */
 function calculateStockpileCapacity(sectorKey, nation) {
     var cfg = STOCKPILE_CONFIG[sectorKey];
     if (!cfg) return 0;
-    var gdp = Number(nation.gdp) || 0;
-    var infra = Number(nation.physical_infrastructure) || 50;
-    return Math.round(gdp * cfg.capacityFactor * (infra / 50));
+    var baseline = TRADE_CONFIG.BASELINE_GDP;             // alpha-19: gdp → fixed baseline
+    var infra = Number(nation.infrastructure) || 50;      // alpha-19: physical_infrastructure → infrastructure
+    return Math.round(baseline * cfg.capacityFactor * (infra / 50));
 }
 
 /**
@@ -1266,13 +1248,9 @@ function buildEffectiveSectorList() {
 function calculateFoodDomesticProduction(nation, subsector, allocation) {
     var cfg = TRADE_CONFIG;
 
-    var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
-    if (gdpModifier <= 0) return 0;
-
-    // Food production is LAND-driven, not GDP-driven.
-    // Use sqrt(gdpModifier) so economy matters but land dominates.
-    var econScale = Math.sqrt(gdpModifier);
+    // alpha-19: gdp column dropped — use BASELINE_GDP as fixed reference (gdpModifier = 1.0).
+    var gdpModifier = 1.0;
+    var econScale = 1.0;
 
     var effectiveLand = getEffectiveArableLand(nation, subsector.key, allocation);
     if (effectiveLand <= (subsector.export_threshold || 0)) return 0;
@@ -1284,7 +1262,7 @@ function calculateFoodDomesticProduction(nation, subsector, allocation) {
     var drivers = subsector.drivers;
     for (var i = 0; i < drivers.length; i++) {
         var d = drivers[i];
-        if (d.stat === 'arable_land') continue;
+        if (d.stat === 'farmland') continue;
         var val = Number(nation[d.stat]) || 0;
         if (d.inverted) val = 100 - val;
         var bonus = ((val - 50) / 50) * d.weight * 0.3;
@@ -1299,9 +1277,9 @@ function calculateFoodDomesticProduction(nation, subsector, allocation) {
         totalProduction *= calculateSpoilageMultiplier(nation);
     }
 
-    // Stability (political disruption reduces real farm output)
-    var stability = Number(nation.stability ?? 50);
-    var stabilityMod = Math.min(1.0, stability / 40);
+    // Control (political disruption reduces real farm output) — alpha-19: stability → control.
+    var control = Number(nation.control ?? 50);
+    var stabilityMod = Math.min(1.0, control / 40);
     totalProduction *= stabilityMod;
 
     return Math.round(totalProduction);
@@ -1311,10 +1289,9 @@ function calculateFoodDomesticProduction(nation, subsector, allocation) {
 // apply sub-sector export fraction, currency modifier, floor.
 function calculateFoodExportCapacity(nation, subsector, allocation) {
     var cfg = TRADE_CONFIG;
-    var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
-    if (gdpModifier <= 0) return 0;
-    var econScale = Math.sqrt(gdpModifier);
+    // alpha-19: gdp column dropped — gdpModifier pinned to 1.0.
+    var gdpModifier = 1.0;
+    var econScale = 1.0;
 
     var totalProduction = calculateFoodDomesticProduction(nation, subsector, allocation);
     if (totalProduction <= 0) return 0;
@@ -1331,7 +1308,8 @@ function calculateFoodExportCapacity(nation, subsector, allocation) {
         var sol = (Number(nation.standard_of_living ?? 50)) / 100;
         domesticNeed = popNorm * (0.3 + sol * 0.7) * cfg.BASE_TRADE_MULTIPLIER * 0.25;
     } else if (subsector.key === 'fruits_vegetables') {
-        var urban = (Number(nation.urbanization ?? 50)) / 100;
+        // alpha-19: urbanization → workforce (proxy for urban consumer base).
+        var urban = (Number(nation.workforce ?? 50)) / 100;
         var solFV = (Number(nation.standard_of_living ?? 50)) / 100;
         domesticNeed = popNorm * (0.4 + urban * 0.4 + solFV * 0.3) * cfg.BASE_TRADE_MULTIPLIER * 0.2;
     } else if (subsector.key === 'cash_crops') {
@@ -1346,10 +1324,7 @@ function calculateFoodExportCapacity(nation, subsector, allocation) {
     // Export fraction of the surplus (most food stays domestic)
     var capacity = surplus * subsector.export_multiplier;
 
-    // Currency strength modifier on EXPORTS
-    var currencyStrength = Number(nation.currency_strength ?? 50);
-    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
-    capacity *= currencyModifier;
+    // alpha-19: currency_strength column dropped — no currency modifier on exports.
 
     // Floor: minimal organic trade
     var minCapacity = Math.round(0.002 * cfg.BASE_TRADE_MULTIPLIER * econScale);
@@ -1376,11 +1351,13 @@ function calculateFoodExportCapacity(nation, subsector, allocation) {
  * @param {string|null} sectorKey - e.g. 'fruits_vegetables'; null = aggregate only
  * @returns {number} multiplier in [0.5, 1.0] (1.0 = no tariff, 0.5 = 100% tariff)
  */
-function getTariffDampener(nation, sectorKey) {
-    var sectorTariffs = nation.sector_tariffs || {};
-    var hasOverride = sectorKey != null && Object.prototype.hasOwnProperty.call(sectorTariffs, sectorKey);
-    var tariff = hasOverride ? (Number(sectorTariffs[sectorKey]) || 0) : (Number(nation.tariffs) || 0);
-    return 1 - (tariff / 200);
+function getTariffDampener(_nation, _sectorKey) {
+    // Alpha stats refactor: tariffs + sector_tariffs columns deleted with
+    // no replacement — tariffs are no longer a player-set policy lever
+    // in the alpha schema. Return 1 (no dampening) so callsites that
+    // multiply by this still produce sensible demand. Reintroduce when
+    // a tariff system is rebuilt against alpha columns.
+    return 1;
 }
 
 /**
@@ -1392,8 +1369,8 @@ function getTariffDampener(nation, sectorKey) {
  */
 function calculateFoodImportDemand(nation, subsector, allocation) {
     var cfg = TRADE_CONFIG;
-    var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = gdp / cfg.BASELINE_GDP;
+    // alpha-19: gdp column dropped — gdpModifier pinned to 1.0 (BASELINE_GDP reference).
+    var gdpModifier = 1.0;
     var popNorm = (Number(nation.population) || 1) / 5000000;
 
     var grossDemand = 0;
@@ -1404,10 +1381,8 @@ function calculateFoodImportDemand(nation, subsector, allocation) {
 
     if (subsector.key === 'grains_staples') {
         // GRAINS: population-driven. Everyone needs staples.
-        // Population growth creates additional pressure.
-        var popGrowth = Number(nation.population_growth ?? 50);
-        var growthPressure = Math.max(0, (popGrowth - 40) / 60) * 0.3;
-        grossDemand = popNorm * (1.0 + growthPressure) * cfg.BASE_TRADE_MULTIPLIER * 0.45;
+        // alpha-19: population_growth dropped — no growth-pressure surcharge.
+        grossDemand = popNorm * 1.0 * cfg.BASE_TRADE_MULTIPLIER * 0.45;
 
         // Domestic coverage: effective land scaled by population pressure
         // Large populations outstrip local farming even with good land
@@ -1426,8 +1401,8 @@ function calculateFoodImportDemand(nation, subsector, allocation) {
 
     else if (subsector.key === 'fruits_vegetables') {
         // PERISHABLES: urbanization + wealth driven.
-        // Urban populations need organized food supply chains.
-        var urban = (Number(nation.urbanization ?? 50)) / 100;
+        // alpha-19: urbanization → workforce (proxy for urban consumer base).
+        var urban = (Number(nation.workforce ?? 50)) / 100;
         var sol = (Number(nation.standard_of_living ?? 50)) / 100;
         grossDemand = popNorm * (0.4 + urban * 0.4 + sol * 0.3) * cfg.BASE_TRADE_MULTIPLIER * 0.2;
 
@@ -1454,10 +1429,7 @@ function calculateFoodImportDemand(nation, subsector, allocation) {
 
     if (rawDemand <= 0) return 0;
 
-    // Currency strength: weak currency = imports cost more = can afford less
-    var currencyStrength = Number(nation.currency_strength ?? 50);
-    var affordability = currencyStrength / 50;
-    rawDemand *= affordability;
+    // alpha-19: currency_strength dropped — no affordability scaling.
 
     // Tariff dampener — per-sector override from bill TARIFF_RATE_CHANGE
     // articles (nations.sector_tariffs jsonb), else aggregate nation.tariffs.
@@ -1505,12 +1477,13 @@ function calculateDomesticProduction(nation, sector, opts) {
     //   oil=0                     → 0    (no reserves = no production, regardless of grid)
     //   Display basis $5B ≈ 1 Mbbl/d, so $75B ≈ 15 Mbbl/d (above Saudi-tier).
     if (sector.key === 'fuel_energy') {
-        var oil = Number(nation.oil_and_gas) || 0;
-        var gen = Number(nation.energy_generation) || 0;
-        var stab = Number(nation.stability ?? 50);
-        var genModifier = 0.75 + (gen / 100) * 0.5;
+        // alpha-19: oil_and_gas + energy_generation collapsed into 'energy'.
+        // Use single energy alpha column as both reserves driver and grid modifier.
+        var energyStat = Number(nation.energy) || 0;
+        var stab = Number(nation.control ?? 50);
+        var genModifier = 0.75 + (energyStat / 100) * 0.5;
         return Math.round(
-            (oil / 100) * 60e9 * genModifier * Math.min(1.0, stab / 40)
+            (energyStat / 100) * 60e9 * genModifier * Math.min(1.0, stab / 40)
         );
     }
 
@@ -1529,9 +1502,10 @@ function calculateDomesticProduction(nation, sector, opts) {
     // (currently slightly oversupplied at the per-nation level despite a
     // near-balanced global net).
     if (sector.key === 'manufactured_goods') {
-        var manufStat = Number(nation.manufacturing_output) || 0;
+        // alpha-19: manufacturing_output → industry; stability → control.
+        var manufStat = Number(nation.industry) || 0;
         var popMillions = (Number(nation.population) || 0) / 1_000_000;
-        var stabMg = Number(nation.stability ?? 50);
+        var stabMg = Number(nation.control ?? 50);
         return Math.round(
             (manufStat / 100) * popMillions * 220_000_000 * Math.min(1.0, stabMg / 55)
         );
@@ -1539,8 +1513,8 @@ function calculateDomesticProduction(nation, sector, opts) {
 
     // Resource sectors (oil, minerals, food) are fixed endowments — no GDP scaling.
     // Industrial/service sectors scale with economic size (sqrt for diminishing returns).
-    var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
+    // alpha-19: gdp column dropped — gdpModifier pinned to 1.0 across all sectors.
+    var gdpModifier = 1.0;
     if (gdpModifier <= 0) return 0;
 
     // Primary score: must clear threshold on its own. Bonus stats can add but not gate.
@@ -1579,16 +1553,17 @@ function calculateDomesticProduction(nation, sector, opts) {
     }
     if (sector.key === 'tourism') {
         totalProduction *= 0.5;
-        if ((Number(nation.stability) || 0) <= 25) return 0;
+        // alpha-19: stability → control.
+        if ((Number(nation.control) || 0) <= 25) return 0;
     }
     if (sector.key === 'services_finance') {
         totalProduction *= 0.7;
     }
 
-    // ── Stability modifier ──
-    // Political instability disrupts production across all sectors.
-    // Below 40 stability, output degrades. At 20, halved. At 0, zero.
-    var stability = Number(nation.stability ?? 50);
+    // ── Control modifier ──
+    // alpha-19: stability → control. Political disruption reduces output.
+    // Below 40 control, output degrades. At 20, halved. At 0, zero.
+    var stability = Number(nation.control ?? 50);
     var stabilityMod = Math.min(1.0, stability / 40);
     totalProduction *= stabilityMod;
 
@@ -1601,8 +1576,8 @@ function calculateDomesticProduction(nation, sector, opts) {
 // base as production.
 function calculateExportCapacity(nation, sector, opts) {
     var cfg = TRADE_CONFIG;
-    var gdp = Number(nation.gdp) || 0;
-    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
+    // alpha-19: gdp column dropped — gdpModifier pinned to 1.0 (BASELINE_GDP reference).
+    var gdpModifier = 1.0;
     if (gdpModifier <= 0) return 0;
 
     var totalProduction = calculateDomesticProduction(nation, sector, opts);
@@ -1622,18 +1597,21 @@ function calculateExportCapacity(nation, sector, opts) {
         domesticDemand = computeFuelDemand(nation).gross;
     }
     else if (sector.key === 'minerals') {
-        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
-        var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
-        var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
-        domesticDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        // alpha-19: manufacturing_output → industry; physical_infrastructure
+        // and digital_infrastructure both → infrastructure (collapse the
+        // 0.15 + 0.10 weight onto a single 0.25 read).
+        var manufScore = (Number(nation.industry) || 0) / SN;
+        var infraScore = (Number(nation.infrastructure) || 0) / SN;
+        domesticDemand = (manufScore * 0.4 + infraScore * 0.25) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
     }
     else if (sector.key === 'manufactured_goods') {
         var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
         domesticDemand = popNorm * (solNorm / 8) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.7;
     }
     else if (sector.key === 'technology') {
+        // alpha-19: digital_infrastructure → infrastructure.
         var solNorm = (Number(nation.standard_of_living ?? 50)) / SN;
-        var digiNorm = (Number(nation.digital_infrastructure) || 0) / SN;
+        var digiNorm = (Number(nation.infrastructure) || 0) / SN;
         domesticDemand = popNorm * ((solNorm + digiNorm) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
     }
 
@@ -1642,12 +1620,7 @@ function calculateExportCapacity(nation, sector, opts) {
         capacity = Math.max(0, totalProduction - domesticDemand);
     }
 
-    // ── Currency strength modifier on EXPORTS ──
-    // Strong currency = exports expensive abroad = less competitive.
-    // currency_strength 50 = 1.0 (neutral), 75 = 0.67x, 25 = 2.0x
-    var currencyStrength = Number(nation.currency_strength ?? 50);
-    var currencyModifier = currencyStrength > 0 ? 50 / currencyStrength : 1;
-    capacity *= currencyModifier;
+    // alpha-19: currency_strength dropped — no currency competitiveness modifier.
 
     // Fuel runs on the simplified model: import_demand and export_capacity
     // are mutually exclusive. A nation that consumes more than it produces
@@ -1689,9 +1662,10 @@ function calculateExportCapacity(nation, sector, opts) {
 // production) and max(0, production - gross).
 function computeFuelDemand(nation) {
     const pop = Number(nation.population) || 0;
-    const urban = Number(nation.urbanization) || 0;
+    // alpha-19: urbanization → workforce; manufacturing_output → industry.
+    const urban = Number(nation.workforce) || 0;
     const sol = Number(nation.standard_of_living) || 0;
-    const manuf = Number(nation.manufacturing_output) || 0;
+    const manuf = Number(nation.industry) || 0;
 
     const intensity = (urban * 3 + sol * 3 + manuf) / 700;
     const gross = (pop / 1_000_000) * 550_000_000 * intensity;
@@ -1714,15 +1688,16 @@ function calculateDomesticFuelDemand(nation) {
 // currency 100 → $25B max demand per nation. Scales linearly with pop.
 function computeManufDemand(nation) {
     const pop = Number(nation.population) || 0;
-    const urban = Number(nation.urbanization) || 0;
+    // alpha-19: urbanization → workforce; higher_education → education;
+    // manufacturing_output → industry; currency_strength dropped (importPower → 1.0).
+    const urban = Number(nation.workforce) || 0;
     const sol = Number(nation.standard_of_living) || 0;
-    const edu = Number(nation.higher_education) || 0;
-    const manuf = Number(nation.manufacturing_output) || 0;
-    const currency = Number(nation.currency_strength) || 0;
+    const edu = Number(nation.education) || 0;
+    const manuf = Number(nation.industry) || 0;
 
     const intensity        = (urban + sol + edu) / 300;
     const domesticCoverage = manuf / 100;
-    const importPower      = currency / 100;
+    const importPower      = 1.0;
 
     const gross = (pop / 1_000_000) * 250_000_000 * intensity * importPower;
     return {
@@ -1777,11 +1752,8 @@ function calculateImportDemand(nation, sector, opts) {
     }
 
     var cfg = TRADE_CONFIG;
-    var gdp = Number(nation.gdp) || 0;
-    // Resource sectors pin at 1.0 to stay consistent with the export-side
-    // (calculateExportCapacity), so gross demand for fuel/minerals does
-    // not scale with GDP while production is also pinned.
-    var gdpModifier = RESOURCE_SECTORS.has(sector.key) ? 1.0 : Math.sqrt(gdp / cfg.BASELINE_GDP);
+    // alpha-19: gdp column dropped — gdpModifier pinned to 1.0.
+    var gdpModifier = 1.0;
     var popNorm = (Number(nation.population) || 1) / 5000000;
     var SN = 5;   // stat normalizer: divide 0-100 stats by 5
 
@@ -1793,14 +1765,16 @@ function calculateImportDemand(nation, sector, opts) {
 
     // ── MINERALS & RAW MATERIALS ──
     // Demand: manufacturing needs + infrastructure development + technology production.
-    // Domestic offset: rare_minerals (max 65%).
+    // alpha-19: manufacturing_output → industry; physical_infrastructure +
+    // digital_infrastructure both → infrastructure (collapse 0.15 + 0.10
+    // weight onto a single 0.25 read). rare_minerals → energy (alpha proxy
+    // for raw-material reserves; closest available alpha column).
     if (sector.key === 'minerals') {
-        var manufScore = (Number(nation.manufacturing_output) || 0) / SN;
-        var infraScore = (Number(nation.physical_infrastructure) || 0) / SN;
-        var techScore = (Number(nation.digital_infrastructure) || 0) / SN;
-        grossDemand = (manufScore * 0.4 + infraScore * 0.15 + techScore * 0.1) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
+        var manufScore = (Number(nation.industry) || 0) / SN;
+        var infraScore = (Number(nation.infrastructure) || 0) / SN;
+        grossDemand = (manufScore * 0.4 + infraScore * 0.25) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier;
 
-        var minerals = (Number(nation.rare_minerals) || 0) / 100;
+        var minerals = (Number(nation.energy) || 0) / 100;
         domesticCoverage = Math.min(0.65, minerals * 0.8);
     }
 
@@ -1813,21 +1787,22 @@ function calculateImportDemand(nation, sector, opts) {
         var sol = (Number(nation.standard_of_living ?? 50)) / 100;
         grossDemand = popNorm * (1 + sol * 0.5) * cfg.BASE_TRADE_MULTIPLIER * 0.8;
 
-        var arableLand = (Number(nation.arable_land) || 0) / 100;
+        // alpha-19: arable_land → farmland.
+        var arableLand = (Number(nation.farmland) || 0) / 100;
         domesticCoverage = arableLand / Math.max(0.2, popNorm * 1.2);
     }
 
     // ── TECHNOLOGY & ELECTRONICS ──
     // Demand: standard of living (wealthy populations buy tech) + digital
     // infrastructure needs + population base.
-    // Domestic offset: higher_education + digital_infrastructure (max 60%).
+    // alpha-19: digital_infrastructure → infrastructure; higher_education → education.
     else if (sector.key === 'technology') {
         var sol = (Number(nation.standard_of_living ?? 50)) / SN;
-        var digi = (Number(nation.digital_infrastructure) || 0) / SN;
+        var digi = (Number(nation.infrastructure) || 0) / SN;
         grossDemand = popNorm * ((sol + digi) / 16) * cfg.BASE_TRADE_MULTIPLIER * gdpModifier * 0.6;
 
-        var edu = (Number(nation.higher_education) || 0) / 100;
-        var digiProd = (Number(nation.digital_infrastructure) || 0) / 100;
+        var edu = (Number(nation.education) || 0) / 100;
+        var digiProd = (Number(nation.infrastructure) || 0) / 100;
         domesticCoverage = Math.min(0.60, (edu + digiProd) / 2 * 0.7);
     }
 
@@ -1840,12 +1815,7 @@ function calculateImportDemand(nation, sector, opts) {
 
     if (rawDemand <= 0) return 0;
 
-    // ── Currency strength on imports ──
-    // Weak currency makes imports MORE expensive → you can afford LESS.
-    // currency_strength 50 = 1.0, 25 = 0.5 (can only afford half), 75 = 1.5
-    var currencyStrength = Number(nation.currency_strength ?? 50);
-    var affordability = currencyStrength / 50;
-    rawDemand *= affordability;
+    // alpha-19: currency_strength dropped — no affordability scaling on imports.
 
     // ── Tariff dampener ──
     // Your own tariffs reduce import volume (makes foreign goods more expensive).
@@ -1928,33 +1898,20 @@ function calculateTradeAffinity(nationA, nationB, relation, opts) {
     var proximity = (opts && opts.proximity != null) ? Number(opts.proximity) : 50;
     var proximityBonus = ((100 - proximity) / 100) * 20;
 
-    // Foreign investment: high-FDI nations are integrated into global capital flows
-    // Average of both nations' FDI: 50 (neutral) = +0, 80 = +9, 20 = -9
-    var fdiA = Number(nationA.foreign_investment ?? 50);
-    var fdiB = Number(nationB.foreign_investment ?? 50);
-    var avgFdi = (fdiA + fdiB) / 2;
-    var fdiBonus = ((avgFdi - 50) / 50) * 15;
+    // alpha-19: foreign_investment dropped (no FDI signal in alpha-19 stat set).
+    var fdiBonus = 0;
 
     // International reputation: nations with good standing are trusted trade partners
-    // Average of both nations' reputation: 50 (neutral) = +0, 80 = +6, 20 = -6
-    var repA = Number(nationA.international_reputation ?? 50);
-    var repB = Number(nationB.international_reputation ?? 50);
+    // alpha-19: international_reputation → power. Average of both nations' power:
+    // 50 (neutral) = +0, 80 = +6, 20 = -6.
+    var repA = Number(nationA.power ?? 50);
+    var repB = Number(nationB.power ?? 50);
     var avgRep = (repA + repB) / 2;
     var reputationBonus = ((avgRep - 50) / 50) * 10;
 
-    // Credit rating: nations with poor credit are unreliable trade partners; high credit signals trustworthiness
-    // Penalty uses WORSE credit of the two nations (weakest-link): credit 50+ = no penalty, scales linearly to -20 at credit 0, floor -25 for negative
-    // Bonus uses BETTER credit of the two nations (best-link): credit 50 = +0, scales linearly to +10 at credit 100
-    var creditA = Number(nationA.credit ?? 50);
-    var creditB = Number(nationB.credit ?? 50);
-    var worstCredit = Math.min(creditA, creditB);
-    var bestCredit = Math.max(creditA, creditB);
+    // alpha-19: credit dropped — no creditworthiness signal in alpha-19 stat set.
     var creditPenalty = 0;
-    if (worstCredit < 50) {
-        if (worstCredit < 0) creditPenalty = -25;
-        else creditPenalty = -((50 - worstCredit) / 50) * 20;
-    }
-    var creditBonus = bestCredit > 50 ? ((bestCredit - 50) / 50) * 10 : 0;
+    var creditBonus = 0;
 
     var affinity = base + diplomaticBonus + tradeBonus + embargoPenalty + proximityBonus + fdiBonus + reputationBonus + creditPenalty + creditBonus;
 
@@ -2744,8 +2701,8 @@ async function processTradeFlows(supabase, nationList, currentTick) {
                 var eoAff = affinityMap[eoImporter.id + '|' + eoExporter.id] || 0;
                 if (eoAff <= 0) continue;
 
-                var eoPartnerGdp = Number(eoImporter.gdp) || 0;
-                var contribution = (eoPartnerGdp / TRADE_CONFIG.BASELINE_GDP) * eoAff;
+                // alpha-19: gdp column dropped — use BASELINE_GDP as fixed reference (ratio = 1.0).
+                var contribution = 1.0 * eoAff;
                 worldDemandScore += contribution;
                 partnerContributions.push({
                     nationId: eoImporter.id,
@@ -3017,12 +2974,15 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         }
 
         var surplus = totalExp - totalImp;
-        var gdp = Number(n.gdp) || 0;
+        // alpha-19: gdp column dropped — derive trade balance against BASELINE_GDP reference.
+        var gdp = TRADE_CONFIG.BASELINE_GDP;
         var tradeBalanceIdx = deriveTradeBalanceIndex(surplus, gdp);
 
         // Tariff revenue: calculated bilaterally to account for FTA/PTA tariff reductions
+        // alpha-19: tariffs column dropped — fall back to per-sector overrides only
+        // via getTariffDampener; aggregate baseTariffRate pinned to 0.
         var budget = budgetMap[n.id];
-        var baseTariffRate = (Number(n.tariffs) || 0) / 100;
+        var baseTariffRate = 0;
         var collectionRate = budget ? budget.collectionRate : 0.7;
         var tariffRev = 0;
 
@@ -3060,7 +3020,9 @@ async function processTradeFlows(supabase, nationList, currentTick) {
         totalGlobalVolume += totalExp;
 
         // ── Trade-driven stat nudges ──
-        var nationUpdates = { trade_balance: tradeBalanceIdx };
+        // alpha-19: trade_balance column dropped — tradeBalanceIdx is still
+        // computed for trade_summary rows but no longer mirrored onto nations.
+        var nationUpdates = {};
 
         // GDP growth: trade volume (exports + imports) as % of GDP
         // Neutral at 50% of GDP; more trade = better growth, isolation = drag
@@ -3073,16 +3035,11 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             nationUpdates.gdp_growth = Math.round(Math.max(0, Math.min(100, currentGdpGrowth + tradeGdpNudge)) * 10) / 10;
         }
 
-        // Currency strength: trade surplus strengthens currency, deficit weakens it
-        // Gentler than GDP nudge: (tradeBalance - 50) / 100 → range -0.5 to +0.5 per tick
-        var currentCurrency = Number(n.currency_strength ?? 50);
-        var currencyNudge = (tradeBalanceIdx - 50) / 100;
-        if (Math.abs(currencyNudge) >= 0.01) {
-            nationUpdates.currency_strength = Math.round(Math.max(0, Math.min(100, currentCurrency + currencyNudge)) * 10) / 10;
-        }
+        // alpha-19: currency_strength dropped — no per-tick nudge.
 
-        // Inflation from import prices: weighted average price modifier of imports
-        // If average import prices > 1.0, inflation pressure rises (imported inflation)
+        // Cost-of-living from import prices: weighted average price modifier of imports.
+        // alpha-19: inflation → cost_of_living. If average import prices > 1.0, cost
+        // of living rises (imported inflation pressure).
         var importWeightedPrice = 0;
         var totalImpForPrice = 0;
         for (var si2 = 0; si2 < sectors.length; si2++) {
@@ -3094,25 +3051,29 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             }
         }
         var avgImportPrice = totalImpForPrice > 0 ? importWeightedPrice / totalImpForPrice : 1.0;
-        // Nudge inflation: (avgPrice - 1.0) scaled to ±0.5 per tick
-        var currentInflation = Number(n.inflation ?? 50);
+        // Nudge cost_of_living: (avgPrice - 1.0) scaled to ±0.5 per tick
+        var currentInflation = Number(n.cost_of_living ?? 50);
         var inflationNudge = (avgImportPrice - 1.0) * 1.0; // price 1.5 → +0.5 nudge, price 0.7 → -0.3
         if (Math.abs(inflationNudge) >= 0.01) {
-            nationUpdates.inflation = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 10) / 10;
+            nationUpdates.cost_of_living = Math.round(Math.max(0, Math.min(100, currentInflation + inflationNudge)) * 10) / 10;
         }
 
-        // Unemployment from trade displacement: net imports in job-heavy sectors (manufacturing + services)
-        // indicate domestic producers being outcompeted → unemployment pressure
+        // Workforce from trade displacement: net imports in job-heavy sectors
+        // (manufacturing + services) indicate domestic producers being outcompeted →
+        // workforce shrinks (alpha-19: unemployment → workforce, INVERTED — net
+        // imports DECREASE workforce, net exports INCREASE workforce).
         var mfgNet = (actualImports[n.id]['manufactured_goods'] || 0) - (actualExports[n.id]['manufactured_goods'] || 0);
         var svcNet = (actualImports[n.id]['services_finance'] || 0) - (actualExports[n.id]['services_finance'] || 0);
         if (gdp > 0) {
             var displacementRatio = (mfgNet + svcNet) / gdp;
-            // Positive ratio = net importer in job sectors → unemployment nudge up
-            // Negative ratio = net exporter in job sectors → unemployment nudge down (job creation)
-            var unemploymentNudge = Math.max(-0.5, Math.min(0.5, displacementRatio * 100));
-            if (Math.abs(unemploymentNudge) >= 0.01) {
-                var currentUnemployment = Number(n.unemployment ?? 50);
-                nationUpdates.unemployment = Math.round(Math.max(0, Math.min(100, currentUnemployment + unemploymentNudge)) * 10) / 10;
+            // Inverted vs the legacy unemployment nudge: positive ratio
+            // (net imports outcompeting domestic producers) = workforce
+            // nudge DOWN. Variable names + writes use the alpha-19
+            // workforce column directly.
+            var workforceNudge = Math.max(-0.5, Math.min(0.5, -displacementRatio * 100));
+            if (Math.abs(workforceNudge) >= 0.01) {
+                var currentWorkforce = Number(n.workforce ?? 50);
+                nationUpdates.workforce = Math.round(Math.max(0, Math.min(100, currentWorkforce + workforceNudge)) * 10) / 10;
             }
         }
 
@@ -3131,66 +3092,72 @@ async function processTradeFlows(supabase, nationList, currentTick) {
             var severity = unmetRatio * unmetRatio;
 
             if (sKey3 === 'fuel_energy') {
+                // alpha-19: energy_generation → energy; manufacturing_output → industry;
+                // inflation → cost_of_living (merged with the existing fuelCol nudge).
                 var fuelEnergyPen = severity * 1.5;
                 var fuelManufPen = severity * 1.0;
                 var fuelInflation = severity * 1.0;
                 var fuelCol = severity * 0.8;
-                nationUpdates.energy_generation = Math.round(Math.max(0, (Number(n.energy_generation ?? 50)) - fuelEnergyPen) * 10) / 10;
-                nationUpdates.manufacturing_output = Math.round(Math.max(0, (Number(n.manufacturing_output ?? 50)) - fuelManufPen) * 10) / 10;
-                nationUpdates.inflation = Math.round(Math.min(100, (nationUpdates.inflation != null ? nationUpdates.inflation : (Number(n.inflation ?? 50))) + fuelInflation) * 10) / 10;
-                nationUpdates.cost_of_living = Math.round(Math.min(100, (Number(n.cost_of_living ?? 50)) + fuelCol) * 10) / 10;
+                nationUpdates.energy = Math.round(Math.max(0, (Number(n.energy ?? 50)) - fuelEnergyPen) * 10) / 10;
+                nationUpdates.industry = Math.round(Math.max(0, (Number(n.industry ?? 50)) - fuelManufPen) * 10) / 10;
+                var fuelColCurrent = nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50));
+                nationUpdates.cost_of_living = Math.round(Math.min(100, fuelColCurrent + fuelInflation + fuelCol) * 10) / 10;
             } else if (sKey3 === 'grains_staples') {
-                // Grain shortage: famine risk — stability, legitimacy, civil unrest, emigration
+                // Grain shortage: famine risk — control, authority, unrest, SoL.
+                // alpha-19: happiness → standard_of_living; civil_unrest → unrest;
+                // stability → control; legitimacy → authority; poverty_rate → standard_of_living
+                // (INVERTED — negate). Combine happiness/poverty into a single SoL nudge.
                 var grainHappiness = severity * 1.5;
                 var grainUnrest = severity * 2.0;
                 var grainStability = severity * 1.5;
                 var grainLegitimacy = severity * 1.5;
                 var grainPoverty = severity * 2.0;
-                nationUpdates.happiness = Math.round(Math.max(0, (Number(n.happiness ?? 50)) - grainHappiness) * 10) / 10;
-                nationUpdates.civil_unrest = Math.round(Math.min(100, (Number(n.civil_unrest) || 0) + grainUnrest) * 10) / 10;
-                nationUpdates.stability = Math.round(Math.max(0, (nationUpdates.stability != null ? nationUpdates.stability : (Number(n.stability ?? 50))) - grainStability) * 10) / 10;
-                nationUpdates.legitimacy = Math.round(Math.max(0, (Number(n.legitimacy ?? 50)) - grainLegitimacy) * 10) / 10;
-                nationUpdates.poverty_rate = Math.round(Math.min(100, (Number(n.poverty_rate) || 0) + grainPoverty) * 10) / 10;
+                var grainSolCurrent = Number(n.standard_of_living ?? 50);
+                // happiness → SoL: subtract grainHappiness; poverty_rate inverted → also subtract grainPoverty.
+                nationUpdates.standard_of_living = Math.round(Math.max(0, grainSolCurrent - grainHappiness - grainPoverty) * 10) / 10;
+                nationUpdates.unrest = Math.round(Math.min(100, (Number(n.unrest) || 0) + grainUnrest) * 10) / 10;
+                nationUpdates.control = Math.round(Math.max(0, (nationUpdates.control != null ? nationUpdates.control : (Number(n.control ?? 50))) - grainStability) * 10) / 10;
+                nationUpdates.public_approval = Math.round(Math.max(0, (Number(n.public_approval ?? 50)) - grainLegitimacy) * 10) / 10;
             } else if (sKey3 === 'livestock_dairy') {
-                // Livestock shortage: quality of life decline
+                // Livestock shortage: quality of life decline.
+                // alpha-19: happiness → standard_of_living (merge with livestockSol).
                 var livestockSol = severity * 1.0;
                 var livestockHappy = severity * 0.8;
                 var livestockCol = severity * 0.8;
-                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living ?? 50)) - livestockSol) * 10) / 10;
-                nationUpdates.happiness = Math.round(Math.max(0, (nationUpdates.happiness != null ? nationUpdates.happiness : (Number(n.happiness ?? 50))) - livestockHappy) * 10) / 10;
+                var livestockSolCurrent = Number(n.standard_of_living ?? 50);
+                nationUpdates.standard_of_living = Math.round(Math.max(0, livestockSolCurrent - livestockSol - livestockHappy) * 10) / 10;
                 nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + livestockCol) * 10) / 10;
             } else if (sKey3 === 'fruits_vegetables') {
-                // Perishables shortage: health and happiness impact
+                // Perishables shortage: health and SoL impact.
+                // alpha-19: healthcare_quality → health; happiness → standard_of_living.
                 var fvHealth = severity * 1.0;
                 var fvHappy = severity * 1.0;
                 var fvCol = severity * 0.6;
-                nationUpdates.healthcare_quality = Math.round(Math.max(0, (Number(n.healthcare_quality ?? 50)) - fvHealth) * 10) / 10;
-                nationUpdates.happiness = Math.round(Math.max(0, (nationUpdates.happiness != null ? nationUpdates.happiness : (Number(n.happiness ?? 50))) - fvHappy) * 10) / 10;
+                nationUpdates.health = Math.round(Math.max(0, (Number(n.health ?? 50)) - fvHealth) * 10) / 10;
+                nationUpdates.standard_of_living = Math.round(Math.max(0, (nationUpdates.standard_of_living != null ? nationUpdates.standard_of_living : (Number(n.standard_of_living ?? 50))) - fvHappy) * 10) / 10;
                 nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + fvCol) * 10) / 10;
             } else if (sKey3 === 'cash_crops') {
-                // Cash crop shortage: GDP and investment impact (not food security)
+                // Cash crop shortage: GDP impact only (alpha-19: foreign_investment dropped).
                 var ccGdp = severity * 0.8;
-                var ccFdi = severity * 0.6;
                 nationUpdates.gdp_growth = Math.round(Math.max(0, (nationUpdates.gdp_growth != null ? nationUpdates.gdp_growth : (Number(n.gdp_growth ?? 50))) - ccGdp) * 10) / 10;
-                nationUpdates.foreign_investment = Math.round(Math.max(0, (Number(n.foreign_investment ?? 50)) - ccFdi) * 10) / 10;
             } else if (sKey3 === 'minerals') {
+                // alpha-19: manufacturing_output → industry.
                 var minManuf = severity * 1.0;
                 var minInfra = severity * 0.7;
-                nationUpdates.manufacturing_output = Math.round(Math.max(0, (nationUpdates.manufacturing_output != null ? nationUpdates.manufacturing_output : (Number(n.manufacturing_output ?? 50))) - minManuf) * 10) / 10;
+                nationUpdates.industry = Math.round(Math.max(0, (nationUpdates.industry != null ? nationUpdates.industry : (Number(n.industry ?? 50))) - minManuf) * 10) / 10;
                 nationUpdates.infrastructure = Math.round(Math.max(0, (Number(n.infrastructure ?? 50)) - minInfra) * 10) / 10;
             } else if (sKey3 === 'manufactured_goods') {
                 var mfgSol = severity * 1.0;
                 var mfgCol = severity * 0.8;
-                nationUpdates.standard_of_living = Math.round(Math.max(0, (Number(n.standard_of_living ?? 50)) - mfgSol) * 10) / 10;
+                nationUpdates.standard_of_living = Math.round(Math.max(0, (nationUpdates.standard_of_living != null ? nationUpdates.standard_of_living : (Number(n.standard_of_living ?? 50))) - mfgSol) * 10) / 10;
                 nationUpdates.cost_of_living = Math.round(Math.min(100, (nationUpdates.cost_of_living != null ? nationUpdates.cost_of_living : (Number(n.cost_of_living ?? 50))) + mfgCol) * 10) / 10;
             } else if (sKey3 === 'technology') {
+                // alpha-19: digital_infrastructure → infrastructure;
+                // innovation_index dropped (no replacement; collapse penalty into infrastructure).
                 var techDigi = severity * 0.8;
-                var techInnov = severity * 0.8;
-                nationUpdates.digital_infrastructure = Math.round(Math.max(0, (Number(n.digital_infrastructure ?? 50)) - techDigi) * 10) / 10;
-                nationUpdates.innovation_index = Math.round(Math.max(0, (Number(n.innovation_index ?? 50)) - techInnov) * 10) / 10;
+                nationUpdates.infrastructure = Math.round(Math.max(0, (nationUpdates.infrastructure != null ? nationUpdates.infrastructure : (Number(n.infrastructure ?? 50))) - techDigi) * 10) / 10;
             } else if (sKey3 === 'arms') {
-                var armsMil = severity * 1.0;
-                nationUpdates.military_strength = Math.round(Math.max(0, (Number(n.military_strength ?? 50)) - armsMil) * 10) / 10;
+                // alpha-19: military_strength dropped — no military stat to nudge in alpha-19.
             }
         }
 
@@ -3311,10 +3278,10 @@ const DIPLOMACY_CONFIG = {
     STATE_VISIT_REP_BOOST: 3,
     STATE_VISIT_STABILITY_BOOST: 2,
     STATE_VISIT_RELATION_BOOST: 7,
-    STATE_VISIT_TRADE_BONUS: 5,         // +5 trade_balance if active trade agreement
+    // alpha-19: trade_balance column dropped — bonus retired (Phase 7f)
     STATE_VISIT_IO_REP_BONUS: 3,        // +3 int'l rep if shared IO membership (future)
     STATE_VISIT_HIGH_REL_GDP_BONUS: 5,  // +5 gdp_growth if relations > 70
-    STATE_VISIT_FIRST_STABILITY: 1,     // +1 stability for first-ever visit
+    STATE_VISIT_FIRST_CONTROL: 1,       // +1 control for first-ever visit (alpha-19: stability → control)
     STATE_VISIT_AUTOCRACY_DIE: 12,      // 1D12 roll for autocracy risk
     STATE_VISIT_AUTOCRACY_THRESHOLD: 6, // roll <= threshold = negative outcome
     STATE_VISIT_AUTOCRACY_CHANGE: 3,    // ±gov_approval change
@@ -3355,14 +3322,11 @@ const DIPLOMACY_CONFIG = {
     NEGOTIATION_MAX_EXTENSIONS: 3,        // max times negotiations can be extended
     TRADE_RATIFICATION_VOTING_TICKS: 6,   // ticks for parliament to vote on trade bill
 
-    // Credit requirements for trade agreements (proposing nation must meet these)
-    CREDIT_MIN_FOR_FTA: 25,               // FTA requires credit >= 25
-    CREDIT_MIN_FOR_RSC: 15,               // RSC requires credit >= 15
-    CREDIT_MIN_FOR_PTA: 10,               // PTA requires credit >= 10
-    CREDIT_MIN_FOR_AID_DONOR: 20,         // Donating aid requires credit >= 20 (receiving always ok)
+    // alpha-19: credit column dropped — CREDIT_MIN_FOR_* constants retired in Phase 7f.
+    // checkCreditForTradeAgreement() is now a stub returning { allowed: true }.
 
     // Economic Aid
-    AID_MAX_GDP_PCT: 25,                  // max annual aid as % of donor's GDP
+    AID_MAX_GDP_PCT: 25,                  // max annual aid as % of donor's budget (alpha-19: gdp dropped, budget is the new revenue baseline)
     AID_MIN_AMOUNT: 1000000000,           // min $1B annual aid (to prevent trivial agreements)
     AID_DURATION_MIN_TICKS: 12,           // min 1 year
     AID_DURATION_MAX_TICKS: 120,          // max 10 years
@@ -3419,61 +3383,50 @@ function resolveTransferEndpoints(article, agreement) {
 
 /**
  * Check if a nation's credit rating allows proposing a specific trade agreement type.
- * Returns { allowed: true } or { allowed: false, required: number, reason: string }.
+ *
+ * alpha-19 / Phase 7f: credit column was dropped. This function is now a
+ * permanent stub returning { allowed: true } — trade agreements are no longer
+ * credit-gated. Phase 9 will retire the function and its callers entirely.
+ *
+ * Signature kept so callers don't have to change yet.
  */
 function checkCreditForTradeAgreement(nationCredit, agreementType, isAidDonor) {
-    var credit = Number(nationCredit ?? 50);
-    var thresholds = {
-        fta: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_FTA,
-        pta: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_PTA,
-        resource_supply: DIPLOMACY_CONFIG.CREDIT_MIN_FOR_RSC,
-        economic_aid: isAidDonor ? DIPLOMACY_CONFIG.CREDIT_MIN_FOR_AID_DONOR : 0
-    };
-    var required = thresholds[agreementType];
-    if (required === undefined) return { allowed: true };
-    if (credit >= required) return { allowed: true };
-    return {
-        allowed: false,
-        required: required,
-        current: credit,
-        reason: 'Credit rating too low (' + credit + '/' + required + '). Other nations won\'t negotiate this deal with a nation that can\'t pay its bills.'
-    };
+    return { allowed: true };
 }
 
 /**
  * Curated list of nation stats that can be used as conditions in Economic Aid agreements.
  * Grouped by category for the UI. default_operator indicates the "natural" direction
  * (gte = stat should be high, lte = stat should be low).
+ *
+ * alpha-19 / Phase 7f: filtered to the 19-column menu.
+ *   - judicial_independence → authority
+ *   - inflation → cost_of_living
+ *   - unemployment → workforce (INVERTED: lte → gte)
+ *   - poverty_rate → standard_of_living (INVERTED: lte → gte; deduped with happiness)
+ *   - literacy + education_accessibility → education (deduped)
+ *   - healthcare_accessibility → health
+ *   - stability → control
+ *   - civil_unrest + terrorism → unrest (deduped)
+ *   - international_reputation → power
+ *   Dropped (no replacement): corruption, press_freedom, freedom_index, efficiency,
+ *   tariffs, income_inequality, renewable_energy_percentage, pollution, carbon_emissions.
  */
 const AID_CONDITION_STATS = [
     // Governance
-    { key: 'corruption', label: 'Corruption', default_operator: 'lte', category: 'Governance' },
-    { key: 'press_freedom', label: 'Press Freedom', default_operator: 'gte', category: 'Governance' },
-    { key: 'freedom_index', label: 'Freedom Index', default_operator: 'gte', category: 'Governance' },
-    { key: 'judicial_independence', label: 'Judicial Independence', default_operator: 'gte', category: 'Governance' },
-    { key: 'efficiency', label: 'Bureaucratic Efficiency', default_operator: 'gte', category: 'Governance' },
+    { key: 'authority', label: 'Authority', default_operator: 'gte', category: 'Governance' },
     // Economic
-    { key: 'inflation', label: 'Inflation', default_operator: 'lte', category: 'Economic' },
-    { key: 'tariffs', label: 'Tariff Rate', default_operator: 'lte', category: 'Economic' },
-    { key: 'unemployment', label: 'Unemployment', default_operator: 'lte', category: 'Economic' },
-    { key: 'poverty_rate', label: 'Poverty Rate', default_operator: 'lte', category: 'Economic' },
-    { key: 'income_inequality', label: 'Income Inequality', default_operator: 'lte', category: 'Economic' },
+    { key: 'cost_of_living', label: 'Cost of Living', default_operator: 'lte', category: 'Economic' },
+    { key: 'workforce', label: 'Workforce Participation', default_operator: 'gte', category: 'Economic' },
     // Social
-    { key: 'literacy', label: 'Literacy', default_operator: 'gte', category: 'Social' },
-    { key: 'healthcare_accessibility', label: 'Healthcare Access', default_operator: 'gte', category: 'Social' },
-    { key: 'education_accessibility', label: 'Education Access', default_operator: 'gte', category: 'Social' },
+    { key: 'education', label: 'Education', default_operator: 'gte', category: 'Social' },
+    { key: 'health', label: 'Healthcare', default_operator: 'gte', category: 'Social' },
     { key: 'standard_of_living', label: 'Standard of Living', default_operator: 'gte', category: 'Social' },
-    { key: 'happiness', label: 'Happiness', default_operator: 'gte', category: 'Social' },
-    // Environmental
-    { key: 'renewable_energy_percentage', label: 'Renewable Energy %', default_operator: 'gte', category: 'Environmental' },
-    { key: 'pollution', label: 'Pollution', default_operator: 'lte', category: 'Environmental' },
-    { key: 'carbon_emissions', label: 'Carbon Emissions', default_operator: 'lte', category: 'Environmental' },
     // Security
-    { key: 'stability', label: 'Stability', default_operator: 'gte', category: 'Security' },
-    { key: 'civil_unrest', label: 'Civil Unrest', default_operator: 'lte', category: 'Security' },
-    { key: 'terrorism', label: 'Terrorism', default_operator: 'lte', category: 'Security' },
+    { key: 'control', label: 'Control', default_operator: 'gte', category: 'Security' },
+    { key: 'unrest', label: 'Unrest', default_operator: 'lte', category: 'Security' },
     // International
-    { key: 'international_reputation', label: 'International Reputation', default_operator: 'gte', category: 'International' }
+    { key: 'power', label: 'Power', default_operator: 'gte', category: 'International' }
 ];
 
 /**
@@ -3797,7 +3750,8 @@ const PROPOSAL_TYPES = {
         label: 'Cultural Exchange',
         description: 'Establish cultural exchange programs between nations.',
         stat_effects: [
-            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: international_reputation → power.
+            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     visa_agreement: {
@@ -3805,7 +3759,8 @@ const PROPOSAL_TYPES = {
         label: 'Visa Agreement',
         description: 'Simplify visa requirements for travel between nations.',
         stat_effects: [
-            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            // alpha-19: international_reputation → power.
+            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
             { stat_key: 'immigration', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -3820,7 +3775,8 @@ const PROPOSAL_TYPES = {
         label: 'Student Exchange',
         description: 'Create student exchange programs to boost education.',
         stat_effects: [
-            { stat_key: 'higher_education', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: higher_education → education.
+            { stat_key: 'education', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
 
@@ -3830,8 +3786,9 @@ const PROPOSAL_TYPES = {
         label: 'Non-Aggression Pact',
         description: 'Binding commitment not to declare war for a set period.',
         stat_effects: [
-            { stat_key: 'stability', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
-            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: stability → control; international_reputation → power.
+            { stat_key: 'control', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     military_alliance: {
@@ -3839,8 +3796,9 @@ const PROPOSAL_TYPES = {
         label: 'Military Alliance',
         description: 'Mutual defense pact — if one is attacked, the other must respond.',
         stat_effects: [
-            { stat_key: 'stability', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'international_reputation', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: stability → control; international_reputation → power.
+            { stat_key: 'control', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
+            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     embargo: {
@@ -3848,8 +3806,8 @@ const PROPOSAL_TYPES = {
         label: 'Embargo/Sanctions',
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
-            { stat_key: 'trade_balance', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'international_reputation', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
+            // alpha-19: trade_balance dropped (no replacement); international_reputation → power.
+            { stat_key: 'power', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     ceasefire: {
@@ -3858,8 +3816,9 @@ const PROPOSAL_TYPES = {
         description: 'Stop active conflict between warring nations.',
         requires_war: true,
         stat_effects: [
-            { stat_key: 'stability', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 1 },
-            { stat_key: 'civil_unrest', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: stability → control; civil_unrest → unrest.
+            { stat_key: 'control', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'unrest', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     open_borders: {
@@ -3867,8 +3826,8 @@ const PROPOSAL_TYPES = {
         label: 'Open Borders',
         description: 'Major immigration and security implications — open borders between nations.',
         stat_effects: [
-            { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'trade_balance', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 0 }
+            // alpha-19: trade_balance dropped (no replacement).
+            { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     close_embassy: {
@@ -3876,7 +3835,8 @@ const PROPOSAL_TYPES = {
         label: 'Close Embassy',
         description: 'Shut down diplomatic presence in the target nation.',
         stat_effects: [
-            { stat_key: 'international_reputation', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
+            // alpha-19: international_reputation → power.
+            { stat_key: 'power', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
         ]
     }
 };
@@ -3977,32 +3937,27 @@ const POLICY_STANCES = {
     ]
 };
 
-// Stats where LOWER is better (inverted approval logic)
-const INVERTED_STATS = [
-    'unemployment', 'poverty_rate', 'income_inequality',
-    'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate',
-    'drug_use', 'corruption', 'polarization', 'civil_unrest', 'terrorism',
-    'political_violence', 'emigration', 'debt', 'debt_growth',
-    'inflation', 'interest_rates', 'illegal_immigration', 'fuel_prices',
-    'cost_of_living'
-];
+// Stats where LOWER is better (inverted approval logic).
+// alpha-19 / Phase 7f: collapsed to the 19-column LOWER_IS_BETTER list.
+const INVERTED_STATS = ['debt', 'unrest', 'cost_of_living'];
 
 // Stats stored as raw numbers (not 0-100 indices).
-// GDP and debt are stored as raw dollars (88B = 88,000,000,000).
+// debt is stored as raw dollars (88B = 88,000,000,000).
 // All other stats (0-100 indices) use the default divisor of 50.
+// alpha-19 / Phase 7f: gdp column dropped from the schema.
 const RAW_SCALING_DIVISORS = {
     population: 1_000_000,
     eligible_voters: 1_000_000,
-    gdp: 1_000_000_000,
     debt: 1_000_000_000
 };
 
 // Stats that must NEVER be modified by generic tick processors (processStatEffects,
 // processMinistryActions, processEvents, processCrises, processStatConnections).
-// GDP is driven exclusively by gdp_growth via applyGdpGrowth.
 // Debt is driven exclusively by the budget system (surplus/deficit).
+// alpha-19 / Phase 7f: gdp column dropped, so it's no longer in the skip set.
+// debt remains here because it's flow-managed, not stat-decay-managed.
 // Any policy/event/crisis/connection targeting these keys will be silently skipped.
-const STAT_PROCESSOR_SKIP = new Set(['gdp', 'debt']);
+const STAT_PROCESSOR_SKIP = new Set(['debt']);
 
 // ==================== MINOR DIPLOMATIC INITIATIVE ====================
 
@@ -4062,10 +4017,11 @@ const VISA_EXCLUDES = [
 const VISA_BASE_EFFECTS = {
     relations: 6,
     revenue: 12_000_000,
-    intl_reputation: 1,
-    immigration: 1,
-    polarization: 0,
-    terrorism_risk: 0
+    // alpha-19: intl_reputation → power (international_reputation → power).
+    // polarization + terrorism_risk dropped — no alpha-column replacements;
+    // calculateVisaEffects no longer surfaces them in its return structs.
+    power: 1,
+    immigration: 1
 };
 
 /**
@@ -4102,7 +4058,8 @@ const CULTURAL_FUNDING_OPTIONS = [
  */
 const CULTURAL_BASE_EFFECTS = {
     relations: 4,
-    intl_reputation: 1,
+    // alpha-19: intl_reputation → power
+    power: 1,
     soft_power: 3
 };
 
@@ -4151,7 +4108,8 @@ const STUDENT_FIELDS = [
 const STUDENT_BASE_EFFECTS = {
     relations: 3,
     cost_total: 6_000_000,
-    higher_education: 1,
+    // alpha-19: higher_education → education
+    education: 1,
     soft_power_per_year: 1
 };
 
@@ -4191,7 +4149,8 @@ function calculateVisaEffects(config) {
 
     let relations = Math.round(VISA_BASE_EFFECTS.relations * dMod * sMod);
     let revenue = Math.round(VISA_BASE_EFFECTS.revenue * dMod * sMod);
-    let intl_reputation = VISA_BASE_EFFECTS.intl_reputation;
+    // alpha-19: intl_reputation → power.
+    let power = VISA_BASE_EFFECTS.power;
     let immigration = workIncluded ? 2 : 1;
 
     // One-way: halve relations for the non-receiving nation, revenue only to receiver
@@ -4212,47 +4171,28 @@ function calculateVisaEffects(config) {
         }
     }
 
-    // Polarization + Terrorism from "All Purposes" scope
-    let proposer_polarization = 0, target_polarization = 0;
-    let proposer_terrorism = 0, target_terrorism = 0;
-    if (scopeOpt.penalties) {
-        if (isReciprocal) {
-            proposer_polarization = 1; target_polarization = 1;
-            proposer_terrorism = 0.5; target_terrorism = 0.5;
-        } else if (isOneWayProposer) {
-            // Target receives visitors → penalties on target only
-            target_polarization = 1; target_terrorism = 0.5;
-        } else {
-            // Proposer receives visitors → penalties on proposer only
-            proposer_polarization = 1; proposer_terrorism = 0.5;
-        }
-    }
+    // alpha-19: polarization + terrorism dropped — "All Purposes" scope no
+    // longer carries those penalties (no alpha-column replacements).
 
     return {
         proposer: {
             relations: proposer_relations,
             revenue: proposer_revenue,
-            intl_reputation,
-            immigration: isReciprocal || !isOneWayProposer ? immigration : 0,
-            polarization: proposer_polarization,
-            terrorism_risk: proposer_terrorism
+            power,
+            immigration: isReciprocal || !isOneWayProposer ? immigration : 0
         },
         target: {
             relations: target_relations,
             revenue: target_revenue,
-            intl_reputation,
-            immigration: isReciprocal || isOneWayProposer ? immigration : 0,
-            polarization: target_polarization,
-            terrorism_risk: target_terrorism
+            power,
+            immigration: isReciprocal || isOneWayProposer ? immigration : 0
         },
         // Summary (for display in proposer's UI — shows total combined)
         summary: {
             relations,
             revenue,
-            intl_reputation,
-            immigration,
-            polarization: proposer_polarization || target_polarization ? 1 : 0,
-            terrorism_risk: proposer_terrorism || target_terrorism ? 0.5 : 0
+            power,
+            immigration
         }
     };
 }
@@ -4267,7 +4207,8 @@ function calculateCulturalEffects(config) {
 
     return {
         relations: CULTURAL_BASE_EFFECTS.relations,
-        intl_reputation: CULTURAL_BASE_EFFECTS.intl_reputation,
+        // alpha-19: intl_reputation → power
+        power: CULTURAL_BASE_EFFECTS.power,
         soft_power: CULTURAL_BASE_EFFECTS.soft_power,
         soft_power_duration: durationOpt.permanent ? null : durationOpt.key,
         cost_proposer: Math.round(totalCost * fundingOpt.proposer_share),
@@ -4297,7 +4238,8 @@ function calculateStudentEffects(config) {
 
     return {
         relations: STUDENT_BASE_EFFECTS.relations,
-        higher_education: STUDENT_BASE_EFFECTS.higher_education + levelOpt.higher_ed_bonus,
+        // alpha-19: higher_education → education
+        education: STUDENT_BASE_EFFECTS.education + levelOpt.higher_ed_bonus,
         soft_power_per_year: STUDENT_BASE_EFFECTS.soft_power_per_year,
         permanent_soft_power: durationOpt.permanent_bonus ? 1 : 0,
         technology_bonus: techBonus,
@@ -4502,11 +4444,10 @@ const OPEN_BORDERS_BASE_EFFECTS = {
     relations: 8,
     immigration: 4,
     gdp_growth: 1,
-    labor_force_participation: 2,
-    civil_unrest: 3,
-    polarization: 2,
-    terrorism: 0.5,
-    housing_affordability: -1,
+    // alpha-19: labor_force_participation → workforce; civil_unrest → unrest.
+    // polarization, terrorism, housing_affordability dropped — no alpha replacements.
+    workforce: 2,
+    unrest: 3,
     cost_of_living: 0.5,
     cost_proposer: 15000000,
     cost_target: 15000000,
@@ -4528,14 +4469,14 @@ function calculateOpenBordersEffects(config) {
     const sMod = scopeOpt.modifier;
     const base = OPEN_BORDERS_BASE_EFFECTS;
 
+    // alpha-19: labor_force_participation → workforce (kept positive — open borders
+    // grow the workforce); civil_unrest → unrest. polarization / terrorism /
+    // housing_affordability dropped (no alpha replacements).
     const relations = Math.round(base.relations * sMod);
     const immigration = Math.round(base.immigration * sMod);
     const gdp_growth = +(base.gdp_growth * sMod).toFixed(2);
-    const labor_force = Math.round(base.labor_force_participation * sMod);
-    const civil_unrest = Math.round(transOpt.unrest_spike * sMod);
-    const polarization = Math.round(base.polarization * sMod);
-    const terrorism = +(base.terrorism * sMod).toFixed(2);
-    const housing = Math.round(base.housing_affordability * sMod);
+    const workforce = Math.round(base.workforce * sMod);
+    const unrest = Math.round(transOpt.unrest_spike * sMod);
     const col = +(base.cost_of_living * sMod).toFixed(2);
 
     const ratification_cost = Math.round(base.cost_proposer * sMod);
@@ -4547,31 +4488,29 @@ function calculateOpenBordersEffects(config) {
 
     if (isReciprocal) {
         proposer = {
-            relations, immigration, gdp_growth, labor_force_participation: labor_force,
-            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+            relations, immigration, gdp_growth, workforce,
+            unrest, cost_of_living: col
         };
         target = { ...proposer };
     } else if (isOurToThem) {
         // Our citizens go to them — target receives migrants
         proposer = {
             relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
-            labor_force_participation: 0, civil_unrest: 0, polarization: Math.round(polarization * 0.5),
-            terrorism: 0, housing_affordability: 0, cost_of_living: 0
+            workforce: 0, unrest: 0, cost_of_living: 0
         };
         target = {
-            relations, immigration, gdp_growth, labor_force_participation: labor_force,
-            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+            relations, immigration, gdp_growth, workforce,
+            unrest, cost_of_living: col
         };
     } else {
         // Their citizens come to us — proposer receives migrants
         proposer = {
-            relations, immigration, gdp_growth, labor_force_participation: labor_force,
-            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+            relations, immigration, gdp_growth, workforce,
+            unrest, cost_of_living: col
         };
         target = {
             relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
-            labor_force_participation: 0, civil_unrest: 0, polarization: Math.round(polarization * 0.5),
-            terrorism: 0, housing_affordability: 0, cost_of_living: 0
+            workforce: 0, unrest: 0, cost_of_living: 0
         };
     }
 
@@ -4579,8 +4518,8 @@ function calculateOpenBordersEffects(config) {
         proposer,
         target,
         summary: {
-            relations, immigration, gdp_growth, labor_force_participation: labor_force,
-            civil_unrest, polarization, terrorism, housing_affordability: housing, cost_of_living: col
+            relations, immigration, gdp_growth, workforce,
+            unrest, cost_of_living: col
         },
         costs: {
             ratification_proposer: ratification_cost,
@@ -4621,11 +4560,13 @@ const EXTRADITION_EXCEPTION_OPTIONS = [
 
 const EXTRADITION_BASE_EFFECTS = {
     relations: 5,
-    crime_rate: -3,
-    terrorism: -1,
-    corruption: -1,
-    international_reputation: 1,
-    judicial_independence: 0.5,
+    // alpha-19: terrorism dropped (collapsed into unrest); international_reputation
+    // → power; judicial_independence → authority → public_approval (alpha-23).
+    // alpha-23: corruption + crime restored to live menu (Phase 8.5.2);
+    // a future balance pass can re-add small effects on those columns
+    // here if extradition pacts should nudge corruption / crime trends.
+    power: 1,
+    public_approval: 0.5,
     cost_proposer: 8000000,
     cost_target: 8000000,
     ongoing_cost: 3000000
@@ -4642,49 +4583,35 @@ function calculateExtraditionEffects(config) {
     const exceptions = config.exceptions || [];
     const base = EXTRADITION_BASE_EFFECTS;
 
-    // Effectiveness scales with number and weight of scopes
-    const totalWeight = scopes.reduce((sum, s) => {
-        const opt = EXTRADITION_SCOPE_OPTIONS.find(o => o.key === s);
-        return sum + (opt ? opt.crime_weight : 0);
-    }, 0);
-    const scopeMod = Math.min(1.5, totalWeight / 2.5); // normalize around standard 3-scope config
-
-    // Exception effectiveness reduction
-    const exceptionMult = exceptions.reduce((mult, e) => {
-        const opt = EXTRADITION_EXCEPTION_OPTIONS.find(o => o.key === e);
-        return mult * (opt ? opt.effectiveness_mult : 1.0);
-    }, 1.0);
-
-    const crimeMult = appealOpt.crime_mult * exceptionMult;
-
-    const crime_rate = +(base.crime_rate * scopeMod * crimeMult).toFixed(1);
-    const terrorism = scopes.includes('terrorism') ? +(base.terrorism * crimeMult).toFixed(1) : 0;
-    const corruption = +(base.corruption * scopeMod).toFixed(1);
+    // alpha-19: crime_rate, terrorism, corruption, freedom_index, press_freedom,
+    // polarization all dropped (no alpha-column replacements). The pre-alpha
+    // scope-weight / exception-multiplier math drove only those dropped fields,
+    // so it has been removed. exceptions/scopes are still inspected below for
+    // political-offense / dual-criminality warnings + sovereignty constraints.
+    void exceptions;
     const relations = base.relations;
-    const intl_reputation = base.international_reputation;
-    const judicial_independence = +(base.judicial_independence + appealOpt.judicial_penalty).toFixed(1);
+    // alpha-19: international_reputation → power.
+    const power_base = base.power;
+    // alpha-19/23: judicial_independence → authority → public_approval.
+    // appealOpt.judicial_penalty (negative for executive-style processes)
+    // still pulls public_approval down.
+    const public_approval = +(base.public_approval + appealOpt.judicial_penalty).toFixed(1);
 
-    // Political offenses penalties
+    // Political offenses penalties — alpha-19: freedom_index / press_freedom /
+    // polarization dropped. Reputation/power penalty for political-offense
+    // scopes is preserved.
     const hasPoliticalOffenses = scopes.includes('political_offenses');
-    const freedom_index = hasPoliticalOffenses ? -2 + appealOpt.freedom_penalty : appealOpt.freedom_penalty;
-    const press_freedom = hasPoliticalOffenses ? -1 : 0;
     const reputation_penalty = hasPoliticalOffenses ? -2 : 0;
-    const polarization = hasPoliticalOffenses ? 1 : 0;
 
-    // Dual criminality waived penalty
+    // alpha-19: dual-criminality waiver previously dinged freedom_index — that
+    // column is dropped; no remaining alpha-column hook for this lever.
     const dualWaived = config.dual_criminality === 'waived';
-    const freedom_extra = dualWaived ? -1 : 0;
+    void dualWaived;
 
     const effects = {
         relations,
-        crime_rate,
-        terrorism,
-        corruption,
-        international_reputation: intl_reputation + reputation_penalty,
-        judicial_independence,
-        freedom_index: freedom_index + freedom_extra,
-        press_freedom,
-        polarization
+        power: power_base + reputation_penalty,
+        public_approval
     };
 
     return {
@@ -4746,8 +4673,9 @@ const ENVIRONMENT_PENALTY_OPTIONS = [
 
 const ENVIRONMENT_BASE_EFFECTS = {
     relations: 6,
-    international_reputation: 2,
-    pollution: -2,
+    // alpha-19: international_reputation → power; pollution dropped (no
+    // alpha-column replacement).
+    power: 2,
     cost_proposer: 12000000,
     cost_target: 12000000,
     ongoing_cost: 4000000
@@ -4766,26 +4694,26 @@ function calculateEnvironmentalEffects(config) {
     const base = ENVIRONMENT_BASE_EFFECTS;
 
     const relations = base.relations;
-    const intl_reputation = base.international_reputation + emissionOpt.reputation_bonus
+    // alpha-19: international_reputation → power.
+    const power = base.power + emissionOpt.reputation_bonus
         + conservation.reduce((sum, c) => {
             const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === c);
             return sum + (opt ? opt.bonus_reputation : 0);
         }, 0);
 
-    const pollution = base.pollution + pollutionOpt.pollution_bonus
-        + conservation.reduce((sum, c) => {
-            const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === c);
-            return sum + (opt ? opt.bonus_pollution : 0);
-        }, 0);
+    // alpha-19: pollution dropped (no alpha-column replacement). pollutionOpt
+    // / conservation bonus_pollution data is still consumed by the compliance
+    // block below (cap_offset) but no longer surfaces as a stat delta.
 
-    const manufacturing_output = pollutionOpt.manufacturing_penalty;
+    // alpha-19: manufacturing_output → industry. pollutionOpt.manufacturing_penalty
+    // is negative under strict standards and still drags industrial capacity.
+    const industry = pollutionOpt.manufacturing_penalty;
     const gdp_growth = emissionOpt.gdp_penalty;
 
     const effects = {
         relations,
-        international_reputation: intl_reputation,
-        pollution,
-        manufacturing_output,
+        power,
+        industry,
         gdp_growth
     };
 
@@ -5042,86 +4970,203 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
  *   service_output             Services & finance sector output (0-100)
  *   housing_affordability      Housing accessibility (0-100, higher is better)
  */
+// Alpha stats refactor — Phase 9 dropped the legacy stat columns from
+// the schema. The whitelist is now exactly the 23 alpha stats:
+//   * 5 pass-throughs from the legacy schema:
+//     gdp_growth, debt, immigration, standard_of_living, cost_of_living
+//   * 18 alpha-only columns added in Phase 2 / 8.5.1
+// Legacy stat keys still appear in event/policy stat_effects JSON;
+// STAT_KEY_ALIASES routes or null-filters them at apply time.
 const NATION_STAT_COLUMNS = [
-    'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
-    'trade_balance', 'currency_strength', 'foreign_investment', 'credit',
-    'income_tax', 'corporate_tax', 'sales_tax', 'tariffs',
-    'unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength',
-    'poverty_rate', 'income_inequality',
-    'population', 'population_growth', 'median_age', 'eligible_voters', 'ethnic_diversity',
-    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use',
-    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
-    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage',
-    'arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices',
-    'pollution', 'carbon_emissions',
-    'standard_of_living', 'happiness', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate',
-    'religiosity',
-    'stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence',
-    'freedom_index', 'polarization',
-    'civil_unrest', 'terrorism', 'political_violence',
-    'immigration', 'illegal_immigration', 'emigration',
-    'international_reputation',
-    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability'
+    'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
+    'budget',
+    'control', 'unrest', 'public_approval', 'crown_authority',
+    'energy', 'health', 'education', 'power',
+    'infrastructure', 'industry', 'farmland',
+    'service_sector', 'workforce',
+    'income_tax', 'corporate_tax', 'crime', 'corruption',
 ];
 
 const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 
+// Phase 4 translation shim — maps old stat keys to the new 19-column
+// schema at apply time. Two value types:
+//   * String: rename only (passes through to a live column)
+//   * null:   stat is deleted in the alpha refactor with no replacement;
+//             callers must skip the effect rather than fall through
+//
+// Direction-inverting aliases are tracked separately in
+// INVERTED_ALIAS_KEYS — for those, the apply path also flips
+// up↔down / negates delta so the semantics survive the rename.
 const STAT_KEY_ALIASES = {
-    intl_reputation: 'international_reputation',
-    diplomatic_standing: 'international_reputation',
-    credit_rating: 'credit',
-    credit_score: 'credit',
-    trade: 'trade_balance',
-    trade_volume: 'trade_balance',
-    education: 'higher_education',
-    education_quality: 'higher_education',
-    military_strength: 'stability',
-    literacy_rate: 'literacy',
-    hospital_beds: 'beds_per_100k',
-    technology: 'digital_infrastructure',
-    infrastructure: 'physical_infrastructure',
-    tourism: 'international_reputation',
-    // Legacy aliases for removed/renamed stats
-    religious: 'religiosity',
-    // NOTE: birth_rate and death_rate aliases REMOVED — they mapped 1:1 to population_growth
-    // which caused direction inversion bugs. Fix policy data to use population_growth directly.
-    trade_agreements: 'international_reputation',
-    sanctions: 'international_reputation'
+    // ── Direct renames into the alpha-23 schema ──
+    civil_unrest:               'unrest',
+    terrorism:                  'unrest',
+    political_violence:         'unrest',
+    healthcare_accessibility:   'health',
+    healthcare_quality:         'health',
+    lifespan:                   'health',
+    beds_per_100k:              'health',
+    physical_infrastructure:    'infrastructure',
+    digital_infrastructure:     'infrastructure',
+    rail_network:               'infrastructure',
+    urbanization:               'workforce',
+    labor_force_participation:  'workforce',
+    higher_education:           'education',
+    education_quality:          'education',
+    arable_land:                'farmland',
+    manufacturing_output:       'industry',
+    international_reputation:   'power',
+    intl_reputation:            'power',
+    diplomatic_standing:        'power',
+    tourism:                    'power',
+    trade_agreements:           'power',
+    sanctions:                  'power',
+    stability:                  'control',
+    military_strength:          'control',
+    hospital_beds:              'health',
+
+    // ── Phase 8.5.1 renames ──
+    authority:                  'public_approval',
+    legitimacy:                 'public_approval',  // legitimacy already aliased to authority pre-8.5; cascade to new name
+    judicial_independence:      'public_approval',  // collapsed into public_approval per Phase 7H bills.js block
+    goods:                      'service_sector',
+    crime_rate:                 'crime',
+
+    // ── Inverted (rename + flip direction; also see INVERTED_ALIAS_KEYS) ──
+    unemployment:               'workforce',
+
+    // ── DELETED stats — Phase 9 drops the column. Apply path skips. ──
+    // Phase 8.5.2 restored income_tax / corporate_tax / corruption /
+    // crime to the live alpha menu, so they're no longer in this list.
+    religious:                  null,
+    religiosity:                null,
+    efficiency:                 null,
+    happiness:                  null,
+    polarization:               null,
+    freedom_index:              null,
+    gdp:                        null,
+    GDP:                        null,
+    inflation:                  null,
+    foreign_investment:         null,
+    tariffs:                    null,
+    credit:                     null,
+    credit_rating:              null,
+    credit_score:               null,
+    literacy:                   null,
+    literacy_rate:              null,
+    academic_immigration:       null,
+    oil_and_gas:                null,
+    rare_minerals:              null,
+    energy_generation:          null,
+    fuel_prices:                null,
+    pollution:                  null,
+    social_mobility:            null,
+    benefits:                   null,
+    population_growth:          null,
+    debt_growth:                null,
+    minimum_wage:               null,
+    union_strength:             null,
+    illegal_immigration:        null,
+    emigration:                 null,
+    sales_tax:                  null,
+    interest_rates:             null,
+    poverty_rate:               null,
+    income_inequality:          null,
+    trade_balance:              null,
+    trade:                      null,
+    trade_volume:               null,
+    currency_strength:          null,
+    birth_rate:                 null,
+    death_rate:                 null,
+    median_age:                 null,
+    carbon_emissions:           null,
+    renewable_energy_percentage: null,
+    press_freedom:              null,
+    incarceration_rate:         null,
+    drug_use:                   null,
+    ethnic_diversity:           null,
+    education_accessibility:    null,
+    technology:                 null,
+    service_output:             null,
+    housing_affordability:      null,
 };
+
+// Old stat keys whose semantic direction is opposite of the new column
+// they map to. e.g. unemployment → workforce: a bill that pushes
+// unemployment UP is pushing workforce DOWN. The Phase 4 apply path
+// flips `direction` (up↔down) and negates `delta` for these keys.
+const INVERTED_ALIAS_KEYS = new Set([
+    'unemployment',
+]);
 
 function normalizeNationStatKey(statKey) {
     if (!statKey || typeof statKey !== 'string') return null;
-    return STAT_KEY_ALIASES[statKey] || statKey;
+    // Use Object.hasOwn (not the `in` operator) so inherited Object.prototype
+    // members like 'toString' / 'hasOwnProperty' / '__proto__' don't match
+    // and leak the inherited method back to the caller. hasOwn also still
+    // returns true for explicit null sentinels (DELETED-stat), unlike the
+    // original `||` lookup which would have fallen through to the raw key.
+    if (Object.hasOwn(STAT_KEY_ALIASES, statKey)) return STAT_KEY_ALIASES[statKey];
+    return statKey;
+}
+
+/**
+ * Phase 4 translation shim — re-maps a stat-effect entry from the legacy
+ * key set onto the alpha 19-column schema at apply time.
+ *
+ *   in:  { stat_key: 'civil_unrest', direction: 'up', rate: 0.5, ... }
+ *   out: { stat_key: 'unrest',       direction: 'up', rate: 0.5, ... }
+ *
+ *   in:  { stat_key: 'unemployment', direction: 'up', delta: 5 }
+ *   out: { stat_key: 'workforce',    direction: 'down', delta: -5 }
+ *
+ *   in:  { stat_key: 'happiness', ... }   (DELETED)
+ *   out: null
+ *
+ * Accepts both `stat_key` and `stat` shapes (the codebase uses both).
+ * Returns null when the underlying stat was deleted by the alpha refactor
+ * with no replacement — callers must skip these entries entirely.
+ */
+function translateStatEffect(eff) {
+    if (!eff || typeof eff !== 'object') return null;
+    const oldKey = eff.stat_key || eff.stat || '';
+    if (!oldKey) return null;
+
+    const newKey = normalizeNationStatKey(oldKey);
+    if (!newKey || !NATION_STAT_COLUMN_SET.has(newKey)) return null;
+
+    const out = { ...eff, stat_key: newKey };
+    if (out.stat) out.stat = newKey;
+
+    if (INVERTED_ALIAS_KEYS.has(oldKey)) {
+        if (out.direction === 'up') out.direction = 'down';
+        else if (out.direction === 'down') out.direction = 'up';
+        if (typeof out.delta === 'number') out.delta = -out.delta;
+    }
+    return out;
 }
 
 /**
  * Stats where HIGHER values are better (increase = achievement).
+ * Alpha 23-column schema. Excludes budget (flow, not 0-100), debt
+ * (LOWER_IS_BETTER), and the two tax stats (income_tax, corporate_tax)
+ * which are neutral player-controlled levers (high = revenue but
+ * dampens growth — UI/momentum logic shouldn't auto-flag either
+ * direction as good).
  */
 const STATS_HIGHER_IS_BETTER = [
-    'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
-    'labor_force_participation', 'minimum_wage', 'union_strength',
-    'population_growth', 'ethnic_diversity',
-    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
-    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
-    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
-    'arable_land', 'rare_minerals',
-    'standard_of_living', 'happiness', 'social_mobility', 'benefits',
-    'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence', 'freedom_index',
-    'immigration', 'international_reputation',
-    'manufacturing_output', 'service_output', 'housing_affordability'
+    'gdp_growth', 'immigration', 'standard_of_living',
+    'control', 'public_approval', 'crown_authority',
+    'energy', 'health', 'education', 'power',
+    'infrastructure', 'industry', 'farmland', 'service_sector', 'workforce',
 ];
 
 /**
  * Stats where LOWER values are better (decrease = achievement).
  */
 const STATS_LOWER_IS_BETTER = [
-    'debt_growth', 'inflation', 'interest_rates',
-    'unemployment', 'poverty_rate', 'income_inequality',
-    'drug_use', 'fuel_prices', 'pollution', 'carbon_emissions',
-    'crime_rate', 'incarceration_rate', 'corruption', 'polarization',
-    'civil_unrest', 'terrorism', 'political_violence',
-    'illegal_immigration', 'emigration',
-    'cost_of_living'
+    'debt', 'unrest', 'cost_of_living', 'crime', 'corruption',
 ];
 
 // ==================== STAT DECAY CONFIGURATION ====================
@@ -5133,50 +5178,39 @@ const DECAY_SPEED = { CRAWL: 0.15, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  *   - 'equilibrium': drifts toward a midpoint (requires constant governing effort)
  *   - 'erosion': degrades toward a bad floor (punishes neglect)
  * Stats not listed are persistent — they hold value indefinitely.
+ *
+ * Alpha 19-column schema. budget + debt are flow-based and not in here
+ * (managed by budget.js / debt.js). crown_authority decays only when
+ * the column is non-NULL — processStatDecay's null-guard at
+ * political-actions.js:110 skips non-monarchies cleanly.
  */
 const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 38, speed: DECAY_SPEED.CRAWL },
-    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
-    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
-    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
-    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
-    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
-    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
-    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    crime_rate:          { type: 'equilibrium', target: 18, speed: DECAY_SPEED.CRAWL },
-    stability:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
-    legitimacy:          { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
+    gdp_growth:        { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    immigration:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    control:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
+    unrest:            { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
+    public_approval:   { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
+    crown_authority:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    power:             { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    workforce:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    service_sector:    { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
-    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
-    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.CRAWL },
-    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    manufacturing_output:     { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    service_output:           { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    cost_of_living:           { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
-    housing_affordability:    { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    standard_of_living: { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    cost_of_living:     { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+    health:             { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    education:          { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    infrastructure:     { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    industry:           { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    energy:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    farmland:           { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    crime:              { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+    corruption:         { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+
+    // income_tax + corporate_tax intentionally NOT in the decay table —
+    // they're player-set levers (0-10 scale) that should hold the value
+    // the player chose until a new bill or admin change moves them.
 };
 
 // Validate decay config keys at module load
@@ -5699,80 +5733,73 @@ async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source)
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
+/**
+ * Per-tick income tax revenue.
+ *   (population / 10_000_000) × income_tax × (1 − unrest/100)
+ * Lands as a small literal number that adds to nation.budget each tick.
+ * Pass a rateOverride to preview revenue at a hypothetical rate.
+ */
+function computeIncomeTaxRevenue(nation, rateOverride) {
+    const pop = Number(nation.population || 0);
+    const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.income_tax || 0);
+    const unrest = Number(nation.unrest || 0);
+    const rev = (pop / 10_000_000) * rate * (1 - unrest / 100);
+    return Math.max(0, rev);
+}
+
+/**
+ * Per-tick corporate tax revenue.
+ *   (service_sector + industry) / 10 × corporate_tax × (1 − corruption/100)
+ * Pass a rateOverride to preview revenue at a hypothetical rate.
+ */
+function computeCorporateTaxRevenue(nation, rateOverride) {
+    const svc = Number(nation.service_sector || 0);
+    const ind = Number(nation.industry || 0);
+    const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.corporate_tax || 0);
+    const corruption = Number(nation.corruption || 0);
+    const rev = ((svc + ind) / 10) * rate * (1 - corruption / 100);
+    return Math.max(0, rev);
+}
+
 function calculateNationalBudget(nation, opts = {}) {
-    // GDP and Debt are stored as raw dollars
-    const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
+    // Phase 8.5.4: nation.budget is a cash balance. Each tick, the engine
+    // adds computeIncomeTaxRevenue + computeCorporateTaxRevenue to it via
+    // advance-tick. This function exposes the current balance as
+    // grossRevenue (for callers that still treat it as the headline
+    // revenue figure) plus the per-tick line items so UI can render them.
     const debt = Number(nation.debt ?? 0);
+    const grossRevenue = Number(nation.budget ?? 0);
 
-    // Tax rates: 0-100 percentages
-    const incomeTaxRate    = Number(nation.income_tax ?? 0);
-    const corpTaxRate      = Number(nation.corporate_tax ?? 0);
-    const salesTaxRate     = Number(nation.sales_tax ?? 0);
-    const propertyTaxRate  = Number(nation.property_tax ?? 0);
-    const tariffsRate      = Number(nation.tariffs ?? 0);
+    const incomeRevenue = computeIncomeTaxRevenue(nation);
+    const corpRevenue = computeCorporateTaxRevenue(nation);
 
-    // Other 0-100 stats
-    const efficiency     = Number(nation.efficiency ?? 50);
-    const corruption     = Number(nation.corruption ?? 50);
-    const oilGas         = Number(nation.oil_and_gas ?? 0);
-    const creditRating   = Number(nation.credit ?? 50);
-
-    // Collection Rate: floor at 0.35 so even poorly-governed nations collect some tax.
-    // Ranges 0.35 (eff=0, corr=100) to 1.0 (eff=100, corr=0).
-    const rawCR = (efficiency + (100 - corruption)) / 200;
-    const collectionRate = 0.35 + rawCR * 0.65;
-
-    // Tax Revenue (raw dollars, since GDP is raw dollars)
-    // Property-tax multiplier (0.08) is a starting guess: at the default
-    // 50% rate it yields up to ~4% of GDP at full collection (1.0), and
-    // ~2.4% at typical mid-game collection (~0.6). Within the real-world
-    // 2-4% band where property tax sits for most nations. Tune in one
-    // place if needed — everything downstream (Tax Article ongoing-cost
-    // projection, budget displays, deficit calc) reads from here.
-    const incomeRevenue   = gdp * (incomeTaxRate / 100)   * 0.55   * collectionRate;
-    const corpRevenue     = gdp * (corpTaxRate / 100)     * 0.15   * collectionRate;
-    const salesRevenue    = gdp * (salesTaxRate / 100)    * 0.35   * collectionRate;
-    const propertyRevenue = gdp * (propertyTaxRate / 100) * 0.08   * collectionRate;
-    const tariffRevenue   = gdp * (tariffsRate / 100)     * 0.0025 * collectionRate;
-
-    // Oil & Gas Revenue (only if oil_and_gas stat > 30)
-    const oilRevenue = oilGas > 30 ? gdp * (oilGas / 100) * 0.06 : 0;
-
-    const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + propertyRevenue + tariffRevenue + oilRevenue;
-
-    // Debt Service. Prefer the actual sum of active bond coupon obligations
-    // (passed in by the tick processor as opts.actualDebtService — that's
-    // SUM(bond_holdings.principal × coupon_rate) for this nation, and the
-    // SSoT for what the nation owes its bondholders this tick). Falls back
-    // to the legacy credit-derived formula for callers that don't have
-    // holdings data on hand (UI displays, projections, simulation).
-    const effectiveInterest = Math.min(0.18, Math.max(0.02, 0.15 - (creditRating * 0.0013)));
+    // Debt service: prefer the actual sum of bond coupon obligations from
+    // the tick processor; fall back to a flat 5% annual interest rate.
+    const FLAT_ANNUAL_INTEREST = 0.05;
     const debtService = opts.actualDebtService != null
         ? Number(opts.actualDebtService)
-        : debt * effectiveInterest;
+        : debt * FLAT_ANNUAL_INTEREST;
 
-    // Available Budget = Revenue - Debt Service
     const availableBudget = grossRevenue - debtService;
 
     return {
-        grossRevenue, debtService, availableBudget, collectionRate,
-        incomeRevenue, corpRevenue, salesRevenue, propertyRevenue, tariffRevenue, oilRevenue
+        grossRevenue, debtService, availableBudget,
+        collectionRate: 1,
+        incomeRevenue, corpRevenue,
+        tariffRevenue: 0
     };
 }
 
 /**
  * Override formula-based tariff revenue with real trade engine data.
- * Mutates the budget object in place and returns it.
+ * Mutates the budget object in place and returns it. Alpha refactor:
+ * the gdp parameter is kept in the signature for back-compat but no
+ * longer used (gdp column deleted; cap removed).
  */
-function applyTradeTariffOverride(budget, tradeTariffRevenue, gdp) {
+function applyTradeTariffOverride(budget, tradeTariffRevenue, _gdpUnused) {
     if (tradeTariffRevenue != null && Number(tradeTariffRevenue) > 0) {
         const oldTariff = budget.tariffRevenue;
-        let newTariff = Number(tradeTariffRevenue);
-        // Cap tariff revenue at 0.2% of GDP — tariffs are a minor revenue source
-        if (gdp > 0) {
-            const maxTariff = gdp * 0.002;
-            newTariff = Math.min(newTariff, maxTariff);
-        }
+        const newTariff = Number(tradeTariffRevenue);
         budget.tariffRevenue = newTariff;
         budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
         budget.availableBudget = budget.grossRevenue - budget.debtService;
@@ -5793,17 +5820,7 @@ const TAX_CONFIG = [
         category: 'Income',
         categoryClass: 'pill-income',
         revenueKey: 'incomeRevenue',
-        gdpMultiplier: 0.55,
-        maxRate: 50
-    },
-    {
-        key: 'sales_tax',
-        name: 'Sales Tax',
-        category: 'Consumption',
-        categoryClass: 'pill-consumption',
-        revenueKey: 'salesRevenue',
-        gdpMultiplier: 0.35,
-        maxRate: 50
+        maxRate: 10
     },
     {
         key: 'corporate_tax',
@@ -5811,8 +5828,7 @@ const TAX_CONFIG = [
         category: 'Corporate',
         categoryClass: 'pill-corporate',
         revenueKey: 'corpRevenue',
-        gdpMultiplier: 0.15,
-        maxRate: 50
+        maxRate: 10
     }
 ];
 
@@ -5837,18 +5853,23 @@ const FISCAL_TO_MINISTRY_KEY = {
 };
 
 /**
- * Compute inflation cost multiplier from the 0-100 inflation stat.
- * Rate = stat^1.5 / 100  →  stat 1 = 0.01%, stat 100 = 10%.
- * No deflation — multiplier is always ≥ 1.
+ * Inflation cost multiplier — alpha stats refactor neutralized this to
+ * a constant 1 since the underlying `inflation` column is deleted.
+ * Kept as an exported identity function so callers needn't change.
+ * If a "cost-of-living-driven" cost multiplier is desired later, plug
+ * it in here against alpha columns.
  */
-function getInflationMultiplier(inflationStat) {
-    const rate = Math.pow(Math.max(0, Number(inflationStat || 0)), 1.5) / 100;
-    return 1 + (rate / 100);
+function getInflationMultiplier(_inflationStatUnused) {
+    return 1;
 }
 
 /**
  * Compute the annualized cost of all active policies for a given fiscal category.
- * Returns raw dollars. Applies inflation adjustment.
+ * Returns raw dollars. Alpha refactor: inflation multiplier is a no-op
+ * (constant 1) so policy costs no longer scale with inflation; if the
+ * `ongoing_scaling_stat` policy field still references a deleted column,
+ * the read returns undefined and the scaled-cost branch falls through
+ * to ongoingBase * 1 (no scaling).
  */
 function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
     let total = 0;
@@ -5859,10 +5880,6 @@ function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
         const policy = law.policies;
         if (!policy) continue;
 
-        // Phase 4.4: per-option fiscal_category and ongoing_base_cost take
-        // precedence over the legacy policies columns. Filter the law
-        // against the option's fiscal_category when present so the option's
-        // budget bucket determines which ministry pays.
         const opt = law.selected_option || null;
         const fiscalCat = opt?.fiscal_category ?? policy.fiscal_category;
         if (fiscalCat !== fiscalCategory) continue;
@@ -5887,18 +5904,14 @@ function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
         }
     }
 
-    // Apply inflation
-    const inflationMult = getInflationMultiplier(nation.inflation);
-    total *= inflationMult;
-    for (const p of policies) p.cost *= inflationMult;
-
     return { total, policies };
 }
 
 /**
  * Compute the annualized cost of all institutions for a given fiscal category.
- * Population-scaled: base_cost_per_capita × population × inflation.
- * GDP-scaled:        base_cost_per_capita (as % of GDP, e.g. 0.5 = 0.5%) × GDP × inflation.
+ * Alpha stats refactor: gdp-scaled institutions collapse to population
+ * scaling (matches bill.html / laws.html _computeInstitutionBaseCost from
+ * Phase 7b). Inflation multiplier is a no-op (Phase 7e).
  * @param {Array} institutions - rows from ministry_institution_config
  * @param {string} fiscalCategory - e.g. 'Healthcare', 'Trade'
  * @param {Object} nation
@@ -5907,22 +5920,13 @@ function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
     const ministryKey = FISCAL_TO_MINISTRY_KEY[fiscalCategory] || fiscalCategory.toLowerCase();
     const insts = (institutions || []).filter(i => i.ministry_key === ministryKey);
     const population = Number(nation.population || 0);
-    const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
-    const inflationMult = getInflationMultiplier(nation.inflation);
 
     let total = 0;
     const items = [];
     for (const inst of insts) {
         const baseVal = Number(inst.base_cost_per_capita || 0);
         const scalingType = inst.scaling_type || 'population';
-        let cost;
-        if (scalingType === 'gdp') {
-            // baseVal is a percentage of GDP (e.g. 0.5 means 0.5%)
-            cost = (baseVal / 100) * gdp;
-        } else {
-            cost = baseVal * population;
-        }
-        cost *= inflationMult;
+        const cost = baseVal * population;
         items.push({
             id: inst.id, institution_name: inst.institution_name, cost,
             base_cost_per_capita: inst.base_cost_per_capita,
@@ -5939,9 +5943,11 @@ function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
  */
 function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, aidData) {
     const budget = calculateNationalBudget(nation);
-    applyTradeTariffOverride(budget, tradeTariffRevenue, Number(nation.gdp ?? nation.GDP ?? 0));
-    const inflationStat = Number(nation.inflation || 0);
-    const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
+    applyTradeTariffOverride(budget, tradeTariffRevenue, 0);
+    // Inflation column was deleted by the alpha refactor; both fields are
+    // kept in the return blob at 0 for callers that destructure them.
+    const inflationStat = 0;
+    const inflationPct = 0;
     const reserves = 0;
 
     // Foreign aid: received adds to revenue, given is a mandatory expenditure
@@ -6328,37 +6334,21 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 }
 
 
-// Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
-// Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 1  →  0=-1%, 50=0%, 100=+1%
-// Includes diminishing returns (GDP < 50% of starting) and hard floor (20% of starting → Economic Collapse)
-async function applyGdpGrowth(supabase, nation, currentTick) {
-    const gdpGrowth = Number(nation.gdp_growth ?? 50);
-    const currentGdp = Number(nation.gdp ?? 0);
-    const startingGdp = Number(nation.starting_gdp ?? currentGdp);
-    if (currentGdp <= 0 || startingGdp <= 0) return;
-
-    let monthlyChangePercent = ((gdpGrowth - 50) / 50) * 1;
-
-    // Diminishing returns: scale negative growth when GDP < 50% of starting
-    if (monthlyChangePercent < 0) {
-        const gdpRatio = currentGdp / startingGdp;
-        if (gdpRatio < 0.5) {
-            const dampening = Math.max(0.1, gdpRatio * 2); // 50%→1.0, 25%→0.5, 10%→0.2, min 10%
-            monthlyChangePercent *= dampening;
-        }
-    }
-
-    let newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
-
-    // Hard floor: clamp at 20% of starting GDP and trigger Economic Collapse
-    const gdpFloor = startingGdp * 0.20;
-    if (newGdp < gdpFloor) {
-        newGdp = gdpFloor;
-        await activateEconomicCollapse(supabase, nation, currentTick);
-    }
-
-    nation.gdp = newGdp;
-    await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
+// Apply GDP growth rate — RETIRED by alpha stats refactor (Phase 7e).
+//
+// The legacy mechanic moved an absolute-dollar `nation.gdp` column up
+// or down each tick based on the `gdp_growth` 0-100 stat, with a hard
+// floor at 20% of `starting_gdp` triggering Economic Collapse. Both
+// `gdp` and `starting_gdp` columns are deleted by the alpha refactor
+// (alpha-19 keeps `gdp_growth` as a momentum signal but no absolute
+// GDP value), so this function has no columns to read or write.
+//
+// Function is preserved as a no-op so existing tick processor + admin
+// importers don't break. Economic Collapse activation moved to the
+// fiscal-redesign phase (likely keyed off prolonged budget collapse +
+// debt/budget ratio).
+async function applyGdpGrowth(_supabase, _nation, _currentTick) {
+    return;
 }
 
 // Activate Economic Collapse mega-crisis: clears other economic crises, applies political penalties
@@ -7071,225 +7061,65 @@ function computeCorpValuation({ cash, loans, properties, propertyValue, vessels,
 
 // ────────── tax-articles ──────────
 
-// js/game/tax-articles.js — Tax Article constants + helpers (SSoT)
+// js/game/tax-articles.js — Tax Article SSoT (RETIRED by alpha refactor)
 //
-// One source for:
-//   * per-step side effects (approval, credit, gdp_growth, inflation)
-//   * step size (3pp cuts, 2pp hikes)
-//   * rate bounds (0–50%)
-//   * valid-new-rate enumeration used by the draft modal dropdown
-//   * step/effect computation used by the enactment handler
-//   * projected ongoing budget impact (revenue gained/lost per month)
+// PHASE 7e (alpha stats refactor):
+//   The four tax columns (income_tax, corporate_tax, sales_tax,
+//   property_tax) are deleted by the alpha refactor with no replacement
+//   — the alpha-19 schema treats `nation.budget` as the canonical
+//   revenue stream rather than per-bracket rates. This module's whole
+//   purpose (drafting tax-rate-change articles, computing per-step
+//   effects on credit / inflation / gdp_growth, projecting revenue
+//   delta) loses its underlying mechanism.
 //
-// Imported by bill.html (draft modal preview + article-card renderer),
-// laws.html (draft preview), and js/game/bills.js (enactment +
-// computeBillCostTotals). Any tuning of numbers happens here.
+//   The module is preserved as a stub so that callers in
+//   bill.html, laws.html, and js/game/bills.js keep importing without
+//   ReferenceError. Every function returns a safe no-op:
+//
+//     getValidNewRates           → []  (no rate changes available)
+//     computeTaxArticleEffects   → {}  (no side effects)
+//     computeTaxArticleOngoingCost → 0  (no revenue delta)
+//     validateTaxArticlePayload  → { valid: false, ... }
+//
+//   Reintroducing tax brackets against alpha-19 columns is a future
+//   fiscal-redesign phase; if/when that lands, restore TAX_RATE_MIN/MAX,
+//   TAX_STEP_PP, TAX_ARTICLE_EFFECTS with the new column names and put
+//   the live computeTaxArticleEffects back.
 
 const TAX_RATE_MIN = 0;
 const TAX_RATE_MAX = 50;
 
-// Step sizes are asymmetric on purpose: cuts are popular but costly, hikes
-// are unpopular but revenue-positive. The asymmetry (3pp vs 2pp) makes the
-// cumulative revenue math work out more symmetrically per step.
-const TAX_STEP_PP = Object.freeze({
-    cut:  3,
-    hike: 2,
-});
+const TAX_STEP_PP = Object.freeze({ cut: 3, hike: 2 });
 
-// Per-step effects by tax key + direction. When more tax types land
-// (sales, property) add their own entry here — the rest of the pipeline
-// is tax-key-agnostic.
-const TAX_ARTICLE_EFFECTS = Object.freeze({
-    income_tax: Object.freeze({
-        cut: Object.freeze({
-            gov_approval: +2,
-            credit:       -2,
-            gdp_growth:   +0.5,
-            inflation:    +0.3,
-        }),
-        hike: Object.freeze({
-            gov_approval: -3,
-            credit:       +1,
-            gdp_growth:   -0.5,
-            inflation:    -0.3,
-        }),
-    }),
-    corporate_tax: Object.freeze({
-        cut: Object.freeze({
-            gov_approval: +1,
-            credit:       -2,
-            gdp_growth:   +1.0,
-            inflation:    0,
-        }),
-        hike: Object.freeze({
-            gov_approval: -1,
-            credit:       +1,
-            gdp_growth:   -1.0,
-            inflation:    0,
-        }),
-    }),
-    // Sales tax is the only tax whose inflation direction is INVERTED
-    // versus income/corporate. Cutting sales tax literally removes pp
-    // from sticker prices → CPI falls; hiking it raises prices → CPI
-    // rises. Magnitude (±0.5) larger than income's ±0.3 because the
-    // effect is mechanical (on the receipt), not transmitted via demand.
-    // Highest gov_approval magnitude (±4) since the tax is regressive
-    // and visible at every transaction.
-    sales_tax: Object.freeze({
-        cut: Object.freeze({
-            gov_approval: +4,
-            credit:       -2,
-            gdp_growth:   +0.3,
-            inflation:    -0.5,
-        }),
-        hike: Object.freeze({
-            gov_approval: -4,
-            credit:       +1,
-            gdp_growth:   -0.3,
-            inflation:    +0.5,
-        }),
-    }),
-    // Property tax taxes asset ownership (land + buildings). Direct effect
-    // on housing_affordability — cuts make housing cheaper to hold/rent,
-    // hikes pass through to renters and add to mortgage costs. The voter
-    // bloc system (electorate.js: urban_suburban) already cascades from
-    // housing_affordability into approval, so the flat ±2 gov_approval
-    // here understates total political impact for housing-sensitive
-    // nations. No inflation effect — property tax doesn't ride on
-    // consumer prices.
-    property_tax: Object.freeze({
-        cut: Object.freeze({
-            gov_approval:          +2,
-            credit:                -2,
-            gdp_growth:            +0.5,
-            inflation:             0,
-            housing_affordability: +1,
-        }),
-        hike: Object.freeze({
-            gov_approval:          -2,
-            credit:                +1,
-            gdp_growth:            -0.5,
-            inflation:             0,
-            housing_affordability: -1,
-        }),
-    }),
-});
+// All effect-tables empty — no tax keys are supported in alpha schema.
+const TAX_ARTICLE_EFFECTS = Object.freeze({});
 
-// Tax keys that have effects defined — feeds the draft modal's tax-type
-// selector.
-const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax', 'sales_tax', 'property_tax']);
+const SUPPORTED_TAX_KEYS = Object.freeze([]);
 
-const TAX_KEY_LABELS = Object.freeze({
-    income_tax:    'Income Tax',
-    corporate_tax: 'Corporate Tax',
-    sales_tax:     'Sales Tax',
-    property_tax:  'Property Tax',
-});
+const TAX_KEY_LABELS = Object.freeze({});
 
-// Effect-key → display label, used by the article-card / preview UI to
-// render each effect row. Keys here must match the keys used in the
-// per-step entries above. Adding a new effect dimension (e.g.,
-// urbanization for a future tax) only requires adding it here + to a
-// tax's per-step block.
-const TAX_EFFECT_LABELS = Object.freeze({
-    gov_approval:          'Gov Approval',
-    credit:                'Credit',
-    gdp_growth:            'GDP Growth',
-    inflation:             'Inflation',
-    housing_affordability: 'Housing Affordability',
-});
+const TAX_EFFECT_LABELS = Object.freeze({});
 
-// Effect keys that map directly to a nations.<column>. Used by the
-// enactment handler to know which keys to read+write to the nations
-// table (vs. gov_approval, which routes through adjust_momentum →
-// gov_approval_events). New numeric stat effects join this list.
-const TAX_EFFECT_NATION_COLUMNS = Object.freeze([
-    'credit',
-    'gdp_growth',
-    'inflation',
-    'housing_affordability',
-]);
+// Empty list — no tax-effect keys map to nation columns post-alpha.
+const TAX_EFFECT_NATION_COLUMNS = Object.freeze([]);
 
-// Enumerate the valid new rates a player can pick given their current rate
-// and chosen direction. Cuts step down in 3pp increments until hitting 0;
-// hikes step up in 2pp increments until hitting TAX_RATE_MAX.
-function getValidNewRates(currentRate, direction) {
-    const cur = Number(currentRate) || 0;
-    const step = TAX_STEP_PP[direction];
-    if (!step) return [];
-    const rates = [];
-    if (direction === 'cut') {
-        for (let r = cur - step; r >= TAX_RATE_MIN; r -= step) rates.push(r);
-    } else {
-        for (let r = cur + step; r <= TAX_RATE_MAX; r += step) rates.push(r);
-    }
-    return rates;
+function getValidNewRates(_currentRate, _direction) {
+    return [];
 }
 
-// Compute total side effects for a (taxKey, direction, steps) triple.
-// Used by the preview panel AND the enactment handler — one calculation,
-// two callers. Returns an object keyed by whatever effect dimensions
-// the tax defines (gov_approval, credit, gdp_growth, inflation, plus
-// any tax-specific extras like housing_affordability). Callers must
-// not assume a fixed shape — iterate Object.entries(fx).
-function computeTaxArticleEffects(taxKey, direction, steps) {
-    const perStep = TAX_ARTICLE_EFFECTS[taxKey]?.[direction];
-    const n = Number(steps) || 0;
-    if (!perStep || n <= 0) return {};
-    const result = {};
-    for (const [key, val] of Object.entries(perStep)) {
-        result[key] = val * n;
-    }
-    return result;
+function computeTaxArticleEffects(_taxKey, _direction, _steps) {
+    return {};
 }
 
-// Compute the bill's ongoing budget impact from a tax rate change, in
-// MILLIONS of dollars per month ($M/mo) — matching the convention used
-// by computeBillCostTotals and funding-article base_cost. Positive =
-// ongoing cost (revenue lost from a cut); negative = ongoing relief
-// (revenue gained from a hike).
-//
-// Implementation calls calculateNationalBudget twice — once with current
-// rates, once with the new rate substituted — so this helper stays in
-// sync with whatever multipliers / collection-rate logic budget.js uses.
-// SSoT: budget.js owns the formula; we just take the delta and convert
-// raw dollars → $M in one place so every caller gets consistent units.
-//
-// Returns 0 if nation is missing (caller should treat as "not yet
-// computable" — e.g., during initial render before nation loads).
-function computeTaxArticleOngoingCost(taxKey, newRate, nation) {
-    if (!nation || !taxKey) return 0;
-    const cur    = calculateNationalBudget(nation);
-    const future = calculateNationalBudget({ ...nation, [taxKey]: Number(newRate) });
-    // grossRevenue is raw dollars/year. Divide by 12 for monthly, by 1e6 for $M.
-    const monthlyRevenueDeltaMillions = (future.grossRevenue - cur.grossRevenue) / 12 / 1e6;
-    // Bill-cost convention: positive = budget gets worse. Revenue lost
-    // (cut) makes the budget worse, so flip the sign of the revenue delta.
-    return -monthlyRevenueDeltaMillions;
+function computeTaxArticleOngoingCost(_taxKey, _newRate, _nation) {
+    return 0;
 }
 
-// Validate an effect_data payload before insert / on enactment.
-// Returns { valid: boolean, reason?: string, direction?, steps? }.
-function validateTaxArticlePayload(taxKey, oldRate, newRate) {
-    if (!TAX_ARTICLE_EFFECTS[taxKey]) {
-        return { valid: false, reason: 'Unknown tax key: ' + taxKey };
-    }
-    const o = Number(oldRate), n = Number(newRate);
-    if (!Number.isFinite(o) || !Number.isFinite(n)) {
-        return { valid: false, reason: 'Rates must be numbers' };
-    }
-    if (n < TAX_RATE_MIN || n > TAX_RATE_MAX) {
-        return { valid: false, reason: 'New rate out of range' };
-    }
-    const delta = n - o;
-    if (delta === 0) return { valid: false, reason: 'No change' };
-    const direction = delta < 0 ? 'cut' : 'hike';
-    const step = TAX_STEP_PP[direction];
-    if (Math.abs(delta) % step !== 0) {
-        return { valid: false, reason: `Must be a multiple of ${step}pp` };
-    }
-    const steps = Math.abs(delta) / step;
-    return { valid: true, direction, steps };
+function validateTaxArticlePayload(_taxKey, _oldRate, _newRate) {
+    return {
+        valid: false,
+        reason: 'Tax-bracket adjustments are retired in the alpha schema; reintroduce when a tax-revenue model is rebuilt against alpha columns.'
+    };
 }
 
 // ────────── sectors ──────────
@@ -9269,10 +9099,10 @@ async function resolveReferendums(supabase, nation, currentTick) {
         }
 
         var govApproval = Number(nation.gov_approval ?? 50);
-        var civilUnrest = Number(nation.civil_unrest ?? 30);
-        var polarization = Number(nation.polarization ?? 50);
-        var happiness = Number(nation.happiness ?? 50);
-        var stability = Number(nation.stability ?? 50);
+        var civilUnrest = Number(nation.unrest ?? 30);
+        var polarization = 50;
+        var happiness = Number(nation.standard_of_living ?? 50);
+        var stability = Number(nation.control ?? 50);
         var sol = Number(nation.standard_of_living ?? 50);
         var gdpGrowth = Number(nation.gdp_growth ?? 0);
 
@@ -9757,10 +9587,10 @@ async function resolveImpeachmentConvictionBill(supabase, bill, ctx) {
         }
 
         // Stability recovers +3.
-        const { data: natRow } = await supabase.from('nations').select('stability').eq('id', bill.nation_id).single();
+        const { data: natRow } = await supabase.from('nations').select('control').eq('id', bill.nation_id).single();
         if (natRow) {
             await supabase.from('nations').update({
-                stability: Math.min(100, Math.round(Number(natRow.stability || 0) + 3)),
+                control: Math.min(100, Math.round(Number(natRow.control || 0) + 3)),
             }).eq('id', bill.nation_id);
         }
 
@@ -9904,10 +9734,10 @@ async function resolveDiplomaticRatificationBill(supabase, bill, ctx) {
                     }
                     if (totalUnrestSpike > 0) {
                         for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
-                            const { data: n } = await supabase.from('nations').select('civil_unrest').eq('id', nId).single();
+                            const { data: n } = await supabase.from('nations').select('unrest').eq('id', nId).single();
                             if (n) {
-                                const newVal = Math.max(0, Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike));
-                                await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nId);
+                                const newVal = Math.max(0, Math.min(100, (n.unrest || 0) + totalUnrestSpike));
+                                await supabase.from('nations').update({ unrest: newVal }).eq('id', nId);
                             }
                         }
                     }
@@ -11868,11 +11698,11 @@ async function enactBill(supabase, bill, currentTick) {
             // Upsert per-institution funding into budget_item_allocations
             // Stores actual dollar amounts: needed_amount = true cost, allocation_amount = funded amount
             // so fundingPct = allocation_amount / needed_amount * 100
-            const { data: _billNation } = await supabase.from('nations').select('population, gdp, inflation').eq('id', bill.nation_id).single();
+            const { data: _billNation } = await supabase.from('nations').select('population, gdp, cost_of_living').eq('id', bill.nation_id).single();
             const { data: _instConfigs } = await supabase.from('ministry_institution_config').select('id, base_cost_per_capita, scaling_type');
             const _billPop = Number(_billNation?.population || 0);
             const _billGdp = Number(_billNation?.gdp || 0);
-            const _billInfRate = Math.pow(Math.max(0, Number(_billNation?.inflation || 0)), 1.5) / 100;
+            const _billInfRate = Math.pow(Math.max(0, Number(_billNation?.cost_of_living || 0)), 1.5) / 100;
             const _billInfMult = 1 + (_billInfRate / 100);
 
             for (const inst of allInst) {
@@ -12003,16 +11833,12 @@ async function enactBill(supabase, bill, currentTick) {
     // Legislative activity: boost gov_approval_events
     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, MINISTER_APPROVAL_CONFIG.BILL_PASSAGE_EVENT_BONUS, 'bill_passage');
 
-    // ── Authoritarian crisis bonus ──
-    // If 3+ crises are active AND this bill reduces freedom-related stats,
-    // award gov_approval + momentum to governing parties.
-    // Diminishing returns: first authoritarian law during multi-crisis = +5/+5,
-    // subsequent ones = +2/+2.
-    try {
-        await applyAuthoritarianCrisisBonus(supabase, bill, nation, currentTick);
-    } catch (authErr) {
-        console.error('[enactBill] Authoritarian crisis bonus failed (non-fatal):', authErr?.message);
-    }
+    // Authoritarian crisis bonus mechanic removed by alpha stats refactor
+    // (Phase 7d). The detection signal — bills decreasing freedom_index /
+    // press_freedom / judicial_independence — relied on three columns
+    // that were deleted with no replacement. Reintroduce against
+    // alpha-19 (e.g., a `policy.flags.authoritarian` attribute) if the
+    // mechanic is wanted back.
 
     console.log('[enactBill] stage=terminal_result result=success', logContext);
     return { success: true };
@@ -12080,107 +11906,12 @@ async function processRoyalAssent(supabase, nation, currentTick) {
 }
 
 
-// ── Authoritarian Crisis Bonus ──
-// When 3+ crises are active and a bill with authoritarian stat effects passes,
-// governing parties receive gov_approval + momentum bonuses.
-// Diminishing returns: first = +5/+5, subsequent = +2/+2.
-const AUTHORITARIAN_STATS = new Set(['freedom_index', 'press_freedom', 'judicial_independence']);
-
-async function applyAuthoritarianCrisisBonus(supabase, bill, nation, currentTick) {
-    // 1. Check if the bill has authoritarian effects (decreases freedom stats)
-    const articles = bill.articles || [];
-    let isAuthoritarian = false;
-    for (const article of articles) {
-        if (article.status === 'struck') continue;
-        const effects = article.stat_effects || article.effects || [];
-        for (const eff of effects) {
-            const key = eff.stat_key || eff.stat || '';
-            const dir = eff.direction || (eff.delta < 0 ? 'down' : 'up');
-            if (AUTHORITARIAN_STATS.has(key) && dir === 'down') {
-                isAuthoritarian = true;
-                break;
-            }
-        }
-        if (isAuthoritarian) break;
-    }
-
-    // Phase 5-fix: the policies.stat_effects column is gone from the live
-    // schema, so the legacy bill-policy_id authoritarian-detection branch
-    // is no longer reachable. The article-level loop above already handles
-    // every multi-option policy via art.stat_effects / art.effects, so
-    // dropping this fallback only loses the rare legacy single-policy
-    // branch (no current bill flow uses bill.policy_id directly).
-
-    if (!isAuthoritarian) return;
-
-    // 2. Check active crises count
-    const { data: crises } = await supabase
-        .from('active_crises')
-        .select('id')
-        .eq('nation_id', bill.nation_id);
-
-    const crisisCount = (crises || []).length;
-    if (crisisCount < 3) return;
-
-    // 3. Check diminishing returns — how many authoritarian laws passed during this
-    // multi-crisis period? Count bills with authoritarian effects passed while 3+ crises active.
-    const { data: recentAuth } = await supabase
-        .from('event_log')
-        .select('id')
-        .eq('nation_id', bill.nation_id)
-        .eq('trigger_key', 'authoritarian_crisis_bonus')
-        .gte('fired_at_tick', currentTick - 24); // look back 24 ticks
-
-    const priorCount = (recentAuth || []).length;
-    const isFirst = priorCount === 0;
-    const approvalBonus = isFirst ? 5 : 2;
-    const momentumBonus = isFirst ? 5 : 2;
-
-    // 4. Apply gov_approval bonus
-    await adjustGovernmentApprovalEvent(supabase, bill.nation_id, approvalBonus, 'authoritarian_crisis_law');
-
-    // 5. Apply momentum to all governing parties
-    const { data: admin } = await supabase
-        .from('administrations')
-        .select('coalition_parties')
-        .eq('nation_id', bill.nation_id)
-        .is('ended_at_tick', null)
-        .order('started_at_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    const coalitionParties = admin?.coalition_parties || [];
-    for (const cp of coalitionParties) {
-        if (cp.party_id) {
-            await supabase.rpc('adjust_momentum', {
-                p_faction_id: cp.party_id,
-                p_delta: momentumBonus,
-                p_label: `Authoritarian law during crisis (${crisisCount} crises)`,
-                p_tick: currentTick,
-            });
-        }
-    }
-
-    // 6. Log event for diminishing returns tracking
-    await supabase.from('event_log').insert({
-        nation_id: bill.nation_id,
-        event_name: isFirst ? 'Authoritarian Law — Crisis Mandate' : 'Authoritarian Law — Continued Mandate',
-        trigger_key: 'authoritarian_crisis_bonus',
-        fired_at_tick: currentTick,
-        category: 'government',
-        description_chosen: `${bill.bill_name || 'A bill'} restricting civil liberties passed during ${crisisCount} active crises. Government approval +${approvalBonus}, governing parties +${momentumBonus} momentum${isFirst ? '' : ' (diminished)'}.`,
-        effects_applied: {
-            bill_id: bill.id,
-            crisis_count: crisisCount,
-            approval_bonus: approvalBonus,
-            momentum_bonus: momentumBonus,
-            is_first: isFirst,
-            prior_count: priorCount,
-        },
-    });
-
-    console.log(`[enactBill] Authoritarian crisis bonus: +${approvalBonus} approval, +${momentumBonus} momentum to ${coalitionParties.length} parties (${isFirst ? 'first' : 'diminished'}, ${crisisCount} crises)`);
-}
+// Authoritarian Crisis Bonus mechanic deleted by alpha stats refactor
+// (Phase 7d). Detected bills via stat_effects on freedom_index /
+// press_freedom / judicial_independence — all three columns deleted
+// with no replacement. To reintroduce, build detection off explicit
+// policy metadata (e.g., a `policy.flags.authoritarian = true`
+// attribute) rather than re-mining alpha-19 stat_effects.
 
 async function reversePolicy(supabase, nation, policy, passedTick, currentTick) {
     const ticksActive = currentTick - (passedTick || 0);
@@ -12326,27 +12057,22 @@ async function enactPresidentialTermLength(supabase, bill, currentTick) {
         console.error(`[enactFoundationalBill] Failed to update presidential_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
     }
 
-    // Apply mechanical effects based on whether terms got shorter or longer
+    // Apply mechanical effects based on whether terms got shorter or longer.
+    // Alpha refactor: polarization + political_engagement columns are gone
+    // (the latter never existed on nations); legitimacy → authority,
+    // stability → control. Term-shortened path now writes nothing column-
+    // wise but the log line is kept for event traceability.
     if (newTermTicks < oldTermTicks) {
-        // Shortening terms — more elections, more polarization & engagement
-        const newPol = Math.min(100, (nation?.polarization || 0) + 2);
-        const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
-        const { error: shortErr } = await supabase.from('nations').update({
-            polarization: newPol,
-            political_engagement: newEng
-        }).eq('id', bill.nation_id);
-        if (shortErr) console.error(`[enactFoundationalBill] Term shortened stat update failed:`, shortErr.message);
-        else console.log(`[enactFoundationalBill] Term shortened: polarization +2, political_engagement +3`);
+        console.log(`[enactFoundationalBill] Term shortened (polarization + political_engagement effects retired by alpha refactor)`);
     } else if (newTermTicks > oldTermTicks) {
-        // Extending terms — less accountability, more stability
-        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 3);
-        const newStability = Math.min(100, (nation?.stability || 50) + 2);
+        const newAuthority = Math.max(0, (nation?.public_approval || 50) - 3);
+        const newControl   = Math.min(100, (nation?.control || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
-            legitimacy: newLegitimacy,
-            stability: newStability
+            public_approval: newAuthority,
+            control:   newControl
         }).eq('id', bill.nation_id);
         if (extErr) console.error(`[enactFoundationalBill] Term extended stat update failed:`, extErr.message);
-        else console.log(`[enactFoundationalBill] Term extended: legitimacy -3, stability +2`);
+        else console.log(`[enactFoundationalBill] Term extended: authority -3, control +2`);
     }
 
     // If no imminent election, reschedule the next presidential election with the new term length
@@ -12424,27 +12150,20 @@ async function enactLegislativeTermLength(supabase, bill, currentTick) {
         console.error(`[enactFoundationalBill] Failed to update parliamentary_term_ticks for nation ${bill.nation_id}:`, nationErr.message);
     }
 
-    // Apply mechanical effects based on whether terms got shorter or longer
+    // Apply mechanical effects based on whether terms got shorter or longer.
+    // Alpha refactor: see the parallel presidential-term block above for
+    // rationale (polarization + political_engagement retired).
     if (newParlTermTicks < oldParlTermTicks) {
-        // Shortening terms — more elections, more polarization & engagement
-        const newPol = Math.min(100, (nation?.polarization || 0) + 2);
-        const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
-        const { error: shortErr } = await supabase.from('nations').update({
-            polarization: newPol,
-            political_engagement: newEng
-        }).eq('id', bill.nation_id);
-        if (shortErr) console.error(`[enactFoundationalBill] Legislative term shortened stat update failed:`, shortErr.message);
-        else console.log(`[enactFoundationalBill] Legislative term shortened: polarization +2, political_engagement +3`);
+        console.log(`[enactFoundationalBill] Legislative term shortened (polarization + political_engagement effects retired by alpha refactor)`);
     } else if (newParlTermTicks > oldParlTermTicks) {
-        // Extending terms — less accountability, more stability
-        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 3);
-        const newStability = Math.min(100, (nation?.stability || 50) + 2);
+        const newAuthority = Math.max(0, (nation?.public_approval || 50) - 3);
+        const newControl   = Math.min(100, (nation?.control || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
-            legitimacy: newLegitimacy,
-            stability: newStability
+            public_approval: newAuthority,
+            control:   newControl
         }).eq('id', bill.nation_id);
         if (extErr) console.error(`[enactFoundationalBill] Legislative term extended stat update failed:`, extErr.message);
-        else console.log(`[enactFoundationalBill] Legislative term extended: legitimacy -3, stability +2`);
+        else console.log(`[enactFoundationalBill] Legislative term extended: authority -3, control +2`);
     }
 
     // NOTE: We do NOT reschedule the current parliamentary election.
@@ -12494,18 +12213,19 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
         .limit(1)
         .maybeSingle();
 
-    // Apply mechanical effects
+    // Apply mechanical effects. Alpha refactor: legitimacy → authority,
+    // press_freedom + judicial_independence dropped (columns gone — both
+    // were positive-democracy signals already largely captured by
+    // authority).
     if (newTermLimit === 0) {
         // Removing term limits
-        let legitimacyPenalty = 6;
-        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - legitimacyPenalty);
-        const newUnrest = Math.min(100, (nation?.civil_unrest || 0) + 4);
-        const updates = {
-            legitimacy: newLegitimacy,
-            civil_unrest: newUnrest
-        };
-        // (regime_health effect removed — Phase 0)
-        const { error: removeErr } = await supabase.from('nations').update(updates).eq('id', bill.nation_id);
+        let authorityPenalty = 6;
+        const newAuthority = Math.max(0, (nation?.public_approval || 50) - authorityPenalty);
+        const newUnrest = Math.min(100, (nation?.unrest || 0) + 4);
+        const { error: removeErr } = await supabase.from('nations').update({
+            public_approval: newAuthority,
+            unrest:    newUnrest
+        }).eq('id', bill.nation_id);
         if (removeErr) console.error(`[enactFoundationalBill] Failed to update stats for term limit removal:`, removeErr.message);
 
         // Opposition parties gain momentum
@@ -12524,27 +12244,19 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
             }
         }
 
-        // Extra polarization if sitting president has served 2+ terms
-        if (activePresident && (activePresident.terms_served || 1) >= 2) {
-            const newPol = Math.min(100, (nation?.polarization || 0) + 10);
-            const { error: polErr } = await supabase.from('nations').update({ polarization: newPol }).eq('id', bill.nation_id);
-            if (polErr) console.error(`[enactFoundationalBill] Polarization update failed:`, polErr.message);
-            else console.log(`[enactFoundationalBill] Sitting president has ${activePresident.terms_served} terms — polarization +10`);
-        }
+        // Polarization escalation for entrenched presidents retired by
+        // alpha refactor (column gone with no replacement).
 
-        console.log(`[enactFoundationalBill] Term limits removed: legitimacy -${legitimacyPenalty}, civil_unrest +4, opposition momentum +8`);
+        console.log(`[enactFoundationalBill] Term limits removed: authority -${authorityPenalty}, unrest +4, opposition momentum +8`);
     } else if (oldEffectiveLimit === null || newTermLimit < oldEffectiveLimit) {
-        // Adding or tightening term limits
-        const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 5);
-        const newPressFreedom = Math.min(100, (nation?.press_freedom || 50) + 2);
-        const newJudicialInd = Math.min(100, (nation?.judicial_independence || 50) + 2);
+        // Adding or tightening term limits — only the authority bump
+        // survives; press_freedom + judicial_independence retired.
+        const newAuthority = Math.min(100, (nation?.public_approval || 50) + 5);
         const { error: tightenErr } = await supabase.from('nations').update({
-            legitimacy: newLegitimacy,
-            press_freedom: newPressFreedom,
-            judicial_independence: newJudicialInd
+            public_approval: newAuthority
         }).eq('id', bill.nation_id);
         if (tightenErr) console.error(`[enactFoundationalBill] Term limits tighten stat update failed:`, tightenErr.message);
-        else console.log(`[enactFoundationalBill] Term limits tightened to ${newTermLimit}: legitimacy +5, press_freedom +2, judicial_independence +2`);
+        else console.log(`[enactFoundationalBill] Term limits tightened to ${newTermLimit}: authority +5`);
     }
 
     const limitText = newTermLimit === 0 ? 'No Term Limits' : `${newTermLimit} Term${newTermLimit !== 1 ? 's' : ''}`;
@@ -12809,11 +12521,11 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
     }
 
     // ── Stat effects based on target system ──
-    const stability = nation?.stability || 50;
-    const legitimacy = nation?.legitimacy || 50;
+    const stability = nation?.control || 50;
+    const legitimacy = nation?.public_approval || 50;
     const politicalEngagement = nation?.political_engagement || 50;
-    const polarization = nation?.polarization || 0;
-    const civilUnrest = nation?.civil_unrest || 0;
+    const polarization = 0;
+    const civilUnrest = nation?.unrest || 0;
 
     switch (targetSystem) {
         case 'parliamentary':
@@ -12902,24 +12614,23 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
         console.error(`[enactFoundationalBill] Failed to update hos_election_method for nation ${bill.nation_id}:`, nationErr.message);
     }
 
-    // Apply mechanical effects based on method
+    // Apply mechanical effects based on method. Alpha refactor:
+    // stability → control, legitimacy → authority; polarization +
+    // political_engagement effects retired (columns gone).
     if (newMethod === 'hereditary') {
-        // Constitutional monarchy: stability +5, legitimacy -5
-        const newStability = Math.min(100, (nation?.stability || 50) + 5);
-        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
-        const statUpdate = { stability: newStability, legitimacy: newLegitimacy };
+        const newControl   = Math.min(100, (nation?.control || 50) + 5);
+        const newAuthority = Math.max(0, (nation?.public_approval || 50) - 5);
+        const statUpdate = { control: newControl, public_approval: newAuthority };
 
         const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
         if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
-        else console.log(`[enactFoundationalBill] Constitutional monarchy established: stability +5, legitimacy -5`);
+        else console.log(`[enactFoundationalBill] Constitutional monarchy established: control +5, authority -5`);
     } else if (newMethod === 'direct_vote') {
-        // Direct vote: legitimacy +3, political_engagement +3, polarization +2
+        // Direct vote: authority +3 (engagement + polarization retired)
         // AND transition Parliamentary → Presidential
         const wasParliamentary = !nation?.government_type?.toLowerCase().includes('president');
         const statUpdate = {
-            legitimacy: Math.min(100, (nation?.legitimacy || 50) + 3),
-            political_engagement: Math.min(100, (nation?.political_engagement || 50) + 3),
-            polarization: Math.min(100, (nation?.polarization || 0) + 2)
+            public_approval: Math.min(100, (nation?.public_approval || 50) + 3)
         };
 
         if (wasParliamentary) {
@@ -13072,15 +12783,15 @@ async function enactJudicialPoliticization(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const cappedJudicial = Math.min(Number(nation?.judicial_independence ?? 50), 30);
-    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
-    const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
+    // Alpha refactor: judicial_independence + legitimacy + freedom_index
+    // collapse onto authority. The authority hit absorbs all three
+    // democratic-erosion signals at once. Capped to a max of 30 to
+    // mirror the legacy cappedJudicial intent.
+    const newAuthority = Math.min(Math.max(0, (nation?.public_approval ?? 50) - 5), 30);
 
     const { error: nationErr } = await supabase.from('nations').update({
         judicial_appointment_politicization: true,
-        judicial_independence: cappedJudicial,
-        legitimacy: newLegitimacy,
-        freedom_index: newFreedom
+        public_approval: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for judicial politicization:`, nationErr.message);
 
@@ -13116,13 +12827,12 @@ async function enactElectoralCommissionReform(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
-    const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 3);
+    // Alpha refactor: legitimacy → authority; polarization retired.
+    const newAuthority = Math.max(0, (nation?.public_approval ?? 50) - 5);
 
     const { error: nationErr } = await supabase.from('nations').update({
         electoral_commission_reform: true,
-        legitimacy: newLegitimacy,
-        polarization: newPolarization
+        public_approval: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for electoral commission reform:`, nationErr.message);
 
@@ -13159,15 +12869,13 @@ async function enactPartyRegistrationReform(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 4);
-    const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 5);
-    const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
+    // Alpha refactor: legitimacy + freedom_index → authority (combined
+    // -7 hit absorbs both democratic-erosion signals); polarization retired.
+    const newAuthority = Math.max(0, (nation?.public_approval ?? 50) - 7);
 
     const { error: nationErr } = await supabase.from('nations').update({
         party_registration_threshold: threshold,
-        legitimacy: newLegitimacy,
-        polarization: newPolarization,
-        freedom_index: newFreedom
+        public_approval: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for party registration act:`, nationErr.message);
 
@@ -13205,13 +12913,13 @@ async function enactLegislativeQuorumReform(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 3);
-    const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 2);
+    // Alpha refactor: legitimacy + freedom_index → authority (combined
+    // -5 hit).
+    const newAuthority = Math.max(0, (nation?.public_approval ?? 50) - 5);
 
     const { error: nationErr } = await supabase.from('nations').update({
         legislative_quorum_override: quorumPct,
-        legitimacy: newLegitimacy,
-        freedom_index: newFreedom
+        public_approval: newAuthority
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for quorum reform:`, nationErr.message);
 
@@ -13236,11 +12944,11 @@ async function enactConstitutionalStreamlining(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
+    // Alpha refactor: legitimacy + freedom_index → authority (combined
+    // -13 hit absorbs both); polarization retired.
     const { error: nationErr } = await supabase.from('nations').update({
         constitutional_amendment_streamlining: true,
-        legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 8),
-        polarization: Math.min(100, (nation?.polarization ?? 0) + 5),
-        freedom_index: Math.max(0, (nation?.freedom_index ?? 50) - 5)
+        public_approval: Math.max(0, (nation?.public_approval ?? 50) - 13)
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for constitutional streamlining:`, nationErr.message);
 
@@ -13262,7 +12970,7 @@ async function enactConstitutionalStreamlining(supabase, bill, currentTick) {
 async function enactMonarchyReform(supabase, bill, currentTick) {
     const reformKey = bill.proposed_monarchy_reform;
     const { data: nation } = await supabase.from('nations')
-        .select('id, name, government_type, monarch_faction_id, legitimacy, gov_approval')
+        .select('id, name, government_type, monarch_faction_id, public_approval, gov_approval')
         .eq('id', bill.nation_id).single();
 
     if (!nation) { console.error(`[enactFoundationalBill] Nation not found for monarchy reform`); return false; }
@@ -13342,7 +13050,7 @@ async function enactMonarchyReform(supabase, bill, currentTick) {
         // Reset legitimacy and gov approval for fresh start
         await supabase.rpc('increment_nation_stats', {
             p_nation_id: bill.nation_id,
-            p_changes: { legitimacy: 50 - (Number(nation.legitimacy) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
+            p_changes: { legitimacy: 50 - (Number(nation.public_approval) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
         }).catch(() => {});
 
         // Dissolve any existing coalition (canonical: government_formations).
@@ -14740,7 +14448,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     // Presidential systems cannot call early elections.
     // Absolute monarchy: parliament does not run elections — the Monarch
     // controls government composition via the Appoint PM royal action.
-    const { data: nationCheck } = await supabase.from('nations').select('government_type, hos_election_method, gov_approval').eq('id', nationId).single();
+    const { data: nationCheck } = await supabase.from('nations').select('government_type, hos_election_method, gov_approval, control').eq('id', nationId).single();
     if (!hasParliamentaryPM(nationCheck)) return { success: false, error: 'Presidential systems cannot call early elections' };
     if (isAbsoluteMonarchy(nationCheck)) return { success: false, error: 'Elections are not held under absolute monarchy.' };
 
@@ -14829,8 +14537,8 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
                 p_tick: currentTick
             });
         }
-        const newStability = Math.min(100, Number(nationCheck?.stability ?? 50) + 3);
-        await supabase.from('nations').update({ stability: newStability }).eq('id', nationId);
+        const newStability = Math.min(100, Number(nationCheck?.control ?? 50) + 3);
+        await supabase.from('nations').update({ control: newStability }).eq('id', nationId);
     }
     // 35-50: no momentum or stability changes
 
@@ -14899,7 +14607,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
  */
 async function dissolveParliament(supabase, nationId, presidentFactionId) {
     const { data: nation } = await supabase.from('nations')
-        .select('name, government_type, stability, legitimacy, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
+        .select('name, government_type, control, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
         .eq('id', nationId).single();
 
     if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
@@ -14936,14 +14644,15 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
     // Check if dissolving after a recent no-confidence vote (authoritarian overreach)
     const voncPenalty = nation.last_vonc_tick && (currentTick - nation.last_vonc_tick) <= 6;
 
-    // 1. Stability -3 (+ legitimacy -5 if post-vonc)
-    const newStability = Math.max(0, Number(nation.stability ?? 50) - 3);
+    // 1. Control -3 (+ authority -5 if post-vonc).
+    // Alpha refactor: stability → control, legitimacy → authority.
+    const newControl = Math.max(0, Number(nation.control ?? 50) - 3);
     const nationUpdate = {
-        stability: newStability,
+        control: newControl,
         last_dissolution_tick: currentTick
     };
     if (voncPenalty) {
-        nationUpdate.legitimacy = Math.max(0, Number(nation.legitimacy ?? 50) - 5);
+        nationUpdate.public_approval = Math.max(0, Number(nation.public_approval ?? 50) - 5);
     }
     await supabase.from('nations').update(nationUpdate).eq('id', nationId);
 
@@ -16864,28 +16573,28 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     // === WINNER/LOSER EFFECTS ===
     try {
         const { data: nationStats } = await supabase.from('nations')
-            .select('stability, legitimacy, happiness, civil_unrest')
+            .select('control, public_approval, standard_of_living, unrest')
             .eq('id', nation.id).single();
 
         if (nationStats) {
             const updates = {};
             if (isIncumbentWin) {
                 // Incumbent wins: +3 legitimacy, +2 stability (mandate renewed)
-                updates.legitimacy = Math.min(100, Math.round(((nationStats.legitimacy || 50) + 3) * 10) / 10);
-                updates.stability = Math.min(100, Math.round(((nationStats.stability || 50) + 2) * 10) / 10);
+                updates.legitimacy = Math.min(100, Math.round(((nationStats.public_approval || 50) + 3) * 10) / 10);
+                updates.stability = Math.min(100, Math.round(((nationStats.control || 50) + 2) * 10) / 10);
                 console.log(`Incumbent win effects: +3 legitimacy, +2 stability (${nation.name})`);
             } else if (isChallengerWin && !wasRunoff) {
                 // Challenger wins (no runoff): transition effects
-                updates.stability = Math.max(0, Math.round(((nationStats.stability || 50) - 2) * 10) / 10);
-                updates.civil_unrest = Math.min(100, Math.round(((nationStats.civil_unrest || 0) + 3) * 10) / 10);
-                updates.happiness = Math.min(100, Math.round(((nationStats.happiness || 50) + 1) * 10) / 10);
+                updates.stability = Math.max(0, Math.round(((nationStats.control || 50) - 2) * 10) / 10);
+                updates.civil_unrest = Math.min(100, Math.round(((nationStats.unrest || 0) + 3) * 10) / 10);
+                updates.happiness = Math.min(100, Math.round(((nationStats.standard_of_living || 50) + 1) * 10) / 10);
                 console.log(`Challenger win effects: -2 stability, +3 civil_unrest, +1 happiness (${nation.name})`);
             } else if (isIncumbentRunoffLoss) {
                 // Incumbent loses in runoff: extra penalties (contested transition)
-                updates.stability = Math.max(0, Math.round(((nationStats.stability || 50) - 4) * 10) / 10);
-                updates.legitimacy = Math.max(0, Math.round(((nationStats.legitimacy || 50) - 2) * 10) / 10);
-                updates.civil_unrest = Math.min(100, Math.round(((nationStats.civil_unrest || 0) + 5) * 10) / 10);
-                updates.happiness = Math.min(100, Math.round(((nationStats.happiness || 50) + 2) * 10) / 10);
+                updates.stability = Math.max(0, Math.round(((nationStats.control || 50) - 4) * 10) / 10);
+                updates.legitimacy = Math.max(0, Math.round(((nationStats.public_approval || 50) - 2) * 10) / 10);
+                updates.civil_unrest = Math.min(100, Math.round(((nationStats.unrest || 0) + 5) * 10) / 10);
+                updates.happiness = Math.min(100, Math.round(((nationStats.standard_of_living || 50) + 2) * 10) / 10);
                 console.log(`Incumbent runoff loss effects: -4 stability, -2 legitimacy, +5 civil_unrest, +2 happiness (${nation.name})`);
             }
 
@@ -18310,42 +18019,58 @@ async function computeEngagementScores(supabase, nation, factions, coalitionPart
 const ISSUE_DEFS = {
     cost_of_living: {
         label: 'Cost of Living',
-        stats: ['cost_of_living', 'inflation', 'housing_affordability', 'fuel_prices'],
+        // Alpha refactor: inflation/housing_affordability/fuel_prices columns
+        // dropped; cost_of_living absorbs the inflation/fuel signals.
+        stats: ['cost_of_living'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     immigration: {
         label: 'Immigration',
-        stats: ['immigration', 'illegal_immigration', 'emigration', 'ethnic_diversity'],
+        // Alpha refactor: illegal_immigration/emigration/ethnic_diversity dropped.
+        stats: ['immigration'],
         axes: ['globalism_nationalism', 'security_freedom'],
     },
     healthcare: {
         label: 'Healthcare',
-        stats: ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan'],
+        // Alpha refactor: healthcare_*, beds_per_100k, lifespan all collapsed
+        // into the unified `health` column.
+        stats: ['health'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     unemployment: {
         label: 'Unemployment',
-        stats: ['unemployment', 'labor_force_participation', 'minimum_wage', 'poverty_rate'],
+        // Alpha refactor: unemployment/labor_force_participation → workforce
+        // (inversion handled via statDirectionSign); minimum_wage dropped;
+        // poverty_rate → standard_of_living (inverted).
+        stats: ['workforce', 'standard_of_living'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     corruption: {
         label: 'Corruption',
-        stats: ['corruption', 'judicial_independence', 'press_freedom', 'efficiency'],
+        // Alpha refactor: corruption/press_freedom/efficiency dropped;
+        // judicial_independence → authority.
+        stats: ['authority'],
         axes: ['tradition_progress', 'security_freedom'],
     },
     education: {
         label: 'Education',
-        stats: ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
+        // Alpha refactor: literacy/higher_education/education_accessibility/
+        // academic_immigration all collapsed into `education`.
+        stats: ['education'],
         axes: ['tradition_progress', 'individualism_collectivism'],
     },
     infrastructure: {
         label: 'Infrastructure',
-        stats: ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation'],
+        // Alpha refactor: physical_infrastructure/digital_infrastructure/
+        // rail_network → infrastructure; energy_generation → energy.
+        stats: ['infrastructure', 'energy'],
         axes: ['tradition_progress', 'globalism_nationalism'],
     },
     climate: {
         label: 'Climate & Environment',
-        stats: ['pollution', 'carbon_emissions', 'renewable_energy_percentage', 'arable_land'],
+        // Alpha refactor: pollution/carbon_emissions/renewable_energy_percentage
+        // dropped; arable_land → farmland.
+        stats: ['farmland'],
         axes: ['tradition_progress', 'globalism_nationalism'],
     },
 };
@@ -18367,39 +18092,48 @@ const ISSUE_IDS = Object.keys(ISSUE_DEFS);
  *   - weight: how strongly this stat affects the band (0-1)
  *   - direction: +1 means higher stat → larger band, -1 means higher stat → smaller band
  */
+// Alpha refactor: many of the legacy stats that drove demographic shifts
+// (population_growth, median_age, lifespan, income_inequality, social_mobility,
+// religiosity, ethnic_diversity, housing_affordability, ...) were collapsed
+// or dropped. The translations below remap surviving signals onto the 19
+// alpha columns; rows that referenced only dropped stats become empty arrays
+// so the band falls back to its schema default.
+//
+// Inversions:
+//   poverty_rate (high = bad) → standard_of_living (high = good): flip direction
 const DEMOGRAPHIC_STAT_MAP = {
     age: {
-        age_18_29:  [{ stat: 'population_growth', weight: 0.6, direction: 1 }, { stat: 'median_age', weight: 0.5, direction: -1 }],
-        age_30_44:  [{ stat: 'higher_education', weight: 0.3, direction: 1 }],
-        age_45_64:  [{ stat: 'urbanization', weight: 0.2, direction: 1 }],
-        age_65plus: [{ stat: 'lifespan', weight: 0.5, direction: 1 }, { stat: 'median_age', weight: 0.5, direction: 1 }],
+        age_18_29:  [],
+        age_30_44:  [{ stat: 'education', weight: 0.3, direction: 1 }],
+        age_45_64:  [{ stat: 'workforce', weight: 0.2, direction: 1 }],
+        age_65plus: [{ stat: 'health', weight: 0.5, direction: 1 }],
     },
     income: {
-        income_low:    [{ stat: 'poverty_rate', weight: 0.6, direction: 1 }, { stat: 'income_inequality', weight: 0.4, direction: 1 }],
-        income_middle: [{ stat: 'social_mobility', weight: 0.4, direction: 1 }],
-        income_upper:  [{ stat: 'gdp_growth', weight: 0.3, direction: 1 }, { stat: 'higher_education', weight: 0.3, direction: 1 }],
-        income_high:   [{ stat: 'gdp_growth', weight: 0.2, direction: 1 }, { stat: 'income_inequality', weight: 0.3, direction: 1 }],
+        income_low:    [{ stat: 'standard_of_living', weight: 0.6, direction: -1 }],
+        income_middle: [],
+        income_upper:  [{ stat: 'gdp_growth', weight: 0.3, direction: 1 }, { stat: 'education', weight: 0.3, direction: 1 }],
+        income_high:   [{ stat: 'gdp_growth', weight: 0.2, direction: 1 }],
     },
     education: {
-        edu_nodegree: [{ stat: 'literacy', weight: 0.5, direction: -1 }, { stat: 'education_accessibility', weight: 0.4, direction: -1 }],
-        edu_undergrad: [{ stat: 'higher_education', weight: 0.5, direction: 1 }, { stat: 'education_accessibility', weight: 0.3, direction: 1 }],
-        edu_postgrad:  [{ stat: 'higher_education', weight: 0.5, direction: 1 }, { stat: 'academic_immigration', weight: 0.3, direction: 1 }],
+        edu_nodegree: [{ stat: 'education', weight: 0.5, direction: -1 }],
+        edu_undergrad: [{ stat: 'education', weight: 0.5, direction: 1 }],
+        edu_postgrad:  [{ stat: 'education', weight: 0.5, direction: 1 }],
     },
     urbanization: {
-        urban_rural:     [{ stat: 'urbanization', weight: 0.6, direction: -1 }, { stat: 'arable_land', weight: 0.3, direction: 1 }],
-        urban_smalltown: [{ stat: 'urbanization', weight: 0.2, direction: -1 }],
-        urban_suburban:  [{ stat: 'urbanization', weight: 0.3, direction: 1 }, { stat: 'housing_affordability', weight: 0.2, direction: -1 }],
-        urban_urban:     [{ stat: 'urbanization', weight: 0.6, direction: 1 }],
+        urban_rural:     [{ stat: 'workforce', weight: 0.6, direction: -1 }, { stat: 'farmland', weight: 0.3, direction: 1 }],
+        urban_smalltown: [{ stat: 'workforce', weight: 0.2, direction: -1 }],
+        urban_suburban:  [{ stat: 'workforce', weight: 0.3, direction: 1 }],
+        urban_urban:     [{ stat: 'workforce', weight: 0.6, direction: 1 }],
     },
     religion: {
-        religion_secular:  [{ stat: 'religiosity', weight: 0.7, direction: -1 }, { stat: 'higher_education', weight: 0.2, direction: 1 }],
+        religion_secular:  [{ stat: 'education', weight: 0.2, direction: 1 }],
         religion_moderate: [],
-        religion_devout:   [{ stat: 'religiosity', weight: 0.7, direction: 1 }],
+        religion_devout:   [],
     },
     nativity: {
-        nativity_majority:  [{ stat: 'ethnic_diversity', weight: 0.5, direction: -1 }, { stat: 'immigration', weight: 0.3, direction: -1 }],
-        nativity_minority:  [{ stat: 'ethnic_diversity', weight: 0.6, direction: 1 }],
-        nativity_immigrant: [{ stat: 'immigration', weight: 0.5, direction: 1 }, { stat: 'ethnic_diversity', weight: 0.2, direction: 1 }],
+        nativity_majority:  [{ stat: 'immigration', weight: 0.3, direction: -1 }],
+        nativity_minority:  [],
+        nativity_immigrant: [{ stat: 'immigration', weight: 0.5, direction: 1 }],
     },
 };
 
@@ -19251,7 +18985,7 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick, ent
     }
 
     // 4. High polarization energizes voters
-    const polarization = Number(nation.polarization ?? 50);
+    const polarization = 50;
     if (polarization > 50) {
         enthusiasmDelta += (polarization - 50) * CFG.ENTHUSIASM_POLARIZATION_SCALE;
     }
@@ -20345,27 +20079,23 @@ const PROTEST_CONFIG = {
     UNRESOLVED_GRIEVANCE_PENALTY: -5,
 };
 
-// Stats permanently excluded from Stat Failure tab
-const EXCLUDED_STAT_KEYS = new Set([
-    'ethnic_diversity', 'urbanization', 'median_age',
-]);
+// Stats permanently excluded from Stat Failure tab.
+// Phase 9: ethnic_diversity / median_age dropped from schema (no longer
+// reachable); urbanization renamed to workforce, which is a valid Tier 7
+// target rather than excluded.
+const EXCLUDED_STAT_KEYS = new Set([]);
 
-// Stats eligible for Tier 7 demand generation
+// Stats eligible for Tier 7 demand generation (alpha-23 menu only).
 const TIER7_ELIGIBLE_STATS = new Set([
-    'gdp_growth', 'inflation', 'unemployment', 'crime_rate',
-    'healthcare_quality', 'healthcare_accessibility', 'literacy',
-    'higher_education', 'happiness', 'standard_of_living',
-    'poverty_rate', 'income_inequality', 'fuel_prices', 'pollution',
-    'digital_infrastructure', 'physical_infrastructure', 'energy_generation',
+    'gdp_growth', 'unrest', 'crime', 'health', 'education',
+    'standard_of_living', 'cost_of_living', 'workforce',
+    'infrastructure', 'industry', 'farmland', 'service_sector',
+    'energy', 'public_approval',
 ]);
 
-// Stats where higher values are bad (inverted display)
+// Stats where higher values are bad (inverted display).
 const HIGHER_IS_BAD = new Set([
-    'civil_unrest', 'terrorism', 'political_violence', 'crime_rate',
-    'corruption', 'pollution', 'carbon_emissions', 'poverty_rate',
-    'income_inequality', 'inflation', 'unemployment', 'drug_use',
-    'illegal_immigration', 'emigration', 'fuel_prices', 'incarceration_rate',
-    'debt', 'debt_growth', 'cost_of_living',
+    'unrest', 'crime', 'corruption', 'cost_of_living', 'debt',
 ]);
 
 
@@ -20513,22 +20243,22 @@ function calculateConditionScore(nationStats, grievance, protestHistory, ministr
     const breakdown = { base: 50 };
 
     // Civil unrest: max +30
-    const unrestBonus = ((nationStats.civil_unrest || 0) / 100) * 30;
+    const unrestBonus = ((nationStats.unrest || 0) / 100) * 30;
     score += unrestBonus;
     breakdown.civil_unrest = +unrestBonus.toFixed(1);
 
     // Unhappiness: max +25
-    const unhappyBonus = ((100 - (nationStats.happiness || 50)) / 100) * 25;
+    const unhappyBonus = ((100 - (nationStats.standard_of_living || 50)) / 100) * 25;
     score += unhappyBonus;
     breakdown.happiness = +unhappyBonus.toFixed(1);
 
     // Polarization: max +20
-    const polBonus = ((nationStats.polarization || 0) / 100) * 20;
+    const polBonus = (0 / 100) * 20;
     score += polBonus;
     breakdown.polarization = +polBonus.toFixed(1);
 
     // Political violence: max -15
-    const violencePenalty = ((nationStats.political_violence || 0) / 100) * 15;
+    const violencePenalty = ((nationStats.unrest || 0) / 100) * 15;
     score -= violencePenalty;
     breakdown.political_violence = +(-violencePenalty).toFixed(1);
 
@@ -20725,17 +20455,19 @@ function computeTierEffects(tier, opts = {}) {
  * @returns {object} stat deltas to apply
  */
 function computeTier6CrisisEffects(ticksActive, publicAddressThisTick) {
+    // Alpha refactor: civil_unrest + political_violence both → unrest
+    // (sum the per-tick deltas at config time); foreign_investment
+    // dropped (column gone with no replacement).
     const effects = {
         gov_approval: PROTEST_CONFIG.TIER6_GOV_APPROVAL_PER_TICK,
-        civil_unrest: PROTEST_CONFIG.TIER6_CIVIL_UNREST_PER_TICK,
+        unrest: PROTEST_CONFIG.TIER6_CIVIL_UNREST_PER_TICK
+              + PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK,
         gdp_growth: PROTEST_CONFIG.TIER6_GDP_GROWTH_PER_TICK,
-        foreign_investment: PROTEST_CONFIG.TIER6_FOREIGN_INVESTMENT_PER_TICK,
-        political_violence: PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK,
     };
 
-    // Public Address reduces civil unrest accumulation by 1 that tick
+    // Public Address reduces unrest accumulation by 1 that tick
     if (publicAddressThisTick) {
-        effects.civil_unrest = Math.max(0, effects.civil_unrest - 1);
+        effects.unrest = Math.max(0, effects.unrest - 1);
     }
 
     return effects;
@@ -20747,17 +20479,18 @@ function computeTier6CrisisEffects(ticksActive, publicAddressThisTick) {
  * @returns {object} stat deltas to apply
  */
 function computeTier7CrisisEffects(publicAddressThisTick) {
+    // Alpha refactor: see computeTier6CrisisEffects above for the
+    // collapse rationale.
     const effects = {
         gov_approval: PROTEST_CONFIG.TIER7_GOV_APPROVAL_PER_TICK,
-        civil_unrest: PROTEST_CONFIG.TIER7_CIVIL_UNREST_PER_TICK,
+        unrest: PROTEST_CONFIG.TIER7_CIVIL_UNREST_PER_TICK
+              + PROTEST_CONFIG.TIER7_POLITICAL_VIOLENCE_PER_TICK,
         gdp_growth: PROTEST_CONFIG.TIER7_GDP_GROWTH_PER_TICK,
-        foreign_investment: PROTEST_CONFIG.TIER7_FOREIGN_INVESTMENT_PER_TICK,
-        political_violence: PROTEST_CONFIG.TIER7_POLITICAL_VIOLENCE_PER_TICK,
     };
 
-    // Public Address reduces civil unrest accumulation by 1
+    // Public Address reduces unrest accumulation by 1
     if (publicAddressThisTick) {
-        effects.civil_unrest = Math.max(0, effects.civil_unrest - 1);
+        effects.unrest = Math.max(0, effects.unrest - 1);
     }
 
     return effects;
@@ -21664,12 +21397,11 @@ async function executeNationalEmergencyOnProtest(supabase, factionId, nationId, 
 
     // ── 6. Apply severe stat costs ──
     const { data: nation } = await supabase
-        .from('nations').select('civil_unrest, political_violence, happiness').eq('id', nationId).single();
+        .from('nations').select('unrest, standard_of_living').eq('id', nationId).single();
 
     await supabase.from('nations').update({
-        civil_unrest: Math.min(100, (nation?.civil_unrest || 0) + 15),
-        political_violence: Math.min(100, (nation?.political_violence || 0) + 10),
-        happiness: Math.max(0, (nation?.happiness || 50) - 10),
+        unrest: Math.min(100, (nation?.unrest || 0) + 25),
+        standard_of_living: Math.max(0, (nation?.standard_of_living || 50) - 10),
     }).eq('id', nationId);
 
     await adjustGovernmentApprovalEvent(supabase, nationId, -10, 'protest:national_emergency');
@@ -21793,9 +21525,9 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
     // Civil unrest one-time delta (Tier 5)
     if (effects.civilUnrestDelta !== 0) {
         const { data: nation } = await supabase
-            .from('nations').select('civil_unrest').eq('id', nationId).single();
-        const newVal = Math.min(100, (nation?.civil_unrest || 0) + effects.civilUnrestDelta);
-        await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nationId);
+            .from('nations').select('unrest').eq('id', nationId).single();
+        const newVal = Math.min(100, (nation?.unrest || 0) + effects.civilUnrestDelta);
+        await supabase.from('nations').update({ unrest: newVal }).eq('id', nationId);
         appliedEffects.push({ stat: 'civil_unrest', delta: effects.civilUnrestDelta });
     }
 
@@ -22144,15 +21876,19 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
         }
     }
 
-    // Enforce foundational law caps on stats
-    // Judicial Appointment Politicization Act: cap judicial_independence at 30
+    // Enforce foundational law caps on stats.
+    // Judicial Appointment Politicization Act: caps public_approval
+    // at 30 (was the legacy judicial_independence cap; Phase 7H
+    // collapsed legitimacy + judicial_independence + freedom_index
+    // into public_approval, so the cap now applies to the merged
+    // signal).
     if (nation.judicial_appointment_politicization) {
-        const ji = nationUpdates.judicial_independence ?? Number(nation.judicial_independence ?? 50);
-        if (ji > 30) nationUpdates.judicial_independence = 30;
+        const pa = nationUpdates.public_approval ?? Number(nation.public_approval ?? 50);
+        if (pa > 30) nationUpdates.public_approval = 30;
     }
     // State Media Control Act: cap press_freedom at 40
     if (nation.state_media_control) {
-        const pf = nationUpdates.press_freedom ?? Number(nation.press_freedom ?? 50);
+        const pf = nationUpdates.press_freedom ?? 50;
         if (pf > 40) nationUpdates.press_freedom = 40;
     }
 
@@ -22353,7 +22089,10 @@ const RALLY_OUTCOMES = [
 
 /**
  * Compute outcome weights for a rally targeting a voter bloc.
- * Weights shift based on approval, crises, polarization, civil unrest, and recent rallies.
+ * Weights shift based on approval, crises, unrest, and recent rallies.
+ * Alpha refactor: polarization branch retired (column deleted; the
+ * divisive/counter swing it triggered is functionally absorbed by the
+ * existing high-unrest branch below).
  */
 function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationState) {
     const weights = { rousing: 20, solid: 38, low: 15, gaffe: 12, divisive: 8, counter: 5 };
@@ -22369,11 +22108,6 @@ function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationState) {
     if (nationState.crisisCount > 0) {
         weights.gaffe += 6; weights.divisive += 4; weights.counter += 10;
         weights.rousing -= 8; weights.solid -= 6;
-    }
-
-    // High polarization
-    if (nationState.polarization > 60) {
-        weights.divisive += 6; weights.counter += 4; weights.solid -= 4;
     }
 
     // Rallied recently → stale material
@@ -22466,7 +22200,7 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
     let targetBloc = { id: null, bloc_name: 'General Public', population_weight: 100 };
 
     const { data: nation } = await supabase
-        .from('nations').select('polarization, civil_unrest, stability').eq('id', nationId).single();
+        .from('nations').select('unrest, control').eq('id', nationId).single();
     const { count: crisisCount } = await supabase
         .from('active_crises').select('id', { count: 'exact', head: true }).eq('nation_id', nationId);
 
@@ -22474,10 +22208,12 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
     const targetApproval = 50;
 
     // ── 5. Compute weights and roll outcome ──
+    // Alpha refactor: polarization + stability fields dropped from
+    // nationState — polarization column gone, stability was set but
+    // never read. civilUnrest reads from `nation.unrest` (alpha-19
+    // equivalent of the legacy civil_unrest column).
     const nationState = {
-        polarization: nation?.polarization || 0,
-        civilUnrest: nation?.civil_unrest || 0,
-        stability: nation?.stability || 50,
+        civilUnrest: nation?.unrest || 0,
         crisisCount: crisisCount || 0,
     };
     const weights = getRallyOutcomeWeights(targetApproval, ralliedRecently, nationState);
@@ -22881,9 +22617,7 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
     const { data: faction } = await supabase
         .from('factions').select('action_points, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    const { data: nationForCost } = await supabase
-        .from('nations').select('polarization').eq('id', nationId).single();
-    const baseAttackCost = getAttackAPCost(nationForCost?.polarization);
+    const baseAttackCost = getAttackAPCost(0);
     const attackApMod = getTraitAPModifier('attack', faction, currentTick);
     const effectiveAttackCost = Math.max(1, baseAttackCost + attackApMod);
     if ((faction.action_points || 0) < effectiveAttackCost)
@@ -22944,14 +22678,12 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
         effects.push({ label: selfLabel, value: selfDelta });
     }
 
-    // Polarization
+    // Polarization mechanic retired by alpha stats refactor (column
+    // deleted with no replacement). The outcome.polarization signal
+    // from political-action templates still flows in but no longer
+    // writes to a column. Effects record retained so historical
+    // event_log shows the intended impact.
     if (outcome.polarization > 0) {
-        const { data: nation } = await supabase
-            .from('nations').select('polarization').eq('id', nationId).single();
-        if (nation) {
-            const newPol = Math.min(100, (nation.polarization || 0) + outcome.polarization);
-            await supabase.from('nations').update({ polarization: newPol }).eq('id', nationId);
-        }
         effects.push({ label: 'Polarization', value: outcome.polarization });
     }
 
@@ -23251,26 +22983,30 @@ async function processStatEffects(supabase, nation, currentTick) {
             const ticksSincePassed = tick - passedTick;
 
             for (const eff of effects) {
-                const delay = Number(eff.delay_ticks) || 0;
-                const duration = Number(eff.duration_ticks) || 12;
-                const rate = Number(eff.rate) || 1;
-                const dir = String(eff.direction || '').toLowerCase();
-                const rawStatKey = eff.stat_key;
-                const statKey = normalizeNationStatKey(rawStatKey);
-
-                if (!statKey || !NATION_STAT_COLUMN_SET.has(statKey)) {
+                // Phase 4 alpha-stats shim: translateStatEffect remaps the
+                // legacy 80-stat keys onto the new 19-column schema (and
+                // flips direction for inversions like unemployment →
+                // workforce). Returns null for stats deleted with no
+                // replacement — those entries skip silently.
+                const translated = translateStatEffect(eff);
+                if (!translated) {
                     if (tick === lastApplied + 1) {
                         console.warn(
-                            `[processStatEffects] Skipping invalid stat_key "${rawStatKey}" for ${effectSource}`
+                            `[processStatEffects] Skipping invalid/deleted stat_key "${eff.stat_key || eff.stat}" for ${effectSource}`
                         );
                     }
                     continue;
                 }
+                const delay = Number(translated.delay_ticks) || 0;
+                const duration = Number(translated.duration_ticks) || 12;
+                const rate = Number(translated.rate) || 1;
+                const dir = String(translated.direction || '').toLowerCase();
+                const statKey = translated.stat_key;
 
                 if (dir !== 'up' && dir !== 'down') {
                     if (tick === lastApplied + 1) {
                         console.warn(
-                            `[processStatEffects] Skipping invalid direction "${eff.direction}" for stat_key="${rawStatKey}" from ${effectSource}`
+                            `[processStatEffects] Skipping invalid direction "${translated.direction}" for stat_key="${eff.stat_key || eff.stat}" from ${effectSource}`
                         );
                     }
                     continue;
@@ -23993,15 +23729,15 @@ async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
-// All columns that nations_history tracks (must match the DB table schema)
+// All columns that nations_history tracks (must match the DB table schema).
+// Phase 9 trimmed NATION_STAT_COLUMNS to alpha-23, but the snapshot loop
+// also tracks two non-stat metadata columns (population, eligible_voters)
+// that nations_history has carried since launch.
 const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
     'gov_approval',
-    // Phase 5b: ideology axis voter columns dropped from nations.
-    // The progressive_/liberal_/moderate_/conservative_/nationalist_voters
-    // entries never existed on nations to begin with — pre-existing dead
-    // config that the snapshot loop was silently skipping via the
-    // `nation[key] !== undefined` guard.
+    'population',
+    'eligible_voters',
 ];
 
 async function snapshotNationHistory(supabase, nation, currentTick) {
@@ -25464,15 +25200,15 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
 
     const { data: nation } = await supabase
         .from('nations')
-        .select('stability')
+        .select('control')
         .eq('id', nationId)
         .single();
 
     if (nation) {
-        const newStability = Math.max(0, (nation.stability ?? 50) - 3);
+        const newStability = Math.max(0, (nation.control ?? 50) - 3);
         await supabase
             .from('nations')
-            .update({ stability: newStability })
+            .update({ control: newStability })
             .eq('id', nationId);
     }
 
@@ -26290,51 +26026,48 @@ const SOVEREIGN_DEFAULT_CONFIG = {
 
     // ── Crisis parameters ──
     CRISIS_MIN_DURATION: 20,           // minimum ticks before Sovereign Default Crisis can end
-    CRISIS_CREDIT_CEILING: 25,         // Credit cannot exceed this during crisis
-    CRISIS_FOREIGN_INV_CEILING: 30,    // Foreign Investment ceiling during crisis
-
-    // ── Credit lockout ──
-    CREDIT_LOCKOUT_THRESHOLD: 5,       // Credit <= this = locked out of borrowing
 
     // ── Debt service burden ──
-    BURDEN_THRESHOLD: 1.0,             // debt-to-GDP ratio where burden kicks in
+    // PHASE 7 BALANCE: thresholds below were calibrated against debt/GDP;
+    // post-alpha-refactor they apply to debt/budget (~10x denser than
+    // GDP for typical nations). Numeric values left unchanged so the
+    // mechanic still fires; balance team should retune once the alpha
+    // refactor settles.
+    BURDEN_THRESHOLD: 1.0,             // debt-to-budget ratio where burden kicks in
     BURDEN_MAX: 0.4,                   // maximum burden (40% spending reduction)
     BURDEN_SCALE: 0.2,                 // scaling factor: (ratio - 1.0) * 0.2
 
     // ── Filing market reactions (applied on bill creation) ──
-    FILING_CURRENCY_HIT: -5,
-    FILING_FOREIGN_INV_HIT: -3,
+    // Power: international standing degrades (was currency_strength).
+    // Industry: foreign capital pulls out of production (was foreign_investment).
+    FILING_POWER_HIT: -5,
+    FILING_INDUSTRY_HIT: -3,
 
     // ── Vote failure consequences ──
-    FAILURE_CURRENCY_RECOVERY: 3,
-    FAILURE_FOREIGN_INV_RECOVERY: 3,
     FAILURE_PM_APPROVAL_HIT: -10,
-    FAILURE_INTL_REP_HIT: -2,
+    FAILURE_POWER_HIT: -2,             // was FAILURE_INTL_REP_HIT
 
     // ── Full default immediate penalties ──
-    // For partial restructuring, multiply by (1 - repaymentRate)
-    FULL_DEFAULT_CREDIT_HIT: -40,
-    FULL_DEFAULT_CURRENCY_HIT: -25,
-    FULL_DEFAULT_FOREIGN_INV_HIT: -25,
-    FULL_DEFAULT_INTL_REP_HIT: -20,
-    FULL_DEFAULT_INTEREST_SPIKE: 20,
-    FULL_DEFAULT_INFLATION_SPIKE: 15,
-    FULL_DEFAULT_TRADE_HIT: -10,
+    // For partial restructuring, multiply by (1 - repaymentRate).
+    // Power consolidates the legacy (currency_strength + intl_reputation)
+    // hits — both were international-standing flavors and would have
+    // double-counted into `power` post-shim.
+    FULL_DEFAULT_POWER_HIT: -30,
+    FULL_DEFAULT_INDUSTRY_HIT: -25,
+    FULL_DEFAULT_COST_OF_LIVING_SPIKE: 15,   // was FULL_DEFAULT_INFLATION_SPIKE
     FULL_DEFAULT_SOL_HIT: -8,
-    FULL_DEFAULT_HAPPINESS_HIT: -10,
+    FULL_DEFAULT_UNREST_SPIKE: 10,           // was FULL_DEFAULT_HAPPINESS_HIT (sign flipped)
     FULL_DEFAULT_GOV_APPROVAL_HIT: -15,
     FULL_DEFAULT_WORKER_APPROVAL_HIT: -5,    // working class / debtor blocs
     FULL_DEFAULT_NATIONALIST_APPROVAL_HIT: -10, // nationalist blocs (partially sympathetic)
-
-    // ── Per-tick Sovereign Default Crisis recovery rates ──
-    CRISIS_CREDIT_RECOVERY: 0.5,
-    CRISIS_FOREIGN_INV_RECOVERY: 0.3,
-    CRISIS_CURRENCY_RECOVERY: 0.5,
-    CRISIS_INFLATION_DECAY: -0.3,
-    CRISIS_INTEREST_DECAY: -0.5,
+    // DROPPED (legacy columns deleted by alpha refactor with no replacement):
+    //   FULL_DEFAULT_CREDIT_HIT, FULL_DEFAULT_INTEREST_SPIKE, FULL_DEFAULT_TRADE_HIT
+    // The CRISIS_*_RECOVERY / CRISIS_*_DECAY scaffolding constants were
+    // dropped too — they were never wired into a per-tick recovery
+    // function. If/when crisis recovery is implemented, the rates can
+    // be reintroduced against alpha columns directly.
     CRISIS_GDP_GROWTH_EARLY: -0.3,     // ticks 1-10 (recession)
     CRISIS_GDP_GROWTH_LATE: 0.2,       // ticks 11-20 (recovery)
-    CRISIS_TRADE_RECOVERY: 0.2,
     CRISIS_GDP_GROWTH_PHASE_BREAK: 10, // tick at which recession turns to recovery
 
     // ── Austerity discount ──
@@ -26353,44 +26086,61 @@ const SOVEREIGN_DEFAULT_CONFIG = {
     CONTAGION_CREDIT_MAX: 5,
 
     // ── Sovereign Debt Crisis programmatic triggers ──
-    DEBT_CRISIS_MIN_RATIO: 2.0,        // 200% debt-to-GDP
-    DEBT_CRISIS_MAX_CREDIT: 15,        // Credit must be <= 15
+    // PHASE 7 BALANCE: ratio is now debt/budget; threshold left at 2.0
+    // numerically but conceptually different from the old debt/GDP
+    // 2.0. Retune as part of post-alpha balance pass.
+    DEBT_CRISIS_MIN_RATIO: 2.0,
+    // DROPPED: DEBT_CRISIS_MAX_CREDIT — the credit column is deleted by
+    // the alpha refactor; whatever debt-crisis triggers wanted "credit
+    // is exhausted" can re-key off budget collapse instead.
 };
 
-// Stats that can be targeted by austerity commitments
+// Stats that can be targeted by austerity commitments. Alpha refactor:
+// the ~9-stat legacy list collapses into the 6 alpha columns that
+// actually represent state-funded categories.
 const AUSTERITY_ELIGIBLE_STATS = [
-    'benefits', 'healthcare_quality', 'healthcare_accessibility',
-    'education_accessibility', 'higher_education', 'physical_infrastructure',
-    'digital_infrastructure', 'rail_network', 'energy_generation'
+    'health', 'education', 'infrastructure', 'energy', 'industry', 'workforce'
 ];
 
 // Stats whose policy effects are reduced by debt service burden
-// (government-spending-dependent stats)
+// (government-spending-dependent stats). Same conceptual collapse —
+// if the engine can't afford to fund spending, these are the categories
+// that suffer first.
 const SPENDING_AFFECTED_STATS = new Set([
-    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k',
-    'education_accessibility', 'higher_education', 'literacy',
-    'physical_infrastructure', 'digital_infrastructure', 'rail_network',
-    'benefits', 'social_mobility', 'standard_of_living',
-    'energy_generation', 'crime_rate', 'incarceration_rate'
+    'health', 'education', 'infrastructure',
+    'standard_of_living', 'energy', 'industry', 'workforce'
 ]);
 
 
 // ==================== CORE UTILITY FUNCTIONS ====================
 
 /**
- * Calculate debt-to-GDP ratio safely.
- * Returns ratio as a decimal (1.5 = 150%).
- * Guards against division by zero: GDP=0 with debt → Infinity, no debt → 0.
+ * Calculate debt-to-budget ratio safely.
+ * Returns ratio as a decimal (1.5 = debt is 1.5x annual budget).
+ * Guards against division by zero: budget=0 with debt → Infinity,
+ * no debt → 0.
  *
- * @param {object} nation - Nation object with debt and gdp fields
- * @returns {number} Debt-to-GDP ratio
+ * Alpha refactor: replaces the legacy debt-to-GDP measure. Values
+ * are typically ~10x higher than debt-to-GDP because budget is a
+ * fraction of GDP, so calling thresholds (BURDEN_THRESHOLD,
+ * DEBT_CRISIS_MIN_RATIO) need balance retuning.
+ *
+ * @param {object} nation - Nation object with debt and budget fields
+ * @returns {number} Debt-to-budget ratio
  */
-function getDebtToGDP(nation) {
+function getDebtToBudget(nation) {
     const debt = Number(nation.debt ?? 0);
-    const gdp = Number(nation.gdp ?? 0);
-    if (gdp <= 0) return debt > 0 ? Infinity : 0;
-    return debt / gdp;
+    const budget = Number(nation.budget ?? 0);
+    if (budget <= 0) return debt > 0 ? Infinity : 0;
+    return debt / budget;
 }
+
+// Backwards-compat alias. Existing callers import getDebtToGDP — they
+// continue working post-alpha because the return value is now
+// debt/budget, which still semantically represents "how unsustainable
+// is the debt load". Phase 9 cleanup removes this alias once callers
+// are renamed.
+const getDebtToGDP = getDebtToBudget;
 
 /**
  * Calculate debt service burden (0.0 to 0.4).
@@ -26597,57 +26347,47 @@ function previewDefaultConsequences(nation, defaultType, repaymentRate, austerit
     const currentDebt = Number(nation.debt ?? 0);
     const debtAfter = defaultType === 'full' ? 0 : Math.round(currentDebt * (repaymentRate || 0.5));
 
-    // Apply discount to eligible penalties (credit, intl_rep, foreign_inv)
+    // Apply discount to eligible penalties (power + industry — the
+    // international-standing flavors). Other penalties take the full
+    // multiplier without discount.
     const discountedMultiplier = multiplier * (1 - discount);
 
     const clamp = (current, delta) => Math.max(0, Math.min(100, Math.round((current + delta) * 10) / 10));
+    // Read a current alpha-19 stat with a 50 fallback for nations whose
+    // Phase 2 backfill hasn't run yet. Repeated read avoided by hoisting
+    // each stat into a local before the statChanges literal.
+    const power_         = Number(nation.power           ?? 50);
+    const industry_      = Number(nation.industry        ?? 50);
+    const cost_of_living_ = Number(nation.cost_of_living ?? 50);
+    const sol_           = Number(nation.standard_of_living ?? 50);
+    const unrest_        = Number(nation.unrest          ?? 20);
 
     const statChanges = {
         debt: { before: currentDebt, after: debtAfter, change: debtAfter - currentDebt },
-        credit: {
-            before: Number(nation.credit ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_CREDIT_HIT * discountedMultiplier),
-            after: clamp(Number(nation.credit ?? 50), cfg.FULL_DEFAULT_CREDIT_HIT * discountedMultiplier)
+        power: {
+            before: power_,
+            change: Math.round(cfg.FULL_DEFAULT_POWER_HIT * discountedMultiplier),
+            after: clamp(power_, cfg.FULL_DEFAULT_POWER_HIT * discountedMultiplier)
         },
-        currency_strength: {
-            before: Number(nation.currency_strength ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_CURRENCY_HIT * multiplier),
-            after: clamp(Number(nation.currency_strength ?? 50), cfg.FULL_DEFAULT_CURRENCY_HIT * multiplier)
+        industry: {
+            before: industry_,
+            change: Math.round(cfg.FULL_DEFAULT_INDUSTRY_HIT * discountedMultiplier),
+            after: clamp(industry_, cfg.FULL_DEFAULT_INDUSTRY_HIT * discountedMultiplier)
         },
-        foreign_investment: {
-            before: Number(nation.foreign_investment ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_FOREIGN_INV_HIT * discountedMultiplier),
-            after: clamp(Number(nation.foreign_investment ?? 50), cfg.FULL_DEFAULT_FOREIGN_INV_HIT * discountedMultiplier)
-        },
-        international_reputation: {
-            before: Number(nation.international_reputation ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_INTL_REP_HIT * discountedMultiplier),
-            after: clamp(Number(nation.international_reputation ?? 50), cfg.FULL_DEFAULT_INTL_REP_HIT * discountedMultiplier)
-        },
-        interest_rates: {
-            before: Number(nation.interest_rates ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_INTEREST_SPIKE * multiplier),
-            after: clamp(Number(nation.interest_rates ?? 50), cfg.FULL_DEFAULT_INTEREST_SPIKE * multiplier)
-        },
-        inflation: {
-            before: Number(nation.inflation ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_INFLATION_SPIKE * multiplier),
-            after: clamp(Number(nation.inflation ?? 50), cfg.FULL_DEFAULT_INFLATION_SPIKE * multiplier)
-        },
-        trade_balance: {
-            before: Number(nation.trade_balance ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_TRADE_HIT * multiplier),
-            after: clamp(Number(nation.trade_balance ?? 50), cfg.FULL_DEFAULT_TRADE_HIT * multiplier)
+        cost_of_living: {
+            before: cost_of_living_,
+            change: Math.round(cfg.FULL_DEFAULT_COST_OF_LIVING_SPIKE * multiplier),
+            after: clamp(cost_of_living_, cfg.FULL_DEFAULT_COST_OF_LIVING_SPIKE * multiplier)
         },
         standard_of_living: {
-            before: Number(nation.standard_of_living ?? 50),
+            before: sol_,
             change: Math.round(cfg.FULL_DEFAULT_SOL_HIT * multiplier),
-            after: clamp(Number(nation.standard_of_living ?? 50), cfg.FULL_DEFAULT_SOL_HIT * multiplier)
+            after: clamp(sol_, cfg.FULL_DEFAULT_SOL_HIT * multiplier)
         },
-        happiness: {
-            before: Number(nation.happiness ?? 50),
-            change: Math.round(cfg.FULL_DEFAULT_HAPPINESS_HIT * multiplier),
-            after: clamp(Number(nation.happiness ?? 50), cfg.FULL_DEFAULT_HAPPINESS_HIT * multiplier)
+        unrest: {
+            before: unrest_,
+            change: Math.round(cfg.FULL_DEFAULT_UNREST_SPIKE * multiplier),
+            after: clamp(unrest_, cfg.FULL_DEFAULT_UNREST_SPIKE * multiplier)
         }
     };
 
@@ -26661,9 +26401,10 @@ function previewDefaultConsequences(nation, defaultType, repaymentRate, austerit
         debtReduction: currentDebt - debtAfter,
         statChanges,
         governmentApprovalHit: Math.round(cfg.FULL_DEFAULT_GOV_APPROVAL_HIT * multiplier),
-        crisisMinDuration: cfg.CRISIS_MIN_DURATION,
-        creditCeiling: cfg.CRISIS_CREDIT_CEILING,
-        foreignInvCeiling: cfg.CRISIS_FOREIGN_INV_CEILING
+        crisisMinDuration: cfg.CRISIS_MIN_DURATION
+        // creditCeiling / foreignInvCeiling fields dropped — those columns
+        // are deleted by the alpha refactor and the laws.html UI already
+        // stopped reading them in Phase 3b.
     };
 }
 
@@ -26719,13 +26460,16 @@ function formatDebtToGDP(ratio) {
 // printed portion (added to inflation). Bonds that don't sell within
 // 3 ticks auto-print at expiry.
 //
-// Stat ownership recap:
-//   * inflation       — additive writer here (printed_portion / GDP × multiplier)
-//   * credit          — per-tick writer here via calculateCreditDeterioration
-//   * currency_strength — NOT written here (cascades from inflation via existing
-//                         trade subsystem and stat connections)
+// Stat ownership recap (post alpha refactor):
 //   * nations.debt    — kept in sync with SUM(active_holdings.principal) by
 //                       buy_bond RPC and processBondMaturitiesTick below
+//   * nations.budget_reserves — credited by printPortion + forcedPrinted
+//                       paths. Reduced by coupon payouts.
+//
+// Retired by alpha refactor:
+//   * inflation cascade (column deleted)
+//   * credit deterioration / recovery (column deleted)
+//   * gdp-based print-to-inflation ratio (column deleted)
 //
 // Order matters when these are called per nation each tick:
 //   1. processBondMaturitiesTick   — pay back maturing principals
@@ -26761,39 +26505,30 @@ const BOND_RATIO_TIERS = Object.freeze([
 //  HELPERS
 // ════════════════════════════════════════════════════════════════════════════
 
-function getBondRatio(credit) {
-    const c = Number(credit) || 0;
-    for (const tier of BOND_RATIO_TIERS) {
-        if (c >= tier.min_credit) return tier.ratio;
-    }
-    return 0;
+// Alpha stats refactor (Phase 7e): the credit column is deleted with no
+// replacement, so the bond-tier system flattens to a single default
+// tier ('BBB' — 60/40 bond/print split, ~8.5% annual coupon). The tier
+// table above is preserved for when the bond-credit system is
+// redesigned against alpha-19 stats (likely keyed off debt-to-budget).
+// Functions retain their (credit) parameter for back-compat; the value
+// is ignored.
+const ALPHA_DEFAULT_TIER = { letter: 'BBB', ratio: 0.60, min_credit: 0 };
+const ALPHA_DEFAULT_COUPON_PER_TICK = 0.00708; // (8.5% annual) / 12, 5dp
+
+function getBondRatio(_creditUnused) {
+    return ALPHA_DEFAULT_TIER.ratio;
 }
 
-// Rating helper for UI surfaces. Returns the letter grade + bond/print
-// split derived from the same tier table as getBondRatio — one source
-// of truth for both the debt processor and any display code.
-function getCreditRating(credit) {
-    const c = Number(credit) || 0;
-    for (const tier of BOND_RATIO_TIERS) {
-        if (c >= tier.min_credit) {
-            return { letter: tier.letter, bondRatio: tier.ratio, printRatio: 1 - tier.ratio };
-        }
-    }
-    return { letter: 'D', bondRatio: 0, printRatio: 1 };
+function getCreditRating(_creditUnused) {
+    return {
+        letter: ALPHA_DEFAULT_TIER.letter,
+        bondRatio: ALPHA_DEFAULT_TIER.ratio,
+        printRatio: 1 - ALPHA_DEFAULT_TIER.ratio
+    };
 }
 
-// Per-tick coupon rate locked at issuance based on issuer's credit.
-// Mirrors budget.js:51's annual interest formula divided by 12 ticks/year:
-//   annual = clamp(0.15 - credit × 0.0013, 0.02, 0.18)
-//   per_tick = annual / 12
-// Range: credit 100 → ~0.0014/tick (≈1.7% annual)
-//        credit 50  → ~0.0070/tick (≈8.5% annual)
-//        credit 0   → ~0.0125/tick (≈15%  annual)
-function creditToCouponRate(credit) {
-    const c = Number(credit) || 0;
-    const annual = Math.min(0.18, Math.max(0.02, 0.15 - c * 0.0013));
-    // Round to 5 dp to match the finance_loan_requests.coupon_rate column precision.
-    return Math.round((annual / 12) * 100000) / 100000;
+function creditToCouponRate(_creditUnused) {
+    return ALPHA_DEFAULT_COUPON_PER_TICK;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -26863,13 +26598,10 @@ async function processBondCouponsTick(supabase, nation, currentTick) {
     if (totalCoupon === 0) return { totalCoupon: 0, shortfall: 0 };
 
     // Mirror the DB state locally so downstream per-tick processors see
-    // the post-coupon values of budget_reserves and inflation.
+    // the post-coupon value of budget_reserves. Inflation accumulation
+    // path retired by alpha refactor (column deleted); the underlying
+    // RPC may still emit inflation_delta but we no longer apply it.
     nation.budget_reserves = Math.max(0, Number(nation.budget_reserves || 0) - (totalCoupon - shortfall));
-    if (shortfall > 0 && Number(result?.inflation_delta)) {
-        nation.inflation = Math.min(100, Math.max(0,
-            Number(nation.inflation || 0) + Number(result.inflation_delta)
-        ));
-    }
     return { totalCoupon, shortfall };
 }
 
@@ -26893,7 +26625,6 @@ async function processBondOfferExpiryTick(supabase, nation, currentTick) {
     }
     if (!expired || expired.length === 0) return { expired: 0, forcedPrinted: 0 };
 
-    const gdp = Number(nation.gdp ?? nation.GDP) || 0;
     let forcedPrinted = 0;
     for (const o of expired) {
         // principal_remaining is the unfilled amount (NULL fallback to amount
@@ -26901,9 +26632,6 @@ async function processBondOfferExpiryTick(supabase, nation, currentTick) {
         const unfilled = Number(o.principal_remaining ?? o.amount) || 0;
         // Flip status FIRST — if this UPDATE fails we skip the print so the
         // same offer can't be picked up by the next tick and counted twice.
-        // (Alternative: mark-after-print doubles the inflation hit if the
-        // UPDATE fails mid-loop. Mark-first means a failure just loses the
-        // print for this tick; next tick retries cleanly.)
         const { error: uErr } = await supabase.from('finance_loan_requests')
             .update({ status: 'expired' }).eq('id', o.id);
         if (uErr) {
@@ -26915,16 +26643,15 @@ async function processBondOfferExpiryTick(supabase, nation, currentTick) {
         forcedPrinted += unfilled;
     }
 
-    if (forcedPrinted > 0 && gdp > 0) {
-        const printRatio = forcedPrinted / gdp;
-        const inflationDelta = printRatio * DEBT_CONFIG.INFLATION_PER_PRINT_PCT;
-        const newInflation = Math.min(100, Math.max(0, Number(nation.inflation || 0) + inflationDelta));
+    // Alpha refactor: inflation column is deleted, so the printing →
+    // inflation cascade is retired. Forced-printed money still credits
+    // budget_reserves so the deficit is covered fiscally; the
+    // monetary-debasement penalty no longer applies.
+    if (forcedPrinted > 0) {
         const newReserves = Number(nation.budget_reserves || 0) + forcedPrinted;
         await supabase.from('nations').update({
-            inflation: newInflation,
             budget_reserves: newReserves,
         }).eq('id', nation.id);
-        nation.inflation = newInflation;
         nation.budget_reserves = newReserves;
     }
 
@@ -26932,43 +26659,46 @@ async function processBondOfferExpiryTick(supabase, nation, currentTick) {
 }
 
 // (4) Deficit/surplus: calculate this tick's gap, decide funding split,
-// post bond offer for borrow portion, print the rest, deteriorate credit.
+// post bond offer for borrow portion, "print" the rest into reserves.
+//
+// Alpha stats refactor (Phase 7e): credit and inflation columns are
+// deleted by the alpha refactor. The credit-recovery-on-surplus and
+// credit-deterioration-on-deficit dynamics are retired (no signal to
+// modulate). The "print → inflation accumulation" model is also
+// retired (gdp gone, inflation gone) — printPortion still credits
+// budget_reserves but no longer cascades through inflation. A future
+// fiscal-redesign phase can reintroduce a credit-equivalent signal
+// keyed off debt-to-budget.
 async function processDebtTick(supabase, nation, expenditures, revenue, currentTick) {
     const exp = Number(expenditures) || 0;
     const rev = Number(revenue) || 0;
     const deficit = exp - rev;
 
-    // Surplus path — pay down debt, recover credit.
+    // Surplus path — pay down debt.
     if (deficit <= 0) {
         const surplus = -deficit;
-        const newDebt   = Math.max(0, Number(nation.debt || 0) - surplus);
-        const newCredit = Math.min(100, Math.max(0, Number(nation.credit || 0) + DEBT_CONFIG.CREDIT_RECOVERY_RATE));
+        const newDebt = Math.max(0, Number(nation.debt || 0) - surplus);
         const { error } = await supabase.from('nations')
-            .update({ debt: newDebt, credit: newCredit }).eq('id', nation.id);
+            .update({ debt: newDebt }).eq('id', nation.id);
         if (error) {
             console.warn(`[Debt] surplus update failed for ${nation.name}:`, error.message);
             return { mode: 'surplus', surplus, error: error.message };
         }
-        nation.debt   = newDebt;
-        nation.credit = newCredit;
-        return { mode: 'surplus', surplus, newDebt, newCredit };
+        nation.debt = newDebt;
+        return { mode: 'surplus', surplus, newDebt };
     }
 
-    // Deficit path.
-    const credit       = Number(nation.credit) || 0;
-    const gdp          = Number(nation.gdp ?? nation.GDP) || 0;
-    const bondRatio    = getBondRatio(credit);
+    // Deficit path. Bond ratio + coupon rate are flat defaults (alpha
+    // refactor) until a credit-equivalent system is rebuilt.
+    const bondRatio    = getBondRatio();
     const bondPortion  = Math.floor(deficit * bondRatio);
     const printPortion = deficit - bondPortion;
 
     // Post a bond offer in finance_loan_requests (request_type='bond')
-    // so the existing Deal Flow UI renders it. Coupon rate locked at
-    // issuance from current credit; principal_remaining starts equal to
-    // amount and decrements as Investment Corps buy slices. If
-    // bondPortion is 0 (Tier 5), skip the insert entirely.
+    // so the existing Deal Flow UI renders it. Coupon rate flat-defaulted.
     let offerId = null;
     if (bondPortion > 0) {
-        const couponRate = creditToCouponRate(credit);
+        const couponRate = creditToCouponRate();
         const { data: offer, error: oErr } = await supabase.from('finance_loan_requests').insert({
             requesting_faction_id: null,
             nation_id:             nation.id,
@@ -26985,52 +26715,29 @@ async function processDebtTick(supabase, nation, expenditures, revenue, currentT
         }).select('id').single();
         if (oErr) {
             console.warn(`[Debt] bond offer insert failed for ${nation.name}:`, oErr.message);
-            // Fall through — printPortion still applies; bondPortion just
-            // never makes it to market and the nation runs short until
-            // next tick. Better than throwing the whole deficit away.
         } else {
             offerId = offer?.id || null;
         }
     }
 
-    // Print the printed portion: credit budget_reserves to fund expenditures,
-    // and add the inflation hit. Inflation is the canonical signal — every
-    // downstream stat (currency_strength, foreign_investment, SoL, etc.)
-    // cascades from here through the existing stat-connection web.
-    if (printPortion > 0 && gdp > 0) {
-        const printRatio = printPortion / gdp;
-        const inflationDelta = printRatio * DEBT_CONFIG.INFLATION_PER_PRINT_PCT;
-        const newInflation = Math.min(100, Math.max(0, Number(nation.inflation || 0) + inflationDelta));
-        const newReserves  = Number(nation.budget_reserves || 0) + printPortion;
+    // Credit budget_reserves with the printed portion. Pre-alpha this
+    // also accrued inflation via printPortion / gdp; that cascade is
+    // retired with the gdp + inflation columns.
+    if (printPortion > 0) {
+        const newReserves = Number(nation.budget_reserves || 0) + printPortion;
         const { error: pErr } = await supabase.from('nations')
-            .update({ inflation: newInflation, budget_reserves: newReserves }).eq('id', nation.id);
+            .update({ budget_reserves: newReserves }).eq('id', nation.id);
         if (pErr) {
             console.warn(`[Debt] print update failed for ${nation.name}:`, pErr.message);
         } else {
-            nation.inflation       = newInflation;
             nation.budget_reserves = newReserves;
-        }
-    }
-
-    // Credit deterioration — uses the existing function in sovereign-default.js
-    // so the bracket math has one source of truth. Returns 0 when debt-to-gdp
-    // is below 100%, so low-debt high-deficit nations won't lose credit here.
-    const credPenalty = calculateCreditDeterioration(nation);
-    if (credPenalty > 0) {
-        const newCredit = Math.min(100, Math.max(0, Number(nation.credit || 0) - credPenalty));
-        const { error: cErr } = await supabase.from('nations')
-            .update({ credit: newCredit }).eq('id', nation.id);
-        if (cErr) {
-            console.warn(`[Debt] credit deterioration update failed for ${nation.name}:`, cErr.message);
-        } else {
-            nation.credit = newCredit;
         }
     }
 
     return {
         mode: 'deficit',
         deficit, bondPortion, printPortion, offerId,
-        creditDeterioration: credPenalty,
+        creditDeterioration: 0,
     };
 }
 
@@ -27257,7 +26964,10 @@ async function generateShippingRoutes(supabase, currentTick) {
     var nameMap = {};
     if (nations) {
         for (var ni = 0; ni < nations.length; ni++) {
-            tariffMap[nations[ni].id] = Number(nations[ni].tariffs) || 0;
+            // Phase 9: tariffs column dropped. Aggregate tariff lever no
+            // longer exists in the alpha schema; leave the map at 0 until
+            // a per-sector tariff system is rebuilt.
+            tariffMap[nations[ni].id] = 0;
             nameMap[nations[ni].id] = nations[ni].name;
         }
     }
@@ -31708,16 +31418,19 @@ const STAT_NAMES = {
     manufacturing_output: 'Manufacturing Output', service_output: 'Service Output',
 };
 
-// Stats where "improve" means reducing the value (bad stats)
+// Stats where "improve" means reducing the value (alpha-23 bad stats).
+// Phase 9 dropped the legacy bad stats (inflation, unemployment, drug_use,
+// pollution, carbon_emissions, polarization, illegal_immigration, etc.) —
+// any platform-issue config still keyed to a legacy name flows through
+// STAT_KEY_ALIASES at apply time.
 const BAD_STATS = new Set([
-    'inflation', 'unemployment', 'poverty_rate', 'income_inequality', 'drug_use',
-    'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate', 'corruption',
-    'polarization', 'civil_unrest', 'terrorism', 'political_violence', 'illegal_immigration',
-    'emigration', 'cost_of_living', 'fuel_prices',
+    'unrest', 'crime', 'corruption', 'cost_of_living', 'debt',
 ]);
 
-// Stats where "improve" means raising taxes (mixed signal)
-const TAX_STATS = new Set(['income_tax', 'corporate_tax', 'sales_tax']);
+// Tax-rate stats: raising the rate = "improve" only in the populist sense
+// (more revenue, more popular with the left, less with the right). Treated
+// as a mixed signal in platform-issue resolution.
+const TAX_STATS = new Set(['income_tax', 'corporate_tax']);
 
 /**
  * Get the direction arrow and color for a stat in a platform context.
@@ -32146,32 +31859,18 @@ async function fileLawsuit(supabase, params) {
     var metricAtStart, metricNow, growth;
 
     if (basis === 'civil_rights') {
-        // Freedom index: decline is bad for government, good for lawsuit
+        // Freedom index column deleted in alpha refactor (no replacement) — pin
+        // to neutral 50 so the calc keeps producing a non-erroring tier=0 outcome.
         var freedomAtStart = Number(administration?.stats_at_start?.freedom_index ?? 50);
-        var { data: nationRow, error: nationErr } = await supabase
-            .from('nations')
-            .select('freedom_index')
-            .eq('id', nationId)
-            .single();
-        if (nationErr) {
-            return { success: false, lawsuit: null, tier: 0, error: 'Failed to fetch freedom index data.' };
-        }
-        metricNow = Number(nationRow?.freedom_index ?? 50);
+        metricNow = 50;
         metricAtStart = freedomAtStart;
         // Growth = how much freedom DECLINED (positive = freedom dropped = stronger case)
         growth = Math.max(0, metricAtStart - metricNow);
     } else {
-        // Corruption: growth is bad for government, good for lawsuit
+        // Corruption column deleted in alpha refactor (no replacement) — pin
+        // to neutral 50 so growth resolves to 0 and lawsuits land in tier 0.
         var corruptionAtStart = Number(administration?.stats_at_start?.corruption ?? 50);
-        var { data: nationRow, error: nationErr } = await supabase
-            .from('nations')
-            .select('corruption')
-            .eq('id', nationId)
-            .single();
-        if (nationErr) {
-            return { success: false, lawsuit: null, tier: 0, error: 'Failed to fetch corruption data.' };
-        }
-        metricNow = Number(nationRow?.corruption ?? 50);
+        metricNow = 50;
         metricAtStart = corruptionAtStart;
         growth = Math.max(0, metricNow - metricAtStart);
     }
@@ -32707,8 +32406,8 @@ function calculateBaseRate(interestRates) {
  * @returns {number} additional premium percentage (0-3%)
  */
 function calculateInsuranceRiskSurcharge(nation) {
-    var stability = Number(nation.stability ?? 50);
-    var civilUnrest = Number(nation.civil_unrest ?? 20);
+    var stability = Number(nation.control ?? 50);
+    var civilUnrest = Number(nation.unrest ?? 20);
     var surcharge = 0;
 
     // Stability below 40: +0.5% per 10 points below 40
@@ -32732,8 +32431,12 @@ function calculateInsuranceRiskSurcharge(nation) {
  * @returns {number} additional spread percentage (0-2%)
  */
 function calculateLoanCreditSpread(nation) {
-    var inflation = Number(nation.inflation ?? 38);
-    var credit = Number(nation.credit ?? 50);
+    var inflation = Number(nation.cost_of_living ?? 38);
+    // Alpha refactor: credit column deleted with no replacement. Pin
+    // to neutral 50 so the spread formula keeps producing sensible
+    // (non-extreme) values until the bond/credit system is rebuilt
+    // against alpha columns.
+    var credit = 50;
     var spread = 0;
 
     // Inflation above 50: +0.3% per 10 points above 50
@@ -32758,7 +32461,7 @@ function calculateLoanCreditSpread(nation) {
  * @returns {{ baseRate: number, riskAdjustment: number, markup: number, effectiveRate: number }}
  */
 function calculateEffectiveRate(nation, serviceType, markup) {
-    var baseRate = calculateBaseRate(nation.interest_rates);
+    var baseRate = calculateBaseRate(50);
     var riskAdj = 0;
 
     if (serviceType === 'insurance') {
@@ -32783,16 +32486,21 @@ function calculateEffectiveRate(nation, serviceType, markup) {
 // ═══════════════════════════════════════════════════
 
 /**
- * Calculate default coverage limit based on nation GDP.
- * Insurance: max coverage per policy = 0.1% of nation GDP
- * Loans: max loan amount = 0.05% of nation GDP
+ * Calculate default coverage limit based on a fixed reference GDP.
+ * Insurance: max coverage per policy = 0.1% of reference
+ * Loans: max loan amount = 0.05% of reference
+ *
+ * Alpha refactor: nation.gdp column was deleted with no replacement.
+ * Coverage limits pin to a flat 100B reference until a fiscal scaling
+ * signal is rebuilt against alpha columns (likely budget × workforce
+ * or similar productivity proxy).
  */
-function calculateCoverageLimit(nation, serviceType) {
-    var gdp = Number(nation.gdp) || 100000000000; // default 100B
+function calculateCoverageLimit(_nation, serviceType) {
+    var gdp = 100000000000;
     if (serviceType === 'insurance') {
-        return Math.round(gdp * 0.001); // 0.1% of GDP
+        return Math.round(gdp * 0.001);
     }
-    return Math.round(gdp * 0.0005); // 0.05% of GDP
+    return Math.round(gdp * 0.0005);
 }
 
 // ═══════════════════════════════════════════════════
@@ -35838,6 +35546,28 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (collapseErr) {
             console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
+        }
+
+        // Phase 8.5.4: Per-tick tax revenue. nation.budget is a cash
+        // balance; income + corporate tax revenue accumulate into it
+        // each tick. Formulas live in budget.js.
+        try {
+            const incomeRev = computeIncomeTaxRevenue(nation);
+            const corpRev = computeCorporateTaxRevenue(nation);
+            const totalRev = incomeRev + corpRev;
+            if (totalRev > 0) {
+                const newBudget = Math.max(0, Number(nation.budget || 0) + totalRev);
+                const { error: budgetErr } = await supabase.from('nations')
+                    .update({ budget: newBudget })
+                    .eq('id', nation.id);
+                if (budgetErr) {
+                    console.error(`[advanceTick] Tax revenue DB update failed for ${nation.name}:`, budgetErr.message);
+                } else {
+                    nation.budget = newBudget;
+                }
+            }
+        } catch (taxErr) {
+            console.error(`[advanceTick] Tax revenue tick failed for ${nation.name} (non-fatal):`, taxErr);
         }
 
         // Surplus/deficit connectors (require budget calculation, can't be stat_connections rows)

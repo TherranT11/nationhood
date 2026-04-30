@@ -99,7 +99,7 @@ const STAT_CATEGORIES = [
         { id: 'social_mobility', name: 'Social Mobility' },
         { id: 'poverty_rate', name: 'Poverty Rate' },
         { id: 'income_inequality', name: 'Income Inequality' },
-        { id: 'crime_rate', name: 'Crime Rate' },
+        { id: 'crime', name: 'Crime' },
         { id: 'drug_use', name: 'Drug Use' },
         { id: 'cost_of_living', name: 'Cost of Living' },
         { id: 'housing_affordability', name: 'Housing Affordability' },

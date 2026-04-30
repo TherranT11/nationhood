@@ -2982,14 +2982,13 @@ function renderProtestConfig(nation, tick) {
     let html = '';
 
     // Warning bar
-    html += `<div class="protest-warning">Turnout is probabilistic — based on Civil Unrest, Happiness, Polarisation, and Political Violence. A fizzle hands the government a free headline. Choose your moment.</div>`;
+    html += `<div class="protest-warning">Turnout is probabilistic — based on Unrest and Public Approval. A fizzle hands the government a free headline. Choose your moment.</div>`;
 
-    // Live stat hint pills
+    // Live stat hint pills (Phase 8.5.1: civil_unrest/terrorism/political_violence
+    // collapsed into unrest; happiness/polarization deleted with no replacement).
     const stats = [
-        { key: 'civil_unrest', label: 'CIVIL UNREST', value: nation.civil_unrest || 0 },
-        { key: 'happiness', label: 'HAPPINESS', value: nation.happiness || 50 },
-        { key: 'polarization', label: 'POLARISATION', value: nation.polarization || 0 },
-        { key: 'political_violence', label: 'POL VIOLENCE', value: nation.political_violence || 0 },
+        { key: 'unrest', label: 'UNREST', value: nation.unrest || 0 },
+        { key: 'public_approval', label: 'PUBLIC APPROVAL', value: nation.public_approval || 0 },
     ];
     html += `<div class="protest-stat-hints">`;
     for (const s of stats) {

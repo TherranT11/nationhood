@@ -105,27 +105,23 @@ export const PROTEST_CONFIG = {
     UNRESOLVED_GRIEVANCE_PENALTY: -5,
 };
 
-// Stats permanently excluded from Stat Failure tab
-const EXCLUDED_STAT_KEYS = new Set([
-    'ethnic_diversity', 'urbanization', 'median_age',
-]);
+// Stats permanently excluded from Stat Failure tab.
+// Phase 9: ethnic_diversity / median_age dropped from schema (no longer
+// reachable); urbanization renamed to workforce, which is a valid Tier 7
+// target rather than excluded.
+const EXCLUDED_STAT_KEYS = new Set([]);
 
-// Stats eligible for Tier 7 demand generation
+// Stats eligible for Tier 7 demand generation (alpha-23 menu only).
 const TIER7_ELIGIBLE_STATS = new Set([
-    'gdp_growth', 'inflation', 'unemployment', 'crime_rate',
-    'healthcare_quality', 'healthcare_accessibility', 'literacy',
-    'higher_education', 'happiness', 'standard_of_living',
-    'poverty_rate', 'income_inequality', 'fuel_prices', 'pollution',
-    'digital_infrastructure', 'physical_infrastructure', 'energy_generation',
+    'gdp_growth', 'unrest', 'crime', 'health', 'education',
+    'standard_of_living', 'cost_of_living', 'workforce',
+    'infrastructure', 'industry', 'farmland', 'service_sector',
+    'energy', 'public_approval',
 ]);
 
-// Stats where higher values are bad (inverted display)
+// Stats where higher values are bad (inverted display).
 const HIGHER_IS_BAD = new Set([
-    'civil_unrest', 'terrorism', 'political_violence', 'crime_rate',
-    'corruption', 'pollution', 'carbon_emissions', 'poverty_rate',
-    'income_inequality', 'inflation', 'unemployment', 'drug_use',
-    'illegal_immigration', 'emigration', 'fuel_prices', 'incarceration_rate',
-    'debt', 'debt_growth', 'cost_of_living',
+    'unrest', 'crime', 'corruption', 'cost_of_living', 'debt',
 ]);
 
 
@@ -273,22 +269,22 @@ export function calculateConditionScore(nationStats, grievance, protestHistory, 
     const breakdown = { base: 50 };
 
     // Civil unrest: max +30
-    const unrestBonus = ((nationStats.civil_unrest || 0) / 100) * 30;
+    const unrestBonus = ((nationStats.unrest || 0) / 100) * 30;
     score += unrestBonus;
     breakdown.civil_unrest = +unrestBonus.toFixed(1);
 
     // Unhappiness: max +25
-    const unhappyBonus = ((100 - (nationStats.happiness || 50)) / 100) * 25;
+    const unhappyBonus = ((100 - (nationStats.standard_of_living || 50)) / 100) * 25;
     score += unhappyBonus;
     breakdown.happiness = +unhappyBonus.toFixed(1);
 
     // Polarization: max +20
-    const polBonus = ((nationStats.polarization || 0) / 100) * 20;
+    const polBonus = (0 / 100) * 20;
     score += polBonus;
     breakdown.polarization = +polBonus.toFixed(1);
 
     // Political violence: max -15
-    const violencePenalty = ((nationStats.political_violence || 0) / 100) * 15;
+    const violencePenalty = ((nationStats.unrest || 0) / 100) * 15;
     score -= violencePenalty;
     breakdown.political_violence = +(-violencePenalty).toFixed(1);
 
@@ -485,17 +481,19 @@ export function computeTierEffects(tier, opts = {}) {
  * @returns {object} stat deltas to apply
  */
 export function computeTier6CrisisEffects(ticksActive, publicAddressThisTick) {
+    // Alpha refactor: civil_unrest + political_violence both → unrest
+    // (sum the per-tick deltas at config time); foreign_investment
+    // dropped (column gone with no replacement).
     const effects = {
         gov_approval: PROTEST_CONFIG.TIER6_GOV_APPROVAL_PER_TICK,
-        civil_unrest: PROTEST_CONFIG.TIER6_CIVIL_UNREST_PER_TICK,
+        unrest: PROTEST_CONFIG.TIER6_CIVIL_UNREST_PER_TICK
+              + PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK,
         gdp_growth: PROTEST_CONFIG.TIER6_GDP_GROWTH_PER_TICK,
-        foreign_investment: PROTEST_CONFIG.TIER6_FOREIGN_INVESTMENT_PER_TICK,
-        political_violence: PROTEST_CONFIG.TIER6_POLITICAL_VIOLENCE_PER_TICK,
     };
 
-    // Public Address reduces civil unrest accumulation by 1 that tick
+    // Public Address reduces unrest accumulation by 1 that tick
     if (publicAddressThisTick) {
-        effects.civil_unrest = Math.max(0, effects.civil_unrest - 1);
+        effects.unrest = Math.max(0, effects.unrest - 1);
     }
 
     return effects;
@@ -507,17 +505,18 @@ export function computeTier6CrisisEffects(ticksActive, publicAddressThisTick) {
  * @returns {object} stat deltas to apply
  */
 export function computeTier7CrisisEffects(publicAddressThisTick) {
+    // Alpha refactor: see computeTier6CrisisEffects above for the
+    // collapse rationale.
     const effects = {
         gov_approval: PROTEST_CONFIG.TIER7_GOV_APPROVAL_PER_TICK,
-        civil_unrest: PROTEST_CONFIG.TIER7_CIVIL_UNREST_PER_TICK,
+        unrest: PROTEST_CONFIG.TIER7_CIVIL_UNREST_PER_TICK
+              + PROTEST_CONFIG.TIER7_POLITICAL_VIOLENCE_PER_TICK,
         gdp_growth: PROTEST_CONFIG.TIER7_GDP_GROWTH_PER_TICK,
-        foreign_investment: PROTEST_CONFIG.TIER7_FOREIGN_INVESTMENT_PER_TICK,
-        political_violence: PROTEST_CONFIG.TIER7_POLITICAL_VIOLENCE_PER_TICK,
     };
 
-    // Public Address reduces civil unrest accumulation by 1
+    // Public Address reduces unrest accumulation by 1
     if (publicAddressThisTick) {
-        effects.civil_unrest = Math.max(0, effects.civil_unrest - 1);
+        effects.unrest = Math.max(0, effects.unrest - 1);
     }
 
     return effects;
@@ -1424,12 +1423,11 @@ export async function executeNationalEmergencyOnProtest(supabase, factionId, nat
 
     // ── 6. Apply severe stat costs ──
     const { data: nation } = await supabase
-        .from('nations').select('civil_unrest, political_violence, happiness').eq('id', nationId).single();
+        .from('nations').select('unrest, standard_of_living').eq('id', nationId).single();
 
     await supabase.from('nations').update({
-        civil_unrest: Math.min(100, (nation?.civil_unrest || 0) + 15),
-        political_violence: Math.min(100, (nation?.political_violence || 0) + 10),
-        happiness: Math.max(0, (nation?.happiness || 50) - 10),
+        unrest: Math.min(100, (nation?.unrest || 0) + 25),
+        standard_of_living: Math.max(0, (nation?.standard_of_living || 50) - 10),
     }).eq('id', nationId);
 
     await adjustGovernmentApprovalEvent(supabase, nationId, -10, 'protest:national_emergency');
@@ -1553,9 +1551,9 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
     // Civil unrest one-time delta (Tier 5)
     if (effects.civilUnrestDelta !== 0) {
         const { data: nation } = await supabase
-            .from('nations').select('civil_unrest').eq('id', nationId).single();
-        const newVal = Math.min(100, (nation?.civil_unrest || 0) + effects.civilUnrestDelta);
-        await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nationId);
+            .from('nations').select('unrest').eq('id', nationId).single();
+        const newVal = Math.min(100, (nation?.unrest || 0) + effects.civilUnrestDelta);
+        await supabase.from('nations').update({ unrest: newVal }).eq('id', nationId);
         appliedEffects.push({ stat: 'civil_unrest', delta: effects.civilUnrestDelta });
     }
 
