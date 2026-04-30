@@ -534,6 +534,10 @@ let dfSelected = -1;
 
 async function loadDealFlow() {
     if (!faction || !shard) return;
+    // PHASE 7 TODO: Finance deal-flow risk model relies on stability, credit,
+    // gdp, corruption — all four drop in Phase 9. Redesign the bond/loan/equity
+    // risk pipeline to use control, authority, gdp_growth, debt against the
+    // new 19-stat schema before Phase 9 ships.
     // Load all open requests across the shard (loans + bonds + insurance)
     const { data: requests, error: reqErr } = await _supabase
         .from('finance_loan_requests')
@@ -2879,6 +2883,7 @@ function renderReviewDeal() {
     const bondAnnualCoupon = Math.round(rdBondAmount * (bondCoupon / 100));
     const bondTotalReturn = Math.round(rdBondAmount * (bondCoupon / 100) * bondTermYears);
     // Default probability from stability + credit rating + debt/GDP
+    // PHASE 7 TODO: stability, credit, gdp drop in Phase 9 — rebuild bond risk model
     const bondStability = d.stability || 50;
     const bondCreditRating = d.creditRating || 50;
     const bondDebtToGdp = d.debtToGdp || 30;
@@ -3140,6 +3145,9 @@ function renderReviewDeal() {
         </div>`;
 
         // Nation Risk Profile
+        // PHASE 7 TODO: stability, credit, gdp, corruption drop in Phase 9 — rebuild
+        // this risk panel against the new 19-stat schema (control, authority, debt,
+        // gdp_growth, etc.) before the engine cutover.
         html += `<div class="rd-control" style="padding-top:8px;">
             <div style="font-family:var(--font-mono);font-size:8px;color:#6a6660;letter-spacing:1px;margin-bottom:6px;text-transform:uppercase;">Nation Risk Profile</div>`;
         const nationStats = [

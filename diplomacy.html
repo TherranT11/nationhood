@@ -2303,7 +2303,7 @@ function renderTradePartners() {
                             <span class="tr-badge" style="color:${n.embassy === 'Open' ? 'var(--accent)' : 'var(--text-dim)'};">EMBASSY ${n.embassy.toUpperCase()}</span>
                             ${matchType ? `<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.08);border-color:rgba(92,204,92,0.2);">MATCH</span>` : ''}
                         </div>
-                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:1px;">Pop: ${popLabel} \u00B7 Stability: ${(n.stability ?? 50).toFixed(1)}%</div>
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:1px;">Pop: ${popLabel} \u00B7 Control: ${(n.control ?? 50).toFixed(1)}%</div>
                     </div>
                 </div>
                 <div style="display:flex;gap:12px;align-items:center;">
@@ -3100,9 +3100,6 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
     const pop = Number(nation.population || 0);
     const popLabel = pop >= 1e6 ? (pop / 1e6).toFixed(1) + 'M' : pop.toLocaleString();
 
-    // GDP
-    const gdpLabel = fmtBudgetCurrency(Number(nation.gdp || 0));
-
     // Flag URL
     const flagSrc = nation.flag_url || `assets/flags/${nation.name}.png`;
 
@@ -3138,12 +3135,11 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
     // ── KEY STATS ──
     html += `<div class="world-highlight-section">KEY STATS</div>`;
 
-    const stability = nation.stability ?? 0;
-    const stabColor = stability >= 50 ? 'var(--green)' : stability >= 30 ? 'var(--amber)' : 'var(--red)';
+    const control = nation.control ?? 0;
+    const controlColor = control >= 50 ? 'var(--green)' : control >= 30 ? 'var(--amber)' : 'var(--red)';
     const stats = [
         { label: 'Population', value: popLabel },
-        { label: 'GDP', value: gdpLabel },
-        { label: 'Stability', value: stability.toFixed(1), color: stabColor },
+        { label: 'Control', value: control.toFixed(1), color: controlColor },
     ];
     html += stats.map(s => `<div class="world-highlight-stat-row">
         <span class="world-highlight-stat-label">${escapeHtml(s.label)}</span>
@@ -3668,6 +3664,7 @@ async function renderRelationsTab() {
         }
 
         // Tariff relations warning
+        // PHASE 7 TODO: tariffs drops in Phase 9
         const _tariffRate = Number(currentNation.tariffs ?? 0);
         let cardsHTML = '';
         if (_tariffRate > 25) {
@@ -4014,6 +4011,13 @@ async function withdrawTradeAgreement(agreementId) {
         }
     }
 
+    // ─── PHASE 7 TODO BLOCK ─────────────────────────────────────────────
+    // foreign_investment, stability, polarization are DELETE columns in Phase 9.
+    // This block writes to them directly. Engine cutover in Phase 7 needs to
+    // remap: stability → control, polarization → DELETE, foreign_investment →
+    // DELETE. Leaving the writes intact for now so the existing tick processor
+    // keeps working until Phase 9 drops the columns.
+    // ────────────────────────────────────────────────────────────────────
     // Mechanic 2: FTA/PTA withdrawal economic shock — immediate stat penalties
     const withdrawalEffects = ta.agreement_type === 'fta'
         ? { gdp_growth: -0.3, foreign_investment: -3, stability: -2, polarization: 2 }
@@ -4242,6 +4246,8 @@ function renderInboxCard(p) {
     // Effects — use v2 rendering for major initiatives
     let effectsHTML = '';
     if (isV2Proposal) {
+        // PHASE 7 TODO: intl_reputation, higher_education, polarization, terrorism_risk
+        // accumulator keys all map to Phase-9 changes (rename to power/education/DELETE).
         const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0, immigration: 0, higher_education: 0, soft_power: 0, soft_power_per_year: 0, permanent_soft_power: 0, technology_bonus: 0, polarization: 0, terrorism_risk: 0, ongoing_per_tick: 0 };
         articles.forEach((art, i) => {
             if (struckIndices.has(i) || art.status === 'struck') return;
@@ -4420,7 +4426,7 @@ function renderStateVisitInboxCard(p, pd) {
     }
 
     if (pd.is_first) {
-        benefitsHTML += '<br><br><span style="color:#FFD700;">★ First-ever visit — bonus stability!</span>';
+        benefitsHTML += '<br><br><span style="color:#FFD700;">★ First-ever visit — bonus control!</span>';
     }
     benefitsHTML += '</div>';
 
@@ -5038,6 +5044,16 @@ async function applyProposalEffects(proposal, currentTick) {
         }
     }
 
+    // ─── PHASE 7 TODO BLOCK ─────────────────────────────────────────────
+    // Writes below target columns that drop in Phase 9:
+    //   international_reputation → power (RENAME)
+    //   higher_education         → education (RENAME)
+    //   polarization             → DELETE
+    //   terrorism                → unrest (COLLAPSE)
+    // The accumulation logic is fine; the property names need remapping when
+    // the engine cuts over. Leaving the writes intact so applyStatIncrements
+    // keeps working against the current schema.
+    // ────────────────────────────────────────────────────────────────────
     // V2: Apply stat effects and budget costs to Embassies & Consulates institution
     if (isV2 && activeArticles.length > 0) {
         // Apply one-time stat modifiers to proposer nation
@@ -5293,12 +5309,12 @@ async function renderNationCardBody(nationId) {
                     <span class="info-value gold">${formatNumber(targetNation.population)}</span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Stability</span>
-                    <span class="info-value" style="color:${getStatColor(targetNation.stability)}">${targetNation.stability != null ? Number(targetNation.stability).toFixed(1) : '—'}%</span>
+                    <span class="info-label">Control</span>
+                    <span class="info-value" style="color:${getStatColor(targetNation.control)}">${targetNation.control != null ? Number(targetNation.control).toFixed(1) : '—'}%</span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Civil Unrest</span>
-                    <span class="info-value" style="color:${getStatColor(100 - (targetNation.civil_unrest || 0))}">${targetNation.civil_unrest ?? '—'}%</span>
+                    <span class="info-label">Unrest</span>
+                    <span class="info-value" style="color:${getStatColor(100 - (targetNation.unrest || 0))}">${targetNation.unrest ?? '—'}%</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Military Strength</span>
@@ -9264,6 +9280,12 @@ async function activateTradeAgreement(proposal, currentTick) {
         return false;
     }
 
+    // ─── PHASE 7 TODO BLOCK ─────────────────────────────────────────────
+    // polarization drops in Phase 9. This entire mechanic ("FTAs increase
+    // polarization") needs a new home in the 19-stat schema — likely either
+    // unrest (if framing as political backlash) or removed outright. Leaving
+    // the read+write intact so today's tick processor still applies the shock.
+    // ────────────────────────────────────────────────────────────────────
     // Mechanic 3: FTAs increase polarization in both nations (politically controversial)
     if (pd.agreement_type === 'fta') {
         try {
@@ -9357,18 +9379,18 @@ async function acceptProposal(proposalId) {
         if (totals.relations) parts.push((totals.relations > 0 ? '+' : '') + totals.relations + ' Relations');
         if (totals.revenue > 0) parts.push('+$' + (totals.revenue / 1e6).toFixed(0) + 'M Revenue');
         if (totals.cost_proposer > 0 || totals.cost_target > 0) parts.push('-$' + (((totals.cost_proposer || 0) + (totals.cost_target || 0)) / 1e6).toFixed(1) + 'M Cost');
-        if (totals.intl_reputation) parts.push((totals.intl_reputation > 0 ? '+' : '') + totals.intl_reputation + ' Int\'l Rep');
+        if (totals.intl_reputation || totals.power) parts.push(((totals.intl_reputation || totals.power) > 0 ? '+' : '') + (totals.intl_reputation || totals.power) + ' Power');
         if (totals.immigration) parts.push('+' + totals.immigration + ' Immigration');
-        if (totals.higher_education) parts.push('+' + totals.higher_education + ' Higher Ed');
+        if (totals.higher_education || totals.education) parts.push('+' + (totals.higher_education || totals.education) + ' Education');
         if (totals.soft_power) parts.push('+' + totals.soft_power + ' Soft Power');
         if (totals.soft_power_per_year) parts.push('+' + totals.soft_power_per_year + ' Soft Power/yr');
         if (totals.permanent_soft_power) parts.push('+' + totals.permanent_soft_power + ' Permanent Soft Power');
         if (totals.technology_bonus) parts.push('+' + totals.technology_bonus + ' Technology');
-        if (totals.polarization) parts.push('+' + totals.polarization + ' Polarization');
-        if (totals.terrorism_risk) parts.push('+' + totals.terrorism_risk + ' Terrorism Risk');
         if (totals.ongoing_per_tick) parts.push('-$' + (totals.ongoing_per_tick / 1e6).toFixed(0) + 'M/tick Ongoing');
         if (totals.gdp_growth) parts.push((totals.gdp_growth > 0 ? '+' : '') + totals.gdp_growth + ' GDP Growth');
-        if (totals.civil_unrest) parts.push('+' + totals.civil_unrest + ' Civil Unrest');
+        if (totals.civil_unrest || totals.unrest) parts.push('+' + (totals.civil_unrest || totals.unrest) + ' Unrest');
+        // PHASE 7 TODO: polarization, terrorism_risk effect summary entries removed
+        // — those stats drop in Phase 9. Article payloads may still send these keys.
         effectSummary = parts.join(', ');
     } else {
         let totalRel = 0, totalMoney = 0;
@@ -11279,6 +11301,7 @@ async function renderUTRDraftPanel(body, statusEl) {
     }
 
     // Fetch current trade flows with target + our tariff rate
+    // PHASE 7 TODO: tariffs drops in Phase 9
     var baseTariff = Number(currentNation.tariffs ?? 0);
     var latestTick = shardTick;
     var { data: tradeRows } = await _supabase.from('trade_partners')
@@ -12409,33 +12432,37 @@ function renderEffectTags(effects, articleType) {
         const total = (e.cost_proposer || 0) + (e.cost_target || 0);
         tags.push({ label: '-$' + (total / 1e6).toFixed(1) + 'M Cost', cls: 'effect-tag--money-neg' });
     }
-    if (e.intl_reputation || e.international_reputation) {
-        const val = e.intl_reputation || e.international_reputation;
-        tags.push({ label: (val > 0 ? '+' : '') + val + ' Int\'l Rep', cls: val > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    if (e.intl_reputation || e.international_reputation || e.power) {
+        const val = e.intl_reputation || e.international_reputation || e.power;
+        tags.push({ label: (val > 0 ? '+' : '') + val + ' Power', cls: val > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
     }
     if (e.immigration) tags.push({ label: '+' + e.immigration + ' Immigration', cls: 'effect-tag--positive' });
-    if (e.higher_education) tags.push({ label: '+' + e.higher_education + ' Higher Ed', cls: 'effect-tag--positive' });
+    if (e.higher_education || e.education) {
+        const val = e.higher_education || e.education;
+        tags.push({ label: '+' + val + ' Education', cls: 'effect-tag--positive' });
+    }
     if (e.soft_power) tags.push({ label: '+' + e.soft_power + ' Soft Power', cls: 'effect-tag--info' });
     if (e.soft_power_per_year) tags.push({ label: '+' + e.soft_power_per_year + ' Soft Power/yr', cls: 'effect-tag--info' });
     if (e.permanent_soft_power) tags.push({ label: '+' + e.permanent_soft_power + ' Permanent Soft Power', cls: 'effect-tag--info' });
     if (e.technology_bonus) tags.push({ label: '+' + e.technology_bonus + ' Technology', cls: 'effect-tag--info' });
-    if (e.polarization) tags.push({ label: '+' + e.polarization + ' Polarization', cls: 'effect-tag--warning' });
-    if (e.terrorism_risk) tags.push({ label: '+' + e.terrorism_risk + ' Terrorism Risk', cls: 'effect-tag--warning' });
-    if (e.terrorism && !e.terrorism_risk) tags.push({ label: (e.terrorism > 0 ? '+' : '') + e.terrorism + ' Terrorism', cls: e.terrorism > 0 ? 'effect-tag--warning' : 'effect-tag--positive' });
     if (e.ongoing_per_tick) tags.push({ label: '-$' + (e.ongoing_per_tick / 1e6).toFixed(0) + 'M/tick Ongoing', cls: 'effect-tag--money-neg' });
     // Major initiative stat tags
     if (e.gdp_growth) tags.push({ label: (e.gdp_growth > 0 ? '+' : '') + e.gdp_growth + ' GDP Growth', cls: e.gdp_growth > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
-    if (e.labor_force_participation) tags.push({ label: '+' + e.labor_force_participation + ' Labor Force', cls: 'effect-tag--positive' });
-    if (e.civil_unrest) tags.push({ label: '+' + e.civil_unrest + ' Civil Unrest', cls: 'effect-tag--warning' });
+    if (e.civil_unrest || e.unrest) {
+        const val = e.civil_unrest || e.unrest;
+        tags.push({ label: '+' + val + ' Unrest', cls: 'effect-tag--warning' });
+    }
     if (e.housing_affordability) tags.push({ label: e.housing_affordability + ' Housing', cls: e.housing_affordability > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
     if (e.cost_of_living) tags.push({ label: '+' + e.cost_of_living + ' Cost of Living', cls: 'effect-tag--warning' });
-    if (e.crime_rate) tags.push({ label: e.crime_rate + ' Crime Rate', cls: e.crime_rate < 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
-    if (e.corruption) tags.push({ label: e.corruption + ' Corruption', cls: e.corruption < 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
-    if (e.judicial_independence) tags.push({ label: (e.judicial_independence > 0 ? '+' : '') + e.judicial_independence + ' Judicial Ind.', cls: e.judicial_independence > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
-    if (e.freedom_index) tags.push({ label: e.freedom_index + ' Freedom Index', cls: e.freedom_index > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
-    if (e.press_freedom) tags.push({ label: e.press_freedom + ' Press Freedom', cls: e.press_freedom > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
-    if (e.pollution) tags.push({ label: e.pollution + ' Pollution', cls: e.pollution < 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
-    if (e.manufacturing_output) tags.push({ label: e.manufacturing_output + ' Manufacturing', cls: e.manufacturing_output > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    if (e.manufacturing_output || e.industry) {
+        const val = e.manufacturing_output || e.industry;
+        tags.push({ label: val + ' Industry', cls: val > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
+    }
+    // PHASE 7 TODO: polarization, terrorism_risk, terrorism, labor_force_participation,
+    // crime_rate, corruption, judicial_independence, freedom_index, press_freedom,
+    // pollution effect tags removed — these stats drop in Phase 9. Effect-config
+    // payloads from agreements.js may still send these keys; rebuild the schema
+    // when the engine cuts over so old payloads no longer flow into renderEffectTags.
 
     if (tags.length === 0) {
         tags.push({ label: 'No stat effects', cls: 'effect-tag--neutral' });
@@ -12570,6 +12597,9 @@ function renderEffectTagsFromEffects(effects, articleType) {
  * Compute combined totals across all articles in the initiative.
  */
 function computeInitiativeTotals(articles) {
+    // PHASE 7 TODO: intl_reputation renames to power in Phase 9 — rename the
+    // accumulator key once the engine cuts over and article effect payloads
+    // start emitting `power` instead of `intl_reputation`.
     const totals = { relations: 0, revenue: 0, cost_proposer: 0, cost_target: 0, intl_reputation: 0 };
     for (const art of articles) {
         if (art.status === 'struck') continue;

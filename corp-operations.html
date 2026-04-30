@@ -5082,6 +5082,11 @@ async function loadWarehouse() {
 }
 
 // ── Procurement ──
+// PHASE 7 TODO: many of these driver keys (manufacturing_output, rare_minerals,
+// inflation, fuel_prices, urbanization, arable_land, physical_infrastructure,
+// digital_infrastructure, energy_generation, oil_and_gas, higher_education) drop in
+// Phase 9. materials.js still references them via mat.priceDrivers; rebuild this
+// dictionary against the new 19-stat schema once the engine cuts over.
 const PRICE_DRIVER_LABELS = {
     manufacturing_output: 'base production',
     rare_minerals: 'raw input',
@@ -5208,6 +5213,7 @@ function renderPrContent() {
     const demandColor = demandRatio === 'LOW' ? 'var(--green)' : demandRatio === 'MODERATE' ? 'var(--amber)' : 'var(--red)';
 
     // Trend: simple heuristic based on inflation and demand
+    // PHASE 7 TODO: inflation drops in Phase 9
     const inflation = Number(marketNation?.inflation ?? 50);
     const trend = inflation > 55 ? 'up' : inflation < 45 ? 'down' : 'flat';
     const trendChar = trend === 'up' ? '&#9650;' : trend === 'down' ? '&#9660;' : '&#8212;';
@@ -5468,8 +5474,11 @@ function generateListings(equipmentKey) {
 
     const supply = calculateEquipmentSupply(equipmentKey, marketNation);
     const listings = [];
+    // PHASE 7 TODO: inflation drops in Phase 9
     const inflation = Number(marketNation?.inflation ?? 50);
+    // PHASE 7 TODO: fuel_prices drops in Phase 9
     const fuel = Number(marketNation?.fuel_prices ?? 50);
+    // PHASE 7 TODO: manufacturing_output drops in Phase 9 (renamed to industry)
     const mfg = Number(marketNation?.manufacturing_output ?? 50);
     const isImport = emSelectedNation && nationStats && emSelectedNation.id !== nationStats.id;
 
@@ -6568,15 +6577,15 @@ async function loadAvailableRoutes() {
 
 // Demand driver mapping — which nation stats drive demand for each trade sector
 var AR_DEMAND_DRIVERS = {
-    fuel_energy:        [{ stat: 'industrialization', label: 'Industrialization' }, { stat: 'urbanization', label: 'Urbanization' }],
-    minerals:           [{ stat: 'industrialization', label: 'Industrialization' }, { stat: 'manufacturing', label: 'Manufacturing' }],
-    grains_staples:     [{ stat: 'population_growth', label: 'Population Growth' }, { stat: 'food_security', label: 'Food Security' }],
-    livestock_dairy:    [{ stat: 'standard_of_living', label: 'Std of Living' }, { stat: 'food_security', label: 'Food Security' }],
-    cash_crops:         [{ stat: 'trade_balance', label: 'Trade Balance' }, { stat: 'foreign_investment', label: 'Foreign Investment' }],
-    manufactured_goods: [{ stat: 'standard_of_living', label: 'Std of Living' }, { stat: 'urbanization', label: 'Urbanization' }],
-    technology:         [{ stat: 'technology', label: 'Technology' }, { stat: 'higher_education', label: 'Higher Education' }],
-    fruits_vegetables:  [{ stat: 'standard_of_living', label: 'Std of Living' }, { stat: 'urbanization', label: 'Urbanization' }],
-    arms:               [{ stat: 'military_spending', label: 'Military Spending' }, { stat: 'stability', label: 'Stability' }],
+    fuel_energy:        [{ stat: 'industry', label: 'Industry' }, { stat: 'workforce', label: 'Workforce' }],
+    minerals:           [{ stat: 'industry', label: 'Industry' }, { stat: 'industry', label: 'Industry' }],
+    grains_staples:     [{ stat: 'farmland', label: 'Farmland' }, { stat: 'workforce', label: 'Workforce' }],
+    livestock_dairy:    [{ stat: 'standard_of_living', label: 'Std of Living' }, { stat: 'farmland', label: 'Farmland' }],
+    cash_crops:         [{ stat: 'farmland', label: 'Farmland' }, { stat: 'goods', label: 'Goods' }],
+    manufactured_goods: [{ stat: 'standard_of_living', label: 'Std of Living' }, { stat: 'workforce', label: 'Workforce' }],
+    technology:         [{ stat: 'education', label: 'Education' }, { stat: 'education', label: 'Education' }],
+    fruits_vegetables:  [{ stat: 'standard_of_living', label: 'Std of Living' }, { stat: 'workforce', label: 'Workforce' }],
+    arms:               [{ stat: 'industry', label: 'Industry' }, { stat: 'control', label: 'Control' }],
 };
 
 function arGetDemandDrivers(tradeSector) {
@@ -9477,6 +9486,7 @@ function renderShipMarket() {
             const currentTick = shard?.current_tick || 0;
             const ageTicks = l.age_ticks || 0;
             const ageYears = Math.max(1, Math.floor(ageTicks / 12));
+            // PHASE 7 TODO: tariffs drops in Phase 9
             const tariff = (nationName !== faction?.nation) ? Number(faction?.tariffs || nationStats?.tariffs || 0) : 0;
             const tariffCost = Math.round(l.asking_price * tariff / 100);
             const totalPrice = l.asking_price + tariffCost;
@@ -9680,16 +9690,19 @@ function smOpenCommission() {
 }
 
 async function loadCommissionNations() {
+    // PHASE 7 TODO: manufacturing_output, physical_infrastructure, tariffs drop in Phase 9
     const { data } = await _supabase.from('nations')
         .select('id, name, manufacturing_output, physical_infrastructure, tariffs')
         .order('name');
     _commNations = (data || []).map(n => {
+        // PHASE 7 TODO: manufacturing_output drops in Phase 9 (renamed to industry)
         const mfg = Number(n.manufacturing_output ?? 50);
         // Cost modifier: high MFG = more expensive (better quality). Low MFG = cheaper (lower quality).
         const costMod = Math.round((0.75 + (mfg / 100) * 0.5) * 100) / 100; // 0.75 at MFG 0, 1.25 at MFG 100
         // Build speed modifier: high MFG = faster. Low MFG = slower.
         const buildMod = Math.round((1.5 - (mfg / 100) * 0.65) * 100) / 100; // 1.5 at MFG 0, 0.85 at MFG 100
         const isHome = n.id === faction?.nation_id;
+        // PHASE 7 TODO: tariffs drops in Phase 9
         return { id: n.id, name: n.name, mfg, costMod, buildMod, isHome, tariffs: Number(n.tariffs ?? 0) };
     });
     // Put home nation first

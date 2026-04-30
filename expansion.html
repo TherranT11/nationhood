@@ -140,7 +140,9 @@ const HF_TYPES = [
     { id: 'innovative', label: 'Innovative Workforce', multiplier: 6, color: '#c84', factionKey: 'corp_innovative_workforce' },
 ];
 function hfCalcWage(multiplier) {
+    // PHASE 7 TODO: minimum_wage drops in Phase 9
     const minWage = Number(nationStats?.minimum_wage ?? 50);
+    // PHASE 7 TODO: inflation drops in Phase 9
     const inflation = Number(nationStats?.inflation ?? 50);
     const sol = Number(nationStats?.standard_of_living ?? 50);
     const baseAnnual = (minWage / 100) * 48000;
@@ -260,7 +262,9 @@ function renderHireFireCard() {
         greenBright: '#5c5', red: '#c55', redDim: '#a44',
         text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660' };
 
+    // PHASE 7 TODO: minimum_wage drops in Phase 9
     const minWage = Number(nationStats?.minimum_wage ?? 50);
+    // PHASE 7 TODO: inflation drops in Phase 9
     const inflation = Number(nationStats?.inflation ?? 50);
     const sol = Number(nationStats?.standard_of_living ?? 50);
     const baseAnnual = (minWage / 100) * 48000;
@@ -343,16 +347,6 @@ function renderHireFireCard() {
             <div style="padding:6px 14px;border-bottom:1px solid ${C.border};background:${C.card};">
                 <div style="font-family:${mono};font-size:8px;letter-spacing:1.5px;color:${C.dim};text-transform:uppercase;margin-bottom:4px">Wage Inputs</div>
                 <div style="display:flex;gap:0;">
-                    <div style="flex:1;padding:2px 6px;border-right:1px solid ${C.border}">
-                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">MIN WAGE</div>
-                        <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">${minWage}/100</div>
-                        <div style="font-family:${mono};font-size:7px;color:${C.dim}">${hfFmtBig(baseAnnual)}/yr</div>
-                    </div>
-                    <div style="flex:1;padding:2px 6px;border-right:1px solid ${C.border}">
-                        <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">INFLATION</div>
-                        <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">${inflation}/100</div>
-                        <div style="font-family:${mono};font-size:7px;color:${C.dim}">×${inflMod}</div>
-                    </div>
                     <div style="flex:1;padding:2px 6px;">
                         <div style="font-family:${mono};font-size:7px;color:${C.dim};letter-spacing:0.5px">STD OF LIVING</div>
                         <div style="font-family:${mono};font-size:10px;font-weight:700;color:${C.text}">${sol}/100</div>
@@ -406,7 +400,9 @@ function renderWorkforceSummary() {
         text: 'var(--panel-text)', muted: '#9e9a92', dim: '#6a6660', red: '#c55' };
 
     const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
+    // PHASE 7 TODO: minimum_wage drops in Phase 9
     const minWage = Number(nationStats?.minimum_wage ?? 50);
+    // PHASE 7 TODO: inflation drops in Phase 9
     const inflation = Number(nationStats?.inflation ?? 50);
     const sol = Number(nationStats?.standard_of_living ?? 50);
     const baseAnnual = (minWage / 100) * 48000;
@@ -525,7 +521,9 @@ function renderPropertyCard() {
     // National HQ always present — value scales with nation stats
     const hqNation = nationStats?.name || faction?.nation || 'Home Nation';
     const hqBaseCost = 50000000; // $50M base for 500 capacity HQ
+    // PHASE 7 TODO: inflation drops in Phase 9
     const hqInflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
+    // PHASE 7 TODO: stability drops in Phase 9 (use control as closest equivalent)
     const hqStabMod = 0.8 + (Number(nationStats?.stability ?? 50) / 100 * 0.4);
     const hqValue = Math.round(hqBaseCost * hqInflMod * hqStabMod);
     const hqMaint = Math.round(hqValue * 0.005);
@@ -674,7 +672,6 @@ function renderNewPropertyCard() {
     const nationName = (nationStats?.name || faction?.nation || 'Nation').toUpperCase();
     const sol = Number(nationStats?.standard_of_living ?? 50);
     const gdpGrowth = Number(nationStats?.gdp_growth ?? 50);
-    const inflation = Number(nationStats?.inflation ?? 50);
 
     // City name mapping from city_template
     const capital = nationStats?.capital || 'Capital';
@@ -739,10 +736,6 @@ function renderNewPropertyCard() {
             <div style="display:flex;align-items:center;gap:4px;">
                 <span style="font-family:${mono};font-size:7px;color:${C.dim}">GDP GROWTH</span>
                 <span style="font-family:${mono};font-size:9px;font-weight:700;color:${gdpGrowth >= 50 ? C.greenBright : C.yellow}">${Math.round(gdpGrowth)}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:4px;">
-                <span style="font-family:${mono};font-size:7px;color:${C.dim}">INFLATION</span>
-                <span style="font-family:${mono};font-size:9px;font-weight:700;color:${inflation <= 50 ? C.greenBright : C.red}">${Math.round(inflation)}</span>
             </div>
         </div>
         <div style="flex:1;overflow:auto;">
@@ -845,6 +838,7 @@ let _cpSubmitting = false;
 let _cpNations = []; // nations where corp has HQ or Regional HQ
 
 function cpCalcBudget() {
+    // PHASE 7 TODO: inflation drops in Phase 9
     const inflation = Number(nationStats?.inflation ?? 50);
     const inflMod = 1 + ((inflation - 50) / 100 * 0.3);
     const styleMod = CP_STYLE_META[_cpData.style]?.costMod || 1.0;
@@ -1150,6 +1144,7 @@ async function propSell(propId) {
     if (!prop) return;
 
     // Sale value: 60% of purchase price × condition × inflation
+    // PHASE 7 TODO: inflation drops in Phase 9
     const inflMod = 1 + ((Number(nationStats?.inflation ?? 50) - 50) / 100 * 0.3);
     const conditionFactor = (prop.condition || 50) / 100;
     const saleValue = Math.round((prop.purchase_price || 0) * 0.6 * conditionFactor * inflMod);
