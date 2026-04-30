@@ -1294,6 +1294,18 @@ function renderOperatingIndicators(ownership, currentUserId) {
 
 // ─── DISPATCHES FEED ─────────────────────────────────────────
 
+// event_log.category has many values across the codebase. Map each into one
+// of two buckets that drive the Politics/Corporate tab. Keep these in sync
+// with whatever new categories the event-template system introduces.
+// (Run `SELECT category, COUNT(*) FROM event_log GROUP BY 1` to audit.)
+const POLITICS_CATEGORIES = [
+    'politics', 'political', 'government', 'crisis',
+    'diplomatic', 'international', 'economy',
+];
+const CORPORATE_CATEGORIES = [
+    'corporate', 'business', 'trade',
+];
+
 function bindDispatchTabs() {
     document.querySelectorAll('.cr-event-tab-bar').forEach(bar => {
         bar.addEventListener('click', (e) => {
@@ -1332,9 +1344,13 @@ async function loadDispatches() {
     _eventState.inflight = key;
     const myNationId = faction.nation_id;
 
+    const categories = _eventState.category === 'politics'
+        ? POLITICS_CATEGORIES
+        : CORPORATE_CATEGORIES;
+
     let q = _supabase.from('event_log')
         .select('id, event_name, description_used, category, fired_at_tick, nation_id, nations(name)')
-        .eq('category', _eventState.category)
+        .in('category', categories)
         .order('fired_at_tick', { ascending: false })
         .limit(30);
 
@@ -1383,14 +1399,17 @@ function renderDispatchList(rows) {
     const currentTick = Number(shard?.current_tick) || 0;
     const showNation = _eventState.scope === 'world';
 
+    // Tag color and left-edge stripe always reflect the active bucket so
+    // Politics events with subcategory "crisis" or "government" still render
+    // with the consistent politics-blue accent — and likewise for Corporate.
+    const bucket    = _eventState.category;
+    const tagClass  = bucket === 'politics' ? 'tag-politics' : 'tag-corporate';
+    const itemClass = bucket === 'politics' ? 'cat-politics' : 'cat-corporate';
+
     listEl.innerHTML = rows.map(row => {
-        const cat       = row.category || _eventState.category;
-        const tagClass  = cat === 'politics' ? 'tag-politics'
-                        : cat === 'corporate' ? 'tag-corporate'
-                        : '';
-        const itemClass = cat === 'politics' ? 'cat-politics'
-                        : cat === 'corporate' ? 'cat-corporate'
-                        : '';
+        // Keep the actual subcategory text on the tag so players can see why
+        // a row was bucketed (e.g. "GOVERNMENT" / "CRISIS" / "BUSINESS").
+        const cat = row.category || bucket;
 
         const ticksAgo = Math.max(0, currentTick - (Number(row.fired_at_tick) || 0));
         const timeStr  = ticksAgo === 0 ? 'JUST NOW'
