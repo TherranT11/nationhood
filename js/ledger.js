@@ -175,13 +175,6 @@ async function loadAllTradeFlows(_supabase) {
     _allTradeFlows = {};
 }
 
-function getGoodsRank(nationId, sectorKey, metric) {
-    const vals = _allNations.map(n => {
-        const flow = _allTradeFlows[n.id]?.[sectorKey];
-        return { id: n.id, val: flow ? Number(flow[metric]) || 0 : 0 };
-    });
-    vals.sort((a, b) => b.val - a.val); // higher is better for production
-    return vals.findIndex(v => v.id === nationId) + 1;
 }
 
 function fmtCurrency(val) {
@@ -341,35 +334,14 @@ function renderSingleMode() {
         `<div class="lg-cat-btn ${c.id === _activeCategory ? 'active' : ''}" data-cat="${c.id}">${esc(c.name.toUpperCase())}</div>`
     ).join('');
 
-    // Stat rows — goods category uses trade flows, others use nation stats
+    // Stat rows — goods category renders an empty placeholder (Phase
+    // 10A wiped the goods-trade engine; rebuild pending). All other
+    // categories render normally from nation stats.
     let statsHtml = '';
-    if (_activeCategory === 'goods' && nation) {
-        const flows = _allTradeFlows[nation.id] || {};
-        let totalProd = 0;
-        const sectorRows = GOODS_SECTORS.map(s => {
-            const flow = flows[s.key];
-            const prod = flow ? flow.export_capacity : 0;
-            totalProd += prod;
-            const rank = getGoodsRank(nation.id, s.key, 'export_capacity');
-            const pct = total > 1 ? ((total - rank) / (total - 1)) * 100 : 50;
-            const barColor = pct > 75 ? 'var(--green)' : pct > 50 ? 'var(--amber)' : pct > 25 ? 'var(--orange)' : 'var(--red)';
-            return `<div class="lg-stat-row">
-                <span class="lg-stat-name"><span style="margin-right:4px;">${s.icon}</span>${esc(s.name)}</span>
-                <span class="lg-stat-value">${fmtCurrency(prod)}</span>
-                <span class="lg-stat-rank" style="color:${rankColor(rank, total)};">#${rank}</span>
-                <div class="lg-stat-bar-wrap">
-                    <div class="lg-stat-bar"><div class="lg-stat-bar-fill" style="width:${pct}%;background:${barColor};"></div></div>
-                    <span class="lg-stat-pct">${Math.round(pct)}%</span>
-                </div>
-            </div>`;
-        }).join('');
-        // Total production header row
-        statsHtml = `<div class="lg-stat-row" style="background:var(--bg-card);border-bottom:2px solid var(--border-main);">
-            <span class="lg-stat-name" style="font-weight:700;color:var(--text-bright);">Total Production</span>
-            <span class="lg-stat-value" style="font-weight:700;color:var(--accent);">${fmtCurrency(totalProd)}</span>
-            <span class="lg-stat-rank"></span>
-            <div class="lg-stat-bar-wrap"></div>
-        </div>` + sectorRows;
+    if (_activeCategory === 'goods') {
+        statsHtml = `<div class="lg-stat-row" style="padding:32px 14px;justify-content:center;">
+            <span style="color:var(--text-dim);font-style:italic;">Goods trade is being rebuilt — no data yet.</span>
+        </div>`;
     } else {
         statsHtml = (cat?.stats || []).map(stat => {
             if (!nation) return '';
@@ -447,23 +419,27 @@ function renderCompareMode() {
         </div>`;
     }).join('');
 
-    // Stat rows — goods category uses trade flows
-    const compareStatList = _activeCategory === 'goods'
-        ? GOODS_SECTORS.map(s => ({ id: s.key, name: s.icon + ' ' + s.name, isGoods: true }))
-        : (cat?.stats || []);
+    // Stat rows — goods category renders an empty placeholder (Phase 10A).
+    if (_activeCategory === 'goods') {
+        return `<div>
+            <div style="background:var(--bg-panel);border:1px solid var(--border-main);padding:8px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;gap:4px;flex-wrap:wrap;">${pickerHtml}</div>
+                <span style="font-family:var(--font-mono);font-size:16px;color:var(--text-dim);">${_compareIds.length}/4 selected</span>
+            </div>
+            <div class="lg-cat-bar">${catHtml}</div>
+            <div style="padding:32px;text-align:center;color:var(--text-dim);font-style:italic;">Goods trade is being rebuilt — no data yet.</div>
+        </div>`;
+    }
+
+    const compareStatList = (cat?.stats || []);
 
     const statsHtml = compareStatList.map((stat, si) => {
-        const isGoods = stat.isGoods;
+        const vals = _compareIds.map(nid => ({
+            id: nid,
+            val: Number(_allNations.find(n => n.id === nid)?.[stat.id] ?? 0),
+        }));
 
-        const vals = _compareIds.map(nid => {
-            if (isGoods) {
-                const flow = _allTradeFlows[nid]?.[stat.id];
-                return { id: nid, val: flow ? flow.export_capacity : 0 };
-            }
-            return { id: nid, val: Number(_allNations.find(n => n.id === nid)?.[stat.id] ?? 0) };
-        });
-
-        const hb = isGoods ? true : isHigherBetter(stat.id);
+        const hb = isHigherBetter(stat.id);
         const numVals = vals.filter(v => !isNaN(v.val));
         let bestId = null;
         if (numVals.length > 0 && hb !== null) {
@@ -476,15 +452,14 @@ function renderCompareMode() {
             const v = vals.find(x => x.id === nid);
             const val = v ? v.val : 0;
             const isBest = nid === bestId;
-            const display = isGoods ? fmtCurrency(val) : fmtVal(val, stat.id);
             return `<div style="flex:1;text-align:center;">
-                <span style="font-family:var(--font-mono);font-size:17px;font-weight:700;color:${isBest ? 'var(--accent)' : 'var(--text-bright)'};">${display}</span>
+                <span style="font-family:var(--font-mono);font-size:17px;font-weight:700;color:${isBest ? 'var(--accent)' : 'var(--text-bright)'};">${fmtVal(val, stat.id)}</span>
                 ${isBest ? '<span style="font-family:var(--font-mono);font-size:16px;color:var(--accent);margin-left:2px;">\u2605</span>' : ''}
             </div>`;
         }).join('');
 
         return `<div style="display:flex;padding:5px 14px;align-items:center;border-bottom:${si < compareStatList.length - 1 ? '1px solid rgba(200,196,184,0.03)' : 'none'};">
-            <span style="width:160px;font-size:16px;color:var(--text-secondary);">${stat.isGoods ? stat.name : esc(stat.name)}</span>
+            <span style="width:160px;font-size:16px;color:var(--text-secondary);">${esc(stat.name)}</span>
             ${cellsHtml}
         </div>`;
     }).join('');
@@ -513,27 +488,21 @@ function renderRankingsMode() {
     const myNationId = _state.nation?.id;
     const rankCat = STAT_CATEGORIES.find(c => c.id === _rankingCategory);
     const isGoodsRanking = _rankingCategory === 'goods';
-    const goodsSector = isGoodsRanking ? GOODS_SECTORS.find(s => s.key === _rankingStat) : null;
-    const statDef = isGoodsRanking ? (goodsSector ? { name: goodsSector.name } : { name: 'Production' }) : rankCat?.stats.find(s => s.id === _rankingStat);
-    const hb = isGoodsRanking ? true : isHigherBetter(_rankingStat);
+    const statDef = isGoodsRanking ? { name: 'Goods' } : rankCat?.stats.find(s => s.id === _rankingStat);
+    const hb = isGoodsRanking ? null : isHigherBetter(_rankingStat);
 
-    // Sort nations by selected stat
-    const sorted = [..._allNations].sort((a, b) => {
-        if (isGoodsRanking) {
-            const va = _allTradeFlows[a.id]?.[_rankingStat]?.export_capacity || 0;
-            const vb = _allTradeFlows[b.id]?.[_rankingStat]?.export_capacity || 0;
-            return vb - va;
-        }
+    // Sort nations by selected stat (Phase 10A: goods rankings disabled —
+    // the goods-trade engine is wiped, all-zero data would produce
+    // meaningless rankings).
+    const sorted = isGoodsRanking ? [..._allNations] : [..._allNations].sort((a, b) => {
         const va = Number(a[_rankingStat] ?? 0);
         const vb = Number(b[_rankingStat] ?? 0);
         return hb !== false ? vb - va : va - vb;
     });
 
-    // Use the largest absolute value across all nations for bar scaling
-    const maxVal = sorted.length > 0 ? Math.max(...sorted.map(n => {
-        if (isGoodsRanking) return _allTradeFlows[n.id]?.[_rankingStat]?.export_capacity || 0;
-        return Math.abs(Number(n[_rankingStat] ?? 0));
-    }), 1) : 1;
+    const maxVal = isGoodsRanking ? 1 : (sorted.length > 0
+        ? Math.max(...sorted.map(n => Math.abs(Number(n[_rankingStat] ?? 0))), 1)
+        : 1);
 
     // Category tabs
     const catHtml = STAT_CATEGORIES.map(c =>
@@ -545,10 +514,17 @@ function renderRankingsMode() {
         ">${esc(c.name.toUpperCase())}</div>`
     ).join('');
 
-    // Stat picker — goods uses GOODS_SECTORS, others use cat.stats
-    const statPickerList = isGoodsRanking
-        ? GOODS_SECTORS.map(s => ({ id: s.key, name: s.icon + ' ' + s.name }))
-        : (rankCat?.stats || []);
+    // Goods rankings render an empty placeholder (Phase 10A wipe).
+    if (isGoodsRanking) {
+        return `<div>
+            <div style="background:var(--bg-panel);border:1px solid var(--border-main);padding:8px 14px;margin-bottom:6px;">
+                <div style="display:flex;gap:2px;margin-bottom:6px;flex-wrap:wrap;">${catHtml}</div>
+            </div>
+            <div style="padding:32px;text-align:center;color:var(--text-dim);font-style:italic;">Goods trade is being rebuilt — no data yet.</div>
+        </div>`;
+    }
+
+    const statPickerList = (rankCat?.stats || []);
 
     const statPickerHtml = statPickerList.map(s =>
         `<div class="lg-rank-stat" data-stat="${s.id}" style="

@@ -363,38 +363,12 @@ function renderTradeHeaderStats() {
 }
 
 async function loadTradeFlowData() {
-    const nationId = _worldState?.nation?.id;
-    if (!nationId) return;
-
-    // Get latest trade_summary tick
-    const { data: sumRows } = await _supabase.from('trade_summary')
-        .select('*')
-        .eq('nation_id', nationId)
-        .order('tick', { ascending: false })
-        .limit(1);
-    _tradeSummary = sumRows?.[0] || null;
-
-    if (!_tradeSummary) return;
-
-    // Get trade flows for that tick
-    const { data: flowRows } = await _supabase.from('trade_flows')
-        .select('sector, domestic_production, domestic_demand, export_capacity, export_volume, import_demand, import_volume, net_flow, price_modifier')
-        .eq('nation_id', nationId)
-        .eq('tick', _tradeSummary.tick);
-
+    // Phase 10A: trade_summary / trade_flows / trade_partners tables
+    // dropped with the goods-trade engine wipe. Trade-agreement clauses
+    // that read these globals fall through to zero/empty state.
+    _tradeSummary = null;
     _tradeFlows = {};
-    if (flowRows) {
-        for (const row of flowRows) {
-            _tradeFlows[row.sector] = row;
-        }
-    }
-
-    // Load bilateral trade partners (imports to us + exports from us)
-    const { data: partnerRows } = await _supabase.from('trade_partners')
-        .select('exporter_nation_id, importer_nation_id, sector, trade_volume')
-        .eq('tick', _tradeSummary.tick)
-        .or(`exporter_nation_id.eq.${nationId},importer_nation_id.eq.${nationId}`);
-    _tradePartnersBilateral = partnerRows || [];
+    _tradePartnersBilateral = [];
 }
 
 // ── Trade-lane efficiency helpers (shared by commodity detail + agreements) ──
