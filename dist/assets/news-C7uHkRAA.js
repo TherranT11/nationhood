@@ -1,0 +1,1 @@
+import{_supabase as r}from"./supabase-client-qEAQbBjE.js";/* empty css                  */import{i as m}from"./news-Cz6HUTHT.js";import{i as o}from"./common-DmgH3uJx.js";import"./preload-helper-BXl3LOEh.js";import"./utils-A98FEun4.js";import"./government-structure-C17uG6rl.js";import"./corp-topbar-CYaKZ_BF.js";o("news",async i=>{await m(r,i)});

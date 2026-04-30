@@ -1,1 +1,0 @@
-function r(t,n){const a=Math.max(0,Number(t)||0),e=Math.max(0,Number(n)||0);return Math.round(a*(e/100)/12)}function s(t,n){const a=Number(t)||0,e=Number(n)||0;return Math.max(0,a-e)}export{r as m,s as p};
