@@ -14,11 +14,12 @@
 SELECT name, current_tick FROM shard WHERE name = 'Alpha Shard';
 
 -- 1. Calveth government_formations rows (all statuses, recent first)
-SELECT id, status, formed_at, started_at_tick, dissolved_at_tick,
-       ministry_assignments->>'prime_minister' AS pm_party_id
+SELECT id, status, formation_type, formed_at, created_at,
+       ministry_assignments->>'prime_minister' AS pm_party_id,
+       array_length(party_ids, 1) AS coalition_size
   FROM government_formations
  WHERE nation_id = (SELECT id FROM nations WHERE name = 'Calveth')
- ORDER BY formed_at DESC NULLS LAST
+ ORDER BY COALESCE(formed_at, created_at) DESC
  LIMIT 20;
 
 -- 2. Calveth elections rows (any status, recent first)
