@@ -1280,8 +1280,16 @@ function renderActionsPanel(leaderName, partyColor, faction) {
         //   2. No motion already pending in this nation
         //   3. 12-tick per-PM-party cooldown (loaded into _noConfidenceCooldownTicks)
         if (action.id === 'no_confidence') {
+            const isMonarchyNation = isAbsoluteMonarchy(_state.nation);
             const isPMParty = !!_administration && _administration.pm_party_id === faction.id;
-            if (isPMParty) {
+            if (isMonarchyNation) {
+                // Parliament has no authority to remove the Monarch's PM.
+                // Dismissal is a royal prerogative (see Royal Cabinet panel
+                // on government.html). Defense in depth: fileNoConfidenceMotion
+                // also rejects monarchy nations server-side.
+                isDisabled = true;
+                action.lockReason = 'Parliament cannot remove the Monarch’s Prime Minister. Only the Monarch can dismiss the PM.';
+            } else if (isPMParty) {
                 isDisabled = true;
                 action.lockReason = 'Your party is the Prime Minister — file from another party.';
             } else if (_noConfidencePending) {

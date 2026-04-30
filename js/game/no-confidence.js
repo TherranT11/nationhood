@@ -15,6 +15,7 @@
  */
 
 import { GAME_CONFIG } from './config.js';
+import { isAbsoluteMonarchy } from './government-types.js';
 
 /**
  * Insert the no-confidence bill, auto-cast the filer's YES vote, and record
@@ -37,6 +38,17 @@ export async function fileNoConfidenceMotion(supabase, opts) {
 
     if (!faction?.id || !nation?.id || !pmFactionId) {
         return { ok: false, error: 'Missing required arguments (faction, nation, or PM party id).' };
+    }
+
+    // Defense in depth: under absolute monarchy, parliament cannot remove
+    // the Monarch's PM via no-confidence — dismissal is a royal prerogative.
+    // The two UI entry points (government.html and party-actions.js) also
+    // hide/disable the button, but the gate lives here so any future caller
+    // gets the same enforcement without re-implementing it.
+    const { data: nationRow } = await supabase.from('nations')
+        .select('government_type, hos_election_method').eq('id', nation.id).maybeSingle();
+    if (isAbsoluteMonarchy(nationRow)) {
+        return { ok: false, error: 'No-confidence motions cannot be filed under absolute monarchy. Only the Monarch can dismiss the Prime Minister.' };
     }
 
     const motionName = pmLastName
