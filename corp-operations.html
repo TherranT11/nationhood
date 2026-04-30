@@ -7163,14 +7163,19 @@ function renderActiveVoyages() {
                 + '<div class="av-detail-row"><span class="av-detail-label">DEMAND</span><span class="av-detail-value" style="color:' + demandColor + '">' + (route.demand_level || '?') + '</span></div>'
                 + (route.trade_agreement_name ? '<div class="av-detail-row"><span class="av-detail-label">AGREEMENT</span><span class="av-detail-value" style="color:var(--teal)">' + escapeHtml(route.trade_agreement_name) + '</span></div>' : '')
                 + '<div class="av-detail-row"><span class="av-detail-label">CLAIMED</span><span class="av-detail-value">Tick ' + (claim.claimed_at_tick || '?') + '</span></div>'
-                // Check if a vessel is assigned to this claim
+                // Check if a vessel is assigned to this claim. Show ASSIGN
+                // VESSEL whenever none is — covers both "freshly approved
+                // route awaiting first assignment" and "previous vessel sent
+                // to dry dock" (flRefurbish nulls active_claim_id but leaves
+                // the claim row active, so the route would otherwise sit
+                // orphaned with no way to dispatch a replacement).
                 var assignedVessel = (_fleetVessels || []).find(function(v) { return v.active_claim_id === claim.id; });
-                if (!assignedVessel && status === 'loading') {
+                if (!assignedVessel) {
                     html += '<div style="padding:6px 8px;margin-top:4px;background:rgba(200,168,50,0.06);border:1px solid rgba(200,168,50,0.15);text-align:center;">'
                         + '<div style="font-family:var(--font-mono);font-size:9px;color:var(--orange);font-weight:700;margin-bottom:4px;">NO VESSEL ASSIGNED</div>'
                         + '<button class="av-action-btn" style="background:var(--teal);color:#fff;border-color:var(--teal);width:100%;" onclick="event.stopPropagation();openAssignVesselModal(\'' + claim.id + '\',\'' + (route.vessel_class || '') + '\')">ASSIGN VESSEL</button>'
                         + '</div>';
-                } else if (assignedVessel) {
+                } else {
                     html += '<div style="display:flex;justify-content:space-between;padding:4px 8px;margin-top:4px;background:var(--bg-card);border:1px solid var(--border-main);">'
                         + '<div>'
                         + '<div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">ASSIGNED VESSEL</div>'
