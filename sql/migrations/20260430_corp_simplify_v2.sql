@@ -36,8 +36,15 @@ DROP TABLE IF EXISTS construction_insurance CASCADE;
 
 DROP TABLE IF EXISTS finance_active_loans CASCADE;
 DROP TABLE IF EXISTS finance_loan_requests CASCADE;
+DROP TABLE IF EXISTS finance_loan_offers CASCADE;
 DROP TABLE IF EXISTS finance_insurance_claims CASCADE;
 DROP TABLE IF EXISTS finance_insurance_policies CASCADE;
+
+-- Equity system: parallel ownership mechanism built on dead finance_loan_*
+-- pipeline. Replaced by corp_ownership.
+DROP TABLE IF EXISTS equity_secondary_offers CASCADE;
+DROP TABLE IF EXISTS equity_dividends CASCADE;
+DROP TABLE IF EXISTS equity_positions CASCADE;
 
 DROP TABLE IF EXISTS corp_workforce_audit CASCADE;
 DROP TABLE IF EXISTS corp_donation_cooldown CASCADE;
@@ -72,7 +79,13 @@ BEGIN
         'claim_loan',
         'foreclose_loan',
         'pay_loan',
-        'project_permit_requirements'
+        'project_permit_requirements',
+        'auto_loan_originate',
+        'auto_loan_origination',
+        'equity_buy_in',
+        'equity_sell',
+        'equity_pay_dividend',
+        'resolve_construction_event'
       )
   LOOP
     EXECUTE format('DROP FUNCTION IF EXISTS %I.%I(%s) CASCADE', r.nspname, r.proname, r.args);
@@ -87,7 +100,10 @@ ALTER TABLE factions
   DROP COLUMN IF EXISTS corp_general_workforce,
   DROP COLUMN IF EXISTS corp_skilled_workforce,
   DROP COLUMN IF EXISTS corp_innovative_workforce,
-  DROP COLUMN IF EXISTS corp_operational_efficiency;
+  DROP COLUMN IF EXISTS corp_operational_efficiency,
+  -- monthly_profit was added by equity phase 1; superseded by the per-tick
+  -- flow snapshots (corp_revenue/costs/wages_current_tick) introduced below.
+  DROP COLUMN IF EXISTS monthly_profit;
 
 -- ─────────────────────────────────────────────────────────────
 -- 3. Add new persisted stats to factions
@@ -173,8 +189,7 @@ CREATE TABLE IF NOT EXISTS corp_ownership (
   holder_type  TEXT NOT NULL CHECK (holder_type IN ('player','state','shareholders','rival_corp','other')),
   holder_id    UUID,           -- nullable: e.g. anonymous shareholders
   pct          NUMERIC(5,2) NOT NULL CHECK (pct >= 0 AND pct <= 100),
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_corp_ownership_corp ON corp_ownership(corp_id);
