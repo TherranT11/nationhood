@@ -3,7 +3,7 @@
 --
 -- Each sector's weight is derived from one or two nation stats, recomputed
 -- when an election fires. Per-sector range stays 1–3 (so existing UI/math
--- doesn't break); nation-total target 24–28; soft-cap at 28.
+-- doesn't break); nation-total target 24–28; soft-cap at 32.
 --
 -- Storage: two new TEXT columns on `sectors` carrying the stat keys.
 -- A trailing `_inverse` suffix means "use 100 - stat_value" (e.g. Rural &
@@ -12,7 +12,7 @@
 --
 -- The engine pulls the stat value from `nations.<key>` (or `100 - <key>`)
 -- and applies a stepped formula (≥65→3, 35-65→2, <35→1). Two-stat sectors
--- weight primary 70% / secondary 30% before stepping. Soft-cap to 28
+-- weight primary 70% / secondary 30% before stepping. Soft-cap to 32
 -- proportionally if the raw sum exceeds it.
 --
 -- Seed values are mapped to the 12 default sector_keys. Custom sectors

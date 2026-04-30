@@ -12,7 +12,7 @@
 --   * read nation stat for primary_stat (handling _inverse suffix)
 --   * if secondary_stat present, blend 70/30 against secondary stat
 --   * step: blended >= 65 -> 3, >= 35 -> 2, else 1
---   * soft-cap per nation: if Σ raw weights > 28, scale proportionally and
+--   * soft-cap per nation: if Σ raw weights > 32, scale proportionally and
 --     re-clamp to [1, 3]
 --   * sectors with NULL primary_stat or a stat pointing at a missing column
 --     are left untouched (manual / operator-managed weight is preserved)
@@ -103,8 +103,8 @@ BEGIN
 
         -- Pass 2: write back, applying the soft-cap if the raw sum
         -- overshot 28.
-        IF nation_total > 28 THEN
-            scale_factor := 28.0 / nation_total;
+        IF nation_total > 32 THEN
+            scale_factor := 32.0 / nation_total;
             FOR e_rec IN SELECT key AS sid, (value::text)::integer AS w
                          FROM jsonb_each(raw_weights)
             LOOP
@@ -125,7 +125,7 @@ BEGIN
     RAISE NOTICE 'Backfilled weights on % sector rows', rows_updated;
 END $$;
 
--- Verify: per-nation totals should land in the 12-28 range, ideally 24-26
+-- Verify: per-nation totals should land in the 12-32 range, ideally 24-26
 -- for nations with a balanced spread of mid-range stats.
 SELECT
     nations.name AS nation,
