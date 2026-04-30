@@ -302,6 +302,8 @@ var STAT_SECTIONS = [
         ['Budget', 'budget', 'Government budget', 'currency', false, function(n){ return scaleGDP(n.budget); }],
         ['GDP Growth', 'gdp_growth', 'Monthly growth rate', null, false, function(n){ var p = ((Number(n.gdp_growth ?? 50) - 50) / 50) * 1; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; }],
         ['National Debt', 'debt', 'Government debt', 'currency', true, function(n){ return scaleGDP(n.debt); }],
+        ['Income Tax', 'income_tax', 'Personal income tax rate', null, false, function(n){ return Number(n.income_tax ?? 0).toFixed(0); }],
+        ['Corporate Tax', 'corporate_tax', 'Business income tax rate', null, false, function(n){ return Number(n.corporate_tax ?? 0).toFixed(0); }],
         ['Cost of Living', 'cost_of_living', 'Consumer cost burden', null, true],
         ['Service Sector', 'service_sector', 'Domestic service sector activity'],
         ['Industry', 'industry', 'Industrial production'],
@@ -333,10 +335,12 @@ var STAT_SECTIONS = [
     { id: 'governance', icon: '&#127963;', title: 'Governance', stats: [
         ['Control', 'control', 'Government control of territory'],
         ['Public Approval', 'public_approval', 'Public approval of the government'],
+        ['Corruption', 'corruption', 'Government corruption level', null, true],
         ['Crown Authority', 'crown_authority', 'Authority of the crown', null, false, null, function(n){ return n.crown_authority != null; }]
     ]},
     { id: 'security', icon: '&#128737;', title: 'Security', stats: [
-        ['Unrest', 'unrest', 'Protests, riots & political violence', null, true]
+        ['Unrest', 'unrest', 'Protests, riots & political violence', null, true],
+        ['Crime', 'crime', 'Criminal activity level', null, true]
     ]},
     { id: 'immigration', icon: '&#9992;', title: 'Immigration', stats: [
         ['Immigration', 'immigration', 'Legal arrivals']
