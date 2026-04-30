@@ -319,6 +319,164 @@ body.corp-redesign::before {
   font-style: italic;
   opacity: 0.6;
 }
+
+/* ── OPERATING INDICATORS (Phase 3) ── */
+.cr-perf-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--cr-line);
+  border: 1px solid var(--cr-line);
+}
+.cr-perf-card {
+  background: var(--cr-bg-card);
+  padding: 22px 24px;
+  position: relative;
+}
+.cr-perf-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.cr-perf-name {
+  font-family: var(--cr-serif);
+  font-weight: 500;
+  font-size: 17px;
+  color: var(--cr-text-primary);
+  letter-spacing: -0.01em;
+}
+.cr-perf-value {
+  font-family: var(--cr-mono);
+  font-weight: 400;
+  font-size: 22px;
+  color: var(--cr-accent-gold);
+  font-variant-numeric: tabular-nums;
+}
+.cr-perf-value .cr-max {
+  color: var(--cr-text-tertiary);
+  font-size: 13px;
+}
+.cr-perf-meter {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+.cr-perf-meter-cell {
+  flex: 1;
+  height: 8px;
+  background: var(--cr-bg-secondary);
+  border: 1px solid var(--cr-line-bright);
+}
+.cr-perf-meter-cell.filled {
+  background: var(--cr-accent-gold);
+  border-color: var(--cr-accent-gold);
+  box-shadow: 0 0 4px rgba(201, 164, 73, 0.4);
+}
+.cr-perf-meter-cell.filled.warn {
+  background: var(--cr-accent-red);
+  border-color: var(--cr-accent-red);
+  box-shadow: 0 0 4px rgba(200, 90, 58, 0.4);
+}
+.cr-perf-meter-cell.filled.good {
+  background: var(--cr-accent-green);
+  border-color: var(--cr-accent-green);
+  box-shadow: 0 0 4px rgba(138, 166, 83, 0.4);
+}
+.cr-perf-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--cr-text-secondary);
+  font-family: var(--cr-sans);
+}
+.cr-perf-desc strong {
+  color: var(--cr-text-primary);
+  font-weight: 500;
+}
+.cr-perf-trend-tag {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+}
+.cr-delta {
+  font-family: var(--cr-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--cr-bg-elevated);
+  border: 1px solid var(--cr-line-bright);
+  color: var(--cr-text-secondary);
+  letter-spacing: 0.05em;
+}
+.cr-delta.up   { color: var(--cr-accent-green); border-color: rgba(138, 166, 83, 0.3); }
+.cr-delta.down { color: var(--cr-accent-red);   border-color: rgba(200, 90, 58, 0.3); }
+
+/* ── OWNERSHIP CARD (sits inside the perf grid) ── */
+.cr-ownership-bar {
+  display: flex;
+  height: 10px;
+  margin-bottom: 16px;
+  background: var(--cr-bg-secondary);
+  border: 1px solid var(--cr-line);
+}
+.cr-ownership-bar > div {
+  transition: opacity 0.15s;
+}
+.cr-ownership-bar > div:hover {
+  opacity: 0.75;
+}
+.cr-ownership-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+.cr-ownership-list li {
+  display: grid;
+  grid-template-columns: 8px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  line-height: 1;
+}
+.cr-ownership-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+}
+.cr-ownership-name {
+  color: var(--cr-text-primary);
+  font-family: var(--cr-sans);
+  font-size: 12px;
+}
+.cr-ownership-pct {
+  font-family: var(--cr-mono);
+  font-weight: 500;
+  color: var(--cr-text-primary);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.cr-you-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  background: var(--cr-accent-gold);
+  color: var(--cr-bg-primary);
+  font-family: var(--cr-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border-radius: 1px;
+  vertical-align: middle;
+}
+.cr-ownership-empty {
+  font-family: var(--cr-mono);
+  font-size: 10px;
+  color: var(--cr-text-tertiary);
+  font-style: italic;
+  padding: 8px 0;
+}
 .cr-section-header {
   display: flex;
   align-items: baseline;
@@ -455,10 +613,10 @@ body.corp-redesign::before {
         <div>
           <div class="cr-section-header" style="margin-bottom: 16px;">
             <h2><span class="num">II.</span>Operating Indicators</h2>
-            <span class="desc">Phase 3</span>
+            <span class="desc">Scored 0 — 10</span>
           </div>
-          <div class="cr-panel">
-            <div class="cr-placeholder">Innovation · Market Share · Reputation · Productivity · Employee Wages · Assets · Ownership land in <strong>Phase 3</strong>.</div>
+          <div class="cr-perf-grid" id="cr-perf-grid">
+            <!-- Populated by renderOperatingIndicators() -->
           </div>
         </div>
 
@@ -606,8 +764,8 @@ async function init() {
         return;
     }
 
-    // Shard + nation + per-tick P&L history in parallel.
-    const [shardRes, nationRes, pnlRes] = await Promise.all([
+    // Shard + nation + per-tick P&L history + ownership in parallel.
+    const [shardRes, nationRes, pnlRes, ownershipRes] = await Promise.all([
         _supabase.from('shard')
             .select('current_tick, current_date, name')
             .eq('name', 'Alpha Shard').single(),
@@ -621,6 +779,10 @@ async function init() {
             .eq('corp_id', faction.id)
             .order('tick', { ascending: false })
             .limit(12),
+        _supabase.from('corp_ownership')
+            .select('holder_type, holder_id, pct')
+            .eq('corp_id', faction.id)
+            .order('pct', { ascending: false }),
     ]);
     if (shardRes.error) {
         showFatal('Failed to load shard: ' + shardRes.error.message);
@@ -631,8 +793,12 @@ async function init() {
     if (pnlRes?.error) {
         console.error('[corp-dashboard] pnl_history fetch error:', pnlRes.error.message);
     }
+    if (ownershipRes?.error) {
+        console.error('[corp-dashboard] corp_ownership fetch error:', ownershipRes.error.message);
+    }
     // Reverse so oldest-first for sparkline left-to-right.
     const pnlHistory = (pnlRes?.data || []).slice().reverse();
+    const ownership  = ownershipRes?.data || [];
 
     // Mount the shared corp topbar.
     const topbarContainer = document.getElementById('corp-topbar-container');
@@ -649,6 +815,7 @@ async function init() {
 
     renderMasthead();
     renderFinancialRow(pnlHistory);
+    renderOperatingIndicators(ownership, user.id);
     renderFooter();
 
     document.getElementById('loading').style.display = 'none';
@@ -776,6 +943,160 @@ function renderFinCard({ label, value, prev, series, colorVar, invert, staticTre
         <div class="cr-fin-card-trend ${trendClass}">${trendHtml}</div>
         ${renderSparklineSvg(series, colorVar)}
     </div>`;
+}
+
+// Categorize a 0-10 score into a meter color band. Used by renderPerfCard
+// to drive the per-cell .filled.warn / .filled / .filled.good classes.
+function scoreBand(score) {
+    if (score >= 7) return 'good';
+    if (score >= 4) return 'mid';
+    return 'warn';
+}
+
+// Generate a short context blurb from the score band so the card has copy
+// without needing a narrative-events feed (event-driven flavor text lands
+// later, alongside the dispatches feed in Phase 4).
+function scoreBlurb(label, score) {
+    const band = scoreBand(score);
+    const map = {
+        good: { 'Innovation':     '<strong>Strong R&D pipeline.</strong> Industry-leading research output.',
+                'Market Share':   '<strong>Sector leader.</strong> Dominant position with pricing power.',
+                'Reputation':     '<strong>Trusted operator.</strong> Premium standing with regulators and the public.',
+                'Productivity':   '<strong>High output per worker.</strong> Operations running well above average.',
+                'Employee Wages': '<strong>Above industry median.</strong> Talent retention is strong.',
+                'Assets':         '<strong>Substantial holdings.</strong> Strong collateral and capacity.' },
+        mid:  { 'Innovation':     '<strong>Steady output.</strong> Holding pace with the sector.',
+                'Market Share':   '<strong>Mid-tier presence.</strong> Defensible but not dominant.',
+                'Reputation':     '<strong>Mixed standing.</strong> No major scandals, no breakout goodwill.',
+                'Productivity':   '<strong>Average efficiency.</strong> Room for operational gains.',
+                'Employee Wages': '<strong>Industry-standard pay.</strong> No flight risk, no extra loyalty.',
+                'Assets':         '<strong>Adequate holdings.</strong> Workable but room to grow.' },
+        warn: { 'Innovation':     '<strong>Stagnating R&D.</strong> Competitors are pulling ahead.',
+                'Market Share':   '<strong>Marginal player.</strong> Vulnerable to consolidation.',
+                'Reputation':     '<strong>Reputation under pressure.</strong> Recovery requires investment.',
+                'Productivity':   '<strong>Underperforming.</strong> Costs eating into output.',
+                'Employee Wages': '<strong>Below market.</strong> Turnover risk and morale issues.',
+                'Assets':         '<strong>Lean operation.</strong> Limited collateral and capacity.' },
+    };
+    return (map[band] && map[band][label]) || '';
+}
+
+function renderPerfMeter(score) {
+    // Floor to integer count of filled cells; max 10.
+    const filled = Math.max(0, Math.min(10, Math.round(Number(score) || 0)));
+    const band = scoreBand(score);
+    const cellClass = band === 'good' ? 'filled good'
+                    : band === 'warn' ? 'filled warn'
+                    : 'filled';
+    const cells = [];
+    for (let i = 0; i < 10; i++) {
+        cells.push(`<div class="cr-perf-meter-cell${i < filled ? ' ' + cellClass : ''}"></div>`);
+    }
+    return `<div class="cr-perf-meter">${cells.join('')}</div>`;
+}
+
+function renderPerfCard(label, score) {
+    const num = Number(score) || 0;
+    const display = Number.isInteger(num) ? num.toString() : num.toFixed(1);
+    // Per-stat delta requires per-tick stat history (not yet stored).
+    // Show a neutral em-dash placeholder until a corp_stat_history table lands.
+    const deltaTag = `<span class="cr-delta cr-perf-trend-tag">— —</span>`;
+    return `<div class="cr-perf-card">
+        ${deltaTag}
+        <div class="cr-perf-header">
+            <div class="cr-perf-name">${escapeHtml(label)}</div>
+            <div class="cr-perf-value">${escapeHtml(display)}<span class="cr-max">/10</span></div>
+        </div>
+        ${renderPerfMeter(num)}
+        <div class="cr-perf-desc">${scoreBlurb(label, num)}</div>
+    </div>`;
+}
+
+// Map a corp_ownership.holder_type to a swatch color. Keeps the bar and the
+// list visually aligned to a small fixed palette regardless of how many
+// stakeholders are present.
+const OWNERSHIP_COLORS = {
+    player:       'var(--cr-accent-gold)',
+    state:        '#5a7896',
+    shareholders: '#8a722f',
+    rival_corp:   'var(--cr-accent-red)',
+    other:        '#6b6856',
+};
+
+function ownershipColor(holderType) {
+    return OWNERSHIP_COLORS[holderType] || OWNERSHIP_COLORS.other;
+}
+
+function ownershipLabel(holder) {
+    const nationName = nation?.name || 'the State';
+    switch (holder.holder_type) {
+        case 'player':       return 'You';
+        case 'state':        return `State of ${escapeHtml(nationName)}`;
+        case 'shareholders': return 'Public Shareholders';
+        case 'rival_corp':   return 'Rival Corporation';
+        case 'other':        return 'Other';
+        default:             return escapeHtml(holder.holder_type || 'Unknown');
+    }
+}
+
+function renderOwnershipCard(ownership, currentUserId) {
+    if (!ownership || ownership.length === 0) {
+        return `<div class="cr-perf-card">
+            <div class="cr-perf-header">
+                <div class="cr-perf-name">Ownership</div>
+                <div class="cr-perf-value">—<span class="cr-max">%</span></div>
+            </div>
+            <div class="cr-ownership-empty">No ownership data on file.</div>
+        </div>`;
+    }
+
+    // Total a player's stake (if any) for the headline value.
+    const playerShare = ownership
+        .filter(o => o.holder_type === 'player' && o.holder_id === currentUserId)
+        .reduce((sum, o) => sum + Number(o.pct || 0), 0);
+    const headline = playerShare > 0 ? playerShare.toFixed(0) : '—';
+
+    const barSegments = ownership.map(o => {
+        const pct = Number(o.pct) || 0;
+        const color = ownershipColor(o.holder_type);
+        return `<div style="width:${pct}%;background:${color};" title="${ownershipLabel(o)} — ${pct.toFixed(1)}%"></div>`;
+    }).join('');
+
+    const listItems = ownership.map(o => {
+        const pct   = Number(o.pct) || 0;
+        const color = ownershipColor(o.holder_type);
+        const isYou = o.holder_type === 'player' && o.holder_id === currentUserId;
+        const youTag = isYou ? '<span class="cr-you-tag">YOU</span>' : '';
+        return `<li>
+            <span class="cr-ownership-swatch" style="background:${color};"></span>
+            <span class="cr-ownership-name">${ownershipLabel(o)}${youTag}</span>
+            <span class="cr-ownership-pct">${pct.toFixed(1)}%</span>
+        </li>`;
+    }).join('');
+
+    return `<div class="cr-perf-card">
+        <div class="cr-perf-header">
+            <div class="cr-perf-name">Ownership</div>
+            <div class="cr-perf-value">${headline}<span class="cr-max">%</span></div>
+        </div>
+        <div class="cr-ownership-bar">${barSegments}</div>
+        <ul class="cr-ownership-list">${listItems}</ul>
+    </div>`;
+}
+
+function renderOperatingIndicators(ownership, currentUserId) {
+    const grid = document.getElementById('cr-perf-grid');
+    if (!grid) return;
+
+    grid.innerHTML = [
+        renderPerfCard('Innovation',     faction.corp_innovation),
+        renderPerfCard('Market Share',   faction.corp_market_share),
+        renderPerfCard('Reputation',     faction.corp_reputation),
+        renderPerfCard('Productivity',   faction.corp_productivity),
+        renderPerfCard('Employee Wages', faction.corp_employee_wages),
+        renderPerfCard('Assets',         faction.corp_assets),
+        renderOwnershipCard(ownership, currentUserId),
+    ].join('');
 }
 
 function renderFooter() {
