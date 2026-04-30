@@ -2829,11 +2829,14 @@ function renderRoyalAssentPanel() {
 }
 
 window.royalAssent = async function(billId, enact) {
+    if (_govActionLock) return;
     const isMonarch = currentNation?.monarch_faction_id === currentFaction?.id;
     if (!isMonarch) { alert('Only the Monarch can grant royal assent.'); return; }
 
     const bill = (_legData?.floor || []).find(b => b.id === billId);
     if (!bill) return;
+
+    _govActionLock = true;
 
     const totalSeats = _legData?.totalSeats || 100;
     const majority = Math.floor(totalSeats / 2) + 1;
@@ -2884,6 +2887,8 @@ window.royalAssent = async function(billId, enact) {
     } catch (err) {
         console.error('[RoyalAssent] Error:', err);
         alert('Failed to process royal assent: ' + (err?.message || err));
+    } finally {
+        _govActionLock = false;
     }
 };
 
