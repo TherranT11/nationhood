@@ -1,7 +1,7 @@
 // js/party-overview.js — Parties tab: consolidated party overview
 //
 // Fetches all data needed for the Parties overview in parallel:
-// - Active administration + governance score
+// - Active administration
 // - All factions in nation (rivals)
 // - Sector strongholds for all parties (Phase 4 — replaces ideology axes)
 // - Electoral standings (vote share)
@@ -13,7 +13,6 @@
 
 import { getStrongholdSectors, calculateSectorContributions } from './game/sectors.js';
 import { getGoverningStatus, getGoverningStatusFor } from './game/agitator.js';
-import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, statDirectionSign } from './game/stats.js';
 import { hasElectedPresident } from './game/government-types.js';
 import { blocTagHtml, loadBlocMap } from './common.js';
 
@@ -25,10 +24,6 @@ export let _overview = {
     isGoverning: false,
     statusLabel: 'OPPOSITION',  // GOVERNING | OPPOSITION | LOYAL | DISSIDENT
     administration: null,       // active administration row
-    governanceScore: 0,
-    governanceDeltas: [],       // { key, start, now, delta, isGood }
-    governanceMultiplier: 1,
-    governanceDecayCycles: 0,
     ticksInPower: 0,
     myFaction: null,
     allParties: [],             // all party factions in this nation
@@ -45,44 +40,6 @@ function esc(str) {
     const d = document.createElement('div');
     d.textContent = str;
     return d.innerHTML;
-}
-
-// ═══════════════════════════════════════════════════
-// GOVERNANCE SCORE (mirrors politics.js logic)
-// ═══════════════════════════════════════════════════
-
-const NATION_STAT_COLUMNS = [
-    ...STATS_HIGHER_IS_BETTER,
-    ...STATS_LOWER_IS_BETTER,
-];
-
-function computeGovernanceScore(nation, statsAtStart, startedAtTick, currentTick) {
-    const ticksInPower = currentTick - (startedAtTick || currentTick);
-    if (!statsAtStart) return { score: 0, deltas: [], decayCycles: 0, multiplier: 1, ticksInPower };
-
-    let sum = 0, count = 0;
-    const deltas = [];
-
-    for (const key of NATION_STAT_COLUMNS) {
-        const dir = statDirectionSign(key);
-        if (dir === 0) continue;
-        const start = Number(statsAtStart[key] ?? 0);
-        const now = Number(nation[key] ?? 0);
-        const raw = now - start;
-        if (raw === 0) continue;
-        const signed = raw * dir;
-        const isGood = signed > 0;
-        deltas.push({ key, start, now, delta: raw, signed, dir, isGood });
-        sum += signed;
-        count++;
-    }
-
-    let score = count > 0 ? sum / count : 0;
-    const decayCycles = Math.floor(ticksInPower / 24);
-    const multiplier = score > 0 ? Math.pow(0.97, decayCycles) : 1;
-    score *= multiplier;
-
-    return { score: Math.round(score * 10) / 10, deltas, decayCycles, multiplier, ticksInPower };
 }
 
 // ═══════════════════════════════════════════════════
@@ -199,11 +156,9 @@ export async function initPartyOverview(supabase, state, containerId) {
         const mySectorContributions = calculateSectorContributions(factionId, sectors, popularityRows)
             .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
-        // Compute governance score
-        let govResult = { score: 0, deltas: [], decayCycles: 0, multiplier: 1, ticksInPower: 0 };
-        if (admin && admin.stats_at_start) {
-            govResult = computeGovernanceScore(nation, admin.stats_at_start, admin.started_at_tick, currentTick);
-        }
+        const ticksInPower = admin?.started_at_tick != null
+            ? Math.max(0, currentTick - admin.started_at_tick)
+            : 0;
 
         // Next election — determine if it's a General (pres+parl same tick) or Midterm (parl only)
         const upcomingElections = electionResult.data || [];
@@ -226,11 +181,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             statusLabel: governingResult.label,
             administration: admin,
             ministryPartyIds,
-            governanceScore: govResult.score,
-            governanceDeltas: govResult.deltas.sort((a, b) => Math.abs(b.signed) - Math.abs(a.signed)),
-            governanceMultiplier: govResult.multiplier,
-            governanceDecayCycles: govResult.decayCycles,
-            ticksInPower: govResult.ticksInPower,
+            ticksInPower,
             myFaction: faction,
             allParties: allParties,
             rivalParties: allParties.filter(p => p.id !== factionId),
@@ -282,7 +233,6 @@ function renderPartyOverview(container) {
         <div class="po-columns">
             <div class="po-col-left">
                 ${renderIdentityCard(o, faction, partyColor, statusLabel, statusColor)}
-                ${renderGovernanceTable(o)}
                 ${renderStrongholdsSection(o, faction, partyColor)}
                 ${renderCaucuses(o)}
             </div>
@@ -292,7 +242,6 @@ function renderPartyOverview(container) {
             </div>
             <div class="po-col-right" id="po-right-col">
                 ${renderRivalParties(o, faction)}
-                ${renderElectionFormula(o)}
                 ${renderDecayNote(o)}
             </div>
         </div>
@@ -314,8 +263,6 @@ function renderPartyOverview(container) {
 }
 
 function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
-    const govScore = o.governanceScore;
-    const govColor = govScore >= 0 ? 'var(--green)' : 'var(--red)';
     const adminName = o.isGoverning ? (o.administration?.admin_name || 'Government') : 'Opposition';
     const isMonarchy = (_state.nation?.government_type || '').toLowerCase().includes('monarchy');
     const elTicks = isMonarchy ? 'No elections' : (o.nextElectionTicks != null ? o.nextElectionTicks : '—');
@@ -329,10 +276,6 @@ function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
                 <div style="font-size:11px;font-weight:700;color:var(--text-bright);">${esc(adminName)}</div>
                 <div class="po-summary-sub">${o.ticksInPower} ticks in power</div>
             </div>
-        </div>
-        <div class="po-summary-cell" style="text-align:center;">
-            <div class="po-summary-label">GOV. SCORE</div>
-            <div class="po-summary-value" style="color:${govColor};">${govScore}</div>
         </div>
         <div class="po-summary-cell" style="text-align:center;">
             <div class="po-summary-label">MOMENTUM</div>
@@ -386,49 +329,6 @@ function renderIdentityCard(o, faction, partyColor, statusLabel, statusColor) {
                     </div>
                 </div>
             </div>
-        </div>
-    </div>`;
-}
-
-function renderGovernanceTable(o) {
-    // Previously sliced to top 12 — hid late-sorted modifiers from players.
-    // Full list is now scrollable via .po-gov-scroll (see party-overview.css).
-    const deltas = o.governanceDeltas;
-    const govScore = o.governanceScore;
-    const govColor = govScore >= 0 ? 'var(--green)' : 'var(--red)';
-    const decayNote = o.governanceDecayCycles > 0 && govScore > 0
-        ? `Decay: ${((1 - o.governanceMultiplier) * 100).toFixed(1)}% (${o.governanceDecayCycles} cycles)`
-        : '';
-    const subtitle = decayNote || (deltas.length > 0 ? `${deltas.length} modifier${deltas.length === 1 ? '' : 's'}` : '');
-
-    const rowsHtml = deltas.map((d, i) => {
-        const deltaColor = d.isGood ? 'var(--green)' : 'var(--red)';
-        const sign = d.delta > 0 ? '+' : '';
-        const statName = d.key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        return `<div class="po-gov-row" style="${i < deltas.length - 1 ? 'border-bottom:1px solid rgba(200,196,184,0.03);' : ''}">
-            <span class="po-gov-stat">${esc(statName)}</span>
-            <span class="po-gov-val">${d.start.toFixed(1)}</span>
-            <span class="po-gov-val">${d.now.toFixed(1)}</span>
-            <span class="po-gov-delta" style="color:${deltaColor};">${sign}${d.delta.toFixed(1)}</span>
-        </div>`;
-    }).join('');
-
-    return `<div class="po-card">
-        <div class="po-card-header">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span class="po-card-title">GOVERNANCE</span>
-                <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${govColor};">${govScore}</span>
-            </div>
-            <span class="po-card-subtitle">${esc(subtitle)}</span>
-        </div>
-        <div style="display:flex;padding:4px 12px;border-bottom:1px solid var(--border-main);background:var(--bg-card);">
-            <span style="flex:1;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.04em;">STAT</span>
-            <span style="width:40px;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);text-align:right;">START</span>
-            <span style="width:40px;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);text-align:right;">NOW</span>
-            <span style="width:44px;font-family:var(--font-mono);font-size:6px;color:var(--text-dim);text-align:right;">DELTA</span>
-        </div>
-        <div class="po-gov-scroll">
-            ${rowsHtml || '<div style="padding:12px;text-align:center;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);font-style:italic;">No governance data yet.</div>'}
         </div>
     </div>`;
 }
@@ -766,32 +666,10 @@ function renderRivalParties(o, myFaction) {
     </div>`;
 }
 
-function renderElectionFormula(o) {
-    const govColor = o.governanceScore >= 0 ? 'var(--green)' : 'var(--red)';
-    return `<div class="po-card" style="padding:8px 12px;">
-        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:4px;">ELECTION FORMULA</div>
-        <div style="display:flex;gap:6px;">
-            <div style="flex:1;padding:6px 8px;text-align:center;background:var(--bg-card);border:1px solid var(--border-main);">
-                <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${govColor};">40%</div>
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);margin-top:2px;">Governance</div>
-            </div>
-            <div style="flex:1;padding:6px 8px;text-align:center;background:var(--bg-card);border:1px solid var(--border-main);">
-                <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--orange);">30%</div>
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);margin-top:2px;">Momentum</div>
-            </div>
-            <div style="flex:1;padding:6px 8px;text-align:center;background:var(--bg-card);border:1px solid var(--border-main);">
-                <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--accent);">30%</div>
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);margin-top:2px;">Ideology</div>
-            </div>
-        </div>
-    </div>`;
-}
-
 function renderDecayNote() {
     return `<div style="background:var(--bg-card);border:1px solid var(--border-main);padding:8px 12px;">
         <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);line-height:1.6;">
-            <span style="color:var(--amber);font-weight:700;">\u26A0 INCUMBENCY DECAY:</span> Positive governance scores erode 3% every 24 ticks. Long-serving governments must keep delivering results.
-            <span style="color:var(--text-bright);font-weight:700;"> Momentum resets to 0</span> after every election. Rebuild each cycle.
+            <span style="color:var(--text-bright);font-weight:700;">Momentum resets to 0</span> after every election. Rebuild each cycle.
         </div>
     </div>`;
 }

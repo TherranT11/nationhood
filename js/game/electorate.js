@@ -193,7 +193,7 @@ const ELECTORATE_CONFIG = {
     // consistency with the prior tuning. Sum doesn't have to equal 1 —
     // raw_appeal feeds a softmax for contested_vote_share that
     // re-normalizes regardless.
-    PILLAR_WEIGHT_GOVERNANCE: 0.40,
+    PILLAR_WEIGHT_ENGAGEMENT: 0.40,
     PILLAR_WEIGHT_MOMENTUM: 0.30,
     PILLAR_WEIGHT_IDEOLOGY: 0.00,
     PILLAR_WEIGHT_GOV_APPROVAL: 0.00,
@@ -450,7 +450,7 @@ function computeIssueSalience(nation, statKeys) {
  * Seed faction_electoral_standing rows for all active factions in a nation.
  *
  * Initial raw_appeal uses the 3-pillar formula:
- *   governance(50) * 0.35 + momentum(0) * 0.25 + ideology * 0.30 + govApprovalPillar * 0.10
+ *   engagement(50) * 0.35 + momentum(0) * 0.25 + ideology * 0.30 + govApprovalPillar * 0.10
  * where govApprovalPillar = clamp(50 + (gov_approval - 35) * (50/65), 0, 100).
  *
  * @param {object} supabase - Supabase client
@@ -523,14 +523,14 @@ async function seedFactionElectoralStanding(supabase, nation, factions, profile 
 
     // Compute initial raw_appeal so elections running before the first tick
     // don't see NULL contested_vote_share. Phase 5a: ideology pillar dropped;
-    // governance and momentum carry the weight. Existing standings still
+    // engagement and momentum carry the weight. Existing standings still
     // need to be in the softmax so a new party doesn't get 100% share from
     // being computed in isolation.
     const govApprovalPillar = clamp(50 + (govApproval - 35) * (50 / 65), 0, 100);
 
     for (const r of rows) {
         r.raw_appeal = round2(
-            50 * 0.35 +       // governance: neutral at genesis
+            50 * 0.35 +       // engagement: neutral at genesis
             0 * 0.25 +        // momentum: 0 at genesis
             0 * 0.30 +        // ideology: pillar removed in Phase 5a
             govApprovalPillar * 0.10
@@ -648,7 +648,7 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
     // Runs each tick to compute contested_vote_share and turnout_rate
     // for all active parties in a nation.
     //
-    // Pillars: Governance (35%) + Momentum (25%) + Ideology (30%) + Gov Approval (10%)
+    // Pillars: Engagement (35%) + Momentum (25%) + Ideology (30%) + Gov Approval (10%)
 
     const nationId = nation.id;
 
@@ -725,7 +725,7 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
             : 0;
     }
 
-    // 7. Compute engagement scores (Governance pillar). Reuses leadPartyId
+    // 7. Compute engagement scores (engagement pillar). Reuses leadPartyId
     // from the incumbency block above; coalitionPartyIds keeps the raw
     // party_ids set (without the lead added) since computeEngagementScores
     // takes them separately.
@@ -742,7 +742,7 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         console.warn(`[tickElectorate] Engagement scores failed for ${nation.name}, using defaults:`, engErr.message);
     }
 
-    // Phase 5a: ideology pillar removed. The remaining pillars (governance,
+    // Phase 5a: ideology pillar removed. The remaining pillars (engagement,
     // momentum) carry the signal. computeSpatialAlignments was the per-tick
     // ideology computation; no longer called.
 
@@ -760,7 +760,7 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         // PILLAR 1: Momentum (0-100 from factions.momentum)
         const momentum = clamp(Number(f.momentum ?? 0), 0, 100);
 
-        // PILLAR 2: Governance (0-100 from engagement score)
+        // PILLAR 2: Engagement (0-100 from engagement score)
         const engagement = engagementResults[f.id]?.engagementScore ?? 50;
 
         // Party approval: governing parties drift toward gov_approval,
@@ -784,7 +784,7 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
         // Phase 5a: ideology and gov_approval terms drop out (their weights
         // are 0); kept in the formula for symmetry with the genesis path.
         const rawAppeal = round2(
-            engagement * CFG.PILLAR_WEIGHT_GOVERNANCE +
+            engagement * CFG.PILLAR_WEIGHT_ENGAGEMENT +
             momentum * CFG.PILLAR_WEIGHT_MOMENTUM +
             0 * CFG.PILLAR_WEIGHT_IDEOLOGY +
             govApprovalPillar * CFG.PILLAR_WEIGHT_GOV_APPROVAL
@@ -890,7 +890,7 @@ function computeRealizedVoteShares(updates, profile, nation) {
     if (updates.length === 0) return;
 
     // Uniform turnout: all parties get the same base turnout rate.
-    // Elections are determined by Momentum/Ideology/Governance through raw_appeal only.
+    // Elections are determined by Momentum/Ideology/Engagement through raw_appeal only.
     // No visibility-based turnout distortion.
     const baseTurnout = 0.65;
 
@@ -1015,7 +1015,7 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick, ent
         }
     }
 
-    // 6. Very good or very bad governance drives engagement
+    // 6. Very good or very bad gov approval drives engagement
     const govApproval = Number(nation.gov_approval ?? 50);
     const govExtreme = Math.abs(govApproval - 50);
     enthusiasmDelta += govExtreme * CFG.ENTHUSIASM_GOV_EXTREME_SCALE;
@@ -1225,7 +1225,7 @@ export async function nudgeEnthusiasm(supabase, nationId, delta) {
  */
 export async function adjustCredibility(supabase, factionId, nationId, delta, suspendRecoveryTicks = 0, currentTick = 0, opts = {}) {
     // No-op: credibility system removed — 3-pillar election system
-    // (Governance 35%, Momentum 25%, Ideology 30%, Gov Approval 10%).
+    // (Engagement 35%, Momentum 25%, Ideology 30%, Gov Approval 10%).
     return;
 }
 

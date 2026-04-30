@@ -184,7 +184,7 @@ const LEADER_ACTIONS = [
     {
         id: 'no_confidence',
         name: 'Vote of No Confidence',
-        desc: 'File a motion of no confidence against the Prime Minister. If a simple majority votes YES, the government falls and snap elections are triggered. PASS: +15 Momentum to you, -10 Momentum + -10 Governance to the PM\u2019s party. FAIL: -10 Momentum to you. 12-tick cooldown on the targeted PM party.',
+        desc: 'File a motion of no confidence against the Prime Minister. If a simple majority votes YES, the government falls and snap elections are triggered. PASS: +15 Momentum to you, -10 Momentum to the PM\u2019s party. FAIL: -10 Momentum to you. 12-tick cooldown on the targeted PM party.',
         cost: '$0',
         costColor: 'var(--text-dim)',
         moneyCost: 0,
@@ -952,10 +952,6 @@ function renderPage(root) {
         stats: [
             { label: 'Party Funds', value: fundsFmt, color: 'var(--accent)' },
             { label: 'Momentum', value: Number(momentum).toFixed(1), color: momentum > 0 ? 'var(--text-bright)' : 'var(--red)' },
-            // Nation gov_approval, not the party's own governance score
-            // (that lives on the Parties page). Explicit label keeps both
-            // surfaces coherent — prior "Governance" wording caused reports
-            // of inconsistency when the per-party score read differently.
             { label: _isMonarchy ? 'Legitimacy' : 'Nat. Approval', value: String(approvalValue), color: 'var(--green)' },
         ],
         statusBarItems: [
@@ -2615,7 +2611,6 @@ function renderLawsuitsSection() {
         const effectsHtml = !isActive ? `
             <div style="display:flex;gap:12px;margin-top:6px;font-family:var(--font-mono);font-size:8px;">
                 <span style="color:${ls.momentum_effect >= 0 ? 'var(--green)' : 'var(--red)'};">You: ${ls.momentum_effect >= 0 ? '+' : ''}${ls.momentum_effect} Mom</span>
-                <span style="color:${ls.governance_effect >= 0 ? 'var(--green)' : 'var(--red)'};">${ls.governance_effect >= 0 ? '+' : ''}${ls.governance_effect} Gov</span>
                 <span style="color:${ls.gov_momentum_effect >= 0 ? 'var(--green)' : 'var(--red)'};">Govt: ${ls.gov_momentum_effect >= 0 ? '+' : ''}${ls.gov_momentum_effect} Mom</span>
             </div>
         ` : '';
@@ -2913,8 +2908,8 @@ function openLawsuitModal(root) {
                         <div style="font-size:9px;color:var(--text-dim);line-height:1.6;">
                             <strong style="color:var(--text-bright);">FREE</strong> &middot; Duration: <strong style="color:var(--text-bright);">8 ticks</strong><br>
                             If corruption growth is low (0-5):<br>
-                            <span style="color:var(--red);">YOU: -5 Momentum, -2 Governance</span><br>
-                            <span style="color:var(--green);">THEM: +3 Momentum, +1 Governance</span>
+                            <span style="color:var(--red);">YOU: -5 Momentum</span><br>
+                            <span style="color:var(--green);">THEM: +3 Momentum</span>
                         </div>
                     </div>
                 </div>
@@ -3881,8 +3876,8 @@ async function triggerNoConfidence() {
         : `Motion of No Confidence in the Government`;
 
     const passConsequences = isSemiPres
-        ? `IF IT PASSES:\n\u2022 PM removed \u2014 President must nominate a new PM\n\u2022 Your party: +15 Momentum\n\u2022 PM's party: -10 Momentum, -10 Governance`
-        : `IF IT PASSES:\n\u2022 Coalition dissolved, PM removed, all ministries vacated\n\u2022 Snap elections scheduled\n\u2022 Your party: +15 Momentum\n\u2022 PM's party: -10 Momentum, -10 Governance`;
+        ? `IF IT PASSES:\n\u2022 PM removed \u2014 President must nominate a new PM\n\u2022 Your party: +15 Momentum\n\u2022 PM's party: -10 Momentum`
+        : `IF IT PASSES:\n\u2022 Coalition dissolved, PM removed, all ministries vacated\n\u2022 Snap elections scheduled\n\u2022 Your party: +15 Momentum\n\u2022 PM's party: -10 Momentum`;
 
     if (!confirm(
         `\u26a1 FILE VOTE OF NO CONFIDENCE?\n\n"${motionName}"\n\n` +
@@ -4353,7 +4348,7 @@ function openPlatformModal(root) {
                     <div style="margin-top:12px;padding:8px 12px;background:var(--bg-card);border:1px solid var(--border-main);">
                         <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:4px;">PROMISE RULES</div>
                         <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
-                            Stats are locked at current values when adopted. If your party enters government, you have <strong style="color:var(--text-bright);">24 ticks</strong> to move each promised stat by <strong style="color:var(--text-bright);">+${PROMISE_DELTA}</strong>. Failure: <strong style="color:var(--red);">-20 Momentum, -10 Governance</strong>. If you don't enter government, the promise abates.
+                            Stats are locked at current values when adopted. If your party enters government, you have <strong style="color:var(--text-bright);">24 ticks</strong> to move each promised stat by <strong style="color:var(--text-bright);">+${PROMISE_DELTA}</strong>. Failure: <strong style="color:var(--red);">-20 Momentum</strong>. If you don't enter government, the promise abates.
                         </div>
                     </div>
                 </div>

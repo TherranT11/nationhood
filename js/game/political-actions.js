@@ -661,14 +661,6 @@ export const ATTACK_VECTORS = [
         effectiveness: 'high',
     },
     {
-        id: 'governance',
-        name: 'Governance Record',
-        icon: '\u25BC',
-        description: 'Attack stat deterioration on their watch',
-        evidence_required: true,
-        effectiveness: 'high',
-    },
-    {
         id: 'ideology',
         name: 'Ideology',
         icon: '\u25C6',
@@ -732,31 +724,26 @@ function _attackHeadline(outcomeId, targetName, vectorId) {
     const headlines = {
         devastating: {
             voting_record: `${targetName}'s voting record exposed \u2014 public outrage mounts`,
-            governance: `${targetName}'s governance failures laid bare in devastating critique`,
             ideology: `${targetName} branded as extremists in viral opposition campaign`,
             smear: `Relentless attacks leave ${targetName} scrambling to respond`,
         },
         effective: {
             voting_record: `${targetName}'s controversial votes draw media scrutiny`,
-            governance: `Questions mount over ${targetName}'s record on key indicators`,
             ideology: `Voters question ${targetName}'s ideological direction after critique`,
             smear: `Negative campaign against ${targetName} lands some punches`,
         },
         glancing: {
             voting_record: `Criticism of ${targetName}'s votes dismissed as political theatre`,
-            governance: `Governance critique against ${targetName} falls flat`,
             ideology: `Ideological attack on ${targetName} largely ignored by public`,
             smear: `Smear campaign against ${targetName} fizzles \u2014 voters indifferent`,
         },
         backfire: {
             voting_record: `Voters rally behind ${targetName} after what they see as unfair attack`,
-            governance: `Governance critique seen as hypocritical \u2014 attacker's credibility drops`,
             ideology: `Ideological attack makes attackers look petty \u2014 ${targetName} gains sympathy`,
             smear: `Baseless smear against ${targetName} draws media rebuke`,
         },
         mutual: {
             voting_record: `Mudslinging over voting records erodes public trust in politics`,
-            governance: `Governance blame game leaves all sides worse off`,
             ideology: `Ideological warfare between parties leaves voters disgusted`,
             smear: `Negative spiral damages both parties \u2014 polarization spikes`,
         },
@@ -772,8 +759,6 @@ function _attackHeadline(outcomeId, targetName, vectorId) {
 export async function gatherAttackEvidence(supabase, targetFactionId, nationId, currentTick) {
     const evidence = {
         controversial_votes: [],
-        governance_record: [],
-        is_governing: false,
     };
 
     // 1. Controversial votes — bills where this party voted opposite to majority outcome
@@ -806,54 +791,6 @@ export async function gatherAttackEvidence(supabase, targetFactionId, nationId, 
     }
     evidence.controversial_votes = evidence.controversial_votes.slice(0, 5);
 
-    // 3. Governance record — check if target is in governing coalition
-    const coalition = await fetchActiveCoalition(supabase, nationId);
-    const coalitionPartyIds = new Set(coalition?.party_ids || []);
-    evidence.is_governing = coalitionPartyIds.has(targetFactionId);
-
-    if (evidence.is_governing) {
-        // Find ministries held by this party
-        const { data: ministries } = await supabase
-            .from('ministries')
-            .select('ministry_key')
-            .eq('nation_id', nationId)
-            .eq('party_id', targetFactionId)
-            .eq('is_active', true);
-
-        if (ministries && ministries.length > 0) {
-            // Check stat trends for stats under their ministries
-            for (const m of ministries) {
-                const stats = MINISTRY_TO_STATS[m.ministry_key] || [];
-                for (const statKey of stats) {
-                    const { data: history } = await supabase
-                        .from('stat_history')
-                        .select('value, tick')
-                        .eq('nation_id', nationId)
-                        .eq('stat_name', statKey)
-                        .order('tick', { ascending: false })
-                        .limit(6);
-
-                    if (history && history.length >= 2) {
-                        const newest = history[0].value;
-                        const oldest = history[history.length - 1].value;
-                        const change = newest - oldest;
-                        const sign = statDirectionSign(statKey);
-                        // Stat worsened if it moved opposite to its "good" direction
-                        if ((sign === 1 && change < -3) || (sign === -1 && change > 3)) {
-                            const changeStr = change > 0 ? `+${Math.round(change)}` : `${Math.round(change)}`;
-                            evidence.governance_record.push({
-                                stat: statKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-                                change: changeStr,
-                                ministry: m.ministry_key,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        evidence.governance_record = evidence.governance_record.slice(0, 5);
-    }
-
     return evidence;
 }
 
@@ -871,24 +808,16 @@ export function buildAttackVectors(evidence) {
         });
     }
 
-    if (evidence.governance_record.length > 0 && evidence.is_governing) {
-        vectors.push({
-            ...ATTACK_VECTORS[1],
-            evidence: evidence.governance_record,
-            strength: 'strong',
-        });
-    }
-
     // Ideology is always available (moderate strength)
     vectors.push({
-        ...ATTACK_VECTORS[2],
+        ...ATTACK_VECTORS[1],
         evidence: null,
         strength: 'moderate',
     });
 
     // General smear is always available (weak strength)
     vectors.push({
-        ...ATTACK_VECTORS[3],
+        ...ATTACK_VECTORS[2],
         evidence: null,
         strength: 'weak',
     });

@@ -414,7 +414,7 @@ export async function initNewspaper(supabase, state) {
                 <button class="nws-modal-close" id="nws-modal-close">&times;</button>
                 <div class="nws-modal-body">
                     <div class="nws-writer-notice" role="note">
-                        <strong>Note:</strong> Mentions of real-world events, people, or entities will cause your party to lose all Momentum and Governance. Further violations will cause action.
+                        <strong>Note:</strong> Mentions of real-world events, people, or entities will cause your party to lose all Momentum. Further violations will cause action.
                     </div>
                     <div class="nws-form-error" id="nws-form-error"></div>
                     <div class="nws-form-success" id="nws-form-success"></div>
@@ -992,7 +992,7 @@ function renderArticleView(root, article) {
         <div class="nws-main-content">
             <div class="nws-reader">
                 <div class="nws-reader-notice" role="note">
-                    <strong>Note:</strong> Mentions of real-world events, people, or entities will cause your party to lose all Momentum and Governance. Further violations will cause action.
+                    <strong>Note:</strong> Mentions of real-world events, people, or entities will cause your party to lose all Momentum. Further violations will cause action.
                 </div>
                 <span class="nws-section-tag">${escapeHtml(categoryLabel(article.category))} &mdash; ${escapeHtml(articleDate)}</span>
                 <h1 class="nws-reader-headline">${escapeHtml(article.headline)}</h1>
