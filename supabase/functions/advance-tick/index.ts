@@ -7366,6 +7366,126 @@ function calculateSectorContributions(factionId, sectors, popularityRows) {
     return out;
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// DYNAMIC SECTOR WEIGHTS — Phase 1
+// ════════════════════════════════════════════════════════════════════════
+//
+// Each sector's weight is derived from one or two nation stats. Weights
+// are recomputed when an election fires (see runSectorElection wire-up).
+// Storage: `sectors.primary_stat`, `sectors.secondary_stat` — TEXT keys
+// into `nations.<column>`.
+//
+// A trailing `_inverse` suffix means "use 100 - value" — for sectors that
+// grow when the underlying stat shrinks (e.g. Rural & Agricultural's
+// secondary is `urbanization_inverse`).
+//
+// Range: 1–3 per sector, soft-cap to 28 across the nation.
+// Stepped: stat ≥ 65 → 3, 35-65 → 2, < 35 → 1.
+// Two-stat sectors blend 70/30 before stepping.
+
+const SECTOR_WEIGHT_MIN = 1;
+const SECTOR_WEIGHT_MAX = 3;
+const SECTOR_WEIGHT_NATION_CAP = 28;
+const SECTOR_STAT_HIGH_THRESHOLD = 65;
+const SECTOR_STAT_LOW_THRESHOLD = 35;
+const SECTOR_PRIMARY_BLEND = 0.7;
+const SECTOR_SECONDARY_BLEND = 0.3;
+
+/**
+ * Read a stat value off a nation row, supporting an `_inverse` suffix.
+ * Returns null when the stat key is missing or the column doesn't exist.
+ */
+function getStatValueForSector(nation, statKey) {
+    if (!statKey || !nation) return null;
+    const inverse = statKey.endsWith('_inverse');
+    const baseKey = inverse ? statKey.slice(0, -'_inverse'.length) : statKey;
+    const raw = nation[baseKey];
+    const num = typeof raw === 'number' ? raw : (raw == null ? null : Number(raw));
+    if (num == null || Number.isNaN(num)) return null;
+    return inverse ? (100 - num) : num;
+}
+
+function stepStatToWeight(blendedValue) {
+    if (blendedValue == null || Number.isNaN(blendedValue)) return SECTOR_WEIGHT_MIN;
+    if (blendedValue >= SECTOR_STAT_HIGH_THRESHOLD) return SECTOR_WEIGHT_MAX;
+    if (blendedValue >= SECTOR_STAT_LOW_THRESHOLD) return 2;
+    return SECTOR_WEIGHT_MIN;
+}
+
+/**
+ * Compute the new weight for each sector from the nation's current stats.
+ * Returns { [sector_id]: integer weight in [MIN, MAX] }.
+ *
+ * Sectors without a primary_stat keep their existing weight (custom
+ * sectors / operator-managed). Sectors whose primary_stat references a
+ * missing column also keep their existing weight rather than silently
+ * collapse to MIN.
+ *
+ * Soft cap: if the raw sum exceeds NATION_CAP, weights are scaled
+ * proportionally and re-clamped — preserves relative ordering.
+ */
+function computeSectorWeights(nation, sectors) {
+    if (!nation || !Array.isArray(sectors) || sectors.length === 0) return {};
+
+    const out = {};
+    for (const s of sectors) {
+        if (!s.is_active) continue;
+        const existing = Math.max(
+            SECTOR_WEIGHT_MIN,
+            Math.min(SECTOR_WEIGHT_MAX, Math.round(Number(s.weight) || SECTOR_WEIGHT_MIN))
+        );
+
+        if (!s.primary_stat) { out[s.id] = existing; continue; }
+
+        const primaryVal = getStatValueForSector(nation, s.primary_stat);
+        if (primaryVal == null) { out[s.id] = existing; continue; }
+
+        let blended = primaryVal;
+        const secondaryVal = getStatValueForSector(nation, s.secondary_stat);
+        if (secondaryVal != null) {
+            blended = primaryVal * SECTOR_PRIMARY_BLEND + secondaryVal * SECTOR_SECONDARY_BLEND;
+        }
+        out[s.id] = stepStatToWeight(blended);
+    }
+
+    const total = Object.values(out).reduce((a, b) => a + b, 0);
+    if (total > SECTOR_WEIGHT_NATION_CAP) {
+        const scale = SECTOR_WEIGHT_NATION_CAP / total;
+        for (const id of Object.keys(out)) {
+            out[id] = Math.max(
+                SECTOR_WEIGHT_MIN,
+                Math.min(SECTOR_WEIGHT_MAX, Math.round(out[id] * scale))
+            );
+        }
+    }
+    return out;
+}
+
+/**
+ * Persist computed weights into `sectors`. Returns the count of rows whose
+ * weight actually changed.
+ */
+async function persistSectorWeights(supabase, weightsBySectorId, currentSectors) {
+    if (!supabase || !weightsBySectorId) return 0;
+    const before = new Map((currentSectors || []).map(s => [s.id, Number(s.weight) || 0]));
+    let changed = 0;
+    for (const [sectorId, newWeight] of Object.entries(weightsBySectorId)) {
+        if (before.get(sectorId) === newWeight) continue;
+        const { error } = await supabase.from('sectors')
+            .update({ weight: newWeight }).eq('id', sectorId);
+        if (error) {
+            console.warn(`[persistSectorWeights] update failed for sector ${sectorId}:`, error.message);
+            continue;
+        }
+        changed++;
+        // Mutate the in-memory sector list too so subsequent reads in the
+        // same call (TWP computation) see the fresh weight.
+        const sector = (currentSectors || []).find(s => s.id === sectorId);
+        if (sector) sector.weight = newWeight;
+    }
+    return changed;
+}
+
 /**
  * Computes one faction's Total Weighted Popularity for a nation.
  *
@@ -15226,6 +15346,16 @@ async function processPartialElection(supabase, nation, election, currentTick) {
         return;
     }
 
+    // Phase 1 dynamic sector weights: recompute and persist before TWP
+    // so partial elections see the same up-to-date weights as a full
+    // election. Mutates sectorList in place; non-fatal on error.
+    try {
+        const newWeights = computeSectorWeights(nation, sectorList);
+        await persistSectorWeights(supabase, newWeights, sectorList);
+    } catch (wErr) {
+        console.warn(`[processPartialElection] dynamic-weight recompute failed (non-fatal):`, wErr?.message || wErr);
+    }
+
     // 2. Tie-breakers + TWP per faction.
     const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
     const augmentedPop = layerBonusesIntoPopularity(popularity, sectorList, bonuses);
@@ -15612,6 +15742,19 @@ async function runSectorElection(supabase, nation) {
     if (factionList.length === 0) {
         // Nation has no parties — return an empty result.
         return buildEmptySectorElectionResult(indep, totalSeats);
+    }
+
+    // Phase 1 dynamic sector weights: recompute and persist before TWP.
+    // sectors carry primary_stat / secondary_stat keys (set by the
+    // 20260430_sector_dynamic_weights migration); each weight is stepped
+    // from the nation's current stat values (≥65→3, 35-65→2, <35→1) and
+    // soft-capped to the nation total of 28. persistSectorWeights mutates
+    // sectorList in place so the TWP math below reads the fresh values.
+    try {
+        const newWeights = computeSectorWeights(nation, sectorList);
+        await persistSectorWeights(supabase, newWeights, sectorList);
+    } catch (wErr) {
+        console.warn(`[runSectorElection] dynamic-weight recompute failed (non-fatal):`, wErr?.message || wErr);
     }
 
     // 3. Tie-breaker bonuses (election-scope, not persisted).

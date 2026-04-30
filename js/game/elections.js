@@ -21,6 +21,8 @@ import {
     electabilityBucket,
     getStrongholdSectors,
     redistributeRunoffVotes,
+    computeSectorWeights,
+    persistSectorWeights,
 } from './sectors.js';
 
 /**
@@ -1615,6 +1617,16 @@ export async function processPartialElection(supabase, nation, election, current
         return;
     }
 
+    // Phase 1 dynamic sector weights: recompute and persist before TWP
+    // so partial elections see the same up-to-date weights as a full
+    // election. Mutates sectorList in place; non-fatal on error.
+    try {
+        const newWeights = computeSectorWeights(nation, sectorList);
+        await persistSectorWeights(supabase, newWeights, sectorList);
+    } catch (wErr) {
+        console.warn(`[processPartialElection] dynamic-weight recompute failed (non-fatal):`, wErr?.message || wErr);
+    }
+
     // 2. Tie-breakers + TWP per faction.
     const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
     const augmentedPop = layerBonusesIntoPopularity(popularity, sectorList, bonuses);
@@ -2001,6 +2013,19 @@ async function runSectorElection(supabase, nation) {
     if (factionList.length === 0) {
         // Nation has no parties — return an empty result.
         return buildEmptySectorElectionResult(indep, totalSeats);
+    }
+
+    // Phase 1 dynamic sector weights: recompute and persist before TWP.
+    // sectors carry primary_stat / secondary_stat keys (set by the
+    // 20260430_sector_dynamic_weights migration); each weight is stepped
+    // from the nation's current stat values (≥65→3, 35-65→2, <35→1) and
+    // soft-capped to the nation total of 28. persistSectorWeights mutates
+    // sectorList in place so the TWP math below reads the fresh values.
+    try {
+        const newWeights = computeSectorWeights(nation, sectorList);
+        await persistSectorWeights(supabase, newWeights, sectorList);
+    } catch (wErr) {
+        console.warn(`[runSectorElection] dynamic-weight recompute failed (non-fatal):`, wErr?.message || wErr);
     }
 
     // 3. Tie-breaker bonuses (election-scope, not persisted).
