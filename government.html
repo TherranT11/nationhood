@@ -11833,7 +11833,9 @@ window.fileImpeachment = fileImpeachment;
 // ==================== CALL EARLY ELECTIONS ====================
 
 function renderEarlyElectionsButton(coalition) {
-    if (!currentFaction || isPresidential) return '';
+    // Absolute monarchy: parliament does not run elections — the Monarch
+    // controls government composition via the Appoint PM royal action.
+    if (!currentFaction || isPresidential || isAbsoluteMonarchy(currentNation)) return '';
 
     // Only the PM's party can call early elections
     const isPMParty = currentFaction.id === coalition.lead_party_id;
@@ -12111,6 +12113,10 @@ function _genParliamentDots(rows, cx, cy) {
 
 async function resignPMAction() {
     if (_govActionLock || !currentFaction || !currentNation) return;
+    if (isAbsoluteMonarchy(currentNation)) {
+        alert('Prime Ministers serve at the Monarch’s pleasure. The Monarch must replace the PM via the Appoint Prime Minister royal action.');
+        return;
+    }
 
     const { data: hog } = await _supabase
         .from('head_of_government')

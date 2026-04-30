@@ -1312,8 +1312,20 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             // impeachment), so hide the actions there too by keeping them locked.
             const nation = _state.nation;
             const isParliamentaryPM = hasParliamentaryPM(nation);
+            const isMonarchy = isAbsoluteMonarchy(nation);
             const isPMParty = !!_administration && _administration.pm_party_id === faction.id;
-            if (!isParliamentaryPM) {
+            if (isMonarchy) {
+                // Absolute monarchy: no parliamentary elections, no PM-led
+                // dissolution. Both call_early_elections and resign_as_pm
+                // would trigger the parliamentary caretaker + snap-election
+                // cascade in resignPM / callEarlyElectionsAction, which is
+                // incoherent in monarchy. The Monarch changes the government
+                // via the Appoint PM royal action.
+                isDisabled = true;
+                action.lockReason = action.id === 'call_early_elections'
+                    ? 'Elections are not held under absolute monarchy. The Monarch appoints the Prime Minister.'
+                    : 'Prime Ministers serve at the Monarch’s pleasure. The Monarch must replace the PM via the Appoint Prime Minister royal action.';
+            } else if (!isParliamentaryPM) {
                 isDisabled = true;
                 action.lockReason = 'Only parliamentary and semi-presidential systems have a PM seat.';
             } else if (!isPMParty) {
@@ -3590,6 +3602,7 @@ async function triggerCallEarlyElections() {
     if (_callEarlyElectionsSubmitting) return;
     if (!_state?.faction?.id || !_state?.nation?.id) return;
     if (!hasParliamentaryPM(_state.nation)) { alert('Early elections are only available in parliamentary and semi-presidential systems.'); return; }
+    if (isAbsoluteMonarchy(_state.nation)) { alert('Elections are not held under absolute monarchy.'); return; }
     const pmPartyId = _administration?.pm_party_id;
     if (!pmPartyId || pmPartyId !== _state.faction.id) { alert('Prime Minister\u2019s party only.'); return; }
 
@@ -3694,6 +3707,7 @@ async function triggerResignAsPM() {
     if (_resignPMSubmitting) return;
     if (!_state?.faction?.id || !_state?.nation?.id) return;
     if (!hasParliamentaryPM(_state.nation)) { alert('Resignation is only available in parliamentary and semi-presidential systems.'); return; }
+    if (isAbsoluteMonarchy(_state.nation)) { alert('Prime Ministers serve at the Monarch’s pleasure. The Monarch must replace the PM via the Appoint Prime Minister royal action.'); return; }
     const pmPartyId = _administration?.pm_party_id;
     if (!pmPartyId || pmPartyId !== _state.faction.id) { alert('Prime Minister\u2019s party only.'); return; }
 
