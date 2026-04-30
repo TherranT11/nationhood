@@ -1636,15 +1636,23 @@ export async function processPartialElection(supabase, nation, election, current
         await supabase.from('factions').update({ seats: newTotal }).eq('id', f.id);
     }
 
-    // 5. Build results in the legacy partial-election shape so the UI doesn't
-    //    need plumbing changes.
+    // 5. Scale TWP shares to realistic vote counts using the nation's
+    //    eligible_voters and sector-weighted turnout. Same helper the
+    //    full-election and presidential paths use.
+    const eligibleForScale = Number(nation.eligible_voters) || 0;
+    const partialScaling = (eligibleForScale > 0)
+        ? computeTwpVoteScaling(twpByFaction, sectorList, eligibleForScale)
+        : null;
+
     const seatResults = factionList.map(f => ({
         party_id: f.id,
         party_name: f.faction_name,
         existing_seats: f.seats || 0,
         new_seats: deltaAllocation[f.id] ?? 0,
         total_seats: (f.seats || 0) + (deltaAllocation[f.id] ?? 0),
-        votes: Math.round(twpByFaction[f.id] || 0),
+        votes: partialScaling
+            ? (partialScaling.votesByFaction[f.id] ?? 0)
+            : Math.round(twpByFaction[f.id] || 0),
     }));
 
     await supabase.from('elections').update({
@@ -1655,8 +1663,12 @@ export async function processPartialElection(supabase, nation, election, current
             votes: seatResults,
             seats: seatResults,
             bloc_details: [],
-            total_votes_cast: Math.round(Object.values(twpByFaction).reduce((s, v) => s + v, 0)),
-            total_abstentions: 0,
+            total_votes_cast: partialScaling
+                ? partialScaling.totalVotesCast
+                : Math.round(Object.values(twpByFaction).reduce((s, v) => s + v, 0)),
+            total_abstentions: partialScaling ? partialScaling.abstentions : 0,
+            turnout_pct: partialScaling ? partialScaling.turnoutPct : null,
+            eligible_voters: eligibleForScale,
             sector_breakdown: {
                 independent_seats_unchanged: true,
                 factions: factionList.map(f => ({
@@ -2043,6 +2055,8 @@ async function runSectorElection(supabase, nation) {
         bonuses,
         indep,
         totalSeats,
+        nation,
+        sectors: sectorList,
     });
 }
 
@@ -2283,12 +2297,69 @@ function layerBonusesIntoPopularity(popularity, sectors, bonuses) {
     return out;
 }
 
-function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFaction, bonuses, indep, totalSeats }) {
+/**
+ * Scale TWP shares to a realistic vote count using the nation's eligible
+ * voters and a sector-weighted turnout. Single source of truth for the
+ * TWP→votes display math, mirroring the model already in
+ * runSectorPresidentialElectionRound:
+ *
+ *   sectorWeightedTurnout = Σ(weight × base_turnout) / Σ(weight)
+ *   totalVotesCast        = round(eligible × sectorWeightedTurnout)
+ *   votes[party]          = round((twp[party] / totalTwp) × totalVotesCast)
+ *
+ * Without this, sector-engine elections reported the rounded sum of TWP
+ * (small two-digit numbers like 97) as the actual vote count and the
+ * turnout percentage as null, making elections look like a handful of
+ * voters even in nations with millions of eligible voters.
+ *
+ * Falls back to a neutral 0.65 turnout if sectors are missing or carry
+ * no weight, so partial-data nations still get a defensible display.
+ */
+export function computeTwpVoteScaling(twpByFaction, sectors, eligible) {
+    let turnout = 0.65;
+    if (sectors && sectors.length > 0) {
+        const sumW = sectors.reduce((s, x) => s + (Number(x.weight) || 0), 0);
+        if (sumW > 0) {
+            const sumWT = sectors.reduce((s, x) => s + (Number(x.weight) || 0) * (Number(x.base_turnout) || 0), 0);
+            turnout = sumWT / sumW;
+        }
+    }
+    const eligibleNum = Number(eligible) || 0;
+    const targetTotalVotes = Math.round(eligibleNum * turnout);
+
+    let totalTwp = 0;
+    for (const fid in twpByFaction) totalTwp += Number(twpByFaction[fid]) || 0;
+
+    const votesByFaction = {};
+    for (const fid in twpByFaction) {
+        const twp = Number(twpByFaction[fid]) || 0;
+        const share = totalTwp > 0 ? twp / totalTwp : 0;
+        votesByFaction[fid] = Math.round(share * targetTotalVotes);
+    }
+
+    const actualTotal = Object.values(votesByFaction).reduce((s, v) => s + v, 0);
+    const abstentions = Math.max(0, eligibleNum - actualTotal);
+    const turnoutPct = eligibleNum > 0
+        ? Number(((actualTotal / eligibleNum) * 100).toFixed(2))
+        : 0;
+
+    return { votesByFaction, totalVotesCast: actualTotal, abstentions, turnoutPct };
+}
+
+function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFaction, bonuses, indep, totalSeats, nation, sectors }) {
     const seatRows = [];
     const voteRows = [];
     const breakdown = [];
     let totalTwp = 0;
     for (const f of factions) totalTwp += Number(twpByFaction[f.id]) || 0;
+
+    // Derive realistic vote counts from TWP shares + nation's eligible voters.
+    // Falls through to TWP-as-votes if nation/eligible isn't supplied (legacy
+    // callers), so behavior is monotonically additive.
+    const eligible = Number(nation?.eligible_voters) || 0;
+    const scaling = (eligible > 0)
+        ? computeTwpVoteScaling(twpByFaction, sectors, eligible)
+        : null;
 
     for (const f of factions) {
         const fSeats = seats[f.id] ?? 0;
@@ -2296,13 +2367,16 @@ function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFac
         const sharePct = totalTwp > 0 ? Math.round((fTwp / totalTwp) * 10000) / 100 : 0;
 
         seatRows.push({ party_id: f.id, party_name: f.faction_name, seats: fSeats });
-        // 'votes' in the legacy shape is total votes cast for the party. We
-        // expose TWP here as the closest analog so the existing UI columns
-        // light up; a future pass can rename the field.
+        // 'votes' is the displayed vote count for the party. With nation +
+        // sectors supplied, this is the realistic eligible×turnout-scaled
+        // count; without, it falls back to rounded TWP (legacy behavior).
+        const fVotes = scaling
+            ? (scaling.votesByFaction[f.id] ?? 0)
+            : Math.round(fTwp);
         voteRows.push({
             party_id: f.id,
             party_name: f.faction_name,
-            votes: Math.round(fTwp),
+            votes: fVotes,
             vote_percentage: sharePct,
             seats: fSeats,
         });
@@ -2329,12 +2403,14 @@ function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFac
         votes: voteRows,
         seats: seatRows,
         bloc_details: [],
-        // Legacy fields kept for the existing UI; values mean less in the
-        // sector engine but need to be present so the result page doesn't
-        // crash on missing keys.
-        total_votes_cast: Math.round(totalTwp),
-        total_abstentions: 0,
-        turnout_pct: null,
+        // Legacy display fields. With scaling supplied, these show the
+        // realistic ballot count + abstentions + turnout %. Without, they
+        // fall back to the old TWP-as-votes shape (non-zero only when
+        // legacy callers omit nation/sectors).
+        total_votes_cast: scaling ? scaling.totalVotesCast : Math.round(totalTwp),
+        total_abstentions: scaling ? scaling.abstentions : 0,
+        turnout_pct: scaling ? scaling.turnoutPct : null,
+        eligible_voters: Number(nation?.eligible_voters) || 0,
         // Phase 3 additions.
         sector_breakdown: {
             independent_seats: indep.next,
