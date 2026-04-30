@@ -104,7 +104,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
-import { formatInflationRate, getInflationLabel, inflationColorClass, STAT_DECAY_CONFIG, STATS_LOWER_IS_BETTER } from './js/game/stats.js';
+import { STAT_DECAY_CONFIG, STATS_LOWER_IS_BETTER } from './js/game/stats.js';
 import { fetchPreviousNationTick, assertRawEconomicValue } from './js/common.js';
 
 // Resolve nation name from query parameter: nation-info.html?name=sangreza
@@ -204,7 +204,6 @@ const INVERTED = new Set([
 ]);
 
 function colorClass(val, inverted, key) {
-    if (key === 'inflation') return inflationColorClass(val);
     var n = Number(val) || 0;
     if (inverted) return n <= 30 ? 'good' : n <= 60 ? 'medium' : 'bad';
     return n >= 70 ? 'good' : n >= 40 ? 'medium' : 'bad';
