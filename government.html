@@ -10716,8 +10716,8 @@ function renderSemiPresNoConfidenceButton() {
 
 function renderNoConfidenceButton(coalition) {
     // Absolute monarchy: PM is appointed/dismissed by the Monarch only.
-    // Parliament has no no-confidence authority. The Royal Cabinet panel on
-    // the same page exposes the Monarch's dismiss button.
+    // Parliament has no no-confidence authority. The Monarch replaces the
+    // PM via the Appoint Prime Minister royal action on politics.html.
     if (!currentFaction || isPresidential || isAbsoluteMonarchy(currentNation)) return '';
 
     // Only opposition parties can file (not in coalition)

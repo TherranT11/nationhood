@@ -1284,9 +1284,10 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             const isPMParty = !!_administration && _administration.pm_party_id === faction.id;
             if (isMonarchyNation) {
                 // Parliament has no authority to remove the Monarch's PM.
-                // Dismissal is a royal prerogative (see Royal Cabinet panel
-                // on government.html). Defense in depth: fileNoConfidenceMotion
-                // also rejects monarchy nations server-side.
+                // Dismissal is a royal prerogative — the Monarch replaces
+                // the PM via the Appoint Prime Minister royal action above.
+                // Defense in depth: fileNoConfidenceMotion also rejects
+                // monarchy nations server-side.
                 isDisabled = true;
                 action.lockReason = 'Parliament cannot remove the Monarch’s Prime Minister. Only the Monarch can dismiss the PM.';
             } else if (isPMParty) {
