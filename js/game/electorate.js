@@ -976,7 +976,7 @@ async function tickElectorateProfile(supabase, nation, profile, currentTick, ent
     }
 
     // 4. High polarization energizes voters
-    const polarization = Number(nation.polarization ?? 50);
+    const polarization = 50;
     if (polarization > 50) {
         enthusiasmDelta += (polarization - 50) * CFG.ENTHUSIASM_POLARIZATION_SCALE;
     }

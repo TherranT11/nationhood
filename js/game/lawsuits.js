@@ -147,32 +147,18 @@ export async function fileLawsuit(supabase, params) {
     var metricAtStart, metricNow, growth;
 
     if (basis === 'civil_rights') {
-        // Freedom index: decline is bad for government, good for lawsuit
+        // Freedom index column deleted in alpha refactor (no replacement) — pin
+        // to neutral 50 so the calc keeps producing a non-erroring tier=0 outcome.
         var freedomAtStart = Number(administration?.stats_at_start?.freedom_index ?? 50);
-        var { data: nationRow, error: nationErr } = await supabase
-            .from('nations')
-            .select('freedom_index')
-            .eq('id', nationId)
-            .single();
-        if (nationErr) {
-            return { success: false, lawsuit: null, tier: 0, error: 'Failed to fetch freedom index data.' };
-        }
-        metricNow = Number(nationRow?.freedom_index ?? 50);
+        metricNow = 50;
         metricAtStart = freedomAtStart;
         // Growth = how much freedom DECLINED (positive = freedom dropped = stronger case)
         growth = Math.max(0, metricAtStart - metricNow);
     } else {
-        // Corruption: growth is bad for government, good for lawsuit
+        // Corruption column deleted in alpha refactor (no replacement) — pin
+        // to neutral 50 so growth resolves to 0 and lawsuits land in tier 0.
         var corruptionAtStart = Number(administration?.stats_at_start?.corruption ?? 50);
-        var { data: nationRow, error: nationErr } = await supabase
-            .from('nations')
-            .select('corruption')
-            .eq('id', nationId)
-            .single();
-        if (nationErr) {
-            return { success: false, lawsuit: null, tier: 0, error: 'Failed to fetch corruption data.' };
-        }
-        metricNow = Number(nationRow?.corruption ?? 50);
+        metricNow = 50;
         metricAtStart = corruptionAtStart;
         growth = Math.max(0, metricNow - metricAtStart);
     }

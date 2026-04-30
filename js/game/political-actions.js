@@ -167,12 +167,12 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
     // Enforce foundational law caps on stats
     // Judicial Appointment Politicization Act: cap judicial_independence at 30
     if (nation.judicial_appointment_politicization) {
-        const ji = nationUpdates.judicial_independence ?? Number(nation.judicial_independence ?? 50);
+        const ji = nationUpdates.judicial_independence ?? Number(nation.authority ?? 50);
         if (ji > 30) nationUpdates.judicial_independence = 30;
     }
     // State Media Control Act: cap press_freedom at 40
     if (nation.state_media_control) {
-        const pf = nationUpdates.press_freedom ?? Number(nation.press_freedom ?? 50);
+        const pf = nationUpdates.press_freedom ?? 50;
         if (pf > 40) nationUpdates.press_freedom = 40;
     }
 
@@ -486,7 +486,7 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     let targetBloc = { id: null, bloc_name: 'General Public', population_weight: 100 };
 
     const { data: nation } = await supabase
-        .from('nations').select('polarization, civil_unrest, stability').eq('id', nationId).single();
+        .from('nations').select('unrest, control').eq('id', nationId).single();
     const { count: crisisCount } = await supabase
         .from('active_crises').select('id', { count: 'exact', head: true }).eq('nation_id', nationId);
 
@@ -495,9 +495,9 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
 
     // ── 5. Compute weights and roll outcome ──
     const nationState = {
-        polarization: nation?.polarization || 0,
-        civilUnrest: nation?.civil_unrest || 0,
-        stability: nation?.stability || 50,
+        polarization: 0,
+        civilUnrest: nation?.unrest || 0,
+        stability: nation?.control || 50,
         crisisCount: crisisCount || 0,
     };
     const weights = getRallyOutcomeWeights(targetApproval, ralliedRecently, nationState);
@@ -901,9 +901,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
     const { data: faction } = await supabase
         .from('factions').select('action_points, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    const { data: nationForCost } = await supabase
-        .from('nations').select('polarization').eq('id', nationId).single();
-    const baseAttackCost = getAttackAPCost(nationForCost?.polarization);
+    const baseAttackCost = getAttackAPCost(0);
     const attackApMod = getTraitAPModifier('attack', faction, currentTick);
     const effectiveAttackCost = Math.max(1, baseAttackCost + attackApMod);
     if ((faction.action_points || 0) < effectiveAttackCost)
@@ -966,12 +964,8 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
 
     // Polarization
     if (outcome.polarization > 0) {
-        const { data: nation } = await supabase
-            .from('nations').select('polarization').eq('id', nationId).single();
-        if (nation) {
-            const newPol = Math.min(100, (nation.polarization || 0) + outcome.polarization);
-            await supabase.from('nations').update({ polarization: newPol }).eq('id', nationId);
-        }
+        const newPol = Math.min(100, 0 + outcome.polarization);
+        await supabase.from('nations').update({ polarization: newPol }).eq('id', nationId);
         effects.push({ label: 'Polarization', value: outcome.polarization });
     }
 
@@ -3488,15 +3482,15 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
 
     const { data: nation } = await supabase
         .from('nations')
-        .select('stability')
+        .select('control')
         .eq('id', nationId)
         .single();
 
     if (nation) {
-        const newStability = Math.max(0, (nation.stability ?? 50) - 3);
+        const newStability = Math.max(0, (nation.control ?? 50) - 3);
         await supabase
             .from('nations')
-            .update({ stability: newStability })
+            .update({ control: newStability })
             .eq('id', nationId);
     }
 

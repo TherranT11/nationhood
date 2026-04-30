@@ -273,22 +273,22 @@ export function calculateConditionScore(nationStats, grievance, protestHistory, 
     const breakdown = { base: 50 };
 
     // Civil unrest: max +30
-    const unrestBonus = ((nationStats.civil_unrest || 0) / 100) * 30;
+    const unrestBonus = ((nationStats.unrest || 0) / 100) * 30;
     score += unrestBonus;
     breakdown.civil_unrest = +unrestBonus.toFixed(1);
 
     // Unhappiness: max +25
-    const unhappyBonus = ((100 - (nationStats.happiness || 50)) / 100) * 25;
+    const unhappyBonus = ((100 - (nationStats.standard_of_living || 50)) / 100) * 25;
     score += unhappyBonus;
     breakdown.happiness = +unhappyBonus.toFixed(1);
 
     // Polarization: max +20
-    const polBonus = ((nationStats.polarization || 0) / 100) * 20;
+    const polBonus = (0 / 100) * 20;
     score += polBonus;
     breakdown.polarization = +polBonus.toFixed(1);
 
     // Political violence: max -15
-    const violencePenalty = ((nationStats.political_violence || 0) / 100) * 15;
+    const violencePenalty = ((nationStats.unrest || 0) / 100) * 15;
     score -= violencePenalty;
     breakdown.political_violence = +(-violencePenalty).toFixed(1);
 
@@ -1424,12 +1424,11 @@ export async function executeNationalEmergencyOnProtest(supabase, factionId, nat
 
     // ── 6. Apply severe stat costs ──
     const { data: nation } = await supabase
-        .from('nations').select('civil_unrest, political_violence, happiness').eq('id', nationId).single();
+        .from('nations').select('unrest, standard_of_living').eq('id', nationId).single();
 
     await supabase.from('nations').update({
-        civil_unrest: Math.min(100, (nation?.civil_unrest || 0) + 15),
-        political_violence: Math.min(100, (nation?.political_violence || 0) + 10),
-        happiness: Math.max(0, (nation?.happiness || 50) - 10),
+        unrest: Math.min(100, (nation?.unrest || 0) + 25),
+        standard_of_living: Math.max(0, (nation?.standard_of_living || 50) - 10),
     }).eq('id', nationId);
 
     await adjustGovernmentApprovalEvent(supabase, nationId, -10, 'protest:national_emergency');
@@ -1553,9 +1552,9 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
     // Civil unrest one-time delta (Tier 5)
     if (effects.civilUnrestDelta !== 0) {
         const { data: nation } = await supabase
-            .from('nations').select('civil_unrest').eq('id', nationId).single();
-        const newVal = Math.min(100, (nation?.civil_unrest || 0) + effects.civilUnrestDelta);
-        await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nationId);
+            .from('nations').select('unrest').eq('id', nationId).single();
+        const newVal = Math.min(100, (nation?.unrest || 0) + effects.civilUnrestDelta);
+        await supabase.from('nations').update({ unrest: newVal }).eq('id', nationId);
         appliedEffects.push({ stat: 'civil_unrest', delta: effects.civilUnrestDelta });
     }
 

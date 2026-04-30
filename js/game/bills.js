@@ -1051,10 +1051,10 @@ export async function resolveReferendums(supabase, nation, currentTick) {
         }
 
         var govApproval = Number(nation.gov_approval ?? 50);
-        var civilUnrest = Number(nation.civil_unrest ?? 30);
-        var polarization = Number(nation.polarization ?? 50);
-        var happiness = Number(nation.happiness ?? 50);
-        var stability = Number(nation.stability ?? 50);
+        var civilUnrest = Number(nation.unrest ?? 30);
+        var polarization = 50;
+        var happiness = Number(nation.standard_of_living ?? 50);
+        var stability = Number(nation.control ?? 50);
         var sol = Number(nation.standard_of_living ?? 50);
         var gdpGrowth = Number(nation.gdp_growth ?? 0);
 
@@ -1539,10 +1539,10 @@ export async function resolveImpeachmentConvictionBill(supabase, bill, ctx) {
         }
 
         // Stability recovers +3.
-        const { data: natRow } = await supabase.from('nations').select('stability').eq('id', bill.nation_id).single();
+        const { data: natRow } = await supabase.from('nations').select('control').eq('id', bill.nation_id).single();
         if (natRow) {
             await supabase.from('nations').update({
-                stability: Math.min(100, Math.round(Number(natRow.stability || 0) + 3)),
+                control: Math.min(100, Math.round(Number(natRow.control || 0) + 3)),
             }).eq('id', bill.nation_id);
         }
 
@@ -1686,10 +1686,10 @@ export async function resolveDiplomaticRatificationBill(supabase, bill, ctx) {
                     }
                     if (totalUnrestSpike > 0) {
                         for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
-                            const { data: n } = await supabase.from('nations').select('civil_unrest').eq('id', nId).single();
+                            const { data: n } = await supabase.from('nations').select('unrest').eq('id', nId).single();
                             if (n) {
-                                const newVal = Math.max(0, Math.min(100, (n.civil_unrest || 0) + totalUnrestSpike));
-                                await supabase.from('nations').update({ civil_unrest: newVal }).eq('id', nId);
+                                const newVal = Math.max(0, Math.min(100, (n.unrest || 0) + totalUnrestSpike));
+                                await supabase.from('nations').update({ unrest: newVal }).eq('id', nId);
                             }
                         }
                     }
@@ -3650,11 +3650,11 @@ export async function enactBill(supabase, bill, currentTick) {
             // Upsert per-institution funding into budget_item_allocations
             // Stores actual dollar amounts: needed_amount = true cost, allocation_amount = funded amount
             // so fundingPct = allocation_amount / needed_amount * 100
-            const { data: _billNation } = await supabase.from('nations').select('population, gdp, inflation').eq('id', bill.nation_id).single();
+            const { data: _billNation } = await supabase.from('nations').select('population, gdp, cost_of_living').eq('id', bill.nation_id).single();
             const { data: _instConfigs } = await supabase.from('ministry_institution_config').select('id, base_cost_per_capita, scaling_type');
             const _billPop = Number(_billNation?.population || 0);
             const _billGdp = Number(_billNation?.gdp || 0);
-            const _billInfRate = Math.pow(Math.max(0, Number(_billNation?.inflation || 0)), 1.5) / 100;
+            const _billInfRate = Math.pow(Math.max(0, Number(_billNation?.cost_of_living || 0)), 1.5) / 100;
             const _billInfMult = 1 + (_billInfRate / 100);
 
             for (const inst of allInst) {
@@ -4012,7 +4012,7 @@ async function enactPresidentialTermLength(supabase, bill, currentTick) {
     // Apply mechanical effects based on whether terms got shorter or longer
     if (newTermTicks < oldTermTicks) {
         // Shortening terms — more elections, more polarization & engagement
-        const newPol = Math.min(100, (nation?.polarization || 0) + 2);
+        const newPol = Math.min(100, 0 + 2);
         const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
         const { error: shortErr } = await supabase.from('nations').update({
             polarization: newPol,
@@ -4022,8 +4022,8 @@ async function enactPresidentialTermLength(supabase, bill, currentTick) {
         else console.log(`[enactFoundationalBill] Term shortened: polarization +2, political_engagement +3`);
     } else if (newTermTicks > oldTermTicks) {
         // Extending terms — less accountability, more stability
-        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 3);
-        const newStability = Math.min(100, (nation?.stability || 50) + 2);
+        const newLegitimacy = Math.max(0, (nation?.authority || 50) - 3);
+        const newStability = Math.min(100, (nation?.control || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
             legitimacy: newLegitimacy,
             stability: newStability
@@ -4110,7 +4110,7 @@ async function enactLegislativeTermLength(supabase, bill, currentTick) {
     // Apply mechanical effects based on whether terms got shorter or longer
     if (newParlTermTicks < oldParlTermTicks) {
         // Shortening terms — more elections, more polarization & engagement
-        const newPol = Math.min(100, (nation?.polarization || 0) + 2);
+        const newPol = Math.min(100, 0 + 2);
         const newEng = Math.min(100, (nation?.political_engagement || 0) + 3);
         const { error: shortErr } = await supabase.from('nations').update({
             polarization: newPol,
@@ -4120,8 +4120,8 @@ async function enactLegislativeTermLength(supabase, bill, currentTick) {
         else console.log(`[enactFoundationalBill] Legislative term shortened: polarization +2, political_engagement +3`);
     } else if (newParlTermTicks > oldParlTermTicks) {
         // Extending terms — less accountability, more stability
-        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 3);
-        const newStability = Math.min(100, (nation?.stability || 50) + 2);
+        const newLegitimacy = Math.max(0, (nation?.authority || 50) - 3);
+        const newStability = Math.min(100, (nation?.control || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
             legitimacy: newLegitimacy,
             stability: newStability
@@ -4181,8 +4181,8 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
     if (newTermLimit === 0) {
         // Removing term limits
         let legitimacyPenalty = 6;
-        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - legitimacyPenalty);
-        const newUnrest = Math.min(100, (nation?.civil_unrest || 0) + 4);
+        const newLegitimacy = Math.max(0, (nation?.authority || 50) - legitimacyPenalty);
+        const newUnrest = Math.min(100, (nation?.unrest || 0) + 4);
         const updates = {
             legitimacy: newLegitimacy,
             civil_unrest: newUnrest
@@ -4209,7 +4209,7 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
 
         // Extra polarization if sitting president has served 2+ terms
         if (activePresident && (activePresident.terms_served || 1) >= 2) {
-            const newPol = Math.min(100, (nation?.polarization || 0) + 10);
+            const newPol = Math.min(100, 0 + 10);
             const { error: polErr } = await supabase.from('nations').update({ polarization: newPol }).eq('id', bill.nation_id);
             if (polErr) console.error(`[enactFoundationalBill] Polarization update failed:`, polErr.message);
             else console.log(`[enactFoundationalBill] Sitting president has ${activePresident.terms_served} terms — polarization +10`);
@@ -4218,9 +4218,9 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
         console.log(`[enactFoundationalBill] Term limits removed: legitimacy -${legitimacyPenalty}, civil_unrest +4, opposition momentum +8`);
     } else if (oldEffectiveLimit === null || newTermLimit < oldEffectiveLimit) {
         // Adding or tightening term limits
-        const newLegitimacy = Math.min(100, (nation?.legitimacy || 50) + 5);
-        const newPressFreedom = Math.min(100, (nation?.press_freedom || 50) + 2);
-        const newJudicialInd = Math.min(100, (nation?.judicial_independence || 50) + 2);
+        const newLegitimacy = Math.min(100, (nation?.authority || 50) + 5);
+        const newPressFreedom = Math.min(100, 50 + 2);
+        const newJudicialInd = Math.min(100, (nation?.authority || 50) + 2);
         const { error: tightenErr } = await supabase.from('nations').update({
             legitimacy: newLegitimacy,
             press_freedom: newPressFreedom,
@@ -4492,11 +4492,11 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
     }
 
     // ── Stat effects based on target system ──
-    const stability = nation?.stability || 50;
-    const legitimacy = nation?.legitimacy || 50;
+    const stability = nation?.control || 50;
+    const legitimacy = nation?.authority || 50;
     const politicalEngagement = nation?.political_engagement || 50;
-    const polarization = nation?.polarization || 0;
-    const civilUnrest = nation?.civil_unrest || 0;
+    const polarization = 0;
+    const civilUnrest = nation?.unrest || 0;
 
     switch (targetSystem) {
         case 'parliamentary':
@@ -4588,8 +4588,8 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
     // Apply mechanical effects based on method
     if (newMethod === 'hereditary') {
         // Constitutional monarchy: stability +5, legitimacy -5
-        const newStability = Math.min(100, (nation?.stability || 50) + 5);
-        const newLegitimacy = Math.max(0, (nation?.legitimacy || 50) - 5);
+        const newStability = Math.min(100, (nation?.control || 50) + 5);
+        const newLegitimacy = Math.max(0, (nation?.authority || 50) - 5);
         const statUpdate = { stability: newStability, legitimacy: newLegitimacy };
 
         const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
@@ -4600,9 +4600,9 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
         // AND transition Parliamentary → Presidential
         const wasParliamentary = !nation?.government_type?.toLowerCase().includes('president');
         const statUpdate = {
-            legitimacy: Math.min(100, (nation?.legitimacy || 50) + 3),
+            legitimacy: Math.min(100, (nation?.authority || 50) + 3),
             political_engagement: Math.min(100, (nation?.political_engagement || 50) + 3),
-            polarization: Math.min(100, (nation?.polarization || 0) + 2)
+            polarization: Math.min(100, 0 + 2)
         };
 
         if (wasParliamentary) {
@@ -4755,9 +4755,9 @@ async function enactJudicialPoliticization(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const cappedJudicial = Math.min(Number(nation?.judicial_independence ?? 50), 30);
-    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
-    const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
+    const cappedJudicial = Math.min(Number(nation?.authority ?? 50), 30);
+    const newLegitimacy = Math.max(0, (nation?.authority ?? 50) - 5);
+    const newFreedom = Math.max(0, 50 - 3);
 
     const { error: nationErr } = await supabase.from('nations').update({
         judicial_appointment_politicization: true,
@@ -4799,8 +4799,8 @@ async function enactElectoralCommissionReform(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 5);
-    const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 3);
+    const newLegitimacy = Math.max(0, (nation?.authority ?? 50) - 5);
+    const newPolarization = Math.min(100, 0 + 3);
 
     const { error: nationErr } = await supabase.from('nations').update({
         electoral_commission_reform: true,
@@ -4842,9 +4842,9 @@ async function enactPartyRegistrationReform(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 4);
-    const newPolarization = Math.min(100, (nation?.polarization ?? 0) + 5);
-    const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 3);
+    const newLegitimacy = Math.max(0, (nation?.authority ?? 50) - 4);
+    const newPolarization = Math.min(100, 0 + 5);
+    const newFreedom = Math.max(0, 50 - 3);
 
     const { error: nationErr } = await supabase.from('nations').update({
         party_registration_threshold: threshold,
@@ -4888,8 +4888,8 @@ async function enactLegislativeQuorumReform(supabase, bill, currentTick) {
     const { error: billErr } = await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
     if (billErr) { console.error(`[enactFoundationalBill] Failed to mark bill ${bill.id} as passed:`, billErr.message); return false; }
 
-    const newLegitimacy = Math.max(0, (nation?.legitimacy ?? 50) - 3);
-    const newFreedom = Math.max(0, (nation?.freedom_index ?? 50) - 2);
+    const newLegitimacy = Math.max(0, (nation?.authority ?? 50) - 3);
+    const newFreedom = Math.max(0, 50 - 2);
 
     const { error: nationErr } = await supabase.from('nations').update({
         legislative_quorum_override: quorumPct,
@@ -4921,9 +4921,9 @@ async function enactConstitutionalStreamlining(supabase, bill, currentTick) {
 
     const { error: nationErr } = await supabase.from('nations').update({
         constitutional_amendment_streamlining: true,
-        legitimacy: Math.max(0, (nation?.legitimacy ?? 50) - 8),
-        polarization: Math.min(100, (nation?.polarization ?? 0) + 5),
-        freedom_index: Math.max(0, (nation?.freedom_index ?? 50) - 5)
+        legitimacy: Math.max(0, (nation?.authority ?? 50) - 8),
+        polarization: Math.min(100, 0 + 5),
+        freedom_index: Math.max(0, 50 - 5)
     }).eq('id', bill.nation_id);
     if (nationErr) console.error(`[enactFoundationalBill] Failed to update nation for constitutional streamlining:`, nationErr.message);
 
@@ -4945,7 +4945,7 @@ async function enactConstitutionalStreamlining(supabase, bill, currentTick) {
 async function enactMonarchyReform(supabase, bill, currentTick) {
     const reformKey = bill.proposed_monarchy_reform;
     const { data: nation } = await supabase.from('nations')
-        .select('id, name, government_type, monarch_faction_id, legitimacy, gov_approval')
+        .select('id, name, government_type, monarch_faction_id, authority, gov_approval')
         .eq('id', bill.nation_id).single();
 
     if (!nation) { console.error(`[enactFoundationalBill] Nation not found for monarchy reform`); return false; }
@@ -5025,7 +5025,7 @@ async function enactMonarchyReform(supabase, bill, currentTick) {
         // Reset legitimacy and gov approval for fresh start
         await supabase.rpc('increment_nation_stats', {
             p_nation_id: bill.nation_id,
-            p_changes: { legitimacy: 50 - (Number(nation.legitimacy) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
+            p_changes: { legitimacy: 50 - (Number(nation.authority) || 50), gov_approval: 40 - (Number(nation.gov_approval) || 50) },
         }).catch(() => {});
 
         // Dissolve any existing coalition (canonical: government_formations).

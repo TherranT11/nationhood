@@ -145,15 +145,15 @@ export function calculateEquipmentPrice(equipmentKey, nation, opts = {}) {
     let price = eq.basePrice;
 
     // Inflation modifier: higher inflation = higher prices
-    const inflation = Number(nation?.inflation ?? 50);
+    const inflation = Number(nation?.cost_of_living ?? 50);
     price *= 1 + ((inflation - 50) / 200);
 
     // Fuel transport cost: higher fuel = more expensive delivery
-    const fuel = Number(nation?.fuel_prices ?? 50);
+    const fuel = Number(nation?.cost_of_living ?? 50);
     price *= 1 + ((fuel - 50) / 300);
 
     // Manufacturing output: higher output = better supply = lower prices
-    const mfg = Number(nation?.manufacturing_output ?? 50);
+    const mfg = Number(nation?.industry ?? 50);
     price *= 1 - ((mfg - 50) / 400);
 
     // Tier 2/3 scarcity: less domestic supply for advanced equipment
@@ -176,9 +176,9 @@ export function calculateEquipmentPrice(equipmentKey, nation, opts = {}) {
  * @returns {{ multiplier: number, tariff: number, transport: number, deliveryTicks: number }}
  */
 export function calculateEquipmentImportCost(sourceNation, destNation) {
-    const fuelCost = Number(destNation?.fuel_prices ?? 50);
-    const srcInfra = Number(sourceNation?.physical_infrastructure ?? 50);
-    const dstInfra = Number(destNation?.physical_infrastructure ?? 50);
+    const fuelCost = Number(destNation?.cost_of_living ?? 50);
+    const srcInfra = Number(sourceNation?.infrastructure ?? 50);
+    const dstInfra = Number(destNation?.infrastructure ?? 50);
 
     // Transport: 5-15% based on infrastructure quality
     const transportPct = 0.05 + ((100 - srcInfra) / 1000) + ((100 - dstInfra) / 1000) + (fuelCost / 500);
@@ -213,7 +213,7 @@ export function calculateEquipmentSupply(equipmentKey, nation) {
     const eq = getEquipment(equipmentKey);
     if (!eq) return { newAvailable: 0, usedAvailable: 0, usedCondition: 50 };
 
-    const mfg = Number(nation?.manufacturing_output ?? 50);
+    const mfg = Number(nation?.industry ?? 50);
 
     // Base supply scales with manufacturing output and tier
     const tierMult = eq.tier === 1 ? 1.0 : eq.tier === 2 ? 0.4 : 0.15;
