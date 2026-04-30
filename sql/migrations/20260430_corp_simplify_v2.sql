@@ -109,6 +109,11 @@ ALTER TABLE factions
 -- 3. Add new persisted stats to factions
 -- ─────────────────────────────────────────────────────────────
 
+-- corp_debt was previously added by 20260414_finance_system_phase2.sql, which
+-- is being deleted. Re-declare here so v2 is self-sufficient on a fresh DB.
+ALTER TABLE factions
+  ADD COLUMN IF NOT EXISTS corp_debt BIGINT NOT NULL DEFAULT 0;
+
 -- Single-number Assets (replaces properties + equipment + warehouse + vessels)
 ALTER TABLE factions
   ADD COLUMN IF NOT EXISTS corp_assets NUMERIC NOT NULL DEFAULT 0;
