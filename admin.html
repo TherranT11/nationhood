@@ -3209,21 +3209,16 @@ window.toggleScalingType = toggleScalingType;
 
 // ==================== STAT CONNECTOR ====================
 
+// Phase 9: alpha-23 stat menu plus the two non-stat metadata columns
+// (population, eligible_voters) that stat connectors can target.
 const SC_STAT_CATEGORIES = {
-    'Economic': ['gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates', 'trade_balance', 'currency_strength', 'foreign_investment', 'credit'],
-    'Taxation': ['income_tax', 'corporate_tax', 'sales_tax', 'tariffs'],
-    'Labor': ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality'],
-    'Demographics': ['population', 'population_growth', 'median_age', 'ethnic_diversity'],
-    'Healthcare': ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use'],
-    'Education': ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
-    'Infrastructure': ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage'],
-    'Resources': ['arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices'],
-    'Environment': ['pollution', 'carbon_emissions'],
-    'Social': ['standard_of_living', 'happiness', 'religiosity', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate', 'cost_of_living', 'housing_affordability'],
-    'Governance': ['stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence', 'freedom_index', 'polarization'],
-    'Security': ['civil_unrest', 'terrorism', 'political_violence'],
-    'Immigration': ['immigration', 'illegal_immigration', 'emigration'],
-    'International': ['international_reputation', 'manufacturing_output', 'service_output'],
+    'Fiscal': ['budget', 'debt', 'gdp_growth', 'income_tax', 'corporate_tax'],
+    'Governance': ['control', 'public_approval', 'crown_authority', 'corruption'],
+    'Stability': ['unrest', 'crime'],
+    'Population': ['population', 'eligible_voters', 'immigration'],
+    'Wellbeing': ['health', 'education', 'standard_of_living', 'cost_of_living'],
+    'Productive base': ['infrastructure', 'industry', 'farmland', 'service_sector', 'workforce', 'energy'],
+    'International': ['power'],
 };
 const SC_ALL_STATS = Object.values(SC_STAT_CATEGORIES).flat();
 const SC_DELAY_OPTIONS = [
@@ -4806,32 +4801,29 @@ window.deleteIssue = deleteIssue;
 // Changes are written to the seed_stats JSONB column, which the
 // shard reset function uses to restore nation state.
 
+// Phase 9: alpha-23 stat menu plus the two non-stat metadata columns
+// (population, eligible_voters) that admin can seed.
 const SEED_STAT_CATEGORIES = {
-    'Economy': ['gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates', 'trade_balance', 'currency_strength', 'foreign_investment', 'credit', 'budget'],
-    'Taxation': ['income_tax', 'corporate_tax', 'sales_tax', 'tariffs'],
-    'Labor': ['unemployment', 'labor_force_participation', 'minimum_wage', 'union_strength', 'poverty_rate', 'income_inequality'],
-    'Demographics': ['population', 'population_growth', 'birth_rate', 'death_rate', 'median_age', 'ethnic_diversity', 'eligible_voters'],
-    'Healthcare': ['healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan', 'drug_use'],
-    'Education': ['literacy', 'higher_education', 'education_accessibility', 'academic_immigration'],
-    'Infrastructure': ['physical_infrastructure', 'digital_infrastructure', 'rail_network', 'urbanization', 'energy_generation', 'renewable_energy_percentage'],
-    'Resources': ['arable_land', 'rare_minerals', 'oil_and_gas', 'fuel_prices'],
-    'Environment': ['pollution', 'carbon_emissions'],
-    'Society': ['standard_of_living', 'happiness', 'religious', 'social_mobility', 'benefits', 'crime_rate', 'incarceration_rate', 'cost_of_living', 'housing_affordability', 'manufacturing_output', 'service_output'],
-    'Governance': ['stability', 'legitimacy', 'efficiency', 'corruption', 'press_freedom', 'judicial_independence', 'freedom_index', 'polarization'],
-    'Security': ['civil_unrest', 'terrorism', 'political_violence'],
-    'Migration': ['immigration', 'illegal_immigration', 'emigration'],
-    'International': ['international_reputation'],
+    'Fiscal': ['budget', 'debt', 'gdp_growth', 'income_tax', 'corporate_tax'],
+    'Governance': ['control', 'public_approval', 'crown_authority', 'corruption'],
+    'Stability': ['unrest', 'crime'],
+    'Population': ['population', 'eligible_voters', 'immigration'],
+    'Wellbeing': ['health', 'education', 'standard_of_living', 'cost_of_living'],
+    'Productive base': ['infrastructure', 'industry', 'farmland', 'service_sector', 'workforce', 'energy'],
+    'International': ['power'],
     'Government': ['government_type', 'total_seats', 'first_election_tick'],
 };
 
-// Stats stored as raw dollar values (not 0-100 scores)
-const SEED_RAW_STATS = new Set(['gdp', 'debt', 'budget', 'population', 'eligible_voters']);
+// Stats stored as raw values (not 0-100 scores)
+const SEED_RAW_STATS = new Set(['debt', 'budget', 'population', 'eligible_voters']);
 // Schema defaults — used to flag stats that were never explicitly set
 const SEED_SCHEMA_DEFAULTS = {
-    standard_of_living: 50, urbanization: 50, population_growth: 0,
-    currency_strength: 50, physical_infrastructure: 50, rail_network: 50,
-    energy_generation: 50, foreign_investment: 50, arable_land: 50,
-    rare_minerals: 50, oil_and_gas: 50, stability: 50, corruption: 50,
+    control: 50, public_approval: 50, crown_authority: 50, corruption: 50,
+    unrest: 20, crime: 30, health: 50, education: 50,
+    standard_of_living: 50, cost_of_living: 50,
+    infrastructure: 50, industry: 50, farmland: 50,
+    service_sector: 50, workforce: 50, energy: 50, power: 50,
+    income_tax: 5, corporate_tax: 5,
 };
 
 let _seedNations = [];

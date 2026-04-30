@@ -198,16 +198,19 @@ export const STAT_NAMES = {
     manufacturing_output: 'Manufacturing Output', service_output: 'Service Output',
 };
 
-// Stats where "improve" means reducing the value (bad stats)
+// Stats where "improve" means reducing the value (alpha-23 bad stats).
+// Phase 9 dropped the legacy bad stats (inflation, unemployment, drug_use,
+// pollution, carbon_emissions, polarization, illegal_immigration, etc.) —
+// any platform-issue config still keyed to a legacy name flows through
+// STAT_KEY_ALIASES at apply time.
 export const BAD_STATS = new Set([
-    'inflation', 'unemployment', 'poverty_rate', 'income_inequality', 'drug_use',
-    'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate', 'corruption',
-    'polarization', 'civil_unrest', 'terrorism', 'political_violence', 'illegal_immigration',
-    'emigration', 'cost_of_living', 'fuel_prices',
+    'unrest', 'crime', 'corruption', 'cost_of_living', 'debt',
 ]);
 
-// Stats where "improve" means raising taxes (mixed signal)
-export const TAX_STATS = new Set(['income_tax', 'corporate_tax', 'sales_tax']);
+// Tax-rate stats: raising the rate = "improve" only in the populist sense
+// (more revenue, more popular with the left, less with the right). Treated
+// as a mixed signal in platform-issue resolution.
+export const TAX_STATS = new Set(['income_tax', 'corporate_tax']);
 
 /**
  * Get the direction arrow and color for a stat in a platform context.

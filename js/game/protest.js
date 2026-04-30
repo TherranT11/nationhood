@@ -105,27 +105,23 @@ export const PROTEST_CONFIG = {
     UNRESOLVED_GRIEVANCE_PENALTY: -5,
 };
 
-// Stats permanently excluded from Stat Failure tab
-const EXCLUDED_STAT_KEYS = new Set([
-    'ethnic_diversity', 'urbanization', 'median_age',
-]);
+// Stats permanently excluded from Stat Failure tab.
+// Phase 9: ethnic_diversity / median_age dropped from schema (no longer
+// reachable); urbanization renamed to workforce, which is a valid Tier 7
+// target rather than excluded.
+const EXCLUDED_STAT_KEYS = new Set([]);
 
-// Stats eligible for Tier 7 demand generation
+// Stats eligible for Tier 7 demand generation (alpha-23 menu only).
 const TIER7_ELIGIBLE_STATS = new Set([
-    'gdp_growth', 'inflation', 'unemployment', 'crime_rate',
-    'healthcare_quality', 'healthcare_accessibility', 'literacy',
-    'higher_education', 'happiness', 'standard_of_living',
-    'poverty_rate', 'income_inequality', 'fuel_prices', 'pollution',
-    'digital_infrastructure', 'physical_infrastructure', 'energy_generation',
+    'gdp_growth', 'unrest', 'crime', 'health', 'education',
+    'standard_of_living', 'cost_of_living', 'workforce',
+    'infrastructure', 'industry', 'farmland', 'service_sector',
+    'energy', 'public_approval',
 ]);
 
-// Stats where higher values are bad (inverted display)
+// Stats where higher values are bad (inverted display).
 const HIGHER_IS_BAD = new Set([
-    'civil_unrest', 'terrorism', 'political_violence', 'crime_rate',
-    'corruption', 'pollution', 'carbon_emissions', 'poverty_rate',
-    'income_inequality', 'inflation', 'unemployment', 'drug_use',
-    'illegal_immigration', 'emigration', 'fuel_prices', 'incarceration_rate',
-    'debt', 'debt_growth', 'cost_of_living',
+    'unrest', 'crime', 'corruption', 'cost_of_living', 'debt',
 ]);
 
 

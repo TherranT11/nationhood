@@ -20083,27 +20083,23 @@ const PROTEST_CONFIG = {
     UNRESOLVED_GRIEVANCE_PENALTY: -5,
 };
 
-// Stats permanently excluded from Stat Failure tab
-const EXCLUDED_STAT_KEYS = new Set([
-    'ethnic_diversity', 'urbanization', 'median_age',
-]);
+// Stats permanently excluded from Stat Failure tab.
+// Phase 9: ethnic_diversity / median_age dropped from schema (no longer
+// reachable); urbanization renamed to workforce, which is a valid Tier 7
+// target rather than excluded.
+const EXCLUDED_STAT_KEYS = new Set([]);
 
-// Stats eligible for Tier 7 demand generation
+// Stats eligible for Tier 7 demand generation (alpha-23 menu only).
 const TIER7_ELIGIBLE_STATS = new Set([
-    'gdp_growth', 'inflation', 'unemployment', 'crime_rate',
-    'healthcare_quality', 'healthcare_accessibility', 'literacy',
-    'higher_education', 'happiness', 'standard_of_living',
-    'poverty_rate', 'income_inequality', 'fuel_prices', 'pollution',
-    'digital_infrastructure', 'physical_infrastructure', 'energy_generation',
+    'gdp_growth', 'unrest', 'crime', 'health', 'education',
+    'standard_of_living', 'cost_of_living', 'workforce',
+    'infrastructure', 'industry', 'farmland', 'service_sector',
+    'energy', 'public_approval',
 ]);
 
-// Stats where higher values are bad (inverted display)
+// Stats where higher values are bad (inverted display).
 const HIGHER_IS_BAD = new Set([
-    'civil_unrest', 'terrorism', 'political_violence', 'crime_rate',
-    'corruption', 'pollution', 'carbon_emissions', 'poverty_rate',
-    'income_inequality', 'inflation', 'unemployment', 'drug_use',
-    'illegal_immigration', 'emigration', 'fuel_prices', 'incarceration_rate',
-    'debt', 'debt_growth', 'cost_of_living',
+    'unrest', 'crime', 'corruption', 'cost_of_living', 'debt',
 ]);
 
 
@@ -31426,16 +31422,19 @@ const STAT_NAMES = {
     manufacturing_output: 'Manufacturing Output', service_output: 'Service Output',
 };
 
-// Stats where "improve" means reducing the value (bad stats)
+// Stats where "improve" means reducing the value (alpha-23 bad stats).
+// Phase 9 dropped the legacy bad stats (inflation, unemployment, drug_use,
+// pollution, carbon_emissions, polarization, illegal_immigration, etc.) —
+// any platform-issue config still keyed to a legacy name flows through
+// STAT_KEY_ALIASES at apply time.
 const BAD_STATS = new Set([
-    'inflation', 'unemployment', 'poverty_rate', 'income_inequality', 'drug_use',
-    'pollution', 'carbon_emissions', 'crime_rate', 'incarceration_rate', 'corruption',
-    'polarization', 'civil_unrest', 'terrorism', 'political_violence', 'illegal_immigration',
-    'emigration', 'cost_of_living', 'fuel_prices',
+    'unrest', 'crime', 'corruption', 'cost_of_living', 'debt',
 ]);
 
-// Stats where "improve" means raising taxes (mixed signal)
-const TAX_STATS = new Set(['income_tax', 'corporate_tax', 'sales_tax']);
+// Tax-rate stats: raising the rate = "improve" only in the populist sense
+// (more revenue, more popular with the left, less with the right). Treated
+// as a mixed signal in platform-issue resolution.
+const TAX_STATS = new Set(['income_tax', 'corporate_tax']);
 
 /**
  * Get the direction arrow and color for a stat in a platform context.
