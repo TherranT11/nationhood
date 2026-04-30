@@ -2249,55 +2249,62 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
             continue;
         }
 
-        // Select winner: 50% lowest price, 50% highest quality (no random)
-        // This rewards player strategy — either undercut on cost or invest in quality
+        // Filter bids by permit qualification: only bidders holding all
+        // required permits in the host nation can win. This pre-empts the
+        // post-award start gate, so a contract either finds a qualifying
+        // bidder or expires — it can't get stuck in 'awarded' with missing
+        // permits.
+        const requiredPermitKeys = await getRequiredPermitKeysForProject(supabase, nationId, contract.sector, permitScopeCache);
+        let qualifiedBids = bids!;
+        if (requiredPermitKeys.length > 0) {
+            const bidderIds = [...new Set(bids!.map(b => b.faction_id))];
+            const heldQuery = supabase.from('corp_permits')
+                .select('faction_id, permit_key')
+                .eq('nation_id', nationId)
+                .eq('status', 'active');
+            const { data: heldRows } = bidderIds.length === 1
+                ? await heldQuery.eq('faction_id', bidderIds[0])
+                : await heldQuery.in('faction_id', bidderIds);
+            const heldByFaction = new Map();
+            for (const row of (heldRows || [])) {
+                if (!heldByFaction.has(row.faction_id)) heldByFaction.set(row.faction_id, new Set());
+                heldByFaction.get(row.faction_id).add(row.permit_key);
+            }
+            qualifiedBids = bids!.filter(b => {
+                const held = heldByFaction.get(b.faction_id) || new Set();
+                return requiredPermitKeys.every(k => held.has(k));
+            });
+        }
+
+        if (qualifiedBids.length === 0) {
+            // No bid holds the required permits. Wait for more qualifying
+            // bids while the bidding window is open; expire the contract
+            // once it closes.
+            if (timerExpired) {
+                await supabase.from('construction_contracts')
+                    .update({ status: 'expired' })
+                    .eq('id', contract.id);
+                await supabase.from('contract_bids')
+                    .update({ status: 'lost' })
+                    .eq('contract_id', contract.id);
+                results.push({ contract: contract.name, result: 'expired', reason: 'no_qualified_bids' });
+            }
+            continue;
+        }
+
+        // Select winner from qualified bids: 50% lowest price, 50% highest
+        // quality. Rewards player strategy — undercut on cost or invest
+        // in quality.
+        const sortedQualified = qualifiedBids.slice().sort((a, b) => (a.bid_price || 0) - (b.bid_price || 0));
         const roll = Math.random();
         let winner;
         let method: string;
         if (roll < 0.50) {
-            // Lowest price (already sorted ascending)
-            winner = bids![0];
+            winner = sortedQualified[0];
             method = 'lowest_price';
         } else {
-            // Highest quality
-            winner = bids!.reduce((best, b) => (b.estimated_quality || 0) > (best.estimated_quality || 0) ? b : best, bids![0]);
+            winner = sortedQualified.reduce((best, b) => (b.estimated_quality || 0) > (best.estimated_quality || 0) ? b : best, sortedQualified[0]);
             method = 'highest_quality';
-        }
-
-        const awardPermitSnapshot = await getPermitComplianceSnapshot(supabase, {
-            nationId,
-            sector: contract.sector,
-            factionId: winner.faction_id,
-            contractId: contract.id,
-            checkpoint: 'award',
-            cache: permitScopeCache,
-        });
-        if (awardPermitSnapshot.missingPermitKeys.length > 0) {
-            try {
-                await supabase.from('construction_events').insert({
-                    contract_id: contract.id,
-                    faction_id: winner.faction_id,
-                    nation_id: nationId,
-                    event_key: 'permit_compliance_warning',
-                    type: 'REGULATORY',
-                    severity: 'HIGH',
-                    title: 'Permit Compliance Warning',
-                    description: `Awarded bidder is missing required permits for this project sector: ${awardPermitSnapshot.missingPermitKeys.join(', ')}.`,
-                    impact: 'Construction start is blocked until required permits are active.',
-                    responses: [{
-                        key: 'acknowledge',
-                        label: 'Acknowledged',
-                        tag: 'HIGH',
-                        detail: 'Missing permits logged for compliance monitoring.',
-                        cost: 0,
-                        delay: 1,
-                        qualityImpact: 0,
-                    }],
-                    status: 'ACTIVE',
-                    fired_at_tick: currentTick,
-                    expires_at_tick: currentTick + 3,
-                });
-            } catch (_) { /* non-fatal */ }
         }
 
         await supabase.from('construction_contracts')
