@@ -2262,9 +2262,17 @@ async function resolveExpiredBids(supabase, nationId, currentTick) {
                 .select('faction_id, permit_key')
                 .eq('nation_id', nationId)
                 .eq('status', 'active');
-            const { data: heldRows } = bidderIds.length === 1
+            const { data: heldRows, error: heldErr } = bidderIds.length === 1
                 ? await heldQuery.eq('faction_id', bidderIds[0])
                 : await heldQuery.in('faction_id', bidderIds);
+            if (heldErr) {
+                // SELECT failure means we can't verify any bidder qualifies.
+                // Skip resolution this tick rather than silently expiring a
+                // contract or awarding to an unverified bidder; let the next
+                // tick retry once whatever caused the error has cleared.
+                console.warn(`[ResolveBids] corp_permits select failed for contract ${contract.id}: ${heldErr.message}; deferring resolution.`);
+                continue;
+            }
             const heldByFaction = new Map();
             for (const row of (heldRows || [])) {
                 if (!heldByFaction.has(row.faction_id)) heldByFaction.set(row.faction_id, new Set());
