@@ -78,8 +78,8 @@ var NATION_COLORS = {
 var currentFaction = null;
 var taxConnections = [];
 var taxAdminFunding = { allocated: 0, needed: 0, fundingPct: 0 };
-var taxRateChanges = {};  // { income_tax: 22, ... } — only keys that changed
-var originalRates = {};   // { income_tax: 18, corporate_tax: 24, sales_tax: 10 }
+var taxRateChanges = {};  // legacy tax-key map; tax columns removed in 19-col schema
+var originalRates = {};   // legacy tax-key map; tax columns removed in 19-col schema
 var taxPendingBills = [];
 var taxHistory = [];
 var activeCoalition = null;
@@ -171,7 +171,7 @@ async function loadExpenditureData(nationId, nation) {
         .eq('is_reversal', false);
 
     var yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
-    var inflationMult = getInflationMultiplier(nation.inflation);
+    var inflationMult = getInflationMultiplier(undefined);
 
     for (var i = 0; i < (res.data || []).length; i++) {
         var law = res.data[i];
@@ -457,7 +457,7 @@ async function loadAllNationsData() {
     if (cached) { allNations = cached; return; }
 
     var res = await _supabase.from('nations')
-        .select('id, name, gdp, population, gdp_growth, unemployment, inflation, standard_of_living, debt, tariffs, oil_and_gas, rare_minerals, arable_land, physical_infrastructure, digital_infrastructure, higher_education, credit, happiness, stability, manufacturing_output, service_output, currency_strength, energy_generation');
+        .select('id, name, gdp, population, gdp_growth, immigration, standard_of_living, cost_of_living, debt, budget, control, unrest, authority, crown_authority, energy, health, education, power, infrastructure, industry, farmland, goods, workforce');
 
     if (res.data) {
         allNations = res.data;
@@ -527,11 +527,9 @@ function renderTabBar() {
     var tabs = [
         { key: 'overview', label: 'Overview' },
         { key: 'budget', label: 'Budget' },
-        { key: 'taxation', label: 'Taxation' },
         { key: 'trade', label: 'Trade' },
         { key: 'sectors', label: 'Sectors' },
-        { key: 'industries', label: 'Industries' },
-        { key: 'tariffs', label: 'Tariffs' }
+        { key: 'industries', label: 'Industries' }
     ];
     var h = '<div class="econ-tab-bar">';
     for (var i = 0; i < tabs.length; i++) {
@@ -546,11 +544,9 @@ function renderTabContent(nation) {
     switch (activeTab) {
         case 'overview': return renderOverviewTab(nation);
         case 'budget': return renderBudgetTab(nation);
-        case 'taxation': return renderTaxationTab(nation);
         case 'trade': return renderTradeTab(nation);
         case 'sectors': return renderSectorsTab(nation);
         case 'industries': return renderIndustriesTab(nation);
-        case 'tariffs': return renderTariffsTab(nation);
         default: return '';
     }
 }
@@ -589,12 +585,6 @@ function wireTabEvents(nation) {
                 selectMinistryCategory(tab.getAttribute('data-category'));
             });
         });
-    }
-    if (activeTab === 'taxation') {
-        wireTaxSliders(nation);
-    }
-    if (activeTab === 'tariffs') {
-        wireTariffSimulator(nation);
     }
 }
 
@@ -849,7 +839,7 @@ function renderOverviewTab(nation) {
         h += '<div class="distress-banner-icon">⚠</div>';
         h += '<div class="distress-banner-content">';
         h += '<div class="distress-banner-title">SOVEREIGN DEBT CRISIS WARNING</div>';
-        h += '<div class="distress-banner-text">Debt has reached ' + formatDebtToGDP(getDebtToGDP(nation)) + ' of GDP. Credit is deteriorating rapidly. ';
+        h += '<div class="distress-banner-text">Debt has reached ' + formatDebtToGDP(getDebtToGDP(nation)) + ' of budget. ';
         if (_distressInfo.locked) h += 'Borrowing is locked out. ';
         if (_distressInfo.burden > 0) h += 'Government spending effectiveness reduced by ' + (_distressInfo.burden * 100).toFixed(0) + '%. ';
         h += 'Consider a <a href="laws.html" style="color:#d48a3c;text-decoration:underline;">Default Resolution</a> to restructure debt.</div>';
@@ -859,7 +849,7 @@ function renderOverviewTab(nation) {
         h += '<div class="distress-banner-icon">📉</div>';
         h += '<div class="distress-banner-content">';
         h += '<div class="distress-banner-title">DEBT DISTRESS</div>';
-        h += '<div class="distress-banner-text">Debt-to-GDP ratio at ' + formatDebtToGDP(getDebtToGDP(nation)) + '. Credit is eroding and government spending effectiveness is impaired.</div>';
+        h += '<div class="distress-banner-text">Debt-to-Budget ratio at ' + formatDebtToGDP(getDebtToGDP(nation)) + '. Government spending effectiveness is impaired.</div>';
         h += '</div></div>';
     }
 
@@ -905,34 +895,24 @@ function renderOverviewTab(nation) {
         h += '<div class="trade-diag-body">';
 
         // Global modifiers row
-        var tariffVal = Number(nation.tariffs) || 0;
-        var tariffDampener = 1 - (tariffVal / 200);
-        var tariffReduction = ((1 - tariffDampener) * 100).toFixed(0);
-        var currencyVal = Number(nation.currency_strength) || 50;
-        var currencyMod = currencyVal / 50;
-        var stabilityVal = Number(nation.stability) || 50;
-        var stabilityMod = Math.min(1.0, stabilityVal / 40);
-        var gdpScale = (Number(nation.gdp) || 0) / 100000000000;
+        var budgetScale = (Number(nation.budget) || 0) / 100000000000;
+        var industryVal = Number(nation.industry) || 50;
+        var infraVal = Number(nation.infrastructure) || 50;
 
         h += '<div class="trade-diag-modifiers">';
         h += '<div class="trade-diag-mod">';
-        h += '<span class="trade-diag-label">Tariff Rate</span>';
-        h += '<span class="trade-diag-value" style="color:' + (tariffVal > 50 ? 'var(--red, #d9534f)' : tariffVal > 25 ? 'var(--accent, #ffcc00)' : 'var(--green, #5cb85c)') + '">' + tariffVal.toFixed(1) + '%</span>';
-        h += '<span class="trade-diag-effect">Tariff reduces imports by ' + tariffReduction + '%</span>';
+        h += '<span class="trade-diag-label">Industry</span>';
+        h += '<span class="trade-diag-value" style="color:' + (industryVal >= 70 ? 'var(--green, #5cb85c)' : industryVal >= 40 ? 'var(--accent, #ffcc00)' : 'var(--red, #d9534f)') + '">' + industryVal.toFixed(0) + '/100</span>';
+        h += '<span class="trade-diag-effect">Industrial production capacity</span>';
         h += '</div>';
         h += '<div class="trade-diag-mod">';
-        h += '<span class="trade-diag-label">Currency Strength</span>';
-        h += '<span class="trade-diag-value">' + currencyVal.toFixed(0) + '/100</span>';
-        h += '<span class="trade-diag-effect">Trade modifier: ' + currencyMod.toFixed(2) + 'x</span>';
+        h += '<span class="trade-diag-label">Infrastructure</span>';
+        h += '<span class="trade-diag-value" style="color:' + (infraVal >= 70 ? 'var(--green, #5cb85c)' : infraVal >= 40 ? 'var(--accent, #ffcc00)' : 'var(--red, #d9534f)') + '">' + infraVal.toFixed(0) + '/100</span>';
+        h += '<span class="trade-diag-effect">Trade infrastructure</span>';
         h += '</div>';
         h += '<div class="trade-diag-mod">';
-        h += '<span class="trade-diag-label">Stability</span>';
-        h += '<span class="trade-diag-value" style="color:' + (stabilityVal < 25 ? 'var(--red, #d9534f)' : stabilityVal < 40 ? 'var(--accent, #ffcc00)' : 'var(--green, #5cb85c)') + '">' + stabilityVal.toFixed(0) + '/100</span>';
-        h += '<span class="trade-diag-effect">Export modifier: ' + stabilityMod.toFixed(2) + 'x</span>';
-        h += '</div>';
-        h += '<div class="trade-diag-mod">';
-        h += '<span class="trade-diag-label">GDP Scale</span>';
-        h += '<span class="trade-diag-value" style="color:' + (gdpScale >= 1.0 ? 'var(--green, #5cb85c)' : gdpScale >= 0.5 ? 'var(--accent, #ffcc00)' : 'var(--red, #d9534f)') + '">' + gdpScale.toFixed(2) + 'x</span>';
+        h += '<span class="trade-diag-label">Budget Scale</span>';
+        h += '<span class="trade-diag-value" style="color:' + (budgetScale >= 1.0 ? 'var(--green, #5cb85c)' : budgetScale >= 0.5 ? 'var(--accent, #ffcc00)' : 'var(--red, #d9534f)') + '">' + budgetScale.toFixed(2) + 'x</span>';
         h += '<span class="trade-diag-effect">vs $100B baseline</span>';
         h += '</div>';
         h += '</div>';
@@ -1035,9 +1015,8 @@ function renderOverviewTab(nation) {
     h += '<div class="econ-debt-card">';
     h += '<div class="econ-debt-amount">' + formatBudgetCurrency(debt) + '</div>';
     h += '<div class="econ-debt-metrics">';
-    h += '<div class="econ-debt-metric"><span class="debt-metric-label">Debt-to-GDP</span><span class="debt-metric-value" style="color:' + distress.color + ';">' + formatDebtToGDP(debtToGdpRatio) + '</span></div>';
+    h += '<div class="econ-debt-metric"><span class="debt-metric-label">Debt-to-Budget</span><span class="debt-metric-value" style="color:' + distress.color + ';">' + formatDebtToGDP(debtToGdpRatio) + '</span></div>';
     h += '<div class="econ-debt-metric"><span class="debt-metric-label">Debt-to-Revenue</span><span class="debt-metric-value">' + (debtToRev * 100).toFixed(0) + '%</span></div>';
-    h += '<div class="econ-debt-metric"><span class="debt-metric-label">Credit Rating</span><span class="debt-metric-value">' + Math.round(Number(nation.credit ?? 50)) + '/100</span></div>';
     h += '</div>';
     h += '<div class="econ-debt-rating rating-' + dCls + '">' + dRating + '</div>';
     if (burden > 0) {
@@ -1049,7 +1028,7 @@ function renderOverviewTab(nation) {
     if (isLocked) {
         h += '<div class="credit-lockout-warning">';
         h += '<span class="lockout-icon">🔒</span>';
-        h += '<span>CREDIT LOCKED OUT — Nation cannot borrow. Credit must exceed ' + SOVEREIGN_DEFAULT_CONFIG.CREDIT_LOCKOUT_THRESHOLD + ' to unlock.</span>';
+        h += '<span>BORROWING LOCKED OUT — Nation cannot borrow.</span>';
         h += '</div>';
     }
     h += '</div>';
@@ -1066,31 +1045,19 @@ function renderOverviewTab(nation) {
     var growthPct = (gdpGrowth - 50) / 50;
     var growthDisplay = (growthPct >= 0 ? '+' : '') + growthPct.toFixed(2) + '%';
     var gdpGrowthSub = getTrendArrow('gdp_growth', gdpGrowth, false);
-    if (tradeData && tradeData.summary) {
-        var tVol = Number(tradeData.summary.total_exports || 0) + Number(tradeData.summary.total_imports || 0);
-        var tRatio = Number(nation.gdp) > 0 ? tVol / Number(nation.gdp) : 0;
-        var tNudge = Math.max(-0.2, Math.min(0.2, (tRatio - 0.5) * 0.4));
-        if (Math.abs(tNudge) >= 0.005) {
-            var tSign = tNudge > 0 ? '+' : '';
-            var tCls = tNudge > 0 ? 'surplus' : 'deficit';
-            gdpGrowthSub += ' <span class="econ-card-' + tCls + '" style="font-size:11px">Trade ' + tSign + tNudge.toFixed(2) + '</span>';
-        }
-    }
     var yearlyPct = (Math.pow(1 + growthPct / 100, 12) - 1) * 100;
     var yearlyDisplay = (yearlyPct >= 0 ? '+' : '') + yearlyPct.toFixed(2) + '%';
     gdpGrowthSub += '<br><span style="font-size:11px;opacity:0.85">Predicted Yearly Growth: ' + yearlyDisplay + '</span>';
     h += renderOverviewCard('GDP Growth', growthDisplay, growthPct >= 0 ? 'surplus' : 'deficit', gdpGrowthSub);
 
-    var unemp = Number(nation.unemployment) || 50;
-    h += renderOverviewCard('Unemployment', formatUnemploymentPct(unemp), unemp <= 30 ? 'surplus' : unemp <= 60 ? 'neutral' : 'deficit', getTrendArrow('unemployment', unemp, true));
-
-    var infl = Number(nation.inflation) || 0;
-    var inflCC = inflationColorClass(infl);
-    var inflStatus = inflCC === 'good' ? 'surplus' : inflCC === 'bad' ? 'deficit' : 'neutral';
-    h += renderOverviewCard('Inflation', formatInflationRate(infl), inflStatus, getTrendArrow('inflation', infl, true));
+    var workforce = Number(nation.workforce) || 50;
+    h += renderOverviewCard('Workforce', Math.round(workforce), workforce >= 70 ? 'surplus' : workforce >= 40 ? 'neutral' : 'deficit', getTrendArrow('workforce', workforce, false));
 
     var sol = Number(nation.standard_of_living) || 50;
     h += renderOverviewCard('Std of Living', Math.round(sol), sol >= 70 ? 'surplus' : sol >= 40 ? 'neutral' : 'deficit', getTrendArrow('standard_of_living', sol, false));
+
+    var col = Number(nation.cost_of_living) || 50;
+    h += renderOverviewCard('Cost of Living', Math.round(col), col <= 30 ? 'surplus' : col <= 60 ? 'neutral' : 'deficit', getTrendArrow('cost_of_living', col, true));
 
     h += '</div>';
     h += '</div>';
@@ -1128,10 +1095,10 @@ function renderRankings(nation) {
         };
     }
     var metrics = [
-        { key: 'gdp', label: 'GDP', higher: true, fmt: fmtMonetary('gdp') },
+        { key: 'budget', label: 'Budget', higher: true, fmt: fmtMonetary('budget') },
         { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50) * 1; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
         { key: 'standard_of_living', label: 'Std of Living', higher: true, fmt: function(v) { return Math.round(v); } },
-        { key: 'unemployment', label: 'Unemployment', higher: false, fmt: function(v) { return formatUnemploymentPct(v); } },
+        { key: 'workforce', label: 'Workforce', higher: true, fmt: function(v) { return Math.round(v); } },
         { key: 'debt', label: 'National Debt', higher: false, fmt: fmtMonetary('debt') }
     ];
 
@@ -1694,13 +1661,8 @@ function renderBudgetTab(nation) {
     h += '<span class="bv2-col-total" style="color:var(--green);">Total: ' + formatDualPeriod(budget.grossRevenue) + '</span>';
     h += '</div>';
 
-    h += bv2RevenueRow('INCOME TAX', Math.round(Number(nation.income_tax || 0)) + '% rate · Income bracket', budget.incomeRevenue);
-    h += bv2RevenueRow('SALES TAX', Math.round(Number(nation.sales_tax || 0)) + '% rate · Consumption', budget.salesRevenue);
-    h += bv2RevenueRow('CORPORATE TAX', Math.round(Number(nation.corporate_tax || 0)) + '% rate · Corporate profits', budget.corpRevenue);
-    h += bv2RevenueRow('PROPERTY TAX', Math.round(Number(nation.property_tax || 0)) + '% rate · Real estate value', budget.propertyRevenue || 0);
-    h += bv2RevenueRow('TARIFF & TRADE', 'Import duties · Trade balance', budget.tariffRevenue);
-    if (budget.oilRevenue > 0) {
-        h += bv2RevenueRow('OIL & GAS', 'State resource revenue', budget.oilRevenue);
+    if (budget.grossRevenue > 0) {
+        h += bv2RevenueRow('TAX REVENUE', 'Aggregate state taxation', Math.max(0, budget.grossRevenue - (aidReceived || 0)));
     }
     if (aidReceived > 0) {
         h += bv2RevenueRow('FOREIGN AID', 'Aid received from partners', aidReceived);
@@ -1947,34 +1909,31 @@ function renderTradeScoresSection(nation) {
     var n = nation;
     var scores = [
         {
-            name: 'Manufacturing',
-            value: Number(n.manufacturing_output) || 0,
+            name: 'Industry',
+            value: Number(n.industry) || 0,
             stats: [
-                { label: 'Mfg. Output', value: Number(n.manufacturing_output) || 0 }
+                { label: 'Industry', value: Number(n.industry) || 0 }
             ]
         },
         {
-            name: 'Technology',
-            value: ((Number(n.digital_infrastructure) || 0) + (Number(n.higher_education) || 0)) / 2,
+            name: 'Education',
+            value: Number(n.education) || 0,
             stats: [
-                { label: 'Digital Infra', value: Number(n.digital_infrastructure) || 0 },
-                { label: 'Higher Ed', value: Number(n.higher_education) || 0 }
+                { label: 'Education', value: Number(n.education) || 0 }
             ]
         },
         {
-            name: 'Tourism',
-            value: ((Number(n.happiness) || 0) + (Number(n.stability) || 0) + (Number(n.physical_infrastructure) || 0)) / 3,
+            name: 'Infrastructure',
+            value: Number(n.infrastructure) || 0,
             stats: [
-                { label: 'Happiness', value: Number(n.happiness) || 0 },
-                { label: 'Stability', value: Number(n.stability) || 0 },
-                { label: 'Phys. Infra', value: Number(n.physical_infrastructure) || 0 }
+                { label: 'Infrastructure', value: Number(n.infrastructure) || 0 }
             ]
         },
         {
-            name: 'Services & Finance',
-            value: Number(n.service_output) || 0,
+            name: 'Workforce',
+            value: Number(n.workforce) || 0,
             stats: [
-                { label: 'Service Output', value: Number(n.service_output) || 0 }
+                { label: 'Workforce', value: Number(n.workforce) || 0 }
             ]
         }
     ];
@@ -2423,13 +2382,11 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
             h += '<div style="padding:10px 16px;border:1px solid ' + spoilColor + ';border-radius:4px;background:' + spoilColor + '15;margin:0 16px;">';
             h += '<div style="font-size:0.75rem;font-weight:bold;color:' + spoilColor + ';margin-bottom:4px;">SPOILAGE WARNING: ' + spoilagePct + '% of production lost</div>';
             h += '<div style="font-size:0.75rem;color:var(--text-secondary);">';
-            var rail = Number(nation.rail_network) || 0;
-            var infra = Number(nation.physical_infrastructure) || 0;
-            var energy = Number(nation.energy_generation) || 0;
+            var infra = Number(nation.infrastructure) || 0;
+            var energy = Number(nation.energy) || 0;
             var spoilReasons = [];
-            if (rail < 40) spoilReasons.push('Rail Network ' + Math.round(rail) + ' (need 40+)');
-            if (infra < 35) spoilReasons.push('Physical Infrastructure ' + Math.round(infra) + ' (need 35+)');
-            if (energy < 30) spoilReasons.push('Energy Generation ' + Math.round(energy) + ' (need 30+)');
+            if (infra < 35) spoilReasons.push('Infrastructure ' + Math.round(infra) + ' (need 35+)');
+            if (energy < 30) spoilReasons.push('Energy ' + Math.round(energy) + ' (need 30+)');
             h += 'Cold chain failure: ' + spoilReasons.join(' · ');
             h += '</div></div></div>';
         }
@@ -2444,7 +2401,7 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     var landPct = Math.min(100, Math.max(0, Math.round(effectiveLand)));
     var landColor = landPct >= 20 ? '#5cb85c' : landPct >= 10 ? '#888' : '#d9534f';
     h += '<div class="sector-driver-row">';
-    h += '<div class="sector-driver-label">Arable Land (' + allocPct + '% of ' + Math.round(Number(nation.arable_land) || 0) + ')</div>';
+    h += '<div class="sector-driver-label">Farmland (' + allocPct + '% of ' + Math.round(Number(nation.farmland) || 0) + ')</div>';
     h += '<div class="sector-driver-track"><div class="sector-driver-fill" style="width:' + landPct + '%;background:' + landColor + '"></div></div>';
     h += '<div class="sector-driver-value" style="color:' + landColor + '">' + landPct.toFixed(1) + '</div>';
     h += '<div class="sector-driver-trend"></div>';
@@ -2453,7 +2410,7 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
     // Secondary drivers
     for (var di = 0; di < sub.drivers.length; di++) {
         var d = sub.drivers[di];
-        if (d.stat === 'arable_land') continue;
+        if (d.stat === 'farmland' || d.stat === 'arable_land') continue;
         var val = Number(nation[d.stat]) || 0;
         var stPct = Math.min(100, Math.max(0, Math.round(val)));
         var stColor = stPct >= 70 ? '#5cb85c' : stPct >= 40 ? '#f0efe6' : '#d9534f';
@@ -2508,9 +2465,9 @@ function renderFoodSubsectorDetail(nation, subsectorKey) {
 }
 
 function renderArableLandAllocation(nation, alloc, activeSubsector) {
-    var totalArable = Math.round(Number(nation.arable_land) || 0);
+    var totalArable = Math.round(Number(nation.farmland) || 0);
     var h = '<div class="econ-section">';
-    h += '<div class="econ-section-header">ARABLE LAND ALLOCATION — ' + totalArable + ' TOTAL</div>';
+    h += '<div class="econ-section-header">FARMLAND ALLOCATION — ' + totalArable + ' TOTAL</div>';
 
     var segments = [
         { key: 'grains_pct', label: 'Grains', color: '#c9a54e' },
@@ -2739,8 +2696,8 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
         var score = getSectorScore(nation, sector);
         if (score > (sector.export_threshold || 0)) {
             // Score is above threshold but capacity is still 0 — sector-specific gate
-            if (sector.key === 'tourism' && (Number(nation.stability) || 0) <= 25) {
-                exportReasons.push('Tourism requires stability above 25 (currently ' + Math.round(Number(nation.stability) || 0) + ')');
+            if (sector.key === 'tourism' && (Number(nation.control) || 0) <= 25) {
+                exportReasons.push('Tourism requires control above 25 (currently ' + Math.round(Number(nation.control) || 0) + ')');
             } else if (sector.key === 'arms') {
                 exportReasons.push('Arms exports require defense spending above 8% of budget');
             } else {
@@ -2757,58 +2714,55 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
     if (!sector.export_only) {
         if (impVol > 0) {
             if (sectorKey === 'fuel_energy') {
-                var oilGas = Number(nation.oil_and_gas) || 0;
-                var energyGen = Number(nation.energy_generation) || 0;
-                var manuf = Number(nation.manufacturing_output) || 0;
-                var urban = Number(nation.urbanization) || 0;
-                var rail = Number(nation.rail_network) || 0;
+                var energyVal = Number(nation.energy) || 0;
+                var powerVal = Number(nation.power) || 0;
+                var industryVal = Number(nation.industry) || 0;
+                var workforceVal = Number(nation.workforce) || 0;
                 var col = Number(nation.cost_of_living) || 0;
-                if (oilGas < 50 || energyGen < 50) importReasons.push('Domestic energy production is insufficient (Oil & Gas: ' + Math.round(oilGas) + ', Energy Gen: ' + Math.round(energyGen) + ')');
-                if (manuf > 40) importReasons.push('Manufacturing sector ('+Math.round(manuf)+') drives industrial fuel consumption');
-                if (urban > 50) importReasons.push('High urbanization ('+Math.round(urban)+') increases energy needs');
-                if (rail < 40) importReasons.push('Weak rail network ('+Math.round(rail)+') forces reliance on fuel-based transport');
+                if (energyVal < 50 || powerVal < 50) importReasons.push('Domestic energy production is insufficient (Energy: ' + Math.round(energyVal) + ', Power: ' + Math.round(powerVal) + ')');
+                if (industryVal > 40) importReasons.push('Industry ('+Math.round(industryVal)+') drives industrial fuel consumption');
+                if (workforceVal > 50) importReasons.push('Large workforce ('+Math.round(workforceVal)+') increases energy needs');
                 if (col > 60) importReasons.push('High cost of living ('+Math.round(col)+') reflects energy-intensive lifestyles');
             } else if (sectorKey === 'food_agriculture') {
-                var arableLand = Number(nation.arable_land) || 0;
-                if (arableLand < 50) importReasons.push('Limited arable land ('+Math.round(arableLand)+') cannot feed the population');
+                var farmVal = Number(nation.farmland) || 0;
+                if (farmVal < 50) importReasons.push('Limited farmland ('+Math.round(farmVal)+') cannot feed the population');
                 else importReasons.push('Population outpaces domestic food production');
             } else if (sectorKey === 'grains_staples') {
-                var arableLand = Number(nation.arable_land) || 0;
+                var farmVal = Number(nation.farmland) || 0;
                 var pop = Number(nation.population) || 0;
-                if (arableLand < 40) importReasons.push('Limited arable land ('+Math.round(arableLand)+') insufficient for grain production');
+                if (farmVal < 40) importReasons.push('Limited farmland ('+Math.round(farmVal)+') insufficient for grain production');
                 if (pop > 8000000) importReasons.push('Large population ('+Math.round(pop/1000000)+'M) creates high staple demand');
                 if (importReasons.length === 0) importReasons.push('Population demand outpaces domestic grain production');
             } else if (sectorKey === 'livestock_dairy') {
                 var sol = Number(nation.standard_of_living) || 0;
-                var arableLand = Number(nation.arable_land) || 0;
+                var farmVal = Number(nation.farmland) || 0;
                 if (sol > 50) importReasons.push('High standard of living ('+Math.round(sol)+') drives meat and dairy demand');
-                if (arableLand < 40) importReasons.push('Limited pastureland constrains domestic livestock (Arable: '+Math.round(arableLand)+')');
+                if (farmVal < 40) importReasons.push('Limited pastureland constrains domestic livestock (Farmland: '+Math.round(farmVal)+')');
                 if (importReasons.length === 0) importReasons.push('Domestic livestock cannot meet population demand');
             } else if (sectorKey === 'fruits_vegetables') {
-                var rail = Number(nation.rail_network) || 0;
-                var infra = Number(nation.physical_infrastructure) || 0;
-                var urban = Number(nation.urbanization) || 0;
-                if (rail < 40) importReasons.push('Weak rail network ('+Math.round(rail)+') causes spoilage — cold chain failure');
-                if (infra < 35) importReasons.push('Poor infrastructure ('+Math.round(infra)+') disrupts perishable distribution');
-                if (urban > 60) importReasons.push('High urbanization ('+Math.round(urban)+') concentrates demand beyond local supply');
+                var infra = Number(nation.infrastructure) || 0;
+                var energyVal = Number(nation.energy) || 0;
+                var workforceVal = Number(nation.workforce) || 0;
+                if (infra < 40) importReasons.push('Weak infrastructure ('+Math.round(infra)+') causes spoilage — cold chain failure');
+                if (energyVal < 35) importReasons.push('Low energy ('+Math.round(energyVal)+') disrupts perishable distribution');
+                if (workforceVal > 60) importReasons.push('High workforce concentration ('+Math.round(workforceVal)+') outpaces local supply');
                 if (importReasons.length === 0) importReasons.push('Domestic produce insufficient for population needs');
             } else if (sectorKey === 'cash_crops') {
                 var sol = Number(nation.standard_of_living) || 0;
                 if (sol > 50) importReasons.push('Wealthy population (Std. Living: '+Math.round(sol)+') imports premium goods (coffee, cocoa, tea)');
                 else importReasons.push('Modest domestic demand for imported cash crop products');
             } else if (sectorKey === 'minerals') {
-                var minerals = Number(nation.rare_minerals) || 0;
-                var manuf = Number(nation.manufacturing_output) || 0;
-                if (minerals < 60) importReasons.push('Low mineral reserves ('+Math.round(minerals)+') require imports');
-                if (manuf > 30) importReasons.push('Manufacturing sector ('+Math.round(manuf)+') creates demand for raw material inputs');
+                var industryVal = Number(nation.industry) || 0;
+                if (industryVal > 30) importReasons.push('Industry ('+Math.round(industryVal)+') creates demand for raw material inputs');
             } else if (sectorKey === 'manufactured_goods') {
-                var manuf = Number(nation.manufacturing_output) || 0;
+                var industryVal = Number(nation.industry) || 0;
                 var sol = Number(nation.standard_of_living) || 0;
-                if (manuf < 50) importReasons.push('Domestic manufacturing ('+Math.round(manuf)+') cannot meet consumer demand');
+                if (industryVal < 50) importReasons.push('Domestic industry ('+Math.round(industryVal)+') cannot meet consumer demand');
                 if (sol > 50) importReasons.push('Higher standard of living ('+Math.round(sol)+') drives demand for imported goods');
             } else if (sectorKey === 'technology') {
-                var digi = Number(nation.digital_infrastructure) || 0;
-                if (digi < 50) importReasons.push('Low domestic tech capacity (Digital Infra: '+Math.round(digi)+')');
+                var eduVal = Number(nation.education) || 0;
+                var infraVal = Number(nation.infrastructure) || 0;
+                if (eduVal < 50 || infraVal < 50) importReasons.push('Low domestic tech capacity (Education: '+Math.round(eduVal)+', Infrastructure: '+Math.round(infraVal)+')');
                 else importReasons.push('Digital economy growth outpaces domestic production');
             } else if (sectorKey === 'arms') {
                 importReasons.push('Defense spending requires equipment procurement');
@@ -2858,16 +2812,16 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
             h += '<div style="font-size:0.75rem;font-weight:bold;color:' + urgency + ';margin-bottom:4px;">' + urgencyLabel + ': ' + unmetPct + '% of import demand unmet</div>';
             h += '<div style="font-size:0.75rem;color:var(--text-secondary);">';
             var penalties = [];
-            if (sectorKey === 'fuel_energy') penalties = ['Energy Generation \u2193', 'Manufacturing Output \u2193', 'Inflation \u2191', 'Cost of Living \u2191'];
-            else if (sectorKey === 'food_agriculture') penalties = ['Happiness \u2193', 'Civil Unrest \u2191', 'Healthcare Quality \u2193'];
-            else if (sectorKey === 'grains_staples') penalties = ['Stability \u2193', 'Legitimacy \u2193', 'Civil Unrest \u2191', 'Poverty Rate \u2191', 'Happiness \u2193'];
-            else if (sectorKey === 'livestock_dairy') penalties = ['Standard of Living \u2193', 'Happiness \u2193', 'Cost of Living \u2191'];
-            else if (sectorKey === 'fruits_vegetables') penalties = ['Healthcare Quality \u2193', 'Happiness \u2193', 'Cost of Living \u2191'];
-            else if (sectorKey === 'cash_crops') penalties = ['GDP Growth \u2193', 'Foreign Investment \u2193'];
-            else if (sectorKey === 'minerals') penalties = ['Manufacturing Output \u2193', 'Infrastructure \u2193'];
+            if (sectorKey === 'fuel_energy') penalties = ['Energy \u2193', 'Industry \u2193', 'Cost of Living \u2191'];
+            else if (sectorKey === 'food_agriculture') penalties = ['Standard of Living \u2193', 'Unrest \u2191', 'Health \u2193'];
+            else if (sectorKey === 'grains_staples') penalties = ['Control \u2193', 'Authority \u2193', 'Unrest \u2191', 'Standard of Living \u2193'];
+            else if (sectorKey === 'livestock_dairy') penalties = ['Standard of Living \u2193', 'Cost of Living \u2191'];
+            else if (sectorKey === 'fruits_vegetables') penalties = ['Health \u2193', 'Cost of Living \u2191'];
+            else if (sectorKey === 'cash_crops') penalties = ['GDP Growth \u2193'];
+            else if (sectorKey === 'minerals') penalties = ['Industry \u2193', 'Infrastructure \u2193'];
             else if (sectorKey === 'manufactured_goods') penalties = ['Standard of Living \u2193', 'Cost of Living \u2191'];
-            else if (sectorKey === 'technology') penalties = ['Digital Infrastructure \u2193', 'Innovation Index \u2193'];
-            else if (sectorKey === 'arms') penalties = ['Military Strength \u2193'];
+            else if (sectorKey === 'technology') penalties = ['Education \u2193', 'Infrastructure \u2193'];
+            else if (sectorKey === 'arms') penalties = ['Power \u2193'];
             if (penalties.length > 0) h += 'Stat impact: ' + penalties.join(' \u2022 ');
             h += '</div>';
             h += '</div>';
@@ -2877,8 +2831,6 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
     // --- Recommendations ---
     var recs = [];
     if (tradeData && tradeData.allAffinities) {
-        var tariffs = Number(nation.tariffs) || 0;
-
         // Check for partners without trade agreements
         var noAgreementPartners = [];
         var embargoPartners = [];
@@ -2913,47 +2865,38 @@ function renderTradeExplanation(nation, sectorKey, sector, flow) {
 
         // Import-side recommendations
         if (!sector.export_only && impDem > 0 && impVol < impDem * 0.9) {
-            if (tariffs > 30) {
-                recs.push({icon: '\uD83D\uDCB0', text: 'Lower tariffs (currently ' + Math.round(tariffs) + '%) to make imports cheaper and increase inflow'});
-            }
             if (sectorKey === 'fuel_energy') {
-                var rail = Number(nation.rail_network) || 0;
-                var oilGas = Number(nation.oil_and_gas) || 0;
-                if (rail < 40) {
-                    recs.push({icon: '\uD83D\uDE82', text: 'Invest in rail infrastructure (' + Math.round(rail) + ') to reduce fuel dependency for transport'});
+                var energyVal2 = Number(nation.energy) || 0;
+                var powerVal2 = Number(nation.power) || 0;
+                if (energyVal2 < 50) {
+                    recs.push({icon: '\u26A1', text: 'Boost energy (' + Math.round(energyVal2) + ') to reduce reliance on imported fuel'});
                 }
-                if (oilGas < 40) {
-                    recs.push({icon: '\u26FD', text: 'Increase domestic oil & gas production (' + Math.round(oilGas) + ') through Energy Ministry funding'});
-                }
-                var energyGen = Number(nation.energy_generation) || 0;
-                if (energyGen < 50) {
-                    recs.push({icon: '\u26A1', text: 'Boost energy generation (' + Math.round(energyGen) + ') to reduce reliance on imported fuel'});
+                if (powerVal2 < 50) {
+                    recs.push({icon: '\u26FD', text: 'Increase power generation (' + Math.round(powerVal2) + ') through Energy Ministry funding'});
                 }
             } else if (sectorKey === 'food_agriculture') {
-                var arable = Number(nation.arable_land) || 0;
-                if (arable < 50) {
-                    recs.push({icon: '\uD83C\uDF3E', text: 'Invest in agricultural development (Arable Land: ' + Math.round(arable) + ') to reduce food import dependency'});
+                var farmVal2 = Number(nation.farmland) || 0;
+                if (farmVal2 < 50) {
+                    recs.push({icon: '\uD83C\uDF3E', text: 'Invest in agricultural development (Farmland: ' + Math.round(farmVal2) + ') to reduce food import dependency'});
                 }
             } else if (sectorKey === 'grains_staples') {
-                var arable = Number(nation.arable_land) || 0;
-                if (arable < 50) recs.push({icon: '\uD83C\uDF3E', text: 'Increase arable land ('+Math.round(arable)+') to boost grain production'});
-                recs.push({icon: '\uD83D\uDCCA', text: 'Shift arable land allocation toward grains to improve food security'});
+                var farmVal2 = Number(nation.farmland) || 0;
+                if (farmVal2 < 50) recs.push({icon: '\uD83C\uDF3E', text: 'Increase farmland ('+Math.round(farmVal2)+') to boost grain production'});
+                recs.push({icon: '\uD83D\uDCCA', text: 'Shift farmland allocation toward grains to improve food security'});
             } else if (sectorKey === 'livestock_dairy') {
                 recs.push({icon: '\uD83D\uDCCA', text: 'Increase livestock land allocation or invest in pastoral infrastructure'});
             } else if (sectorKey === 'fruits_vegetables') {
-                var rail = Number(nation.rail_network) || 0;
-                var infra = Number(nation.physical_infrastructure) || 0;
-                if (rail < 40) recs.push({icon: '\uD83D\uDE82', text: 'Rail network ('+Math.round(rail)+') below cold-chain threshold — spoilage is destroying supply'});
-                if (infra < 35) recs.push({icon: '\uD83C\uDFD7\uFE0F', text: 'Physical infrastructure ('+Math.round(infra)+') too weak for perishable distribution'});
+                var infra2 = Number(nation.infrastructure) || 0;
+                if (infra2 < 40) recs.push({icon: '\uD83C\uDFD7\uFE0F', text: 'Infrastructure ('+Math.round(infra2)+') too weak for perishable distribution — spoilage destroys supply'});
                 recs.push({icon: '\uD83C\uDF3F', text: 'Improve logistics infrastructure to reduce spoilage before increasing production'});
             } else if (sectorKey === 'cash_crops') {
                 recs.push({icon: '\u26A0\uFE0F', text: 'Cash crop imports have minimal food security value — consider reallocating land to staples'});
             } else if (sectorKey === 'minerals') {
                 recs.push({icon: '\u26CF\uFE0F', text: 'Develop domestic mining capacity to reduce mineral import needs'});
             } else if (sectorKey === 'manufactured_goods') {
-                var manuf = Number(nation.manufacturing_output) || 0;
-                if (manuf < 50) {
-                    recs.push({icon: '\uD83C\uDFED', text: 'Grow domestic manufacturing (' + Math.round(manuf) + ') to reduce dependence on imported goods'});
+                var industryVal2 = Number(nation.industry) || 0;
+                if (industryVal2 < 50) {
+                    recs.push({icon: '\uD83C\uDFED', text: 'Grow domestic industry (' + Math.round(industryVal2) + ') to reduce dependence on imported goods'});
                 }
             }
         }
@@ -3043,48 +2986,45 @@ function renderSectorDrivers(nation, sector) {
 // inverted: true means LOW values drive MORE imports (deficiency model)
 var TRADE_IMPORT_DRIVERS = {
     fuel_energy: [
-        { key: 'oil_and_gas', inverted: true },
-        { key: 'energy_generation', inverted: true },
-        { key: 'urbanization', inverted: false },
-        { key: 'manufacturing_output', inverted: false },
+        { key: 'energy', inverted: true },
+        { key: 'power', inverted: true },
+        { key: 'workforce', inverted: false },
+        { key: 'industry', inverted: false },
         { key: 'standard_of_living', inverted: false }
     ],
     minerals: [
-        { key: 'rare_minerals', inverted: true },
-        { key: 'manufacturing_output', inverted: false }
+        { key: 'industry', inverted: false }
     ],
     food_agriculture: [
-        { key: 'arable_land', inverted: true }
+        { key: 'farmland', inverted: true }
     ],
     grains_staples: [
-        { key: 'arable_land', inverted: true },
-        { key: 'physical_infrastructure', inverted: true },
-        { key: 'rail_network', inverted: true }
+        { key: 'farmland', inverted: true },
+        { key: 'infrastructure', inverted: true }
     ],
     livestock_dairy: [
-        { key: 'arable_land', inverted: true },
+        { key: 'farmland', inverted: true },
         { key: 'standard_of_living', inverted: false },
-        { key: 'physical_infrastructure', inverted: true }
+        { key: 'infrastructure', inverted: true }
     ],
     fruits_vegetables: [
-        { key: 'arable_land', inverted: true },
-        { key: 'rail_network', inverted: true },
-        { key: 'physical_infrastructure', inverted: true },
-        { key: 'energy_generation', inverted: true },
-        { key: 'urbanization', inverted: false }
+        { key: 'farmland', inverted: true },
+        { key: 'infrastructure', inverted: true },
+        { key: 'energy', inverted: true },
+        { key: 'workforce', inverted: false }
     ],
     cash_crops: [
         { key: 'standard_of_living', inverted: false }
     ],
     manufactured_goods: [
-        { key: 'manufacturing_output', inverted: true },
-        { key: 'urbanization', inverted: false },
+        { key: 'industry', inverted: true },
+        { key: 'workforce', inverted: false },
         { key: 'standard_of_living', inverted: false },
-        { key: 'higher_education', inverted: false }
+        { key: 'education', inverted: false }
     ],
     technology: [
-        { key: 'digital_infrastructure', inverted: false },
-        { key: 'higher_education', inverted: true }
+        { key: 'infrastructure', inverted: false },
+        { key: 'education', inverted: true }
     ],
     arms: []
 };
@@ -3216,22 +3156,21 @@ function renderSectorPartners(sectorKey, sector) {
 
 function formatStatLabel(key) {
     var labels = {
-        oil_and_gas: 'Oil & Gas',
-        energy_generation: 'Energy Generation',
-        rare_minerals: 'Rare Minerals',
-        arable_land: 'Arable Land',
-        manufacturing_output: 'Manufacturing Output',
-        physical_infrastructure: 'Physical Infrastructure',
-        digital_infrastructure: 'Digital Infrastructure',
-        higher_education: 'Higher Education',
-        happiness: 'Happiness',
-        stability: 'Stability',
-        credit: 'Credit',
-        urbanization: 'Urbanization',
+        energy: 'Energy',
+        power: 'Power',
+        farmland: 'Farmland',
+        industry: 'Industry',
+        infrastructure: 'Infrastructure',
+        education: 'Education',
+        health: 'Health',
+        workforce: 'Workforce',
+        unrest: 'Unrest',
+        control: 'Control',
+        authority: 'Authority',
+        crown_authority: 'Crown Authority',
+        goods: 'Goods',
         cost_of_living: 'Cost of Living',
-        rail_network: 'Rail Network',
-        standard_of_living: 'Standard of Living',
-        service_output: 'Service Output'
+        standard_of_living: 'Standard of Living'
     };
     return labels[key] || key;
 }
@@ -4168,49 +4107,49 @@ function renderIndustriesTab(nation) {
         { key: 'gdp_growth', label: 'GDP Growth' },
         { key: 'population', label: 'Population' },
         { key: 'standard_of_living', label: 'Std. of Living' },
-        { key: 'urbanization', label: 'Urbanization' },
-        { key: 'physical_infrastructure', label: 'Phys. Infra' },
-        { key: 'housing_affordability', label: 'Housing' }
+        { key: 'workforce', label: 'Workforce' },
+        { key: 'infrastructure', label: 'Infrastructure' },
+        { key: 'industry', label: 'Industry' }
     ];
     var matDrivers = [
-        { key: 'manufacturing_output', label: 'Mfg. Output' },
-        { key: 'urbanization', label: 'Urbanization' },
-        { key: 'fuel_prices', label: 'Fuel Prices' },
-        { key: 'rare_minerals', label: 'Rare Minerals' },
-        { key: 'inflation', label: 'Inflation' },
-        { key: 'currency_strength', label: 'Currency Str.' }
+        { key: 'industry', label: 'Industry' },
+        { key: 'workforce', label: 'Workforce' },
+        { key: 'energy', label: 'Energy' },
+        { key: 'goods', label: 'Goods' },
+        { key: 'gdp_growth', label: 'GDP Growth' },
+        { key: 'infrastructure', label: 'Infrastructure' }
     ];
     var vehDrivers = [
-        { key: 'manufacturing_output', label: 'Mfg. Output' },
-        { key: 'physical_infrastructure', label: 'Phys. Infra' },
-        { key: 'urbanization', label: 'Urbanization' },
-        { key: 'rare_minerals', label: 'Rare Minerals' },
-        { key: 'fuel_prices', label: 'Fuel Prices' },
-        { key: 'interest_rates', label: 'Interest Rates' }
+        { key: 'industry', label: 'Industry' },
+        { key: 'infrastructure', label: 'Infrastructure' },
+        { key: 'workforce', label: 'Workforce' },
+        { key: 'goods', label: 'Goods' },
+        { key: 'energy', label: 'Energy' },
+        { key: 'power', label: 'Power' }
     ];
     var finDrivers = [
-        { key: 'credit', label: 'Credit Rating' },
-        { key: 'interest_rates', label: 'Interest Rates' },
+        { key: 'budget', label: 'Budget' },
         { key: 'gdp_growth', label: 'GDP Growth' },
-        { key: 'stability', label: 'Stability' },
-        { key: 'corruption', label: 'Corruption' },
-        { key: 'inflation', label: 'Inflation' }
+        { key: 'standard_of_living', label: 'Std. of Living' },
+        { key: 'workforce', label: 'Workforce' },
+        { key: 'control', label: 'Control' },
+        { key: 'authority', label: 'Authority' }
     ];
     var invDrivers = [
-        { key: 'credit', label: 'Credit Rating' },
-        { key: 'foreign_investment', label: 'Foreign Invest.' },
+        { key: 'budget', label: 'Budget' },
         { key: 'gdp_growth', label: 'GDP Growth' },
         { key: 'debt', label: 'National Debt' },
-        { key: 'trade_balance', label: 'Trade Balance' },
-        { key: 'stability', label: 'Stability' }
+        { key: 'industry', label: 'Industry' },
+        { key: 'control', label: 'Control' },
+        { key: 'authority', label: 'Authority' }
     ];
     var insDrivers = [
-        { key: 'stability', label: 'Stability' },
-        { key: 'physical_infrastructure', label: 'Phys. Infra' },
-        { key: 'corruption', label: 'Corruption' },
-        { key: 'urbanization', label: 'Urbanization' },
-        { key: 'civil_unrest', label: 'Civil Unrest' },
-        { key: 'crime_rate', label: 'Crime Rate' }
+        { key: 'control', label: 'Control' },
+        { key: 'infrastructure', label: 'Infrastructure' },
+        { key: 'authority', label: 'Authority' },
+        { key: 'workforce', label: 'Workforce' },
+        { key: 'unrest', label: 'Unrest' },
+        { key: 'health', label: 'Health' }
     ];
 
     function renderDrivers(drivers, accentColor) {
@@ -4545,12 +4484,12 @@ function renderIndustriesTab(nation) {
     });
 
     var shipDrivers = [
-        { key: 'trade_balance', label: 'Trade Balance' },
-        { key: 'physical_infrastructure', label: 'Phys. Infra' },
-        { key: 'urbanization', label: 'Urbanization' },
-        { key: 'fuel_prices', label: 'Fuel Prices' },
-        { key: 'foreign_investment', label: 'Foreign Invest.' },
-        { key: 'currency_strength', label: 'Currency Str.' }
+        { key: 'infrastructure', label: 'Infrastructure' },
+        { key: 'workforce', label: 'Workforce' },
+        { key: 'industry', label: 'Industry' },
+        { key: 'goods', label: 'Goods' },
+        { key: 'energy', label: 'Energy' },
+        { key: 'gdp_growth', label: 'GDP Growth' }
     ];
 
     var shippingColor = '#5aafa5';
