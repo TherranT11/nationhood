@@ -1841,8 +1841,15 @@ function _dollarsToMillions(amount) {
 function _computeInstitutionBaseCost(instId) {
     const cfg = (window._instConfig || []).find(i => i.id === instId);
     if (!cfg || !currentNation) return 0;
-    // Inflation column was removed in the alpha stats refactor; cost
-    // multiplier is fixed at 1 until Phase 7 wires a replacement signal.
+    // PHASE 7 TODO: this whole funding-cost formula needs a redesign
+    // before Phase 9 drops `inflation`, `gdp`, and `GDP`.
+    //   * inflationMult is hard-coded to 1 because the inflation column
+    //     no longer exists; Phase 7 picks a replacement multiplier.
+    //   * `currentNation.gdp ?? currentNation.GDP` falls back to 0 once
+    //     Phase 9 runs. That collapses every gdp-scaled funding article
+    //     to $0 cost. Need a Phase 7 substitute (likely a derived value
+    //     from budget + workforce + industry) before column drop.
+    // Mirrors bill.html:_computeInstitutionBaseCost — keep in sync.
     const inflationMult = 1;
     const baseVal = Number(cfg.base_cost_per_capita || 0);
     // Funding article economics are computed and stored in $M to match bill rendering logic.
