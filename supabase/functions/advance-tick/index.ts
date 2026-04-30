@@ -5236,32 +5236,21 @@ function translateStatEffect(eff) {
 
 /**
  * Stats where HIGHER values are better (increase = achievement).
+ * Alpha 19-column schema. Excludes budget (flow, not 0-100), and debt
+ * (which is in LOWER_IS_BETTER as a 0-100 burden score).
  */
 const STATS_HIGHER_IS_BETTER = [
-    'gdp_growth', 'currency_strength', 'foreign_investment', 'credit',
-    'labor_force_participation', 'minimum_wage', 'union_strength',
-    'population_growth', 'ethnic_diversity',
-    'healthcare_quality', 'healthcare_accessibility', 'beds_per_100k', 'lifespan',
-    'literacy', 'higher_education', 'education_accessibility', 'academic_immigration',
-    'physical_infrastructure', 'digital_infrastructure', 'rail_network', 'energy_generation', 'renewable_energy_percentage',
-    'arable_land', 'rare_minerals',
-    'standard_of_living', 'happiness', 'social_mobility', 'benefits',
-    'stability', 'legitimacy', 'efficiency', 'press_freedom', 'judicial_independence', 'freedom_index',
-    'immigration', 'international_reputation',
-    'manufacturing_output', 'service_output', 'housing_affordability'
+    'gdp_growth', 'immigration', 'standard_of_living',
+    'control', 'authority', 'crown_authority',
+    'energy', 'health', 'education', 'power',
+    'infrastructure', 'industry', 'farmland', 'goods', 'workforce',
 ];
 
 /**
  * Stats where LOWER values are better (decrease = achievement).
  */
 const STATS_LOWER_IS_BETTER = [
-    'debt_growth', 'inflation', 'interest_rates',
-    'unemployment', 'poverty_rate', 'income_inequality',
-    'drug_use', 'fuel_prices', 'pollution', 'carbon_emissions',
-    'crime_rate', 'incarceration_rate', 'corruption', 'polarization',
-    'civil_unrest', 'terrorism', 'political_violence',
-    'illegal_immigration', 'emigration',
-    'cost_of_living'
+    'debt', 'unrest', 'cost_of_living',
 ];
 
 // ==================== STAT DECAY CONFIGURATION ====================
@@ -5273,50 +5262,33 @@ const DECAY_SPEED = { CRAWL: 0.15, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  *   - 'equilibrium': drifts toward a midpoint (requires constant governing effort)
  *   - 'erosion': degrades toward a bad floor (punishes neglect)
  * Stats not listed are persistent — they hold value indefinitely.
+ *
+ * Alpha 19-column schema. budget + debt are flow-based and not in here
+ * (managed by budget.js / debt.js). crown_authority decays only when
+ * the column is non-NULL — processStatDecay's null-guard at
+ * political-actions.js:110 skips non-monarchies cleanly.
  */
 const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
-    inflation:           { type: 'equilibrium', target: 38, speed: DECAY_SPEED.CRAWL },
-    interest_rates:      { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    currency_strength:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    civil_unrest:        { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
-    polarization:        { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
-    terrorism:           { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
-    political_violence:  { type: 'equilibrium', target: 10, speed: DECAY_SPEED.CRAWL },
-    happiness:           { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    foreign_investment:  { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    trade_balance:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    gdp_growth:          { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    immigration:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    illegal_immigration: { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
-    emigration:          { type: 'equilibrium', target: 30, speed: DECAY_SPEED.CRAWL },
-    fuel_prices:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    debt_growth:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    crime_rate:          { type: 'equilibrium', target: 18, speed: DECAY_SPEED.CRAWL },
-    stability:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
-    legitimacy:          { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
+    gdp_growth:        { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    immigration:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    control:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
+    unrest:            { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
+    authority:         { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
+    crown_authority:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    power:             { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    workforce:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
+    goods:             { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
-    physical_infrastructure:  { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    digital_infrastructure:   { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    rail_network:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    energy_generation:        { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    efficiency:               { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    corruption:               { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
-    healthcare_quality:       { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    healthcare_accessibility: { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    beds_per_100k:            { type: 'erosion', target: 20, speed: DECAY_SPEED.CRAWL },
-    education_accessibility:  { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    manufacturing_output:     { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    service_output:           { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
-    cost_of_living:           { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
-    housing_affordability:    { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    press_freedom:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    judicial_independence:    { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    freedom_index:            { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    standard_of_living:       { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
-    social_mobility:          { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
-    benefits:                 { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    standard_of_living: { type: 'erosion', target: 40, speed: DECAY_SPEED.CRAWL },
+    cost_of_living:     { type: 'erosion', target: 70, speed: DECAY_SPEED.CRAWL },
+    health:             { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    education:          { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
+    infrastructure:     { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    industry:           { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    energy:             { type: 'erosion', target: 0,  speed: DECAY_SPEED.CRAWL },
+    farmland:           { type: 'erosion', target: 30, speed: DECAY_SPEED.CRAWL },
 };
 
 // Validate decay config keys at module load
