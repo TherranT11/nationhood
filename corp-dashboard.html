@@ -468,27 +468,6 @@ body.corp-redesign.light-mode .cr-perf-meter-cell {
   color: var(--text-bright);
   font-weight: 500;
 }
-.cr-perf-trend-tag {
-  position: absolute;
-  top: 18px;
-  right: 20px;
-}
-.cr-delta {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  padding: 2px 6px;
-  background: var(--bg-3);
-  border: 1px solid var(--border-1);
-  color: var(--text-dim);
-  letter-spacing: 0.04em;
-}
-body.corp-redesign.light-mode .cr-delta {
-  background: var(--bg-panel);
-  border-color: var(--panel-border);
-}
-.cr-delta.up   { color: var(--green); border-color: var(--green-border); }
-.cr-delta.down { color: var(--red);   border-color: var(--red-border); }
-
 /* ── OWNERSHIP CARD (renders inside the perf grid) ── */
 .cr-ownership-bar {
   display: flex;
@@ -1245,11 +1224,11 @@ function renderPerfMeter(score) {
 function renderPerfCard(label, score) {
     const num = Number(score) || 0;
     const display = Number.isInteger(num) ? num.toString() : num.toFixed(1);
-    // Per-stat delta requires per-tick stat history (not yet stored).
-    // Show a neutral em-dash placeholder until a corp_stat_history table lands.
-    const deltaTag = `<span class="cr-delta cr-perf-trend-tag">— —</span>`;
+    // Per-stat delta would go in a top-right tag here, but it requires per-
+    // tick stat history (no corp_stat_history table exists). Omitted entirely
+    // rather than rendered as a meaningless "— —" placeholder; will return
+    // when the history table lands.
     return `<div class="cr-perf-card">
-        ${deltaTag}
         <div class="cr-perf-header">
             <div class="cr-perf-name">${escapeHtml(label)}</div>
             <div class="cr-perf-value">${escapeHtml(display)}<span class="cr-max">/10</span></div>
