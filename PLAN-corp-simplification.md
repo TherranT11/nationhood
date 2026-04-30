@@ -1,7 +1,7 @@
 # PLAN — Corporate Stat System Simplification
 
 **Branch:** `claude/nationhood-corporate-redesign-hl2JM`
-**Status:** DRAFT — review before execution
+**Status:** DECISIONS LOCKED — ready for execution
 **Date:** 2026-04-30
 
 ---
@@ -61,8 +61,8 @@ Collapse the corporation system from ~20 interlocking subsystems down to **11 ca
 - `corp_credit_rating`, `corp_regulatory_standing`, `corp_political_influence` (UI-only legacy)
 - `corp_loans` (legacy)
 
-### 2c. Columns dropped from `corp_properties` *(see open question §5)*
-- `subsector`
+### 2c. `corp_properties` table — DROPPED ENTIRELY (see §5.1)
+Plus all property RPCs, RLS, refurbish system, logo, role columns. Drops every `*_property_*` migration listed in §2d.
 
 ### 2d. Migrations marked dead (will be no-ops on fresh DB; see §4 strategy)
 All of these become irrelevant — listed in deletion order:
@@ -101,15 +101,20 @@ All of these become irrelevant — listed in deletion order:
 
 ### 2e. JS files deleted
 - `js/corp-shipping-data.js`
+- `js/corp-refurbish.js`
 - `js/game/vessels.js`
 - `js/game/equipment.js`
 - `js/game/materials.js`
 - `js/game/shipping.js`
-- `js/game/subsidiary-*.js` *(flag — confirm subsidiaries are still wanted)*
+- `js/game/subsidiary-economics.js`
+- `js/game/subsidiary-payments.js`
+- `js/game/subsidiary-services.js`
+- `js/game/loan-math.js`
+- `js/game/debt.js` *(if corp-loan only — verify; sovereign-default.js may stay if nation-side)*
 
 ### 2f. HTML pages deleted
 - `corp-operations-shipping.html`
-- `corp-operations-finance.html` *(or kept and stripped down to Cash/Debt only — flag)*
+- `corp-operations-finance.html`
 
 ---
 
@@ -177,30 +182,16 @@ Only safe if no production DB has run them, OR if we're OK rebuilding. You're so
 
 ---
 
-## 5. Open questions before we execute
+## 5. Decisions (resolved)
 
-1. **Properties / real estate** — not in your kill list, but Assets is now "a single number". Three options:
-   - **(i)** Kill `corp_properties` entirely. Assets is a single number on the corp row that the player invests in directly.
-   - **(ii)** Keep properties as flavor/UI but they don't produce stats — Assets is still a single number that they happen to represent.
-   - **(iii)** Keep properties and have `Assets = SUM(property values)` — i.e. the "single number" is computed.
-   - Which?
-
-2. **Productivity formula** — what drives it? Options:
-   - Function of Innovation + Wages + Reputation?
-   - Set by player investment / events only?
-   - Hybrid?
-
-3. **Innovation / Market Share / Reputation update rules** — purely event-driven, or also tick-decay (like the old reputation)? Your spec mentions Innovation "pays off over time" and Reputation "tanks fast on scandals" — so event-driven sounds right, but confirm no passive drift.
-
-4. **`corp-operations-finance.html`** — kill the page (since Bonds/Insurance are gone) or keep as a stripped Cash/Debt overview?
-
-5. **Subsidiaries** (`js/game/subsidiary-*.js`, `corp_properties.subsector`/`logo_url`) — kill or keep? They came from the property system.
-
-6. **Health insurance** (`20260423_health_insurance_phase*`) — is this nation-side (citizens) or corp-side? If corp-side it dies; if nation-side it stays. I'll verify before deleting.
-
-7. **Loan system** (`20260423_finance_loan_*`) — Debt is kept as a stat, but is the *loan request/foreclose/payment RPC machinery* keeping or simplifying? Easiest: keep loans as the mechanism that produces the Debt number.
-
-8. **Contract phases** — kill the 7-phase progression (Permits/Planning/.../Delivery)? Permits phase is dead; the rest tie to construction. Replace with simple `progress_pct`?
+1. **Properties / real estate** — **KILL ENTIRELY.** Drop `corp_properties` and all related tables/RPCs/JS/UI. Assets is a single number on the corp row, modified by events.
+2. **Productivity** — locked 0–10 stat, **no formula**. Modified by events only.
+3. **Innovation / Market Share / Reputation** — **purely event-driven**, no passive drift, no tick-decay.
+4. **`corp-operations-finance.html`** — **DELETE.**
+5. **Subsidiaries** (`js/game/subsidiary-*.js`) — **DELETE.**
+6. **Health insurance** — **DELETE corp-side** (verify which migrations are corp-only vs shared with nations before dropping; if shared, drop only the corp pieces).
+7. **Loan system** (`20260423_finance_loan_*`) — **DELETE.** Debt becomes a plain numeric stat modified by events. No loan RPCs.
+8. **Contract phases** — **DELETE.** Replace 7-phase progression with single `progress_pct` (0–100).
 
 ---
 
