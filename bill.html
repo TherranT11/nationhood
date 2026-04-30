@@ -539,21 +539,20 @@ function dollarsToMillions(amount) {
 function getInstitutionBaseCost(instId) {
     const row = (institutionConfig || []).find(i => i.id === instId);
     if (!row || !currentNation) return 0;
-    // PHASE 7 TODO: this whole funding-cost formula needs a redesign
-    // before Phase 9 drops `inflation`, `gdp`, and `GDP`.
-    //   * inflationMult is hard-coded to 1 because the inflation column
-    //     no longer exists; Phase 7 picks a replacement multiplier.
-    //   * `currentNation.gdp ?? currentNation.GDP` falls back to 0 once
-    //     Phase 9 runs. That collapses every gdp-scaled funding article
-    //     to $0 cost. Need a Phase 7 substitute (likely a derived value
-    //     from budget + workforce + industry) before column drop.
-    const inflationMult = 1;
+    // Alpha stats refactor (Phase 7b): the legacy formula multiplied
+    // baseVal by absolute GDP for institutions whose scaling_type was
+    // 'gdp'. Both gdp and GDP columns are deleted by the alpha refactor,
+    // and the inflation multiplier was already a no-op (column gone).
+    // The two paths used `base_cost_per_capita` with different units
+    // (per-capita dollars vs percent-of-GDP rate) so they can't be
+    // cleanly merged onto a single alpha-column substitute without
+    // rebalancing institution seed data. Collapsing to population
+    // scaling for all institutions; balance team can retune
+    // base_cost_per_capita on previously-gdp-scaled rows if their cost
+    // ends up too high or too low at typical population.
     const baseVal = Number(row.base_cost_per_capita || 0);
     // Funding article economics are computed and stored in $M to match formatCurrency.
-    if ((row.scaling_type || 'population') === 'gdp') {
-        return dollarsToMillions((baseVal / 100) * Number(currentNation.gdp ?? currentNation.GDP ?? 0) * inflationMult);
-    }
-    return dollarsToMillions(baseVal * Number(currentNation.population || 0) * inflationMult);
+    return dollarsToMillions(baseVal * Number(currentNation.population || 0));
 }
 
 function calculateFundingOngoingCost(fd) {
