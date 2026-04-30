@@ -5756,24 +5756,46 @@ async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source)
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
+/**
+ * Per-tick income tax revenue.
+ *   (population / 10_000_000) × income_tax × (1 − unrest/100)
+ * Lands as a small literal number that adds to nation.budget each tick.
+ */
+function computeIncomeTaxRevenue(nation) {
+    const pop = Number(nation.population || 0);
+    const rate = Number(nation.income_tax || 0);
+    const unrest = Number(nation.unrest || 0);
+    const rev = (pop / 10_000_000) * rate * (1 - unrest / 100);
+    return Math.max(0, rev);
+}
+
+/**
+ * Per-tick corporate tax revenue.
+ *   (service_sector + industry) / 10 × corporate_tax × (1 − corruption/100)
+ */
+function computeCorporateTaxRevenue(nation) {
+    const svc = Number(nation.service_sector || 0);
+    const ind = Number(nation.industry || 0);
+    const rate = Number(nation.corporate_tax || 0);
+    const corruption = Number(nation.corruption || 0);
+    const rev = ((svc + ind) / 10) * rate * (1 - corruption / 100);
+    return Math.max(0, rev);
+}
+
 function calculateNationalBudget(nation, opts = {}) {
-    // Alpha stats refactor (Phase 7e): tax brackets (income/corporate/
-    // sales/property/tariffs) and the gdp/credit/efficiency/corruption/
-    // oil_and_gas columns are all deleted. The legacy per-bracket
-    // revenue model is retired; the alpha schema treats `nation.budget`
-    // as the canonical revenue stream, with foreign-aid + trade-tariff
-    // adders layered on top via buildBudgetData / applyTradeTariffOverride.
-    //
-    // Per-bracket revenue fields are preserved in the return shape for
-    // callers that read them (always 0 now). Future fiscal redesign can
-    // resurrect a per-bracket model against alpha-19 stats.
+    // Phase 8.5.4: nation.budget is a cash balance. Each tick, the engine
+    // adds computeIncomeTaxRevenue + computeCorporateTaxRevenue to it via
+    // advance-tick. This function exposes the current balance as
+    // grossRevenue (for callers that still treat it as the headline
+    // revenue figure) plus the per-tick line items so UI can render them.
     const debt = Number(nation.debt ?? 0);
     const grossRevenue = Number(nation.budget ?? 0);
 
+    const incomeRevenue = computeIncomeTaxRevenue(nation);
+    const corpRevenue = computeCorporateTaxRevenue(nation);
+
     // Debt service: prefer the actual sum of bond coupon obligations from
-    // the tick processor; fall back to a flat 5% annual interest rate
-    // (was credit-tier-modulated 2-18% pre-alpha; flat rate until the
-    // bond-credit tier system is redesigned against alpha columns).
+    // the tick processor; fall back to a flat 5% annual interest rate.
     const FLAT_ANNUAL_INTEREST = 0.05;
     const debtService = opts.actualDebtService != null
         ? Number(opts.actualDebtService)
@@ -5783,10 +5805,9 @@ function calculateNationalBudget(nation, opts = {}) {
 
     return {
         grossRevenue, debtService, availableBudget,
-        // Legacy fields kept at 0 for callers that destructure them.
-        // Removable in a future fiscal-system redesign phase.
-        collectionRate: 1, incomeRevenue: 0, corpRevenue: 0, salesRevenue: 0,
-        propertyRevenue: 0, tariffRevenue: 0, oilRevenue: 0
+        collectionRate: 1,
+        incomeRevenue, corpRevenue,
+        tariffRevenue: 0
     };
 }
 
@@ -5820,17 +5841,7 @@ const TAX_CONFIG = [
         category: 'Income',
         categoryClass: 'pill-income',
         revenueKey: 'incomeRevenue',
-        gdpMultiplier: 0.55,
-        maxRate: 50
-    },
-    {
-        key: 'sales_tax',
-        name: 'Sales Tax',
-        category: 'Consumption',
-        categoryClass: 'pill-consumption',
-        revenueKey: 'salesRevenue',
-        gdpMultiplier: 0.35,
-        maxRate: 50
+        maxRate: 10
     },
     {
         key: 'corporate_tax',
@@ -5838,8 +5849,7 @@ const TAX_CONFIG = [
         category: 'Corporate',
         categoryClass: 'pill-corporate',
         revenueKey: 'corpRevenue',
-        gdpMultiplier: 0.15,
-        maxRate: 50
+        maxRate: 10
     }
 ];
 
@@ -35559,6 +35569,24 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (collapseErr) {
             console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
+        }
+
+        // Phase 8.5.4: Per-tick tax revenue. nation.budget is a cash
+        // balance; income + corporate tax revenue accumulate into it
+        // each tick. Formulas live in budget.js.
+        try {
+            const incomeRev = computeIncomeTaxRevenue(nation);
+            const corpRev = computeCorporateTaxRevenue(nation);
+            const totalRev = incomeRev + corpRev;
+            if (totalRev > 0) {
+                const newBudget = Math.max(0, Number(nation.budget || 0) + totalRev);
+                await supabase.from('nations')
+                    .update({ budget: newBudget })
+                    .eq('id', nation.id);
+                nation.budget = newBudget;
+            }
+        } catch (taxErr) {
+            console.error(`[advanceTick] Tax revenue tick failed for ${nation.name} (non-fatal):`, taxErr);
         }
 
         // Surplus/deficit connectors (require budget calculation, can't be stat_connections rows)

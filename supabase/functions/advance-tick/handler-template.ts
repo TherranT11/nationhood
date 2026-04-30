@@ -2663,6 +2663,24 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
         }
 
+        // Phase 8.5.4: Per-tick tax revenue. nation.budget is a cash
+        // balance; income + corporate tax revenue accumulate into it
+        // each tick. Formulas live in budget.js.
+        try {
+            const incomeRev = computeIncomeTaxRevenue(nation);
+            const corpRev = computeCorporateTaxRevenue(nation);
+            const totalRev = incomeRev + corpRev;
+            if (totalRev > 0) {
+                const newBudget = Math.max(0, Number(nation.budget || 0) + totalRev);
+                await supabase.from('nations')
+                    .update({ budget: newBudget })
+                    .eq('id', nation.id);
+                nation.budget = newBudget;
+            }
+        } catch (taxErr) {
+            console.error(`[advanceTick] Tax revenue tick failed for ${nation.name} (non-fatal):`, taxErr);
+        }
+
         // Surplus/deficit connectors (require budget calculation, can't be stat_connections rows)
         try {
             await processSurplusConnectors(supabase, nation);

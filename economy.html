@@ -1194,7 +1194,7 @@ async function loadTaxConnections() {
     var { data } = await _supabase.from('stat_connections')
         .select('source_stat, source_dir, threshold, target_stat, target_dir, magnitude, dampening')
         .eq('enabled', true)
-        .in('source_stat', ['income_tax', 'corporate_tax', 'sales_tax']);
+        .in('source_stat', ['income_tax', 'corporate_tax']);
     taxConnections = data || [];
     qCacheSet(cacheKey, taxConnections, 5 * 60 * 1000);
 }
@@ -1254,7 +1254,7 @@ async function loadTaxHistory(nationId) {
     var cached = qCache(cacheKey);
     if (cached) { taxHistory = cached; return; }
     var { data } = await _supabase.from('nations_history')
-        .select('tick, income_tax, corporate_tax, sales_tax, gdp, efficiency, corruption')
+        .select('tick, income_tax, corporate_tax, corruption')
         .eq('nation_id', nationId)
         .order('tick', { ascending: false })
         .limit(12);
@@ -1298,23 +1298,19 @@ function renderTaxationTab(nation) {
 
     var incomeTax = Math.round(Number(nation.income_tax || 0));
     var corpTax = Math.round(Number(nation.corporate_tax || 0));
-    var salesTax = Math.round(Number(nation.sales_tax || 0));
 
     // Store original rates on first render (don't overwrite if already set)
-    // Use integer-rounded values to match slider step=1 precision
     if (!originalRates._initialized) {
-        originalRates = { income_tax: incomeTax, corporate_tax: corpTax, sales_tax: salesTax, _initialized: true };
+        originalRates = { income_tax: incomeTax, corporate_tax: corpTax, _initialized: true };
     }
 
-    // Warn if database rates have fractional parts that will be lost by integer sliders
     if (Math.round(Number(nation.income_tax || 0) * 10) % 10 !== 0 ||
-        Math.round(Number(nation.corporate_tax || 0) * 10) % 10 !== 0 ||
-        Math.round(Number(nation.sales_tax || 0) * 10) % 10 !== 0) {
+        Math.round(Number(nation.corporate_tax || 0) * 10) % 10 !== 0) {
         console.warn('[Taxation] DB tax rates have fractional precision — slider uses integer rounding');
     }
 
-    var avgRate = (incomeTax + corpTax + salesTax) / 3;
-    var totalTaxRevenue = budget.incomeRevenue + budget.corpRevenue + budget.salesRevenue + (budget.propertyRevenue || 0);
+    var avgRate = (incomeTax + corpTax) / 2;
+    var totalTaxRevenue = budget.incomeRevenue + budget.corpRevenue;
 
     var h = '<div class="econ-tab-body">';
 
