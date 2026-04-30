@@ -79,14 +79,26 @@ BEGIN
 END;
 $$;
 
--- One-shot cleanup for the existing stuck rows: any shipping_applications
--- row whose claim has already been released (or never existed) should be
--- flipped from approved/pending to 'released' so affected corps can
--- reapply without waiting for the next release_shipping_route call.
+-- One-shot cleanup for existing stuck rows. Scoped narrowly to avoid
+-- destroying legitimately in-flight applications:
+--
+--   * Only `approved` apps are touched. `pending` apps with no claim are
+--     normal — they're awaiting government approval. Leaving them alone.
+--   * Requires evidence of a released claim on the same (route, faction).
+--     "Approved app with NO claim at all" could be a transient race
+--     during the approval RPC and should not be auto-released.
+--   * Skips any (route, faction) that still has an active claim, in case
+--     the corp re-claimed after release before this migration ran.
 UPDATE shipping_applications app
 SET status = 'released',
     reviewed_at_tick = COALESCE(app.reviewed_at_tick, app.applied_at_tick)
-WHERE app.status IN ('pending', 'approved')
+WHERE app.status = 'approved'
+  AND EXISTS (
+    SELECT 1 FROM shipping_claims c
+    WHERE c.route_id = app.route_id
+      AND c.faction_id = app.faction_id
+      AND c.status = 'released'
+  )
   AND NOT EXISTS (
     SELECT 1 FROM shipping_claims c
     WHERE c.route_id = app.route_id
@@ -94,11 +106,13 @@ WHERE app.status IN ('pending', 'approved')
       AND c.status = 'active'
   );
 
--- Verify: every approved/pending application should now have a matching
--- active claim. Empty result = consistent state.
+-- Verify: list any approved apps still orphaned after cleanup. Expected
+-- to be empty for the bug we're fixing. Anything left is a pre-existing
+-- anomaly (claim deleted without going through release flow) that needs
+-- a manual admin look — the cleanup deliberately won't touch those.
 SELECT app.id, app.faction_id, app.route_id, app.status
 FROM shipping_applications app
-WHERE app.status IN ('pending', 'approved')
+WHERE app.status = 'approved'
   AND NOT EXISTS (
     SELECT 1 FROM shipping_claims c
     WHERE c.route_id = app.route_id

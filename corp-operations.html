@@ -6472,6 +6472,7 @@ function renderDeliveries() {
 // ── Shipping shared helpers ──
 let _arClaimPending = false;
 let _avReleasePending = false;
+let _assignVesselPending = false;
 
 function fmtCash(n) {
     if (Math.abs(n) >= 1e9) return '$' + (n / 1e9).toFixed(1) + 'B';
@@ -7247,8 +7248,12 @@ function openAssignVesselModal(claimId, requiredClass) {
 }
 
 async function assignVesselToRoute(claimId, vesselId) {
+    // Lock against double-clicks: without this, a player could click
+    // two different vessels in the modal before the first UPDATE
+    // returned, and both vessels would end up bound to the same claim.
+    if (_assignVesselPending) return;
+    _assignVesselPending = true;
     try {
-        // Assign the vessel to the claim
         var { error } = await _supabase.from('corp_vessels').update({
             status: 'in_port',
             active_claim_id: claimId,
@@ -7256,14 +7261,14 @@ async function assignVesselToRoute(claimId, vesselId) {
 
         if (error) { alert('Assignment failed: ' + error.message); return; }
 
-        // Close the modal
         var overlay = document.querySelector('div[style*="position:fixed"][style*="z-index:9999"]');
         if (overlay) overlay.remove();
 
-        // Reload data
         await Promise.all([loadActiveVoyages(), loadFleet()]);
     } catch (err) {
         alert('Assignment failed: ' + (err.message || 'Network error'));
+    } finally {
+        _assignVesselPending = false;
     }
 }
 
