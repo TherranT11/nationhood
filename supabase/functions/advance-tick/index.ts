@@ -5812,79 +5812,49 @@ async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source)
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
 function calculateNationalBudget(nation, opts = {}) {
-    // GDP and Debt are stored as raw dollars
-    const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
+    // Alpha stats refactor (Phase 7e): tax brackets (income/corporate/
+    // sales/property/tariffs) and the gdp/credit/efficiency/corruption/
+    // oil_and_gas columns are all deleted. The legacy per-bracket
+    // revenue model is retired; the alpha schema treats `nation.budget`
+    // as the canonical revenue stream, with foreign-aid + trade-tariff
+    // adders layered on top via buildBudgetData / applyTradeTariffOverride.
+    //
+    // Per-bracket revenue fields are preserved in the return shape for
+    // callers that read them (always 0 now). Future fiscal redesign can
+    // resurrect a per-bracket model against alpha-19 stats.
     const debt = Number(nation.debt ?? 0);
+    const grossRevenue = Number(nation.budget ?? 0);
 
-    // Tax rates: 0-100 percentages
-    const incomeTaxRate    = Number(nation.income_tax ?? 0);
-    const corpTaxRate      = Number(nation.corporate_tax ?? 0);
-    const salesTaxRate     = Number(nation.sales_tax ?? 0);
-    const propertyTaxRate  = Number(nation.property_tax ?? 0);
-    const tariffsRate      = Number(nation.tariffs ?? 0);
-
-    // Other 0-100 stats
-    const efficiency     = Number(nation.efficiency ?? 50);
-    const corruption     = Number(nation.corruption ?? 50);
-    const oilGas         = Number(nation.oil_and_gas ?? 0);
-    const creditRating   = Number(nation.credit ?? 50);
-
-    // Collection Rate: floor at 0.35 so even poorly-governed nations collect some tax.
-    // Ranges 0.35 (eff=0, corr=100) to 1.0 (eff=100, corr=0).
-    const rawCR = (efficiency + (100 - corruption)) / 200;
-    const collectionRate = 0.35 + rawCR * 0.65;
-
-    // Tax Revenue (raw dollars, since GDP is raw dollars)
-    // Property-tax multiplier (0.08) is a starting guess: at the default
-    // 50% rate it yields up to ~4% of GDP at full collection (1.0), and
-    // ~2.4% at typical mid-game collection (~0.6). Within the real-world
-    // 2-4% band where property tax sits for most nations. Tune in one
-    // place if needed — everything downstream (Tax Article ongoing-cost
-    // projection, budget displays, deficit calc) reads from here.
-    const incomeRevenue   = gdp * (incomeTaxRate / 100)   * 0.55   * collectionRate;
-    const corpRevenue     = gdp * (corpTaxRate / 100)     * 0.15   * collectionRate;
-    const salesRevenue    = gdp * (salesTaxRate / 100)    * 0.35   * collectionRate;
-    const propertyRevenue = gdp * (propertyTaxRate / 100) * 0.08   * collectionRate;
-    const tariffRevenue   = gdp * (tariffsRate / 100)     * 0.0025 * collectionRate;
-
-    // Oil & Gas Revenue (only if oil_and_gas stat > 30)
-    const oilRevenue = oilGas > 30 ? gdp * (oilGas / 100) * 0.06 : 0;
-
-    const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + propertyRevenue + tariffRevenue + oilRevenue;
-
-    // Debt Service. Prefer the actual sum of active bond coupon obligations
-    // (passed in by the tick processor as opts.actualDebtService — that's
-    // SUM(bond_holdings.principal × coupon_rate) for this nation, and the
-    // SSoT for what the nation owes its bondholders this tick). Falls back
-    // to the legacy credit-derived formula for callers that don't have
-    // holdings data on hand (UI displays, projections, simulation).
-    const effectiveInterest = Math.min(0.18, Math.max(0.02, 0.15 - (creditRating * 0.0013)));
+    // Debt service: prefer the actual sum of bond coupon obligations from
+    // the tick processor; fall back to a flat 5% annual interest rate
+    // (was credit-tier-modulated 2-18% pre-alpha; flat rate until the
+    // bond-credit tier system is redesigned against alpha columns).
+    const FLAT_ANNUAL_INTEREST = 0.05;
     const debtService = opts.actualDebtService != null
         ? Number(opts.actualDebtService)
-        : debt * effectiveInterest;
+        : debt * FLAT_ANNUAL_INTEREST;
 
-    // Available Budget = Revenue - Debt Service
     const availableBudget = grossRevenue - debtService;
 
     return {
-        grossRevenue, debtService, availableBudget, collectionRate,
-        incomeRevenue, corpRevenue, salesRevenue, propertyRevenue, tariffRevenue, oilRevenue
+        grossRevenue, debtService, availableBudget,
+        // Legacy fields kept at 0 for callers that destructure them.
+        // Removable in a future fiscal-system redesign phase.
+        collectionRate: 1, incomeRevenue: 0, corpRevenue: 0, salesRevenue: 0,
+        propertyRevenue: 0, tariffRevenue: 0, oilRevenue: 0
     };
 }
 
 /**
  * Override formula-based tariff revenue with real trade engine data.
- * Mutates the budget object in place and returns it.
+ * Mutates the budget object in place and returns it. Alpha refactor:
+ * the gdp parameter is kept in the signature for back-compat but no
+ * longer used (gdp column deleted; cap removed).
  */
-function applyTradeTariffOverride(budget, tradeTariffRevenue, gdp) {
+function applyTradeTariffOverride(budget, tradeTariffRevenue, _gdpUnused) {
     if (tradeTariffRevenue != null && Number(tradeTariffRevenue) > 0) {
         const oldTariff = budget.tariffRevenue;
-        let newTariff = Number(tradeTariffRevenue);
-        // Cap tariff revenue at 0.2% of GDP — tariffs are a minor revenue source
-        if (gdp > 0) {
-            const maxTariff = gdp * 0.002;
-            newTariff = Math.min(newTariff, maxTariff);
-        }
+        const newTariff = Number(tradeTariffRevenue);
         budget.tariffRevenue = newTariff;
         budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
         budget.availableBudget = budget.grossRevenue - budget.debtService;
@@ -5949,18 +5919,23 @@ const FISCAL_TO_MINISTRY_KEY = {
 };
 
 /**
- * Compute inflation cost multiplier from the 0-100 inflation stat.
- * Rate = stat^1.5 / 100  →  stat 1 = 0.01%, stat 100 = 10%.
- * No deflation — multiplier is always ≥ 1.
+ * Inflation cost multiplier — alpha stats refactor neutralized this to
+ * a constant 1 since the underlying `inflation` column is deleted.
+ * Kept as an exported identity function so callers needn't change.
+ * If a "cost-of-living-driven" cost multiplier is desired later, plug
+ * it in here against alpha columns.
  */
-function getInflationMultiplier(inflationStat) {
-    const rate = Math.pow(Math.max(0, Number(inflationStat || 0)), 1.5) / 100;
-    return 1 + (rate / 100);
+function getInflationMultiplier(_inflationStatUnused) {
+    return 1;
 }
 
 /**
  * Compute the annualized cost of all active policies for a given fiscal category.
- * Returns raw dollars. Applies inflation adjustment.
+ * Returns raw dollars. Alpha refactor: inflation multiplier is a no-op
+ * (constant 1) so policy costs no longer scale with inflation; if the
+ * `ongoing_scaling_stat` policy field still references a deleted column,
+ * the read returns undefined and the scaled-cost branch falls through
+ * to ongoingBase * 1 (no scaling).
  */
 function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
     let total = 0;
@@ -5971,10 +5946,6 @@ function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
         const policy = law.policies;
         if (!policy) continue;
 
-        // Phase 4.4: per-option fiscal_category and ongoing_base_cost take
-        // precedence over the legacy policies columns. Filter the law
-        // against the option's fiscal_category when present so the option's
-        // budget bucket determines which ministry pays.
         const opt = law.selected_option || null;
         const fiscalCat = opt?.fiscal_category ?? policy.fiscal_category;
         if (fiscalCat !== fiscalCategory) continue;
@@ -5999,18 +5970,14 @@ function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
         }
     }
 
-    // Apply inflation
-    const inflationMult = getInflationMultiplier(nation.inflation);
-    total *= inflationMult;
-    for (const p of policies) p.cost *= inflationMult;
-
     return { total, policies };
 }
 
 /**
  * Compute the annualized cost of all institutions for a given fiscal category.
- * Population-scaled: base_cost_per_capita × population × inflation.
- * GDP-scaled:        base_cost_per_capita (as % of GDP, e.g. 0.5 = 0.5%) × GDP × inflation.
+ * Alpha stats refactor: gdp-scaled institutions collapse to population
+ * scaling (matches bill.html / laws.html _computeInstitutionBaseCost from
+ * Phase 7b). Inflation multiplier is a no-op (Phase 7e).
  * @param {Array} institutions - rows from ministry_institution_config
  * @param {string} fiscalCategory - e.g. 'Healthcare', 'Trade'
  * @param {Object} nation
@@ -6019,22 +5986,13 @@ function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
     const ministryKey = FISCAL_TO_MINISTRY_KEY[fiscalCategory] || fiscalCategory.toLowerCase();
     const insts = (institutions || []).filter(i => i.ministry_key === ministryKey);
     const population = Number(nation.population || 0);
-    const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
-    const inflationMult = getInflationMultiplier(nation.inflation);
 
     let total = 0;
     const items = [];
     for (const inst of insts) {
         const baseVal = Number(inst.base_cost_per_capita || 0);
         const scalingType = inst.scaling_type || 'population';
-        let cost;
-        if (scalingType === 'gdp') {
-            // baseVal is a percentage of GDP (e.g. 0.5 means 0.5%)
-            cost = (baseVal / 100) * gdp;
-        } else {
-            cost = baseVal * population;
-        }
-        cost *= inflationMult;
+        const cost = baseVal * population;
         items.push({
             id: inst.id, institution_name: inst.institution_name, cost,
             base_cost_per_capita: inst.base_cost_per_capita,
@@ -6051,9 +6009,11 @@ function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
  */
 function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, aidData) {
     const budget = calculateNationalBudget(nation);
-    applyTradeTariffOverride(budget, tradeTariffRevenue, Number(nation.gdp ?? nation.GDP ?? 0));
-    const inflationStat = Number(nation.inflation || 0);
-    const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
+    applyTradeTariffOverride(budget, tradeTariffRevenue, 0);
+    // Inflation column was deleted by the alpha refactor; both fields are
+    // kept in the return blob at 0 for callers that destructure them.
+    const inflationStat = 0;
+    const inflationPct = 0;
     const reserves = 0;
 
     // Foreign aid: received adds to revenue, given is a mandatory expenditure
@@ -6440,37 +6400,21 @@ async function processExpiredTradeAgreements(supabase, currentTick) {
 }
 
 
-// Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
-// Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 1  →  0=-1%, 50=0%, 100=+1%
-// Includes diminishing returns (GDP < 50% of starting) and hard floor (20% of starting → Economic Collapse)
-async function applyGdpGrowth(supabase, nation, currentTick) {
-    const gdpGrowth = Number(nation.gdp_growth ?? 50);
-    const currentGdp = Number(nation.gdp ?? 0);
-    const startingGdp = Number(nation.starting_gdp ?? currentGdp);
-    if (currentGdp <= 0 || startingGdp <= 0) return;
-
-    let monthlyChangePercent = ((gdpGrowth - 50) / 50) * 1;
-
-    // Diminishing returns: scale negative growth when GDP < 50% of starting
-    if (monthlyChangePercent < 0) {
-        const gdpRatio = currentGdp / startingGdp;
-        if (gdpRatio < 0.5) {
-            const dampening = Math.max(0.1, gdpRatio * 2); // 50%→1.0, 25%→0.5, 10%→0.2, min 10%
-            monthlyChangePercent *= dampening;
-        }
-    }
-
-    let newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
-
-    // Hard floor: clamp at 20% of starting GDP and trigger Economic Collapse
-    const gdpFloor = startingGdp * 0.20;
-    if (newGdp < gdpFloor) {
-        newGdp = gdpFloor;
-        await activateEconomicCollapse(supabase, nation, currentTick);
-    }
-
-    nation.gdp = newGdp;
-    await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
+// Apply GDP growth rate — RETIRED by alpha stats refactor (Phase 7e).
+//
+// The legacy mechanic moved an absolute-dollar `nation.gdp` column up
+// or down each tick based on the `gdp_growth` 0-100 stat, with a hard
+// floor at 20% of `starting_gdp` triggering Economic Collapse. Both
+// `gdp` and `starting_gdp` columns are deleted by the alpha refactor
+// (alpha-19 keeps `gdp_growth` as a momentum signal but no absolute
+// GDP value), so this function has no columns to read or write.
+//
+// Function is preserved as a no-op so existing tick processor + admin
+// importers don't break. Economic Collapse activation moved to the
+// fiscal-redesign phase (likely keyed off prolonged budget collapse +
+// debt/budget ratio).
+async function applyGdpGrowth(_supabase, _nation, _currentTick) {
+    return;
 }
 
 // Activate Economic Collapse mega-crisis: clears other economic crises, applies political penalties
@@ -7183,225 +7127,65 @@ function computeCorpValuation({ cash, loans, properties, propertyValue, vessels,
 
 // ────────── tax-articles ──────────
 
-// js/game/tax-articles.js — Tax Article constants + helpers (SSoT)
+// js/game/tax-articles.js — Tax Article SSoT (RETIRED by alpha refactor)
 //
-// One source for:
-//   * per-step side effects (approval, credit, gdp_growth, inflation)
-//   * step size (3pp cuts, 2pp hikes)
-//   * rate bounds (0–50%)
-//   * valid-new-rate enumeration used by the draft modal dropdown
-//   * step/effect computation used by the enactment handler
-//   * projected ongoing budget impact (revenue gained/lost per month)
+// PHASE 7e (alpha stats refactor):
+//   The four tax columns (income_tax, corporate_tax, sales_tax,
+//   property_tax) are deleted by the alpha refactor with no replacement
+//   — the alpha-19 schema treats `nation.budget` as the canonical
+//   revenue stream rather than per-bracket rates. This module's whole
+//   purpose (drafting tax-rate-change articles, computing per-step
+//   effects on credit / inflation / gdp_growth, projecting revenue
+//   delta) loses its underlying mechanism.
 //
-// Imported by bill.html (draft modal preview + article-card renderer),
-// laws.html (draft preview), and js/game/bills.js (enactment +
-// computeBillCostTotals). Any tuning of numbers happens here.
+//   The module is preserved as a stub so that callers in
+//   bill.html, laws.html, and js/game/bills.js keep importing without
+//   ReferenceError. Every function returns a safe no-op:
+//
+//     getValidNewRates           → []  (no rate changes available)
+//     computeTaxArticleEffects   → {}  (no side effects)
+//     computeTaxArticleOngoingCost → 0  (no revenue delta)
+//     validateTaxArticlePayload  → { valid: false, ... }
+//
+//   Reintroducing tax brackets against alpha-19 columns is a future
+//   fiscal-redesign phase; if/when that lands, restore TAX_RATE_MIN/MAX,
+//   TAX_STEP_PP, TAX_ARTICLE_EFFECTS with the new column names and put
+//   the live computeTaxArticleEffects back.
 
 const TAX_RATE_MIN = 0;
 const TAX_RATE_MAX = 50;
 
-// Step sizes are asymmetric on purpose: cuts are popular but costly, hikes
-// are unpopular but revenue-positive. The asymmetry (3pp vs 2pp) makes the
-// cumulative revenue math work out more symmetrically per step.
-const TAX_STEP_PP = Object.freeze({
-    cut:  3,
-    hike: 2,
-});
+const TAX_STEP_PP = Object.freeze({ cut: 3, hike: 2 });
 
-// Per-step effects by tax key + direction. When more tax types land
-// (sales, property) add their own entry here — the rest of the pipeline
-// is tax-key-agnostic.
-const TAX_ARTICLE_EFFECTS = Object.freeze({
-    income_tax: Object.freeze({
-        cut: Object.freeze({
-            gov_approval: +2,
-            credit:       -2,
-            gdp_growth:   +0.5,
-            inflation:    +0.3,
-        }),
-        hike: Object.freeze({
-            gov_approval: -3,
-            credit:       +1,
-            gdp_growth:   -0.5,
-            inflation:    -0.3,
-        }),
-    }),
-    corporate_tax: Object.freeze({
-        cut: Object.freeze({
-            gov_approval: +1,
-            credit:       -2,
-            gdp_growth:   +1.0,
-            inflation:    0,
-        }),
-        hike: Object.freeze({
-            gov_approval: -1,
-            credit:       +1,
-            gdp_growth:   -1.0,
-            inflation:    0,
-        }),
-    }),
-    // Sales tax is the only tax whose inflation direction is INVERTED
-    // versus income/corporate. Cutting sales tax literally removes pp
-    // from sticker prices → CPI falls; hiking it raises prices → CPI
-    // rises. Magnitude (±0.5) larger than income's ±0.3 because the
-    // effect is mechanical (on the receipt), not transmitted via demand.
-    // Highest gov_approval magnitude (±4) since the tax is regressive
-    // and visible at every transaction.
-    sales_tax: Object.freeze({
-        cut: Object.freeze({
-            gov_approval: +4,
-            credit:       -2,
-            gdp_growth:   +0.3,
-            inflation:    -0.5,
-        }),
-        hike: Object.freeze({
-            gov_approval: -4,
-            credit:       +1,
-            gdp_growth:   -0.3,
-            inflation:    +0.5,
-        }),
-    }),
-    // Property tax taxes asset ownership (land + buildings). Direct effect
-    // on housing_affordability — cuts make housing cheaper to hold/rent,
-    // hikes pass through to renters and add to mortgage costs. The voter
-    // bloc system (electorate.js: urban_suburban) already cascades from
-    // housing_affordability into approval, so the flat ±2 gov_approval
-    // here understates total political impact for housing-sensitive
-    // nations. No inflation effect — property tax doesn't ride on
-    // consumer prices.
-    property_tax: Object.freeze({
-        cut: Object.freeze({
-            gov_approval:          +2,
-            credit:                -2,
-            gdp_growth:            +0.5,
-            inflation:             0,
-            housing_affordability: +1,
-        }),
-        hike: Object.freeze({
-            gov_approval:          -2,
-            credit:                +1,
-            gdp_growth:            -0.5,
-            inflation:             0,
-            housing_affordability: -1,
-        }),
-    }),
-});
+// All effect-tables empty — no tax keys are supported in alpha schema.
+const TAX_ARTICLE_EFFECTS = Object.freeze({});
 
-// Tax keys that have effects defined — feeds the draft modal's tax-type
-// selector.
-const SUPPORTED_TAX_KEYS = Object.freeze(['income_tax', 'corporate_tax', 'sales_tax', 'property_tax']);
+const SUPPORTED_TAX_KEYS = Object.freeze([]);
 
-const TAX_KEY_LABELS = Object.freeze({
-    income_tax:    'Income Tax',
-    corporate_tax: 'Corporate Tax',
-    sales_tax:     'Sales Tax',
-    property_tax:  'Property Tax',
-});
+const TAX_KEY_LABELS = Object.freeze({});
 
-// Effect-key → display label, used by the article-card / preview UI to
-// render each effect row. Keys here must match the keys used in the
-// per-step entries above. Adding a new effect dimension (e.g.,
-// urbanization for a future tax) only requires adding it here + to a
-// tax's per-step block.
-const TAX_EFFECT_LABELS = Object.freeze({
-    gov_approval:          'Gov Approval',
-    credit:                'Credit',
-    gdp_growth:            'GDP Growth',
-    inflation:             'Inflation',
-    housing_affordability: 'Housing Affordability',
-});
+const TAX_EFFECT_LABELS = Object.freeze({});
 
-// Effect keys that map directly to a nations.<column>. Used by the
-// enactment handler to know which keys to read+write to the nations
-// table (vs. gov_approval, which routes through adjust_momentum →
-// gov_approval_events). New numeric stat effects join this list.
-const TAX_EFFECT_NATION_COLUMNS = Object.freeze([
-    'credit',
-    'gdp_growth',
-    'inflation',
-    'housing_affordability',
-]);
+// Empty list — no tax-effect keys map to nation columns post-alpha.
+const TAX_EFFECT_NATION_COLUMNS = Object.freeze([]);
 
-// Enumerate the valid new rates a player can pick given their current rate
-// and chosen direction. Cuts step down in 3pp increments until hitting 0;
-// hikes step up in 2pp increments until hitting TAX_RATE_MAX.
-function getValidNewRates(currentRate, direction) {
-    const cur = Number(currentRate) || 0;
-    const step = TAX_STEP_PP[direction];
-    if (!step) return [];
-    const rates = [];
-    if (direction === 'cut') {
-        for (let r = cur - step; r >= TAX_RATE_MIN; r -= step) rates.push(r);
-    } else {
-        for (let r = cur + step; r <= TAX_RATE_MAX; r += step) rates.push(r);
-    }
-    return rates;
+function getValidNewRates(_currentRate, _direction) {
+    return [];
 }
 
-// Compute total side effects for a (taxKey, direction, steps) triple.
-// Used by the preview panel AND the enactment handler — one calculation,
-// two callers. Returns an object keyed by whatever effect dimensions
-// the tax defines (gov_approval, credit, gdp_growth, inflation, plus
-// any tax-specific extras like housing_affordability). Callers must
-// not assume a fixed shape — iterate Object.entries(fx).
-function computeTaxArticleEffects(taxKey, direction, steps) {
-    const perStep = TAX_ARTICLE_EFFECTS[taxKey]?.[direction];
-    const n = Number(steps) || 0;
-    if (!perStep || n <= 0) return {};
-    const result = {};
-    for (const [key, val] of Object.entries(perStep)) {
-        result[key] = val * n;
-    }
-    return result;
+function computeTaxArticleEffects(_taxKey, _direction, _steps) {
+    return {};
 }
 
-// Compute the bill's ongoing budget impact from a tax rate change, in
-// MILLIONS of dollars per month ($M/mo) — matching the convention used
-// by computeBillCostTotals and funding-article base_cost. Positive =
-// ongoing cost (revenue lost from a cut); negative = ongoing relief
-// (revenue gained from a hike).
-//
-// Implementation calls calculateNationalBudget twice — once with current
-// rates, once with the new rate substituted — so this helper stays in
-// sync with whatever multipliers / collection-rate logic budget.js uses.
-// SSoT: budget.js owns the formula; we just take the delta and convert
-// raw dollars → $M in one place so every caller gets consistent units.
-//
-// Returns 0 if nation is missing (caller should treat as "not yet
-// computable" — e.g., during initial render before nation loads).
-function computeTaxArticleOngoingCost(taxKey, newRate, nation) {
-    if (!nation || !taxKey) return 0;
-    const cur    = calculateNationalBudget(nation);
-    const future = calculateNationalBudget({ ...nation, [taxKey]: Number(newRate) });
-    // grossRevenue is raw dollars/year. Divide by 12 for monthly, by 1e6 for $M.
-    const monthlyRevenueDeltaMillions = (future.grossRevenue - cur.grossRevenue) / 12 / 1e6;
-    // Bill-cost convention: positive = budget gets worse. Revenue lost
-    // (cut) makes the budget worse, so flip the sign of the revenue delta.
-    return -monthlyRevenueDeltaMillions;
+function computeTaxArticleOngoingCost(_taxKey, _newRate, _nation) {
+    return 0;
 }
 
-// Validate an effect_data payload before insert / on enactment.
-// Returns { valid: boolean, reason?: string, direction?, steps? }.
-function validateTaxArticlePayload(taxKey, oldRate, newRate) {
-    if (!TAX_ARTICLE_EFFECTS[taxKey]) {
-        return { valid: false, reason: 'Unknown tax key: ' + taxKey };
-    }
-    const o = Number(oldRate), n = Number(newRate);
-    if (!Number.isFinite(o) || !Number.isFinite(n)) {
-        return { valid: false, reason: 'Rates must be numbers' };
-    }
-    if (n < TAX_RATE_MIN || n > TAX_RATE_MAX) {
-        return { valid: false, reason: 'New rate out of range' };
-    }
-    const delta = n - o;
-    if (delta === 0) return { valid: false, reason: 'No change' };
-    const direction = delta < 0 ? 'cut' : 'hike';
-    const step = TAX_STEP_PP[direction];
-    if (Math.abs(delta) % step !== 0) {
-        return { valid: false, reason: `Must be a multiple of ${step}pp` };
-    }
-    const steps = Math.abs(delta) / step;
-    return { valid: true, direction, steps };
+function validateTaxArticlePayload(_taxKey, _oldRate, _newRate) {
+    return {
+        valid: false,
+        reason: 'Tax-bracket adjustments are retired in the alpha schema; reintroduce when a tax-revenue model is rebuilt against alpha columns.'
+    };
 }
 
 // ────────── sectors ──────────
@@ -26745,13 +26529,16 @@ function formatDebtToGDP(ratio) {
 // printed portion (added to inflation). Bonds that don't sell within
 // 3 ticks auto-print at expiry.
 //
-// Stat ownership recap:
-//   * inflation       — additive writer here (printed_portion / GDP × multiplier)
-//   * credit          — per-tick writer here via calculateCreditDeterioration
-//   * currency_strength — NOT written here (cascades from inflation via existing
-//                         trade subsystem and stat connections)
+// Stat ownership recap (post alpha refactor):
 //   * nations.debt    — kept in sync with SUM(active_holdings.principal) by
 //                       buy_bond RPC and processBondMaturitiesTick below
+//   * nations.budget_reserves — credited by printPortion + forcedPrinted
+//                       paths. Reduced by coupon payouts.
+//
+// Retired by alpha refactor:
+//   * inflation cascade (column deleted)
+//   * credit deterioration / recovery (column deleted)
+//   * gdp-based print-to-inflation ratio (column deleted)
 //
 // Order matters when these are called per nation each tick:
 //   1. processBondMaturitiesTick   — pay back maturing principals
@@ -26787,39 +26574,30 @@ const BOND_RATIO_TIERS = Object.freeze([
 //  HELPERS
 // ════════════════════════════════════════════════════════════════════════════
 
-function getBondRatio(credit) {
-    const c = Number(credit) || 0;
-    for (const tier of BOND_RATIO_TIERS) {
-        if (c >= tier.min_credit) return tier.ratio;
-    }
-    return 0;
+// Alpha stats refactor (Phase 7e): the credit column is deleted with no
+// replacement, so the bond-tier system flattens to a single default
+// tier ('BBB' — 60/40 bond/print split, ~8.5% annual coupon). The tier
+// table above is preserved for when the bond-credit system is
+// redesigned against alpha-19 stats (likely keyed off debt-to-budget).
+// Functions retain their (credit) parameter for back-compat; the value
+// is ignored.
+const ALPHA_DEFAULT_TIER = { letter: 'BBB', ratio: 0.60, min_credit: 0 };
+const ALPHA_DEFAULT_COUPON_PER_TICK = 0.00708; // (8.5% annual) / 12, 5dp
+
+function getBondRatio(_creditUnused) {
+    return ALPHA_DEFAULT_TIER.ratio;
 }
 
-// Rating helper for UI surfaces. Returns the letter grade + bond/print
-// split derived from the same tier table as getBondRatio — one source
-// of truth for both the debt processor and any display code.
-function getCreditRating(credit) {
-    const c = Number(credit) || 0;
-    for (const tier of BOND_RATIO_TIERS) {
-        if (c >= tier.min_credit) {
-            return { letter: tier.letter, bondRatio: tier.ratio, printRatio: 1 - tier.ratio };
-        }
-    }
-    return { letter: 'D', bondRatio: 0, printRatio: 1 };
+function getCreditRating(_creditUnused) {
+    return {
+        letter: ALPHA_DEFAULT_TIER.letter,
+        bondRatio: ALPHA_DEFAULT_TIER.ratio,
+        printRatio: 1 - ALPHA_DEFAULT_TIER.ratio
+    };
 }
 
-// Per-tick coupon rate locked at issuance based on issuer's credit.
-// Mirrors budget.js:51's annual interest formula divided by 12 ticks/year:
-//   annual = clamp(0.15 - credit × 0.0013, 0.02, 0.18)
-//   per_tick = annual / 12
-// Range: credit 100 → ~0.0014/tick (≈1.7% annual)
-//        credit 50  → ~0.0070/tick (≈8.5% annual)
-//        credit 0   → ~0.0125/tick (≈15%  annual)
-function creditToCouponRate(credit) {
-    const c = Number(credit) || 0;
-    const annual = Math.min(0.18, Math.max(0.02, 0.15 - c * 0.0013));
-    // Round to 5 dp to match the finance_loan_requests.coupon_rate column precision.
-    return Math.round((annual / 12) * 100000) / 100000;
+function creditToCouponRate(_creditUnused) {
+    return ALPHA_DEFAULT_COUPON_PER_TICK;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -26889,13 +26667,10 @@ async function processBondCouponsTick(supabase, nation, currentTick) {
     if (totalCoupon === 0) return { totalCoupon: 0, shortfall: 0 };
 
     // Mirror the DB state locally so downstream per-tick processors see
-    // the post-coupon values of budget_reserves and inflation.
+    // the post-coupon value of budget_reserves. Inflation accumulation
+    // path retired by alpha refactor (column deleted); the underlying
+    // RPC may still emit inflation_delta but we no longer apply it.
     nation.budget_reserves = Math.max(0, Number(nation.budget_reserves || 0) - (totalCoupon - shortfall));
-    if (shortfall > 0 && Number(result?.inflation_delta)) {
-        nation.inflation = Math.min(100, Math.max(0,
-            Number(nation.inflation || 0) + Number(result.inflation_delta)
-        ));
-    }
     return { totalCoupon, shortfall };
 }
 
@@ -26919,7 +26694,6 @@ async function processBondOfferExpiryTick(supabase, nation, currentTick) {
     }
     if (!expired || expired.length === 0) return { expired: 0, forcedPrinted: 0 };
 
-    const gdp = Number(nation.gdp ?? nation.GDP) || 0;
     let forcedPrinted = 0;
     for (const o of expired) {
         // principal_remaining is the unfilled amount (NULL fallback to amount
@@ -26927,9 +26701,6 @@ async function processBondOfferExpiryTick(supabase, nation, currentTick) {
         const unfilled = Number(o.principal_remaining ?? o.amount) || 0;
         // Flip status FIRST — if this UPDATE fails we skip the print so the
         // same offer can't be picked up by the next tick and counted twice.
-        // (Alternative: mark-after-print doubles the inflation hit if the
-        // UPDATE fails mid-loop. Mark-first means a failure just loses the
-        // print for this tick; next tick retries cleanly.)
         const { error: uErr } = await supabase.from('finance_loan_requests')
             .update({ status: 'expired' }).eq('id', o.id);
         if (uErr) {
@@ -26941,16 +26712,15 @@ async function processBondOfferExpiryTick(supabase, nation, currentTick) {
         forcedPrinted += unfilled;
     }
 
-    if (forcedPrinted > 0 && gdp > 0) {
-        const printRatio = forcedPrinted / gdp;
-        const inflationDelta = printRatio * DEBT_CONFIG.INFLATION_PER_PRINT_PCT;
-        const newInflation = Math.min(100, Math.max(0, Number(nation.inflation || 0) + inflationDelta));
+    // Alpha refactor: inflation column is deleted, so the printing →
+    // inflation cascade is retired. Forced-printed money still credits
+    // budget_reserves so the deficit is covered fiscally; the
+    // monetary-debasement penalty no longer applies.
+    if (forcedPrinted > 0) {
         const newReserves = Number(nation.budget_reserves || 0) + forcedPrinted;
         await supabase.from('nations').update({
-            inflation: newInflation,
             budget_reserves: newReserves,
         }).eq('id', nation.id);
-        nation.inflation = newInflation;
         nation.budget_reserves = newReserves;
     }
 
@@ -26958,43 +26728,46 @@ async function processBondOfferExpiryTick(supabase, nation, currentTick) {
 }
 
 // (4) Deficit/surplus: calculate this tick's gap, decide funding split,
-// post bond offer for borrow portion, print the rest, deteriorate credit.
+// post bond offer for borrow portion, "print" the rest into reserves.
+//
+// Alpha stats refactor (Phase 7e): credit and inflation columns are
+// deleted by the alpha refactor. The credit-recovery-on-surplus and
+// credit-deterioration-on-deficit dynamics are retired (no signal to
+// modulate). The "print → inflation accumulation" model is also
+// retired (gdp gone, inflation gone) — printPortion still credits
+// budget_reserves but no longer cascades through inflation. A future
+// fiscal-redesign phase can reintroduce a credit-equivalent signal
+// keyed off debt-to-budget.
 async function processDebtTick(supabase, nation, expenditures, revenue, currentTick) {
     const exp = Number(expenditures) || 0;
     const rev = Number(revenue) || 0;
     const deficit = exp - rev;
 
-    // Surplus path — pay down debt, recover credit.
+    // Surplus path — pay down debt.
     if (deficit <= 0) {
         const surplus = -deficit;
-        const newDebt   = Math.max(0, Number(nation.debt || 0) - surplus);
-        const newCredit = Math.min(100, Math.max(0, Number(nation.credit || 0) + DEBT_CONFIG.CREDIT_RECOVERY_RATE));
+        const newDebt = Math.max(0, Number(nation.debt || 0) - surplus);
         const { error } = await supabase.from('nations')
-            .update({ debt: newDebt, credit: newCredit }).eq('id', nation.id);
+            .update({ debt: newDebt }).eq('id', nation.id);
         if (error) {
             console.warn(`[Debt] surplus update failed for ${nation.name}:`, error.message);
             return { mode: 'surplus', surplus, error: error.message };
         }
-        nation.debt   = newDebt;
-        nation.credit = newCredit;
-        return { mode: 'surplus', surplus, newDebt, newCredit };
+        nation.debt = newDebt;
+        return { mode: 'surplus', surplus, newDebt };
     }
 
-    // Deficit path.
-    const credit       = Number(nation.credit) || 0;
-    const gdp          = Number(nation.gdp ?? nation.GDP) || 0;
-    const bondRatio    = getBondRatio(credit);
+    // Deficit path. Bond ratio + coupon rate are flat defaults (alpha
+    // refactor) until a credit-equivalent system is rebuilt.
+    const bondRatio    = getBondRatio();
     const bondPortion  = Math.floor(deficit * bondRatio);
     const printPortion = deficit - bondPortion;
 
     // Post a bond offer in finance_loan_requests (request_type='bond')
-    // so the existing Deal Flow UI renders it. Coupon rate locked at
-    // issuance from current credit; principal_remaining starts equal to
-    // amount and decrements as Investment Corps buy slices. If
-    // bondPortion is 0 (Tier 5), skip the insert entirely.
+    // so the existing Deal Flow UI renders it. Coupon rate flat-defaulted.
     let offerId = null;
     if (bondPortion > 0) {
-        const couponRate = creditToCouponRate(credit);
+        const couponRate = creditToCouponRate();
         const { data: offer, error: oErr } = await supabase.from('finance_loan_requests').insert({
             requesting_faction_id: null,
             nation_id:             nation.id,
@@ -27011,52 +26784,29 @@ async function processDebtTick(supabase, nation, expenditures, revenue, currentT
         }).select('id').single();
         if (oErr) {
             console.warn(`[Debt] bond offer insert failed for ${nation.name}:`, oErr.message);
-            // Fall through — printPortion still applies; bondPortion just
-            // never makes it to market and the nation runs short until
-            // next tick. Better than throwing the whole deficit away.
         } else {
             offerId = offer?.id || null;
         }
     }
 
-    // Print the printed portion: credit budget_reserves to fund expenditures,
-    // and add the inflation hit. Inflation is the canonical signal — every
-    // downstream stat (currency_strength, foreign_investment, SoL, etc.)
-    // cascades from here through the existing stat-connection web.
-    if (printPortion > 0 && gdp > 0) {
-        const printRatio = printPortion / gdp;
-        const inflationDelta = printRatio * DEBT_CONFIG.INFLATION_PER_PRINT_PCT;
-        const newInflation = Math.min(100, Math.max(0, Number(nation.inflation || 0) + inflationDelta));
-        const newReserves  = Number(nation.budget_reserves || 0) + printPortion;
+    // Credit budget_reserves with the printed portion. Pre-alpha this
+    // also accrued inflation via printPortion / gdp; that cascade is
+    // retired with the gdp + inflation columns.
+    if (printPortion > 0) {
+        const newReserves = Number(nation.budget_reserves || 0) + printPortion;
         const { error: pErr } = await supabase.from('nations')
-            .update({ inflation: newInflation, budget_reserves: newReserves }).eq('id', nation.id);
+            .update({ budget_reserves: newReserves }).eq('id', nation.id);
         if (pErr) {
             console.warn(`[Debt] print update failed for ${nation.name}:`, pErr.message);
         } else {
-            nation.inflation       = newInflation;
             nation.budget_reserves = newReserves;
-        }
-    }
-
-    // Credit deterioration — uses the existing function in sovereign-default.js
-    // so the bracket math has one source of truth. Returns 0 when debt-to-gdp
-    // is below 100%, so low-debt high-deficit nations won't lose credit here.
-    const credPenalty = calculateCreditDeterioration(nation);
-    if (credPenalty > 0) {
-        const newCredit = Math.min(100, Math.max(0, Number(nation.credit || 0) - credPenalty));
-        const { error: cErr } = await supabase.from('nations')
-            .update({ credit: newCredit }).eq('id', nation.id);
-        if (cErr) {
-            console.warn(`[Debt] credit deterioration update failed for ${nation.name}:`, cErr.message);
-        } else {
-            nation.credit = newCredit;
         }
     }
 
     return {
         mode: 'deficit',
         deficit, bondPortion, printPortion, offerId,
-        creditDeterioration: credPenalty,
+        creditDeterioration: 0,
     };
 }
 

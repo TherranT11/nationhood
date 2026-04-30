@@ -15,79 +15,49 @@ import { fireBilateralEvent } from './event-helpers.js';
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
 export function calculateNationalBudget(nation, opts = {}) {
-    // GDP and Debt are stored as raw dollars
-    const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
+    // Alpha stats refactor (Phase 7e): tax brackets (income/corporate/
+    // sales/property/tariffs) and the gdp/credit/efficiency/corruption/
+    // oil_and_gas columns are all deleted. The legacy per-bracket
+    // revenue model is retired; the alpha schema treats `nation.budget`
+    // as the canonical revenue stream, with foreign-aid + trade-tariff
+    // adders layered on top via buildBudgetData / applyTradeTariffOverride.
+    //
+    // Per-bracket revenue fields are preserved in the return shape for
+    // callers that read them (always 0 now). Future fiscal redesign can
+    // resurrect a per-bracket model against alpha-19 stats.
     const debt = Number(nation.debt ?? 0);
+    const grossRevenue = Number(nation.budget ?? 0);
 
-    // Tax rates: 0-100 percentages
-    const incomeTaxRate    = Number(nation.income_tax ?? 0);
-    const corpTaxRate      = Number(nation.corporate_tax ?? 0);
-    const salesTaxRate     = Number(nation.sales_tax ?? 0);
-    const propertyTaxRate  = Number(nation.property_tax ?? 0);
-    const tariffsRate      = Number(nation.tariffs ?? 0);
-
-    // Other 0-100 stats
-    const efficiency     = Number(nation.efficiency ?? 50);
-    const corruption     = Number(nation.corruption ?? 50);
-    const oilGas         = Number(nation.oil_and_gas ?? 0);
-    const creditRating   = Number(nation.credit ?? 50);
-
-    // Collection Rate: floor at 0.35 so even poorly-governed nations collect some tax.
-    // Ranges 0.35 (eff=0, corr=100) to 1.0 (eff=100, corr=0).
-    const rawCR = (efficiency + (100 - corruption)) / 200;
-    const collectionRate = 0.35 + rawCR * 0.65;
-
-    // Tax Revenue (raw dollars, since GDP is raw dollars)
-    // Property-tax multiplier (0.08) is a starting guess: at the default
-    // 50% rate it yields up to ~4% of GDP at full collection (1.0), and
-    // ~2.4% at typical mid-game collection (~0.6). Within the real-world
-    // 2-4% band where property tax sits for most nations. Tune in one
-    // place if needed — everything downstream (Tax Article ongoing-cost
-    // projection, budget displays, deficit calc) reads from here.
-    const incomeRevenue   = gdp * (incomeTaxRate / 100)   * 0.55   * collectionRate;
-    const corpRevenue     = gdp * (corpTaxRate / 100)     * 0.15   * collectionRate;
-    const salesRevenue    = gdp * (salesTaxRate / 100)    * 0.35   * collectionRate;
-    const propertyRevenue = gdp * (propertyTaxRate / 100) * 0.08   * collectionRate;
-    const tariffRevenue   = gdp * (tariffsRate / 100)     * 0.0025 * collectionRate;
-
-    // Oil & Gas Revenue (only if oil_and_gas stat > 30)
-    const oilRevenue = oilGas > 30 ? gdp * (oilGas / 100) * 0.06 : 0;
-
-    const grossRevenue = incomeRevenue + corpRevenue + salesRevenue + propertyRevenue + tariffRevenue + oilRevenue;
-
-    // Debt Service. Prefer the actual sum of active bond coupon obligations
-    // (passed in by the tick processor as opts.actualDebtService — that's
-    // SUM(bond_holdings.principal × coupon_rate) for this nation, and the
-    // SSoT for what the nation owes its bondholders this tick). Falls back
-    // to the legacy credit-derived formula for callers that don't have
-    // holdings data on hand (UI displays, projections, simulation).
-    const effectiveInterest = Math.min(0.18, Math.max(0.02, 0.15 - (creditRating * 0.0013)));
+    // Debt service: prefer the actual sum of bond coupon obligations from
+    // the tick processor; fall back to a flat 5% annual interest rate
+    // (was credit-tier-modulated 2-18% pre-alpha; flat rate until the
+    // bond-credit tier system is redesigned against alpha columns).
+    const FLAT_ANNUAL_INTEREST = 0.05;
     const debtService = opts.actualDebtService != null
         ? Number(opts.actualDebtService)
-        : debt * effectiveInterest;
+        : debt * FLAT_ANNUAL_INTEREST;
 
-    // Available Budget = Revenue - Debt Service
     const availableBudget = grossRevenue - debtService;
 
     return {
-        grossRevenue, debtService, availableBudget, collectionRate,
-        incomeRevenue, corpRevenue, salesRevenue, propertyRevenue, tariffRevenue, oilRevenue
+        grossRevenue, debtService, availableBudget,
+        // Legacy fields kept at 0 for callers that destructure them.
+        // Removable in a future fiscal-system redesign phase.
+        collectionRate: 1, incomeRevenue: 0, corpRevenue: 0, salesRevenue: 0,
+        propertyRevenue: 0, tariffRevenue: 0, oilRevenue: 0
     };
 }
 
 /**
  * Override formula-based tariff revenue with real trade engine data.
- * Mutates the budget object in place and returns it.
+ * Mutates the budget object in place and returns it. Alpha refactor:
+ * the gdp parameter is kept in the signature for back-compat but no
+ * longer used (gdp column deleted; cap removed).
  */
-export function applyTradeTariffOverride(budget, tradeTariffRevenue, gdp) {
+export function applyTradeTariffOverride(budget, tradeTariffRevenue, _gdpUnused) {
     if (tradeTariffRevenue != null && Number(tradeTariffRevenue) > 0) {
         const oldTariff = budget.tariffRevenue;
-        let newTariff = Number(tradeTariffRevenue);
-        // Cap tariff revenue at 0.2% of GDP — tariffs are a minor revenue source
-        if (gdp > 0) {
-            const maxTariff = gdp * 0.002;
-            newTariff = Math.min(newTariff, maxTariff);
-        }
+        const newTariff = Number(tradeTariffRevenue);
         budget.tariffRevenue = newTariff;
         budget.grossRevenue = budget.grossRevenue - oldTariff + budget.tariffRevenue;
         budget.availableBudget = budget.grossRevenue - budget.debtService;
@@ -152,18 +122,23 @@ export const FISCAL_TO_MINISTRY_KEY = {
 };
 
 /**
- * Compute inflation cost multiplier from the 0-100 inflation stat.
- * Rate = stat^1.5 / 100  →  stat 1 = 0.01%, stat 100 = 10%.
- * No deflation — multiplier is always ≥ 1.
+ * Inflation cost multiplier — alpha stats refactor neutralized this to
+ * a constant 1 since the underlying `inflation` column is deleted.
+ * Kept as an exported identity function so callers needn't change.
+ * If a "cost-of-living-driven" cost multiplier is desired later, plug
+ * it in here against alpha columns.
  */
-export function getInflationMultiplier(inflationStat) {
-    const rate = Math.pow(Math.max(0, Number(inflationStat || 0)), 1.5) / 100;
-    return 1 + (rate / 100);
+export function getInflationMultiplier(_inflationStatUnused) {
+    return 1;
 }
 
 /**
  * Compute the annualized cost of all active policies for a given fiscal category.
- * Returns raw dollars. Applies inflation adjustment.
+ * Returns raw dollars. Alpha refactor: inflation multiplier is a no-op
+ * (constant 1) so policy costs no longer scale with inflation; if the
+ * `ongoing_scaling_stat` policy field still references a deleted column,
+ * the read returns undefined and the scaled-cost branch falls through
+ * to ongoingBase * 1 (no scaling).
  */
 export function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
     let total = 0;
@@ -174,10 +149,6 @@ export function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
         const policy = law.policies;
         if (!policy) continue;
 
-        // Phase 4.4: per-option fiscal_category and ongoing_base_cost take
-        // precedence over the legacy policies columns. Filter the law
-        // against the option's fiscal_category when present so the option's
-        // budget bucket determines which ministry pays.
         const opt = law.selected_option || null;
         const fiscalCat = opt?.fiscal_category ?? policy.fiscal_category;
         if (fiscalCat !== fiscalCategory) continue;
@@ -202,18 +173,14 @@ export function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
         }
     }
 
-    // Apply inflation
-    const inflationMult = getInflationMultiplier(nation.inflation);
-    total *= inflationMult;
-    for (const p of policies) p.cost *= inflationMult;
-
     return { total, policies };
 }
 
 /**
  * Compute the annualized cost of all institutions for a given fiscal category.
- * Population-scaled: base_cost_per_capita × population × inflation.
- * GDP-scaled:        base_cost_per_capita (as % of GDP, e.g. 0.5 = 0.5%) × GDP × inflation.
+ * Alpha stats refactor: gdp-scaled institutions collapse to population
+ * scaling (matches bill.html / laws.html _computeInstitutionBaseCost from
+ * Phase 7b). Inflation multiplier is a no-op (Phase 7e).
  * @param {Array} institutions - rows from ministry_institution_config
  * @param {string} fiscalCategory - e.g. 'Healthcare', 'Trade'
  * @param {Object} nation
@@ -222,22 +189,13 @@ export function computeMinistryInstitutionCost(institutions, fiscalCategory, nat
     const ministryKey = FISCAL_TO_MINISTRY_KEY[fiscalCategory] || fiscalCategory.toLowerCase();
     const insts = (institutions || []).filter(i => i.ministry_key === ministryKey);
     const population = Number(nation.population || 0);
-    const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
-    const inflationMult = getInflationMultiplier(nation.inflation);
 
     let total = 0;
     const items = [];
     for (const inst of insts) {
         const baseVal = Number(inst.base_cost_per_capita || 0);
         const scalingType = inst.scaling_type || 'population';
-        let cost;
-        if (scalingType === 'gdp') {
-            // baseVal is a percentage of GDP (e.g. 0.5 means 0.5%)
-            cost = (baseVal / 100) * gdp;
-        } else {
-            cost = baseVal * population;
-        }
-        cost *= inflationMult;
+        const cost = baseVal * population;
         items.push({
             id: inst.id, institution_name: inst.institution_name, cost,
             base_cost_per_capita: inst.base_cost_per_capita,
@@ -254,9 +212,11 @@ export function computeMinistryInstitutionCost(institutions, fiscalCategory, nat
  */
 export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, aidData) {
     const budget = calculateNationalBudget(nation);
-    applyTradeTariffOverride(budget, tradeTariffRevenue, Number(nation.gdp ?? nation.GDP ?? 0));
-    const inflationStat = Number(nation.inflation || 0);
-    const inflationPct = Math.pow(Math.max(0, inflationStat), 1.5) / 100;
+    applyTradeTariffOverride(budget, tradeTariffRevenue, 0);
+    // Inflation column was deleted by the alpha refactor; both fields are
+    // kept in the return blob at 0 for callers that destructure them.
+    const inflationStat = 0;
+    const inflationPct = 0;
     const reserves = 0;
 
     // Foreign aid: received adds to revenue, given is a mandatory expenditure
@@ -643,37 +603,21 @@ export async function processExpiredTradeAgreements(supabase, currentTick) {
 }
 
 
-// Apply GDP growth rate: gdp_growth (0-100) centered at 50 maps to -1% to +1% per month
-// Formula: monthlyChange% = ((gdp_growth - 50) / 50) * 1  →  0=-1%, 50=0%, 100=+1%
-// Includes diminishing returns (GDP < 50% of starting) and hard floor (20% of starting → Economic Collapse)
-export async function applyGdpGrowth(supabase, nation, currentTick) {
-    const gdpGrowth = Number(nation.gdp_growth ?? 50);
-    const currentGdp = Number(nation.gdp ?? 0);
-    const startingGdp = Number(nation.starting_gdp ?? currentGdp);
-    if (currentGdp <= 0 || startingGdp <= 0) return;
-
-    let monthlyChangePercent = ((gdpGrowth - 50) / 50) * 1;
-
-    // Diminishing returns: scale negative growth when GDP < 50% of starting
-    if (monthlyChangePercent < 0) {
-        const gdpRatio = currentGdp / startingGdp;
-        if (gdpRatio < 0.5) {
-            const dampening = Math.max(0.1, gdpRatio * 2); // 50%→1.0, 25%→0.5, 10%→0.2, min 10%
-            monthlyChangePercent *= dampening;
-        }
-    }
-
-    let newGdp = Math.max(0, currentGdp * (1 + monthlyChangePercent / 100));
-
-    // Hard floor: clamp at 20% of starting GDP and trigger Economic Collapse
-    const gdpFloor = startingGdp * 0.20;
-    if (newGdp < gdpFloor) {
-        newGdp = gdpFloor;
-        await activateEconomicCollapse(supabase, nation, currentTick);
-    }
-
-    nation.gdp = newGdp;
-    await supabase.from('nations').update({ gdp: newGdp }).eq('id', nation.id);
+// Apply GDP growth rate — RETIRED by alpha stats refactor (Phase 7e).
+//
+// The legacy mechanic moved an absolute-dollar `nation.gdp` column up
+// or down each tick based on the `gdp_growth` 0-100 stat, with a hard
+// floor at 20% of `starting_gdp` triggering Economic Collapse. Both
+// `gdp` and `starting_gdp` columns are deleted by the alpha refactor
+// (alpha-19 keeps `gdp_growth` as a momentum signal but no absolute
+// GDP value), so this function has no columns to read or write.
+//
+// Function is preserved as a no-op so existing tick processor + admin
+// importers don't break. Economic Collapse activation moved to the
+// fiscal-redesign phase (likely keyed off prolonged budget collapse +
+// debt/budget ratio).
+export async function applyGdpGrowth(_supabase, _nation, _currentTick) {
+    return;
 }
 
 // Activate Economic Collapse mega-crisis: clears other economic crises, applies political penalties
