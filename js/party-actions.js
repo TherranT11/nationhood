@@ -3105,6 +3105,35 @@ async function openAppointPMModal(root) {
                     currentTick,
                 });
 
+                // Persist a real government_formations row so reads stop
+                // depending on the synthetic monarchy fallback in
+                // government-structure.js. Mirrors the parliamentary
+                // pattern: dissolve any prior formed/caretaker/active rows,
+                // then insert a fresh 'formed' row keyed to this royal
+                // appointment. Non-blocking: the synthetic fallback still
+                // covers a write failure.
+                try {
+                    await _supabase.from('government_formations')
+                        .update({ status: 'dissolved' })
+                        .eq('nation_id', nation.id)
+                        .in('status', ['formed', 'caretaker', 'active']);
+                    const { data: shardData } = await _supabase.from('shard')
+                        .select('current_date').eq('name', 'Alpha Shard').single();
+                    await _supabase.from('government_formations').insert({
+                        nation_id: nation.id,
+                        election_id: null,
+                        proposed_by: faction.id,
+                        party_ids: [selectedPartyId],
+                        status: 'formed',
+                        formation_type: 'monarchy',
+                        formed_at: new Date().toISOString(),
+                        ministry_assignments: { prime_minister: selectedPartyId },
+                        game_year: shardData?.current_date || '',
+                    });
+                } catch (gfErr) {
+                    console.warn('[AppointPM] government_formations write failed (non-blocking — synthetic fallback still works):', gfErr?.message || gfErr);
+                }
+
                 // Legitimacy effects (monarchy only).
                 // Dismissing a non-monarch PM costs -4. Appointing a non-monarch
                 // PM grants +3. Replacing one non-monarch PM with another nets -1.
