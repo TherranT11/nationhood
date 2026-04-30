@@ -240,6 +240,85 @@ body.corp-redesign::before {
   flex-direction: column;
   gap: 24px;
 }
+
+/* ── FINANCIAL ROW (Phase 2) ── */
+.cr-financial-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.cr-fin-card {
+  background: var(--cr-bg-card);
+  border: 1px solid var(--cr-line);
+  padding: 18px 18px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.cr-fin-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 28px; height: 1px;
+  background: var(--cr-accent-gold);
+}
+.cr-fin-card-label {
+  font-family: var(--cr-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cr-text-secondary);
+  margin-bottom: 10px;
+}
+.cr-fin-card-value {
+  font-family: var(--cr-serif);
+  font-size: 32px;
+  font-weight: 400;
+  color: var(--cr-text-primary);
+  line-height: 1;
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.cr-fin-currency {
+  font-family: var(--cr-sans);
+  font-size: 14px;
+  color: var(--cr-text-tertiary);
+  font-weight: 400;
+  margin-right: 2px;
+  vertical-align: top;
+  line-height: 32px;
+}
+.cr-fin-suffix {
+  font-size: 18px;
+  color: var(--cr-text-tertiary);
+}
+.cr-fin-card-trend {
+  font-family: var(--cr-mono);
+  font-size: 10px;
+  color: var(--cr-text-tertiary);
+  letter-spacing: 0.05em;
+  min-height: 14px;
+}
+.cr-fin-card-trend.positive { color: var(--cr-accent-green); }
+.cr-fin-card-trend.negative { color: var(--cr-accent-red); }
+.cr-sparkline {
+  margin-top: 10px;
+  height: 24px;
+  width: 100%;
+  opacity: 0.55;
+  display: block;
+}
+.cr-sparkline-empty {
+  margin-top: 10px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  font-family: var(--cr-mono);
+  font-size: 9px;
+  color: var(--cr-text-tertiary);
+  letter-spacing: 0.05em;
+  font-style: italic;
+  opacity: 0.6;
+}
 .cr-section-header {
   display: flex;
   align-items: baseline;
@@ -366,10 +445,10 @@ body.corp-redesign::before {
         <div>
           <div class="cr-section-header" style="margin-bottom: 16px;">
             <h2><span class="num">I.</span>Financial Position</h2>
-            <span class="desc">Phase 2</span>
+            <span class="desc" id="cr-fin-period">Current tick</span>
           </div>
-          <div class="cr-panel">
-            <div class="cr-placeholder">Cash · Revenue · Costs · Wages · Debt cards land in <strong>Phase 2</strong>.</div>
+          <div class="cr-financial-row" id="cr-fin-row">
+            <!-- Populated by renderFinancialRow() in Phase 2 wire-up -->
           </div>
         </div>
 
@@ -414,6 +493,56 @@ function fmtMoney(n) {
     if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(2) + 'M';
     if (abs >= 1e3) return sign + '$' + (abs / 1e3).toFixed(1) + 'k';
     return sign + '$' + Math.round(abs).toLocaleString();
+}
+
+// Split a money value into ($)(value)(suffix) for the masthead/fin-card
+// styling that wants the dollar sign and unit suffix smaller than the
+// numeric portion.
+function fmtMoneyParts(n) {
+    const num = Number(n) || 0;
+    const sign = num < 0 ? '-' : '';
+    const abs = Math.abs(num);
+    if (abs >= 1e9)  return { sign, value: (abs / 1e9).toFixed(1), suffix: 'B' };
+    if (abs >= 1e6)  return { sign, value: (abs / 1e6).toFixed(1), suffix: 'M' };
+    if (abs >= 1e3)  return { sign, value: (abs / 1e3).toFixed(1), suffix: 'k' };
+    return { sign, value: Math.round(abs).toLocaleString(), suffix: '' };
+}
+
+function renderMoneyHtml(n) {
+    const { sign, value, suffix } = fmtMoneyParts(n);
+    const suffixHtml = suffix ? `<span class="cr-fin-suffix">${suffix}</span>` : '';
+    return `<span class="cr-fin-currency">${sign}$</span>${value}${suffixHtml}`;
+}
+
+function renderSparklineSvg(series, colorVar) {
+    // null series = "this card has no historical series at all" (e.g. debt
+    // is not tracked in corp_pnl_history). Render nothing so the card is
+    // not visually cluttered with a meaningless empty state.
+    if (series === null) return '';
+    if (!Array.isArray(series) || series.length < 2) {
+        return '<div class="cr-sparkline-empty">— no history yet</div>';
+    }
+    const w = 120, h = 24;
+    let min = Infinity, max = -Infinity;
+    for (const v of series) {
+        const n = Number(v);
+        if (Number.isFinite(n)) {
+            if (n < min) min = n;
+            if (n > max) max = n;
+        }
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+        return '<div class="cr-sparkline-empty">— no history yet</div>';
+    }
+    const range = max - min || 1;
+    const points = series.map((v, i) => {
+        const x = (i / (series.length - 1)) * w;
+        const y = h - ((Number(v) - min) / range) * h;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    return `<svg class="cr-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <polyline points="${points}" fill="none" stroke="${colorVar}" stroke-width="1.2"/>
+    </svg>`;
 }
 
 // tickToDate returns 'MMM, YYYY' (e.g. 'Mar, 2026'). Pull just the year for
@@ -477,8 +606,8 @@ async function init() {
         return;
     }
 
-    // Shard + nation in parallel.
-    const [shardRes, nationRes] = await Promise.all([
+    // Shard + nation + per-tick P&L history in parallel.
+    const [shardRes, nationRes, pnlRes] = await Promise.all([
         _supabase.from('shard')
             .select('current_tick, current_date, name')
             .eq('name', 'Alpha Shard').single(),
@@ -487,6 +616,11 @@ async function init() {
                 .select('id, name, capital')
                 .eq('id', faction.nation_id).single()
             : Promise.resolve({ data: null, error: null }),
+        _supabase.from('corp_pnl_history')
+            .select('tick, revenue, costs, wages, cash_start, cash_end')
+            .eq('corp_id', faction.id)
+            .order('tick', { ascending: false })
+            .limit(12),
     ]);
     if (shardRes.error) {
         showFatal('Failed to load shard: ' + shardRes.error.message);
@@ -494,6 +628,11 @@ async function init() {
     }
     shard = shardRes.data;
     nation = nationRes?.data || null;
+    if (pnlRes?.error) {
+        console.error('[corp-dashboard] pnl_history fetch error:', pnlRes.error.message);
+    }
+    // Reverse so oldest-first for sparkline left-to-right.
+    const pnlHistory = (pnlRes?.data || []).slice().reverse();
 
     // Mount the shared corp topbar.
     const topbarContainer = document.getElementById('corp-topbar-container');
@@ -509,6 +648,7 @@ async function init() {
     }
 
     renderMasthead();
+    renderFinancialRow(pnlHistory);
     renderFooter();
 
     document.getElementById('loading').style.display = 'none';
@@ -545,6 +685,97 @@ function renderMasthead() {
     // Delta vs last tick will land in Phase 2 once corp_pnl_history is wired.
     document.getElementById('cr-ticker-change').textContent =
         '— · valuation (cash − debt)';
+}
+
+function renderFinancialRow(history) {
+    // Current-tick values from the corp row.
+    const cash    = Number(faction.corp_cash_reserves) || 0;
+    const revenue = Number(faction.corp_revenue_current_tick) || 0;
+    const costs   = Number(faction.corp_costs_current_tick) || 0;
+    const wages   = Number(faction.corp_wages_current_tick) || 0;
+    const debt    = Number(faction.corp_debt) || 0;
+    const opex    = costs + wages;
+
+    // Most recent prior-tick row (history is oldest-first; last entry is the
+    // most recent prior tick). Used for the per-card "vs last tick" delta.
+    const prev = history.length > 0 ? history[history.length - 1] : null;
+    const prevCash    = prev ? Number(prev.cash_end) : null;
+    const prevRevenue = prev ? Number(prev.revenue) : null;
+    const prevOpex    = prev ? (Number(prev.costs) + Number(prev.wages)) : null;
+
+    // Sparkline series (oldest-first across `history`).
+    const cashSeries    = history.map(h => Number(h.cash_end));
+    const revenueSeries = history.map(h => Number(h.revenue));
+    const opexSeries    = history.map(h => Number(h.costs) + Number(h.wages));
+
+    const row = document.getElementById('cr-fin-row');
+    if (!row) return;
+
+    row.innerHTML = [
+        renderFinCard({
+            label: 'Cash',
+            value: cash,
+            prev: prevCash,
+            series: cashSeries,
+            colorVar: 'var(--cr-accent-green)',
+            invert: false,
+        }),
+        renderFinCard({
+            label: 'Revenue',
+            value: revenue,
+            prev: prevRevenue,
+            series: revenueSeries,
+            colorVar: 'var(--cr-accent-gold)',
+            invert: false,
+        }),
+        renderFinCard({
+            label: 'Costs & Wages',
+            value: opex,
+            prev: prevOpex,
+            series: opexSeries,
+            colorVar: 'var(--cr-accent-red)',
+            invert: true,  // higher costs are bad
+        }),
+        renderFinCard({
+            label: 'Outstanding Debt',
+            value: debt,
+            // No debt-history column in corp_pnl_history — pass null series so
+            // the sparkline area is suppressed entirely (not just empty).
+            prev: null,
+            series: null,
+            colorVar: 'var(--cr-text-tertiary)',
+            invert: true,
+            staticTrend: debt > 0 ? '— outstanding' : '— debt-free',
+        }),
+    ].join('');
+}
+
+function renderFinCard({ label, value, prev, series, colorVar, invert, staticTrend }) {
+    let trendHtml;
+    let trendClass = '';
+    if (staticTrend) {
+        trendHtml = staticTrend;
+    } else if (prev == null) {
+        trendHtml = '— no prior tick yet';
+    } else {
+        const delta = Number(value) - Number(prev);
+        if (delta === 0) {
+            trendHtml = '— unchanged vs last tick';
+        } else {
+            const arrow = delta > 0 ? '▲' : '▼';
+            const sign  = delta > 0 ? '+' : '';
+            const isGood = invert ? delta < 0 : delta > 0;
+            trendClass = isGood ? 'positive' : 'negative';
+            trendHtml = `${arrow} ${sign}${fmtMoney(delta)} vs last tick`;
+        }
+    }
+
+    return `<div class="cr-fin-card">
+        <div class="cr-fin-card-label">${escapeHtml(label)}</div>
+        <div class="cr-fin-card-value">${renderMoneyHtml(value)}</div>
+        <div class="cr-fin-card-trend ${trendClass}">${trendHtml}</div>
+        ${renderSparklineSvg(series, colorVar)}
+    </div>`;
 }
 
 function renderFooter() {
