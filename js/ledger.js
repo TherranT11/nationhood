@@ -40,7 +40,6 @@ const GOODS_SECTORS = [
 ];
 
 // nationId → { sectorKey → { export_capacity, import_demand, export_volume, import_volume } }
-let _allTradeFlows = {};
 
 function fmtVal(val, statId) {
     if (val == null) return '\u2014';
@@ -161,32 +160,10 @@ export async function initLedger(supabase, state) {
     _selectedNationId = state.nation?.id || (_allNations[0]?.id ?? null);
     _compareIds = [_selectedNationId].filter(Boolean);
 
-    // Load trade flows for the Goods tab
-    await loadAllTradeFlows(supabase);
-
     // Attach event listeners ONCE on root — they persist across re-renders
     attachLedgerListeners(root);
     renderLedgerBody(root);
 }
-
-async function loadAllTradeFlows(_supabase) {
-    // Phase 10A: trade_flows + trade_summary tables dropped. The Goods
-    // tab renders an empty placeholder until the rebuild lands.
-    _allTradeFlows = {};
-}
-
-}
-
-function fmtCurrency(val) {
-    if (val == null || val === 0) return '$0';
-    const abs = Math.abs(val);
-    if (abs >= 1e12) return '$' + (val / 1e12).toFixed(1) + 'T';
-    if (abs >= 1e9) return '$' + (val / 1e9).toFixed(1) + 'B';
-    if (abs >= 1e6) return '$' + (val / 1e6).toFixed(0) + 'M';
-    if (abs >= 1e3) return '$' + Math.round(val / 1e3) + 'k';
-    return '$' + Math.round(val);
-}
-
 // ═══════════════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════════════
@@ -536,11 +513,9 @@ function renderRankingsMode() {
         ">${isGoodsRanking ? s.name : esc(s.name)}</div>`
     ).join('');
 
-    // Ranked rows
+    // Ranked rows (goods category early-returns above with a placeholder).
     const rowsHtml = sorted.map((n, i) => {
-        const val = isGoodsRanking
-            ? (_allTradeFlows[n.id]?.[_rankingStat]?.export_capacity || 0)
-            : Number(n[_rankingStat] ?? 0);
+        const val = Number(n[_rankingStat] ?? 0);
         const pct = maxVal > 0 ? (Math.abs(val) / maxVal) * 100 : 0;
         const isPlayer = n.id === myNationId;
         const medal = i === 0 ? '\uD83E\uDD47' : i === 1 ? '\uD83E\uDD48' : i === 2 ? '\uD83E\uDD49' : `#${i + 1}`;
@@ -556,7 +531,7 @@ function renderRankingsMode() {
                     <div style="font-family:var(--font-mono);font-size:16px;color:var(--text-dim);">${esc(n.government_type || '')}</div>
                 </div>
             </div>
-            <span style="width:100px;font-family:var(--font-mono);font-size:16px;font-weight:700;color:${i === 0 ? 'var(--accent)' : 'var(--text-bright)'};text-align:right;">${isGoodsRanking ? fmtCurrency(val) : fmtVal(val, _rankingStat)}</span>
+            <span style="width:100px;font-family:var(--font-mono);font-size:16px;font-weight:700;color:${i === 0 ? 'var(--accent)' : 'var(--text-bright)'};text-align:right;">${fmtVal(val, _rankingStat)}</span>
             <div style="width:160px;display:flex;align-items:center;gap:6px;justify-content:flex-end;flex-shrink:0;">
                 <div style="width:130px;height:6px;background:var(--border-main);overflow:hidden;">
                     <div style="width:${Math.min(pct, 100)}%;height:100%;background:${barColor};"></div>

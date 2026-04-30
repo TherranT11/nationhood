@@ -2063,19 +2063,8 @@ async function loadBudgetData() {
     //    the Economy page uses so the two pages can't disagree).
     const budget = calculateNationalBudget(nation);
 
-    // Lazy-fetch the most recent trade_summary row for capped tariff revenue.
-    // Non-fatal: if the fetch fails or the row doesn't exist we keep the
-    // formula-based estimate.
-    try {
-        const { data: tsRow } = await _supabase.from('trade_summary')
-            .select('tariff_revenue')
-            .eq('nation_id', nation.id)
-            .order('tick', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        const raw = Number(tsRow?.tariff_revenue) || 0;
-        if (raw > 0) applyTradeTariffOverride(budget, raw, Number(nation.gdp ?? nation.GDP ?? 0));
-    } catch (_) { /* keep formula estimate on error */ }
+    // Phase 10A: trade_summary table dropped with the goods-trade
+    // engine. Tariff revenue feed stays at 0 until the rebuild lands.
 
     // 2. Aid flows — Economy page uses the same aid_agreement_state view,
     //    joined to trade_agreements to filter on the economic_aid type and
