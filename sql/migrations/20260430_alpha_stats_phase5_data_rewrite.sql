@@ -285,7 +285,10 @@ COMMIT;
 -- (e.g. policies.side_effects — no readers, intentionally skipped).
 -- =========================================================================
 
--- 1. JSONB residue: policy_options.stat_effects + active_laws.reversal_effects
+-- 1. JSONB residue: policy_options.stat_effects + active_laws.reversal_effects.
+-- Each FROM clause guards `jsonb_typeof(...) = 'array'` so rows with
+-- NULL or non-array storage don't trip jsonb_array_elements (PG 14+
+-- raises an error on null/non-array input).
 WITH legacy_keys AS (
     SELECT unnest(ARRAY[
         'civil_unrest','terrorism','political_violence',
@@ -310,14 +313,18 @@ WITH legacy_keys AS (
     ]) AS k
 )
 SELECT 'policy_options.stat_effects' AS source, po.id, eff->>'stat_key' AS key
-FROM policy_options po, jsonb_array_elements(po.stat_effects) AS eff
-WHERE eff->>'stat_key' IN (SELECT k FROM legacy_keys)
-   OR eff->>'stat'     IN (SELECT k FROM legacy_keys)
+FROM policy_options po
+CROSS JOIN LATERAL jsonb_array_elements(po.stat_effects) AS eff
+WHERE jsonb_typeof(po.stat_effects) = 'array'
+  AND (eff->>'stat_key' IN (SELECT k FROM legacy_keys)
+       OR eff->>'stat' IN (SELECT k FROM legacy_keys))
 UNION ALL
 SELECT 'active_laws.reversal_effects' AS source, al.id, eff->>'stat_key' AS key
-FROM active_laws al, jsonb_array_elements(al.reversal_effects) AS eff
-WHERE eff->>'stat_key' IN (SELECT k FROM legacy_keys)
-   OR eff->>'stat'     IN (SELECT k FROM legacy_keys);
+FROM active_laws al
+CROSS JOIN LATERAL jsonb_array_elements(al.reversal_effects) AS eff
+WHERE jsonb_typeof(al.reversal_effects) = 'array'
+  AND (eff->>'stat_key' IN (SELECT k FROM legacy_keys)
+       OR eff->>'stat' IN (SELECT k FROM legacy_keys));
 
 -- 2. TEXT residue on policies
 SELECT id, policy_name, target_stat, secondary_stat, cost_scaling_stat, cost_scaling_stat_2
