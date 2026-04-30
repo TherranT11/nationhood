@@ -608,19 +608,13 @@ async function renderPresidentialResults(election) {
             consequenceSource.approval_change,
             consequenceSource.approval_delta
         );
-        const polarizationDelta = getFirstDefined(
-            consequenceSource.polarization,
-            consequenceSource.polarization_change,
-            consequenceSource.polarization_delta
-        );
 
-        if (approvalDelta !== null || polarizationDelta !== null) {
+        if (approvalDelta !== null) {
             html += `
                 <div style="margin-top:12px;background:#111826;border:1px solid #2a3550;border-radius:6px;padding:12px 14px;">
                     <div style="font-size:0.74rem;color:#8ab4ff;text-transform:uppercase;letter-spacing:1px;font-weight:bold;margin-bottom:8px;">Post-Election Consequences</div>
                     <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:0.82rem;color:#c0d4ff;">
-                        ${approvalDelta !== null ? `<div><span style="color:#7f9ad3;">Approval:</span> ${formatSignedStat(approvalDelta, ' pts')}</div>` : ''}
-                        ${polarizationDelta !== null ? `<div><span style="color:#7f9ad3;">Polarization:</span> ${formatSignedStat(polarizationDelta, ' pts')}</div>` : ''}
+                        <div><span style="color:#7f9ad3;">Approval:</span> ${formatSignedStat(approvalDelta, ' pts')}</div>
                     </div>
                 </div>`;
         }

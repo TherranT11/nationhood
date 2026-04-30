@@ -259,7 +259,7 @@ import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolici
 import { calculateBillSupport, syncVoteTallies, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, computeBillCostTotals } from './js/game/bills.js';
 import { POLICY_STANCES, MAJOR_SECTORS, RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, INITIATIVE_ARTICLE_TYPES, MAJOR_INITIATIVE_ARTICLE_TYPES } from './js/game/diplomacy-constants.js';
 import { signPresidentialBill, vetoPresidentialBill, rejectOwnNomination } from './js/game/presidential.js';
-import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, getInflationMultiplier, computeMinistryPolicyCost, computeMinistryInstitutionCost } from './js/game/budget.js';
+import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost } from './js/game/budget.js';
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 import { computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_EFFECT_LABELS } from './js/game/tax-articles.js';
@@ -539,7 +539,9 @@ function dollarsToMillions(amount) {
 function getInstitutionBaseCost(instId) {
     const row = (institutionConfig || []).find(i => i.id === instId);
     if (!row || !currentNation) return 0;
-    const inflationMult = getInflationMultiplier(currentNation.inflation);
+    // Inflation column was removed in the alpha stats refactor; cost
+    // multiplier is fixed at 1 until Phase 7 wires a replacement signal.
+    const inflationMult = 1;
     const baseVal = Number(row.base_cost_per_capita || 0);
     // Funding article economics are computed and stored in $M to match formatCurrency.
     if ((row.scaling_type || 'population') === 'gdp') {

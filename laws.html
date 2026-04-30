@@ -440,7 +440,7 @@ import { formatStatName, formatMinorSector } from './js/game/political-actions.j
 import { MAJOR_SECTORS, RAW_SCALING_DIVISORS, checkSovereigntyConstraints } from './js/game/diplomacy-constants.js';
 import { getTariffDampener } from './js/game/trade-constants.js';
 import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidential.js';
-import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier } from './js/game/budget.js';
+import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
 import { getValidNewRates, computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_STEP_PP, TAX_KEY_LABELS, TAX_EFFECT_LABELS } from './js/game/tax-articles.js';
@@ -1841,7 +1841,9 @@ function _dollarsToMillions(amount) {
 function _computeInstitutionBaseCost(instId) {
     const cfg = (window._instConfig || []).find(i => i.id === instId);
     if (!cfg || !currentNation) return 0;
-    const inflationMult = getInflationMultiplier(currentNation.inflation);
+    // Inflation column was removed in the alpha stats refactor; cost
+    // multiplier is fixed at 1 until Phase 7 wires a replacement signal.
+    const inflationMult = 1;
     const baseVal = Number(cfg.base_cost_per_capita || 0);
     // Funding article economics are computed and stored in $M to match bill rendering logic.
     if ((cfg.scaling_type || 'population') === 'gdp') {
@@ -4687,16 +4689,12 @@ function updateDefaultPreview() {
         </div>
         <div class="default-preview-grid">`;
 
+    // Stat preview shrunk in the alpha stats refactor: only stats that
+    // remain in the 19-column schema are listed here. The sovereign-
+    // default engine itself is rewritten in Phase 7 — at that point new
+    // deltas (control / authority / power / etc.) get plumbed in.
     const stats = [
-        ['Credit', preview.statChanges.credit, false],
-        ['Currency', preview.statChanges.currency_strength, false],
-        ['Foreign Inv.', preview.statChanges.foreign_investment, false],
-        ['Intl. Rep.', preview.statChanges.international_reputation, false],
-        ['Interest Rates', preview.statChanges.interest_rates, true],
-        ['Inflation', preview.statChanges.inflation, true],
-        ['Trade Balance', preview.statChanges.trade_balance, false],
-        ['Standard of Living', preview.statChanges.standard_of_living, false],
-        ['Happiness', preview.statChanges.happiness, false]
+        ['Standard of Living', preview.statChanges.standard_of_living, false]
     ];
 
     for (const [label, stat, inverse] of stats) {
@@ -4714,7 +4712,7 @@ function updateDefaultPreview() {
             ${preview.austerityDiscount > 0 ? `<span style="color:var(--green);">Austerity discount: -${Math.round(preview.austerityDiscount * 100)}%</span>` : ''}
         </div>
         <div style="font-size:0.7rem;color:var(--orange);margin-top:8px;">
-            ⚠ Triggers Sovereign Default Crisis (min ${preview.crisisMinDuration} ticks). Credit capped at ${preview.creditCeiling}, Foreign Investment at ${preview.foreignInvCeiling}. Requires 2/3 supermajority to pass. Goes directly to floor vote (${SOVEREIGN_DEFAULT_CONFIG.VOTING_TICKS} ticks).
+            ⚠ Triggers Sovereign Default Crisis (min ${preview.crisisMinDuration} ticks). Requires 2/3 supermajority to pass. Goes directly to floor vote (${SOVEREIGN_DEFAULT_CONFIG.VOTING_TICKS} ticks).
         </div>
     </div>`;
 
@@ -4824,7 +4822,14 @@ async function submitDefaultResolution() {
         });
         if (resError) throw resError;
 
-        // Apply filing market reactions (immediate)
+        // Apply filing market reactions (immediate).
+        // PHASE 7 TODO: currency_strength and foreign_investment columns
+        // are scheduled for removal. The sovereign-default model needs
+        // to be rewritten against the 19-column schema (likely power /
+        // industry as the closest analogues for "international standing"
+        // and "investment dries up"). Leaving the writes intact for
+        // now; once Phase 9 drops the columns, this UPDATE will fail
+        // 42703 — that's the forcing function for the redesign.
         const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
         await _supabase.from('nations').update({
             currency_strength: clamp(Number(currentNation.currency_strength ?? 50), cfg.FILING_CURRENCY_HIT),
