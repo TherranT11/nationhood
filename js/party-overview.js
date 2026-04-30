@@ -473,11 +473,14 @@ function renderStrongholdsSection(o, faction, partyColor) {
             let bodyHtml;
             if (p.id === myFactionId) {
                 const cells = (o.mySectorContributions || []).map(s => {
-                    const pop = Math.round(Number(s.popularity) || 0);
-                    const popColor = pop >= 50 ? 'var(--green)' : pop >= 25 ? 'var(--amber)' : pop > 0 ? 'var(--text-secondary)' : 'var(--text-dim)';
+                    // Storage is integer tenths (0-100); display matches the
+                    // 0-10 scale used by the admin editor and diagnostics.
+                    const popTenths = Math.round(Number(s.popularity) || 0);
+                    const popDisplay = (popTenths / 10).toFixed(1);
+                    const popColor = popTenths >= 50 ? 'var(--green)' : popTenths >= 25 ? 'var(--amber)' : popTenths > 0 ? 'var(--text-secondary)' : 'var(--text-dim)';
                     return `<div class="po-stronghold-cell" style="border-color:${chipColor}44;background:${chipColor}08;">
                         <span class="po-stronghold-cell-label">${esc(s.name)}</span>
-                        <span class="po-stronghold-cell-value" style="color:${popColor};">${pop}</span>
+                        <span class="po-stronghold-cell-value" style="color:${popColor};">${popDisplay}</span>
                     </div>`;
                 }).join('');
                 bodyHtml = cells.length > 0
