@@ -335,7 +335,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         const { data: lastElection } = await _supabase.from('elections').select('election_tick').eq('nation_id', nationId).eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).maybeSingle();
         document.getElementById('election-info-gov-type').textContent = getCanonicalGovernmentType(selectedElectionNation);
         document.getElementById('election-info-seats').textContent = selectedElectionNation.total_seats || 120;
-        document.getElementById('election-info-voters').textContent = (selectedElectionNation.eligible_voters || 0).toLocaleString();
+        document.getElementById('election-info-voters').textContent = Math.round((selectedElectionNation.population || 0) * 0.65).toLocaleString();
         document.getElementById('election-info-parties').textContent = partyCount || 0;
         document.getElementById('election-info-last').textContent = lastElection ? `Tick ${lastElection.election_tick}` : 'Never';
 
@@ -1517,7 +1517,10 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         // Nation-level axis sliders + eligible voters
         const nationUpdate = {};
         VOTER_AXES.forEach(a => { nationUpdate[a.column] = currentAxes[a.column]; });
-        nationUpdate.eligible_voters = parseInt(document.getElementById('voter-eligible-input').value) || 0;
+        // Phase 9b: eligible_voters dropped from schema; derived from
+        // population at read time (elections.js getEligibleVoters).
+        // The voter-eligible-input control in the admin panel is now
+        // display-only — its value is ignored on save.
 
         // Electorate profile: ideo means + vars
         const profileUpdate = {};
@@ -1546,7 +1549,6 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 savedMeans[a.meanCol] = currentMeans[a.meanCol];
                 savedVars[a.varCol] = currentVars[a.varCol];
             });
-            voterNationData.eligible_voters = nationUpdate.eligible_voters;
             statusEl.textContent = '✅ Saved axes, means, and variances!';
             statusEl.style.color = '#5cb85c';
             setTimeout(() => { statusEl.textContent = ''; }, 3000);
@@ -1585,7 +1587,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     // ---- Load voter nations dropdown ----
     async function loadVoterNations() {
         try {
-            const { data } = await _supabase.from('nations').select('id, name, population, eligible_voters').order('name');
+            const { data } = await _supabase.from('nations').select('id, name, population').order('name');
             const select = document.getElementById('voter-nation-select');
             select.innerHTML = '<option value="">-- Choose a nation --</option>';
             (data || []).forEach(n => {
@@ -1629,8 +1631,15 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         });
 
         document.getElementById('voter-pop-display').textContent = (nation.population || 0).toLocaleString();
-        document.getElementById('voter-eligible-input').value = nation.eligible_voters || 0;
-        document.getElementById('voter-eligible-input').max = nation.population || 0;
+        // Phase 9b: eligible_voters derived from population × 0.65; the
+        // input is rendered for visual continuity but no longer round-trips.
+        const derivedEligible = Math.round((nation.population || 0) * 0.65);
+        const eligibleInput = document.getElementById('voter-eligible-input');
+        if (eligibleInput) {
+            eligibleInput.value = derivedEligible;
+            eligibleInput.max = nation.population || 0;
+            eligibleInput.disabled = true;
+        }
         updateEligiblePct();
 
         renderIdeologySliders();
@@ -3209,13 +3218,13 @@ window.toggleScalingType = toggleScalingType;
 
 // ==================== STAT CONNECTOR ====================
 
-// Phase 9: alpha-23 stat menu plus the two non-stat metadata columns
-// (population, eligible_voters) that stat connectors can target.
+// Phase 9b: alpha-23 stat menu plus the population metadata column
+// (eligible_voters dropped — derived from population × 0.65).
 const SC_STAT_CATEGORIES = {
     'Fiscal': ['budget', 'debt', 'gdp_growth', 'income_tax', 'corporate_tax'],
     'Governance': ['control', 'public_approval', 'crown_authority', 'corruption'],
     'Stability': ['unrest', 'crime'],
-    'Population': ['population', 'eligible_voters', 'immigration'],
+    'Population': ['population', 'immigration'],
     'Wellbeing': ['health', 'education', 'standard_of_living', 'cost_of_living'],
     'Productive base': ['infrastructure', 'industry', 'farmland', 'service_sector', 'workforce', 'energy'],
     'International': ['power'],
@@ -4801,13 +4810,13 @@ window.deleteIssue = deleteIssue;
 // Changes are written to the seed_stats JSONB column, which the
 // shard reset function uses to restore nation state.
 
-// Phase 9: alpha-23 stat menu plus the two non-stat metadata columns
-// (population, eligible_voters) that admin can seed.
+// Phase 9b: alpha-23 stat menu plus the population metadata column
+// (eligible_voters dropped — derived from population × 0.65).
 const SEED_STAT_CATEGORIES = {
     'Fiscal': ['budget', 'debt', 'gdp_growth', 'income_tax', 'corporate_tax'],
     'Governance': ['control', 'public_approval', 'crown_authority', 'corruption'],
     'Stability': ['unrest', 'crime'],
-    'Population': ['population', 'eligible_voters', 'immigration'],
+    'Population': ['population', 'immigration'],
     'Wellbeing': ['health', 'education', 'standard_of_living', 'cost_of_living'],
     'Productive base': ['infrastructure', 'industry', 'farmland', 'service_sector', 'workforce', 'energy'],
     'International': ['power'],
@@ -4815,7 +4824,7 @@ const SEED_STAT_CATEGORIES = {
 };
 
 // Stats stored as raw values (not 0-100 scores)
-const SEED_RAW_STATS = new Set(['debt', 'budget', 'population', 'eligible_voters']);
+const SEED_RAW_STATS = new Set(['debt', 'budget', 'population']);
 // Schema defaults — used to flag stats that were never explicitly set
 const SEED_SCHEMA_DEFAULTS = {
     control: 50, public_approval: 50, crown_authority: 50, corruption: 50,

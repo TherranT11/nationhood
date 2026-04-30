@@ -1302,66 +1302,6 @@ export function showLoading(containerId = 'content-area') {
 }
 
 
-// ===== POPULATION GROWTH CALCULATION =====
-//
-// population_growth is a standalone 0-100 stat where:
-//   0   = max population decline (-1% per tick)
-//   50  = equilibrium (no change)
-//   100 = max population growth  (+1% per tick)
-//
-// Driven by policy effects and stat decay directly.
-// No longer derived from birth_rate / death_rate.
-
-export function calculatePopulationGrowth(nation) {
-    return Math.round(Math.max(0, Math.min(100, Number(nation.population_growth ?? 50))) * 10) / 10;
-}
-
-export function calculatePopulationChange(population, growthScore, maxRate = 0.01) {
-    const monthlyRate = ((growthScore - 50) / 50) * maxRate;
-    return Math.round(population * monthlyRate);
-}
-
-export function applyPopulationGrowth(nation) {
-    const growthScore = calculatePopulationGrowth(nation);
-    const popChange = calculatePopulationChange(nation.population, growthScore);
-    const newPopulation = Math.max(0, nation.population + popChange);
-
-    const ideologyKeys = [
-        'progressive_voters', 'liberal_voters', 'moderate_voters',
-        'conservative_voters', 'nationalist_voters'
-    ];
-
-    let totalVoters = 0;
-    const currentVoters = {};
-    for (const key of ideologyKeys) {
-        const value = nation[key] ?? 0;
-        currentVoters[key] = value;
-        totalVoters += value;
-    }
-
-    const updatedVoters = {};
-    for (const key of ideologyKeys) {
-        if (totalVoters > 0) {
-            const share = currentVoters[key] / totalVoters;
-            updatedVoters[key] = Math.round(currentVoters[key] + (popChange * share));
-        } else {
-            updatedVoters[key] = currentVoters[key];
-        }
-    }
-
-    const voterRatio = nation.population > 0 ? (nation.eligible_voters / nation.population) : 0;
-    const newEligibleVoters = Math.round(newPopulation * voterRatio);
-
-    return {
-        population_growth: growthScore,
-        population: newPopulation,
-        eligible_voters: newEligibleVoters,
-        population_change: popChange,
-        ...updatedVoters
-    };
-}
-
-
 // ===== THEME (LIGHT / DARK) =====
 
 export function toggleTheme() {

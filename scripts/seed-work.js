@@ -108,7 +108,7 @@ async function main() {
     const nations = [
         {
             name: 'Valdoria', government_type: 'Parliamentary', total_seats: 120, max_parties: 8,
-            capital: 'Valdoris', shard_id: shardId, population: 8200000, eligible_voters: 5330000,
+            capital: 'Valdoris', shard_id: shardId, population: 8200000,
             gdp: 485000000000, debt: 25000000000, stability: 72, legitimacy: 78, corruption: 15,
             gdp_growth: 52, inflation: 32, unemployment: 22, happiness: 65, civil_unrest: 12,
             press_freedom: 88, freedom_index: 85, efficiency: 62, polarization: 35,
@@ -119,7 +119,7 @@ async function main() {
         },
         {
             name: 'Sangreza', government_type: 'Democracy', total_seats: 120, max_parties: 8,
-            capital: 'San Marcos', shard_id: shardId, population: 12500000, eligible_voters: 8125000,
+            capital: 'San Marcos', shard_id: shardId, population: 12500000,
             gdp: 528000000000, debt: 40000000000, stability: 65, legitimacy: 70, corruption: 25,
             gdp_growth: 48, inflation: 38, unemployment: 32, happiness: 55, civil_unrest: 22,
             press_freedom: 72, freedom_index: 70, efficiency: 55, polarization: 48,
@@ -130,7 +130,7 @@ async function main() {
         },
         {
             name: 'Melizea', government_type: 'Parliamentary', total_seats: 120, max_parties: 8,
-            capital: 'Melisar', shard_id: shardId, population: 5800000, eligible_voters: 3770000,
+            capital: 'Melisar', shard_id: shardId, population: 5800000,
             gdp: 95000000000, debt: 95000000000, stability: 58, legitimacy: 42, corruption: 55,
             gdp_growth: 28, inflation: 52, unemployment: 48, happiness: 35, civil_unrest: 38,
             press_freedom: 22, freedom_index: 28, efficiency: 40, polarization: 62,
@@ -141,7 +141,7 @@ async function main() {
         },
         {
             name: 'Palvera', government_type: 'Presidential', total_seats: 120, max_parties: 8,
-            capital: 'Valcosta', shard_id: shardId, population: 6650000, eligible_voters: 4322500,
+            capital: 'Valcosta', shard_id: shardId, population: 6650000,
             gdp: 106000000000, debt: 48000000000, stability: 68, legitimacy: 72, corruption: 20,
             gdp_growth: 40, inflation: 28, unemployment: 48, happiness: 58, civil_unrest: 22,
             press_freedom: 85, freedom_index: 82, efficiency: 48, polarization: 42,
@@ -152,7 +152,7 @@ async function main() {
         },
         {
             name: 'Avelia', government_type: 'Parliamentary', total_seats: 120, max_parties: 8,
-            capital: 'Avelon', shard_id: shardId, population: 9500000, eligible_voters: 6175000,
+            capital: 'Avelon', shard_id: shardId, population: 9500000,
             gdp: 358000000000, debt: 10000000000, stability: 75, legitimacy: 80, corruption: 10,
             gdp_growth: 55, inflation: 25, unemployment: 18, happiness: 72, civil_unrest: 8,
             press_freedom: 92, freedom_index: 90, efficiency: 70, polarization: 25,
@@ -163,7 +163,7 @@ async function main() {
         },
         {
             name: 'Montequilla', government_type: 'Parliamentary', total_seats: 120, max_parties: 8,
-            capital: 'Montecara', shard_id: shardId, population: 4200000, eligible_voters: 2730000,
+            capital: 'Montecara', shard_id: shardId, population: 4200000,
             gdp: 109000000000, debt: 55000000000, stability: 32, legitimacy: 35, corruption: 45,
             gdp_growth: 18, inflation: 58, unemployment: 55, happiness: 28, civil_unrest: 62,
             press_freedom: 55, freedom_index: 52, efficiency: 28, polarization: 72,

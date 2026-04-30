@@ -15086,10 +15086,10 @@ async function processPartialElection(supabase, nation, election, currentTick) {
         await supabase.from('factions').update({ seats: newTotal }).eq('id', f.id);
     }
 
-    // 5. Scale TWP shares to realistic vote counts using the nation's
-    //    eligible_voters and sector-weighted turnout. Same helper the
-    //    full-election and presidential paths use.
-    const eligibleForScale = Number(nation.eligible_voters) || 0;
+    // 5. Scale TWP shares to realistic vote counts using derived eligible
+    //    voters (population × VOTING_AGE_SHARE) and sector-weighted
+    //    turnout. Same helper the full-election and presidential paths use.
+    const eligibleForScale = getEligibleVoters(nation);
     const partialScaling = (eligibleForScale > 0)
         ? computeTwpVoteScaling(twpByFaction, sectorList, eligibleForScale)
         : null;
@@ -15594,7 +15594,7 @@ async function runSectorPresidentialElectionRound(supabase, nationId) {
     // Fetch nation, candidates (joined to factions), sectors, popularity, shard tick
     const [nationRes, candRes, sectorsRes, shardRes] = await Promise.all([
         supabase.from('nations')
-            .select('id, name, eligible_voters')
+            .select('id, name, population')
             .eq('id', nationId)
             .single(),
         supabase.from('pm_candidates')
@@ -15616,7 +15616,7 @@ async function runSectorPresidentialElectionRound(supabase, nationId) {
     const nation = nationRes.data;
     if (!nation) throw new Error(`Nation not found: ${nationId}`);
 
-    const eligible = Number(nation.eligible_voters) || 0;
+    const eligible = getEligibleVoters(nation);
     const sectors  = sectorsRes.data || [];
     const tick     = shardRes.data?.current_tick ?? 0;
 
@@ -15761,19 +15761,30 @@ function layerBonusesIntoPopularity(popularity, sectors, bonuses) {
 }
 
 /**
- * Scale TWP shares to a realistic vote count using the nation's eligible
- * voters and a sector-weighted turnout. Single source of truth for the
- * TWP→votes display math, mirroring the model already in
- * runSectorPresidentialElectionRound:
+ * Voting-age share of population. The legacy `nation.eligible_voters`
+ * column was just `population × 0.65`; Phase 9b dropped the column and
+ * derives it at read time so the engine has one fewer thing to keep in
+ * sync.
+ */
+const VOTING_AGE_SHARE = 0.65;
+
+/**
+ * Derive the eligible-voter count from population. Returns 0 if
+ * population is missing.
+ */
+function getEligibleVoters(nation) {
+    return Math.round((Number(nation?.population) || 0) * VOTING_AGE_SHARE);
+}
+
+/**
+ * Scale TWP shares to a realistic vote count using the nation's
+ * (derived) eligible voters and a sector-weighted turnout. Single
+ * source of truth for the TWP→votes display math, mirroring the model
+ * already in runSectorPresidentialElectionRound:
  *
  *   sectorWeightedTurnout = Σ(weight × base_turnout) / Σ(weight)
  *   totalVotesCast        = round(eligible × sectorWeightedTurnout)
  *   votes[party]          = round((twp[party] / totalTwp) × totalVotesCast)
- *
- * Without this, sector-engine elections reported the rounded sum of TWP
- * (small two-digit numbers like 97) as the actual vote count and the
- * turnout percentage as null, making elections look like a handful of
- * voters even in nations with millions of eligible voters.
  *
  * Falls back to a neutral 0.65 turnout if sectors are missing or carry
  * no weight, so partial-data nations still get a defensible display.
@@ -15834,10 +15845,10 @@ function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFac
     let totalTwp = 0;
     for (const f of factions) totalTwp += Number(twpByFaction[f.id]) || 0;
 
-    // Derive realistic vote counts from TWP shares + nation's eligible voters.
-    // Falls through to TWP-as-votes if nation/eligible isn't supplied (legacy
-    // callers), so behavior is monotonically additive.
-    const eligible = Number(nation?.eligible_voters) || 0;
+    // Derive realistic vote counts from TWP shares + derived eligible
+    // voters (population × VOTING_AGE_SHARE). Falls through to
+    // TWP-as-votes if nation isn't supplied (legacy callers).
+    const eligible = getEligibleVoters(nation);
     const scaling = (eligible > 0)
         ? computeTwpVoteScaling(twpByFaction, sectors, eligible)
         : null;
@@ -15891,7 +15902,7 @@ function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFac
         total_votes_cast: scaling ? scaling.totalVotesCast : Math.round(totalTwp),
         total_abstentions: scaling ? scaling.abstentions : 0,
         turnout_pct: scaling ? scaling.turnoutPct : null,
-        eligible_voters: Number(nation?.eligible_voters) || 0,
+        eligible_voters: getEligibleVoters(nation),
         // Phase 3 additions.
         sector_breakdown: {
             independent_seats: indep.next,
@@ -23734,14 +23745,12 @@ async function processOngoingCosts(supabase, nation, currentTick) {
 }
 
 // All columns that nations_history tracks (must match the DB table schema).
-// Phase 9 trimmed NATION_STAT_COLUMNS to alpha-23, but the snapshot loop
-// also tracks two non-stat metadata columns (population, eligible_voters)
-// that nations_history has carried since launch.
+// Phase 9 trimmed NATION_STAT_COLUMNS to alpha-23. Phase 9b dropped
+// eligible_voters (derived from population × 0.65 at read time).
 const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
     'gov_approval',
     'population',
-    'eligible_voters',
 ];
 
 async function snapshotNationHistory(supabase, nation, currentTick) {
@@ -33065,64 +33074,37 @@ async function processTariffRelationsPenalty(supabase, nation) {
 
 // ==================== POPULATION GROWTH ====================
 //
-// population_growth is a standalone 0-100 stat driven by policy effects and decay.
+// Phase 9 dropped population_growth, emigration, academic_immigration,
+// illegal_immigration, and eligible_voters from the schema. Population
+// change is now driven directly off the alpha-23 `immigration` stat
+// (0-100, baseline 50):
 //
-// The final population_growth (0-100) drives actual population change:
-//   0   → -1% per tick (max decline)
-//   50  → 0% per tick (equilibrium)
-//   100 → +1% per tick (max growth)
+//   immigration = 0   →  −0.5% population per tick
+//   immigration = 50  →  no change
+//   immigration = 100 →  +0.5% population per tick
 //
-// Immigration inputs (per tick nudge to population_growth):
-//   immigration:          ±0.005 per point from 50 (max ±0.25)
-//   emigration:           ±0.005 per point from 50, inverted (max ±0.25)
-//   academic_immigration: ±0.003 per point from 50 (max ±0.15)
-//   illegal_immigration:  ±0.002 per point from 50 (max ±0.10)
+// Eligible voters is no longer stored — derived as population × 0.65
+// at read time (elections.js getEligibleVoters).
 
 async function processPopulationGrowth(supabase: any, nation: any) {
-    let currentPG = Number(nation.population_growth ?? 50);
-
-    // Immigration/emigration nudges — each stat is 0-100, baseline 50
-    const imm     = Number(nation.immigration ?? 50);
-    const emig    = Number(nation.emigration ?? 50);
-    const acadImm = Number(nation.academic_immigration ?? 50);
-    const illegImm = Number(nation.illegal_immigration ?? 50);
-
-    const immNudge = (imm - 50) * 0.005        // high immigration → growth
-                   - (emig - 50) * 0.005        // high emigration → decline
-                   + (acadImm - 50) * 0.003     // academic immigration → growth (smaller)
-                   + (illegImm - 50) * 0.002;   // illegal immigration → growth (smallest)
-
-    currentPG += immNudge;
-    const finalPG = Math.round(Math.max(0, Math.min(100, currentPG)) * 10) / 10;
-
-    // Population change: linear mapping from 0-100 to -1%..+1% per tick
+    const imm = Number(nation.immigration ?? 50);
+    const monthlyRate = ((imm - 50) / 50) * 0.005;
     const population = Number(nation.population ?? 0);
-    const monthlyRate = ((finalPG - 50) / 50) * 0.01;
     const popChange = Math.round(population * monthlyRate);
+    if (popChange === 0) return null;
+
     const newPopulation = Math.max(0, population + popChange);
-
-    // Scale eligible_voters proportionally
-    const eligibleVoters = Number(nation.eligible_voters ?? 0);
-    const voterRatio = population > 0 ? (eligibleVoters / population) : 0;
-    const newEligibleVoters = Math.round(newPopulation * voterRatio);
-
-    const updates: any = {
-        population_growth: finalPG,
-        population: newPopulation,
-        eligible_voters: newEligibleVoters
-    };
-
-    if (finalPG !== currentPG || popChange !== 0) {
-        const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
-        if (error) {
-            console.error(`[processPopulationGrowth] Update failed for ${nation.name}:`, error.message);
-            return null;
-        }
-        Object.assign(nation, updates);
-        console.log(`[processPopulationGrowth] ${nation.name}: pg=${finalPG} pop_change=${popChange > 0 ? '+' : ''}${popChange}`);
+    const { error } = await supabase.from('nations')
+        .update({ population: newPopulation })
+        .eq('id', nation.id);
+    if (error) {
+        console.error(`[processPopulationGrowth] Update failed for ${nation.name}:`, error.message);
+        return null;
     }
+    nation.population = newPopulation;
+    console.log(`[processPopulationGrowth] ${nation.name}: imm=${imm} pop_change=${popChange > 0 ? '+' : ''}${popChange}`);
 
-    return { finalPG, popChange, newPopulation, newEligibleVoters };
+    return { popChange, newPopulation };
 }
 
 
