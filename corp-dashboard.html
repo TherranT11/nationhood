@@ -88,6 +88,26 @@ body.corp-redesign::before {
   border-bottom: 1px solid var(--cr-line);
   margin-bottom: 32px;
 }
+.cr-masthead-date {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  font-family: var(--cr-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cr-text-secondary);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--cr-line);
+}
+.cr-masthead-date strong {
+  color: var(--cr-text-primary);
+  font-weight: 500;
+}
+.cr-masthead-date .cr-date-divider {
+  color: var(--cr-line-bright);
+}
 .cr-masthead-eyebrow {
   font-family: var(--cr-mono);
   font-size: 10px;
@@ -302,6 +322,11 @@ body.corp-redesign::before {
     <!-- MASTHEAD -->
     <div class="cr-masthead">
       <div>
+        <div class="cr-masthead-date" id="cr-masthead-date">
+          <span><strong id="cr-current-date">—</strong></span>
+          <span class="cr-date-divider">·</span>
+          <span>Tick <strong id="cr-current-tick">—</strong></span>
+        </div>
         <div class="cr-masthead-eyebrow" id="cr-sector">— —</div>
         <h1 class="cr-corp-name" id="cr-corp-name">Loading…</h1>
         <div class="cr-corp-meta">
@@ -491,6 +516,12 @@ async function init() {
 }
 
 function renderMasthead() {
+    // Current in-game date + tick at top of masthead.
+    const dateStr = shard?.current_date || tickToDate(shard?.current_tick) || '—';
+    document.getElementById('cr-current-date').textContent = dateStr;
+    document.getElementById('cr-current-tick').textContent =
+        shard?.current_tick != null ? String(shard.current_tick) : '—';
+
     const sector = faction.corp_sector || 'Unspecified Sector';
     document.getElementById('cr-sector').textContent = `— ${sector} —`;
 
