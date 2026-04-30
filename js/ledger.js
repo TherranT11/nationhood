@@ -7,11 +7,11 @@ let _supabase = null;
 let _state = null;
 let _allNations = [];
 let _selectedNationId = null;
-let _activeCategory = 'economy';
+let _activeCategory = 'fiscal';
 let _mode = 'single';
 let _compareIds = [];
 let _rankingStat = 'gdp_growth';
-let _rankingCategory = 'economy';
+let _rankingCategory = 'fiscal';
 let _searchTerm = '';
 
 function esc(str) {
@@ -22,7 +22,7 @@ function esc(str) {
 }
 
 // Stats that should be formatted as currency (large dollar amounts)
-const CURRENCY_STATS = new Set(['gdp', 'debt']);
+const CURRENCY_STATS = new Set(['budget', 'debt']);
 
 // ── Goods / Trade Sector definitions ──
 const GOODS_SECTORS = [
@@ -69,80 +69,47 @@ function isHigherBetter(statId) {
     return null; // neutral
 }
 
+// Phase 9b: alpha-23 stat menu, organized into the 7 groups shared with
+// the admin/policy/crisis stat pickers. Goods is preserved as a custom
+// trade-flow viewer.
 const STAT_CATEGORIES = [
-    { id: 'economy', name: 'Economy', stats: [
-        { id: 'gdp', name: 'GDP' },
-        { id: 'gdp_growth', name: 'GDP Growth' },
+    { id: 'fiscal', name: 'Fiscal', stats: [
+        { id: 'budget', name: 'Budget' },
         { id: 'debt', name: 'Debt' },
-        { id: 'inflation', name: 'Inflation' },
-        { id: 'interest_rates', name: 'Interest Rates' },
-        { id: 'unemployment', name: 'Unemployment' },
-        { id: 'foreign_investment', name: 'Foreign Investment' },
-        { id: 'currency_strength', name: 'Currency Strength' },
-        { id: 'credit', name: 'Credit Rating' },
-        { id: 'manufacturing_output', name: 'Manufacturing Output' },
-        { id: 'service_output', name: 'Service Output' },
-    ]},
-    { id: 'demographics', name: 'Demographics', stats: [
-        { id: 'population', name: 'Population' },
-        { id: 'population_growth', name: 'Population Growth' },
-        { id: 'median_age', name: 'Median Age' },
-        { id: 'urbanization', name: 'Urbanization' },
-        { id: 'eligible_voters', name: 'Eligible Voters' },
-        { id: 'ethnic_diversity', name: 'Ethnic Diversity' },
-        { id: 'immigration', name: 'Immigration' },
-        { id: 'emigration', name: 'Emigration' },
-    ]},
-    { id: 'society', name: 'Society', stats: [
-        { id: 'happiness', name: 'Happiness' },
-        { id: 'standard_of_living', name: 'Standard of Living' },
-        { id: 'social_mobility', name: 'Social Mobility' },
-        { id: 'poverty_rate', name: 'Poverty Rate' },
-        { id: 'income_inequality', name: 'Income Inequality' },
-        { id: 'crime', name: 'Crime' },
-        { id: 'drug_use', name: 'Drug Use' },
+        { id: 'gdp_growth', name: 'GDP Growth' },
+        { id: 'income_tax', name: 'Income Tax' },
+        { id: 'corporate_tax', name: 'Corporate Tax' },
         { id: 'cost_of_living', name: 'Cost of Living' },
-        { id: 'housing_affordability', name: 'Housing Affordability' },
     ]},
     { id: 'governance', name: 'Governance', stats: [
-        { id: 'stability', name: 'Stability' },
-        { id: 'legitimacy', name: 'Legitimacy' },
-        { id: 'efficiency', name: 'Government Efficiency' },
+        { id: 'control', name: 'Control' },
+        { id: 'public_approval', name: 'Public Approval' },
+        { id: 'crown_authority', name: 'Crown Authority' },
         { id: 'corruption', name: 'Corruption' },
-        { id: 'press_freedom', name: 'Press Freedom' },
-        { id: 'judicial_independence', name: 'Judicial Independence' },
-        { id: 'freedom_index', name: 'Freedom Index' },
-        { id: 'polarization', name: 'Polarization' },
     ]},
-    { id: 'security', name: 'Security', stats: [
-        { id: 'terrorism', name: 'Terrorism' },
-        { id: 'political_violence', name: 'Political Violence' },
-        { id: 'civil_unrest', name: 'Civil Unrest' },
-        { id: 'incarceration_rate', name: 'Incarceration Rate' },
+    { id: 'stability', name: 'Stability', stats: [
+        { id: 'unrest', name: 'Unrest' },
+        { id: 'crime', name: 'Crime' },
     ]},
-    { id: 'infrastructure', name: 'Infrastructure', stats: [
-        { id: 'physical_infrastructure', name: 'Physical Infrastructure' },
-        { id: 'digital_infrastructure', name: 'Digital Infrastructure' },
-        { id: 'rail_network', name: 'Rail Network' },
-        { id: 'energy_generation', name: 'Energy Generation' },
-        { id: 'renewable_energy_percentage', name: 'Renewable Energy %' },
-        { id: 'fuel_prices', name: 'Fuel Prices' },
+    { id: 'population', name: 'Population', stats: [
+        { id: 'population', name: 'Population' },
+        { id: 'immigration', name: 'Immigration' },
     ]},
-    { id: 'health_edu', name: 'Health & Education', stats: [
-        { id: 'healthcare_quality', name: 'Healthcare Quality' },
-        { id: 'healthcare_accessibility', name: 'Healthcare Accessibility' },
-        { id: 'beds_per_100k', name: 'Beds per 100k' },
-        { id: 'lifespan', name: 'Lifespan' },
-        { id: 'literacy', name: 'Literacy' },
-        { id: 'higher_education', name: 'Higher Education' },
-        { id: 'education_accessibility', name: 'Education Accessibility' },
+    { id: 'wellbeing', name: 'Wellbeing', stats: [
+        { id: 'health', name: 'Health' },
+        { id: 'education', name: 'Education' },
+        { id: 'standard_of_living', name: 'Standard of Living' },
     ]},
-    { id: 'resources', name: 'Resources', stats: [
-        { id: 'arable_land', name: 'Arable Land' },
-        { id: 'rare_minerals', name: 'Rare Minerals' },
-        { id: 'oil_and_gas', name: 'Oil & Gas' },
-        { id: 'carbon_emissions', name: 'Carbon Emissions' },
-        { id: 'pollution', name: 'Pollution' },
+    { id: 'productive', name: 'Productive Base', stats: [
+        { id: 'infrastructure', name: 'Infrastructure' },
+        { id: 'industry', name: 'Industry' },
+        { id: 'farmland', name: 'Farmland' },
+        { id: 'service_sector', name: 'Service Sector' },
+        { id: 'workforce', name: 'Workforce' },
+        { id: 'energy', name: 'Energy' },
+    ]},
+    { id: 'international', name: 'International', stats: [
+        { id: 'power', name: 'Power' },
     ]},
     { id: 'goods', name: 'Goods', stats: [] }, // rendered via custom trade flow logic
 ];

@@ -1645,10 +1645,10 @@ export async function processPartialElection(supabase, nation, election, current
         await supabase.from('factions').update({ seats: newTotal }).eq('id', f.id);
     }
 
-    // 5. Scale TWP shares to realistic vote counts using the nation's
-    //    eligible_voters and sector-weighted turnout. Same helper the
-    //    full-election and presidential paths use.
-    const eligibleForScale = Number(nation.eligible_voters) || 0;
+    // 5. Scale TWP shares to realistic vote counts using derived eligible
+    //    voters (population × VOTING_AGE_SHARE) and sector-weighted
+    //    turnout. Same helper the full-election and presidential paths use.
+    const eligibleForScale = getEligibleVoters(nation);
     const partialScaling = (eligibleForScale > 0)
         ? computeTwpVoteScaling(twpByFaction, sectorList, eligibleForScale)
         : null;
@@ -2153,7 +2153,7 @@ export async function runSectorPresidentialElectionRound(supabase, nationId) {
     // Fetch nation, candidates (joined to factions), sectors, popularity, shard tick
     const [nationRes, candRes, sectorsRes, shardRes] = await Promise.all([
         supabase.from('nations')
-            .select('id, name, eligible_voters')
+            .select('id, name, population')
             .eq('id', nationId)
             .single(),
         supabase.from('pm_candidates')
@@ -2175,7 +2175,7 @@ export async function runSectorPresidentialElectionRound(supabase, nationId) {
     const nation = nationRes.data;
     if (!nation) throw new Error(`Nation not found: ${nationId}`);
 
-    const eligible = Number(nation.eligible_voters) || 0;
+    const eligible = getEligibleVoters(nation);
     const sectors  = sectorsRes.data || [];
     const tick     = shardRes.data?.current_tick ?? 0;
 
@@ -2320,19 +2320,30 @@ function layerBonusesIntoPopularity(popularity, sectors, bonuses) {
 }
 
 /**
- * Scale TWP shares to a realistic vote count using the nation's eligible
- * voters and a sector-weighted turnout. Single source of truth for the
- * TWP→votes display math, mirroring the model already in
- * runSectorPresidentialElectionRound:
+ * Voting-age share of population. The legacy `nation.eligible_voters`
+ * column was just `population × 0.65`; Phase 9b dropped the column and
+ * derives it at read time so the engine has one fewer thing to keep in
+ * sync.
+ */
+export const VOTING_AGE_SHARE = 0.65;
+
+/**
+ * Derive the eligible-voter count from population. Returns 0 if
+ * population is missing.
+ */
+export function getEligibleVoters(nation) {
+    return Math.round((Number(nation?.population) || 0) * VOTING_AGE_SHARE);
+}
+
+/**
+ * Scale TWP shares to a realistic vote count using the nation's
+ * (derived) eligible voters and a sector-weighted turnout. Single
+ * source of truth for the TWP→votes display math, mirroring the model
+ * already in runSectorPresidentialElectionRound:
  *
  *   sectorWeightedTurnout = Σ(weight × base_turnout) / Σ(weight)
  *   totalVotesCast        = round(eligible × sectorWeightedTurnout)
  *   votes[party]          = round((twp[party] / totalTwp) × totalVotesCast)
- *
- * Without this, sector-engine elections reported the rounded sum of TWP
- * (small two-digit numbers like 97) as the actual vote count and the
- * turnout percentage as null, making elections look like a handful of
- * voters even in nations with millions of eligible voters.
  *
  * Falls back to a neutral 0.65 turnout if sectors are missing or carry
  * no weight, so partial-data nations still get a defensible display.
@@ -2393,10 +2404,10 @@ function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFac
     let totalTwp = 0;
     for (const f of factions) totalTwp += Number(twpByFaction[f.id]) || 0;
 
-    // Derive realistic vote counts from TWP shares + nation's eligible voters.
-    // Falls through to TWP-as-votes if nation/eligible isn't supplied (legacy
-    // callers), so behavior is monotonically additive.
-    const eligible = Number(nation?.eligible_voters) || 0;
+    // Derive realistic vote counts from TWP shares + derived eligible
+    // voters (population × VOTING_AGE_SHARE). Falls through to
+    // TWP-as-votes if nation isn't supplied (legacy callers).
+    const eligible = getEligibleVoters(nation);
     const scaling = (eligible > 0)
         ? computeTwpVoteScaling(twpByFaction, sectors, eligible)
         : null;
@@ -2450,7 +2461,7 @@ function buildSectorElectionResult({ factions, seats, twpByFaction, contribByFac
         total_votes_cast: scaling ? scaling.totalVotesCast : Math.round(totalTwp),
         total_abstentions: scaling ? scaling.abstentions : 0,
         turnout_pct: scaling ? scaling.turnoutPct : null,
-        eligible_voters: Number(nation?.eligible_voters) || 0,
+        eligible_voters: getEligibleVoters(nation),
         // Phase 3 additions.
         sector_breakdown: {
             independent_seats: indep.next,

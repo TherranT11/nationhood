@@ -153,9 +153,9 @@ async function hashPassword(pw) {
 // Phase 2: ideology authoring removed; existing policy ideology data is
 // preserved on edit but no longer editable through this UI.
 
-// Phase 9: schema is the alpha-23 stat menu plus population/eligible_voters
-// metadata. The legacy raw-scaling helpers (gdp/debt as raw dollar values)
-// are retired — debt is still numeric on the alpha schema but not raw $.
+// Phase 9b: schema is the alpha-23 stat menu plus the population
+// metadata column. eligible_voters dropped — derived at read time
+// from population × 0.65 (elections.js getEligibleVoters).
 const RAW_SCALING_INFO = {
     population: { divisor: 1_000_000, unit: 'per million people', example: '10M', exampleVal: 10_000_000 }
 };
@@ -164,7 +164,7 @@ const STAT_GROUPS = [
     { label: '💰 Fiscal', stats: ['budget','debt','gdp_growth','income_tax','corporate_tax'] },
     { label: '🏛️ Governance', stats: ['control','public_approval','crown_authority','corruption'] },
     { label: '🔥 Stability', stats: ['unrest','crime'] },
-    { label: '👥 Population', stats: ['population','eligible_voters','immigration'] },
+    { label: '👥 Population', stats: ['population','immigration'] },
     { label: '🏥 Wellbeing', stats: ['health','education','standard_of_living','cost_of_living'] },
     { label: '🏗️ Productive base', stats: ['infrastructure','industry','farmland','service_sector','workforce','energy'] },
     { label: '🌐 International', stats: ['power'] }

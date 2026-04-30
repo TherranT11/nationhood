@@ -37,8 +37,8 @@ var mcEditorEffects = [];
 var mcDeletedEffectIds = [];
 
 // ==================== CONSTANTS ====================
-// Phase 9: alpha-23 stat menu plus the two non-stat metadata columns
-// (population, eligible_voters) that crisis triggers/effects can target.
+// Phase 9b: alpha-23 stat menu plus the population metadata column
+// (eligible_voters dropped — derived from population × 0.65).
 var NATION_STATS = [
     // Fiscal
     { key: 'budget', label: 'Budget' },{ key: 'debt', label: 'Debt' },
@@ -50,7 +50,7 @@ var NATION_STATS = [
     // Stability
     { key: 'unrest', label: 'Unrest' },{ key: 'crime', label: 'Crime' },
     // Population
-    { key: 'population', label: 'Population' },{ key: 'eligible_voters', label: 'Eligible Voters' },
+    { key: 'population', label: 'Population' },
     { key: 'immigration', label: 'Immigration' },
     // Wellbeing
     { key: 'health', label: 'Health' },{ key: 'education', label: 'Education' },

@@ -176,64 +176,37 @@ async function processTariffRelationsPenalty(supabase, nation) {
 
 // ==================== POPULATION GROWTH ====================
 //
-// population_growth is a standalone 0-100 stat driven by policy effects and decay.
+// Phase 9 dropped population_growth, emigration, academic_immigration,
+// illegal_immigration, and eligible_voters from the schema. Population
+// change is now driven directly off the alpha-23 `immigration` stat
+// (0-100, baseline 50):
 //
-// The final population_growth (0-100) drives actual population change:
-//   0   → -1% per tick (max decline)
-//   50  → 0% per tick (equilibrium)
-//   100 → +1% per tick (max growth)
+//   immigration = 0   →  −0.5% population per tick
+//   immigration = 50  →  no change
+//   immigration = 100 →  +0.5% population per tick
 //
-// Immigration inputs (per tick nudge to population_growth):
-//   immigration:          ±0.005 per point from 50 (max ±0.25)
-//   emigration:           ±0.005 per point from 50, inverted (max ±0.25)
-//   academic_immigration: ±0.003 per point from 50 (max ±0.15)
-//   illegal_immigration:  ±0.002 per point from 50 (max ±0.10)
+// Eligible voters is no longer stored — derived as population × 0.65
+// at read time (elections.js getEligibleVoters).
 
 async function processPopulationGrowth(supabase: any, nation: any) {
-    let currentPG = Number(nation.population_growth ?? 50);
-
-    // Immigration/emigration nudges — each stat is 0-100, baseline 50
-    const imm     = Number(nation.immigration ?? 50);
-    const emig    = Number(nation.emigration ?? 50);
-    const acadImm = Number(nation.academic_immigration ?? 50);
-    const illegImm = Number(nation.illegal_immigration ?? 50);
-
-    const immNudge = (imm - 50) * 0.005        // high immigration → growth
-                   - (emig - 50) * 0.005        // high emigration → decline
-                   + (acadImm - 50) * 0.003     // academic immigration → growth (smaller)
-                   + (illegImm - 50) * 0.002;   // illegal immigration → growth (smallest)
-
-    currentPG += immNudge;
-    const finalPG = Math.round(Math.max(0, Math.min(100, currentPG)) * 10) / 10;
-
-    // Population change: linear mapping from 0-100 to -1%..+1% per tick
+    const imm = Number(nation.immigration ?? 50);
+    const monthlyRate = ((imm - 50) / 50) * 0.005;
     const population = Number(nation.population ?? 0);
-    const monthlyRate = ((finalPG - 50) / 50) * 0.01;
     const popChange = Math.round(population * monthlyRate);
+    if (popChange === 0) return null;
+
     const newPopulation = Math.max(0, population + popChange);
-
-    // Scale eligible_voters proportionally
-    const eligibleVoters = Number(nation.eligible_voters ?? 0);
-    const voterRatio = population > 0 ? (eligibleVoters / population) : 0;
-    const newEligibleVoters = Math.round(newPopulation * voterRatio);
-
-    const updates: any = {
-        population_growth: finalPG,
-        population: newPopulation,
-        eligible_voters: newEligibleVoters
-    };
-
-    if (finalPG !== currentPG || popChange !== 0) {
-        const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
-        if (error) {
-            console.error(`[processPopulationGrowth] Update failed for ${nation.name}:`, error.message);
-            return null;
-        }
-        Object.assign(nation, updates);
-        console.log(`[processPopulationGrowth] ${nation.name}: pg=${finalPG} pop_change=${popChange > 0 ? '+' : ''}${popChange}`);
+    const { error } = await supabase.from('nations')
+        .update({ population: newPopulation })
+        .eq('id', nation.id);
+    if (error) {
+        console.error(`[processPopulationGrowth] Update failed for ${nation.name}:`, error.message);
+        return null;
     }
+    nation.population = newPopulation;
+    console.log(`[processPopulationGrowth] ${nation.name}: imm=${imm} pop_change=${popChange > 0 ? '+' : ''}${popChange}`);
 
-    return { finalPG, popChange, newPopulation, newEligibleVoters };
+    return { popChange, newPopulation };
 }
 
 

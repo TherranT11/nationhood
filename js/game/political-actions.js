@@ -2018,14 +2018,12 @@ export async function processOngoingCosts(supabase, nation, currentTick) {
 }
 
 // All columns that nations_history tracks (must match the DB table schema).
-// Phase 9 trimmed NATION_STAT_COLUMNS to alpha-23, but the snapshot loop
-// also tracks two non-stat metadata columns (population, eligible_voters)
-// that nations_history has carried since launch.
+// Phase 9 trimmed NATION_STAT_COLUMNS to alpha-23. Phase 9b dropped
+// eligible_voters (derived from population × 0.65 at read time).
 export const HISTORY_SNAPSHOT_COLUMNS = [
     ...NATION_STAT_COLUMNS,
     'gov_approval',
     'population',
-    'eligible_voters',
 ];
 
 export async function snapshotNationHistory(supabase, nation, currentTick) {
