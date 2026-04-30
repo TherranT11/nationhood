@@ -97,14 +97,17 @@ const GAME_CONFIG = {
     IMPEACHMENT_MOTION_COOLDOWN_TICKS: 10, // cooldown after failed motion
     IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS: 20, // cooldown after acquittal
     IMPEACHMENT_EMERGENCY_ELECTION_TICKS: 6,  // ticks until emergency presidential election
-    // Charge precondition thresholds
-    IMPEACHMENT_CORRUPTION_THRESHOLD: 40,     // corruption stat >= this for corruption charge
+    // Charge precondition thresholds.
+    // Alpha refactor: IMPEACHMENT_CORRUPTION_THRESHOLD and the two
+    // IMPEACHMENT_CRIMINAL_* thresholds were removed by Phase 3a's
+    // impeachment audit — corruption + judicial_independence columns
+    // are deleted, and buildImpeachmentCharges no longer emits
+    // 'corruption' or 'criminal_conduct' charges. Leaving the
+    // remaining (still-live) thresholds in place.
     IMPEACHMENT_INCOMPETENCE_THRESHOLD: 25,   // gov_approval <= this for incompetence charge
     IMPEACHMENT_INCOMPETENCE_TICKS: 6,        // consecutive ticks below threshold
     IMPEACHMENT_VETO_ABUSE_COUNT: 2,          // vetoed bills with >66% support
     IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD: 4, // overreach_count >= this for abuse of power
-    IMPEACHMENT_CRIMINAL_CORRUPTION_THRESHOLD: 30,  // corruption >= this AND judicial_independence <= threshold
-    IMPEACHMENT_CRIMINAL_JUDICIAL_THRESHOLD: 35,    // judicial_independence <= this AND corruption >= threshold
 
     // (Autocracy v2 action constants removed — Phase 0)
     NEW_FACTION_MIN_SEATS: 8,
