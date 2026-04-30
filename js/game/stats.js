@@ -107,6 +107,11 @@
  *   service_output             Services & finance sector output (0-100)
  *   housing_affordability      Housing accessibility (0-100, higher is better)
  */
+// Alpha stats refactor — Phase 2 added 14 net-new columns; Phase 4 (this
+// file) routes legacy keys to them via STAT_KEY_ALIASES. Old columns stay
+// in the whitelist during the dual-stat window so any read path that
+// hasn't cut over yet still sees a valid column. Phase 9 drops both the
+// old columns from the schema AND from this list in one pass.
 export const NATION_STAT_COLUMNS = [
     'gdp', 'gdp_growth', 'debt', 'debt_growth', 'inflation', 'interest_rates',
     'trade_balance', 'currency_strength', 'foreign_investment', 'credit',
@@ -126,37 +131,169 @@ export const NATION_STAT_COLUMNS = [
     'civil_unrest', 'terrorism', 'political_violence',
     'immigration', 'illegal_immigration', 'emigration',
     'international_reputation',
-    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability'
+    'cost_of_living', 'manufacturing_output', 'service_output', 'housing_affordability',
+    // Alpha refactor Phase 2: 13 net-new columns (cost_of_living already
+    // listed above, standard_of_living already canonical). Phase 9 drops
+    // the legacy entries above and leaves these 13 + the pass-through
+    // ones as the canonical 19.
+    'control', 'unrest', 'authority', 'crown_authority',
+    'energy', 'health', 'education', 'power',
+    'infrastructure', 'industry', 'farmland',
+    'goods', 'workforce',
 ];
 
 export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 
+// Phase 4 translation shim — maps old stat keys to the new 19-column
+// schema at apply time. Two value types:
+//   * String: rename only (passes through to a live column)
+//   * null:   stat is deleted in the alpha refactor with no replacement;
+//             callers must skip the effect rather than fall through
+//
+// Direction-inverting aliases are tracked separately in
+// INVERTED_ALIAS_KEYS — for those, the apply path also flips
+// up↔down / negates delta so the semantics survive the rename.
 export const STAT_KEY_ALIASES = {
-    intl_reputation: 'international_reputation',
-    diplomatic_standing: 'international_reputation',
-    credit_rating: 'credit',
-    credit_score: 'credit',
-    trade: 'trade_balance',
-    trade_volume: 'trade_balance',
-    education: 'higher_education',
-    education_quality: 'higher_education',
-    military_strength: 'stability',
-    literacy_rate: 'literacy',
-    hospital_beds: 'beds_per_100k',
-    technology: 'digital_infrastructure',
-    infrastructure: 'physical_infrastructure',
-    tourism: 'international_reputation',
-    // Legacy aliases for removed/renamed stats
-    religious: 'religiosity',
-    // NOTE: birth_rate and death_rate aliases REMOVED — they mapped 1:1 to population_growth
-    // which caused direction inversion bugs. Fix policy data to use population_growth directly.
-    trade_agreements: 'international_reputation',
-    sanctions: 'international_reputation'
+    // ── Direct renames into the 19-column schema ──
+    civil_unrest:               'unrest',
+    terrorism:                  'unrest',
+    political_violence:         'unrest',
+    healthcare_accessibility:   'health',
+    healthcare_quality:         'health',
+    lifespan:                   'health',
+    beds_per_100k:              'health',
+    physical_infrastructure:    'infrastructure',
+    digital_infrastructure:     'infrastructure',
+    rail_network:               'infrastructure',
+    urbanization:               'workforce',
+    labor_force_participation:  'workforce',
+    higher_education:           'education',
+    education_quality:          'education',
+    arable_land:                'farmland',
+    manufacturing_output:       'industry',
+    international_reputation:   'power',
+    intl_reputation:            'power',
+    diplomatic_standing:        'power',
+    tourism:                    'power',
+    trade_agreements:           'power',
+    sanctions:                  'power',
+    stability:                  'control',
+    military_strength:          'control',
+    legitimacy:                 'authority',
+    hospital_beds:              'health',
+
+    // ── Inverted (rename + flip direction; also see INVERTED_ALIAS_KEYS) ──
+    unemployment:               'workforce',
+
+    // ── DELETED stats — Phase 9 drops the column. Apply path skips. ──
+    religious:                  null,
+    religiosity:                null,
+    efficiency:                 null,
+    happiness:                  null,
+    polarization:               null,
+    freedom_index:              null,
+    gdp:                        null,
+    GDP:                        null,
+    inflation:                  null,
+    foreign_investment:         null,
+    income_tax:                 null,
+    tariffs:                    null,
+    credit:                     null,
+    credit_rating:              null,
+    credit_score:               null,
+    literacy:                   null,
+    literacy_rate:              null,
+    academic_immigration:       null,
+    oil_and_gas:                null,
+    rare_minerals:              null,
+    energy_generation:          null,
+    fuel_prices:                null,
+    pollution:                  null,
+    crime_rate:                 null,
+    social_mobility:            null,
+    benefits:                   null,
+    population_growth:          null,
+    debt_growth:                null,
+    minimum_wage:               null,
+    union_strength:             null,
+    illegal_immigration:        null,
+    emigration:                 null,
+    corporate_tax:              null,
+    sales_tax:                  null,
+    interest_rates:             null,
+    poverty_rate:               null,
+    income_inequality:          null,
+    trade_balance:              null,
+    trade:                      null,
+    trade_volume:               null,
+    currency_strength:          null,
+    birth_rate:                 null,
+    death_rate:                 null,
+    median_age:                 null,
+    carbon_emissions:           null,
+    renewable_energy_percentage: null,
+    corruption:                 null,
+    press_freedom:              null,
+    judicial_independence:      null,
+    incarceration_rate:         null,
+    drug_use:                   null,
+    ethnic_diversity:           null,
+    education_accessibility:    null,
+    technology:                 null,
+    service_output:             null,
+    housing_affordability:      null,
 };
+
+// Old stat keys whose semantic direction is opposite of the new column
+// they map to. e.g. unemployment → workforce: a bill that pushes
+// unemployment UP is pushing workforce DOWN. The Phase 4 apply path
+// flips `direction` (up↔down) and negates `delta` for these keys.
+export const INVERTED_ALIAS_KEYS = new Set([
+    'unemployment',
+]);
 
 export function normalizeNationStatKey(statKey) {
     if (!statKey || typeof statKey !== 'string') return null;
-    return STAT_KEY_ALIASES[statKey] || statKey;
+    // Use `in` so an explicit `null` value (DELETED-stat sentinel) is
+    // honored — `||` would have fallen through to the original key.
+    if (statKey in STAT_KEY_ALIASES) return STAT_KEY_ALIASES[statKey];
+    return statKey;
+}
+
+/**
+ * Phase 4 translation shim — re-maps a stat-effect entry from the legacy
+ * key set onto the alpha 19-column schema at apply time.
+ *
+ *   in:  { stat_key: 'civil_unrest', direction: 'up', rate: 0.5, ... }
+ *   out: { stat_key: 'unrest',       direction: 'up', rate: 0.5, ... }
+ *
+ *   in:  { stat_key: 'unemployment', direction: 'up', delta: 5 }
+ *   out: { stat_key: 'workforce',    direction: 'down', delta: -5 }
+ *
+ *   in:  { stat_key: 'happiness', ... }   (DELETED)
+ *   out: null
+ *
+ * Accepts both `stat_key` and `stat` shapes (the codebase uses both).
+ * Returns null when the underlying stat was deleted by the alpha refactor
+ * with no replacement — callers must skip these entries entirely.
+ */
+export function translateStatEffect(eff) {
+    if (!eff || typeof eff !== 'object') return null;
+    const oldKey = eff.stat_key || eff.stat || '';
+    if (!oldKey) return null;
+
+    const newKey = normalizeNationStatKey(oldKey);
+    if (!newKey || !NATION_STAT_COLUMN_SET.has(newKey)) return null;
+
+    const out = { ...eff, stat_key: newKey };
+    if (out.stat) out.stat = newKey;
+
+    if (INVERTED_ALIAS_KEYS.has(oldKey)) {
+        if (out.direction === 'up') out.direction = 'down';
+        else if (out.direction === 'down') out.direction = 'up';
+        if (typeof out.delta === 'number') out.delta = -out.delta;
+    }
+    return out;
 }
 
 /**

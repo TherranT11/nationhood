@@ -6,7 +6,7 @@
 import { deductAP, GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM, isSemiPresidential } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
-import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
+import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, translateStatEffect, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fetchActiveCoalition, deriveLeadPartyId } from './government-structure.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
@@ -1271,26 +1271,30 @@ export async function processStatEffects(supabase, nation, currentTick) {
             const ticksSincePassed = tick - passedTick;
 
             for (const eff of effects) {
-                const delay = Number(eff.delay_ticks) || 0;
-                const duration = Number(eff.duration_ticks) || 12;
-                const rate = Number(eff.rate) || 1;
-                const dir = String(eff.direction || '').toLowerCase();
-                const rawStatKey = eff.stat_key;
-                const statKey = normalizeNationStatKey(rawStatKey);
-
-                if (!statKey || !NATION_STAT_COLUMN_SET.has(statKey)) {
+                // Phase 4 alpha-stats shim: translateStatEffect remaps the
+                // legacy 80-stat keys onto the new 19-column schema (and
+                // flips direction for inversions like unemployment →
+                // workforce). Returns null for stats deleted with no
+                // replacement — those entries skip silently.
+                const translated = translateStatEffect(eff);
+                if (!translated) {
                     if (tick === lastApplied + 1) {
                         console.warn(
-                            `[processStatEffects] Skipping invalid stat_key "${rawStatKey}" for ${effectSource}`
+                            `[processStatEffects] Skipping invalid/deleted stat_key "${eff.stat_key || eff.stat}" for ${effectSource}`
                         );
                     }
                     continue;
                 }
+                const delay = Number(translated.delay_ticks) || 0;
+                const duration = Number(translated.duration_ticks) || 12;
+                const rate = Number(translated.rate) || 1;
+                const dir = String(translated.direction || '').toLowerCase();
+                const statKey = translated.stat_key;
 
                 if (dir !== 'up' && dir !== 'down') {
                     if (tick === lastApplied + 1) {
                         console.warn(
-                            `[processStatEffects] Skipping invalid direction "${eff.direction}" for stat_key="${rawStatKey}" from ${effectSource}`
+                            `[processStatEffects] Skipping invalid direction "${translated.direction}" for stat_key="${eff.stat_key || eff.stat}" from ${effectSource}`
                         );
                     }
                     continue;

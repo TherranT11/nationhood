@@ -3866,6 +3866,12 @@ export async function processRoyalAssent(supabase, nation, currentTick) {
 // When 3+ crises are active and a bill with authoritarian stat effects passes,
 // governing parties receive gov_approval + momentum bonuses.
 // Diminishing returns: first = +5/+5, subsequent = +2/+2.
+// PHASE 7 TODO: all three stats below are deleted by the alpha refactor
+// (Phase 4 shim routes them to null). With nothing in this set actually
+// resolving, applyAuthoritarianCrisisBonus becomes a no-op and the
+// authoritarian-crisis-bonus mechanic stops firing until Phase 7 picks
+// new detection signals — likely "decreases authority" + "increases
+// unrest" or a `bill.flags.authoritarian = true` policy attribute.
 const AUTHORITARIAN_STATS = new Set(['freedom_index', 'press_freedom', 'judicial_independence']);
 
 async function applyAuthoritarianCrisisBonus(supabase, bill, nation, currentTick) {
