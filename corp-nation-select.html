@@ -827,22 +827,38 @@ async function confirmNation() {
             startingCash = Math.round(baseCash * currencyMult * inflationMult);
         }
 
-        // ── Construction starting stats (per spec). Other sectors fall
-        //    through to the schema defaults (assets=0, market_share=0,
-        //    innovation=0, reputation=5, productivity=0, employee_wages=0,
-        //    work_crews=0, regulatory_standing=0, supply_chain=0).
-        //    Sector-specific seeding for Finance/Shipping comes later.
-        const sectorSeeds = corpSetup.sector === 'Construction' ? {
-            corp_assets:               2,
-            corp_market_share:         1,
-            corp_innovation:           5,
-            corp_reputation:           5,
-            corp_productivity:         5,
-            corp_employee_wages:       5,
-            corp_work_crews:           3,
-            corp_regulatory_standing:  3,
-            corp_supply_chain:         3,
-        } : {};
+        // ── Sector-specific starting stats. Sectors not listed here fall
+        //    through to the schema defaults.
+        //    Finance: three 0-10 banking stats at 3 (founding position) plus
+        //    the same general-stat baseline as Construction. Overleverage
+        //    starts at 3, NOT zero — a brand-new bank has some exposure on
+        //    day one from depositor obligations.
+        let sectorSeeds = {};
+        if (corpSetup.sector === 'Construction') {
+            sectorSeeds = {
+                corp_assets:               2,
+                corp_market_share:         1,
+                corp_innovation:           5,
+                corp_reputation:           5,
+                corp_productivity:         5,
+                corp_employee_wages:       5,
+                corp_work_crews:           3,
+                corp_regulatory_standing:  3,
+                corp_supply_chain:         3,
+            };
+        } else if (corpSetup.sector === 'Finance') {
+            sectorSeeds = {
+                corp_assets:               2,
+                corp_market_share:         1,
+                corp_innovation:           5,
+                corp_reputation:           5,
+                corp_productivity:         5,
+                corp_employee_wages:       5,
+                corp_lending_capital:      3,
+                corp_interest_rates:       3,
+                corp_overleverage:         3,
+            };
+        }
 
         // Check if user already has a faction (party) — if so, create corp as linked faction
         const { data: existingFaction } = await _supabase

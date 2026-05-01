@@ -162,6 +162,16 @@ const LEADER_ACTIONS = [
         locked: false,
     },
     {
+        id: 'call_snap_election',
+        name: 'Call Snap Election',
+        desc: 'Schedule a snap parliamentary election for next tick. Any party leader can call. Cancels any existing scheduled parliamentary election. 3-tick per-party cooldown.',
+        cost: '$0',
+        costColor: 'var(--text-dim)',
+        moneyCost: 0,
+        tags: ['LEGISLATIVE'],
+        locked: false,
+    },
+    {
         id: 'call_early_elections',
         name: 'Call Early Elections',
         desc: 'Dissolve the legislature and call snap elections. PM-only. Government enters caretaker status; election fires after a short formation window. Momentum impact is tiered by Gov. Approval: >50 boosts PM party (+3), <35 boosts opposition (+5 each) and +3 stability, 35\u201350 is neutral.',
@@ -1016,6 +1026,8 @@ function renderPage(root) {
             openRebrandModal(root);
         } else if (actionId === 'no_confidence') {
             triggerNoConfidence();
+        } else if (actionId === 'call_snap_election') {
+            triggerCallSnapElection();
         } else if (actionId === 'call_early_elections') {
             triggerCallEarlyElections();
         } else if (actionId === 'resign_as_pm') {
@@ -3592,6 +3604,50 @@ async function openRevokeSeatsModal(root) {
 // gov_approval. All we add here is a PM-party + confirm + lock guard.
 
 let _callEarlyElectionsSubmitting = false;
+
+// ════════════════════════ CALL SNAP ELECTION (ANY PARTY LEADER) ════════════════════════
+// Lightweight snap-election action available to every party leader, not just
+// the PM. 3-tick per-party cooldown is enforced server-side. Replaces the
+// auto-snap that previously fired from processGovernmentVacancy when
+// coalitions failed to form — any party can now break a deadlock manually.
+
+let _callSnapElectionSubmitting = false;
+
+async function triggerCallSnapElection() {
+    if (_callSnapElectionSubmitting) return;
+    if (!_state?.faction?.id || !_state?.nation?.id) return;
+
+    if (!confirm(
+        '⚡ CALL SNAP ELECTION?\n\n' +
+        'Schedules a parliamentary election for next tick. Cancels any other ' +
+        'scheduled parliamentary election in this nation.\n\n' +
+        '3-tick cooldown per party after the call.\n\n' +
+        'Proceed?'
+    )) return;
+
+    _callSnapElectionSubmitting = true;
+    try {
+        const { data, error } = await _supabase.rpc('call_snap_election', {
+            p_nation_id:         _state.nation.id,
+            p_caller_faction_id: _state.faction.id,
+        });
+        if (error) {
+            alert('Failed to call snap election: ' + error.message);
+            return;
+        }
+        if (data && data.success === false) {
+            alert(data.error || 'Snap election call rejected.');
+            return;
+        }
+        alert('⚡ Snap election scheduled for next tick.');
+        window.location.reload();
+    } catch (err) {
+        console.error('[PartyActions] Call snap election failed:', err);
+        alert('Failed to call snap election: ' + (err?.message || 'unknown error'));
+    } finally {
+        _callSnapElectionSubmitting = false;
+    }
+}
 
 async function triggerCallEarlyElections() {
     if (_callEarlyElectionsSubmitting) return;
