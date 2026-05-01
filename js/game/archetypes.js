@@ -2,17 +2,17 @@
  * archetypes.js — Phase 5C-4 party archetype catalog.
  *
  * Each archetype maps to three "stronghold" sectors (sector_key references
- * the per-nation default sectors seeded by seed_default_sectors). Picking
- * an archetype on createparty.html seeds 3.0 popularity (= 30 stored
- * tenths) on those three sectors via the apply_party_archetype RPC; every
- * other sector starts at 0.0.
+ * the per-nation default sectors seeded by seed_default_sectors). Every
+ * sector starts at 3.0 (the trigger-seeded baseline); picking an archetype
+ * on createparty.html raises the three stronghold sectors to 5.0 popularity
+ * (= 50 stored tenths) via the apply_party_archetype RPC.
  *
  * The list is shared between the createparty UI and any downstream display
  * code (party header, party-overview cards, etc.) so the labels can never
  * drift.
  */
 
-export const STRONGHOLD_POPULARITY = 30; // = 3.0 displayed
+export const STRONGHOLD_POPULARITY = 50; // = 5.0 displayed
 
 export const ARCHETYPES = [
     {

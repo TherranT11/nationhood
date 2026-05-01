@@ -990,8 +990,8 @@ async function proceed() {
 
     // Apply archetype: sets factions.archetype + boosts initial sector popularity.
     // The faction insert above triggered trg_backfill_faction_popularity which
-    // already created 0-popularity rows for every active sector; this RPC
-    // raises three of them to STRONGHOLD_POPULARITY (= 3.0 displayed).
+    // already created 3.0 baseline rows for every active sector; this RPC
+    // raises three of them to STRONGHOLD_POPULARITY (= 5.0 displayed).
     if (selectedArchetype) {
         const { error: archetypeErr } = await _supabase.rpc('apply_party_archetype', {
             p_faction_id:     partyId,
