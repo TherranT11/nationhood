@@ -37,12 +37,11 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 COMMENT ON COLUMN factions.corp_overleverage_offset IS
   'Strategic-Action-controlled offset folded into corp_overleverage on recompute. Default 0; range [-10, 10]. The displayed corp_overleverage = clamp(0, 10, derived_from_portfolio + offset). Allows actions to push the dial without getting clobbered by the next loan event.';
 
--- Backfill: every existing Finance corp gets the default 0. Idempotent.
-UPDATE factions
-   SET corp_overleverage_offset = 0
- WHERE faction_type = 'corporation'
-   AND corp_sector  = 'Finance'
-   AND corp_overleverage_offset IS DISTINCT FROM 0;
+-- Backfill is implicit: ADD COLUMN ... NOT NULL DEFAULT 0 above
+-- already populates every existing row with 0. An explicit UPDATE
+-- here was originally written but stripped in audit because it was
+-- a no-op on first apply (every row already 0) and destructive on
+-- re-apply (would reset any player-accrued offsets).
 
 -- ══════════════════════════════════════════════════════════════
 -- 2. Replace recompute_finance_stats to fold _offset into overleverage
