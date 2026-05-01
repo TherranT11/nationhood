@@ -3211,6 +3211,18 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
 //      (those rely on the dead finance_active_loans table). Just apply
 //      response effect, flip to EXPIRED. Insurance will be re-added when
 //      the new bank_loans pipeline grows insurance products.
+//
+//  Intentional duplication: ~90% of the template-iteration / probability /
+//  permit-modifier logic mirrors the legacy generator. Refactoring into a
+//  shared helper now would be undone in Phase 1E when the legacy version
+//  is deleted, so the duplication is parked here on purpose.
+//
+//  Known carry-overs (not regressions): two read-modify-write patterns
+//  (corp_reputation update on regulatory hits; corp_cash_reserves debit on
+//  expired-event cost) inherit the legacy code's race window between
+//  SELECT and UPDATE. Concurrent updates between the two queries would
+//  lose changes. Low-frequency code paths; legacy has identical issue.
+//  Refactor target when these paths move into a SECURITY DEFINER RPC.
 // ════════════════════════════════════════════════════════════════════════════════
 
 function projectTypeToSectorKey(projectType) {
@@ -3269,13 +3281,18 @@ async function generateCorpContractProjectEvents(supabase, nationId, currentTick
         }
     } catch (_pemErr) { /* non-fatal */ }
 
-    // Active-event dedup against corp_contract_events.
+    // Active-event dedup against corp_contract_events. If this query
+    // fails, hasActiveEvent stays empty — without that warning it would
+    // silently produce duplicate events on the same contract.
     const contractIds = contracts.map(c => c.id);
-    const { data: activeEvents } = await supabase
+    const { data: activeEvents, error: activeEventsErr } = await supabase
         .from('corp_contract_events')
         .select('contract_id')
         .in('contract_id', contractIds)
         .eq('status', 'ACTIVE');
+    if (activeEventsErr) {
+        console.warn(`[CorpEvents] Active-event dedup query failed for nation ${nationId}; proceeding without dedup:`, activeEventsErr.message);
+    }
     const hasActiveEvent = new Set((activeEvents || []).map(e => e.contract_id));
 
     for (const contract of contracts) {
@@ -3422,14 +3439,20 @@ async function resolveExpiredCorpContractEvents(supabase, nationId, currentTick)
     if (!expired || expired.length === 0) return results;
 
     for (const event of expired) {
-        const response = event.responses?.[0] || { key: 'auto', cost: 0, delay: 0, qualityImpact: 0 };
+        const response = event.responses?.[0] || { key: 'auto', cost: 0, delay: 0 };
         const costApplied = Number(response.cost) || 0;
         const delayApplied = Number(response.delay) || 0;
-        const qualityApplied = Number(response.qualityImpact) || 0;
+        // qualityImpact is dropped here — corp_contracts has no quality
+        // column to apply it to. If quality lands as a contract column
+        // later, re-add the read+write here.
 
         // Apply cash cost directly to the corp. No insurance integration in
         // this phase — when the new bank_loans pipeline grows insurance,
         // this is where the lookup goes.
+        // Known race: read-modify-write on corp_cash_reserves; concurrent
+        // debits between SELECT and UPDATE would be lost. Same pattern as
+        // legacy resolveExpiredEvents. Low-frequency path; safe to live
+        // with until SECURITY DEFINER RPC refactor.
         if (costApplied > 0 && event.faction_id) {
             const { data: corp } = await supabase.from('factions')
                 .select('corp_cash_reserves').eq('id', event.faction_id).single();
@@ -3440,18 +3463,14 @@ async function resolveExpiredCorpContractEvents(supabase, nationId, currentTick)
             }
         }
 
-        // Apply delay/quality to the contract.
-        if (delayApplied > 0 || qualityApplied !== 0) {
+        // Apply delay to the contract. expected_finish_tick slips by N ticks.
+        if (delayApplied > 0) {
             const { data: contract } = await supabase.from('corp_contracts')
                 .select('expected_finish_tick').eq('id', event.contract_id).single();
-            if (contract) {
-                const update = {};
-                if (delayApplied > 0 && contract.expected_finish_tick != null) {
-                    update.expected_finish_tick = contract.expected_finish_tick + delayApplied;
-                }
-                if (Object.keys(update).length > 0) {
-                    await supabase.from('corp_contracts').update(update).eq('id', event.contract_id);
-                }
+            if (contract && contract.expected_finish_tick != null) {
+                await supabase.from('corp_contracts').update({
+                    expected_finish_tick: contract.expected_finish_tick + delayApplied,
+                }).eq('id', event.contract_id);
             }
         }
 
