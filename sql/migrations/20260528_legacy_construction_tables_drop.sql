@@ -1,39 +1,70 @@
 -- ══════════════════════════════════════════════════════════════
--- Path 1 Phase 1E.A: drop legacy construction tables (safety-gated)
+-- ⚠ DEFERRED — DO NOT APPLY YET (Path 1 Phase 1E.A)
 --
--- Final cull of the legacy construction pipeline. After this
--- migration runs successfully, all reads/writes against
--- construction_contracts, construction_events, and the related
--- legacy tables fail loud. The JS code paths that referenced them
--- (generateProjectEvents, resolveExpiredEvents, processActiveProjects,
--- resolveExpiredBids, the disabled stubs from Phase 1A, etc.) need a
--- separate cleanup commit (Phase 1E.B) — DO NOT apply this migration
--- without coordinating that JS commit, or the next tick processor run
--- will throw on the dropped tables.
+-- This migration drops the legacy construction tables. It was
+-- written but is parked unapplied because a wider audit found the
+-- legacy tables are still queried from multiple user-facing pages
+-- and SECURITY DEFINER RPCs. Dropping the tables right now would
+-- break (with "relation does not exist") every query in:
 --
--- Ordering of recommended deploy:
---   1. Verify drain — run the diagnostic at the bottom of this file
---      (or the SELECT block below) and confirm 0 in-flight rows.
---   2. Apply this migration.
---   3. Push the JS cleanup commit (Phase 1E.B) and redeploy
---      advance-corp-tick.
+--   Pages (~25 query sites total):
+--     corp-operations-shipping.html  (13 refs)
+--     corp-dashboard-home2.html      (6  refs)
+--     expansion.html                 (4  refs)
+--     corp-nations.html              (1  ref)
+--     economy.html                   (1  ref)
 --
--- Safety gate: DO blocks below RAISE EXCEPTION if any in-flight
--- legacy state remains. Re-running after the gate passes is safe;
--- DROP TABLE IF EXISTS makes the actual drops idempotent.
+--   Server-side RPCs:
+--     20260420_close_stuck_construction_insurance.sql
+--     20260421_declare_corp_bankruptcy_rpc.sql
+--     20260507_construction_auto_award_cron.sql
 --
--- Tables dropped (CASCADE):
---   construction_contracts     — 41 in_progress + 102 open + 3
---                                bidding flagged at Phase 1A start;
---                                gate verifies all four in-flight
---                                statuses drain before dropping.
---   construction_events        — gated on no ACTIVE rows.
---   mega_project_cooldowns     — 0 rows at Phase 1A; harmless drop.
+--   Plus the legacy code paths in advance-corp-tick:
+--     generateProjectEvents, resolveExpiredEvents,
+--     processActiveProjects, resolveExpiredBids, and the
+--     Phase 1A stubs (generateConstructionContracts,
+--     generateInfraRenewalContracts).
 --
--- Cascading dependents (auto-cleaned by DROP ... CASCADE):
---   project_material_allocations  — FK to construction_contracts.
---                                   Rows deleted with the contracts.
+-- Phases 1A–1D are all live and shipped; the new corp_contracts
+-- pipeline is the canonical one going forward. The legacy tables
+-- continue to drain naturally as their 41 in-progress contracts
+-- complete (max ~100 ticks each), but they remain queryable so
+-- the pages above keep rendering.
+--
+-- BEFORE APPLYING THIS MIGRATION:
+--   1. Audit the 5 page files. Decide page-by-page whether they're
+--      still reachable from the navigation; if not, delete them.
+--      For pages that stay, stub the legacy queries to return [].
+--   2. Decide on each of the 3 legacy RPCs. Either DROP FUNCTION
+--      them or rewrite to query corp_contracts.
+--   3. Push a Phase 1E.B commit that gutting advance-corp-tick's
+--      legacy paths (generateProjectEvents, resolveExpiredEvents,
+--      processActiveProjects, resolveExpiredBids, both Phase 1A
+--      stubs, all call sites in the per-nation construction try-block).
+--   4. Apply this migration (the in-flight safety gate below still
+--      protects against running before contracts drain).
+--   5. Redeploy advance-corp-tick.
+--
+-- The safety gate below stays in place: even if applied accidentally,
+-- the migration aborts with a clear exception if any in-flight legacy
+-- contract or active legacy event remains.
+--
+-- Tables this migration drops once approved:
+--   construction_contracts        — gate-checked
+--   construction_events           — gate-checked
+--   mega_project_cooldowns        — 0 rows at Phase 1A; harmless
+--   project_material_allocations  — cascading dependent
 -- ══════════════════════════════════════════════════════════════
+
+-- ── Hard guard: deferred-apply marker. ──
+-- Forces explicit operator intent. To apply this migration, comment
+-- this DO block out (or delete it). The safety gates below still run
+-- after that and protect against premature drain.
+DO $$
+BEGIN
+    RAISE EXCEPTION
+        'Migration 20260528 is DEFERRED. Read the header before applying. To proceed, remove the deferred-apply guard at the top of the file.';
+END $$;
 
 -- ── Safety gate 1: no in-flight construction contracts ──
 DO $$
