@@ -28,7 +28,7 @@
 --    Fix: reject if requesting_faction_id appears in
 --    target_bank_ids.
 --
--- Also: tag closed_at_tick / last_payment_tick on finance_loans
+-- Also: tag closed_at_tick / last_payment_tick on bank_loans
 -- with a comment noting they're consumed by Phase C4 (per-tick
 -- payment processor).
 -- ══════════════════════════════════════════════════════════════
@@ -105,7 +105,7 @@ BEGIN
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
 
-    INSERT INTO finance_loan_requests (
+    INSERT INTO bank_loan_requests (
         requesting_faction_id, requesting_nation_id, target_bank_ids,
         principal, term_ticks, requested_apr, risk_grade, purpose,
         expires_at_tick, created_at_tick
@@ -139,7 +139,7 @@ AS $func$
 DECLARE
     v_user     UUID := auth.uid();
     v_bank     factions%ROWTYPE;
-    v_request  finance_loan_requests%ROWTYPE;
+    v_request  bank_loan_requests%ROWTYPE;
     v_tick     INT;
     v_all_declined BOOLEAN;
 BEGIN
@@ -151,7 +151,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'You do not own this bank');
     END IF;
 
-    SELECT * INTO v_request FROM finance_loan_requests WHERE id = p_request_id;
+    SELECT * INTO v_request FROM bank_loan_requests WHERE id = p_request_id;
     IF v_request.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Loan request not found');
     END IF;
@@ -168,7 +168,7 @@ BEGIN
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
 
-    UPDATE finance_loan_requests
+    UPDATE bank_loan_requests
        SET declined_by_bank_ids = array_append(declined_by_bank_ids, p_bank_faction_id),
            updated_at            = now()
      WHERE id = p_request_id
@@ -184,11 +184,11 @@ BEGIN
                        WHERE bid = ANY(declined_by_bank_ids)
     ) = array_length(target_bank_ids, 1)
       INTO v_all_declined
-      FROM finance_loan_requests
+      FROM bank_loan_requests
      WHERE id = p_request_id;
 
     IF v_all_declined THEN
-        UPDATE finance_loan_requests
+        UPDATE bank_loan_requests
            SET status = 'declined',
                resolved_at_tick = v_tick
          WHERE id = p_request_id
@@ -214,7 +214,7 @@ SET search_path = public
 AS $func$
 DECLARE
     v_user     UUID := auth.uid();
-    v_loan     finance_loans%ROWTYPE;
+    v_loan     bank_loans%ROWTYPE;
     v_lender   factions%ROWTYPE;
     v_borrower factions%ROWTYPE;
     v_tick     INT;
@@ -224,7 +224,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
     END IF;
 
-    SELECT * INTO v_loan FROM finance_loans WHERE id = p_loan_id;
+    SELECT * INTO v_loan FROM bank_loans WHERE id = p_loan_id;
     IF v_loan.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Loan not found');
     END IF;
@@ -268,7 +268,7 @@ BEGIN
 
     -- Flip loan to active, optimistic lock so a double-click can't
     -- transfer twice. Term clock starts on payout, not approval.
-    UPDATE finance_loans
+    UPDATE bank_loans
        SET status            = 'active',
            issued_at_tick    = v_tick,
            matures_at_tick   = v_tick + term_ticks,
@@ -294,8 +294,8 @@ $func$;
 
 GRANT EXECUTE ON FUNCTION pay_out_loan(UUID) TO authenticated;
 
--- ── Document the dead-state columns on finance_loans ──
-COMMENT ON COLUMN finance_loans.last_payment_tick IS
+-- ── Document the dead-state columns on bank_loans ──
+COMMENT ON COLUMN bank_loans.last_payment_tick IS
     'Tick of the most recent amortization payment. Set by Phase C4 per-tick processor; NULL until first payment fires.';
-COMMENT ON COLUMN finance_loans.closed_at_tick IS
+COMMENT ON COLUMN bank_loans.closed_at_tick IS
     'Tick at which the loan reached a terminal state (paid / defaulted / foreclosed / called). Set by Phase C4; NULL while status = active.';

@@ -5,12 +5,12 @@
 -- processing land in C2 and C4 respectively.
 --
 -- Pipeline shape:
---   1. A corp or government INSERTs a finance_loan_requests row
+--   1. A corp or government INSERTs a bank_loan_requests row
 --      with target_bank_ids[] = UUIDs of banks they want to ask.
 --   2. Each targeted bank sees the request on its Operations page
 --      ("Available Offers" section) and can approve or decline.
 --   3. First approval wins: the row's status flips to 'approved',
---      winning_bank_id is set, and a finance_loans row is created.
+--      winning_bank_id is set, and a bank_loans row is created.
 --   4. Other targeted banks lose the race; their UIs see the row
 --      vanish from Available Offers on next refresh.
 --   5. Unapproved requests expire at expires_at_tick and the row's
@@ -24,12 +24,12 @@
 --    complexity at this scale.
 -- ── status uses a CHECK constraint rather than an enum so future
 --    states can be added with an ALTER without a type rewrite.
--- ── finance_loans does NOT carry duplicated loan-request fields;
+-- ── bank_loans does NOT carry duplicated loan-request fields;
 --    it links back via request_id and reads them when needed. One
 --    source of truth.
 -- ══════════════════════════════════════════════════════════════
 
-CREATE TABLE IF NOT EXISTS finance_loan_requests (
+CREATE TABLE IF NOT EXISTS bank_loan_requests (
     id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- Who's asking. Faction id; can be a corp or a party (the latter
@@ -68,24 +68,24 @@ CREATE TABLE IF NOT EXISTS finance_loan_requests (
     updated_at          TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_flr_requesting_faction ON finance_loan_requests (requesting_faction_id);
-CREATE INDEX IF NOT EXISTS idx_flr_status            ON finance_loan_requests (status);
-CREATE INDEX IF NOT EXISTS idx_flr_expires           ON finance_loan_requests (expires_at_tick);
+CREATE INDEX IF NOT EXISTS idx_blr_requesting_faction ON bank_loan_requests (requesting_faction_id);
+CREATE INDEX IF NOT EXISTS idx_blr_status            ON bank_loan_requests (status);
+CREATE INDEX IF NOT EXISTS idx_blr_expires           ON bank_loan_requests (expires_at_tick);
 -- GIN index lets the Operations page query "WHERE bank_id = ANY(target_bank_ids)"
 -- in O(log n) instead of a full scan.
-CREATE INDEX IF NOT EXISTS idx_flr_target_banks_gin  ON finance_loan_requests USING GIN (target_bank_ids);
+CREATE INDEX IF NOT EXISTS idx_blr_target_banks_gin  ON bank_loan_requests USING GIN (target_bank_ids);
 
-COMMENT ON TABLE finance_loan_requests IS
+COMMENT ON TABLE bank_loan_requests IS
     'Loan requests opened by corps or governments, targeting one or more banks. First-approval-wins resolution; expires at expires_at_tick if unresolved.';
 
 -- ── Active loan agreements ──
 -- Created when a bank approves a request. Tracks outstanding
 -- principal, missed payments, and status until paid off / defaulted.
-CREATE TABLE IF NOT EXISTS finance_loans (
+CREATE TABLE IF NOT EXISTS bank_loans (
     id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    -- Source request (one finance_loans row per approved request).
-    request_id          UUID         NOT NULL UNIQUE REFERENCES finance_loan_requests(id),
+    -- Source request (one bank_loans row per approved request).
+    request_id          UUID         NOT NULL UNIQUE REFERENCES bank_loan_requests(id),
 
     -- Lender + borrower (denormalized for fast queries; immutable
     -- once written so they can't drift from the request).
@@ -114,11 +114,11 @@ CREATE TABLE IF NOT EXISTS finance_loans (
     updated_at          TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_floans_lender   ON finance_loans (lender_faction_id);
-CREATE INDEX IF NOT EXISTS idx_floans_borrower ON finance_loans (borrower_faction_id);
-CREATE INDEX IF NOT EXISTS idx_floans_status   ON finance_loans (status);
+CREATE INDEX IF NOT EXISTS idx_bloans_lender   ON bank_loans (lender_faction_id);
+CREATE INDEX IF NOT EXISTS idx_bloans_borrower ON bank_loans (borrower_faction_id);
+CREATE INDEX IF NOT EXISTS idx_bloans_status   ON bank_loans (status);
 
-COMMENT ON TABLE finance_loans IS
+COMMENT ON TABLE bank_loans IS
     'Active loan agreements created on approval of a finance_loan_request. Tracks outstanding principal, missed payments, status. One row per approved request (UNIQUE on request_id).';
 
 -- ── RLS ──
@@ -126,13 +126,13 @@ COMMENT ON TABLE finance_loans IS
 -- market — same model as the construction contracts table). Writes
 -- are SECURITY DEFINER RPC only; no direct INSERT/UPDATE/DELETE
 -- policies, so service_role + RPC are the only writers.
-ALTER TABLE finance_loan_requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE finance_loans         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bank_loan_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bank_loans         ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "finance_loan_requests_read_all" ON finance_loan_requests;
-CREATE POLICY "finance_loan_requests_read_all"
-    ON finance_loan_requests FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "bank_loan_requests_read_all" ON bank_loan_requests;
+CREATE POLICY "bank_loan_requests_read_all"
+    ON bank_loan_requests FOR SELECT TO authenticated USING (true);
 
-DROP POLICY IF EXISTS "finance_loans_read_all" ON finance_loans;
-CREATE POLICY "finance_loans_read_all"
-    ON finance_loans FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "bank_loans_read_all" ON bank_loans;
+CREATE POLICY "bank_loans_read_all"
+    ON bank_loans FOR SELECT TO authenticated USING (true);

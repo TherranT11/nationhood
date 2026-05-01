@@ -1,33 +1,115 @@
 -- ══════════════════════════════════════════════════════════════
--- Finance Operations Phase C2: loan-request lifecycle RPCs
+-- Catch-up: rename Phase C tables from finance_* to bank_*
 --
--- Five RPCs for the loan pipeline. Per-tick payment processing,
--- expiry handling, and overleverage drift hooks land in C4.
+-- Backstory: 20260519/20260520/20260521 were originally written
+-- with finance_loan_requests / finance_loans, which collided with
+-- the legacy finance_loan_requests table that the v2 simplification
+-- was supposed to drop but didn't on this DB. The legacy table
+-- still has 137 rows powering live shipping insurance / bonds /
+-- equity. Cannot drop or rename it without breaking those.
 --
---   submit_loan_request    — borrower opens a request to N banks
---   approve_loan_request   — bank says yes (no cash moves yet)
---   decline_loan_request   — bank says no
---   pay_out_loan           — bank disburses, debt clock starts
---   cancel_loan_request    — borrower pulls out before approval
+-- Fix: rename our new pipeline to bank_* (more accurate semantics
+-- anyway — these are specifically banking, not general finance).
+-- The legacy finance_* tables are left 100% untouched.
 --
--- Adds 'pending_payout' to bank_loans.status so the loan can
--- exist in an "approved but not yet funded" state. This separates
--- the bank's two decisions: (1) accept the request, (2) actually
--- write the check. The Pay Out Loan action lives on the borrower's
--- Accepted Offer card.
+-- This catch-up migration is destructive in a controlled way:
+-- it drops only the half-applied bank pipeline state we created
+-- (the finance_loans table that was successfully created since no
+-- legacy table by that name existed, and the 5 RPCs that point at
+-- the wrong tables). It does NOT touch the legacy finance_loan_*
+-- tables.
+--
+-- Order:
+--   1. DROP the bank-pipeline RPCs (point at wrong tables)
+--   2. DROP finance_loans (our half-created table)
+--   3. Re-run the schema + RPC creates against bank_* names
+--      (full content of the renamed 20260519/20260520/20260521)
 -- ══════════════════════════════════════════════════════════════
 
--- ── Add pending_payout to the status CHECK ──
--- Drop+recreate the constraint (idempotent regardless of whether
--- 20260519 has been applied yet).
-ALTER TABLE bank_loans DROP CONSTRAINT IF EXISTS bank_loans_status_check;
-ALTER TABLE bank_loans
-    ADD CONSTRAINT bank_loans_status_check
-    CHECK (status IN ('pending_payout','active','paid','defaulted','foreclosed','called'));
+-- ── 1. Drop bank-pipeline RPCs that targeted the wrong tables ──
+DROP FUNCTION IF EXISTS submit_loan_request(UUID, UUID[], BIGINT, INT, NUMERIC, TEXT, TEXT, INT);
+DROP FUNCTION IF EXISTS approve_loan_request(UUID, UUID);
+DROP FUNCTION IF EXISTS decline_loan_request(UUID, UUID);
+DROP FUNCTION IF EXISTS pay_out_loan(UUID);
+DROP FUNCTION IF EXISTS cancel_loan_request(UUID);
 
--- ─────────────────────────────────────────────────────────────
--- submit_loan_request: borrower opens a request to N banks
--- ─────────────────────────────────────────────────────────────
+-- ── 2. Drop our half-created finance_loans table ──
+-- IMPORTANT: this is OUR table from 20260519, NOT the legacy
+-- finance_active_loans (different name, untouched). If by some
+-- chance this table doesn't exist (20260519 never ran), IF EXISTS
+-- makes the drop a no-op.
+DROP TABLE IF EXISTS finance_loans;
+
+-- ── 3. Create bank_loan_requests + bank_loans ──
+CREATE TABLE IF NOT EXISTS bank_loan_requests (
+    id                    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    requesting_faction_id UUID         NOT NULL REFERENCES factions(id) ON DELETE CASCADE,
+    requesting_nation_id  UUID         NOT NULL REFERENCES nations(id),
+    target_bank_ids       UUID[]       NOT NULL DEFAULT '{}',
+    principal             BIGINT       NOT NULL CHECK (principal > 0),
+    term_ticks            INT          NOT NULL CHECK (term_ticks > 0),
+    requested_apr         NUMERIC(6,3) NOT NULL CHECK (requested_apr >= 0 AND requested_apr <= 100),
+    risk_grade            TEXT         NOT NULL DEFAULT 'B'
+                              CHECK (risk_grade IN ('AAA','AA','A','BBB','BB','B','CCC','CC','C','D')),
+    purpose               TEXT,
+    status                TEXT         NOT NULL DEFAULT 'pending'
+                              CHECK (status IN ('pending','approved','declined','expired','cancelled')),
+    expires_at_tick       INT          NOT NULL,
+    winning_bank_id       UUID         REFERENCES factions(id) ON DELETE SET NULL,
+    declined_by_bank_ids  UUID[]       NOT NULL DEFAULT '{}',
+    created_at_tick       INT          NOT NULL,
+    created_at            TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    resolved_at_tick      INT,
+    updated_at            TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_blr_requesting_faction ON bank_loan_requests (requesting_faction_id);
+CREATE INDEX IF NOT EXISTS idx_blr_status            ON bank_loan_requests (status);
+CREATE INDEX IF NOT EXISTS idx_blr_expires           ON bank_loan_requests (expires_at_tick);
+CREATE INDEX IF NOT EXISTS idx_blr_target_banks_gin  ON bank_loan_requests USING GIN (target_bank_ids);
+
+CREATE TABLE IF NOT EXISTS bank_loans (
+    id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id          UUID         NOT NULL UNIQUE REFERENCES bank_loan_requests(id),
+    lender_faction_id   UUID         NOT NULL REFERENCES factions(id) ON DELETE RESTRICT,
+    borrower_faction_id UUID         NOT NULL REFERENCES factions(id) ON DELETE RESTRICT,
+    nation_id           UUID         NOT NULL REFERENCES nations(id),
+    principal           BIGINT       NOT NULL CHECK (principal > 0),
+    apr                 NUMERIC(6,3) NOT NULL CHECK (apr >= 0 AND apr <= 100),
+    term_ticks          INT          NOT NULL CHECK (term_ticks > 0),
+    outstanding         BIGINT       NOT NULL CHECK (outstanding >= 0),
+    payments_missed     INT          NOT NULL DEFAULT 0 CHECK (payments_missed >= 0),
+    status              TEXT         NOT NULL DEFAULT 'pending_payout',
+    issued_at_tick      INT          NOT NULL,
+    matures_at_tick     INT          NOT NULL,
+    last_payment_tick   INT,
+    closed_at_tick      INT,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+ALTER TABLE bank_loans DROP CONSTRAINT IF EXISTS bank_loans_status_check;
+ALTER TABLE bank_loans ADD CONSTRAINT bank_loans_status_check
+    CHECK (status IN ('pending_payout','active','paid','defaulted','foreclosed','called'));
+CREATE INDEX IF NOT EXISTS idx_bloans_lender   ON bank_loans (lender_faction_id);
+CREATE INDEX IF NOT EXISTS idx_bloans_borrower ON bank_loans (borrower_faction_id);
+CREATE INDEX IF NOT EXISTS idx_bloans_status   ON bank_loans (status);
+
+ALTER TABLE bank_loan_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bank_loans         ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "bank_loan_requests_read_all" ON bank_loan_requests;
+CREATE POLICY "bank_loan_requests_read_all"
+    ON bank_loan_requests FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "bank_loans_read_all" ON bank_loans;
+CREATE POLICY "bank_loans_read_all"
+    ON bank_loans FOR SELECT TO authenticated USING (true);
+
+COMMENT ON COLUMN bank_loans.last_payment_tick IS
+    'Tick of the most recent amortization payment. Set by Phase C4 per-tick processor; NULL until first payment fires.';
+COMMENT ON COLUMN bank_loans.closed_at_tick IS
+    'Tick at which the loan reached a terminal state (paid / defaulted / foreclosed / called). Set by Phase C4; NULL while status = active.';
+
+-- ── 4. Re-create the 5 RPCs targeting bank_* tables (with the
+--    audit fixes from 20260521 already folded in) ──
+
 CREATE OR REPLACE FUNCTION submit_loan_request(
     p_requesting_faction_id UUID,
     p_target_bank_ids       UUID[],
@@ -61,8 +143,6 @@ BEGIN
     IF v_borrower.id <> v_user AND v_borrower.linked_user_id IS DISTINCT FROM v_user THEN
         RETURN jsonb_build_object('success', false, 'error', 'You do not own this faction');
     END IF;
-    -- Phase C2 supports corp borrowers only. Government / party borrowers
-    -- need a separate cash-route in pay_out_loan and will land later.
     IF v_borrower.faction_type <> 'corporation' THEN
         RETURN jsonb_build_object('success', false, 'error', 'Only corporations can request loans (this phase)');
     END IF;
@@ -80,7 +160,11 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Must target at least one bank');
     END IF;
 
-    -- Validate every targeted bank: must be a Finance corp.
+    IF p_requesting_faction_id = ANY(p_target_bank_ids) THEN
+        RETURN jsonb_build_object('success', false,
+            'error', 'Cannot target your own corporation as a bank');
+    END IF;
+
     FOREACH v_bank_id IN ARRAY p_target_bank_ids LOOP
         SELECT * INTO v_bank FROM factions WHERE id = v_bank_id;
         IF v_bank.id IS NULL THEN
@@ -117,16 +201,7 @@ $func$;
 GRANT EXECUTE ON FUNCTION submit_loan_request(UUID, UUID[], BIGINT, INT, NUMERIC, TEXT, TEXT, INT)
     TO authenticated;
 
--- ─────────────────────────────────────────────────────────────
--- approve_loan_request: bank accepts (no cash moves yet)
--- ─────────────────────────────────────────────────────────────
--- First-approval-wins via optimistic lock: UPDATE filters on
--- status='pending', so a second concurrent approval matches 0 rows.
--- Creates a bank_loans row in 'pending_payout' state. Cash
--- transfer happens later, in pay_out_loan.
---
--- Overleverage gate: per spec, banks at corp_overleverage >= 8
--- cannot approve new loans (Stressed state).
+
 CREATE OR REPLACE FUNCTION approve_loan_request(
     p_request_id      UUID,
     p_bank_faction_id UUID
@@ -147,7 +222,6 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
     END IF;
 
-    -- Caller owns the bank.
     SELECT * INTO v_bank FROM factions WHERE id = p_bank_faction_id;
     IF v_bank.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Bank not found');
@@ -159,13 +233,11 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Only Finance corporations can approve loans');
     END IF;
 
-    -- Overleverage gate (Stressed at 8+).
     IF COALESCE(v_bank.corp_overleverage, 0) >= 8 THEN
         RETURN jsonb_build_object('success', false,
             'error', 'Bank is overleveraged — reduce exposure before approving new loans');
     END IF;
 
-    -- Request must exist, be pending, and target this bank.
     SELECT * INTO v_request FROM bank_loan_requests WHERE id = p_request_id;
     IF v_request.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Loan request not found');
@@ -180,7 +252,6 @@ BEGIN
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
 
-    -- First-wins: optimistic lock on status='pending'.
     UPDATE bank_loan_requests
        SET status            = 'approved',
            winning_bank_id   = p_bank_faction_id,
@@ -194,7 +265,6 @@ BEGIN
             'error', 'Another bank approved first or the request changed state');
     END IF;
 
-    -- Mint the loan in pending_payout state.
     INSERT INTO bank_loans (
         request_id, lender_faction_id, borrower_faction_id, nation_id,
         principal, apr, term_ticks, outstanding,
@@ -216,11 +286,7 @@ $func$;
 
 GRANT EXECUTE ON FUNCTION approve_loan_request(UUID, UUID) TO authenticated;
 
--- ─────────────────────────────────────────────────────────────
--- decline_loan_request: bank rejects
--- ─────────────────────────────────────────────────────────────
--- Per-bank decline tracking. When every targeted bank has declined,
--- the request flips to 'declined' so the borrower stops waiting.
+
 CREATE OR REPLACE FUNCTION decline_loan_request(
     p_request_id      UUID,
     p_bank_faction_id UUID
@@ -261,17 +327,15 @@ BEGIN
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
 
-    -- Append this bank to declined_by_bank_ids.
     UPDATE bank_loan_requests
        SET declined_by_bank_ids = array_append(declined_by_bank_ids, p_bank_faction_id),
            updated_at            = now()
      WHERE id = p_request_id
        AND NOT (p_bank_faction_id = ANY(declined_by_bank_ids));
 
-    -- If every targeted bank has now declined, terminal-state the request.
     SELECT (
         SELECT count(*) FROM unnest(target_bank_ids) bid
-                       WHERE bid = ANY(array_append(declined_by_bank_ids, p_bank_faction_id))
+                       WHERE bid = ANY(declined_by_bank_ids)
     ) = array_length(target_bank_ids, 1)
       INTO v_all_declined
       FROM bank_loan_requests
@@ -294,13 +358,7 @@ $func$;
 
 GRANT EXECUTE ON FUNCTION decline_loan_request(UUID, UUID) TO authenticated;
 
--- ─────────────────────────────────────────────────────────────
--- pay_out_loan: bank disburses cash, debt clock starts
--- ─────────────────────────────────────────────────────────────
--- The Pay Out Loan action. Validates cash, transfers principal
--- from bank to borrower, flips loan to 'active'. Per the user's
--- spec: amortization runs from this point (Phase C4 will debit
--- per-tick payments).
+
 CREATE OR REPLACE FUNCTION pay_out_loan(
     p_loan_id UUID
 ) RETURNS JSONB
@@ -339,27 +397,24 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Borrower no longer exists');
     END IF;
 
-    -- Bank cash check.
-    IF COALESCE(v_lender.corp_cash_reserves, 0) < v_loan.principal THEN
-        RETURN jsonb_build_object('success', false,
-            'error', format('Insufficient cash — need $%s, have $%s',
-                            to_char(v_loan.principal, 'FM999,999,999,999'),
-                            to_char(v_lender.corp_cash_reserves, 'FM999,999,999,999')));
-    END IF;
-
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
 
-    -- Transfer cash. Lender always a corp; borrower always a corp in C2.
+    -- Atomic lender debit (audit fix from 20260521).
     UPDATE factions
        SET corp_cash_reserves = COALESCE(corp_cash_reserves, 0) - v_loan.principal
-     WHERE id = v_lender.id;
+     WHERE id = v_lender.id
+       AND COALESCE(corp_cash_reserves, 0) >= v_loan.principal;
+    GET DIAGNOSTICS v_updated_count = ROW_COUNT;
+    IF v_updated_count = 0 THEN
+        RETURN jsonb_build_object('success', false,
+            'error', format('Insufficient cash — bank cash dropped below $%s before payout',
+                            to_char(v_loan.principal, 'FM999,999,999,999')));
+    END IF;
+
     UPDATE factions
        SET corp_cash_reserves = COALESCE(corp_cash_reserves, 0) + v_loan.principal
      WHERE id = v_borrower.id;
 
-    -- Flip loan to active, with optimistic lock so a double-click doesn't
-    -- transfer twice. matures_at_tick is rebased to NOW + term_ticks
-    -- because the term clock starts on payout, not on approval.
     UPDATE bank_loans
        SET status            = 'active',
            issued_at_tick    = v_tick,
@@ -369,7 +424,6 @@ BEGIN
        AND status = 'pending_payout';
     GET DIAGNOSTICS v_updated_count = ROW_COUNT;
     IF v_updated_count = 0 THEN
-        -- Race: someone already paid out. Roll the cash back.
         UPDATE factions SET corp_cash_reserves = corp_cash_reserves + v_loan.principal WHERE id = v_lender.id;
         UPDATE factions SET corp_cash_reserves = corp_cash_reserves - v_loan.principal WHERE id = v_borrower.id;
         RETURN jsonb_build_object('success', false, 'error', 'Loan was already paid out');
@@ -386,9 +440,7 @@ $func$;
 
 GRANT EXECUTE ON FUNCTION pay_out_loan(UUID) TO authenticated;
 
--- ─────────────────────────────────────────────────────────────
--- cancel_loan_request: borrower pulls out before approval
--- ─────────────────────────────────────────────────────────────
+
 CREATE OR REPLACE FUNCTION cancel_loan_request(
     p_request_id UUID
 ) RETURNS JSONB
@@ -438,3 +490,5 @@ END;
 $func$;
 
 GRANT EXECUTE ON FUNCTION cancel_loan_request(UUID) TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
