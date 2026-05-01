@@ -1,0 +1,20 @@
+import{_supabase as r}from"./supabase-client-qEAQbBjE.js";/* empty css                         */let o=1;const p=1,n={sector:null},u={1:{label:"Step 1 of 1",title:"Select Your Sector",subtitle:"Choose the industry your corporation will operate in. This determines your contracts, revenue, and growth path."}},m=[{key:"construction",name:"Construction",desc:"Build the infrastructure that powers nations. From roads and schools to megaprojects — construction corporations bid on government contracts and shape the physical landscape.",available:!0},{key:"shipping",name:"Shipping",desc:"Move goods across oceans and borders. Bulk carriers haul fuel and grain, container ships transport manufactured goods, and specialized vessels handle arms and hazardous cargo. Not available in landlocked nations.",available:!0,coastalOnly:!0},{key:"finance",name:"Finance",desc:"Banks, investment firms, and insurance companies. Control the flow of capital, manage risk, and shape the economic landscape through lending, underwriting, and strategic investment.",available:!0}];function g(){const e=document.getElementById("step-1");e.innerHTML=`
+        <div class="section-block">
+            <div class="section-header">
+                <div class="section-dot" style="background:var(--teal)"></div>
+                <span class="section-label">Select a Sector</span>
+            </div>
+            <div class="section-body">
+                ${m.map(t=>`
+                    <div class="option-card${t.available?"":" disabled"}${n.sector===t.name?" selected":""}"
+                         data-sector="${t.key}" data-name="${t.name}"
+                         onclick="${t.available?"selectSector(this)":""}">
+                        ${t.available?"":'<span class="option-card__badge option-card__badge--soon">Coming Soon</span>'}
+                        ${t.coastalOnly?'<span class="option-card__badge" style="background:#2a3a4a;color:#6aa3d9;font-size:0.55rem;">Coastal Nations Only</span>':""}
+                        <div class="option-card__name">${t.name}</div>
+                        <div class="option-card__desc">${t.desc}</div>
+                    </div>
+                `).join("")}
+            </div>
+        </div>
+    `}function f(e){document.querySelectorAll("#step-1 .option-card").forEach(t=>t.classList.remove("selected")),e.classList.add("selected"),n.sector=e.dataset.name,i(),l()}async function h(){const{data:{user:e}}=await r.auth.getUser();if(!e){window.location.href="login.html";return}if(sessionStorage.getItem("pending_faction_type")!=="corp"){window.location.href="select-nation.html";return}document.getElementById("loading").style.display="none";const s=document.getElementById("page-content");s.style.display="flex",c(1)}function c(e){o=e;const t=u[e];document.getElementById("step-label").textContent=t.label,document.getElementById("step-title").textContent=t.title,document.getElementById("step-subtitle").textContent=t.subtitle,document.querySelectorAll(".step-pip").forEach(a=>{const d=parseInt(a.dataset.step);a.className="step-pip",d<e?a.classList.add("done"):d===e&&a.classList.add("active")}),document.querySelectorAll(".step-section").forEach(a=>a.classList.remove("active"));const s=document.getElementById("step-"+e);s&&s.classList.add("active"),e===1&&g(),i(),l(),document.getElementById("error-message").textContent=""}function i(){const e=document.getElementById("sel-tags");n.sector?e.innerHTML=`<span class="sel-tag">${n.sector}</span>`:e.innerHTML='<span class="sel-placeholder">Choose a sector to begin</span>'}function l(){const e=document.getElementById("btn-next"),t=o===1&&!!n.sector;e.disabled=!t,e.classList.toggle("ready",t),e.textContent="Next ▶"}function y(){o<p?c(o+1):(sessionStorage.setItem("corp_setup",JSON.stringify(n)),window.location.href="corp-nation-select.html")}function v(){o>1?c(o-1):(sessionStorage.removeItem("pending_faction_type"),window.location.href="faction-select.html")}window.goNext=y;window.goBack=v;window.selectSector=f;window.corpState=n;window.updateButtons=l;window.updateSelectionBar=i;h();

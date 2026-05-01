@@ -73,22 +73,20 @@
         .effect-up   { color: var(--green, #5cb85c); }
         .effect-down { color: var(--red,   #d9534f); }
     </style>
-  <script type="module" crossorigin src="/assets/laws-CYp2ILa6.js"></script>
+  <script type="module" crossorigin src="/assets/laws-DS_yQSOh.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
   <link rel="modulepreload" crossorigin href="/assets/government-structure-C17uG6rl.js">
-  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-CYaKZ_BF.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-BVNorCyj.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-DmgH3uJx.js">
-  <link rel="modulepreload" crossorigin href="/assets/corp-valuation-C0hsb2EQ.js">
-  <link rel="modulepreload" crossorigin href="/assets/config-kqJZ0B2B.js">
-  <link rel="modulepreload" crossorigin href="/assets/stats-tIiBSaQA.js">
-  <link rel="modulepreload" crossorigin href="/assets/political-actions-C-tXkzaR.js">
-  <link rel="modulepreload" crossorigin href="/assets/budget-Bm3vvm1R.js">
-  <link rel="modulepreload" crossorigin href="/assets/bills-CFUvRw6S.js">
-  <link rel="modulepreload" crossorigin href="/assets/trade-constants-DXVclgIj.js">
-  <link rel="modulepreload" crossorigin href="/assets/presidential-Cls0Zngs.js">
-  <link rel="modulepreload" crossorigin href="/assets/sovereign-default-DRjRiSGP.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-DmwJUj0E.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-valuation-CXafACL8.js">
+  <link rel="modulepreload" crossorigin href="/assets/config-CHsHqv7d.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-4gK98flh.js">
+  <link rel="modulepreload" crossorigin href="/assets/political-actions-CoM-LDWz.js">
+  <link rel="modulepreload" crossorigin href="/assets/bills-XlFS1_7K.js">
+  <link rel="modulepreload" crossorigin href="/assets/presidential-CiiUc8k5.js">
+  <link rel="modulepreload" crossorigin href="/assets/sovereign-default-CjXJ1DWP.js">
   <link rel="stylesheet" crossorigin href="/assets/laws-K9hZiW_l.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-DpQI84yj.css">
 </head>
@@ -124,9 +122,6 @@
         </div>
         <div class="add-text-article-section" id="add-permit-section" onclick="showPermitForm()">
             <span class="add-text-article-btn-text">+ Add Permit</span>
-        </div>
-        <div class="add-text-article-section" id="add-tariff-section" onclick="showTariffForm()">
-            <span class="add-text-article-btn-text">+ Tariff Article</span>
         </div>
         <div class="add-text-article-section" id="add-tax-section" onclick="showTaxForm()">
             <span class="add-text-article-btn-text">+ Tax Article</span>
@@ -188,42 +183,6 @@
             <div style="display:flex;gap:8px;margin-top:12px;">
                 <button class="btn-cancel" onclick="hideBailoutForm()">Cancel</button>
                 <button class="btn-add" id="add-bailout-btn" disabled onclick="addBailoutArticle()">Add to Bill</button>
-            </div>
-        </div>
-        <div id="add-tariff-form" style="display:none;">
-            <div class="form-group">
-                <label class="form-label" style="color:var(--amber);">Select Sector or Good</label>
-                <select class="form-select" id="tariff-sector-select" onchange="onTariffSectorChange()">
-                    <option value="">-- Choose a sector --</option>
-                    <option value="fuel_energy">Fuel & Energy</option>
-                    <option value="minerals">Minerals & Raw Materials</option>
-                    <option value="grains_staples">Grains & Staples</option>
-                    <option value="livestock_dairy">Livestock & Dairy</option>
-                    <option value="fruits_vegetables">Fruits & Vegetables</option>
-                    <option value="cash_crops">Cash Crops & Plantation</option>
-                    <option value="manufactured_goods">Manufactured Goods</option>
-                    <option value="technology">Technology & Electronics</option>
-                    <option value="arms">Arms & Military Equipment</option>
-                </select>
-            </div>
-            <div id="tariff-controls" style="display:none;">
-                <div class="form-group">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                        <label class="form-label" style="margin:0;">Tariff Rate</label>
-                        <span id="tariff-rate-display" style="font-family:var(--font-mono);font-size:1.2rem;font-weight:700;color:var(--amber);">0%</span>
-                    </div>
-                    <input type="range" id="tariff-rate-slider" class="form-select" min="0" max="100" step="1" value="0" oninput="onTariffRateChange()" style="width:100%;accent-color:var(--amber);height:6px;padding:0;border:none;background:transparent;" />
-                    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-top:2px;">
-                        <span>0% (Free Trade)</span>
-                        <span>50% (Protectionist)</span>
-                        <span>100% (Embargo)</span>
-                    </div>
-                </div>
-                <div id="tariff-preview" style="margin:8px 0;padding:10px;background:var(--bg-card);border:1px solid var(--border-main);border-radius:4px;font-size:0.75rem;color:var(--text-muted);line-height:1.6;"></div>
-                <div style="display:flex;gap:8px;margin-top:12px;">
-                    <button class="btn-cancel" onclick="hideTariffForm()">Cancel</button>
-                    <button class="btn-add" id="add-tariff-btn" disabled onclick="addTariffArticle()">Add to Bill</button>
-                </div>
             </div>
         </div>
         <div id="add-permit-form" style="display:none;">
