@@ -118,3 +118,143 @@
     .tr-panel-title { font-size: 11px; }
     .tr-partner-header { padding: 10px 12px; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   YOUR ECONOMY — corp-dashboard-aligned section
+   Roman-numeral header + serif italic title, 3-column layout:
+   Production / Demand / Net.
+   ══════════════════════════════════════════════════════════════ */
+.tr-econ-section {
+    margin-bottom: 22px;
+}
+.tr-econ-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.tr-econ-header h2 {
+    font-family: var(--font-serif);
+    font-weight: 500;
+    font-size: 22px;
+    color: var(--text-bright, #e8e4d9);
+    margin: 0;
+    letter-spacing: -0.005em;
+}
+.tr-econ-header h2 .tr-econ-num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--amber);
+    margin-right: 10px;
+    letter-spacing: 0.06em;
+    vertical-align: middle;
+}
+.tr-econ-header h2 em {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: 500;
+    color: var(--amber);
+    margin-left: 6px;
+}
+.tr-econ-header .tr-econ-meta {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+.tr-econ-card {
+    background: var(--bg-card, #1c1c18);
+    border: 1px solid var(--border-main, rgba(255,255,255,0.06));
+    overflow: hidden;
+}
+.tr-econ-col-header {
+    display: grid;
+    grid-template-columns: 1fr 110px 110px 110px;
+    gap: 10px;
+    padding: 12px 20px;
+    background: var(--bg-panel, #1a1a17);
+    border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+.tr-econ-col-header > span:not(:first-child) {
+    text-align: right;
+}
+
+.tr-econ-row {
+    display: grid;
+    grid-template-columns: 1fr 110px 110px 110px;
+    gap: 10px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
+    align-items: center;
+}
+.tr-econ-row:last-child { border-bottom: none; }
+
+.tr-econ-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+.tr-econ-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+.tr-econ-name {
+    font-family: var(--font-serif);
+    font-weight: 500;
+    font-size: 17px;
+    color: var(--text-bright, #e8e4d9);
+    letter-spacing: -0.005em;
+}
+
+.tr-econ-value {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-secondary, #b9b6ab);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.tr-econ-value.tr-econ-muted { color: var(--text-dim); }
+
+.tr-econ-net {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 600;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.tr-econ-net.positive { color: var(--green); }
+.tr-econ-net.negative { color: var(--red); }
+.tr-econ-net.zero { color: var(--text-dim); }
+
+.tr-econ-empty {
+    padding: 28px 20px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    font-style: italic;
+}
+
+@media (max-width: 768px) {
+    .tr-econ-col-header,
+    .tr-econ-row {
+        grid-template-columns: 1fr 80px 80px 80px;
+        padding: 12px 14px;
+        gap: 6px;
+    }
+    .tr-econ-name { font-size: 14px; }
+    .tr-econ-value { font-size: 13px; }
+    .tr-econ-net { font-size: 14px; }
+}

@@ -545,40 +545,43 @@ function renderTradeEconomy() {
     let html = '';
 
     // ── Commodity table ──
-    html += `<div class="tr-panel">
-        <div class="tr-panel-header">
-            <span class="tr-panel-title">YOUR ECONOMY</span>
-            <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${commodities.length} commodities</span>
+    // Corp-dashboard-aligned section: Roman-numeral header + serif title
+    // + 3-column table (Production / Demand / Net). Stat-based rows
+    // render unit-less integers; trade-flow rows use fmtBudgetCurrency.
+    html += `<div class="tr-econ-section">
+        <div class="tr-econ-header">
+            <h2><span class="tr-econ-num">I.</span>Your <em>Economy</em></h2>
+            <span class="tr-econ-meta">${commodities.length} commodit${commodities.length === 1 ? 'y' : 'ies'}</span>
         </div>
-        <div class="tr-commodity-header">
-            <span style="flex:1;">COMMODITY</span>
-            <span style="width:75px;text-align:right;">PROD /MO</span>
-            <span style="width:75px;text-align:right;">DOM DEMAND /MO</span>
-            <span style="width:75px;text-align:right;">IMP DEMAND /MO</span>
-            <span style="width:75px;text-align:right;">SELF-SUFF /MO</span>
-        </div>`;
+        <div class="tr-econ-card">
+            <div class="tr-econ-col-header">
+                <span>Commodity</span>
+                <span>Production</span>
+                <span>Demand</span>
+                <span>Net</span>
+            </div>`;
 
     const nationId = _worldState?.nation?.id;
-    // Stat-based rows render unit-less decimals (toFixed(1)) since the
-    // values are derived from a 0-100 nation stat, not dollar volumes.
-    const fmtProd = (c, n) => c.statBased ? Number(n).toFixed(1) : fmtBudgetCurrency(n);
+    // Stat-based rows render as unit-less integers; dollar rows use the
+    // standard currency formatter. fmtProd routes both through one call.
+    const fmtProd = (c, n) => c.statBased ? Number(n).toFixed(0) : fmtBudgetCurrency(n);
     for (const c of commodities) {
-        const bal = c.selfSufficiencyBalance !== null ? c.selfSufficiencyBalance : c.netFlow;
+        // Total demand = own consumption + foreign demand on our exports.
+        // Net = production minus total demand (positive = surplus).
+        const totalDemand = (Number(c.domesticDemand) || 0) + (Number(c.demand) || 0);
+        const net = (Number(c.production) || 0) - totalDemand;
+        const netCls = net > 0 ? 'positive' : net < 0 ? 'negative' : 'zero';
         const isExp = _expandedCommodity === c.key;
-        const isSelected = _tradeCommodityFilter === c.key;
-        const bgStyle = isExp ? 'background:var(--bg-card);' : isSelected ? (bal > 0 ? 'background:rgba(92,204,92,0.04);' : 'background:rgba(204,85,85,0.04);') : '';
-        html += `<div class="tr-commodity-row" data-sector="${c.key}"${c.statBased ? ' data-statbased="1"' : ''} style="${bgStyle}${c.statBased ? 'cursor:default;' : ''}">
-            <div style="flex:1;display:flex;align-items:center;gap:8px;">
-                <span style="font-size:16px;">${c.icon}</span>
-                <span style="font-size:14px;color:${isExp || isSelected ? 'var(--text-bright)' : 'var(--text-secondary)'};font-weight:${isExp || isSelected ? '700' : '400'};">${escapeHtml(c.name)}</span>
-                ${!isExp && !c.statBased ? '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);opacity:0.5;margin-left:2px;">click to expand</span>' : ''}
+        const rowAttrs = c.statBased ? ' data-statbased="1"' : '';
+        const rowStyle = c.statBased ? 'cursor:default;' : '';
+        html += `<div class="tr-econ-row tr-commodity-row" data-sector="${c.key}"${rowAttrs} style="${rowStyle}">
+            <div class="tr-econ-name-cell">
+                <span class="tr-econ-icon">${c.icon}</span>
+                <span class="tr-econ-name">${escapeHtml(c.name)}</span>
             </div>
-            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${fmtProd(c, c.production)}</span>
-            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${c.domesticDemand > 0 ? fmtProd(c, c.domesticDemand) : '—'}</span>
-            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${c.demand > 0 ? fmtProd(c, c.demand) : '—'}</span>
-            <span style="width:75px;font-family:var(--font-mono);font-size:14px;font-weight:700;text-align:right;color:${bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text-dim)'};">
-                ${bal === 0 ? '\u2014' : (bal > 0 ? '+' : '') + fmtProd(c, Math.abs(bal))}
-            </span>
+            <span class="tr-econ-value">${fmtProd(c, c.production)}</span>
+            <span class="tr-econ-value${totalDemand > 0 ? '' : ' tr-econ-muted'}">${totalDemand > 0 ? fmtProd(c, totalDemand) : '—'}</span>
+            <span class="tr-econ-net ${netCls}">${net === 0 ? '—' : (net > 0 ? '+' : '−') + fmtProd(c, Math.abs(net))}</span>
         </div>`;
 
         // Expanded detail panel
@@ -723,7 +726,13 @@ function renderTradeEconomy() {
             html += `</div>`;
         }
     }
-    html += `</div>`;
+    // Empty-state when there are no commodities at all (no Energy stat
+    // and no trade flows). Energy is always injected, so this is mostly
+    // defensive — but cheap to render.
+    if (commodities.length === 0) {
+        html += `<div class="tr-econ-empty">No commodities · no production data yet</div>`;
+    }
+    html += `</div></div>`;
 
     // ── Surpluses / Deficits ──
     html += `<div style="display:flex;gap:6px;">`;
