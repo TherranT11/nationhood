@@ -506,6 +506,20 @@ body.corp-operations-construction.light-mode {
   display: flex;
   gap: 8px;
 }
+/* Status pill that replaces the action row after a bid is submitted.
+   Subdued green to convey "submitted/done" without competing with the
+   gold Place Bid button on cards that haven't been bid on yet. */
+.co-contract-bid-placed {
+  font-family: var(--co-mono);
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding: 9px 14px;
+  text-align: center;
+  border: 1px solid rgba(92,184,92,0.35);
+  background: rgba(92,184,92,0.08);
+  color: var(--co-accent-green);
+}
 .co-contract-btn {
   font-family: var(--co-mono);
   font-size: 10px;
@@ -1211,6 +1225,11 @@ function renderHeroMeter(score, band) {
 
 let _availableContracts = [];
 let _activeContracts = [];
+// contract_id → my bid row. Populated each loadContracts() so cards
+// that the player has already bid on show "Bid Placed" instead of the
+// submit button. Keyed by contract id so lookup in renderAvailableCard
+// is O(1).
+let _myBids = new Map();
 let _bidInflight = false;     // Per-bid double-fire guard
 let _crewsInflight = false;   // Per-crew-assignment double-fire guard
 
@@ -1275,6 +1294,24 @@ async function loadContracts() {
         _activeContracts = [];
     } else {
         _activeContracts = activeRes.data || [];
+    }
+
+    // Pull the player's bids on every visible contract so the card can
+    // show "Bid Placed" after submit instead of the bid button. One
+    // query keyed by faction_id + visible contract ids; cheap.
+    _myBids = new Map();
+    const visibleIds = _availableContracts.map(c => c.id);
+    if (visibleIds.length > 0) {
+        const { data: myBids, error: bidsErr } = await _supabase
+            .from('corp_contract_bids')
+            .select('contract_id, bid_amount, crews_committed, markup_pct, quoted_timeline_months')
+            .eq('faction_id', faction.id)
+            .in('contract_id', visibleIds);
+        if (bidsErr) {
+            console.warn('[corp-operations] my bids fetch failed:', bidsErr.message);
+        } else {
+            for (const b of (myBids || [])) _myBids.set(b.contract_id, b);
+        }
     }
 
     renderAvailableContracts();
@@ -1371,10 +1408,25 @@ function renderAvailableCard(contract) {
         ? `— ${escapeHtml(contract.issuer_name)}${contract.nations?.name ? `, ${escapeHtml(contract.nations.name)}` : ''}`
         : '— Unknown issuer';
 
+    const myBid = _myBids.get(contract.id);
     const bidBtnLabel = allMet ? 'Place Bid ▸' : 'Requirements Unmet';
     const bidBtnAttrs = allMet
         ? `data-action="bid" data-id="${escapeHtml(contract.id)}"`
         : `disabled`;
+
+    // If the player has already bid, swap the action row for a status
+    // pill showing the bid amount + quoted timeline. Decline button is
+    // suppressed since the bid is already committed.
+    const actionsHtml = myBid
+        ? `<div class="co-contract-bid-placed">
+                ✓ Bid Placed — ${fmtMoney(myBid.bid_amount)}
+                ${myBid.quoted_timeline_months ? ` · ${myBid.quoted_timeline_months} ticks` : ''}
+                ${myBid.crews_committed ? ` · ${myBid.crews_committed} crew${myBid.crews_committed === 1 ? '' : 's'}` : ''}
+           </div>`
+        : `<div class="co-contract-actions">
+                <button class="co-contract-btn" data-action="decline" data-id="${escapeHtml(contract.id)}">Decline</button>
+                <button class="co-contract-btn primary" ${bidBtnAttrs}>${bidBtnLabel}</button>
+           </div>`;
 
     return `<div class="co-contract-card">
         <div class="co-contract-meta-row">
@@ -1398,10 +1450,7 @@ function renderAvailableCard(contract) {
             </div>
         </div>
         ${reqChips ? `<div class="co-contract-requires">${reqChips}</div>` : ''}
-        <div class="co-contract-actions">
-            <button class="co-contract-btn" data-action="decline" data-id="${escapeHtml(contract.id)}">Decline</button>
-            <button class="co-contract-btn primary" ${bidBtnAttrs}>${bidBtnLabel}</button>
-        </div>
+        ${actionsHtml}
     </div>`;
 }
 
