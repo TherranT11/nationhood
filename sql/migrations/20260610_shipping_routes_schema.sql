@@ -1,60 +1,71 @@
 -- ══════════════════════════════════════════════════════════════
--- Shipping Operations SOP1: shipping_routes + shipping_route_bids
+-- Shipping Operations SOP1: shipping_contracts + shipping_contract_bids
 --
 -- Net-new contract pipeline for the redesigned Shipping Operations
 -- page (mockup-driven rebuild). Two tables, parallel in shape to the
 -- bank-loan pipeline (L1):
 --
---   shipping_routes      — the tender + the active route. One row
---                          per route; status enum walks the row from
---                          'open' (bidding window) → 'awarded' (live,
---                          accruing per-tick revenue to the winning
---                          carrier) → 'completed' / 'cancelled' /
---                          'expired'. Carries everything the page's
---                          Available Routes card and Active Routes
---                          card both render — origin/destination
---                          ports, contract_type tag, requirements,
---                          revenue/tick, term, freighters required.
+--   shipping_contracts        — the tender + the active contract.
+--                               One row per route; status enum walks
+--                               the row from 'open' (bidding window)
+--                               → 'awarded' (live, accruing per-tick
+--                               revenue to the winning carrier) →
+--                               'completed' / 'cancelled' / 'expired'.
+--                               Carries everything the page's
+--                               Available Routes card and Active
+--                               Routes card both render — origin /
+--                               destination ports, contract_type tag,
+--                               requirements, revenue/tick, term,
+--                               freighters required.
 --
---   shipping_route_bids  — bid record per (route, bidder). UNIQUE
---                          constraint enforces strict one-shot per
---                          carrier per route, mirroring
---                          bank_loan_offers. SOP2 will introduce
---                          place_shipping_bid + award_shipping_route
---                          RPCs against these.
+--   shipping_contract_bids    — bid record per (contract, bidder).
+--                               UNIQUE constraint enforces strict
+--                               one-shot per carrier per contract,
+--                               mirroring bank_loan_offers. SOP2
+--                               introduces place_shipping_bid +
+--                               criterion-based auto-award against
+--                               these.
 --
--- Lifecycle (SOP2 will implement):
+-- Naming note: the previous draft of this migration used
+-- shipping_routes / shipping_route_bids. Renamed to
+-- shipping_contracts / shipping_contract_bids because the legacy
+-- organic-routes infrastructure (20260417 / 20260418 / etc.) already
+-- holds the shipping_routes name with a different schema. The legacy
+-- table will get dropped alongside SOP3's full page rebuild; until
+-- then it stays alive for the existing voyage page.
+--
+-- Lifecycle (SOP2 implements):
 --   1. Issuer (gov ministry / private corp / foreign nation) opens a
---      shipping_routes row in 'open' status with a bid window.
+--      shipping_contracts row in 'open' status with a bid window.
 --   2. Carriers with sufficient freighters / fleet_health / route_risk
 --      stats place bids via place_shipping_bid RPC. Each row in
---      shipping_route_bids; 'pending' until resolution.
---   3. award_shipping_route RPC picks one bid, flips it to 'accepted',
---      auto-rejects siblings, flips the route to 'awarded' with
---      winner_faction_id set, sets awarded_at_tick + ends_at_tick.
---   4. Per-tick processor (advance-corp-tick) accrues revenue_per_tick
---      to the winner's cash + tracks in corp_revenue_current_tick on
---      every tick from awarded_at_tick → ends_at_tick. At
---      ends_at_tick, status flips to 'completed'.
+--      shipping_contract_bids; 'pending' until resolution.
+--   3. After expires_at_tick, advance-corp-tick auto-awards by the
+--      contract's award_criterion (lowest_price / fastest_delivery
+--      / lowest_risk).
+--   4. Per-tick processor accrues revenue_per_tick to the winner's
+--      cash + tracks in corp_revenue_current_tick on every tick from
+--      awarded_at_tick → ends_at_tick. At ends_at_tick, status flips
+--      to 'completed'.
 --
 -- Status enums kept consistent with bank_loan_offers vocabulary so
 -- code reading both tables can use the same vocabulary mentally:
---   shipping_routes:      open / awarded / completed / cancelled / expired
---   shipping_route_bids:  pending / accepted / rejected / auto_rejected
---                         / expired / withdrawn
+--   shipping_contracts:     open / awarded / completed / cancelled / expired
+--   shipping_contract_bids: pending / accepted / rejected / auto_rejected
+--                           / expired / withdrawn
 -- 'withdrawn' is reserved for a future per-bid-cancel flow.
 --
 -- RLS:
---   * SELECT all rows for authenticated (route market is public).
+--   * SELECT all rows for authenticated (contract market is public).
 --   * No client INSERT/UPDATE/DELETE policies — every write goes
 --     through SOP2's SECURITY DEFINER RPCs.
 -- ══════════════════════════════════════════════════════════════
 
 
 -- ══════════════════════════════════════════════════════════════
--- 1. shipping_routes
+-- 1. shipping_contracts
 -- ══════════════════════════════════════════════════════════════
-CREATE TABLE IF NOT EXISTS shipping_routes (
+CREATE TABLE IF NOT EXISTS shipping_contracts (
     id                    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- Issuer side. nation_id is the issuing nation (gov contracts
@@ -112,26 +123,26 @@ CREATE TABLE IF NOT EXISTS shipping_routes (
     updated_at            TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_shr_nation             ON shipping_routes (nation_id);
-CREATE INDEX IF NOT EXISTS idx_shr_status             ON shipping_routes (status);
-CREATE INDEX IF NOT EXISTS idx_shr_winner             ON shipping_routes (winner_faction_id);
-CREATE INDEX IF NOT EXISTS idx_shr_expires            ON shipping_routes (expires_at_tick);
-CREATE INDEX IF NOT EXISTS idx_shr_ends               ON shipping_routes (ends_at_tick);
-CREATE INDEX IF NOT EXISTS idx_shr_contract_type      ON shipping_routes (contract_type);
+CREATE INDEX IF NOT EXISTS idx_shc_nation             ON shipping_contracts (nation_id);
+CREATE INDEX IF NOT EXISTS idx_shc_status             ON shipping_contracts (status);
+CREATE INDEX IF NOT EXISTS idx_shc_winner             ON shipping_contracts (winner_faction_id);
+CREATE INDEX IF NOT EXISTS idx_shc_expires            ON shipping_contracts (expires_at_tick);
+CREATE INDEX IF NOT EXISTS idx_shc_ends               ON shipping_contracts (ends_at_tick);
+CREATE INDEX IF NOT EXISTS idx_shc_contract_type      ON shipping_contracts (contract_type);
 
-COMMENT ON TABLE shipping_routes IS
-    'Shipping contract pipeline. Single row per route, status walks open → awarded → completed/cancelled/expired. Carries the corridor (origin/destination ports), terms (revenue/tick, term_ticks, freighters_required), stat gates (min_fleet_health / max_route_risk), and the award snapshot (winner_faction_id, awarded_at_tick, ends_at_tick).';
+COMMENT ON TABLE shipping_contracts IS
+    'Shipping contract pipeline. Single row per contract, status walks open → awarded → completed/cancelled/expired. Carries the corridor (origin/destination ports), terms (revenue/tick, term_ticks, freighters_required), stat gates (min_fleet_health / max_route_risk), and the award snapshot (winner_faction_id, awarded_at_tick, ends_at_tick).';
 
 
 -- ══════════════════════════════════════════════════════════════
--- 2. shipping_route_bids
+-- 2. shipping_contract_bids
 -- ══════════════════════════════════════════════════════════════
-CREATE TABLE IF NOT EXISTS shipping_route_bids (
+CREATE TABLE IF NOT EXISTS shipping_contract_bids (
     id                    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    -- The route this bid is responding to. CASCADE on delete because
-    -- bids have no meaning without their parent route.
-    route_id              UUID         NOT NULL REFERENCES shipping_routes(id) ON DELETE CASCADE,
+    -- The contract this bid is responding to. CASCADE on delete
+    -- because bids have no meaning without their parent contract.
+    contract_id           UUID         NOT NULL REFERENCES shipping_contracts(id) ON DELETE CASCADE,
 
     -- The carrier corp making the bid. RESTRICT — corps with live bids
     -- can't be deleted; resolve the bids first.
@@ -141,8 +152,8 @@ CREATE TABLE IF NOT EXISTS shipping_route_bids (
     status                TEXT         NOT NULL DEFAULT 'pending'
                               CHECK (status IN ('pending','accepted','rejected','auto_rejected','expired','withdrawn')),
 
-    -- Mirrors the parent route's expires_at_tick at submit time so the
-    -- bid auto-expires with the bid window. Same invariant as
+    -- Mirrors the parent contract's expires_at_tick at submit time so
+    -- the bid auto-expires with the bid window. Same invariant as
     -- bank_loan_offers — a future per-tick sweep (parallel to L5)
     -- catches drift.
     expires_at_tick       INT          NOT NULL,
@@ -153,36 +164,36 @@ CREATE TABLE IF NOT EXISTS shipping_route_bids (
     resolved_at_tick      INT,
     updated_at            TIMESTAMPTZ  NOT NULL DEFAULT now(),
 
-    -- One bid per (route, carrier), strictly. UNIQUE matches on all
-    -- statuses; carriers cannot re-bid the same route after their bid
-    -- terminates. Same one-shot rule as bank_loan_offers (L1).
-    UNIQUE (route_id, bidder_faction_id)
+    -- One bid per (contract, carrier), strictly. UNIQUE matches on
+    -- all statuses; carriers cannot re-bid the same contract after
+    -- their bid terminates. Same one-shot rule as bank_loan_offers (L1).
+    UNIQUE (contract_id, bidder_faction_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_srb_route   ON shipping_route_bids (route_id);
-CREATE INDEX IF NOT EXISTS idx_srb_bidder  ON shipping_route_bids (bidder_faction_id);
-CREATE INDEX IF NOT EXISTS idx_srb_status  ON shipping_route_bids (status);
-CREATE INDEX IF NOT EXISTS idx_srb_expires ON shipping_route_bids (expires_at_tick);
+CREATE INDEX IF NOT EXISTS idx_scb_contract ON shipping_contract_bids (contract_id);
+CREATE INDEX IF NOT EXISTS idx_scb_bidder   ON shipping_contract_bids (bidder_faction_id);
+CREATE INDEX IF NOT EXISTS idx_scb_status   ON shipping_contract_bids (status);
+CREATE INDEX IF NOT EXISTS idx_scb_expires  ON shipping_contract_bids (expires_at_tick);
 
-COMMENT ON TABLE shipping_route_bids IS
-    'Carrier bids on shipping_routes. One row per (route, carrier), strictly one-shot — once a bid reaches a terminal state the carrier cannot re-bid the same route. Award flow flips the chosen bid to accepted, auto-rejects siblings, and snapshots winner_faction_id onto shipping_routes.';
+COMMENT ON TABLE shipping_contract_bids IS
+    'Carrier bids on shipping_contracts. One row per (contract, carrier), strictly one-shot — once a bid reaches a terminal state the carrier cannot re-bid the same contract. Award flow flips the chosen bid to accepted, auto-rejects siblings, and snapshots winner_faction_id onto shipping_contracts.';
 
 
 -- ══════════════════════════════════════════════════════════════
 -- RLS
 -- ══════════════════════════════════════════════════════════════
--- Read-all for authenticated (route market is public — same model as
--- bank_loan_requests / bank_loan_offers / equity_raises). Writes are
--- SECURITY DEFINER RPC only (SOP2 lands next).
-ALTER TABLE shipping_routes     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE shipping_route_bids ENABLE ROW LEVEL SECURITY;
+-- Read-all for authenticated (contract market is public — same model
+-- as bank_loan_requests / bank_loan_offers / equity_raises). Writes
+-- are SECURITY DEFINER RPC only (SOP2 lands next).
+ALTER TABLE shipping_contracts      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shipping_contract_bids  ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "shipping_routes_read_all" ON shipping_routes;
-CREATE POLICY "shipping_routes_read_all"
-    ON shipping_routes FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "shipping_contracts_read_all" ON shipping_contracts;
+CREATE POLICY "shipping_contracts_read_all"
+    ON shipping_contracts FOR SELECT TO authenticated USING (true);
 
-DROP POLICY IF EXISTS "shipping_route_bids_read_all" ON shipping_route_bids;
-CREATE POLICY "shipping_route_bids_read_all"
-    ON shipping_route_bids FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "shipping_contract_bids_read_all" ON shipping_contract_bids;
+CREATE POLICY "shipping_contract_bids_read_all"
+    ON shipping_contract_bids FOR SELECT TO authenticated USING (true);
 
 NOTIFY pgrst, 'reload schema';
