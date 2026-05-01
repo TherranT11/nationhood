@@ -4105,6 +4105,86 @@ async function processEquipmentDeliveries(supabase, currentTick) {
 //  FINANCE SECTOR — Loan Processing
 // ════════════════════════════════════════════════════════════════════════════════
 
+// L5: Bank loan request + offer expiry. Shard-wide (not per-nation) since
+// any borrower from any nation can have a pending request, and the work
+// is cheap enough that a single sweep is simpler than a per-nation loop.
+//
+// Lifecycle:
+//   bank_loan_requests.status='pending' AND expires_at_tick <= currentTick
+//     → flip request to 'expired'
+//     → cascade: every still-pending offer on those requests → 'expired'
+//   bank_loan_offers.status='pending' AND expires_at_tick <= currentTick
+//     → catch-all flip to 'expired' for orphaned offers (offer's
+//       expires_at_tick is set to mirror its parent request's at submit
+//       time, so this branch should usually be empty; runs anyway as a
+//       defensive sweep so an out-of-band drift can't strand offers)
+//
+// Idempotent: re-running on the same tick is a no-op because the
+// .eq('status', 'pending') filter excludes rows that already terminated.
+async function processBankLoanExpiry(supabase, currentTick) {
+    const results = { expiredRequests: 0, expiredOffersCascade: 0, expiredOffersOrphan: 0 };
+    const nowIso = new Date().toISOString();
+
+    // 1. Flip pending requests past their expiry to 'expired'.
+    const { data: expiredReqs, error: reqErr } = await supabase
+        .from('bank_loan_requests')
+        .update({
+            status: 'expired',
+            resolved_at_tick: currentTick,
+            updated_at: nowIso,
+        })
+        .eq('status', 'pending')
+        .lte('expires_at_tick', currentTick)
+        .select('id');
+    if (reqErr) {
+        console.warn('[BankLoanExpiry] request expiry update failed:', reqErr.message);
+        return results;
+    }
+    results.expiredRequests = expiredReqs?.length || 0;
+
+    // 2. Cascade — every still-pending offer on the expired requests
+    //    flips to 'expired' too.
+    if (results.expiredRequests > 0) {
+        const expiredIds = expiredReqs.map(r => r.id);
+        const { data: cascadeOffers, error: cascadeErr } = await supabase
+            .from('bank_loan_offers')
+            .update({
+                status: 'expired',
+                resolved_at_tick: currentTick,
+                updated_at: nowIso,
+            })
+            .in('request_id', expiredIds)
+            .eq('status', 'pending')
+            .select('id');
+        if (cascadeErr) {
+            console.warn('[BankLoanExpiry] offer cascade update failed:', cascadeErr.message);
+        } else {
+            results.expiredOffersCascade = cascadeOffers?.length || 0;
+        }
+    }
+
+    // 3. Defensive catch-all for orphan offers whose own expires_at_tick
+    //    has passed but whose parent request hasn't (shouldn't happen
+    //    given the schema invariant; runs anyway).
+    const { data: orphanOffers, error: orphanErr } = await supabase
+        .from('bank_loan_offers')
+        .update({
+            status: 'expired',
+            resolved_at_tick: currentTick,
+            updated_at: nowIso,
+        })
+        .eq('status', 'pending')
+        .lte('expires_at_tick', currentTick)
+        .select('id');
+    if (orphanErr) {
+        console.warn('[BankLoanExpiry] orphan offer sweep failed:', orphanErr.message);
+    } else {
+        results.expiredOffersOrphan = orphanOffers?.length || 0;
+    }
+
+    return results;
+}
+
 // Each tick: expire unfunded loan requests, process repayments, handle defaults.
 async function processFinanceLoans(supabase, nationId, currentTick) {
     const results = { expired: 0, payments: 0, defaults: 0 };
@@ -6073,6 +6153,23 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             console.error(`[advance-corp-tick] FAILED processing corps for ${nation.name}:`, nationProcessErr);
             summary.errors.push({ nation: nation.name, error: String(nationProcessErr) });
         }
+    }
+
+    // L5: Bank loan request + offer expiry sweep (shard-wide, idempotent).
+    // Runs after the per-nation loop because expiry is independent of any
+    // single nation's work and the cascade may touch rows whose lender +
+    // borrower live in different nations.
+    try {
+        const expiryResults = await processBankLoanExpiry(supabase, currentTick);
+        if (expiryResults.expiredRequests > 0
+            || expiryResults.expiredOffersCascade > 0
+            || expiryResults.expiredOffersOrphan > 0) {
+            summary.bankLoanExpiry = expiryResults;
+            console.log(`[BankLoanExpiry] tick ${currentTick}: ${expiryResults.expiredRequests} request(s) expired, ${expiryResults.expiredOffersCascade} offer(s) cascade-expired, ${expiryResults.expiredOffersOrphan} orphan offer(s) swept`);
+        }
+    } catch (expiryErr) {
+        console.error('[advance-corp-tick] FAILED bank loan expiry sweep:', expiryErr);
+        summary.errors.push({ scope: 'bank_loan_expiry', error: String(expiryErr) });
     }
 
     // Global P&L flush. Per-nation flushes above cover the common case, but
