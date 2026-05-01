@@ -562,9 +562,12 @@ function renderTradeEconomy() {
 
     // Net trade position = trade_flows.net_flow (export_volume − import_volume)
     // computed once at tick time. Same source as getNationSurplusesAndDeficits
-    // so YOUR ECONOMY and partner views agree.
-    const surpluses = commodities.filter(c => c.netFlow > 0).sort((a, b) => b.netFlow - a.netFlow);
-    const deficits = commodities.filter(c => c.netFlow < 0).sort((a, b) => a.netFlow - b.netFlow);
+    // so YOUR ECONOMY and partner views agree. Stat-derived rows (Energy,
+    // etc.) are excluded — their "surplus" is a stat-scale decimal, not a
+    // dollar trade balance, so they don't belong in the SURPLUSES/DEFICITS
+    // dollar-formatted summary.
+    const surpluses = commodities.filter(c => !c.statBased && c.netFlow > 0).sort((a, b) => b.netFlow - a.netFlow);
+    const deficits = commodities.filter(c => !c.statBased && c.netFlow < 0).sort((a, b) => a.netFlow - b.netFlow);
 
     let html = '';
 
