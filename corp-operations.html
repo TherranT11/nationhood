@@ -1277,7 +1277,7 @@ async function loadPressingIssues() {
     if (!faction?.id) return;
     const { data, error } = await _supabase
         .from('corp_contract_events')
-        .select('id, contract_id, event_key, type, severity, title, description, impact, responses, fired_at_tick, expires_at_tick, corp_contracts:contract_id(name)')
+        .select('id, contract_id, type, severity, title, description, impact, responses, expires_at_tick, corp_contracts:contract_id(name)')
         .eq('faction_id', faction.id)
         .eq('status', 'ACTIVE')
         .order('expires_at_tick', { ascending: true });
@@ -1330,9 +1330,15 @@ function renderPressingIssues() {
         if (delay > 0) effectChips.push(`<span class="co-req-chip unmet">+${delay}t delay</span>`);
         if (effectChips.length === 0) effectChips.push('<span class="co-req-chip met">No fixed cost</span>');
 
+        const sevText = String(ev.severity || 'LOW').toUpperCase();
+        const typeText = String(ev.type || '').trim();
+        // Conditional separator — empty/null type would otherwise leave a
+        // trailing "◊ " with no text after.
+        const tagText = typeText ? `${sevText} ◊ ${typeText}` : sevText;
+
         return `<div class="co-issue-card sev-${sev}">
             <div class="co-contract-meta-row">
-                <span class="co-issue-tag sev-${sev}">${escapeHtml(String(ev.severity || 'LOW').toUpperCase())} ◊ ${escapeHtml(String(ev.type || ''))}</span>
+                <span class="co-issue-tag sev-${sev}">${escapeHtml(tagText)}</span>
                 <span class="co-contract-deadline">${escapeHtml(expiresText)}</span>
             </div>
             <div class="co-contract-name">${escapeHtml(ev.title || 'Untitled')}</div>
