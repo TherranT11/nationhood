@@ -388,6 +388,43 @@ body.corp-operations-construction.light-mode {
   flex-direction: column;
   gap: 12px;
 }
+/* Pressing Issues cards — same chrome as contract cards plus a
+   severity-coded left border that mirrors the mockup's color bar. */
+.co-issue-card {
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line);
+  border-left-width: 3px;
+  padding: 18px 22px;
+  margin-bottom: 12px;
+}
+.co-issue-card.sev-low      { border-left-color: var(--co-accent-blue); }
+.co-issue-card.sev-moderate { border-left-color: var(--co-accent-rust); }
+.co-issue-card.sev-high     { border-left-color: var(--co-accent-red); }
+.co-issue-card.sev-critical { border-left-color: var(--co-accent-red); box-shadow: inset 3px 0 12px rgba(217,83,79,0.15); }
+
+.co-issue-tag {
+  font-family: var(--co-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid var(--co-line-bright);
+  background: var(--co-bg-secondary);
+}
+.co-issue-tag.sev-low      { color: var(--co-accent-blue); border-color: rgba(91,192,222,0.35); background: rgba(91,192,222,0.06); }
+.co-issue-tag.sev-moderate { color: var(--co-accent-rust); border-color: rgba(232,114,74,0.35); background: rgba(232,114,74,0.06); }
+.co-issue-tag.sev-high     { color: var(--co-accent-red); border-color: rgba(217,83,79,0.40); background: rgba(217,83,79,0.06); }
+.co-issue-tag.sev-critical { color: #fff; background: var(--co-accent-red); border-color: var(--co-accent-red); }
+
+.co-issue-desc {
+  font-family: var(--co-sans);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--co-text-secondary);
+  margin: 8px 0 12px;
+}
+
 .co-contract-empty {
   background: var(--co-bg-card);
   border: 1px solid var(--co-line);
@@ -1016,10 +1053,10 @@ body.corp-operations-construction.light-mode {
     <div class="co-section">
       <div class="co-section-header">
         <h2><span class="num">II.</span>Pressing Issues</h2>
-        <span class="desc">Time-Sensitive ◊ Decide Before Tick Resolves</span>
+        <span class="desc" id="co-issues-meta">Time-Sensitive ◊ Decide Before Tick Resolves</span>
       </div>
-      <div class="co-contract-empty" id="co-issues-list">
-        No pressing issues right now. Time-sensitive decisions will appear here when triggered.
+      <div id="co-issues-list">
+        <div class="co-contract-empty">Loading…</div>
       </div>
     </div>
 
@@ -1232,7 +1269,111 @@ function renderHeroMeter(score, band) {
     return `<div class="co-hero-meter">${cells.join('')}</div>`;
 }
 
-// ── CONTRACTS (Sections II + III) ──
+// ── PRESSING ISSUES (Section II) ──
+
+let _pressingIssues = [];
+
+async function loadPressingIssues() {
+    if (!faction?.id) return;
+    const { data, error } = await _supabase
+        .from('corp_contract_events')
+        .select('id, contract_id, event_key, type, severity, title, description, impact, responses, fired_at_tick, expires_at_tick, corp_contracts:contract_id(name)')
+        .eq('faction_id', faction.id)
+        .eq('status', 'ACTIVE')
+        .order('expires_at_tick', { ascending: true });
+    if (error) {
+        console.warn('[corp-operations] Pressing Issues fetch failed:', error.message);
+        _pressingIssues = [];
+    } else {
+        _pressingIssues = data || [];
+    }
+    renderPressingIssues();
+}
+
+function severityClass(sev) {
+    const s = String(sev || '').toUpperCase();
+    if (s === 'CRITICAL') return 'critical';
+    if (s === 'HIGH')     return 'high';
+    if (s === 'MODERATE') return 'moderate';
+    return 'low';
+}
+
+function renderPressingIssues() {
+    const list = document.getElementById('co-issues-list');
+    const meta = document.getElementById('co-issues-meta');
+    if (!list || !meta) return;
+
+    const count = _pressingIssues.length;
+    meta.textContent = count === 0
+        ? 'Time-Sensitive ◊ Decide Before Tick Resolves'
+        : `${count} OPEN ◊ DECIDE BEFORE TICK RESOLVES`;
+
+    if (count === 0) {
+        list.innerHTML = '<div class="co-contract-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>';
+        return;
+    }
+
+    const currentTick = Number(shard?.current_tick) || 0;
+    list.innerHTML = _pressingIssues.map(ev => {
+        const ticksLeft = Math.max(0, Number(ev.expires_at_tick || 0) - currentTick);
+        const expiresText = ticksLeft <= 0
+            ? 'Resolving now'
+            : `Expires in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
+        const sev = severityClass(ev.severity);
+        const contractName = ev.corp_contracts?.name || 'Project';
+        const resp = (Array.isArray(ev.responses) && ev.responses[0]) || {};
+        const cost  = Number(resp.cost)  || 0;
+        const delay = Number(resp.delay) || 0;
+
+        const effectChips = [];
+        if (cost > 0)  effectChips.push(`<span class="co-req-chip unmet">−${fmtMoney(cost)}</span>`);
+        if (delay > 0) effectChips.push(`<span class="co-req-chip unmet">+${delay}t delay</span>`);
+        if (effectChips.length === 0) effectChips.push('<span class="co-req-chip met">No fixed cost</span>');
+
+        return `<div class="co-issue-card sev-${sev}">
+            <div class="co-contract-meta-row">
+                <span class="co-issue-tag sev-${sev}">${escapeHtml(String(ev.severity || 'LOW').toUpperCase())} ◊ ${escapeHtml(String(ev.type || ''))}</span>
+                <span class="co-contract-deadline">${escapeHtml(expiresText)}</span>
+            </div>
+            <div class="co-contract-name">${escapeHtml(ev.title || 'Untitled')}</div>
+            <div class="co-contract-client">— ${escapeHtml(contractName)}</div>
+            <div class="co-issue-desc">${escapeHtml(ev.description || ev.impact || '')}</div>
+            <div class="co-contract-requires">${effectChips.join('')}</div>
+            <div class="co-contract-actions">
+                <button class="co-contract-btn primary" data-action="ack-issue" data-id="${escapeHtml(ev.id)}">Acknowledge ▸</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+let _ackInflight = new Set();
+async function acknowledgeIssue(eventId) {
+    if (_ackInflight.has(eventId)) return;
+    _ackInflight.add(eventId);
+    try {
+        const { data, error } = await _supabase.rpc('acknowledge_corp_contract_event', {
+            p_event_id: eventId,
+            p_response_key: null,
+        });
+        if (error)                        return showToast('Failed: ' + error.message, 'error');
+        if (data && data.success === false) return showToast(data.error || 'Failed to acknowledge', 'error');
+
+        const costMsg  = data?.cost_applied  ? ` − ${fmtMoney(data.cost_applied)}`  : '';
+        const delayMsg = data?.delay_applied ? ` ◊ +${data.delay_applied}t delay` : '';
+        showToast(`Acknowledged${costMsg}${delayMsg}`, 'success');
+
+        // Refresh both Pressing Issues and faction state (cash may have changed).
+        await refetchFactionState();
+        await loadPressingIssues();
+    } catch (err) {
+        console.error('[corp-operations] acknowledge failed:', err);
+        showToast('Acknowledge failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _ackInflight.delete(eventId);
+    }
+}
+
+// ── CONTRACTS (Sections III + IV) ──
 
 let _availableContracts = [];
 let _activeContracts = [];
@@ -1544,6 +1685,16 @@ function addDeclined(id) {
 function bindContractActions() {
     document.getElementById('co-available-list')?.addEventListener('click', handleContractClick);
     document.getElementById('co-active-list')?.addEventListener('click', handleContractClick);
+
+    // Pressing Issues delegation. Single Acknowledge action for now;
+    // multi-choice events (when the catalog grows them) will hang off
+    // the same handler with the response key as a second data attr.
+    document.getElementById('co-issues-list')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action="ack-issue"]');
+        if (!btn) return;
+        const id = btn.getAttribute('data-id');
+        if (id) acknowledgeIssue(id);
+    });
 
     // Modal background / close-button click → dismiss.
     document.getElementById('co-modal-overlay')?.addEventListener('click', (e) => {
@@ -2265,9 +2416,10 @@ async function init() {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
 
-    // Contracts can render after the page is visible — empty/loading
-    // states cover the gap.
+    // Contracts + Pressing Issues render after the page is visible —
+    // each section's empty/loading state covers the gap.
     loadContracts();
+    loadPressingIssues();
 }
 
 function showFatal(msg) {
