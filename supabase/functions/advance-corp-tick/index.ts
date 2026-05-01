@@ -4225,6 +4225,32 @@ async function processBankLoanPayments(supabase, currentTick) {
     }
     if (!loans || loans.length === 0) return results;
 
+    // Reset corp_costs_current_tick for every borrower we're about to
+    // process. The per-tick fields on factions are documented as
+    // "Snapshot — historized in corp_pnl_history" but the per-tick
+    // reset+snapshot infrastructure was never built. corp_costs_current_tick
+    // sits at whatever value the prior tick wrote. Without this reset,
+    // each LRP2 run would accumulate (existing + payment) on top of the
+    // previous tick's total, producing an unbounded growing number on
+    // the dashboard instead of a per-tick figure.
+    //
+    // Carry-over: this assumes LRP2 is the only writer to
+    // corp_costs_current_tick within a tick. When other processors
+    // start contributing (wages, materials, etc.), they'll need their
+    // own coordinated reset — ideally at tick-start, not per-processor.
+    const borrowerIds = [...new Set(loans.map(l => l.borrower_faction_id).filter(Boolean))];
+    if (borrowerIds.length > 0) {
+        const { error: resetErr } = await supabase
+            .from('factions')
+            .update({ corp_costs_current_tick: 0 })
+            .in('id', borrowerIds);
+        if (resetErr) {
+            console.warn('[BankLoanPayments] tick-cost reset failed:', resetErr.message);
+            // Continue anyway — the per-loan UPDATEs will still write,
+            // just with stale-prior-tick costs sitting underneath.
+        }
+    }
+
     for (const loan of loans) {
         // Idempotency belt-and-suspenders.
         if (Number(loan.last_payment_tick) === Number(currentTick)) continue;
@@ -4276,13 +4302,23 @@ async function processBankLoanPayments(supabase, currentTick) {
 
             // Lender: credit cash. Read-modify-write same race as the
             // rest of the corp tick loop; service-role bypass keeps the
-            // ordering tight.
-            const { data: lender } = await supabase.from('factions')
+            // ordering tight. Errors here surface as warnings — the
+            // borrower has already been debited, so a failed lender
+            // credit means the payment effectively disappears for this
+            // tick. Pre-existing money-flow pattern; closing it cleanly
+            // would require a SECURITY DEFINER RPC for the whole
+            // transaction (carry-over from processFinanceLoans).
+            const { data: lender, error: lenderSelErr } = await supabase.from('factions')
                 .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
-            if (lender) {
-                await supabase.from('factions').update({
+            if (lenderSelErr || !lender) {
+                console.warn(`[BankLoanPayments] lender fetch failed for loan ${loan.id}:`, lenderSelErr?.message);
+            } else {
+                const { error: lenderUpdErr } = await supabase.from('factions').update({
                     corp_cash_reserves: (Number(lender.corp_cash_reserves) || 0) + payment,
                 }).eq('id', loan.lender_faction_id);
+                if (lenderUpdErr) {
+                    console.warn(`[BankLoanPayments] lender credit failed for loan ${loan.id}:`, lenderUpdErr.message);
+                }
             }
 
             if (newOutstanding <= 0) {
