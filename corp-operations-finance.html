@@ -983,6 +983,119 @@ body.corp-operations-finance.light-mode {
   letter-spacing: 0.05em;
   font-style: italic;
 }
+.fo-actions-grid.locked { opacity: 0.55; }
+.fo-actions-grid.locked .fo-action-option { cursor: not-allowed; }
+
+.fo-action-card {
+  background: var(--fo-bg-card);
+  border: 1px solid var(--fo-line);
+  padding: 22px 24px 20px;
+  position: relative;
+  overflow: hidden;
+}
+.fo-action-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 28px; height: 1px;
+  background: var(--fo-accent-gold-dim);
+}
+.fo-action-name {
+  font-family: var(--fo-serif);
+  font-weight: 500;
+  font-style: italic;
+  font-size: 21px;
+  color: var(--fo-text-primary);
+  margin-bottom: 16px;
+  letter-spacing: -0.005em;
+}
+.fo-action-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fo-action-option {
+  background: var(--fo-bg-secondary);
+  border: 1px solid var(--fo-line);
+  padding: 16px 18px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 14px;
+  align-items: center;
+}
+.fo-action-option:hover:not([data-locked]) {
+  border-color: var(--fo-accent-gold);
+  background: var(--fo-bg-elevated);
+}
+.fo-action-option[data-locked] { cursor: not-allowed; }
+.fo-action-option-letter {
+  font-family: var(--fo-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 22px;
+  color: var(--fo-accent-gold);
+  line-height: 1;
+}
+.fo-action-option-content { min-width: 0; }
+.fo-action-option-title {
+  font-family: var(--fo-sans);
+  font-size: 14px;
+  color: var(--fo-text-primary);
+  font-weight: 600;
+  margin-bottom: 5px;
+  line-height: 1.25;
+}
+.fo-action-option-desc {
+  font-family: var(--fo-sans);
+  font-size: 12px;
+  color: var(--fo-text-secondary);
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+.fo-action-option-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.fo-effect {
+  font-family: var(--fo-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+.fo-effect.positive {
+  color: var(--fo-accent-green);
+  border-color: rgba(92, 184, 92, 0.4);
+  background: rgba(92, 184, 92, 0.06);
+}
+.fo-effect.negative {
+  color: var(--fo-accent-red);
+  border-color: rgba(217, 83, 79, 0.4);
+  background: rgba(217, 83, 79, 0.06);
+}
+.fo-effect.cost {
+  color: var(--fo-text-secondary);
+  border-color: var(--fo-line-bright);
+  background: var(--fo-bg-card);
+}
+.fo-action-option-cta {
+  font-family: var(--fo-mono);
+  font-size: 10px;
+  color: var(--fo-text-tertiary);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: color 0.15s;
+  align-self: center;
+}
+.fo-action-option:hover:not([data-locked]) .fo-action-option-cta {
+  color: var(--fo-accent-gold);
+}
 
 /* ── FOOTER ── */
 .fo-footer-strip {
@@ -1906,15 +2019,16 @@ async function payOutLoan(loanId) {
     }
 }
 
-// Refetch the faction columns hero stats and the slider floor read so
-// they stay in sync after RPCs that mutate cash/leverage. Action-lock
-// state is unaffected by pay_out_loan, so the cooldown pill columns
-// stay out of the slim select.
+// Refetch the faction columns hero stats + the cooldown pill read,
+// so they stay in sync after any RPC that mutates derived stats or
+// the action lock. corp_finance_action_locked_until_tick is in the
+// select so fire_finance_action's lock update is reflected; pay_out_loan
+// doesn't touch the lock but the column add costs effectively nothing.
 async function refetchFactionState() {
     if (!faction?.id) return;
     const { data, error } = await _supabase
         .from('factions')
-        .select('corp_cash_reserves, corp_lending_capital, corp_interest_rates, corp_overleverage')
+        .select('corp_cash_reserves, corp_lending_capital, corp_interest_rates, corp_overleverage, corp_finance_action_locked_until_tick')
         .eq('id', faction.id)
         .single();
     if (error || !data) {
@@ -1960,19 +2074,268 @@ function attachAvailableOffersHandlers() {
     });
 }
 
-// ── Cooldown pill (top-right of Strategic Actions) ──
-function renderActionCooldownPill() {
-    const pillEl = document.getElementById('fo-actions-cooldown-pill');
-    if (!pillEl) return;
-    const lockedUntil = Number(faction?.corp_finance_action_locked_until_tick || 0);
-    const cur = Number(shard?.current_tick || 0);
-    const remaining = lockedUntil - cur;
-    if (remaining > 0) {
-        pillEl.className = 'fo-actions-cooldown-pill';
-        pillEl.textContent = `LOCKED — ${remaining} TICK${remaining === 1 ? '' : 'S'}`;
-    } else {
-        pillEl.textContent = '';
-        pillEl.className = '';
+// ── STRATEGIC ACTIONS (Section V) ──
+
+// Display data for the 10 Finance action cards. Costs and effects
+// are mirrored on the server inside fire_finance_action's VALUES
+// table — keep these two in sync. The RPC ignores any client-
+// provided amounts; this array drives the UI only.
+//
+// Effect keys map to server columns:
+//   lending → corp_lending_capital_max  (raises the cap)
+//   rates   → corp_interest_rates        (direct)
+//   over    → corp_overleverage_offset   (action-controlled offset)
+//
+// Effect signs are the displayed-stat delta. The user's spec phrased
+// some actions as "+X Lending Capital deployed" to mean "the dial
+// drops by X" — those are encoded here as negative `lending` deltas
+// so the displayed value matches what the player sees.
+const ACTION_DEFS = [
+    { key: 'capital_raise', name: 'Capital Raising', options: [
+        { letter: 'A', title: 'Quick Bond Issuance',
+          desc: 'Issue short-term bonds to raise immediate capital — fast, but the new debt drives leverage up.',
+          cost: 60_000_000,  effects: { lending: +2, over: +2 } },
+        { letter: 'B', title: 'Equity Capital Raise',
+          desc: 'Sell shares to long-term investors — bigger raise, dilutes ownership but cleans the balance sheet.',
+          cost: 150_000_000, effects: { lending: +3, over: -1 } },
+    ]},
+    { key: 'aggressive_lending', name: 'Aggressive Lending Push', options: [
+        { letter: 'A', title: 'Subprime Loan Expansion',
+          desc: 'Underwrite weaker borrowers en masse — capital deploys fast but bad-debt risk climbs.',
+          cost: 40_000_000,  effects: { lending: -1, over: +2 } },
+        { letter: 'B', title: 'Prime Borrower Campaign',
+          desc: 'Court top-tier borrowers with attractive rates — capital deploys, but you sacrifice margin to win them.',
+          cost: 70_000_000,  effects: { lending: -2, rates: -1 } },
+    ]},
+    { key: 'rate_hike', name: 'Rate Hike Strategy', options: [
+        { letter: 'A', title: 'Quiet Rate Increase',
+          desc: 'Quietly raise loan rates — pricing power up, but borrowers flee to competitors.',
+          cost: 30_000_000,  effects: { rates: +2, lending: -2 } },
+        { letter: 'B', title: 'Premium Rate Justification Campaign',
+          desc: 'Brand the bank around premium service to justify higher rates — borrowers stay AND rates climb.',
+          cost: 70_000_000,  effects: { rates: +3, lending: +1 } },
+    ]},
+    { key: 'rate_cut', name: 'Rate Cut Strategy', options: [
+        { letter: 'A', title: 'Promotional Loan Rate Drop',
+          desc: 'Run a promotional drop on loan rates — capital deploys fast, leverage ticks up, margins compress.',
+          cost: 40_000_000,  effects: { rates: -2, lending: -2, over: +1 } },
+        { letter: 'B', title: 'Strategic Loss-Leader Pricing',
+          desc: 'Cut rates aggressively to flood the borrower base — massive deployment at razor-thin spreads.',
+          cost: 80_000_000,  effects: { rates: -3, lending: -3 } },
+    ]},
+    { key: 'reserve_building', name: 'Reserve Building', options: [
+        { letter: 'A', title: 'Emergency Capital Buffer',
+          desc: 'Lock cash into emergency reserves — leverage drops sharply but lending capacity tightens.',
+          cost: 50_000_000,  effects: { over: -2, lending: -2 } },
+        { letter: 'B', title: 'Conservative Balance Sheet Reform',
+          desc: 'Restructure the books for prudence — leverage falls hard and the cleaner sheet supports premium pricing.',
+          cost: 90_000_000,  effects: { over: -3, rates: +1 } },
+    ]},
+    { key: 'high_yield', name: 'Risky High-Yield Investment', options: [
+        { letter: 'A', title: 'Speculative Asset Purchase',
+          desc: 'Buy speculative assets in the hopes of outsized returns — capital grows, but risk piles on.',
+          cost: 50_000_000,  effects: { lending: +2, over: +3 } },
+        { letter: 'B', title: 'Hedged Investment Portfolio',
+          desc: 'Build a hedged portfolio — bigger capital gains, with risk kept in check by the hedges.',
+          cost: 100_000_000, effects: { lending: +3, over: +1 } },
+    ]},
+    { key: 'deposit_drive', name: 'Deposit Drive', options: [
+        { letter: 'A', title: 'High-Rate Savings Promotion',
+          desc: 'Court depositors with above-market savings rates — deposits flood in, but interest spreads compress.',
+          cost: 40_000_000,  effects: { lending: +2, rates: -2 } },
+        { letter: 'B', title: 'Premium Wealth Management Program',
+          desc: 'Launch a wealth-management arm — wealthy clients accept worse savings rates for the prestige.',
+          cost: 80_000_000,  effects: { lending: +3, rates: +1 } },
+    ]},
+    { key: 'loan_restructuring', name: 'Loan Restructuring', options: [
+        { letter: 'A', title: 'Write Down Bad Loans',
+          desc: 'Write off underperforming loans — leverage drops but lending capacity takes a hit too.',
+          cost: 60_000_000,  effects: { over: -1, lending: -1 } },
+        { letter: 'B', title: 'Comprehensive Portfolio Cleanup',
+          desc: 'Full portfolio cleanup — deep leverage drop and the cleaner book justifies premium rates.',
+          cost: 90_000_000,  effects: { over: -3, rates: +1 } },
+    ]},
+    { key: 'foreign_capital', name: 'Foreign Capital Partnership', options: [
+        { letter: 'A', title: 'Accept High-Interest Foreign Loans',
+          desc: 'Borrow expensive capital from abroad — fast capacity boost, but foreign debt service drives both rates and leverage up.',
+          cost: 30_000_000,  effects: { lending: +2, over: +2, rates: +1 } },
+        { letter: 'B', title: 'Negotiate Sovereign Investment Deal',
+          desc: 'Strike a sovereign-backed investment partnership — bigger boost with leverage relief baked in.',
+          cost: 80_000_000,  effects: { lending: +3, over: -1 } },
+    ]},
+    { key: 'central_bank', name: 'Central Bank Compliance', options: [
+        { letter: 'A', title: 'Meet Minimum Reserve Requirement',
+          desc: 'Comply with the regulator’s minimum reserve floor — leverage drops, lending capacity reduces.',
+          cost: 65_000_000,  effects: { over: -2, lending: -2 } },
+        { letter: 'B', title: 'Exceed Regulatory Standards',
+          desc: 'Go beyond minimums for regulatory trust — deep leverage drop and trust unlocks expanded operations.',
+          cost: 80_000_000,  effects: { over: -3, lending: +1 } },
+    ]},
+];
+
+const FO_EFFECT_LABEL = { lending: 'Lending', rates: 'Rates', over: 'Overleverage' };
+
+let _foActionInflight = false;  // Double-fire guard for the confirm-modal click
+
+function foActionsLockedTicks() {
+    const lock = Number(faction?.corp_finance_action_locked_until_tick) || 0;
+    const now  = Number(shard?.current_tick) || 0;
+    return Math.max(0, lock - now);
+}
+
+function renderStrategicActions() {
+    const grid = document.getElementById('fo-actions-grid');
+    const meta = document.getElementById('fo-actions-meta');
+    const pill = document.getElementById('fo-actions-cooldown-pill');
+    if (!grid) return;
+
+    const lockedTicks = foActionsLockedTicks();
+    const isLocked    = lockedTicks > 0;
+
+    grid.classList.toggle('locked', isLocked);
+    if (pill) {
+        if (isLocked) {
+            pill.className = 'fo-actions-cooldown-pill';
+            pill.textContent = `LOCKED — ${lockedTicks} TICK${lockedTicks === 1 ? '' : 'S'}`;
+        } else {
+            pill.textContent = '';
+            pill.className = '';
+        }
+    }
+    if (meta) {
+        meta.textContent = isLocked
+            ? `Locked until tick ${faction.corp_finance_action_locked_until_tick}`
+            : `${ACTION_DEFS.length} Initiatives ◊ Choose A or B (12-tick global cooldown)`;
+    }
+
+    grid.innerHTML = ACTION_DEFS.map((card, cIdx) => renderActionCard(card, cIdx, isLocked)).join('');
+}
+
+function renderActionCard(card, cardIdx, isLocked) {
+    const optionsHtml = card.options
+        .map((opt, oIdx) => renderActionOption(card, opt, cardIdx, oIdx, isLocked))
+        .join('');
+    return `<div class="fo-action-card">
+        <div class="fo-action-name">${escapeHtml(card.name)}</div>
+        <div class="fo-action-options">${optionsHtml}</div>
+    </div>`;
+}
+
+function renderActionOption(card, opt, cardIdx, oIdx, isLocked) {
+    const effectsHtml = renderActionEffects(opt);
+    const lockedAttrs = isLocked ? 'data-locked="1"' : '';
+    return `<div class="fo-action-option" ${lockedAttrs}
+                 data-action-key="${escapeHtml(card.key)}"
+                 data-choice="${escapeHtml(opt.letter)}"
+                 data-card-idx="${cardIdx}" data-opt-idx="${oIdx}">
+        <span class="fo-action-option-letter">${escapeHtml(opt.letter)}</span>
+        <div class="fo-action-option-content">
+            <div class="fo-action-option-title">${escapeHtml(opt.title)}</div>
+            <div class="fo-action-option-desc">${escapeHtml(opt.desc)}</div>
+            <div class="fo-action-option-effects">${effectsHtml}</div>
+        </div>
+        <span class="fo-action-option-cta">${isLocked ? 'Locked' : 'Take ▸'}</span>
+    </div>`;
+}
+
+function renderActionEffects(opt) {
+    const parts = [`<span class="fo-effect cost">−${fmtMoney(opt.cost).replace('-', '')}</span>`];
+    for (const [key, delta] of Object.entries(opt.effects || {})) {
+        const sign = delta > 0 ? '+' : '';
+        const cls  = delta > 0 ? 'positive' : 'negative';
+        parts.push(`<span class="fo-effect ${cls}">${sign}${delta} ${escapeHtml(FO_EFFECT_LABEL[key] || key)}</span>`);
+    }
+    return parts.join('');
+}
+
+// One-time delegated click on the actions grid. Cards are
+// re-rendered every refresh; delegation on the static grid
+// container avoids re-binding listeners.
+function attachStrategicActionsHandlers() {
+    const grid = document.getElementById('fo-actions-grid');
+    if (!grid || grid.dataset.boundFo === '1') return;
+    grid.dataset.boundFo = '1';
+    grid.addEventListener('click', (e) => {
+        const opt = e.target.closest('.fo-action-option');
+        if (!opt) return;
+        if (opt.hasAttribute('data-locked')) return;
+        const cardIdx = Number(opt.getAttribute('data-card-idx'));
+        const oIdx    = Number(opt.getAttribute('data-opt-idx'));
+        const card    = ACTION_DEFS[cardIdx];
+        const choice  = card?.options[oIdx];
+        if (!card || !choice) return;
+        showActionConfirmModal(card, choice);
+    });
+}
+
+function showActionConfirmModal(card, opt) {
+    const overlay = document.getElementById('fo-modal-overlay');
+    const modal = document.getElementById('fo-modal');
+    if (!overlay || !modal) return;
+
+    const effectsHtml = renderActionEffects(opt);
+
+    modal.innerHTML = `
+        <div class="fo-modal-head">
+            <div>
+                <span class="fo-modal-title-eyebrow">Confirm Strategic Action</span>
+                <h2 id="fo-modal-title" class="fo-modal-title">${escapeHtml(opt.title)}</h2>
+            </div>
+            <button type="button" class="fo-modal-close" data-modal-close aria-label="Close">×</button>
+        </div>
+        <div class="fo-review-section">
+            <div class="fo-review-section-title">${escapeHtml(card.name)} — Option ${escapeHtml(opt.letter)}</div>
+            <p style="font-size:13px;color:var(--fo-text-secondary);line-height:1.55;margin:0 0 14px;">${escapeHtml(opt.desc)}</p>
+            <div class="fo-action-option-effects" style="margin-bottom:12px;">${effectsHtml}</div>
+            <div class="fo-modal-blocked" style="border-color:var(--fo-accent-rust);background:rgba(232,114,74,0.08);color:var(--fo-accent-rust);">
+                ⚠ This locks all 10 Finance Strategic Actions for 12 ticks.
+            </div>
+        </div>
+        <div class="fo-modal-actions">
+            <button type="button" class="fo-modal-btn" data-modal-close>Cancel</button>
+            <button type="button" class="fo-modal-btn primary" id="fo-action-confirm">Confirm ▸</button>
+        </div>
+    `;
+
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+
+    document.getElementById('fo-action-confirm')?.addEventListener('click', () => {
+        submitFinanceAction(card, opt);
+    });
+}
+
+async function submitFinanceAction(card, opt) {
+    if (_foActionInflight) return;
+    const btn = document.getElementById('fo-action-confirm');
+    _foActionInflight = true;
+    if (btn) btn.disabled = true;
+    try {
+        const { data, error } = await _supabase.rpc('fire_finance_action', {
+            p_corp_id:    faction.id,
+            p_action_key: card.key,
+            p_choice:     opt.letter,
+        });
+        if (error) {
+            showToast(error.message || 'Action failed.', 'error');
+            return;
+        }
+        if (!data?.success) {
+            showToast(data?.error || 'Action failed.', 'error');
+            return;
+        }
+        showToast(`Action taken — locked for 12 ticks.`, 'success');
+        closeLoanReviewModal();
+        // Refresh local state so cooldown + new derived stats render.
+        await refetchFactionState();
+        renderHeroStats();
+        renderStrategicActions();
+    } catch (err) {
+        console.error('[fo] fire_finance_action failed:', err);
+        showToast('Action failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _foActionInflight = false;
+        if (btn) btn.disabled = false;
     }
 }
 
@@ -2090,14 +2453,15 @@ async function init() {
         shard?.current_date || tickToDate(shard?.current_tick) || '—';
 
     renderHeroStats();
-    renderActionCooldownPill();
+    renderStrategicActions();
 
-    // Sections III + IV. Attach the delegated handlers BEFORE the
-    // first render so cards never exist without a live listener.
+    // Sections III + IV + V. Attach the delegated handlers BEFORE
+    // the first render so cards never exist without a live listener.
     // Modal dismiss handlers (overlay click, Escape) are bound once
     // and survive every modal open/close.
     attachAvailableOffersHandlers();
     attachActiveAgreementsHandlers();
+    attachStrategicActionsHandlers();
     attachModalDismissHandlers();
     await Promise.all([
         loadAvailableLoanRequests(),
