@@ -801,6 +801,144 @@ function getPhaseForProgress(progressPct) {
 //  CONSTRUCTION SECTOR — Contract Generation & Bid Resolution
 // ════════════════════════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════════════════════════
+//  TIER-BASED CORP CONTRACT GENERATOR — writes to corp_contracts (the table the
+//  Operations page reads). Runs once per shard tick. Ranks every active nation
+//  by gdp_growth, splits into thirds, and generates a deterministic slate per
+//  tier:
+//      top    → mega_project, industrial, civil_engineering   (3 contracts)
+//      middle → industrial, civil_engineering                 (2 contracts)
+//      bottom → civil_engineering                             (1 contract)
+//  Honors the corp_count + 2 open-contract cap per nation.
+//
+//  Reuses the existing CC_TEMPLATES / CC_CIVIL / CC_INDUSTRIAL / CC_MEGA pools
+//  for names, budget ranges, and timeline ranges — the same template names as
+//  the legacy construction_contracts generator, just routed to the new table.
+// ════════════════════════════════════════════════════════════════════════════════
+const CORP_GOV_ISSUERS = [
+    'Government Construction Authority', 'National Building Commission',
+    'Ministry of Infrastructure', 'Department of Public Works',
+    'Federal Construction Office', 'Public Works Department',
+];
+
+async function generateCorpContractsByGdpTier(supabase, nationList, currentTick, gameYear) {
+    if (!Array.isArray(nationList) || nationList.length === 0) return { generated: 0 };
+
+    // Rank by gdp_growth desc; id as tiebreaker so the partition is stable
+    const ranked = nationList
+        .filter(n => n && n.id)
+        .slice()
+        .sort((a, b) => {
+            const ga = Number(a.gdp_growth ?? 50);
+            const gb = Number(b.gdp_growth ?? 50);
+            if (gb !== ga) return gb - ga;
+            return String(a.id).localeCompare(String(b.id));
+        });
+
+    const N = ranked.length;
+    // ceil splits favor the top — 4 nations → 2 top / 1 mid / 1 bottom
+    const topCutoff = Math.ceil(N / 3);
+    const midCutoff = Math.ceil((2 * N) / 3);
+
+    let generated = 0;
+    for (let i = 0; i < ranked.length; i++) {
+        const nation = ranked[i];
+        const slate = i < topCutoff
+            ? ['mega_project', 'industrial', 'civil_engineering']
+            : i < midCutoff
+                ? ['industrial', 'civil_engineering']
+                : ['civil_engineering'];
+
+        // Open-contract cap = corp_count + 2 (matches the legacy rule)
+        const { count: corpCount } = await supabase
+            .from('factions')
+            .select('id', { count: 'exact', head: true })
+            .eq('nation_id', nation.id)
+            .eq('faction_type', 'corporation')
+            .is('abandoned_at', null);
+        const cap = (corpCount || 0) + 2;
+
+        const { count: openCount } = await supabase
+            .from('corp_contracts')
+            .select('id', { count: 'exact', head: true })
+            .eq('issuer_nation_id', nation.id)
+            .eq('status', 'open');
+        const slots = Math.max(0, cap - (openCount || 0));
+        if (slots === 0) continue;
+
+        const toInsert = Math.min(slots, slate.length);
+        for (let s = 0; s < toInsert; s++) {
+            const ok = await insertCorpContract(supabase, nation, slate[s], currentTick, gameYear);
+            if (ok) generated++;
+        }
+    }
+    return { generated };
+}
+
+async function insertCorpContract(supabase, nation, sector, currentTick, gameYear) {
+    const pool = sector === 'mega_project' ? CC_MEGA
+               : sector === 'industrial'   ? CC_INDUSTRIAL
+               :                             CC_CIVIL;
+    const key = ccPick(pool);
+    const tmpl = CC_TEMPLATES[key];
+    if (!tmpl) return false;
+
+    // Budget: random within template range, scaled by GDP growth (0.5×–1.5×)
+    const gdpGrowth = Number(nation.gdp_growth ?? 50);
+    const gdpScale = 0.5 + gdpGrowth / 100;
+    const baseBudget = ccRand(tmpl.budget[0], tmpl.budget[1]);
+    const budget = Math.round(baseBudget * gdpScale);
+    const timelineMonths = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
+
+    // Requirement thresholds per tier on the 0-10 corp stats (work_crews,
+    // supply_chain, regulatory_standing). The bid RPC validates these against
+    // the bidder's matching faction columns.
+    const requirements = sector === 'mega_project'
+        ? { work_crews: 6, supply_chain: 5, regulatory_standing: 5 }
+        : sector === 'industrial'
+            ? { work_crews: 4, supply_chain: 4, regulatory_standing: 3 }
+            : { work_crews: 2, supply_chain: 2 };
+
+    const specCategory = sector === 'mega_project' ? 'Megaproject'
+                       : sector === 'industrial'   ? 'Heavy Infrastructure'
+                       :                             'Light Infrastructure';
+    const projectType  = sector === 'mega_project' ? 'Megaproject'
+                       : sector === 'industrial'   ? 'Industrial'
+                       :                             'Civil Engineering';
+    const sectorPrefix = sector === 'mega_project' ? 'GOV-M'
+                       : sector === 'industrial'   ? 'GOV-I'
+                       :                             'GOV-C';
+
+    const issuer = CORP_GOV_ISSUERS[Math.floor(Math.random() * CORP_GOV_ISSUERS.length)];
+    const seq = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+    const contractNumber = `${sectorPrefix}-${gameYear}-${seq}`;
+    const biddingWindowTicks = 6;
+
+    const { error } = await supabase.from('corp_contracts').insert({
+        contract_number:   contractNumber,
+        name:              tmpl.name,
+        description:       tmpl.desc,
+        contract_type:     'GOVERNMENT',
+        issuer_name:       issuer,
+        issuer_faction_id: null,
+        issuer_nation_id:  nation.id,
+        required_sector:   'Construction',
+        spec_category:     specCategory,
+        budget,
+        timeline_months:   timelineMonths,
+        project_type:      projectType,
+        requirements,
+        status:            'open',
+        created_at_tick:   currentTick,
+        expires_at_tick:   currentTick + biddingWindowTicks,
+    });
+    if (error) {
+        console.error(`[corp_contracts gen] ${nation.name}/${sector} insert failed:`, error.message);
+        return false;
+    }
+    return true;
+}
+
 async function generateConstructionContracts(supabase, nation, currentTick) {
     // Only generate every 3 ticks
     if (currentTick % 3 !== 0) return [];
@@ -4560,6 +4698,25 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         // defense: [],
         errors: [],
     };
+
+    // ── Tier-based contract generation (once per tick, all nations together) ──
+    // Ranks every nation by gdp_growth, generates a deterministic slate per
+    // tier into corp_contracts (the table the Operations page reads). Independent
+    // of the per-nation construction loop below.
+    try {
+        const { data: shardDateRow } = await supabase.from('shard')
+            .select('current_date').eq('name', 'Alpha Shard').single();
+        const gameYearGen = (shardDateRow?.current_date || '').match(/\d{4}/)?.[0] || '2014';
+        const tierResult = await generateCorpContractsByGdpTier(
+            supabase, nationList, currentTick, gameYearGen
+        );
+        if (tierResult.generated > 0) {
+            console.log(`[corp_contracts gen] tick ${currentTick}: generated ${tierResult.generated} contract(s)`);
+        }
+    } catch (tierGenErr) {
+        console.error('[advance-corp-tick] corp_contracts tier generator failed (non-fatal):', tierGenErr);
+        summary.errors.push({ scope: 'corp_contracts_tier_gen', error: String(tierGenErr) });
+    }
 
     // 5. Process each nation
     for (const nation of nationList) {
