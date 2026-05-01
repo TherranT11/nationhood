@@ -274,6 +274,52 @@ body.corp-operations-construction.light-mode {
 .co-hero-stat-name em {
   font-style: italic;
 }
+.co-hero-tip {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--co-line-bright);
+  border-radius: 50%;
+  color: var(--co-text-tertiary);
+  font-family: var(--co-mono, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  font-style: normal;
+  align-items: center;
+  justify-content: center;
+  margin-left: 10px;
+  cursor: help;
+  position: relative;
+  vertical-align: middle;
+  letter-spacing: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.co-hero-tip:hover { color: var(--co-accent-gold); border-color: var(--co-accent-gold); }
+.co-hero-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: 280px;
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line-bright);
+  color: var(--co-text-primary);
+  padding: 11px 14px;
+  font-family: var(--co-sans, sans-serif);
+  font-weight: 400;
+  font-size: 11.5px;
+  line-height: 1.55;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 100;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+}
+.co-hero-tip:hover::after { opacity: 1; }
 .co-hero-stat-value-row {
   display: flex;
   align-items: baseline;
@@ -1141,7 +1187,7 @@ body.corp-operations-construction.light-mode {
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { escapeHtml, tickToDate } from './js/utils.js';
+import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
 
 // Operations pages are sector-gated. Construction stays here; Finance and
 // Shipping each have their own ops page; anything else falls back to the
@@ -1171,6 +1217,7 @@ const HERO_STATS = [
         eyebrow: 'CAPACITY',
         name: 'Work',
         emName: 'Crews',
+        tooltip: 'Your pool of skilled labor — engineers, foremen, equipment operators. Caps how many construction projects you can bid on at once and drives bid-prep speed. Strong crews mean faster turnarounds and more bids in flight; weak crews stall the pipeline.',
         blurb: {
             good: '<strong>Strong skilled labor pool.</strong> Crews fully staffed; apprenticeship pipeline producing qualified hires.',
             mid:  '<strong>Adequate crew strength.</strong> Operating at workable capacity, room to scale before next bid window.',
@@ -1197,6 +1244,7 @@ const HERO_STATS = [
         eyebrow: 'RISK',
         name: 'Regulatory',
         emName: 'Standing',
+        tooltip: 'Your relationship with the host nation\'s ministries and inspectors. High standing = permits clear quickly, audits stay light, government contracts flow your way. Low standing = approvals stall, audit risk climbs, sanctioned projects slip away to rivals.',
         blurb: {
             good: '<strong>Strong ministry rapport.</strong> Permits clear quickly; audit risk minimal; the regime takes your calls.',
             mid:  '<strong>Average standing.</strong> No major scandals on the books; permits move at the standard pace.',
@@ -1223,6 +1271,7 @@ const HERO_STATS = [
         eyebrow: 'REACH',
         name: 'Material',
         emName: 'Supply Chain',
+        tooltip: 'How diversified your sourcing is — concrete, steel, fixtures, fuel. Strong chains keep reserves deep and shrug off single-supplier disruptions or sanctions. Weak chains run hand-to-mouth: one shock and active projects slip into delay penalties.',
         blurb: {
             good: '<strong>Diversified sourcing across domestic and overseas suppliers.</strong> Reserves healthy; sanctions exposure manageable.',
             mid:  '<strong>Mixed sourcing.</strong> Reserves stable but vulnerable to single-source disruption; suppliers cordial, not loyal.',
@@ -1270,9 +1319,13 @@ function renderHeroStat(stat) {
         </div>`
     ).join('');
 
+    const tipHtml = stat.tooltip
+        ? `<span class="co-hero-tip" data-tip="${escapeAttr(stat.tooltip)}" aria-label="What is ${escapeAttr(stat.name + ' ' + (stat.emName || ''))}?">?</span>`
+        : '';
+
     return `<div class="co-hero-stat" data-stat="${stat.key}">
         <div class="co-hero-stat-eyebrow">${escapeHtml(stat.eyebrow)}</div>
-        <div class="co-hero-stat-name">${escapeHtml(stat.name)} <em>${escapeHtml(stat.emName)}</em></div>
+        <div class="co-hero-stat-name">${escapeHtml(stat.name)} <em>${escapeHtml(stat.emName)}</em>${tipHtml}</div>
         <div class="co-hero-stat-value-row">
             <div class="co-hero-stat-value">${escapeHtml(display)}<span class="co-max">/10</span></div>
             ${trendHtml}

@@ -229,6 +229,51 @@ body.corp-operations-shipping.light-mode {
   letter-spacing: -0.015em;
 }
 .so-hero-stat-name em { font-style: italic; }
+.so-hero-tip {
+  display: inline-flex;
+  width: 16px; height: 16px;
+  border: 1px solid var(--so-line-bright);
+  border-radius: 50%;
+  color: var(--so-text-tertiary);
+  font-family: var(--mono, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  font-style: normal;
+  align-items: center;
+  justify-content: center;
+  margin-left: 10px;
+  cursor: help;
+  position: relative;
+  vertical-align: middle;
+  letter-spacing: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.so-hero-tip:hover { color: var(--so-accent-gold); border-color: var(--so-accent-gold); }
+.so-hero-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: 280px;
+  background: var(--so-bg-card);
+  border: 1px solid var(--so-line-bright);
+  color: var(--so-text-primary);
+  padding: 11px 14px;
+  font-family: var(--sans, sans-serif);
+  font-weight: 400;
+  font-size: 11.5px;
+  line-height: 1.55;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 100;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+}
+.so-hero-tip:hover::after { opacity: 1; }
 
 .so-hero-stat-value-row {
   display: flex;
@@ -1492,6 +1537,7 @@ const HERO_STATS = [
         eyebrow: 'CAPACITY',
         name: 'Freighters',
         emName: '',
+        tooltip: 'Cargo vessels in your active fleet. Each freighter carries 3 Energy/tick on a trade route. More freighters means you can offer larger volumes on shipping contracts and run more lanes simultaneously.',
         blurb: {
             good: '<strong>Plentiful capacity.</strong> Spare freighters across multiple lanes; room to bid on new routes without straining the fleet.',
             mid:  '<strong>Working fleet.</strong> Capacity is matched to active routes — taking on more lanes will require expansion.',
@@ -1518,6 +1564,7 @@ const HERO_STATS = [
         eyebrow: 'VITALITY',
         name: 'Fleet',
         emName: 'Health',
+        tooltip: 'The average maintenance state of your vessels. High health means low breakdown risk, favorable insurance premiums, and smooth deliveries. Low health stacks the drydock queue, lifts insurer premiums, and risks contract penalties from missed deadlines.',
         blurb: {
             good: '<strong>Vessels in top condition.</strong> Maintenance is current; insurance underwriters favor your premiums; breakdowns are rare.',
             mid:  '<strong>Mid-tier maintenance.</strong> The fleet is functional but maintenance backlog is creeping in. A drydock pass would help.',
@@ -1545,6 +1592,7 @@ const HERO_STATS = [
         name: 'Route',
         emName: 'Risk',
         inverted: true,
+        tooltip: 'Inverted stat — lower is better. Tracks how exposed your fleet is to piracy, contested waters, and chokepoints. High risk means premiums climb, sanctions exposure rises, and one incident can trigger a cascading rate hike. Diversification and naval-escort modifiers bring it down.',
         blurb: {
             good: '<strong>Exposure is well-spread.</strong> Routes are diversified across stable corridors; insurance premiums are baseline; sanctions risk negligible.',
             mid:  '<strong>Moderate concentration.</strong> A meaningful slice of revenue runs through one or two contested lanes. A diversification action would help.',
@@ -1589,11 +1637,14 @@ function renderHeroStat(stat) {
     const nameMarkup = stat.emName
         ? `${escapeHtml(stat.name)} <em>${escapeHtml(stat.emName)}</em>`
         : escapeHtml(stat.name);
+    const tipHtml = stat.tooltip
+        ? `<span class="so-hero-tip" data-tip="${escapeHtml(stat.tooltip).replace(/"/g, '&quot;')}" aria-label="What is ${escapeHtml(stat.name)}?">?</span>`
+        : '';
 
     return `<div class="so-hero-stat" data-stat="${escapeHtml(stat.key)}">
         ${invertedBadge}
         <div class="so-hero-stat-eyebrow">${escapeHtml(stat.eyebrow)}</div>
-        <div class="so-hero-stat-name">${nameMarkup}</div>
+        <div class="so-hero-stat-name">${nameMarkup}${tipHtml}</div>
         <div class="so-hero-stat-value-row">
             <div class="so-hero-stat-value">${escapeHtml(display)}<span class="so-max">/10</span></div>
             <div class="so-hero-stat-trend neutral">— FOUNDING POSITION</div>
