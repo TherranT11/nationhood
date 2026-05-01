@@ -19,6 +19,48 @@
    .co-* (corp-operations).
    ────────────────────────────────────────────────────────── */
 body.corp-operations-construction {
+  /* Site-standard tokens (mirrors body.corp-redesign on corp-dashboard).
+     The shared corp-topbar.css reads these — without them the topbar
+     falls back to root defaults and renders differently from the
+     dashboard. Page-local rules below use the bespoke --co-* aliases. */
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --bg-card: #1a1a17;
+  --bg-panel: #252525;
+  --panel-main: #1f1f1a;
+  --panel-border: rgba(255,255,255,0.08);
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-border: rgba(92,184,92,0.30);
+  --red: #d9534f;
+  --red-border: rgba(217,83,79,0.30);
+  --amber: #c8a832;
+  --amber-faint: rgba(200,168,50,0.08);
+  --amber-border: rgba(200,168,50,0.20);
+  --gold: #c8a832;
+  --orange: #e8724a;
+  --blue: #5bc0de;
+  --teal: #5aafa5;
+  --font-mono:  'JetBrains Mono', monospace;
+  --font-sans:  'IBM Plex Sans', sans-serif;
+  --font-serif: 'IBM Plex Serif', serif;
+
+  /* Bespoke .co-* aliases — kept so the page-local CSS doesn't have to
+     change. They point at the same colors as the site tokens above. */
   --co-bg-primary:    #0e0e0c;
   --co-bg-secondary:  #1a1a17;
   --co-bg-card:       #1a1a17;
