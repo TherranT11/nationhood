@@ -1683,6 +1683,127 @@ body.light-mode .dl-empty__text { color: #1a1a17; }
 .dl-footer__result-label { font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.5px; }
 .dl-footer__result-count { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-bright); }
 
+/* ── Pressing Issues card — 380×450 (L4.B) ──
+   Surfaces incoming bank_loan_offers (when this corp is the borrower)
+   and active corp_contract_events for projects this corp owns. Same
+   dimensions as the rest of the operations cards. */
+.pi-card {
+  width: 380px; height: 450px;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.pi-card__header {
+  padding: 8px 14px; border-bottom: 1px solid var(--border-0);
+  display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+}
+.pi-card__header-left { display: flex; align-items: center; gap: 6px; }
+.pi-card__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+.pi-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+}
+.pi-card__count { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+
+.pi-list { flex: 1; overflow-y: auto; padding: 8px 10px; }
+.pi-list::-webkit-scrollbar { width: 4px; }
+.pi-list::-webkit-scrollbar-track { background: transparent; }
+.pi-list::-webkit-scrollbar-thumb { background: var(--border-1); }
+
+.pi-empty { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 18px; }
+.pi-empty__text {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-bright);
+  letter-spacing: 0.04em; text-align: center; line-height: 1.8;
+}
+body.light-mode .pi-empty__text { color: #1a1a17; }
+
+.pi-issue-card {
+  background: var(--bg-3); border: 1px solid var(--border-0);
+  border-left-width: 3px; border-left-color: var(--text-dim);
+  padding: 10px 12px; margin-bottom: 8px;
+  display: grid; gap: 6px;
+}
+.pi-issue-card.sev-low      { border-left-color: var(--blue); }
+.pi-issue-card.sev-moderate { border-left-color: var(--orange); }
+.pi-issue-card.sev-high     { border-left-color: var(--red); }
+.pi-issue-card.sev-critical { border-left-color: var(--red); box-shadow: inset 3px 0 12px rgba(217,83,79,0.15); }
+.pi-issue-card.kind-loan-offer { border-left-color: var(--gold); }
+
+.pi-issue-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.pi-issue-tag {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.16em; padding: 2px 7px;
+  border: 1px solid var(--border-1); background: var(--bg-2);
+  color: var(--text-muted); text-transform: uppercase;
+}
+.pi-issue-tag.sev-low      { color: var(--blue);   border-color: var(--blue-border);   background: var(--blue-faint); }
+.pi-issue-tag.sev-moderate { color: var(--orange); border-color: var(--orange-border); background: var(--orange-faint); }
+.pi-issue-tag.sev-high     { color: var(--red);    border-color: var(--red-border);    background: var(--red-faint); }
+.pi-issue-tag.sev-critical { color: #fff;          border-color: var(--red);           background: var(--red); }
+.pi-issue-tag.kind-loan-offer { color: var(--gold); border-color: var(--gold-border); background: var(--gold-faint); }
+.pi-issue-deadline {
+  font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.08em;
+  color: var(--text-dim); text-transform: uppercase;
+}
+.pi-issue-title {
+  font-family: var(--font-sans); font-size: 12px; font-weight: 600;
+  color: var(--text-bright); line-height: 1.3;
+}
+.pi-issue-sub {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em;
+  color: var(--text-muted); text-transform: uppercase;
+}
+.pi-issue-desc {
+  font-family: var(--font-sans); font-size: 11px; line-height: 1.4;
+  color: var(--text-secondary); font-style: italic;
+}
+.pi-issue-terms {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em;
+  color: var(--text-secondary); text-transform: uppercase;
+}
+.pi-issue-terms .label { color: var(--text-dim); margin-right: 3px; }
+.pi-issue-terms .value {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  color: var(--text-bright); letter-spacing: 0; text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+.pi-issue-actions {
+  display: flex; gap: 6px; padding-top: 4px;
+  border-top: 1px dashed var(--border-1); margin-top: 2px;
+}
+.pi-btn {
+  flex: 1; font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 6px 10px; border: 1px solid var(--border-1);
+  background: transparent; color: var(--text-muted);
+  cursor: pointer; transition: all 0.15s;
+}
+.pi-btn:hover:not(:disabled) {
+  border-color: var(--gold); color: var(--gold);
+}
+.pi-btn.primary {
+  background: var(--gold); border-color: var(--gold); color: #000;
+}
+.pi-btn.primary:hover:not(:disabled) { filter: brightness(1.1); }
+.pi-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Toast — local to this page since shipping uses native alert()
+   elsewhere; loan-offer flow surfaces success/error via the in-page
+   toast pattern that mirrors construction/finance ops. */
+.pi-toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 9100;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em;
+  padding: 12px 18px; background: var(--bg-3);
+  border: 1px solid var(--border-1); color: var(--text-bright);
+  max-width: 400px; box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  transition: opacity 0.25s ease;
+}
+.pi-toast.success { border-color: var(--green-border); color: var(--green); }
+.pi-toast.error   { border-color: var(--red-border);   color: var(--red); }
+.pi-toast.fade    { opacity: 0; }
+
 /* ── Available Routes card — 380×450 (Shipping corps) ── */
 .ar-card {
   width: 380px; height: 450px;
@@ -2434,6 +2555,23 @@ body.light-mode .vi-empty__text { color: #1a1a17; }
     <!-- Operations content (default visible) -->
     <div id="operations-content" style="display:flex;justify-content:center;gap:12px;align-items:flex-start;flex-wrap:wrap;width:100%;">
 
+
+    <!-- Pressing Issues card (L4.B — surfaces incoming loan offers
+         + active corp_contract_events for this corp's projects) -->
+    <div class="pi-card" id="pi-container">
+      <div class="pi-card__header">
+        <div class="pi-card__header-left">
+          <div class="pi-card__dot"></div>
+          <span class="pi-card__label">Pressing Issues</span>
+        </div>
+        <span class="pi-card__count" id="pi-count">0 OPEN</span>
+      </div>
+      <div class="pi-list" id="pi-list">
+        <div class="pi-empty">
+          <div class="pi-empty__text">Loading pressing issues…</div>
+        </div>
+      </div>
+    </div>
 
     <!-- Available Routes card (Shipping corps only) -->
     <div class="ar-card" id="ar-container">
@@ -5910,6 +6048,253 @@ async function refreshFactionAndCash() {
     if (cashEl) cashEl.textContent = 'CASH: ' + fmtCash(Number(faction.corp_cash_reserves ?? 0));
 }
 
+// ── PRESSING ISSUES (L4.B) ──
+// Mirrors corp-operations.html's pattern: parallel fetch of
+// corp_contract_events (project events on this corp's projects) and
+// bank_loan_offers (incoming offers on requests this corp opened).
+// One combined render in pi-list, offers first.
+let _pressingIssues = [];
+let _receivedOffers = [];
+let _ackInflight = new Set();
+let _loanOfferInflight = new Set();
+
+function piSeverityClass(sev) {
+    const s = String(sev || '').toUpperCase();
+    if (s === 'CRITICAL') return 'critical';
+    if (s === 'HIGH')     return 'high';
+    if (s === 'MODERATE') return 'moderate';
+    return 'low';
+}
+
+function piFormatExpiresIn(expiresAtTick, currentTick) {
+    const ticksLeft = Math.max(0, Number(expiresAtTick || 0) - (Number(currentTick) || 0));
+    if (ticksLeft <= 0) return 'Resolving now';
+    return `Expires in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
+}
+
+function piShowToast(message, kind) {
+    document.querySelectorAll('.pi-toast').forEach(n => n.remove());
+    const el = document.createElement('div');
+    el.className = 'pi-toast' + (kind ? ' ' + kind : '');
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(() => {
+        el.classList.add('fade');
+        setTimeout(() => el.remove(), 280);
+    }, 3000);
+}
+
+async function loadPressingIssues() {
+    if (!faction?.id) return;
+    const [eventsRes, offersRes] = await Promise.all([
+        _supabase
+            .from('corp_contract_events')
+            .select('id, contract_id, type, severity, title, description, impact, responses, expires_at_tick, corp_contracts:contract_id(name)')
+            .eq('faction_id', faction.id)
+            .eq('status', 'ACTIVE')
+            .order('expires_at_tick', { ascending: true }),
+        _supabase
+            .from('bank_loan_offers')
+            .select(`
+                id, offered_apr, offered_term_ticks, expires_at_tick,
+                bank:factions!bank_faction_id ( faction_name, corp_ticker ),
+                request:bank_loan_requests!inner ( principal, purpose )
+            `)
+            .eq('status', 'pending')
+            .eq('request.requesting_faction_id', faction.id)
+            .eq('request.status', 'pending')
+            .order('expires_at_tick', { ascending: true }),
+    ]);
+    if (eventsRes.error) {
+        console.warn('[corp-shipping] Pressing Issues fetch failed:', eventsRes.error.message);
+        _pressingIssues = [];
+    } else {
+        _pressingIssues = eventsRes.data || [];
+    }
+    if (offersRes.error) {
+        console.warn('[corp-shipping] Loan offers fetch failed:', offersRes.error.message);
+        _receivedOffers = [];
+    } else {
+        _receivedOffers = offersRes.data || [];
+    }
+    renderPressingIssues();
+}
+
+function renderPressingIssues() {
+    const list = document.getElementById('pi-list');
+    const count = document.getElementById('pi-count');
+    if (!list) return;
+
+    const total = _pressingIssues.length + _receivedOffers.length;
+    if (count) count.textContent = `${total} OPEN`;
+
+    if (total === 0) {
+        list.innerHTML = '<div class="pi-empty"><div class="pi-empty__text">No pressing issues right now.<br>Time-sensitive decisions<br>will appear here.</div></div>';
+        return;
+    }
+
+    const currentTick = Number(shard?.current_tick) || 0;
+
+    // Loan offers render first — direct money implications + the
+    // accept-one-auto-rejects-rest semantics make them the most
+    // consequential decisions in the stack.
+    const offerCards = _receivedOffers.map(of => {
+        const expiresText = piFormatExpiresIn(of.expires_at_tick, currentTick);
+        const bank = of.bank || {};
+        const req = of.request || {};
+        const bankTicker = bank.corp_ticker || '—';
+        const bankName = bank.faction_name || 'Lender';
+        const apr = Number(of.offered_apr) || 0;
+        const term = Number(of.offered_term_ticks) || 0;
+        const principal = Number(req.principal) || 0;
+        const purpose = req.purpose ? String(req.purpose).trim() : '';
+        const inflight = _loanOfferInflight.has(of.id);
+        return `<div class="pi-issue-card kind-loan-offer">
+            <div class="pi-issue-row">
+                <span class="pi-issue-tag kind-loan-offer">LOAN OFFER ◊ FINANCE</span>
+                <span class="pi-issue-deadline">${escapeHtml(expiresText)}</span>
+            </div>
+            <div class="pi-issue-title">${escapeHtml(bankTicker)} — ${escapeHtml(bankName)}</div>
+            ${purpose ? `<div class="pi-issue-sub">— ${escapeHtml(purpose)}</div>` : ''}
+            <div class="pi-issue-terms">
+                <span><span class="label">PRINCIPAL</span><span class="value">${escapeHtml(hfFmtBig(principal))}</span></span>
+                <span><span class="label">APR</span><span class="value">${apr.toFixed(1)}%</span></span>
+                <span><span class="label">TERM</span><span class="value">${term} TICKS</span></span>
+            </div>
+            <div class="pi-issue-actions">
+                <button class="pi-btn primary" data-action="accept-offer" data-id="${escapeHtml(of.id)}" ${inflight ? 'disabled' : ''}>
+                    ${inflight ? 'Working…' : 'Accept ▸'}
+                </button>
+                <button class="pi-btn" data-action="reject-offer" data-id="${escapeHtml(of.id)}" ${inflight ? 'disabled' : ''}>
+                    Reject
+                </button>
+            </div>
+        </div>`;
+    });
+
+    const eventCards = _pressingIssues.map(ev => {
+        const expiresText = piFormatExpiresIn(ev.expires_at_tick, currentTick);
+        const sev = piSeverityClass(ev.severity);
+        const contractName = ev.corp_contracts?.name || 'Project';
+        const sevText = String(ev.severity || 'LOW').toUpperCase();
+        const typeText = String(ev.type || '').trim();
+        const tagText = typeText ? `${sevText} ◊ ${typeText}` : sevText;
+        const resp = (Array.isArray(ev.responses) && ev.responses[0]) || {};
+        const cost  = Number(resp.cost)  || 0;
+        const delay = Number(resp.delay) || 0;
+        const effectChips = [];
+        if (cost > 0)  effectChips.push(`<span><span class="label">COST</span><span class="value">−${escapeHtml(hfFmtBig(cost))}</span></span>`);
+        if (delay > 0) effectChips.push(`<span><span class="label">DELAY</span><span class="value">+${delay}t</span></span>`);
+        return `<div class="pi-issue-card sev-${sev}">
+            <div class="pi-issue-row">
+                <span class="pi-issue-tag sev-${sev}">${escapeHtml(tagText)}</span>
+                <span class="pi-issue-deadline">${escapeHtml(expiresText)}</span>
+            </div>
+            <div class="pi-issue-title">${escapeHtml(ev.title || 'Untitled')}</div>
+            <div class="pi-issue-sub">— ${escapeHtml(contractName)}</div>
+            <div class="pi-issue-desc">${escapeHtml(ev.description || ev.impact || '')}</div>
+            ${effectChips.length ? `<div class="pi-issue-terms">${effectChips.join('')}</div>` : ''}
+            <div class="pi-issue-actions">
+                <button class="pi-btn primary" data-action="ack-issue" data-id="${escapeHtml(ev.id)}">Acknowledge ▸</button>
+            </div>
+        </div>`;
+    });
+
+    list.innerHTML = offerCards.concat(eventCards).join('');
+}
+
+async function acceptLoanOffer(offerId) {
+    if (!offerId || _loanOfferInflight.has(offerId)) return;
+    _loanOfferInflight.add(offerId);
+    renderPressingIssues();
+    try {
+        const { data, error } = await _supabase.rpc('accept_loan_offer', { p_offer_id: offerId });
+        if (error) {
+            piShowToast('Failed: ' + error.message, 'error');
+        } else if (!data?.success) {
+            piShowToast(data?.error || 'Failed to accept', 'error');
+        } else {
+            piShowToast('Offer accepted. Awaiting bank disbursement.', 'success');
+        }
+        await loadPressingIssues();
+    } catch (err) {
+        console.error('[corp-shipping] accept_loan_offer failed:', err);
+        piShowToast('Accept failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _loanOfferInflight.delete(offerId);
+        renderPressingIssues();
+    }
+}
+
+async function rejectLoanOffer(offerId) {
+    if (!offerId || _loanOfferInflight.has(offerId)) return;
+    _loanOfferInflight.add(offerId);
+    renderPressingIssues();
+    try {
+        const { data, error } = await _supabase.rpc('reject_loan_offer', { p_offer_id: offerId });
+        if (error) {
+            piShowToast('Failed: ' + error.message, 'error');
+        } else if (!data?.success) {
+            piShowToast(data?.error || 'Failed to reject', 'error');
+        } else {
+            piShowToast('Offer rejected.', 'success');
+        }
+        await loadPressingIssues();
+    } catch (err) {
+        console.error('[corp-shipping] reject_loan_offer failed:', err);
+        piShowToast('Reject failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _loanOfferInflight.delete(offerId);
+        renderPressingIssues();
+    }
+}
+
+async function acknowledgeIssue(eventId) {
+    if (!eventId || _ackInflight.has(eventId)) return;
+    _ackInflight.add(eventId);
+    try {
+        const { data, error } = await _supabase.rpc('acknowledge_corp_contract_event', {
+            p_event_id: eventId,
+            p_response_key: null,
+        });
+        if (error) {
+            piShowToast('Failed: ' + error.message, 'error');
+        } else if (!data?.success) {
+            piShowToast(data?.error || 'Failed to acknowledge', 'error');
+        } else {
+            const costMsg  = data?.cost_applied  ? ` − ${hfFmtBig(data.cost_applied)}` : '';
+            const delayMsg = data?.delay_applied ? ` ◊ +${data.delay_applied}t delay` : '';
+            piShowToast(`Acknowledged${costMsg}${delayMsg}`, 'success');
+            // Acknowledgement may move cash — refresh topbar.
+            await refreshFactionAndCash();
+        }
+        await loadPressingIssues();
+    } catch (err) {
+        console.error('[corp-shipping] acknowledge failed:', err);
+        piShowToast('Acknowledge failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _ackInflight.delete(eventId);
+    }
+}
+
+// One-time delegated click for the Pressing Issues list. Routes by
+// data-action; the buttons each handle their own inflight lock.
+function attachPressingIssuesHandler() {
+    const list = document.getElementById('pi-list');
+    if (!list || list.dataset.boundPi === '1') return;
+    list.dataset.boundPi = '1';
+    list.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn || btn.disabled) return;
+        const action = btn.getAttribute('data-action');
+        const id = btn.getAttribute('data-id');
+        if (!id) return;
+        if (action === 'ack-issue')    return acknowledgeIssue(id);
+        if (action === 'accept-offer') return acceptLoanOffer(id);
+        if (action === 'reject-offer') return rejectLoanOffer(id);
+    });
+}
+
 const DEMAND_COLORS = {
     CRITICAL: '#c55',
     HIGH:     '#5c5',
@@ -7670,7 +8055,10 @@ async function init() {
     // _ownedProperties so isQualified() can match subsidiaries-in-nation
     // against open contracts — previously skipped, which silently blocked
     // Shipping subs from bidding on contracts they should have qualified for.
-    await Promise.all([loadAvailableRoutes(), loadActiveVoyages(), loadFleet(), loadShipMarket(), loadPortFacilities(), loadVesselIncidents(), loadOwnedProperties()]);
+    // Pressing Issues click delegation is bound once before the first
+    // render so cards never exist without a live handler.
+    attachPressingIssuesHandler();
+    await Promise.all([loadAvailableRoutes(), loadActiveVoyages(), loadFleet(), loadShipMarket(), loadPortFacilities(), loadVesselIncidents(), loadOwnedProperties(), loadPressingIssues()]);
 
     // Messaging bubble
     initMessaging(faction, nationStats, shard);
