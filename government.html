@@ -2877,20 +2877,20 @@ async function loadLegislatureData() {
     try {
         const [committeeRes, floorRes, frozenRes, deskRes, resolvedRes, lawsRes, partiesRes, blocMap] = await Promise.all([
             _supabase.from('bills')
-                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(faction_id, stance, seat_count)')
                 .eq('nation_id', nid).eq('status', 'committee'),
             _supabase.from('bills')
-                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*)), bill_support(faction_id, stance, seat_count)')
+                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*)), bill_support(faction_id, stance, seat_count)')
                 .eq('nation_id', nid).in('status', ['floor', 'voting', 'vetoed', 'referendum_pending', 'referendum_approved', 'awaiting_royal_assent']),
             _supabase.from('bills')
-                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*))')
+                .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*))')
                 .eq('nation_id', nid).eq('status', 'frozen'),
             // Presidential systems only: bills that passed the floor and are
             // waiting for the president to sign or veto. Without this, presidents
             // were being routed to laws.html just to find the sign/veto UI.
             isPresidential
                 ? _supabase.from('bills')
-                    .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*))')
+                    .select('*, factions(faction_name, party_color, abbreviation), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(*))')
                     .eq('nation_id', nid).eq('status', 'president_desk')
                 : Promise.resolve({ data: [] }),
             _supabase.from('bills')
@@ -3175,26 +3175,135 @@ function getBillSupportPercent(bill) {
     return support.percent;
 }
 
+// Effects come from the selected_option when a multi-option policy has one
+// chosen, otherwise from the base policy row. Mirrors the SSoT used by
+// bills.js (sector effects on the option row when present).
+function _articleStatEffects(art) {
+    const opt = art.selected_option;
+    const optEff = Array.isArray(opt?.stat_effects) ? opt.stat_effects : null;
+    if (optEff && optEff.length > 0) return optEff;
+    const p = art.policies || {};
+    if (Array.isArray(p.stat_effects) && p.stat_effects.length > 0) return p.stat_effects;
+    if (p.target_stat) {
+        const dir = (p.stat_direction || 'UP').toLowerCase() === 'down' ? 'down' : 'up';
+        return [{ stat_key: p.target_stat, direction: dir }];
+    }
+    return [];
+}
+
+// Renders a single bill article block: policy header (with the picked
+// option if multi-option), description, fiscal summary, and stat /
+// sector effect chips. Reads from selected_option first when an option
+// is locked in, otherwise falls back to the policy row.
+function _renderBillArticleRow(art, articleOrdinal) {
+    const policy = art.policies || {};
+    const opt    = art.selected_option || null;
+
+    const policyName = policy.name || policy.policy_name || art.article_title || 'Article ' + (art.article_number || '?');
+    const ideologyList = Array.isArray(policy.ideologies)
+        ? policy.ideologies
+        : (policy.ideology ? [policy.ideology] : []);
+    const ideologyLabels = ideologyList
+        .filter(Boolean)
+        .map((ideology) => ` (${escapeHtml(String(ideology))})`)
+        .join('');
+
+    const optionName = opt?.option_name || '';
+    const descriptionText = (opt?.option_description) || policy.description || art.article_text || '';
+
+    const hasBudget = art.funding_data || art.effect_data?.funding_data;
+    const badge = hasBudget ? 'BUDGET' : (opt ? 'OPTION' : 'TEXT');
+    const badgeColor = hasBudget ? 'var(--gold, #c8a832)' : (opt ? 'var(--purple, #a06ade)' : 'var(--blue)');
+
+    // Title row: policy name, plus the picked option when present.
+    let html = `<div style="padding:6px 10px;margin-bottom:3px;border-left:2px solid var(--border-main);">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:calc(10px * var(--leg-scale, 1.755));font-weight:700;color:var(--text-bright);">Article ${articleOrdinal}.: ${escapeHtml(policyName)}${ideologyLabels}</span>
+            <span class="leg-article-badge" style="color:${badgeColor};background:${badgeColor}10;border-color:${badgeColor}33;">${badge}</span>
+        </div>`;
+    if (optionName) {
+        html += `<div style="font-family:var(--font-mono);font-size:calc(8px * var(--leg-scale, 1.755));color:var(--text-dim);margin-top:2px;letter-spacing:0.5px;">
+            CHANGED TO &#9656; <span style="color:var(--text-bright);">${escapeHtml(optionName)}</span>
+        </div>`;
+    }
+    if (descriptionText) {
+        html += `<p style="font-size:calc(9px * var(--leg-scale, 1.755));color:var(--text-dim);margin:3px 0 0;">${escapeHtml(descriptionText)}</p>`;
+    }
+
+    // Per-article fiscal chips. Pull from the selected_option's fiscal
+    // fields first when present, otherwise the policy. Repeal articles
+    // surface as "saves $X/yr" since they remove an ongoing cost.
+    const fiscalSrc = opt || policy;
+    const upfrontRaw = Number(fiscalSrc?.upfront_cost || 0);
+    const ongoingMonthlyRaw = Number(fiscalSrc?.ongoing_cost_per_tick || fiscalSrc?.ongoing_base_cost || 0);
+    const ongoingYearlyRaw = ongoingMonthlyRaw * 12;
+    const isRepeal = !!art.repeal_active_law_id;
+    const fiscalChips = [];
+    if (upfrontRaw > 0 && !isRepeal) {
+        fiscalChips.push(`<span class="leg-article-fiscal-chip" style="color:var(--amber);border-color:var(--amber)40;">UPFRONT ${formatCostCompact(upfrontRaw)}</span>`);
+    }
+    if (ongoingYearlyRaw > 0) {
+        const onLabel = isRepeal ? `SAVES ${formatCostCompact(ongoingYearlyRaw)}/YR` : `ONGOING ${formatCostCompact(ongoingYearlyRaw)}/YR`;
+        const onColor = isRepeal ? 'var(--green)' : 'var(--text-dim)';
+        fiscalChips.push(`<span class="leg-article-fiscal-chip" style="color:${onColor};border-color:${onColor}40;">${onLabel}</span>`);
+    }
+
+    // Per-article stat effect chips. Same green-good / red-bad coloring
+    // as the bill-level chips for visual continuity.
+    const statEffects = _articleStatEffects(art);
+    const statChips = [];
+    const seen = new Set();
+    for (const e of statEffects) {
+        const stat = e?.stat_key;
+        const dir = (e?.direction || '').toLowerCase();
+        if (!stat || (dir !== 'up' && dir !== 'down')) continue;
+        const key = `${stat}:${dir}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const isGood = (dir === 'up' && !STATS_LOWER_IS_BETTER.includes(stat))
+            || (dir === 'down' && STATS_LOWER_IS_BETTER.includes(stat));
+        const arrow = dir === 'up' ? '▲' : '▼';
+        const color = isGood ? 'var(--green)' : 'var(--red)';
+        statChips.push(`<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${formatStatName(stat)} ${arrow}</span>`);
+    }
+
+    // Per-article sector effect chips. sector_effects is an array of
+    // {sector, direction, magnitude?} entries. Direction maps the same
+    // way as stats, and we tag the sector name for context.
+    const sectorEff = Array.isArray(opt?.sector_effects) && opt.sector_effects.length > 0
+        ? opt.sector_effects
+        : (Array.isArray(policy.sector_effects) ? policy.sector_effects : []);
+    const sectorChips = [];
+    const seenSec = new Set();
+    for (const s of sectorEff) {
+        const sector = s?.sector || s?.sector_key || s?.major_sector;
+        const dir = (s?.direction || '').toLowerCase();
+        if (!sector || (dir !== 'up' && dir !== 'down')) continue;
+        const key = `${sector}:${dir}`;
+        if (seenSec.has(key)) continue;
+        seenSec.add(key);
+        const arrow = dir === 'up' ? '▲' : '▼';
+        const color = dir === 'up' ? 'var(--green)' : 'var(--red)';
+        sectorChips.push(`<span class="ga-effect-tag" style="color:${color};border-color:${color}30;">${escapeHtml(String(sector))} ${arrow}</span>`);
+    }
+
+    if (fiscalChips.length || statChips.length || sectorChips.length) {
+        html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${fiscalChips.join('')}${statChips.join('')}${sectorChips.join('')}</div>`;
+    }
+
+    html += `</div>`;
+    return html;
+}
+
 function getBillEffects(bill) {
     const articles = (bill.bill_articles || []).sort((a, b) => (a.article_number || 0) - (b.article_number || 0));
     const effects = [];
     const seen = new Set();
     for (const art of articles) {
-        if (!art.policies) continue;
-        const p = art.policies;
-        if (Array.isArray(p.stat_effects)) {
-            for (const e of p.stat_effects) {
-                const stat = e?.stat_key;
-                const dir = (e?.direction || '').toLowerCase();
-                if (!stat || (dir !== 'up' && dir !== 'down')) continue;
-                const key = `${stat}:${dir}`;
-                if (seen.has(key)) continue;
-                seen.add(key);
-                effects.push({ stat, dir });
-            }
-        } else if (p.target_stat) {
-            const stat = p.target_stat;
-            const dir = (p.stat_direction || 'UP').toLowerCase() === 'down' ? 'down' : 'up';
+        for (const e of _articleStatEffects(art)) {
+            const stat = e?.stat_key;
+            const dir = (e?.direction || '').toLowerCase();
+            if (!stat || (dir !== 'up' && dir !== 'down')) continue;
             const key = `${stat}:${dir}`;
             if (seen.has(key)) continue;
             seen.add(key);
@@ -3372,27 +3481,7 @@ function renderBillCard(bill, stageColor) {
         };
 
         for (const art of articles) {
-            const policy = art.policies || {};
-            const policyName = policy.name || policy.policy_name || art.article_title || 'Article ' + (art.article_number || '?');
-            const ideologyList = Array.isArray(policy.ideologies)
-                ? policy.ideologies
-                : (policy.ideology ? [policy.ideology] : []);
-            const ideologyLabels = ideologyList
-                .filter(Boolean)
-                .map((ideology) => ` (${escapeHtml(String(ideology))})`)
-                .join('');
-            const descriptionText = policy.description || art.article_text;
-            const hasBudget = art.funding_data || art.effect_data?.funding_data;
-            const badge = hasBudget ? 'BUDGET' : 'TEXT';
-            const badgeColor = hasBudget ? 'var(--gold, #c8a832)' : 'var(--blue)';
-            const articleOrdinal = toRoman(art.article_number);
-            html += `<div style="padding:5px 10px;margin-bottom:2px;border-left:2px solid var(--border-main);">
-                <div style="display:flex;align-items:center;gap:6px;">
-                    <span style="font-size:calc(10px * var(--leg-scale, 1.755));font-weight:700;color:var(--text-bright);">Article ${articleOrdinal}.: ${escapeHtml(policyName)}${ideologyLabels}</span>
-                    <span class="leg-article-badge" style="color:${badgeColor};background:${badgeColor}10;border-color:${badgeColor}33;">${badge}</span>
-                </div>
-                ${descriptionText ? `<p style="font-size:calc(9px * var(--leg-scale, 1.755));color:var(--text-dim);margin:2px 0 0;">${escapeHtml(descriptionText)}</p>` : ''}
-            </div>`;
+            html += _renderBillArticleRow(art, toRoman(art.article_number));
         }
         html += `</div>`;
     }
