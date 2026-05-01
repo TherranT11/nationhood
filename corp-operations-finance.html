@@ -1329,13 +1329,20 @@ function defaultApr(floor) {
     return Math.round(((f + 12) / 2) * 10) / 10;
 }
 
-// Total simple interest over the loan term. For preview only — actual
-// repayment math lives server-side. ticks → years via TICKS_PER_YEAR.
-function calcTotalInterest(principal, aprPct, termTicks) {
+// Single source of truth for the offer-impact math used by both the
+// initial render and the per-input slider update. Simple interest over
+// the term, ticks → years via TICKS_PER_YEAR. For preview only —
+// actual repayment math lives server-side.
+function computeOfferImpact(principal, aprPct, termTicks) {
     const p = Number(principal) || 0;
     const apr = Number(aprPct) || 0;
-    const termYears = (Number(termTicks) || 0) / TICKS_PER_YEAR;
-    return Math.round(p * (apr / 100) * termYears);
+    const ticks = Number(termTicks) || 0;
+    const termYears = ticks / TICKS_PER_YEAR;
+    const totalInterest = Math.round(p * (apr / 100) * termYears);
+    const perTickPayment = ticks > 0
+        ? Math.round((p + totalInterest) / ticks)
+        : 0;
+    return { totalInterest, perTickPayment, termYears };
 }
 
 let _offerInflight = false;
@@ -1373,11 +1380,8 @@ function openLoanReviewModal(requestId) {
     let selectedTerm = pickDefaultTerm(requestedTerm);
 
     const renderModal = () => {
-        const totalInterest = calcTotalInterest(principal, selectedApr, selectedTerm);
-        const perTickPayment = selectedTerm > 0
-            ? Math.round((principal + totalInterest) / selectedTerm)
-            : 0;
-        const termYears = (selectedTerm / TICKS_PER_YEAR);
+        const { totalInterest, perTickPayment, termYears } =
+            computeOfferImpact(principal, selectedApr, selectedTerm);
 
         const termPills = TERM_TICK_OPTIONS.map(t => {
             const active = t === selectedTerm;
@@ -1518,13 +1522,13 @@ function openLoanReviewModal(requestId) {
         });
     };
 
-    // Cheaper than re-rendering on every slider input — only the three
-    // impact rows + APR display change as the slider moves.
+    // Cheaper than re-rendering on every slider input — only the APR
+    // display + two impact numbers change as the slider moves. Term
+    // years stays constant for a given selectedTerm and is updated on
+    // term-button click via renderModal.
     const updateImpactDisplay = () => {
-        const totalInterest = calcTotalInterest(principal, selectedApr, selectedTerm);
-        const perTickPayment = selectedTerm > 0
-            ? Math.round((principal + totalInterest) / selectedTerm)
-            : 0;
+        const { totalInterest, perTickPayment } =
+            computeOfferImpact(principal, selectedApr, selectedTerm);
         const rate = modal.querySelector('#fo-rate-display');
         const interest = modal.querySelector('#fo-impact-interest');
         const perTick = modal.querySelector('#fo-impact-per-tick');
