@@ -137,11 +137,6 @@ CREATE TABLE IF NOT EXISTS shipping_route_bids (
     -- can't be deleted; resolve the bids first.
     bidder_faction_id     UUID         NOT NULL REFERENCES factions(id) ON DELETE RESTRICT,
 
-    -- Optional pitch the carrier writes for the issuer (parallel to
-    -- bank_loan_offers — kept for narrative / future-proofing even
-    -- though SOP2's award flow won't read it initially).
-    bid_message           TEXT,
-
     -- Lifecycle. Mirrors bank_loan_offers vocabulary.
     status                TEXT         NOT NULL DEFAULT 'pending'
                               CHECK (status IN ('pending','accepted','rejected','auto_rejected','expired','withdrawn')),
