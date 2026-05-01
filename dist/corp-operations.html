@@ -386,6 +386,69 @@ body.corp-operations-construction.light-mode {
   flex-direction: column;
   gap: 12px;
 }
+/* Pressing Issues cards — same chrome as contract cards plus a
+   severity-coded left border that mirrors the mockup's color bar. */
+.co-issue-card {
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line);
+  border-left-width: 3px;
+  padding: 18px 22px;
+  margin-bottom: 12px;
+}
+.co-issue-card.sev-low      { border-left-color: var(--co-accent-blue); }
+.co-issue-card.sev-moderate { border-left-color: var(--co-accent-rust); }
+.co-issue-card.sev-high     { border-left-color: var(--co-accent-red); }
+.co-issue-card.sev-critical { border-left-color: var(--co-accent-red); box-shadow: inset 3px 0 12px rgba(217,83,79,0.15); }
+/* Loan-offer variant. Sits in the same Pressing Issues stack but uses
+   a gold accent so the financial nature reads at a glance instead of
+   being parsed as a project-event severity. */
+.co-issue-card.kind-loan-offer { border-left-color: var(--co-accent-gold); }
+.co-issue-card.kind-loan-offer .co-issue-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 4px 0 10px;
+  font-family: var(--co-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--co-text-secondary);
+}
+.co-issue-card.kind-loan-offer .co-issue-terms .label { color: var(--co-text-tertiary); margin-right: 4px; }
+.co-issue-card.kind-loan-offer .co-issue-terms .value {
+  font-family: var(--co-serif);
+  font-style: italic;
+  font-size: 15px;
+  letter-spacing: 0;
+  color: var(--co-text-primary);
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.co-issue-tag {
+  font-family: var(--co-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid var(--co-line-bright);
+  background: var(--co-bg-secondary);
+}
+.co-issue-tag.sev-low      { color: var(--co-accent-blue); border-color: rgba(91,192,222,0.35); background: rgba(91,192,222,0.06); }
+.co-issue-tag.sev-moderate { color: var(--co-accent-rust); border-color: rgba(232,114,74,0.35); background: rgba(232,114,74,0.06); }
+.co-issue-tag.sev-high     { color: var(--co-accent-red); border-color: rgba(217,83,79,0.40); background: rgba(217,83,79,0.06); }
+.co-issue-tag.sev-critical { color: #fff; background: var(--co-accent-red); border-color: var(--co-accent-red); }
+.co-issue-tag.kind-loan-offer { color: var(--co-accent-gold); border-color: rgba(200,168,50,0.40); background: rgba(200,168,50,0.06); }
+
+.co-issue-desc {
+  font-family: var(--co-sans);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--co-text-secondary);
+  margin: 8px 0 12px;
+}
+
 .co-contract-empty {
   background: var(--co-bg-card);
   border: 1px solid var(--co-line);
@@ -503,6 +566,20 @@ body.corp-operations-construction.light-mode {
 .co-contract-actions {
   display: flex;
   gap: 8px;
+}
+/* Status pill that replaces the action row after a bid is submitted.
+   Subdued green to convey "submitted/done" without competing with the
+   gold Place Bid button on cards that haven't been bid on yet. */
+.co-contract-bid-placed {
+  font-family: var(--co-mono);
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding: 9px 14px;
+  text-align: center;
+  border: 1px solid rgba(92,184,92,0.35);
+  background: rgba(92,184,92,0.08);
+  color: var(--co-accent-green);
 }
 .co-contract-btn {
   font-family: var(--co-mono);
@@ -959,7 +1036,7 @@ body.corp-operations-construction.light-mode {
   .co-hero-stat-value { font-size: 52px; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/corp-operations-Bp4wRhbC.js"></script>
+  <script type="module" crossorigin src="/assets/corp-operations-DPkPXQKy.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
@@ -1002,11 +1079,22 @@ body.corp-operations-construction.light-mode {
       </div>
     </div>
 
-    <!-- SECTIONS II + III — CONTRACTS -->
+    <!-- SECTION II — PRESSING ISSUES (placeholder; populated later) -->
+    <div class="co-section">
+      <div class="co-section-header">
+        <h2><span class="num">II.</span>Pressing Issues</h2>
+        <span class="desc" id="co-issues-meta">Time-Sensitive ◊ Decide Before Tick Resolves</span>
+      </div>
+      <div id="co-issues-list">
+        <div class="co-contract-empty">Loading…</div>
+      </div>
+    </div>
+
+    <!-- SECTIONS III + IV — CONTRACTS -->
     <div class="co-contracts-grid">
       <div>
         <div class="co-section-header">
-          <h2><span class="num">II.</span>Available Contracts</h2>
+          <h2><span class="num">III.</span>Available Contracts</h2>
           <span class="desc" id="co-available-meta">—</span>
         </div>
         <div class="co-contract-list" id="co-available-list">
@@ -1016,7 +1104,7 @@ body.corp-operations-construction.light-mode {
 
       <div>
         <div class="co-section-header">
-          <h2><span class="num">III.</span>Active Contracts</h2>
+          <h2><span class="num">IV.</span>Active Contracts</h2>
           <span class="desc" id="co-active-meta">—</span>
         </div>
         <div class="co-contract-list" id="co-active-list">
@@ -1025,11 +1113,11 @@ body.corp-operations-construction.light-mode {
       </div>
     </div>
 
-    <!-- SECTION IV — STRATEGIC ACTIONS -->
+    <!-- SECTION V — STRATEGIC ACTIONS -->
     <div class="co-section">
       <div class="co-section-header">
         <h2>
-          <span class="num">IV.</span>Strategic Actions<span id="co-actions-cooldown-pill"></span>
+          <span class="num">V.</span>Strategic Actions<span id="co-actions-cooldown-pill"></span>
         </h2>
         <span class="desc" id="co-actions-meta">10 Initiatives ◊ Choose A or B</span>
       </div>
