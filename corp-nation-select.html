@@ -809,11 +809,17 @@ async function confirmNation() {
             ? Math.max(0.5, 1 - (Number(nation.inflation) || 0) / 200)
             : 1;
         let startingCash;
+        let startingDebt = 0;
         if (corpSetup.sector === 'Construction') {
             // ?? not || so SoL=0 stays 0 (gives $25M) instead of getting
             // coerced to the 50 default (which would give $50M).
             const sol = Number(nation.standard_of_living ?? 50);
             startingCash = Math.round(50_000_000 * (0.5 + sol / 100));
+            // Starting debt: $10M baseline, same SoL curve as cash so a
+            // high-SoL nation hands you a richer balance sheet on both
+            // sides (more capex spent → bigger book, but more obligations
+            // too). SoL 0 → $5M, 50 → $10M, 100 → $15M.
+            startingDebt = Math.round(10_000_000 * (0.5 + sol / 100));
         } else {
             const baseCash = corpSetup.sector === 'Finance'  ? 225_000_000
                            : corpSetup.sector === 'Shipping' ?  80_000_000
@@ -876,6 +882,7 @@ async function confirmNation() {
             corp_company_type: companyType,
             corp_ticker: ticker,
             corp_cash_reserves: startingCash,
+            corp_debt: startingDebt,
             abandoned_at: null,
             custom_logo_url: null,
             ...sectorSeeds,

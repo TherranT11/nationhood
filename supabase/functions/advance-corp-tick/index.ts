@@ -4721,6 +4721,26 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 console.error(`[advance-corp-tick] Permit lifecycle failed for ${nation.name} (non-fatal):`, permitErr);
             }
 
+            // ── Construction Per-Tick Wages ──
+            // wages = corp_work_crews × $300k × (0.5 + sol/100)
+            // The RPC updates corp_cash_reserves and corp_wages_current_tick
+            // atomically per corp; we route the negative delta through
+            // accruePnl so monthly_profit picks it up at flush time.
+            try {
+                const { data: wageRows, error: wageErr } = await supabase
+                    .rpc('apply_construction_wages_for_nation', { p_nation_id: nation.id });
+                if (wageErr) {
+                    console.warn(`[advance-corp-tick] Construction wages RPC failed for ${nation.name}:`, wageErr.message);
+                } else if (Array.isArray(wageRows)) {
+                    for (const row of wageRows) {
+                        const w = Number(row.wages || 0);
+                        if (w > 0) accruePnl(row.corp_id, -w);
+                    }
+                }
+            } catch (wageErr) {
+                console.error(`[advance-corp-tick] Construction wages failed for ${nation.name} (non-fatal):`, wageErr);
+            }
+
             // ── Construction GDP Boost ──
                 // Per-project: (budget / $100M) × 0.1 / timeline_ticks
                 // Spreads the 0.1-per-$100M impact evenly across the project lifetime.

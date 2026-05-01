@@ -252,7 +252,7 @@ const EXEC_ACTIONS = {
         { id: 'research', name: 'Begin Research', desc: 'Start researching a tech tree node. Opens the tech tree interface.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['INNOVATION'], locked: true, lockReason: 'Coming soon' },
     ],
     CMO: [
-        { id: 'rebrand', name: 'Rebrand Corporation', desc: 'Change name and abbreviation. Cost and reputation hit scale with CMO skill — high skill reduces both.', cost: '~$20M', costColor: '#ca5', tags: ['STRUCTURAL'], cooldown: 'once/tick' },
+        { id: 'rebrand', name: 'Rebrand Corporation', desc: 'Change name and abbreviation. Cost and reputation hit scale with CMO skill — high skill reduces both.', cost: '~$2M', costColor: '#ca5', tags: ['STRUCTURAL'], cooldown: 'once/tick' },
     ],
     CLO: [
         { id: 'sue_corp', name: 'Sue Corporation', desc: 'File a lawsuit against another corporation for patent infringement, contract breach, or predatory practices.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['LEGAL'], locked: true, lockReason: 'Coming soon' },
@@ -1106,7 +1106,7 @@ function actOpenRebrand() {
     const cmo = getExecForRole('CMO');
     const cmoSkill = cmo ? cmo.skill : 50;
     const cmoMod = skillCostMod(cmoSkill);
-    const rebrandCost = Math.round(20000000 * cmoMod);
+    const rebrandCost = Math.round(2000000 * cmoMod);
     const rebrandRepLoss = Math.max(1, Math.round(5 * cmoMod));
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const rep = Number(faction?.corp_reputation ?? 50);
@@ -1174,7 +1174,7 @@ function actCloseRebrand() {
 let _rebrandSubmitting = false;
 async function actSubmitRebrand(costOverride, repLossOverride) {
     if (!faction || !shard || _rebrandSubmitting) return;
-    const rebrandCost = costOverride || 20000000;
+    const rebrandCost = costOverride || 2000000;
     const rebrandRepLoss = repLossOverride || 5;
     const errEl = document.getElementById('rebrand-error');
     const newName = (document.getElementById('rebrand-name')?.value || '').trim().replace(/[<>"]/g, '');
