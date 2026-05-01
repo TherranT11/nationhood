@@ -402,11 +402,15 @@ function _shippingNeedForPartner(partnerId) {
     const rel = (_worldRelations || []).find(r =>
         (r.nation_a_id === myId && r.nation_b_id === partnerId) ||
         (r.nation_b_id === myId && r.nation_a_id === partnerId));
-    return shippingNeedFor(myNation, partner, rel?.border_types);
+    // Defensive default: shippingNeedFor always returns an object, but
+    // if the import ever drifts or partnerId is bogus, callers crashed
+    // on `null.needsShipping`. Fall back to a safe maritime default.
+    return shippingNeedFor(myNation, partner, rel?.border_types)
+        || { needsShipping: true, reason: null };
 }
 
 function _laneEfficiencyFor(partnerId, sector) {
-    const shipNeed = _shippingNeedForPartner(partnerId);
+    const shipNeed = _shippingNeedForPartner(partnerId) || { needsShipping: true, reason: null };
     if (!shipNeed.needsShipping) {
         return { pct: 100, ships: 0, reason: shipNeed.reason };
     }
@@ -2004,7 +2008,7 @@ function renderTradeAgreements() {
         const agIsTradeType = ag.agreement_type !== 'retaliatory_tariff' && ag.agreement_type !== 'impose_embargo';
         // Land routes (landlocked / land border) don't need logistics — skip the orange
         // NO LOGISTICS warning and show a neutral land-trade tag instead.
-        const agShipNeed = _shippingNeedForPartner(partnerId);
+        const agShipNeed = _shippingNeedForPartner(partnerId) || { needsShipping: true, reason: null };
         const logisticsBadge = !agIsTradeType
             ? ''
             : agShipInfo?.hasLogistics
