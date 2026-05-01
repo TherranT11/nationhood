@@ -4182,6 +4182,196 @@ async function processBankLoanExpiry(supabase, currentTick) {
     return results;
 }
 
+// LRP2: per-tick payment processor for bank_loans (the new counter-
+// offer pipeline). Mirrors the ROLE of the legacy processFinanceLoans
+// but reads bank_loans, computes amortized payments from the schema's
+// principal/apr/term_ticks (no monthly_payment column on the table),
+// and uses the LRP1 close_bank_loan helper for terminal transitions.
+//
+// Per-tick math (simple amortization at 12 ticks/year):
+//   r       = (apr / 100) / 12               -- per-tick interest rate
+//   payment = P × r × (1+r)^N / ((1+r)^N − 1)  level payment, r > 0
+//   payment = P / N                            zero-interest fallback
+// The final payment is capped at outstanding + interest_due so a
+// rounding remainder doesn't keep the loan alive past maturity.
+//
+// Status escalation:
+//   1 missed → 'late'      (warning state, payment retried next tick)
+//   2 missed → 'delinquent'
+//   3 missed → 'defaulted' (close_bank_loan('defaulted'))
+// Successful payments don't decrement payments_missed — the counter
+// is monotonic so escalation is a one-way ratchet.
+//
+// Borrower-side accounting: payment is added to corp_costs_current_tick
+// (real-world: loan service is a cost line, revenue stays gross).
+// principal portion of the payment also decrements corp_debt so the
+// dashboard's Outstanding Debt card amortizes alongside.
+async function processBankLoanPayments(supabase, currentTick) {
+    const results = {
+        processed: 0, paid: 0, missed: 0, defaulted: 0,
+        late_escalations: 0, delinquent_escalations: 0,
+    };
+    const TICKS_PER_YEAR = 12;
+
+    const { data: loans, error: loansErr } = await supabase
+        .from('bank_loans')
+        .select('id, lender_faction_id, borrower_faction_id, principal, apr, term_ticks, outstanding, payments_missed, status, last_payment_tick')
+        .in('status', ['active', 'late', 'delinquent'])
+        .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
+
+    if (loansErr) {
+        console.warn('[BankLoanPayments] fetch failed:', loansErr.message);
+        return results;
+    }
+    if (!loans || loans.length === 0) return results;
+
+    // Reset corp_costs_current_tick for every borrower we're about to
+    // process. The per-tick fields on factions are documented as
+    // "Snapshot — historized in corp_pnl_history" but the per-tick
+    // reset+snapshot infrastructure was never built. corp_costs_current_tick
+    // sits at whatever value the prior tick wrote. Without this reset,
+    // each LRP2 run would accumulate (existing + payment) on top of the
+    // previous tick's total, producing an unbounded growing number on
+    // the dashboard instead of a per-tick figure.
+    //
+    // Carry-over: this assumes LRP2 is the only writer to
+    // corp_costs_current_tick within a tick. When other processors
+    // start contributing (wages, materials, etc.), they'll need their
+    // own coordinated reset — ideally at tick-start, not per-processor.
+    const borrowerIds = [...new Set(loans.map(l => l.borrower_faction_id).filter(Boolean))];
+    if (borrowerIds.length > 0) {
+        const { error: resetErr } = await supabase
+            .from('factions')
+            .update({ corp_costs_current_tick: 0 })
+            .in('id', borrowerIds);
+        if (resetErr) {
+            console.warn('[BankLoanPayments] tick-cost reset failed:', resetErr.message);
+            // Continue anyway — the per-loan UPDATEs will still write,
+            // just with stale-prior-tick costs sitting underneath.
+        }
+    }
+
+    for (const loan of loans) {
+        // Idempotency belt-and-suspenders.
+        if (Number(loan.last_payment_tick) === Number(currentTick)) continue;
+
+        const principal  = Number(loan.principal) || 0;
+        const apr        = Number(loan.apr) || 0;
+        const termTicks  = Number(loan.term_ticks) || 1;
+        const outstanding = Number(loan.outstanding) || 0;
+        let paymentsMissed = Number(loan.payments_missed) || 0;
+        const r = (apr / 100) / TICKS_PER_YEAR;
+
+        let payment;
+        if (r > 0) {
+            const factor = Math.pow(1 + r, termTicks);
+            payment = Math.round(principal * (r * factor) / (factor - 1));
+        } else {
+            payment = Math.round(principal / Math.max(1, termTicks));
+        }
+        // Cap final payment at outstanding + interest due so a rounding
+        // remainder closes the loan cleanly instead of leaving cents.
+        const interestDue = Math.round(outstanding * r);
+        if (payment > outstanding + interestDue) payment = outstanding + interestDue;
+        const principalPortion = Math.max(0, payment - interestDue);
+
+        const { data: borrower, error: bErr } = await supabase.from('factions')
+            .select('corp_cash_reserves, corp_debt, corp_costs_current_tick')
+            .eq('id', loan.borrower_faction_id).single();
+        if (bErr || !borrower) {
+            console.warn(`[BankLoanPayments] borrower fetch failed for loan ${loan.id}:`, bErr?.message);
+            continue;
+        }
+        const borrowerCash = Number(borrower.corp_cash_reserves) || 0;
+
+        if (borrowerCash >= payment) {
+            const newOutstanding = Math.max(0, outstanding - principalPortion);
+
+            // Borrower: deduct cash, decrement debt by principal portion,
+            // accumulate cost-of-debt-service into per-tick costs. One
+            // UPDATE so the dashboard never sees an inconsistent triple.
+            const { error: bUpdErr } = await supabase.from('factions').update({
+                corp_cash_reserves:      borrowerCash - payment,
+                corp_debt:               Math.max(0, (Number(borrower.corp_debt) || 0) - principalPortion),
+                corp_costs_current_tick: (Number(borrower.corp_costs_current_tick) || 0) + payment,
+            }).eq('id', loan.borrower_faction_id);
+            if (bUpdErr) {
+                console.warn(`[BankLoanPayments] borrower debit failed for loan ${loan.id}:`, bUpdErr.message);
+                continue;
+            }
+
+            // Lender: credit cash. Read-modify-write same race as the
+            // rest of the corp tick loop; service-role bypass keeps the
+            // ordering tight. Errors here surface as warnings — the
+            // borrower has already been debited, so a failed lender
+            // credit means the payment effectively disappears for this
+            // tick. Pre-existing money-flow pattern; closing it cleanly
+            // would require a SECURITY DEFINER RPC for the whole
+            // transaction (carry-over from processFinanceLoans).
+            const { data: lender, error: lenderSelErr } = await supabase.from('factions')
+                .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
+            if (lenderSelErr || !lender) {
+                console.warn(`[BankLoanPayments] lender fetch failed for loan ${loan.id}:`, lenderSelErr?.message);
+            } else {
+                const { error: lenderUpdErr } = await supabase.from('factions').update({
+                    corp_cash_reserves: (Number(lender.corp_cash_reserves) || 0) + payment,
+                }).eq('id', loan.lender_faction_id);
+                if (lenderUpdErr) {
+                    console.warn(`[BankLoanPayments] lender credit failed for loan ${loan.id}:`, lenderUpdErr.message);
+                }
+            }
+
+            if (newOutstanding <= 0) {
+                // Final payment — close as 'paid'. close_bank_loan also
+                // zeroes the (already-zero) outstanding, decrements the
+                // borrower's corp_debt by 0, and recomputes the lender's
+                // hero stats so headroom returns.
+                await supabase.rpc('close_bank_loan', {
+                    p_loan_id:      loan.id,
+                    p_close_status: 'paid',
+                });
+                results.paid++;
+            } else {
+                await supabase.from('bank_loans').update({
+                    outstanding:        newOutstanding,
+                    last_payment_tick:  currentTick,
+                    updated_at:         new Date().toISOString(),
+                }).eq('id', loan.id);
+                // Outstanding shrunk → recompute lender stats (overleverage
+                // relaxes, lending headroom improves slightly).
+                await supabase.rpc('recompute_finance_stats', { p_faction_id: loan.lender_faction_id });
+            }
+            results.processed++;
+        } else {
+            // Missed payment. Increment counter; escalate status.
+            paymentsMissed++;
+            results.missed++;
+
+            if (paymentsMissed >= 3) {
+                await supabase.rpc('close_bank_loan', {
+                    p_loan_id:      loan.id,
+                    p_close_status: 'defaulted',
+                });
+                results.defaulted++;
+                continue;
+            }
+
+            const newStatus = paymentsMissed >= 2 ? 'delinquent' : 'late';
+            if (newStatus === 'delinquent' && loan.status !== 'delinquent') results.delinquent_escalations++;
+            if (newStatus === 'late'       && loan.status !== 'late')       results.late_escalations++;
+
+            await supabase.from('bank_loans').update({
+                payments_missed:    paymentsMissed,
+                status:             newStatus,
+                last_payment_tick:  currentTick,
+                updated_at:         new Date().toISOString(),
+            }).eq('id', loan.id);
+        }
+    }
+
+    return results;
+}
+
 // Each tick: expire unfunded loan requests, process repayments, handle defaults.
 async function processFinanceLoans(supabase, nationId, currentTick) {
     const results = { expired: 0, payments: 0, defaults: 0 };
@@ -6167,6 +6357,23 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     } catch (expiryErr) {
         console.error('[advance-corp-tick] FAILED bank loan expiry sweep:', expiryErr);
         summary.errors.push({ scope: 'bank_loan_expiry', error: String(expiryErr) });
+    }
+
+    // LRP2: Bank loan payment processor (shard-wide, idempotent via
+    // last_payment_tick guard). Runs after expiry so already-expired
+    // requests don't race with payment runs on still-active loans.
+    try {
+        const paymentResults = await processBankLoanPayments(supabase, currentTick);
+        if (paymentResults.processed > 0
+            || paymentResults.missed > 0
+            || paymentResults.paid > 0
+            || paymentResults.defaulted > 0) {
+            summary.bankLoanPayments = paymentResults;
+            console.log(`[BankLoanPayments] tick ${currentTick}: ${paymentResults.processed} paid, ${paymentResults.missed} missed (${paymentResults.late_escalations} → late, ${paymentResults.delinquent_escalations} → delinquent, ${paymentResults.defaulted} → defaulted), ${paymentResults.paid} loans completed`);
+        }
+    } catch (payErr) {
+        console.error('[advance-corp-tick] FAILED bank loan payments:', payErr);
+        summary.errors.push({ scope: 'bank_loan_payments', error: String(payErr) });
     }
 
     // Global P&L flush. Per-nation flushes above cover the common case, but
