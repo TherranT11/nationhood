@@ -393,6 +393,116 @@ body.corp-operations-finance.light-mode {
   font-style: italic;
 }
 
+/* ── OFFER CARD (Section III — Available Offers) ──
+   Click-to-review summary card. The Loan Review modal (L3.B) opens
+   on click and is the surface where the bank sets rate + term and
+   submits the offer. */
+.fo-offer-card {
+  background: var(--fo-bg-card);
+  border: 1px solid var(--fo-line);
+  padding: 16px 18px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  display: grid;
+  gap: 8px;
+}
+.fo-offer-card:hover,
+.fo-offer-card:focus-visible {
+  border-color: var(--fo-accent-gold);
+  background: var(--fo-bg-elevated);
+  outline: none;
+}
+.fo-offer-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.fo-offer-card-ticker {
+  font-family: var(--fo-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fo-accent-gold);
+}
+.fo-offer-card-grade {
+  font-family: var(--fo-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  padding: 2px 7px;
+  border: 1px solid var(--fo-line-bright);
+  color: var(--fo-text-secondary);
+}
+.fo-offer-card-grade[data-grade^="A"]   { color: var(--fo-accent-green); border-color: rgba(92,184,92,0.4); }
+.fo-offer-card-grade[data-grade="BBB"],
+.fo-offer-card-grade[data-grade="BB"],
+.fo-offer-card-grade[data-grade="B"]    { color: var(--fo-accent-gold); border-color: rgba(200,168,50,0.4); }
+.fo-offer-card-grade[data-grade^="C"],
+.fo-offer-card-grade[data-grade="D"]    { color: var(--fo-accent-red);  border-color: rgba(217,83,79,0.4); }
+
+.fo-offer-card-borrower {
+  font-family: var(--fo-serif);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--fo-text-primary);
+  line-height: 1.25;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fo-offer-card-borrower .meta {
+  font-family: var(--fo-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 400;
+  color: var(--fo-text-tertiary);
+}
+.fo-offer-card-principal {
+  font-family: var(--fo-serif);
+  font-size: 30px;
+  font-weight: 400;
+  color: var(--fo-text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.fo-offer-card-meta {
+  font-family: var(--fo-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--fo-text-secondary);
+  text-transform: uppercase;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fo-offer-card-meta .purpose {
+  font-family: var(--fo-sans);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fo-text-secondary);
+  font-style: italic;
+}
+.fo-offer-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--fo-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fo-text-tertiary);
+  padding-top: 8px;
+  border-top: 1px dashed var(--fo-line-bright);
+}
+.fo-offer-card-foot .urgent { color: var(--fo-accent-red); }
+.fo-offer-card-cta { color: var(--fo-accent-gold); font-weight: 600; }
+
 /* ── STRATEGIC ACTIONS ── */
 .fo-actions-cooldown-pill {
   font-family: var(--fo-mono);
@@ -748,6 +858,140 @@ function renderHeroStats() {
     container.innerHTML = HERO_STATS.map(renderHeroStat).join('');
 }
 
+// ── AVAILABLE OFFERS (Section III) ──
+// Fetches every pending bank_loan_requests row that targets this bank
+// AND that this bank hasn't already responded to. Strict one-shot per
+// (request, bank): once an offer is on file (any status), the request
+// drops out of this list.
+async function loadAvailableLoanRequests() {
+    if (!faction?.id) {
+        _availableRequests = [];
+        return;
+    }
+
+    const cur = Number(shard?.current_tick || 0);
+    const { data: requests, error: reqErr } = await _supabase
+        .from('bank_loan_requests')
+        .select(`
+            id, principal, term_ticks, requested_apr, risk_grade,
+            purpose, status, expires_at_tick, created_at_tick,
+            requesting_faction_id, requesting_nation_id,
+            requesting_faction:factions!requesting_faction_id (
+                id, faction_name, corp_ticker, corp_sector,
+                corp_cash_reserves, corp_loans, corp_reputation
+            ),
+            requesting_nation:nations!requesting_nation_id ( id, name )
+        `)
+        .eq('status', 'pending')
+        .gt('expires_at_tick', cur)
+        .contains('target_bank_ids', [faction.id])
+        .order('expires_at_tick', { ascending: true });
+
+    if (reqErr) {
+        console.error('[fo] available requests fetch error:', reqErr.message);
+        _availableRequests = [];
+        return;
+    }
+    if (!requests || requests.length === 0) {
+        _availableRequests = [];
+        return;
+    }
+
+    // Drop requests this bank has already taken a position on. UNIQUE
+    // (request_id, bank_faction_id) on bank_loan_offers means any row
+    // here — pending OR terminal — counts as "already responded."
+    const reqIds = requests.map(r => r.id);
+    const { data: myOffers, error: offErr } = await _supabase
+        .from('bank_loan_offers')
+        .select('request_id')
+        .eq('bank_faction_id', faction.id)
+        .in('request_id', reqIds);
+    if (offErr) {
+        console.warn('[fo] my-offers fetch error:', offErr.message);
+    }
+    const respondedTo = new Set((myOffers || []).map(o => o.request_id));
+
+    _availableRequests = requests.filter(r => !respondedTo.has(r.id));
+}
+
+function renderAvailableLoanRequests() {
+    const list = document.getElementById('fo-available-list');
+    const meta = document.getElementById('fo-available-meta');
+    if (!list) return;
+
+    if (_availableRequests.length === 0) {
+        if (meta) meta.textContent = 'No incoming requests';
+        list.innerHTML = '<div class="fo-contract-empty">No open loan requests targeting this bank right now.</div>';
+        return;
+    }
+
+    if (meta) {
+        const n = _availableRequests.length;
+        meta.textContent = `${n} Open ◊ Click to Review`;
+    }
+
+    const cur = Number(shard?.current_tick || 0);
+    list.innerHTML = _availableRequests.map(r => {
+        const f = r.requesting_faction || {};
+        const nat = r.requesting_nation || {};
+        const ticker = f.corp_ticker || '—';
+        const name = f.faction_name || '—';
+        const sector = f.corp_sector || '';
+        const expiresIn = Math.max(0, Number(r.expires_at_tick || 0) - cur);
+        const expiresCls = expiresIn <= 3 ? 'urgent' : '';
+        const term = Number(r.term_ticks || 0);
+        const purpose = r.purpose ? String(r.purpose).trim() : '';
+        return `<div class="fo-offer-card" data-request-id="${escapeHtml(r.id)}" tabindex="0" role="button" aria-label="Review loan request from ${escapeHtml(name)}">
+            <div class="fo-offer-card-head">
+                <div class="fo-offer-card-ticker">${escapeHtml(ticker)}</div>
+                <div class="fo-offer-card-grade" data-grade="${escapeHtml(r.risk_grade || '')}">${escapeHtml(r.risk_grade || '—')}</div>
+            </div>
+            <div class="fo-offer-card-borrower">
+                <span class="name">${escapeHtml(name)}</span>
+                ${sector  ? `<span class="meta">${escapeHtml(sector)}</span>`  : ''}
+                ${nat.name ? `<span class="meta">◊ ${escapeHtml(nat.name)}</span>` : ''}
+            </div>
+            <div class="fo-offer-card-principal">${escapeHtml(fmtMoney(r.principal))}</div>
+            <div class="fo-offer-card-meta">
+                <span>${escapeHtml(String(term))} TICK${term === 1 ? '' : 'S'}</span>
+                ${purpose ? `<span class="purpose">— ${escapeHtml(purpose)}</span>` : ''}
+            </div>
+            <div class="fo-offer-card-foot">
+                <span class="${expiresCls}">EXPIRES IN ${expiresIn} TICK${expiresIn === 1 ? '' : 'S'}</span>
+                <span class="fo-offer-card-cta">REVIEW →</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// Stub. The Loan Review modal lands in L3.B; this just confirms wiring.
+function openLoanReviewModal(requestId) {
+    const req = _availableRequests.find(r => r.id === requestId);
+    console.log('[fo] openLoanReviewModal stub — request:', requestId, req);
+}
+
+// One-time delegated click handler for the Available Offers list.
+// Cards are re-rendered on every refresh; delegating to the list
+// container avoids re-attaching listeners after each render.
+function attachAvailableOffersHandlers() {
+    const list = document.getElementById('fo-available-list');
+    if (!list || list.dataset.boundFo === '1') return;
+    list.dataset.boundFo = '1';
+
+    const trigger = (target) => {
+        const card = target.closest('.fo-offer-card[data-request-id]');
+        if (!card) return;
+        openLoanReviewModal(card.getAttribute('data-request-id'));
+    };
+    list.addEventListener('click', (e) => trigger(e.target));
+    list.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            trigger(e.target);
+        }
+    });
+}
+
 // ── Cooldown pill (top-right of Strategic Actions) ──
 function renderActionCooldownPill() {
     const pillEl = document.getElementById('fo-actions-cooldown-pill');
@@ -769,10 +1013,25 @@ function showFatal(msg) {
     document.getElementById('loading').textContent = msg;
 }
 
+// Money abbreviator. Keeps cards compact ($120M not $120,000,000).
+function fmtMoney(n) {
+    const v = Number(n) || 0;
+    const a = Math.abs(v);
+    const sign = v < 0 ? '-' : '';
+    if (a >= 1e9) return sign + '$' + (a / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (a >= 1e6) return sign + '$' + (a / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (a >= 1e3) return sign + '$' + Math.round(a / 1e3) + 'K';
+    return sign + '$' + a.toLocaleString();
+}
+
 let faction = null;
 let nation = null;
 let shard = null;
 let allUserFactions = [];
+
+// Pending bank_loan_requests targeting this bank that this bank has NOT
+// already responded to. Populated by loadAvailableLoanRequests().
+let _availableRequests = [];
 
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
@@ -855,15 +1114,20 @@ async function init() {
         }
     }
 
-    // Active count placeholder — the loan-request pipeline (Phase C) will
-    // wire this to a real count of active agreements where this corp is
-    // the lender. For now the page just shows 0 so the layout settles.
+    // Active count placeholder — Active Agreements (Section IV) lands in
+    // L3.C and will replace this with a real count of bank_loans where
+    // this faction is the lender.
     document.getElementById('fo-active-count').textContent = '0';
     document.getElementById('fo-footer-date').textContent =
         shard?.current_date || tickToDate(shard?.current_tick) || '—';
 
     renderHeroStats();
     renderActionCooldownPill();
+
+    // Available Offers (Section III).
+    await loadAvailableLoanRequests();
+    renderAvailableLoanRequests();
+    attachAvailableOffersHandlers();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
