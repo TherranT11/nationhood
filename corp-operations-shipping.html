@@ -943,6 +943,367 @@ body.corp-operations-shipping.light-mode {
 }
 .so-modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* ══════════════════════════════════════════════════════════════
+   PHASE 3: Trade-Agreement Offer Modal
+   ══════════════════════════════════════════════════════════════ */
+.so-offer-subtitle {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--so-text-tertiary);
+  letter-spacing: 0.12em;
+  margin-top: 6px;
+}
+.so-offer-subtitle strong { color: var(--so-accent-gold); font-weight: 500; }
+
+.so-offer-route-banner {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 18px;
+  align-items: center;
+  padding: 16px 20px;
+  margin: -2px -2px 18px;
+  background: var(--so-bg-card);
+  border: 1px solid var(--so-line);
+}
+.so-offer-route-port { display: flex; flex-direction: column; gap: 4px; }
+.so-offer-route-port.right { align-items: flex-end; text-align: right; }
+.so-offer-route-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--so-text-tertiary);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.so-offer-route-name {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 17px;
+  color: var(--so-text-primary);
+  letter-spacing: -0.005em;
+}
+.so-offer-route-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--so-accent-gold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.so-offer-route-arrow {
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--so-accent-gold);
+  letter-spacing: 0.1em;
+}
+
+.so-offer-section-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--so-text-tertiary);
+  margin-left: 12px;
+}
+
+/* Freighter block */
+.so-offer-freight-block {
+  background: var(--so-bg-card);
+  border: 1px solid var(--so-line);
+  padding: 18px 20px;
+}
+.so-offer-freight-display {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 14px;
+}
+.so-offer-freight-count {
+  font-family: var(--serif);
+  font-size: 48px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--so-text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+}
+.so-offer-freight-max {
+  font-family: var(--sans);
+  font-size: 18px;
+  color: var(--so-text-tertiary);
+  margin-left: 4px;
+}
+.so-offer-freight-output { text-align: right; }
+.so-offer-output-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--so-text-tertiary);
+  margin-bottom: 4px;
+}
+.so-offer-output-value {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 24px;
+  color: var(--so-accent-gold);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.so-offer-output-rate {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--so-text-tertiary);
+  letter-spacing: 0.1em;
+  margin-top: 4px;
+}
+.so-offer-freight-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--so-text-tertiary);
+  margin-bottom: 8px;
+}
+.so-offer-freight-select {
+  width: 100%;
+  background: var(--so-bg-secondary);
+  border: 1px solid var(--so-line-bright);
+  color: var(--so-text-primary);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 12px;
+  cursor: pointer;
+  outline: none;
+}
+.so-offer-freight-select:focus { border-color: var(--so-accent-gold); }
+.so-offer-available-note {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--so-text-tertiary);
+  margin-top: 8px;
+}
+.so-offer-available { color: var(--so-accent-green); font-weight: 500; }
+
+/* Modifier grid */
+.so-offer-modifiers-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.so-offer-modifier-card {
+  background: var(--so-bg-card);
+  border: 1px solid var(--so-line);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 10px;
+  align-items: flex-start;
+}
+.so-offer-modifier-card:hover { border-color: var(--so-line-bright); background: var(--so-bg-elevated); }
+.so-offer-modifier-card.baseline { cursor: default; }
+.so-offer-modifier-card.selected {
+  border-color: var(--so-accent-gold);
+  background: rgba(201, 164, 73, 0.05);
+}
+.so-offer-modifier-checkbox {
+  width: 14px; height: 14px;
+  border: 1px solid var(--so-line-bright);
+  background: var(--so-bg-secondary);
+  position: relative;
+  margin-top: 2px;
+}
+.so-offer-modifier-card.selected .so-offer-modifier-checkbox {
+  background: var(--so-accent-gold);
+  border-color: var(--so-accent-gold);
+}
+.so-offer-modifier-card.selected .so-offer-modifier-checkbox::after {
+  content: '✓';
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--so-bg-primary);
+  font-size: 10px; font-weight: 700;
+}
+.so-offer-modifier-content { min-width: 0; }
+.so-offer-modifier-name {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--so-text-primary);
+  line-height: 1.2;
+  margin-bottom: 3px;
+  letter-spacing: -0.005em;
+}
+.so-offer-modifier-desc {
+  font-family: var(--sans);
+  font-size: 10px;
+  color: var(--so-text-secondary);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+.so-offer-modifier-effects {
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.so-offer-effect {
+  font-family: var(--mono);
+  font-size: 8px;
+  padding: 2px 5px;
+  border: 1px solid;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+.so-offer-effect.positive {
+  color: var(--so-accent-green);
+  border-color: rgba(138, 166, 83, 0.4);
+  background: rgba(138, 166, 83, 0.06);
+}
+.so-offer-effect.negative {
+  color: var(--so-accent-red);
+  border-color: rgba(200, 90, 58, 0.4);
+  background: rgba(200, 90, 58, 0.06);
+}
+.so-offer-effect.cost {
+  color: var(--so-text-secondary);
+  border-color: var(--so-line-bright);
+  background: var(--so-bg-secondary);
+}
+
+/* Markup block */
+.so-offer-markup-block {
+  background: var(--so-bg-card);
+  border: 1px solid var(--so-line);
+  padding: 18px 20px;
+}
+.so-offer-markup-display {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 14px;
+}
+.so-offer-markup-pct {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 48px;
+  line-height: 1;
+  color: var(--so-text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+}
+.so-offer-markup-pct-sign {
+  font-family: var(--sans);
+  font-size: 18px;
+  color: var(--so-text-tertiary);
+  margin-left: 2px;
+}
+.so-offer-margin-display { text-align: right; }
+.so-offer-margin-value {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 24px;
+  color: var(--so-accent-green);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.so-offer-markup-options {
+  display: flex; gap: 4px;
+}
+.so-offer-markup-option {
+  flex: 1;
+  background: var(--so-bg-secondary);
+  border: 1px solid var(--so-line-bright);
+  color: var(--so-text-secondary);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 9px 0;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 500;
+}
+.so-offer-markup-option:hover { border-color: var(--so-accent-gold); color: var(--so-text-primary); }
+.so-offer-markup-option.active {
+  background: var(--so-accent-gold);
+  border-color: var(--so-accent-gold);
+  color: var(--so-bg-primary);
+  font-weight: 700;
+}
+
+/* Cost summary */
+.so-offer-cost-summary {
+  background: var(--so-bg-elevated);
+  border: 1px solid var(--so-line-bright);
+  padding: 14px 18px;
+  margin-top: 8px;
+}
+.so-offer-cost-summary-header {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--so-text-tertiary);
+  margin-bottom: 10px;
+}
+.so-offer-cost-line {
+  display: flex; justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--so-line);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.so-offer-cost-line:last-child { border-bottom: none; }
+.so-offer-cost-line .label { color: var(--so-text-secondary); }
+.so-offer-cost-line .value { color: var(--so-text-primary); font-weight: 500; font-variant-numeric: tabular-nums; }
+.so-offer-cost-line.total {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--so-line-bright);
+  border-bottom: none;
+}
+.so-offer-cost-line.total .label {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--so-text-primary);
+}
+.so-offer-cost-line.total .value {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--so-accent-gold);
+}
+
+/* Footer summary that lives inside so-modal-actions */
+.so-offer-footer-summary {
+  display: flex; gap: 22px;
+}
+.so-offer-footer-item { display: flex; flex-direction: column; gap: 2px; }
+.so-offer-footer-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--so-text-tertiary);
+}
+.so-offer-footer-value {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 16px;
+  color: var(--so-text-primary);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.so-offer-footer-value.gold  { color: var(--so-accent-gold); }
+.so-offer-footer-value.green { color: var(--so-accent-green); }
+
+@media (max-width: 760px) {
+  .so-offer-modifiers-grid { grid-template-columns: 1fr; }
+  .so-offer-route-banner { grid-template-columns: 1fr; gap: 8px; }
+  .so-offer-route-port.right { align-items: flex-start; text-align: left; }
+  .so-offer-footer-summary { flex-wrap: wrap; }
+}
+
 /* ── TOAST ── */
 .so-toast, .pi-toast {
   position: fixed;
@@ -1532,6 +1893,7 @@ async function loadAvailableContracts() {
             origin_port, destination_port, destination_nation_id,
             revenue_per_tick, term_ticks, freighters_required,
             min_fleet_health, max_route_risk, expires_at_tick, award_criterion,
+            trade_agreement_id, commodity, volume_required, delivery_priority,
             origin_nation:nations!nation_id ( name ),
             destination_nation:nations!destination_nation_id ( name )
         `)
@@ -1752,6 +2114,15 @@ function renderActiveContracts() {
 function openBidModal(contractId) {
     const c = _availableContracts.find(x => x.id === contractId);
     if (!c) return;
+
+    // Phase 3: trade-agreement-spawned contracts (have a trade_agreement_id
+    // and a delivery_priority) use the offer-style modal — freighters +
+    // route modifiers + markup. Legacy SOP contracts continue through
+    // the original price/term bid modal below.
+    if (c.trade_agreement_id) {
+        return openOfferModal(c);
+    }
+
     if (_myBids.has(c.id)) return;  // already bid
 
     const overlay = document.getElementById('so-modal-overlay');
@@ -1830,6 +2201,332 @@ function openBidModal(contractId) {
     overlay.setAttribute('aria-hidden', 'false');
 
     document.getElementById('so-bid-submit')?.addEventListener('click', () => submitBid(c.id));
+}
+
+// ── Phase 3: Trade-Agreement Offer Modal ──
+//
+// Shipping corps offer terms on a trade-agreement-spawned contract:
+// freighter allocation + route modifiers + markup %. Cost / energy /
+// risk all recompute live as the corp toggles inputs. Submit hits
+// place_shipping_offer RPC; server validates the modifier allowlist
+// and computes final numbers from a trusted server-side table.
+
+const OFFER_MODIFIERS = [
+    { key: 'known',              name: 'Known Shipping Route',     desc: 'Standard commercial corridor with charted waters and predictable conditions.',                                                  energy: 0,  risk:  0, costM: 0, baseline: true },
+    { key: 'dangerous_waters',   name: 'Dangerous Waters',         desc: 'Cut through contested or pirate-active waters. Faster delivery, more cargo per tick — but exposure rises.',                    energy: 2,  risk:  1, costM: 0 },
+    { key: 'naval_escort',       name: 'Naval Escort',             desc: 'Coordinate naval armed convoy protection across the route.',                                                                   energy: 0,  risk: -2, costM: 8 },
+    { key: 'premium_insurance',  name: 'Premium Insurance Bond',   desc: "Lloyd's-tier coverage. Insurers reduce risk dramatically but skim a portion of cargo value.",                                  energy: -1, risk: -3, costM: 3 },
+    { key: 'bribe_port',         name: 'Bribe Port Authorities',   desc: 'Slip envelopes to harbormasters. Faster customs clearance, fewer delays — at a cost.',                                          energy: 1,  risk: -1, costM: 4 },
+    { key: 'rush_schedule',      name: 'Rush Schedule',            desc: 'Push crews and engines hard. Maximum throughput — but breakdowns and accidents climb.',                                         energy: 3,  risk:  2, costM: 5 },
+];
+const OFFER_MARKUPS = [10, 15, 20, 25, 30];
+const OFFER_FREIGHTER_COST_M = 3;        // $3M / tick / freighter
+const OFFER_ENERGY_PER_FREIGHTER = 3;    // base energy/tick per freighter
+
+let _offerInflight = false;
+let _offerState = null;  // { contract, freighters, modifiers:Set, markup }
+
+function openOfferModal(contract) {
+    if (!contract || !contract.trade_agreement_id) return;
+    const overlay = document.getElementById('so-modal-overlay');
+    const modal = document.getElementById('so-modal');
+    if (!overlay || !modal) return;
+
+    const myFreighters = Math.max(0, Math.floor(Number(faction?.corp_freighters) || 0));
+    const volume = Number(contract.volume_required) || 0;
+    const minFreighters = Math.max(1, Math.ceil(volume / OFFER_ENERGY_PER_FREIGHTER));
+    const initialFreighters = Math.min(myFreighters, minFreighters || 1);
+
+    // Reload an existing offer if the corp is editing before window close.
+    const existing = _myBids.get(contract.id);
+    const initialModifiers = new Set(['known']);
+    let initialMarkup = 15;
+    let initialFreightAlloc = initialFreighters;
+    if (existing) {
+        if (Array.isArray(existing.modifiers)) {
+            for (const k of existing.modifiers) initialModifiers.add(k);
+        }
+        if (OFFER_MARKUPS.includes(existing.markup_pct)) initialMarkup = existing.markup_pct;
+        if (Number.isInteger(existing.freighters_allocated) && existing.freighters_allocated > 0) {
+            initialFreightAlloc = Math.min(myFreighters, existing.freighters_allocated);
+        }
+    }
+
+    _offerState = {
+        contract,
+        freighters: initialFreightAlloc,
+        modifiers: initialModifiers,
+        markup: initialMarkup,
+    };
+
+    const priorityLabel = ({
+        fastest:  'FASTEST DELIVERY — highest energy/tick wins',
+        safest:   'SAFEST DELIVERY — lowest route risk wins',
+        cheapest: 'CHEAPEST DELIVERY — lowest $/tick wins',
+    })[contract.delivery_priority] || 'CHEAPEST DELIVERY — lowest $/tick wins';
+
+    const originName = contract.origin_nation?.name || '';
+    const destName   = contract.destination_nation?.name || '';
+    const originLine = originName
+        ? `${escapeHtml(originName)} ◊ ${escapeHtml(contract.origin_port || '')}`
+        : escapeHtml(contract.origin_port || '');
+    const destLine = destName
+        ? `${escapeHtml(destName)} ◊ ${escapeHtml(contract.destination_port || '')}`
+        : escapeHtml(contract.destination_port || '');
+
+    modal.innerHTML = `
+        <div class="so-modal-head">
+            <div>
+                <span class="so-modal-title-eyebrow">Offer Shipping</span>
+                <h2 id="so-modal-title" class="so-modal-title">${escapeHtml(contract.name || 'Trade Agreement Route')}</h2>
+                <div class="so-offer-subtitle">Filing as: <strong>${escapeHtml(faction?.abbreviation || '')}</strong> ${escapeHtml(faction?.faction_name || '')}</div>
+            </div>
+            <button type="button" class="so-modal-close" data-modal-close aria-label="Close">×</button>
+        </div>
+
+        <div class="so-offer-route-banner">
+            <div class="so-offer-route-port">
+                <span class="so-offer-route-label">Origin</span>
+                <span class="so-offer-route-name">${originLine}</span>
+            </div>
+            <span class="so-offer-route-arrow">━━━▸</span>
+            <div class="so-offer-route-port right">
+                <span class="so-offer-route-label">Destination</span>
+                <span class="so-offer-route-name">${destLine}</span>
+                <span class="so-offer-route-meta">${escapeHtml(priorityLabel)}</span>
+            </div>
+        </div>
+
+        <div class="so-modal-section">
+            <div class="so-modal-section-title">I. Freighter Allocation
+                <span class="so-offer-section-meta">1 freighter = ${OFFER_ENERGY_PER_FREIGHTER} Energy/tick · agreement asks ${volume}/tick (need ${minFreighters} freighters)</span>
+            </div>
+            <div class="so-offer-freight-block">
+                <div class="so-offer-freight-display">
+                    <div class="so-offer-freight-count">
+                        <span id="so-offer-freight-count">${initialFreightAlloc}</span><span class="so-offer-freight-max">/ ${myFreighters}</span>
+                    </div>
+                    <div class="so-offer-freight-output">
+                        <div class="so-offer-output-label">Base Energy/Tick</div>
+                        <div class="so-offer-output-value" id="so-offer-base-energy">${initialFreightAlloc * OFFER_ENERGY_PER_FREIGHTER}</div>
+                        <div class="so-offer-output-rate">Before route modifiers</div>
+                    </div>
+                </div>
+                <label class="so-offer-freight-label" for="so-offer-freight-select">Assign Freighters</label>
+                <select id="so-offer-freight-select" class="so-offer-freight-select">
+                    ${Array.from({length: myFreighters + 1}, (_, i) => i).map(i =>
+                        `<option value="${i}"${i === initialFreightAlloc ? ' selected' : ''}>${i} Freighter${i === 1 ? '' : 's'}</option>`
+                    ).join('')}
+                </select>
+                <div class="so-offer-available-note">◊ Available freighters in your fleet: <span class="so-offer-available">${myFreighters}</span></div>
+            </div>
+        </div>
+
+        <div class="so-modal-section">
+            <div class="so-modal-section-title">II. Route Strategy
+                <span class="so-offer-section-meta">Select Modifiers · Stack Effects</span>
+            </div>
+            <div class="so-offer-modifiers-grid" id="so-offer-modifiers-grid">
+                ${OFFER_MODIFIERS.map(m => renderOfferModifierCard(m, initialModifiers.has(m.key))).join('')}
+            </div>
+        </div>
+
+        <div class="so-modal-section">
+            <div class="so-modal-section-title">III. Pricing &amp; Markup
+                <span class="so-offer-section-meta">Your Profit Margin</span>
+            </div>
+            <div class="so-offer-markup-block">
+                <div class="so-offer-markup-display">
+                    <div class="so-offer-markup-pct">
+                        <span id="so-offer-markup-display">${initialMarkup}</span><span class="so-offer-markup-pct-sign">%</span>
+                    </div>
+                    <div class="so-offer-margin-display">
+                        <div class="so-offer-output-label">Profit Margin</div>
+                        <div class="so-offer-margin-value" id="so-offer-margin-value">$0</div>
+                        <div class="so-offer-output-rate">Per tick</div>
+                    </div>
+                </div>
+                <div class="so-offer-markup-options" id="so-offer-markup-options">
+                    ${OFFER_MARKUPS.map(p => `<button type="button" class="so-offer-markup-option${p === initialMarkup ? ' active' : ''}" data-markup="${p}">${p}%</button>`).join('')}
+                </div>
+            </div>
+            <div class="so-offer-cost-summary">
+                <div class="so-offer-cost-summary-header">Final Offer Breakdown</div>
+                <div class="so-offer-cost-line"><span class="label" id="so-offer-op-label">Operating Cost</span><span class="value" id="so-offer-op-cost">$0</span></div>
+                <div class="so-offer-cost-line"><span class="label">Route Modifier Costs</span><span class="value" id="so-offer-mod-cost">$0</span></div>
+                <div class="so-offer-cost-line"><span class="label" id="so-offer-markup-label">Markup</span><span class="value" id="so-offer-markup-cost">$0</span></div>
+                <div class="so-offer-cost-line total"><span class="label">Total Offer Price</span><span class="value" id="so-offer-total-cost">$0 / tick</span></div>
+            </div>
+        </div>
+
+        <div class="so-modal-actions">
+            <div class="so-offer-footer-summary">
+                <div class="so-offer-footer-item">
+                    <span class="so-offer-footer-label">Energy Delivered</span>
+                    <span class="so-offer-footer-value gold" id="so-offer-footer-energy">0/tick</span>
+                </div>
+                <div class="so-offer-footer-item">
+                    <span class="so-offer-footer-label">Route Risk Δ</span>
+                    <span class="so-offer-footer-value" id="so-offer-footer-risk">+0</span>
+                </div>
+                <div class="so-offer-footer-item">
+                    <span class="so-offer-footer-label">Your Profit</span>
+                    <span class="so-offer-footer-value green" id="so-offer-footer-profit">$0/tick</span>
+                </div>
+            </div>
+            <div style="flex:1;"></div>
+            <button type="button" class="so-modal-btn" data-modal-close>Cancel</button>
+            <button type="button" class="so-modal-btn primary" id="so-offer-submit"${myFreighters === 0 ? ' disabled' : ''}>${existing ? 'Update Offer ▸' : 'Submit Offer ▸'}</button>
+        </div>
+    `;
+
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+
+    document.getElementById('so-offer-freight-select')?.addEventListener('change', (e) => {
+        _offerState.freighters = Math.max(0, Math.min(myFreighters, parseInt(e.target.value, 10) || 0));
+        document.getElementById('so-offer-freight-count').textContent = _offerState.freighters;
+        document.getElementById('so-offer-base-energy').textContent = _offerState.freighters * OFFER_ENERGY_PER_FREIGHTER;
+        recalcOffer();
+    });
+
+    const grid = document.getElementById('so-offer-modifiers-grid');
+    grid?.addEventListener('click', (e) => {
+        const card = e.target.closest('.so-offer-modifier-card');
+        if (!card) return;
+        const key = card.dataset.key;
+        const def = OFFER_MODIFIERS.find(m => m.key === key);
+        if (!def) return;
+        if (def.baseline) return;  // 'known' is permanent
+        if (_offerState.modifiers.has(key)) {
+            _offerState.modifiers.delete(key);
+            card.classList.remove('selected');
+        } else {
+            _offerState.modifiers.add(key);
+            card.classList.add('selected');
+        }
+        recalcOffer();
+    });
+
+    document.getElementById('so-offer-markup-options')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-markup]');
+        if (!btn) return;
+        const pct = parseInt(btn.dataset.markup, 10);
+        if (!OFFER_MARKUPS.includes(pct)) return;
+        _offerState.markup = pct;
+        for (const b of e.currentTarget.querySelectorAll('button')) {
+            b.classList.toggle('active', b === btn);
+        }
+        document.getElementById('so-offer-markup-display').textContent = pct;
+        recalcOffer();
+    });
+
+    document.getElementById('so-offer-submit')?.addEventListener('click', submitOffer);
+
+    recalcOffer();
+}
+
+function renderOfferModifierCard(m, selected) {
+    const effectChips = [];
+    if (m.energy !== 0) effectChips.push(`<span class="so-offer-effect ${m.energy > 0 ? 'positive' : 'negative'}">${m.energy > 0 ? '+' : ''}${m.energy} Energy/tick</span>`);
+    if (m.risk   !== 0) effectChips.push(`<span class="so-offer-effect ${m.risk   > 0 ? 'negative' : 'positive'}">${m.risk   > 0 ? '+' : ''}${m.risk} Route Risk</span>`);
+    if (m.costM  !== 0) effectChips.push(`<span class="so-offer-effect cost">+$${m.costM}M/tick</span>`);
+    if (effectChips.length === 0)
+        effectChips.push('<span class="so-offer-effect cost">BASELINE</span>');
+    return `<div class="so-offer-modifier-card${selected ? ' selected' : ''}${m.baseline ? ' baseline' : ''}" data-key="${m.key}">
+        <div class="so-offer-modifier-checkbox"></div>
+        <div class="so-offer-modifier-content">
+            <div class="so-offer-modifier-name">${escapeHtml(m.name)}</div>
+            <div class="so-offer-modifier-desc">${escapeHtml(m.desc)}</div>
+            <div class="so-offer-modifier-effects">${effectChips.join('')}</div>
+        </div>
+    </div>`;
+}
+
+// Recompute the offer's energy / cost / risk numbers and update every
+// live UI element from the current _offerState. Mirrors the server-side
+// math in place_shipping_offer so the buyer-side preview stays
+// consistent with the row that lands.
+function recalcOffer() {
+    if (!_offerState) return;
+    const { contract, freighters, modifiers, markup } = _offerState;
+
+    let energyDelta = 0, riskDelta = 0, costAddM = 0;
+    for (const key of modifiers) {
+        const def = OFFER_MODIFIERS.find(m => m.key === key);
+        if (!def) continue;
+        energyDelta += def.energy;
+        riskDelta   += def.risk;
+        costAddM    += def.costM;
+    }
+    const baseEnergy = freighters * OFFER_ENERGY_PER_FREIGHTER;
+    const cap = Number(contract.volume_required) || Infinity;
+    const deliveredEnergy = Math.max(0, Math.min(cap, baseEnergy + energyDelta));
+
+    const operatingCost = (freighters * OFFER_FREIGHTER_COST_M + costAddM) * 1_000_000;
+    const markupCost = Math.round(operatingCost * markup / 100);
+    const totalOffer = operatingCost + markupCost;
+
+    const fmt = (n) => '$' + (n / 1_000_000).toFixed(1) + 'M';
+
+    document.getElementById('so-offer-op-label').textContent =
+        `Operating Cost (${freighters} freighters × $${OFFER_FREIGHTER_COST_M}M)`;
+    document.getElementById('so-offer-op-cost').textContent = fmt(freighters * OFFER_FREIGHTER_COST_M * 1_000_000);
+    document.getElementById('so-offer-mod-cost').textContent = fmt(costAddM * 1_000_000);
+    document.getElementById('so-offer-markup-label').textContent = `Markup (${markup}% applied)`;
+    document.getElementById('so-offer-markup-cost').textContent = '+' + fmt(markupCost);
+    document.getElementById('so-offer-total-cost').textContent = fmt(totalOffer) + ' / tick';
+    document.getElementById('so-offer-margin-value').textContent = '+' + fmt(markupCost);
+
+    document.getElementById('so-offer-footer-energy').textContent = `${deliveredEnergy}/tick`;
+    const riskEl = document.getElementById('so-offer-footer-risk');
+    riskEl.textContent = (riskDelta >= 0 ? '+' : '') + riskDelta;
+    riskEl.style.color = riskDelta > 0
+        ? 'var(--so-accent-red)'
+        : riskDelta < 0 ? 'var(--so-accent-green)' : 'var(--so-text-primary)';
+    document.getElementById('so-offer-footer-profit').textContent = fmt(markupCost) + '/tick';
+
+    const submitBtn = document.getElementById('so-offer-submit');
+    if (submitBtn) submitBtn.disabled = _offerInflight || freighters <= 0;
+}
+
+async function submitOffer() {
+    if (_offerInflight || !_offerState) return;
+    const { contract, freighters, modifiers, markup } = _offerState;
+    if (!contract?.id) return;
+    if (freighters <= 0) { showToast('Allocate at least 1 freighter.', 'error'); return; }
+
+    _offerInflight = true;
+    const submitBtn = document.getElementById('so-offer-submit');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+        const { data, error } = await _supabase.rpc('place_shipping_offer', {
+            p_contract_id:          contract.id,
+            p_bidder_faction_id:    faction.id,
+            p_freighters_allocated: freighters,
+            p_modifiers:            Array.from(modifiers),
+            p_markup_pct:           markup,
+        });
+        if (error) {
+            showToast(error.message || 'Offer failed.', 'error');
+            return;
+        }
+        if (!data?.success) {
+            showToast(data?.error || 'Offer failed.', 'error');
+            return;
+        }
+        showToast(data.replaced ? 'Offer updated.' : 'Offer submitted. Auto-award on the next tick window.', 'success');
+        closeBidModal();
+        await loadAvailableContracts();
+        renderAvailableContracts();
+    } catch (err) {
+        console.error('[corp-shipping] place_shipping_offer failed:', err);
+        showToast('Offer failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _offerInflight = false;
+        if (submitBtn) submitBtn.disabled = false;
+    }
 }
 
 function closeBidModal() {
